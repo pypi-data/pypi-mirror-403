@@ -1,0 +1,331 @@
+"""
+Pydantic schemas for API request/response validation.
+"""
+
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+
+# System schemas (infrastructure mode)
+class SystemCreate(BaseModel):
+    """Schema for creating/updating a system."""
+
+    hostname: str = Field(..., description="System hostname")
+    ip_address: Optional[str] = Field(default=None, description="IP address")
+    tag: Optional[str] = Field(default=None, description="Tag for grouping/CMDB linking")
+    os_name: Optional[str] = Field(default=None, description="OS name (e.g., 'Red Hat Enterprise Linux')")
+    os_version: Optional[str] = Field(default=None, description="OS version (e.g., '10.0')")
+    arch: Optional[str] = Field(default=None, description="Architecture (e.g., 'x86_64')")
+
+
+class SystemResponse(BaseModel):
+    """Schema for system response."""
+
+    id: int
+    hostname: str
+    ip_address: Optional[str]
+    tag: Optional[str]
+    os_name: Optional[str]
+    os_version: Optional[str]
+    arch: Optional[str]
+    last_scan_at: Optional[datetime]
+    created_at: datetime
+    scan_count: int = 0
+    total_packages: int = 0
+    total_files: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+# Product schemas
+class ProductCreate(BaseModel):
+    """Schema for creating a product."""
+
+    name: str = Field(..., description="Product name (e.g., 'rhel')")
+    version: str = Field(..., description="Product version (e.g., '10.0')")
+    vendor: str = Field(default="Red Hat", description="Vendor name")
+    cpe_vendor: str = Field(default="redhat", description="CPE vendor string")
+    cpe_product: Optional[str] = Field(default=None, description="CPE product string")
+    purl_namespace: str = Field(default="redhat", description="PURL namespace")
+    description: Optional[str] = Field(default=None, description="Product description")
+
+
+class ProductResponse(BaseModel):
+    """Schema for product response."""
+
+    id: int
+    name: str
+    version: str
+    vendor: str
+    cpe_vendor: str
+    cpe_product: Optional[str]
+    purl_namespace: str
+    description: Optional[str]
+    created_at: datetime
+    scan_count: int = 0
+    total_packages: int = 0
+    total_files: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+# Scan schemas
+class ScanCreate(BaseModel):
+    """Schema for creating a scan."""
+
+    product_name: str = Field(..., description="Product name")
+    product_version: str = Field(..., description="Product version")
+    source_path: str = Field(..., description="Source path that was scanned")
+    source_type: str = Field(default="directory", description="Type of source")
+    syft_version: Optional[str] = Field(default=None, description="Syft version used")
+
+
+class ScanMetadata(BaseModel):
+    """Schema for scan metadata sent with upload."""
+
+    product_name: str
+    product_version: str
+    source_path: str
+    source_type: str = "directory"
+    syft_version: Optional[str] = None
+    package_count: int = 0
+    file_count: int = 0
+
+
+class ScanResponse(BaseModel):
+    """Schema for scan response."""
+
+    id: int
+    product_id: int
+    product_name: str
+    product_version: str
+    source_path: str
+    source_type: str
+    scan_timestamp: datetime
+    syft_version: Optional[str]
+    package_count: int
+    file_count: int
+    original_size_bytes: int
+    modified_size_bytes: int
+
+    class Config:
+        from_attributes = True
+
+
+class ScanUploadResponse(BaseModel):
+    """Response with presigned URLs for scan upload."""
+
+    scan_id: int
+    original_upload_url: str
+    modified_upload_url: str
+    packages_upload_url: str  # URL to POST package index
+
+
+# Package schemas
+class PackageCreate(BaseModel):
+    """Schema for package index entry."""
+
+    name: str
+    version: Optional[str] = None
+    release: Optional[str] = None
+    arch: Optional[str] = None
+    epoch: Optional[str] = None
+    source_rpm: Optional[str] = None
+    license: Optional[str] = None
+    purl: Optional[str] = None
+    cpes: Optional[str] = None  # JSON array
+    files: List["FileCreate"] = []
+
+
+class FileCreate(BaseModel):
+    """Schema for file index entry."""
+
+    path: str
+    digest: Optional[str] = None
+    digest_algorithm: Optional[str] = "sha256"
+
+
+class PackageResponse(BaseModel):
+    """Schema for package search response."""
+
+    id: int
+    name: str
+    version: Optional[str]
+    release: Optional[str]
+    arch: Optional[str]
+    epoch: Optional[str]
+    source_rpm: Optional[str]
+    license: Optional[str]
+    purl: Optional[str]
+    cpes: Optional[str]
+    product_name: str
+    product_version: str
+    # Container layer info (may be None for non-container scans)
+    layer_id: Optional[str] = None
+    layer_index: Optional[int] = None
+    source_image: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FileResponse(BaseModel):
+    """Schema for file search response."""
+
+    id: int
+    path: str
+    digest: Optional[str]
+    digest_algorithm: Optional[str]
+    package_name: str
+    package_version: Optional[str]
+    product_name: str
+    product_version: str
+    # Container layer info (may be None for non-container scans)
+    source_image: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Query schemas
+class PackageQuery(BaseModel):
+    """Schema for package search query."""
+
+    name: Optional[str] = Field(default=None, description="Package name pattern (use % as wildcard)")
+    product_name: Optional[str] = Field(default=None, description="Filter by product name")
+    product_version: Optional[str] = Field(default=None, description="Filter by product version")
+    limit: int = Field(default=100, le=1000, description="Maximum results")
+    offset: int = Field(default=0, description="Offset for pagination")
+
+
+class FileQuery(BaseModel):
+    """Schema for file search query."""
+
+    path: Optional[str] = Field(default=None, description="File path pattern (use % as wildcard)")
+    digest: Optional[str] = Field(default=None, description="File digest (exact match)")
+    product_name: Optional[str] = Field(default=None, description="Filter by product name")
+    product_version: Optional[str] = Field(default=None, description="Filter by product version")
+    limit: int = Field(default=100, le=1000, description="Maximum results")
+    offset: int = Field(default=0, description="Offset for pagination")
+
+
+# Export schemas
+class ExportRequest(BaseModel):
+    """Schema for SBOM export request."""
+
+    product_name: str
+    product_version: str
+    format: str = Field(default="spdx-json", description="Output format")
+
+
+class ExportResponse(BaseModel):
+    """Schema for export response with download URL."""
+
+    download_url: str
+    format: str
+    expires_in: int = 3600
+
+
+# Stats schemas
+class StatsResponse(BaseModel):
+    """Schema for database statistics."""
+
+    products: int
+    systems: int = 0
+    scans: int
+    packages: int
+    files: int
+    storage_type: str
+    database_type: str
+
+
+# Job schemas
+class JobCreate(BaseModel):
+    """Schema for creating a product import job."""
+
+    product_name: str = Field(..., description="Product name")
+    product_version: str = Field(..., description="Product version")
+    source_path: str = Field(..., description="Source path that was scanned")
+    source_type: str = Field(default="directory", description="Type of source")
+    syft_version: Optional[str] = Field(default=None, description="Syft version used")
+    total_packages: int = Field(default=0, description="Total package count")
+    total_files: int = Field(default=0, description="Total file count")
+    image_layers_json: Optional[str] = Field(default=None, description="Container layer chain (JSON string)")
+
+
+class SystemJobCreate(BaseModel):
+    """Schema for creating a system import job."""
+
+    hostname: str = Field(..., description="System hostname")
+    ip_address: Optional[str] = Field(default=None, description="IP address")
+    os_name: Optional[str] = Field(default=None, description="OS name")
+    os_version: Optional[str] = Field(default=None, description="OS version")
+    architecture: Optional[str] = Field(default=None, description="Architecture")
+    tag: Optional[str] = Field(default=None, description="Tag for grouping/CMDB linking")
+    syft_version: Optional[str] = Field(default=None, description="Syft version used")
+    total_packages: int = Field(default=0, description="Total package count")
+    total_files: int = Field(default=0, description="Total file count")
+
+
+class JobUploadUrls(BaseModel):
+    """Response with presigned URLs for job file uploads."""
+
+    job_id: str
+    original_sbom_url: str
+    modified_sbom_url: str
+    packages_tsv_url: str
+    files_tsv_url: str
+    expires_in: int = 3600
+
+
+class JobResponse(BaseModel):
+    """Schema for job status response."""
+
+    id: str
+    status: str  # pending, uploading, processing, complete, failed
+    job_type: str  # product_import, system_import
+    # Product fields (may be None for system imports)
+    product_name: Optional[str] = None
+    product_version: Optional[str] = None
+    # System fields (may be None for product imports)
+    system_hostname: Optional[str] = None
+    system_ip: Optional[str] = None
+    system_tag: Optional[str] = None
+    scan_label: Optional[str] = None
+    # Common fields
+    source_path: str
+    source_type: str
+    syft_version: Optional[str]
+    total_packages: int
+    total_files: int
+    processed_packages: int
+    processed_files: int
+    error_message: Optional[str]
+    scan_id: Optional[int]
+    created_at: datetime
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class JobListResponse(BaseModel):
+    """Schema for job list response."""
+
+    jobs: List[JobResponse]
+    total: int
+
+
+class JobStartRequest(BaseModel):
+    """Request to start processing an uploaded job."""
+
+    pass  # No additional fields needed, job_id is in URL
+
+
+# Update forward references
+PackageCreate.model_rebuild()
