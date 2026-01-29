@@ -1,0 +1,102 @@
+Metadata-Version: 2.3
+Name: docker-hosts
+Version: 0.1.1
+Summary: Automatically manage Docker container hostnames in /etc/hosts for local development and CI
+Keywords: docker,docker-compose,hosts,localhost,development,devops,containers,networking,automation
+Author: Michael Bianco
+Author-email: Michael Bianco <mike@mikebian.co>
+Requires-Dist: click
+Requires-Dist: docker
+Requires-Dist: structlog-config
+Requires-Python: >=3.11
+Project-URL: Repository, https://github.com/iloveitaly/docker-hosts
+Description-Content-Type: text/markdown
+
+# Automatic Docker Hosts Management
+
+Automatically manage Docker container hostnames in your `/etc/hosts` file.
+
+I built this to solve a specific problem: using Docker Compose for local development services (postgres, redis, etc.) and sharing the same compose file with CI. I wanted `DATABASE_URL=postgres://postgres.localhost/mydb` to work both locally and in CI without maintaining separate configs. This tool creates stable domains for Docker Compose services that work everywhere - no manual `/etc/hosts` edits, no environment-specific configuration. Originally extracted from my [python-starter-template](https://github.com/iloveitaly/python-starter-template).
+
+## Installation
+
+Using uv:
+
+```bash
+uv tool install docker-hosts
+```
+
+Using pip:
+
+```bash
+pip install docker-hosts
+```
+
+## Usage
+
+Update `/etc/hosts` with all running containers:
+
+```bash
+sudo docker-hosts
+```
+
+Preview what would be written without making changes:
+
+```bash
+docker-hosts --dry-run
+```
+
+Use a custom TLD (defaults to `.localhost`):
+
+```bash
+sudo docker-hosts --tld dev
+```
+
+Specify a custom hosts file path:
+
+```bash
+docker-hosts /tmp/hosts --dry-run
+```
+
+The tool requires sudo when writing to `/etc/hosts`, but you can test with `--dry-run` first to see what it would do.
+
+### Windows / WSL
+
+You may encounter issues if using Docker Desktop. Running Docker directly on WSL works properly.
+
+## Features
+
+- Network-aware - picks up all network aliases from Docker networks, not just the default bridge network. If your container is attached to multiple networks, all IPs and aliases get added.
+- Safe writes - uses atomic file writes (write to temp, then rename) to avoid corrupting your hosts file. Your existing entries are preserved - the tool only manages the section between `### Start Docker Domains ###` and `### End Docker Domains ###` markers.
+- Structured logging - built with structlog for clean, parseable logs. Set `LOG_LEVEL=DEBUG` to see what's happening under the hood.
+- Dry-run mode - test what would be written before committing to changes. Great for understanding what the tool does or debugging issues.
+
+## Development
+
+### Running Tests
+
+Tests require Docker to be running with the postgres and redis containers from `docker-compose.yml`:
+
+```bash
+docker compose up -d
+pytest -v
+```
+
+Run only unit tests (no Docker required):
+
+```bash
+pytest -v -m unit
+```
+
+Run only integration tests:
+
+```bash
+pytest -v -m integration
+```
+
+The test suite includes:
+- Integration tests that verify container detection using real Docker containers
+- Unit tests for data extraction and file operations
+- CLI tests using temporary hosts files in `tmp/hosts`
+
+# [MIT License](LICENSE.md)
