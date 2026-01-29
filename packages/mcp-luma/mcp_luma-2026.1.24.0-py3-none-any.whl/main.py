@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""
+MCP Luma Server - AI Video Generation via AceDataCloud API.
+
+A Model Context Protocol (MCP) server that provides tools for generating
+AI videos using Luma Dream Machine through the AceDataCloud platform.
+"""
+
+import argparse
+import logging
+import sys
+from importlib import metadata
+
+from dotenv import load_dotenv
+
+# Load environment variables before importing other modules
+load_dotenv()
+
+from core.config import settings
+from core.server import mcp
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+def safe_print(text: str) -> None:
+    """Print to stderr safely, handling encoding issues."""
+    if not sys.stderr.isatty():
+        logger.debug(f"[MCP Luma] {text}")
+        return
+
+    try:
+        print(text, file=sys.stderr)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", errors="replace").decode(), file=sys.stderr)
+
+
+def get_version() -> str:
+    """Get the package version."""
+    try:
+        return metadata.version("mcp-luma")
+    except metadata.PackageNotFoundError:
+        return "dev"
+
+
+def main() -> None:
+    """Run the MCP Luma server."""
+    parser = argparse.ArgumentParser(
+        description="MCP Luma Server - AI Video Generation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  mcp-luma                    # Run with stdio transport (default)
+  mcp-luma --transport http   # Run with HTTP transport
+  mcp-luma --version          # Show version
+
+Environment Variables:
+  ACEDATACLOUD_API_TOKEN     API token from AceDataCloud (required)
+  LUMA_DEFAULT_ASPECT_RATIO  Default aspect ratio (default: 16:9)
+  LUMA_REQUEST_TIMEOUT       Request timeout in seconds (default: 180)
+  LOG_LEVEL                  Logging level (default: INFO)
+        """,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"mcp-luma {get_version()}",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="Transport mode (default: stdio)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for HTTP transport (default: 8000)",
+    )
+    args = parser.parse_args()
+
+    # Print startup banner
+    safe_print("")
+    safe_print("=" * 50)
+    safe_print("  MCP Luma Server - AI Video Generation")
+    safe_print("=" * 50)
+    safe_print("")
+    safe_print(f"  Version:      {get_version()}")
+    safe_print(f"  Transport:    {args.transport}")
+    safe_print(f"  Aspect Ratio: {settings.default_aspect_ratio}")
+    safe_print(f"  Log Level:    {settings.log_level}")
+    safe_print("")
+
+    # Validate configuration
+    if not settings.is_configured:
+        safe_print("  [ERROR] ACEDATACLOUD_API_TOKEN not configured!")
+        safe_print("  Get your token from https://platform.acedata.cloud")
+        safe_print("")
+        sys.exit(1)
+
+    safe_print("  [OK] API token configured")
+    safe_print("")
+
+    # Import tools and prompts to register them
+    safe_print("  Loading tools and prompts...")
+    import prompts  # noqa: F401, I001
+    import tools  # noqa: F401
+
+    safe_print("  [OK] Tools and prompts loaded")
+    safe_print("")
+    safe_print("  Available tools:")
+    safe_print("    - luma_generate_video")
+    safe_print("    - luma_generate_video_from_image")
+    safe_print("    - luma_extend_video")
+    safe_print("    - luma_extend_video_from_url")
+    safe_print("    - luma_get_task")
+    safe_print("    - luma_get_tasks_batch")
+    safe_print("    - luma_list_aspect_ratios")
+    safe_print("    - luma_list_actions")
+    safe_print("")
+    safe_print("  Available prompts:")
+    safe_print("    - luma_video_generation_guide")
+    safe_print("    - luma_workflow_examples")
+    safe_print("    - luma_prompt_suggestions")
+    safe_print("")
+    safe_print("=" * 50)
+    safe_print("  Ready for MCP connections")
+    safe_print("=" * 50)
+    safe_print("")
+
+    # Run the server
+    try:
+        if args.transport == "http":
+            mcp.run(transport="streamable-http", host="0.0.0.0", port=args.port)  # type: ignore[call-arg]
+        else:
+            mcp.run(transport="stdio")
+    except KeyboardInterrupt:
+        safe_print("\nShutdown requested")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Server error: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
