@@ -1,0 +1,184 @@
+# ML Easy Setup
+
+> 一键配置机器学习/深度学习环境，让科研工作更专注于算法本身
+
+[![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+## 🚀 为什么选择 ML Easy Setup？
+
+**痛点**：配置 ML/DL 环境总是遇到各种问题
+- ❌ PyTorch、TensorFlow 版本冲突
+- ❌ CUDA 驱动与工具包不匹配
+- ❌ 依赖关系复杂，小白不知道从何入手
+- ❌ 每次换电脑都要重新配置半天
+
+**解决方案**：一条命令搞定一切
+- ✅ 自动检测硬件和 CUDA 版本
+- ✅ 预配置最佳实践的环境模板
+- ✅ 基于 uv 的高速包安装
+- ✅ 完善的依赖冲突检测
+
+## 📦 安装
+
+```bash
+pip install ml-easy-setup
+```
+
+或使用 uv（更快）：
+
+```bash
+uv pip install ml-easy-setup
+```
+
+## 🎯 快速开始
+
+### 创建一个新的 PyTorch 项目
+
+```bash
+# 自动检测 CUDA 版本并创建环境
+mlsetup create my-project --template pytorch --cuda auto
+
+cd my-project
+source .venv/bin/activate  # Linux/Mac
+# 或
+.venv\Scripts\activate     # Windows
+```
+
+### 创建 NLP 研究环境
+
+```bash
+mlsetup create nlp-research --template nlp --cuda auto
+```
+
+### 创建 CPU 版本环境
+
+```bash
+mlsetup create ml-experiment --template minimal --cuda cpu
+```
+
+## 📋 可用模板
+
+| 模板 | 描述 | 核心库 |
+|------|------|--------|
+| `minimal` | 最小化配置，仅包含基础 ML 库 | numpy, pandas, scikit-learn |
+| `pytorch` | PyTorch 深度学习框架 | torch, torchvision, torchaudio |
+| `tensorflow` | TensorFlow 深度学习框架 | tensorflow, keras |
+| `nlp` | 自然语言处理环境 | torch, transformers, datasets |
+| `cv` | 计算机视觉环境 | torch, torchvision, opencv-python |
+| `rl` | 强化学习环境 | torch, gymnasium, stable-baselines3 |
+
+### 查看所有模板
+
+```bash
+mlsetup list-templates
+```
+
+## 🔧 系统检测
+
+检查您的系统环境：
+
+```bash
+mlsetup detect
+```
+
+输出示例：
+```
+系统环境检测
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+项目          检测结果
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+操作系统      Darwin
+Python 版本   3.11.5
+架构          arm64
+CUDA          未安装
+GPU           Apple Silicon (MPS)
+UV            0.1.20
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+## 📦 添加额外的包
+
+```bash
+# 添加到核心依赖
+mlsetup add numpy pandas
+
+# 添加到开发依赖
+mlsetup add pytest --dev
+```
+
+## 🏗️ 项目结构
+
+创建的项目包含以下结构：
+
+```
+my-project/
+├── .venv/              # 虚拟环境
+├── src/                # 源代码目录
+├── tests/              # 测试目录
+├── data/               # 数据目录
+├── notebooks/          # Jupyter notebooks
+├── outputs/            # 输出文件目录
+├── requirements.txt    # 核心依赖
+├── requirements-dev.txt # 开发依赖
+└── .gitignore          # Git 忽略文件
+```
+
+## 🎨 配置选项
+
+### CUDA 版本
+
+支持以下 CUDA 版本：
+- `auto` - 自动检测（推荐）
+- `cpu` - 仅 CPU 版本
+- `11.8` - CUDA 11.8
+- `12.1` - CUDA 12.1
+- `12.4` - CUDA 12.4
+- `none` - 不安装 CUDA 相关包
+
+### Python 版本
+
+```bash
+mlsetup create my-project --python 3.11
+```
+
+支持的 Python 版本：3.10, 3.11, 3.12
+
+## 🆚 与其他工具对比
+
+| 特性 | ML Easy Setup | conda | poetry | venv |
+|------|---------------|-------|--------|------|
+| 专为 ML 设计 | ✅ | ✅ | ❌ | ❌ |
+| 自动 CUDA 检测 | ✅ | ❌ | ❌ | ❌ |
+| 安装速度 | ⚡⚡⚡ | ⚡ | ⚡⚡ | ⚡ |
+| 学习曲线 | 低 | 中 | 高 | 低 |
+| 预配置模板 | ✅ | ❌ | ❌ | ❌ |
+
+## 🔮 路线图
+
+- [ ] 支持 Docker 容器化环境
+- [ ] 环境导出/导入功能
+- [ ] 云端环境配置（AWS/GCP）
+- [ ] 图形化配置界面
+- [ ] 环境健康检查工具
+
+## 🤝 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详情。
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+
+## 🙏 致谢
+
+- [uv](https://github.com/astral-sh/uv) - 高性能 Python 包管理器
+- [click](https://click.palletsprojects.com/) - 优雅的命令行界面
+- [rich](https://rich.readthedocs.io/) - 终端美化输出
+
+---
+
+⭐ 如果这个项目对您有帮助，请考虑给我们一个星标！
+
+Made with ❤️ for the ML community
