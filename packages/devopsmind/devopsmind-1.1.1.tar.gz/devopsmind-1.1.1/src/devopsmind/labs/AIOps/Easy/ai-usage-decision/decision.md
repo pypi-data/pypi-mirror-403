@@ -1,0 +1,7 @@
+## Decision
+
+## Rationale
+
+## Risks
+
+## Alternative
