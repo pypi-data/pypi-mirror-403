@@ -1,0 +1,46 @@
+"""Configuration for the unihan-etl package."""
+
+from __future__ import annotations
+
+import dataclasses
+import pathlib
+import typing as t
+
+from .constants import (
+    DESTINATION_DIR,
+    INDEX_FIELDS,
+    UNIHAN_FIELDS,
+    UNIHAN_FILES,
+    UNIHAN_URL,
+    UNIHAN_ZIP_PATH,
+    WORK_DIR,
+)
+
+if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from .types import LogLevel
+
+
+@dataclasses.dataclass()
+class Options:
+    """Options for unihan-etl."""
+
+    source: str | pathlib.Path = UNIHAN_URL
+    destination: pathlib.Path = DESTINATION_DIR / "unihan.{ext}"
+    zip_path: pathlib.Path = UNIHAN_ZIP_PATH
+    work_dir: pathlib.Path = WORK_DIR
+    fields: Sequence[str] = dataclasses.field(
+        default_factory=lambda: INDEX_FIELDS + UNIHAN_FIELDS,
+    )
+    format: t.Literal["json", "csv", "yaml", "python"] = "csv"
+    input_files: list[str] = dataclasses.field(default_factory=lambda: UNIHAN_FILES)
+    download: bool = False
+    expand: bool = True
+    prune_empty: bool = True
+    cache: bool = True
+    log_level: LogLevel = "INFO"
+
+    def __post_init__(self) -> None:
+        """Post-initialization for unihan-etl options."""
+        self.destination = pathlib.Path(str(self.destination).format(ext=self.format))
