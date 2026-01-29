@@ -1,0 +1,240 @@
+Metadata-Version: 2.4
+Name: grok-mcp
+Version: 0.1.2
+Summary: MCP server for Grok X.com search integration using xAI API
+Project-URL: Homepage, https://github.com/guzus/grok-mcp
+Project-URL: Repository, https://github.com/guzus/grok-mcp
+Project-URL: Issues, https://github.com/guzus/grok-mcp/issues
+Author: guzus
+License-Expression: MIT
+License-File: LICENSE
+Keywords: claude,grok,mcp,search,twitter,x.com,xai
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.12
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: mcp>=1.0.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: typing-extensions>=4.8.0
+Provides-Extra: dev
+Requires-Dist: black>=24.0.0; extra == 'dev'
+Requires-Dist: mypy>=1.8.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest-mock>=3.12.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Grok X.com Search MCP Server
+
+A Model Context Protocol (MCP) server that integrates xAI's Grok API for X.com search functionality. This server enables Claude Desktop and Claude Code users to search and analyze X/Twitter content with real-time data access.
+
+<!-- MCP Registry verification -->
+<!-- mcp-name: io.github.guzus/grok-mcp -->
+
+[![PyPI version](https://badge.fury.io/py/grok-mcp.svg)](https://pypi.org/project/grok-mcp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Features
+
+- **Real-time X.com Search**: Search posts, users, conversation threads, and trending topics
+- **Advanced Analysis**: Basic and comprehensive analysis modes with sentiment analysis
+- **Robust Error Handling**: Retry logic, rate limiting, and graceful degradation
+- **Claude Integration**: Works with both Claude Desktop and Claude Code via MCP protocol
+- **Comprehensive Filtering**: Date ranges, user handles, engagement metrics
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.12+
+- xAI API key from [console.x.ai](https://console.x.ai)
+
+### Install from PyPI
+
+```bash
+# Using uvx (recommended)
+uvx grok-mcp
+
+# Or using pip
+pip install grok-mcp
+```
+
+## Configuration
+
+### Claude Code
+
+Add to your Claude Code MCP settings:
+
+**Project scope** (`.mcp.json` in your project root):
+```json
+{
+  "mcpServers": {
+    "grok-search": {
+      "command": "uvx",
+      "args": ["grok-mcp"],
+      "env": {
+        "XAI_API_KEY": "your-xai-api-key"
+      }
+    }
+  }
+}
+```
+
+**User scope** (global settings):
+```bash
+claude mcp add grok-search --command "uvx grok-mcp" --env XAI_API_KEY=your-xai-api-key
+```
+
+### Claude Desktop
+
+Add to your Claude Desktop configuration file:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "grok-search": {
+      "command": "uvx",
+      "args": ["grok-mcp"],
+      "env": {
+        "XAI_API_KEY": "your-xai-api-key"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after adding the configuration.
+
+## Available Tools
+
+### search_posts
+Search X.com posts with advanced filtering and analysis options.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `query` | Yes | Search query for X.com posts |
+| `max_results` | No | Maximum results (1-100, default: 20) |
+| `handles` | No | Filter by user handles (without @) |
+| `start_date` | No | Start date (YYYY-MM-DD) |
+| `end_date` | No | End date (YYYY-MM-DD) |
+| `analysis_mode` | No | "basic" or "comprehensive" |
+
+### search_users
+Search for X.com users and profiles.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `query` | Yes | Search query for users |
+| `max_results` | No | Maximum results (1-50, default: 20) |
+
+### search_threads
+Search X.com conversation threads and replies.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `query` | Yes | Search query for threads |
+| `max_results` | No | Maximum threads (1-20, default: 10) |
+
+### get_trends
+Get trending topics and hashtags on X.com.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `location` | No | Location (e.g., "United States", "Global") |
+| `max_results` | No | Maximum trends (1-50, default: 20) |
+
+### health_check
+Check the health and status of the Grok API connection.
+
+## Development
+
+### Setup for Development
+
+```bash
+git clone https://github.com/guzus/grok-mcp.git
+cd grok-mcp
+uv sync --dev
+```
+
+### Run Tests
+
+```bash
+uv run pytest
+uv run pytest --cov=src/grok_mcp
+```
+
+### Validate Configuration
+
+```bash
+uv run python scripts/validate_config.py
+```
+
+## Architecture
+
+```
+grok-mcp/
+├── src/grok_mcp/
+│   ├── server.py           # Main MCP server
+│   ├── config.py           # Configuration management
+│   ├── grok_client.py      # Grok API client with retry/rate limiting
+│   ├── search_tools.py     # Search tool implementations
+│   ├── response_formatter.py  # Response formatting
+│   └── exceptions.py       # Custom exceptions
+├── tests/                  # Test suite
+└── scripts/               # Utility scripts
+```
+
+## Publishing
+
+This server is available on:
+- **PyPI**: `pip install grok-mcp` or `uvx grok-mcp`
+- **MCP Registry**: Listed as `io.github.guzus/grok-mcp`
+- **Smithery**: Available at [smithery.ai](https://smithery.ai)
+
+### Publish to PyPI
+
+```bash
+uv build
+uv publish
+```
+
+### Publish to MCP Registry
+
+```bash
+mcp-publisher login github
+mcp-publisher publish
+```
+
+## Troubleshooting
+
+### "API key not configured"
+- Ensure `XAI_API_KEY` is set in your MCP configuration
+- Verify the API key is valid at [console.x.ai](https://console.x.ai)
+
+### "Tool not found"
+- Restart Claude Desktop/Code after configuration changes
+- Check that `uvx` or `pip` is available in your PATH
+
+### Rate limit errors
+- The server implements automatic retry with exponential backoff
+- Check your xAI API usage limits
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Links
+
+- [xAI API Documentation](https://docs.x.ai/)
+- [Model Context Protocol](https://modelcontextprotocol.io/)
+- [MCP Registry](https://registry.modelcontextprotocol.io/)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- [Claude Desktop](https://claude.ai/desktop)
