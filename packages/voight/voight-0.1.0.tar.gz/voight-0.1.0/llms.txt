@@ -1,0 +1,152 @@
+# Voight: The Pytest for Probabilistic Software
+
+> Testing framework for non-deterministic AI agents. Replaces unit tests with probabilistic scenarios.
+
+## Installation
+```bash
+pip install voight
+```
+
+## When to Use Voight
+- Testing LLM-based agents (LangChain, AutoGen, CrewAI, custom)
+- Evaluating chatbots and conversational AI
+- Testing RAG (Retrieval-Augmented Generation) systems
+- Verifying agents that create files or call tools
+- Fuzz-testing with adversarial inputs
+
+## Quick Start
+```bash
+# Initialize project
+voight init
+
+# Run tests
+voight run
+```
+
+## Core Pattern: @scenario Decorator
+```python
+from agent_evals import scenario
+
+@scenario(runs=10, threshold=0.8)
+def test_my_agent():
+    """Runs 10 times, passes if ≥80% succeed."""
+    response = my_agent.run("Hello")
+    assert "hello" in response.lower()
+```
+
+## Pattern: File Side-Effect Testing
+```python
+from agent_evals import scenario, Sandbox, check
+from agent_evals.judges import FileExistsJudge
+
+@scenario(runs=5)
+def test_agent_creates_file():
+    with Sandbox() as box:
+        agent.run("Create report.txt")
+        assert check(box, FileExistsJudge("report.txt"))
+```
+
+## Pattern: Response Quality Checking
+```python
+from agent_evals import scenario, check
+from agent_evals.judges import DeterministicJudge
+
+@scenario(runs=10, threshold=0.9)
+def test_polite_response():
+    response = agent.respond("I'm angry!")
+
+    judge = DeterministicJudge(
+        required_phrases=["sorry", "help"],
+        forbidden_phrases=["calm down", "your fault"]
+    )
+    assert check(response, judge, input="angry customer")
+```
+
+## Pattern: Adversarial Input Generation
+```python
+from agent_evals import scenario, AdversarialGenerator
+
+generator = AdversarialGenerator(
+    topic="refund request",
+    style="frustrated customer"
+)
+
+@scenario(runs=10, generator=generator)
+def test_handles_difficult_customers(prompt):
+    response = agent.respond(prompt)
+    assert "sorry" in response.lower()
+```
+
+## Pattern: RAG Hallucination Detection
+```python
+from agent_evals import scenario, check
+from agent_evals.judges import DeterministicJudge
+
+@scenario(runs=10, threshold=0.9)
+def test_no_hallucinations():
+    response = rag_agent.answer("What is our refund policy?")
+
+    judge = DeterministicJudge(
+        required_phrases=["30 days"],  # Known fact
+        forbidden_phrases=["60 days", "90 days"]  # Hallucinations
+    )
+    assert check(response, judge, input="refund query")
+```
+
+## API Summary
+
+### Decorators
+- `@scenario(runs=N, threshold=0.8)` - Probabilistic test decorator
+
+### Context Managers
+- `Sandbox()` - Isolate file operations in temp directory
+
+### Judges
+- `DeterministicJudge(required_phrases, forbidden_phrases)` - Rule-based
+- `FileExistsJudge(filename, min_size_bytes, contains)` - File checks
+- `SimpleLLMJudge(model, custom_criteria)` - LLM semantic eval
+
+### Generators
+- `SimpleGenerator(templates)` - Template-based (no API key)
+- `AdversarialGenerator(topic, style)` - LLM-powered (needs API key)
+
+### Helpers
+- `check(target, judge)` - Evaluate and return bool
+
+## CLI Commands
+```bash
+voight init          # Create project structure
+voight run           # Run all scenarios
+voight run -v        # Verbose output
+voight run -k name   # Filter by pattern
+```
+
+## Environment Variables
+- `OPENAI_API_KEY` - Required for LLM judges and generators
+
+## Example: Complete Customer Service Test
+```python
+from agent_evals import scenario, Sandbox, check, AdversarialGenerator
+from agent_evals.judges import DeterministicJudge, FileExistsJudge
+
+generator = AdversarialGenerator(topic="complaint", style="angry")
+
+@scenario(runs=10, threshold=0.9, generator=generator)
+def test_complaint_handling(customer_message):
+    with Sandbox() as box:
+        response = agent.handle(customer_message)
+
+    # Check response quality
+    assert check(response, DeterministicJudge(
+        required_phrases=["sorry", "help"],
+        forbidden_phrases=["wrong", "stupid"]
+    ), input=customer_message)
+
+    # Check ticket was created
+    assert check(box, FileExistsJudge("ticket.json"))
+```
+
+## Links
+- Docs: https://github.com/your-org/voight
+- PyPI: https://pypi.org/project/voight/
+- Recipes: https://github.com/your-org/voight/tree/main/recipes
