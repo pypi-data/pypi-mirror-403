@@ -1,0 +1,122 @@
+Metadata-Version: 2.3
+Name: logsage
+Version: 0.1.5
+Summary: LLM-based library for AI training job failure attribution and recommending auto-resume policy
+Author: Haim Elisha
+Author-email: helisha@nvidia.com
+Requires-Python: >=3.9,<4.0
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Dist: drain3 (>=0.9.11,<0.10.0)
+Requires-Dist: langchain (>=0.3.27,<0.4.0)
+Requires-Dist: langchain-core (>=0.3.0,<1.0.0)
+Requires-Dist: langchain-nvidia-ai-endpoints (>=0.3.18,<0.4.0)
+Requires-Dist: nh3 (>=0.3.1,<0.4.0)
+Requires-Dist: numpy (<=2.0.2)
+Requires-Dist: pandas (<=2.3.3)
+Requires-Dist: pydantic-settings (>=2.11.0,<3.0.0)
+Requires-Dist: requests (>=2.32.5,<3.0.0)
+Description-Content-Type: text/markdown
+
+# LogSage
+
+LogSage is an LLM-powered toolkit that analyzes AI training job logs, attributes root causes, and recommends an auto-resume policy to reduce wasted GPU time. It provides:
+- Error extraction and de-duplication from SLURM job logs
+- Root-cause attribution (e.g., hardware, configuration, memory, communication)
+- Action recommendations (restart immediately vs stop) with justification
+- Optional node isolation hints for hardware-related failures
+
+## Table of Contents
+
+- [Description](#description)
+- [Quickstart](#quickstart)
+- [Components](#components)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Roadmap and Project Status](#roadmap-and-project-status)
+- [Additional Resources](#additional-resources)
+- [Contributing](#contributing)
+
+## Description
+
+- **Problem**: Training jobs fail for many reasons (hardware, networking, configuration, data). Manual root-cause analysis is slow and wastes GPU hours.
+- **Solution**: LogSage uses log parsing + NVIDIA NIM to extract error patterns, attribute likely causes, and recommend whether to restart or stop, with an explanation.
+- **How it works (high level)**:
+  1. Receive job logs (client-provided)
+  2. Extract and cluster error lines; remove noise
+  3. Attribute errors with an LLM using structured prompts and heuristics
+  4. Recommend restart/stop and, when applicable, suggest temporal isolation of suspect nodes
+- **Benefits**: Faster triage, increased data center availability, reduced GPU downtime, and improved error extraction coverage by leveraging LLMs.
+
+## Quickstart
+
+Prerequisites:
+- Python >= 3.9
+- Poetry (recommended) or pip
+
+Setup (using Poetry):
+```bash
+make install
+# or
+poetry install --with dev --all-extras
+```
+
+Install via pip:
+```bash
+python3 -m venv myenv
+source myenv/bin/activate
+pip install -U logsage --index-url=https://urm.nvidia.com/artifactory/api/pypi/nv-shared-pypi-local/simple --extra-index-url https://pypi.org/simple
+```
+
+## Components
+
+- `logsage/auto_resume_policy/`
+  - CLI utilities to analyze local log files
+  - Recommendations engine that suggests job auto-resume policies: 'STOP', 'RESTART', 'TEMPORAL-ISOLATION+RESTART'
+
+## Configuration
+
+Configuration is managed via `logsage/auto_resume_policy/config.py` (Pydantic settings). Key variables:
+- `NVIDIA_API_KEY` (required in production): API key for NVIDIA AI Endpoints (required for LLM calls)
+- `FAST_API_ROOT_PATH` (optional): Root path when running behind a proxy
+- `DEBUG` (optional): `true`/`false` (default `true` locally; set `false` in prod)
+
+## Testing
+
+Run the test suite:
+```bash
+make test
+# or
+poetry run pytest
+```
+Coverage reports are configured in `pyproject.toml`.
+
+## Roadmap and Project Status
+
+- Streamed/async log ingestion paths
+- Integration with log collector like loki
+- Expanded attribution categories and guardrails
+- Improve test coverage and add end-to-end examples
+
+## Additional Resources
+
+- Auto-Resume-Policy API & details: [`logsage/auto_resume_policy/README.md`](logsage/auto_resume_policy/README.md)
+- Fetcher & deployment details: [`logsage/fetcher/README.md`](logsage/fetcher/README.md)
+- Project configuration and developer tooling: `pyproject.toml`, `Makefile`
+
+Internal dashboards (if applicable):
+- Grafana (LogSage): `https://grafana.nvidia.com/d/aeutclepcu41sf/logsage?orgId=290`
+- Kibana/ES example index (sandbox): `https://gpuwa.nvidia.com/elasticsearch/df-sandbox-ohazai-logsage-test2-202508/_search`
+
+## Contributing
+
+For setup, development guidelines, and versioning information, see the [Contributing Guide](CONTRIBUTING.md).
+
