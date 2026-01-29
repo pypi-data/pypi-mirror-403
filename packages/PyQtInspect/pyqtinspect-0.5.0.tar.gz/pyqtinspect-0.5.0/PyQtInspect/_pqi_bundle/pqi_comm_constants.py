@@ -1,0 +1,78 @@
+# -*- encoding:utf-8 -*-
+# ==============================================
+# Author: Jeza Chen
+# Time: 2023/8/23 11:06
+# Description: 
+# ==============================================
+# === CONNECTION MANAGEMENT ===
+CMD_EXIT = 129
+
+CMD_PROCESS_CREATED = 149
+
+# === QT PATCH SUCCESS ===
+CMD_QT_PATCH_SUCCESS = 1000
+# === WIDGET INFO ===
+CMD_WIDGET_INFO = 1001
+CMD_ENABLE_INSPECT = 1002
+CMD_DISABLE_INSPECT = 1003
+CMD_INSPECT_FINISHED = 1004
+# === CODE EXECUTION ===
+CMD_EXEC_CODE = 1006
+CMD_EXEC_CODE_RESULT = 1007
+CMD_EXEC_CODE_ERROR = 1008
+# === HIERARCHY ===
+CMD_SET_WIDGET_HIGHLIGHT = 1009
+CMD_SELECT_WIDGET = 1010
+CMD_REQ_WIDGET_INFO = 1011
+# === CHILDREN INFO ===
+CMD_REQ_CHILDREN_INFO = 1012
+CMD_CHILDREN_INFO = 1013
+# === CONTROL TREE INFO ===
+CMD_REQ_CONTROL_TREE = 1014
+CMD_CONTROL_TREE = 1015
+# === WIDGET PROPS ===
+CMD_REQ_WIDGET_PROPS = 1016
+CMD_WIDGET_PROPS = 1017
+
+ID_TO_MEANING = {
+    '129': 'CMD_EXIT',
+    '149': 'CMD_PROCESS_CREATED',
+    '1000': 'CMD_QT_PATCH_SUCCESS',
+    '1001': 'CMD_WIDGET_INFO',
+    '1002': 'CMD_ENABLE_INSPECT',
+    '1003': 'CMD_DISABLE_INSPECT',
+    '1004': 'CMD_INSPECT_FINISHED',
+    '1006': 'CMD_EXEC_CODE',
+    '1007': 'CMD_EXEC_CODE_RESULT',
+    '1008': 'CMD_EXEC_CODE_ERROR',
+    '1009': 'CMD_SET_WIDGET_HIGHLIGHT',
+    '1010': 'CMD_SELECT_WIDGET',
+    '1011': 'CMD_REQ_WIDGET_INFO',
+    '1012': 'CMD_REQ_CHILDREN_INFO',
+    '1013': 'CMD_CHILDREN_INFO',
+    '1014': 'CMD_REQ_CONTROL_TREE',
+    '1015': 'CMD_CONTROL_TREE',
+    '1016': 'CMD_REQ_WIDGET_PROPS',
+    '1017': 'CMD_WIDGET_PROPS',
+}
+
+# === Tree Views ===
+class TreeViewKeys:
+    OBJ_ID_KEY = 'i'
+    OBJ_NAME_KEY = 'n'
+    OBJ_CLS_NAME_KEY = 'c'
+    CHILDREN_KEY = 'ch'
+    CHILD_CNT_KEY = 'cc'
+
+class TreeViewResultKeys:
+    TREE_INFO_KEY = 't'
+    EXTRA_KEY = 'e'
+
+class TreeViewExtraKeys:
+    CURRENT_WIDGET_ID = 'c'
+
+# === Widget Props ===
+class WidgetPropsKeys:
+    CLASSNAME_KEY = 'cn'
+    PROPS_KEY = 'p'
+    VALUE_KEY = 'v'
