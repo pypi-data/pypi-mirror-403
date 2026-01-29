@@ -1,0 +1,260 @@
+Metadata-Version: 2.4
+Name: subs-webhook
+Version: 0.1.0
+Summary: A lightweight, asynchronous FastAPI extension designed to handle SaaS subscriptions, API key management, and plan-based access control. It integrates directly with Pabbly (and is extensible for other providers) to sync subscription statuses and automates access control using Redis caching for high performance.
+Requires-Python: >=3.9
+Requires-Dist: fastapi>=0.128.0
+Requires-Dist: nest-asyncio>=1.6.0
+Requires-Dist: redis>=7.0.1
+Requires-Dist: sqlalchemy>=2.0.46
+Description-Content-Type: text/markdown
+
+# 🚀 Subscription Management Webhook Handler
+
+A lightweight, asynchronous FastAPI extension designed to handle SaaS subscriptions, API key management, and plan-based access control. It integrates directly with **Pabbly** (and is extensible for other providers) to sync subscription statuses and automates access control using **Redis** caching for high performance.
+
+---
+
+## ✨ Features
+
+- **Plan-Based Access Control**: Restrict API routes based on the user's active subscription plan.
+- **High Performance**: Uses **Redis** to cache authentication results, minimizing database hits on every request.
+- **Async & Non-blocking**: Built on SQLAlchemy (Async) and `aiosqlite`.
+- **Webhook Integration**: Built-in handler for **Pabbly** webhooks (`customer_create`, `subscription_create`, `invoice_paid`, `subscription_cancel`) to auto-sync user status.
+- **Granular Feature Flags**: Inject plan-specific features (e.g., rate limits, usage quotas) directly into the `request.state`.
+- **Automatic DB Management**: Handles SQLite WAL mode and table creation automatically.
+
+---
+
+## 🛠 Prerequisites
+
+- **Python** 3.9+
+- **Redis** (Required for caching auth tokens)
+- **FastAPI** application
+
+---
+
+## 🚀 Quick Start
+
+### 1. Initialize the System
+
+Ensure package is installed:
+
+```bash
+pip install subs-webhook
+```
+
+In your main `main.py` file, initialize the subscription system. This sets up the SQLite database, Redis connection, and webhook routes.
+
+```python
+from fastapi import FastAPI
+from pathlib import Path
+from subs_webhook import init_subs
+
+app = FastAPI()
+
+# Configuration
+SUBS_DB_PATH = Path("./subscriptions.db")
+REDIS_URL = "redis://localhost:6379/0"
+
+# Initialize Subscriptions
+# This will:
+# 1. Create the SQLite DB if missing.
+# 2. Register webhook routes at /api/v1/subscription-webhook/...
+init_subs(
+    app,
+    sqlite_path=SUBS_DB_PATH,
+    redis_url=REDIS_URL,
+    prefix="/api/v1"
+)
+```
+
+### 2. Define Your Plans
+
+Create a configuration dictionary (or load it from a JSON file). This maps plan names to allowed routes and specific feature flags.
+
+**`plans_config.json`**
+
+```json
+{
+  "basic_tier": {
+    "features": { "rate_limit": 100, "access_level": "standard" },
+    "routes": ["/api/v1/dashboard", "/api/v1/reports/summary"]
+  },
+  "pro_tier": {
+    "features": { "rate_limit": 5000, "access_level": "premium" },
+    "routes": [
+      "/api/v1/dashboard",
+      "/api/v1/reports/summary",
+      "/api/v1/reports/advanced",
+      "/api/v1/export"
+    ]
+  }
+}
+```
+
+### 3. Protect Your Routes
+
+Use the `validate_access` and `get_api_key` dependencies to secure your endpoints.
+
+```python
+import json
+from fastapi import APIRouter, Depends, Request, HTTPException
+from subs_webhook import validate_access, get_api_key
+
+# Load plan configuration
+with open('plans_config.json', 'r') as f:
+    sub_plan_permissions = json.load(f)
+
+# Create a protected router
+router = APIRouter(
+    prefix="/api/v1",
+    dependencies=[
+        # 1. Checks for 'X-API-Key' header
+        Depends(get_api_key),
+        # 2. Validates Key, Checks Expiry, and Verifies Route Access
+        Depends(validate_access(sub_plan_permissions))
+    ]
+)
+
+@router.get("/reports/advanced")
+async def get_advanced_report(request: Request):
+    """
+    This route is only accessible if the user's active plan
+    includes '/api/v1/reports/advanced' in its 'routes' list.
+    """
+
+    # Access context injected by the middleware
+    current_plan = request.state.plan
+    features = request.state.plan_features
+
+    limit = features.get('rate_limit', 50)
+
+    return {
+        "message": f"Welcome user on {current_plan}",
+        "authorized_limit": limit,
+        "data": [...]
+    }
+
+app.include_router(router)
+```
+
+---
+
+## 🔗 Webhook Setup (Pabbly)
+
+To automate subscription management, you must point your payment provider or middleware (Pabbly Connect) to the webhook endpoint.
+
+**Endpoint:** `POST {your-domain}{prefix}/subscription-webhook/pabbly`  
+**Example:** `https://api.myapp.com/api/v1/subscription-webhook/pabbly`
+
+### Supported Events
+
+The system expects a JSON payload. It handles logic for:
+
+1.  **New Users**: Creates a `Profile` when a customer is created.
+2.  **New Subscriptions**: Links a `Subscription` to the user.
+3.  **Renewals/Invoices**: Updates `current_period_end` and sets status to `live`.
+4.  **Cancellations**: Revokes access immediately or at period end (depending on logic).
+
+---
+
+## 🔐 Manually Creating API Keys
+
+Since the system relies on webhooks for incoming data, you might need to manually seed your first user and API key for testing.
+
+You can use a script like this to access the database directly:
+
+```python
+import asyncio
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from subs_webhook.db.subscriptions.models import Profile, Subscription, ApiKey
+from datetime import datetime, timedelta
+
+# Settings
+DB_URL = "sqlite+aiosqlite:///./subscriptions.db"
+
+async def create_seed_user():
+    engine = create_async_engine(DB_URL)
+    AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with AsyncSessionLocal() as db:
+        # 1. Create Profile
+        user = Profile(email="admin@example.com", pabbly_customer_id="cus_12345")
+        db.add(user)
+        await db.flush() # Populate user.id
+
+        # 2. Create Subscription
+        sub = Subscription(
+            id="sub_test_001",
+            user_id=user.id,
+            plan_code="pro_tier", # Must match your JSON config key
+            status="live",
+            current_period_end=datetime.utcnow() + timedelta(days=365)
+        )
+        db.add(sub)
+
+        # 3. Create API Key
+        api_key = ApiKey(
+            key="sk_live_SECRET_KEY_123",
+            user_id=user.id,
+            status="active"
+        )
+        db.add(api_key)
+
+        await db.commit()
+        print(f"Created User ID: {user.id}")
+        print(f"API Key: sk_live_SECRET_KEY_123")
+
+    await engine.dispose()
+
+if __name__ == "__main__":
+    asyncio.run(create_seed_user())
+```
+
+---
+
+## 🧩 Architecture & Data Flow
+
+1.  **Request**: Client sends request with header `X-API-Key: sk_...`.
+2.  **Redis Check**: Middleware checks Redis for a cached `user_id` and `plan_list` associated with that key.
+    - _Hit_: Proceed to step 4.
+    - _Miss_: Proceed to step 3.
+3.  **DB Lookup**:
+    - Query `ApiKey` table (must be active).
+    - Join `Profile`.
+    - Join `Subscription` (must be `live` and not expired).
+    - Calculate cache TTL based on the earliest expiration date.
+    - Store in Redis.
+4.  **Route Guard**: The system checks if the requested URL path exists in the `routes` array for any of the user's active plans.
+5.  **Context Injection**: If allowed, `request.state.plan` and `request.state.plan_features` are populated for use in the endpoint.
+
+---
+
+## ⚠️ Important Notes
+
+1.  **SQLite WAL Mode**: The library automatically enables Write-Ahead Logging for SQLite to handle concurrent async reads/writes better.
+2.  **Route Matching**: Currently, the system uses **Exact Matching** for route permissions. If your config allows `/api/rates`, a request to `/api/rates/history` will be **denied** unless explicitly added to the list.
+3.  **Cache Invalidation**: When a webhook updates a subscription (e.g., cancellation, renewal, or plan change), the system **automatically invalidates** the specific user's cache in Redis. This ensures that access rights are updated immediately on the next API call, rather than waiting for the cache TTL to expire.
+4.  **Plan Code Matching**: The keys in your `plans_config.json` (e.g., `"pro_tier"`, `"basic"`) **must** match the `plan_code` sent by your payment provider (Pabbly). If they do not match, the system will recognize the user but find no mapped permissions, resulting in a 403 error.
+
+---
+
+## ⚠️ Common Issues & Troubleshooting
+
+- **"Missing X-API-Key header"**: Ensure your client is sending the header exactly as `X-API-Key` (case-insensitive in HTTP/2, but good practice to be consistent).
+- **403 Forbidden (even with a valid key)**:
+  - Check if the subscription status is `live` in the `subscriptions` table.
+  - Ensure `current_period_end` is a date in the future.
+  - Verify that the specific route path (e.g., `/api/v1/rates/analytics`) is explicitly listed in the `routes` array for the user's plan in your config.
+- **SQLite Database Locks**: The system enables WAL (Write-Ahead Logging) mode automatically. Ensure the directory containing your `.db` file has write permissions so SQLite can create the necessary `-wal` and `-shm` temporary files.
+
+---
+
+## 📄 License
+
+Copyright (c) 2026 Anthony Mugendi.
+
+This software is released under the **MIT License**.
+https://opensource.org/licenses/MIT
