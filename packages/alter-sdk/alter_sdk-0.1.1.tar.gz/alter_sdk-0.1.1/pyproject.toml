@@ -1,0 +1,81 @@
+[tool.poetry]
+name = "alter-sdk"
+version = "0.1.1"
+description = "Alter Vault Python SDK - OAuth token management with policy enforcement"
+authors = ["Alter Team <founders@alterai.dev>"]
+readme = "README.md"
+packages = [{include = "alter_sdk"}]
+homepage = "https://alterai.dev"
+keywords = ["oauth", "tokens", "security", "policy", "vault"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+httpx = {extras = ["http2"], version = "^0.25.0"}
+pydantic = "^2.5.0"
+
+# Optional dependencies for provider-specific wrappers
+google-api-python-client = {version = "^2.100.0", optional = true}
+google-auth = {version = "^2.23.0", optional = true}
+google-auth-httplib2 = {version = "^0.1.1", optional = true}
+PyGithub = {version = "^2.1.0", optional = true}
+
+[tool.poetry.extras]
+google = ["google-api-python-client", "google-auth", "google-auth-httplib2"]
+github = ["PyGithub"]
+all = ["google-api-python-client", "google-auth", "google-auth-httplib2", "PyGithub"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.1.0"
+pytest-mock = "^3.11.1"
+respx = "^0.20.0"  # HTTP mocking for httpx
+black = "^23.7.0"
+ruff = "^0.1.9"  # Match root pre-commit version
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "A", "COM", "C4", "DTZ", "ISC", "ICN", "G", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "TID", "TCH", "ARG", "PTH", "ERA", "PL", "TRY", "RUF"]
+ignore = ["ANN101", "ANN102", "ANN401", "TRY003", "PLR0913"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=alter_sdk",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=70",
+]
+
+[tool.coverage.run]
+omit = [
+    # Optional provider wrappers (require external dependencies and real OAuth tokens)
+    "alter_sdk/providers/base.py",
+    "alter_sdk/providers/generic.py",
+    "alter_sdk/providers/github.py",
+    "alter_sdk/providers/google.py",
+    "alter_sdk/providers/registry.py",
+]
