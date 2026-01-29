@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prism - AI Assistant</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/highlight.css') }}">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="title">
+                    <div class="logo">M</div>
+                    <span class="title-text">Prism</span>
+                </h1>
+                <button id="sidebar-toggle" class="sidebar-toggle" title="Toggle sidebar">
+                    <span class="toggle-icon">◀</span>
+                </button>
+            </div>
+            
+            <div class="sidebar-content">
+                <button id="new-session-btn" class="btn btn-primary sidebar-new-btn">
+                    <span class="btn-icon">+</span>
+                    <span class="btn-label">New Chat</span>
+                </button>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">Recent Sessions</div>
+                    <div id="sessions-list" class="sessions-list">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <button id="diff-toggle-btn" class="btn btn-secondary sidebar-btn" data-show-diff="{{ show_diff }}">
+                    <span class="btn-icon">◐</span>
+                    <span class="btn-label"><span id="diff-status">{{ "Detailed" if show_diff else "Simple" }}</span> Diffs</span>
+                </button>
+                <button id="help-btn" class="btn btn-secondary sidebar-btn">
+                    <span class="btn-icon">?</span>
+                    <span class="btn-label">Help</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-content">
+                    <button id="mobile-menu-btn" class="mobile-menu-btn">☰</button>
+                    <span class="session-title">{{ session_title or 'New Chat' }}</span>
+                    <span class="session-id">{{ session_id }}...</span>
+                </div>
+            </header>
+
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <div id="chat-messages" class="chat-messages">
+                    <div class="welcome-message">
+                        <div class="system-message">
+                            <h3>Prism Ready</h3>
+                            <p>AI coding assistant ready to help with file operations, code analysis, and development tasks.</p>
+                            <p>Type <code>/help</code> for available commands, or start a conversation.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Focus Bar (Option D - expandable) -->
+                <div id="focus-bar" class="focus-bar hidden"></div>
+
+                <!-- Token Usage Bar -->
+                <div id="token-bar" class="token-bar hidden">
+                    <div class="token-bar-header">
+                        <span class="token-bar-title">Context Usage</span>
+                        <span class="token-bar-stats" id="token-bar-stats">0 / 0</span>
+                    </div>
+                    <div class="token-bar-track" id="token-bar-track">
+                        <div class="token-bar-segment system" id="token-seg-system"></div>
+                        <div class="token-bar-segment history" id="token-seg-history"></div>
+                        <div class="token-bar-segment gists" id="token-seg-gists"></div>
+                        <div class="token-bar-segment focus" id="token-seg-focus"></div>
+                        <div class="token-bar-segment tree" id="token-seg-tree"></div>
+                        <div class="token-bar-threshold" id="token-threshold"></div>
+                    </div>
+                    <div class="token-bar-legend" id="token-bar-legend"></div>
+                </div>
+
+                <!-- Input Area -->
+                <div class="input-container">
+                    <!-- Autocomplete suggestions -->
+                    <div id="autocomplete" class="autocomplete hidden">
+                        <div class="autocomplete-header">Available Commands:</div>
+                        <div id="autocomplete-list" class="autocomplete-list"></div>
+                    </div>
+
+                    <form id="message-form" class="message-form">
+                        <div class="input-group">
+                            <textarea id="message-input" 
+                                      class="message-input" 
+                                      placeholder="Type your message or / for commands..."
+                                      rows="1"></textarea>
+                            <button type="submit" id="send-btn" class="btn btn-primary">
+                                <span id="send-text">Send</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Activity indicator -->
+                        <div id="activity-status" class="activity-indicator hidden">
+                            <div class="activity-dots">
+                                <div class="activity-dot"></div>
+                                <div class="activity-dot"></div>
+                                <div class="activity-dot"></div>
+                            </div>
+                            <span id="activity-text">Processing</span>
+                            <div id="token-counter" class="token-counter hidden">0</div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <!-- Help Modal -->
+        <div id="help-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Prism Help</h2>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="help-content">
+                        <h3>Available Commands</h3>
+                        <div id="help-commands" class="commands-list"></div>
+                        
+                        <h3>Features</h3>
+                        <ul>
+                            <li><strong>Real-time Streaming:</strong> See responses appear as they're generated</li>
+                            <li><strong>Session Management:</strong> Resume previous conversations</li>
+                            <li><strong>File Operations:</strong> Read, create, edit, and manage files</li>
+                            <li><strong>Diff Viewer:</strong> See detailed before/after changes</li>
+                            <li><strong>Markdown Support:</strong> Rich text formatting in responses</li>
+                        </ul>
+                        
+                        <h3>Keyboard Shortcuts</h3>
+                        <ul>
+                            <li><kbd>Enter</kbd> - Send message (Shift+Enter for new line)</li>
+                            <li><kbd>Ctrl/Cmd + Enter</kbd> - Send message</li>
+                            <li><kbd>/</kbd> - Show available commands</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+    <script>
+        // Initialize app with server data
+        window.appData = {
+            sessionId: "{{ session_id }}",
+            sessionTitle: {{ (session_title or '') | tojson }},
+            commands: {{ commands | tojson }},
+            showDiff: {{ show_diff | tojson }}
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dependency Viewer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Dependency Viewer</h1>
+            <div class="header-buttons">
+                <button class="header-btn" onclick="openSettings()">Settings</button>
+                <button class="header-btn primary" onclick="refresh()">Refresh</button>
+            </div>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat">
+                <div class="stat-dot total"></div>
+                <span id="stat-total">0</span> files
+            </div>
+            <div class="stat">
+                <div class="stat-dot connected"></div>
+                <span id="stat-connected">0</span> connected
+            </div>
+            <div class="stat">
+                <div class="stat-dot orphan"></div>
+                <span id="stat-orphans">0</span> orphans
+            </div>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="search" placeholder="Search files... (Ctrl+F)">
+        </div>
+
+        <div class="filters" id="filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="connected">Connected</button>
+            <button class="filter-btn orphan-filter" data-filter="orphan">Orphans</button>
+        </div>
+
+        <div class="tree-container" id="tree">
+            <div class="loading"><div class="spinner"></div> Loading...</div>
+        </div>
+
+        <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="resizer" id="resizer"></div>
+
+    <div class="detail-panel">
+        <div class="detail-header" id="detail-header" style="display: none;">
+            <h2 id="detail-title"></h2>
+            <div class="path" id="detail-path"></div>
+        </div>
+        <div class="detail-content" id="detail-content">
+            <div class="empty-state">
+                <div class="icon">📁</div>
+                <p>Select a file to view its connections</p>
+                <p style="margin-top: 12px; font-size: 12px;">Right-click any file to add it as an entry point</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="context-menu">
+        <div class="context-menu-item" onclick="addAsEntryPoint()">Add as Entry Point</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" onclick="copyPath()">Copy Path</div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal" style="width: 600px;">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button class="modal-close" onclick="closeSettings()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4>Project Root</h4>
+                    <p style="font-size: 12px; color: #6e7681; margin-bottom: 12px;">
+                        Change the root directory to analyze a different project.
+                    </p>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn primary" onclick="openFolderBrowser()" style="flex: 1;">Browse Folders...</button>
+                    </div>
+                    <p style="font-size: 11px; color: #6e7681; margin-top: 8px;" id="current-root"></p>
+                </div>
+
+                <div class="settings-section">
+                    <h4>Entry Points</h4>
+                    <p style="font-size: 12px; color: #6e7681; margin-bottom: 12px;">
+                        Entry points are the starting files for dependency analysis. Toggle to enable/disable.
+                    </p>
+                    <div class="entry-point-list" id="entry-point-list"></div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="suggestion-header">
+                        <h4 style="margin: 0;">Suggested Entry Points <span id="suggestion-count" style="color: #6e7681; font-weight: normal;"></span></h4>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <label style="font-size: 11px; color: #8b949e; display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" id="include-tests" style="margin: 0;"> Include tests
+                            </label>
+                            <button class="btn" onclick="loadSuggestions()">Scan Project</button>
+                        </div>
+                    </div>
+                    <p style="font-size: 12px; color: #6e7681; margin-bottom: 12px;">
+                        All files with 0 parents that import other files (true roots of dependency trees).
+                    </p>
+                    <div class="suggestion-list" id="suggestion-list" style="max-height: 300px;">
+                        <p style="color: #6e7681; font-size: 12px;">Click "Scan Project" to find ALL entry points.</p>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4>Git Submodules</h4>
+                    <p style="font-size: 12px; color: #6e7681; margin-bottom: 12px;">
+                        Submodules are excluded by default. Toggle to include them in analysis.
+                    </p>
+                    <div class="submodule-list" id="submodule-list">
+                        <div class="no-submodules">Loading submodules...</div>
+                    </div>
+                </div>
+
+                <div class="danger-zone">
+                    <h4>Danger Zone</h4>
+                    <p>Delete all orphaned Python files that are not reachable from any entry point.</p>
+                    <button class="btn danger" onclick="openDeleteOrphansModal()">Delete Orphan Files...</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeSettings()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Folder Browser Modal -->
+    <div class="modal-overlay folder-browser-modal" id="folder-browser-modal">
+        <div class="modal" style="width: 700px; max-height: 85vh;">
+            <div class="modal-header">
+                <h3>Select Project Folder</h3>
+                <button class="modal-close" onclick="closeFolderBrowser()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px;">
+                <div class="folder-browser-header">
+                    <div class="path-input-container">
+                        <input type="text" class="path-input" id="folder-path-input" placeholder="Type path or browse below..." oninput="handlePathInput()" onkeydown="handlePathKeydown(event)">
+                        <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
+                    </div>
+                    <div class="breadcrumbs" id="breadcrumbs"></div>
+                </div>
+                <div class="folder-browser-body">
+                    <div class="folder-list-container">
+                        <div class="folder-list-header">Folders</div>
+                        <div class="folder-list" id="folder-list"></div>
+                    </div>
+                    <div class="recent-projects-container">
+                        <div class="recent-projects-header">Recent Projects</div>
+                        <div class="recent-projects-list" id="recent-projects-list"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeFolderBrowser()">Cancel</button>
+                <button class="btn primary" onclick="selectCurrentFolder()">Select This Folder</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Orphans Modal -->
+    <div class="modal-overlay delete-orphans-modal" id="delete-orphans-modal">
+        <div class="modal" style="width: 600px;">
+            <div class="modal-header">
+                <h3>Delete Orphan Files</h3>
+                <button class="modal-close" onclick="closeDeleteOrphansModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="delete-orphans-body">
+                <div class="loading"><div class="spinner"></div> Loading orphan files...</div>
+            </div>
+            <div class="modal-footer" id="delete-orphans-footer" style="display: none;">
+                <button class="btn" onclick="closeDeleteOrphansModal()">Cancel</button>
+                <button class="btn danger" id="confirm-delete-btn" onclick="executeOrphanDeletion()" disabled>Delete Files</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Entry Point Modal -->
+    <div class="modal-overlay" id="add-entry-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Add Entry Point</h3>
+                <button class="modal-close" onclick="closeAddEntry()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>File Path</label>
+                    <input type="text" id="entry-path" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Label</label>
+                    <input type="text" id="entry-label" placeholder="e.g., API, MAIN, WORKER">
+                </div>
+                <div class="form-group">
+                    <label>Color</label>
+                    <div class="color-picker" id="color-picker"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeAddEntry()">Cancel</button>
+                <button class="btn primary" onclick="saveEntryPoint()">Add Entry Point</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Modal -->
+    <div class="modal-overlay chat-modal" id="chat-modal">
+        <div class="modal chat-modal-content">
+            <div class="modal-header chat-header">
+                <div class="chat-header-left">
+                    <h3>Chat with Claude</h3>
+                    <span class="chat-context-badge" id="chat-context-badge">No context loaded</span>
+                </div>
+                <button class="modal-close" onclick="closeChatModal()">&times;</button>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+                <div class="chat-welcome">
+                    <div class="chat-welcome-icon">🔍</div>
+                    <p>Load a file's dependencies and ask questions about the code.</p>
+                    <p class="chat-welcome-hint">The current snapshot will be used as context.</p>
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <textarea
+                    id="chat-input"
+                    placeholder="Ask about the code..."
+                    rows="2"
+                    onkeydown="handleChatKeydown(event)"
+                ></textarea>
+                <button class="btn primary chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
+    <!-- Use the full highlight.js bundle which includes common languages -->
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <script type="module" src="{{ url_for('static', filename='js/app-modular.js') }}"></script>
+</body>
+</html>
