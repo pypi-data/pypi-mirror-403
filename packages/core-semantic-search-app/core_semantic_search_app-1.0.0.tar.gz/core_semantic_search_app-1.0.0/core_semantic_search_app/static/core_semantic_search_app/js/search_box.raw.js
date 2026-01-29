@@ -1,0 +1,1 @@
+var semanticSearchUrl = "{% url 'core_semantic_search_app_rest_search' %}";
