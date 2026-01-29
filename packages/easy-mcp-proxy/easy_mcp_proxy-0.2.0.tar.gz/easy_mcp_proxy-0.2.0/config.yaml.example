@@ -1,0 +1,321 @@
+mcp_servers:
+
+  # Memory server for long-term agent memory
+  redis-memory-server:
+    command: uv
+    args:
+      - tool
+      - run
+      - --from
+      - agent-memory-server
+      - agent-memory
+      - mcp
+    env:
+      REDIS_URL: redis://localhost:6399
+    tools:
+      get_current_datetime:
+        description: |
+          Get the current date and time. Use this when you need to
+          record timestamps for Redis instance events or incidents.
+
+          {original}
+      create_long_term_memories:
+        description: |
+          Save long-term memories about Redis instances. Use this to
+          record: past incidents and their resolutions, configuration
+          changes, performance baselines, known issues, maintenance
+          history, and lessons learned. Always include the instance_id
+          in the memory text for future retrieval.
+
+          {original}
+      search_long_term_memory:
+        description: |
+          Search saved memories about Redis instances. ALWAYS use this
+          before troubleshooting a Redis instance to recall past issues,
+          solutions, and context. Search by instance_id, error patterns,
+          or symptoms.
+
+          {original}
+      get_long_term_memory:
+        description: |
+          Retrieve a specific memory by ID. Use this to get full details
+          of a memory found via search.
+
+          {original}
+      edit_long_term_memory:
+        description: |
+          Update an existing memory. Use this to add new information to
+          a past incident record, update resolution status, or correct
+          outdated information.
+
+          {original}
+      delete_long_term_memories:
+        description: |
+          Delete memories that are no longer relevant. Use sparingly -
+          prefer editing to add context rather than deleting.
+
+          {original}
+
+  # GitHub MCP server - uses official GitHub MCP server via stdio
+  # Requires a GitHub Personal Access Token with appropriate permissions
+  github:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+    # Constrain to search/read tools only
+    tools:
+      search_code: {}
+      search_issues: {}
+      get_file_contents: {}
+      list_issues: {}
+      list_pull_requests: {}
+      get_issue: {}
+      get_pull_request: {}
+      list_commits: {}
+      get_pull_request_files: {}
+      get_pull_request_status: {}
+
+  # AWS Documentation MCP server - search and read AWS documentation
+  aws-documentation:
+    command: uv
+    args:
+      - tool
+      - run
+      - --from
+      - awslabs.aws-documentation-mcp-server
+      - awslabs.aws-documentation-mcp-server
+    env:
+      FASTMCP_LOG_LEVEL: ERROR
+      AWS_DOCUMENTATION_PARTITION: aws
+      MCP_USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+  zendesk:
+    command: uv
+    args:
+      - tool
+      - run
+      - --from
+      - git+https://github.com/abrookins/zendesk-mcp-server
+      - zendesk
+
+
+  # A "skills" server for storing and retrieving procedural knowledge,
+  # created by wrapping agent-memory-server tools in different names
+  # and descriptions.
+  skills-server:
+    command: uv
+    args:
+      - tool
+      - run
+      - --from
+      - agent-memory-server
+      - agent-memory
+      - mcp
+    env:
+      REDIS_URL: redis://localhost:6399
+      DEFAULT_MCP_NAMESPACE: skills
+    tools:
+      create_long_term_memories:
+        name: save_skill
+        description: |
+          Save a new skill as a series of steps to accomplish a task.
+
+      search_long_term_memory:
+        name: search_skills
+        description: |
+          Search for previously saved skills. ALWAYS use this before
+          attempting a complex task to check if you already know how
+          to do it. Search by task name, keywords, or describe what
+          you're trying to accomplish.
+
+          You can also use this to LIST skills by searching without any
+          arguments.
+
+      get_long_term_memory:
+        name: get_skill
+        description: |
+          Retrieve a specific skill by ID. Use this to get the full
+          step-by-step procedure after finding it via search.
+
+      edit_long_term_memory:
+        name: update_skill
+        description: |
+          Update an existing skill. Use this to refine steps based on
+          new learnings, add troubleshooting tips, update for changed
+          tooling or processes, or add alternative approaches.
+
+      delete_long_term_memories:
+        name: delete_skills
+        description: |
+          Delete a skill that is outdated or no longer applicable.
+
+
+# Another skills server, this time wrapping filesystem MCP server.
+# Uses parameter binding to hide the 'path' parameter and bake in the skills root
+file-skills-server:
+    command: npx
+    args:
+     - -y
+     - "@modelcontextprotocol/server-filesystem"
+     - /Users/andrew/Documents/Notes/Skills
+    cwd: /Users/andrew/Documents/Notes/Skills  # Ensures relative paths resolve correctly
+    tools:
+      read_text_file:
+        name: read_skill_file
+        description: |
+          Read a skill file from the skills library. Use this to retrieve
+          the full contents of a specific skill document (markdown, yaml,
+          json, etc.) by its path within the skills folder.
+        parameters:
+          path:
+            description: "Path to the skill file within the skills library (e.g., 'deployment/kubernetes.md')"
+      read_multiple_files:
+        name: read_multiple_skill_files
+        description: |
+          Read multiple skill files simultaneously. Use this to efficiently
+          retrieve the contents of several skill documents at once. Failed
+          reads won't stop the entire operation.
+        parameters:
+          paths:
+            description: "Array of paths to skill files within the skills library"
+      read_media_file:
+        name: read_skill_media
+        description: |
+          Read an image or audio file from the skills library. Use this to
+          retrieve diagrams, screenshots, or audio recordings associated
+          with skill documentation.
+        parameters:
+          path:
+            description: "Path to the media file within the skills library"
+      list_directory:
+        name: list_skill_categories
+        description: |
+          List skill categories or files in a directory. Use this to browse
+          the skills library and discover available skill documents organized
+          by category or topic. Call with no arguments to list root categories.
+        parameters:
+          path:
+            rename: category
+            default: "."
+            description: "Category folder to list (e.g., 'deployment'). Leave empty to list root categories."
+      search_files:
+        name: search_skill_files
+        description: |
+          Search for skill files by name pattern. Use this to find skill
+          documents matching keywords like "deploy", "debug", "setup",
+          "migration", etc. Returns file paths that match the pattern.
+        parameters:
+          path:
+            hidden: true
+            default: "."
+          pattern:
+            description: "Glob pattern to search for (e.g., '**/*.md' for all markdown files, '**/deploy*' for deployment-related files)"
+      directory_tree:
+        name: get_skills_structure
+        description: |
+          Get the full directory tree of the skills library. Use this to
+          understand the overall organization of skills and see all
+          available categories and documents at a glance.
+        parameters:
+          path:
+            hidden: true
+            default: "."
+      write_file:
+        name: save_skill_file
+        description: |
+          Save a new skill file to the skills library. Use this to create
+          new skill documents with step-by-step procedures, tips, and
+          examples. Use appropriate file extensions (.md for markdown,
+          .yaml for structured data).
+        parameters:
+          path:
+            rename: skill_path
+            description: "Relative path for the new skill file (e.g., 'deployment/new-guide.md')"
+          content:
+            description: "The content of the skill file (markdown recommended)"
+      edit_file:
+        name: update_skill_file
+        description: |
+          Edit an existing skill file. Use this to update procedures,
+          add new steps, fix errors, or enhance documentation in a
+          skill document.
+        parameters:
+          path:
+            description: "Path to the skill file to edit"
+      create_directory:
+        name: create_skill_category
+        description: |
+          Create a new category (subdirectory) in the skills library.
+          Use this to organize skills into logical groups. Creates
+          parent directories if needed and succeeds silently if the
+          directory already exists.
+        parameters:
+          path:
+            description: "Path for the new category folder (e.g., 'deployment/kubernetes')"
+      move_file:
+        name: move_skill_file
+        description: |
+          Move or rename a skill file or category. Use this to reorganize
+          the skills library structure or rename files for clarity.
+          Fails if the destination already exists.
+        parameters:
+          source:
+            description: "Current path of the skill file or category"
+          destination:
+            description: "New path for the skill file or category"
+      get_file_info:
+        name: get_skill_file_info
+        description: |
+          Get detailed metadata about a skill file or category. Returns
+          size, creation time, modified time, access time, type, and
+          permissions. Useful for understanding when files were last
+          updated.
+        parameters:
+          path:
+            description: "Path to the skill file or category"
+      list_directory_with_sizes:
+        name: list_skill_files_with_sizes
+        description: |
+          List skill files in a category with file sizes. Returns detailed
+          listing with sizes and summary statistics. Useful for identifying
+          large or small skill documents.
+        parameters:
+          path:
+            description: "Path to the category folder to list"
+          sortBy:
+            description: "Sort entries by 'name' or 'size' (default: 'name')"
+
+
+
+
+
+# Tool views with custom tools
+tool_views:
+  # Default view exposes all upstream tools plus custom tools
+  default:
+    description: "Default view with all tools and code quality analysis"
+    include_all: true
+    custom_tools:
+      # Custom Python tool that wraps the MFCQI CLI for code quality analysis
+      # See tools/mfcqi.py for the implementation
+      - module: tools.mfcqi.analyze_code_quality
+
+  # Read-only view for safe exploration
+  read-only:
+    description: "Read-only tools for safe code exploration"
+    tools:
+      github:
+        search_code: {}
+        search_issues: {}
+        get_file_contents: {}
+        list_issues: {}
+        get_issue: {}
+      redis-memory-server:
+        search_long_term_memory: {}
+        get_long_term_memory: {}
+      skills-server:
+        search_skills: {}
+        get_skill: {}

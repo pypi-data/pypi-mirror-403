@@ -1,0 +1,85 @@
+[project]
+name = "easy-mcp-proxy"
+version = "0.2.0"
+description = "Easy MCP Proxy - Filter, transform, and compose MCP tools"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Andrew Brookins", email = "a@andrewbrookins.com"}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "click>=8.0.0",
+    "wsproto>=1.3.2",
+    "python-dotenv>=1.2.1",
+    "sentence-transformers>=2.2.0",
+    "faiss-cpu>=1.7.0",
+    "numpy>=1.24.0",
+    "python-ulid>=3.1.0",
+    "httpx>=0.28.1",
+    "rapidfuzz>=3.14.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.8.0",
+]
+
+[project.scripts]
+mcp-proxy = "mcp_proxy.cli:main"
+mcp-memory = "mcp_memory.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_proxy", "mcp_memory"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--cov=mcp_proxy --cov-report=term-missing --cov-fail-under=100"
+filterwarnings = [
+    # FAISS SWIG bindings deprecation warnings (upstream issue, not fixable in our code)
+    "ignore:builtin type Swig.*has no __module__ attribute:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["mcp_proxy"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+    "raise NotImplementedError",
+    "\\.\\.\\.",  # Ellipsis in abstract methods
+]
+# Exclude partial branches that are hard to test
+partial_branches = [
+    "pragma: no branch",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]
+
+[tool.bandit.assert_used]
+skips = ["**/test_*.py", "**/tests/**"]
