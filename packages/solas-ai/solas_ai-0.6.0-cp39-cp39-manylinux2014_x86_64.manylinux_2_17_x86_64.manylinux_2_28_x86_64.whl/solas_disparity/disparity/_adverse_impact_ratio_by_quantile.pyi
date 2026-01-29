@@ -1,0 +1,8 @@
+import pandas as pd
+from ._adverse_impact_ratio import adverse_impact_ratio as adverse_impact_ratio
+from ._disparity_validations import validate_column_arguments as validate_column_arguments, validate_group_arguments as validate_group_arguments, validate_sample_weight_arguments as validate_sample_weight_arguments
+from solas_disparity import const as const
+from solas_disparity.types import Disparity as Disparity, DisparityCalculation as DisparityCalculation, StatSig as StatSig, StatSigTest as StatSigTest
+from solas_disparity.utils import pgrg_ordered as pgrg_ordered
+
+def adverse_impact_ratio_by_quantile(group_data: pd.DataFrame, protected_groups: list[str], reference_groups: list[str], group_categories: list[str], outcome: pd.Series, air_threshold: float, percent_difference_threshold: float, quantiles: list[float], label: pd.Series | None = None, sample_weight: pd.Series | None = None, max_for_fishers: int = ..., lower_score_favorable: bool = True, merge_bins: bool = True) -> Disparity: ...
