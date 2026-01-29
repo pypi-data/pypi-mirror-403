@@ -1,0 +1,138 @@
+[project]
+name = "framework-m-studio"
+version = "0.2.2"
+description = "Framework M Studio - Visual DocType Builder & Developer Tools"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [
+    { name = "Framework M Contributors" }
+]
+keywords = ["framework", "studio", "doctype", "codegen", "developer-tools"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: AsyncIO",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "framework-m",
+    # Code generation
+    "libcst>=1.0.0",
+    "jinja2>=3.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.8.0",
+    "ruff>=0.3.0",
+    "httpx>=0.27.0",
+    # Release tools
+    "python-semantic-release>=9.0.0",
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+
+[project.entry-points."framework_m.cli_commands"]
+# These commands override/extend base CLI when framework-m-studio is installed
+codegen = "framework_m_studio.cli:codegen_app"
+studio = "framework_m_studio.cli:studio_app"
+docs = "framework_m_studio.cli:docs_app"
+
+[project.urls]
+Homepage = "https://gitlab.com/castlecraft/framework-m"
+Documentation = "https://gitlab.com/castlecraft/framework-m#readme"
+Repository = "https://gitlab.com/castlecraft/framework-m"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "studio_ui/node_modules",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/framework_m_studio"]
+# static/ is included automatically since it's under src/framework_m_studio/
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["src/framework_m_studio"]
+branch = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+mypy_path = "src"
+explicit_package_bases = true
+exclude = [
+    "tests/",
+    ".venv/",
+]
+
+[[tool.mypy.overrides]]
+module = "framework_m.core.fields.registry"
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.isort]
+known-first-party = ["framework_m_studio", "framework_m"]
+
+# =============================================================================
+# Semantic Release Configuration
+# =============================================================================
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+tag_format = "studio-v{version}"
+major_on_zero = false  # Keep 0.x.y versions (breaking changes bump minor, not major)
+build_command = """
+    python -m build --sdist --wheel --outdir dist/
+    git add pyproject.toml CHANGELOG.md
+"""
+commit_message = "chore(release): framework-m-studio v{version}"
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+
+[tool.semantic_release.remote]
+type = "gitlab"
+token = { env = "GITLAB_TOKEN" }
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = true
+
