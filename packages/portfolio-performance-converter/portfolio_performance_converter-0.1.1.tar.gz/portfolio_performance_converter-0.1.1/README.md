@@ -1,0 +1,114 @@
+# Broker to Portfolio Performance Converter
+
+Tool to convert exports from various brokers to a CSV format compatible with [Portfolio Performance](https://www.portfolio-performance.info/). The system automatically detects the broker format from the input files.
+
+## Supported Brokers
+
+| Broker | Input Format | Detection Status | Instructions |
+| :--- | :--- | :--- | :--- |
+| **Binance** | CSV | ✅ Automatic | [View Instructions](docs/broker/binance.md) |
+| **Coinbase** | CSV | ✅ Automatic | [View Instructions](docs/broker/coinbase.md) |
+| **Inversis** | Excel / HTML | ✅ Automatic | [View Instructions](docs/broker/inversis.md) |
+| **MyInvestor** | CSV | ✅ Automatic | [View Instructions](docs/broker/myinvestor.md) |
+| **XTB** | Excel | ✅ Automatic | [View Instructions](docs/broker/xtb.md) |
+
+## Quick Start (Recommended)
+
+The easiest way to run the tool without installing it globally is using **uvx** (part of the [uv](https://github.com/astral-sh/uv) toolchain).
+
+**Launch Web Interface:**
+```bash
+uvx --from portfolio-performance-converter pp-converter web
+```
+
+**Run CLI:**
+```bash
+uvx --from portfolio-performance-converter pp-converter -i input.csv -o output.csv
+```
+
+## Alternative Installation
+
+### Using pip
+
+Install the package from PyPI:
+```bash
+pip install portfolio-performance-converter
+```
+
+Then run it:
+```bash
+# Web Interface
+pp-converter web
+
+# CLI
+pp-converter -i input.csv -o output.csv
+```
+
+### Run from Source (with uv)
+
+If you want to run the latest version from git without cloning:
+
+```bash
+# Web Interface
+uvx --from git+https://github.com/marmol-dev/portfolio-performance-converter portfolio-performance-converter web
+```
+
+Or if you have cloned the repository:
+
+```bash
+# Run directly from source folder
+uv run pp-converter web
+```
+
+## Usage Examples
+
+**CLI Basic Usage:**
+
+```bash
+pp-converter --input <path_to_file> --output <output_file.csv>
+```
+
+**Examples:**
+
+```bash
+# Single file
+pp-converter --input "orders.csv" --output "converted.csv"
+
+# Multiple files
+pp-converter --input file1.csv file2.xlsx --output "consolidated.csv"
+```
+
+## Development
+
+If you want to contribute or work with the source code:
+
+### 1. Clone the repository
+
+```bash
+git clone <repository_url>
+cd portfolio-performance-converter
+```
+
+### 2. Install dependencies (with uv)
+
+We recommend using [uv](https://github.com/astral-sh/uv) for development.
+
+```bash
+uv sync
+```
+
+### 3. Running Tests
+
+```bash
+uv run pytest
+```
+
+## Project Structure
+
+- `src/`: Main source code.
+  - `converters/`: Conversion modules for each broker.
+  - `utils.py`: Shared utility functions.
+  - `market_data.py`: Interaction with Yahoo Finance.
+  - `main.py`: Unified CLI entry point.
+  - `app.py`: Web graphical interface (Gradio).
+- `config.yaml`: Configuration of overrides for ISINs/Symbols.
