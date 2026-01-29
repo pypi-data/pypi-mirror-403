@@ -1,0 +1,59 @@
+{% import 'zero-loadding.html.j2' as zero_loadding -%}
+
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="{{ model.favicon_url }}" rel="shortcut icon" />
+  <title>{{ model.title }}</title>
+
+  {%- for link in model.css_links %}
+  <link rel="stylesheet" href="{{link}}" />
+  {% endfor -%}
+
+  {%- for id_attr, content in model.style_tags -%}
+  <style {{ id_attr }}>{{content}}</style>
+  {% endfor -%}
+
+  {% if model.import_map %}
+  <script type="importmap">
+    {
+      "imports": {{ model.import_map | tojson }}
+    }
+  </script>
+  {% endif %}
+
+  {%- for attr, content in model.script_tags_in_head -%}
+  <script {{ model.render_attrs(attr) }}>{{content or ''}}</script>
+  {%- endfor -%}
+</head>
+
+<body>
+
+  {{ zero_loadding.html() }}
+  {{ zero_loadding.define_script() }}
+
+  <div id="{{ model.mount_id }}">
+    <insta-ui :config="config" :meta="meta"></insta-ui>
+  </div>
+
+  {%- for link in model.js_links -%}
+  <script src="{{link}}"></script>
+  {%- endfor -%}
+
+  {%- for attr, content in model.script_tags_in_body -%}
+  <script {{ model.render_attrs(attr) }}>{{content or ''}}</script>
+  {%- endfor -%}
+
+
+  <script type="{{ model.entry_script_type }}">
+    {{ model.entry_code }}
+    {{ model.app_var }}.mount('#{{ model.mount_id }}')
+  </script>
+
+  <!-- icons svg sprite -->
+  {{model.icons_svg_fragment | safe if model.icons_svg_fragment }}
+</body>
+
+</html>
