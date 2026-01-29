@@ -1,0 +1,86 @@
+Vetsa Intelligence Python Client
+
+Librería oficial para integrar la API de Vetsa Cloud v1.2.0 en tus aplicaciones Python. Soporta generación de texto, búsqueda online, imágenes y síntesis de voz (TTS).
+
+Instalación
+
+Instala el paquete usando pip:
+
+pip install vetsa
+
+
+Configuración
+
+Necesitas una API Key del Dashboard de Vetsa.
+
+from vetsa import VetsaClient
+
+# Inicializa el cliente
+client = VetsaClient(api_key="TU_API_KEY_AQUI")
+
+
+Ejemplos de Uso
+
+1. Chat y Texto (Modelo Spaik)
+
+Puedes usar el método rápido chat para conversaciones o generación de texto.
+
+# Chat simple (modelo por defecto: spaik-pro)
+response = client.chat("Explícame qué es la computación cuántica en una frase.")
+print(response['data']['response'])
+
+# Chat con búsqueda en internet en tiempo real (Spaik Online)
+noticias = client.chat("¿Qué noticias hay sobre la exploración espacial hoy?", search=True)
+print(noticias['data']['response'])
+
+
+2. Texto a Voz (TTS)
+
+Convierte texto en audio natural. La librería maneja automáticamente la decodificación del audio para que obtengas los bytes listos para guardar o reproducir.
+
+Voces disponibles: emily, jonas, alexa, luis-angel.
+
+try:
+    # Generar audio
+    audio_bytes = client.text_to_speech(
+        text="Hola, soy la inteligencia artificial de Vetsa funcionando en Python.",
+        voice="jonas"
+    )
+
+    # Guardar en un archivo .ogg
+    with open("audio_generado.ogg", "wb") as f:
+        f.write(audio_bytes)
+    
+    print("¡Audio generado correctamente como 'audio_generado.ogg'!")
+
+except Exception as e:
+    print(f"Error generando audio: {e}")
+
+
+3. Generación de Imágenes
+
+Para generar imágenes, usa el método genérico generate con el modelo de visión.
+
+response = client.generate(
+    model="spaik-pro-vision", 
+    contents="Un astronauta programando en una laptop en medio de un bosque futurista neon",
+    options={
+        "width": 1024, 
+        "height": 1024, 
+        "quality": "hd"
+    }
+)
+
+# La API devuelve la URL de la imagen generada
+print("Imagen generada:", response['data']['url'])
+
+
+Manejo de Errores
+
+La librería incluye manejo de excepciones nativo para los códigos de error de Vetsa:
+
+PermissionError: Si tu API Key es inválida (Error 401).
+
+BlockingIOError: Si excediste tu cuota (Error 402).
+
+ConnectionError: Si envías peticiones muy rápido (Error 429).
