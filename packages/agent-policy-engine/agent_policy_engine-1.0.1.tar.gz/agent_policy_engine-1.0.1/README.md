@@ -1,0 +1,423 @@
+# APE - Agent Policy Engine
+
+**Deterministic, capability-based policy enforcement runtime for AI agents.**
+
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/agent-policy-engine/ape)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
+
+APE provides a complete security framework for AI agent systems, enforcing explicit intents, validated plans, and auditable execution. It solves critical security challenges in AI agent deployments including prompt injection, confused deputy attacks, and unauthorized privilege escalation.
+
+## Core Principle
+
+> **"Prompts guide intent, but never are intent."**
+
+User prompts are compiled through APE's Intent Compiler into structured, policy-constrained intents. The prompt itself never becomes executable - only the validated, narrowed intent is enforced.
+
+## Features
+
+### Security Guarantees
+- **Deterministic Enforcement**: Non-probabilistic, predictable policy decisions
+- **Cryptographic Binding**: Authority tokens bound to specific intent and plan hashes
+- **Default-Deny**: Any action not explicitly allowed is denied
+- **Complete Audit Trail**: Every decision logged for compliance and debugging
+- **Provenance Tracking**: Data origin tracking prevents untrusted data in authority decisions
+
+### v1.0.1 Components
+- **Action Repository**: Canonical registry of known actions with schemas and risk levels
+- **Intent Compiler**: Natural language → structured intent transformation
+- **Plan Generator**: Intent → validated execution plan with LLM support
+- **APE Orchestrator**: Unified one-call API from prompt to execution
+
+### Core Components (v1.0)
+- **Runtime State Machine**: Enforces valid execution flow
+- **Policy Engine**: YAML-based policy loading and evaluation
+- **Authority Manager**: Single-use, time-limited execution tokens
+- **Enforcement Gate**: Mandatory checkpoint for all tool execution
+- **Escalation Handler**: Routes high-risk actions for approval
+- **MCP Scanner**: Auto-generates policies from MCP configurations
+
+## Installation
+
+```bash
+pip install agent-policy-engine
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/agent-policy-engine/ape.git
+cd ape
+pip install -e .
+```
+
+## Quick Start
+
+APE offers two integration paths: **Orchestrator** (simple) and **Manual** (full control).
+
+### Orchestrator Path (Recommended for Most Use Cases)
+
+```python
+from ape import APEOrchestrator
+
+# Create orchestrator from policy
+orch = APEOrchestrator.from_policy("policies/read_only.yaml")
+
+# Register your tool implementations
+orch.register_tool("read_file", lambda path: open(path).read())
+orch.register_tool("list_directory", lambda path: os.listdir(path))
+
+# Execute with one-call API
+result = orch.execute("Read the config.json file")
+
+if result.success:
+    print(result.results[0])  # File contents
+else:
+    print(f"Error: {result.error}")
+```
+
+### Manual Path (Maximum Control)
+
+```python
+from ape import (
+    PolicyEngine, IntentManager, PlanManager,
+    RuntimeOrchestrator, AuthorityManager, EnforcementGate,
+    ActionRepository, IntentCompiler, PlanGenerator,
+    Action, Provenance, RuntimeState,
+    create_standard_repository,
+)
+
+# 1. Setup components
+repository = create_standard_repository()
+policy = PolicyEngine("policies/read_only.yaml")
+compiler = IntentCompiler(repository)
+generator = PlanGenerator(repository)
+
+# 2. Compile intent from prompt
+intent = compiler.compile(
+    prompt="Read the config.json file",
+    policy_allowed=policy.get_all_allowed_actions(),
+)
+
+# 3. Generate plan
+plan = generator.generate(intent)
+
+# 4. Setup APE runtime
+runtime = RuntimeOrchestrator()
+intent_manager = IntentManager()
+plan_manager = PlanManager(intent_manager)
+authority = AuthorityManager(runtime)
+enforcement = EnforcementGate(authority)
+
+# 5. Execute through APE
+intent_version = intent_manager.set(intent.to_ape_intent(), Provenance.USER_TRUSTED)
+runtime.transition(RuntimeState.INTENT_SET)
+
+plan_hash = plan_manager.submit(plan.to_ape_plan(), Provenance.USER_TRUSTED)
+plan_manager.approve()
+runtime.transition(RuntimeState.PLAN_APPROVED)
+
+runtime.transition(RuntimeState.EXECUTING)
+
+for idx, step in enumerate(plan.steps):
+    action = Action(
+        action_id=step.action_id,
+        tool_id=step.tool_id,
+        parameters=step.parameters,
+        intent_version=intent_version,
+        plan_hash=plan_hash,
+        plan_step_index=idx,
+    )
+    
+    policy.evaluate_or_raise(action.action_id)
+    token = authority.issue(intent_version, plan_hash, action)
+    result = enforcement.execute(token, my_tool, action, **step.parameters)
+
+runtime.transition(RuntimeState.TERMINATED)
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         APE Orchestrator                                 │
+│              (Unified API - orchestrates all components)                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐     │
+│  │ Action          │    │ Intent          │    │ Plan            │     │
+│  │ Repository      │───►│ Compiler        │───►│ Generator       │     │
+│  │                 │    │                 │    │                 │     │
+│  │ • Known actions │    │ • Prompt→Intent │    │ • Intent→Plan   │     │
+│  │ • Schemas       │    │ • Policy narrow │    │ • LLM parsing   │     │
+│  │ • Risk levels   │    │ • Risk filter   │    │ • Validation    │     │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘     │
+│                                                          │              │
+├──────────────────────────────────────────────────────────┼──────────────┤
+│                         APE Core (v1.0)                  │              │
+│                                                          ▼              │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐     │
+│  │ Intent          │    │ Plan            │    │ Policy          │     │
+│  │ Manager         │───►│ Manager         │───►│ Engine          │     │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘     │
+│           │                      │                      │              │
+│           ▼                      ▼                      ▼              │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐     │
+│  │ Runtime         │    │ Authority       │    │ Enforcement     │     │
+│  │ Orchestrator    │───►│ Manager         │───►│ Gate            │     │
+│  │                 │    │                 │    │                 │     │
+│  │ State machine   │    │ Token lifecycle │    │ Execute tools   │     │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘     │
+│                                                          │              │
+│                                                          ▼              │
+│                                                 ┌─────────────────┐     │
+│                                                 │ Audit Logger    │     │
+│                                                 └─────────────────┘     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+## Components
+
+### Action Repository
+
+The canonical registry of all actions APE can authorize.
+
+```python
+from ape import ActionRepository, ActionDefinition, ActionCategory, ActionRiskLevel
+
+# Use standard repository with 18 common actions
+repository = create_standard_repository()
+
+# Or create custom
+repository = ActionRepository()
+repository.register(ActionDefinition(
+    action_id="my_action",
+    description="My custom action",
+    category=ActionCategory.CUSTOM,
+    risk_level=ActionRiskLevel.LOW,
+    parameter_schema={
+        "type": "object",
+        "required": ["param1"],
+        "properties": {
+            "param1": {"type": "string"},
+        },
+    },
+))
+```
+
+### Intent Compiler
+
+Transforms natural language prompts into structured intents.
+
+```python
+from ape import IntentCompiler, create_standard_repository
+
+repository = create_standard_repository()
+compiler = IntentCompiler(repository)
+
+intent = compiler.compile(
+    prompt="Read config.json and list the data directory",
+    policy_allowed=["read_file", "list_directory"],
+    max_risk_level=ActionRiskLevel.MODERATE,
+)
+
+print(intent.allowed_actions)  # ['read_file', 'list_directory']
+print(intent.scope)            # 'directory'
+print(intent.confidence)       # 0.92
+```
+
+### Plan Generator
+
+Creates validated execution plans from intents or LLM output.
+
+```python
+from ape import PlanGenerator
+
+generator = PlanGenerator(repository)
+
+# Generate from intent
+plan = generator.generate(intent)
+
+# Or parse LLM output
+plan = generator.parse_and_validate(
+    llm_output='[{"action_id": "read_file", "parameters": {"path": "config.json"}}]',
+    intent=intent,
+    policy_check=policy.evaluate_or_raise,
+)
+
+# Convert to APE format
+ape_plan = plan.to_ape_plan()
+```
+
+### APE Orchestrator
+
+Unified API combining all components.
+
+```python
+from ape import APEOrchestrator, ActionRiskLevel
+
+orch = APEOrchestrator.from_policy("policy.yaml")
+
+# Register tools
+orch.register_tools({
+    "read_file": read_file_func,
+    "write_file": write_file_func,
+    "list_directory": list_dir_func,
+})
+
+# One-call execution
+result = orch.execute(
+    "Read config.json",
+    max_risk_level=ActionRiskLevel.MODERATE,
+    parameters={"read_file": {"path": "config.json"}},
+)
+
+# Step-by-step execution
+intent = orch.compile_intent("Read config.json")
+plan = orch.create_plan(intent, parameters={"read_file": {"path": "config.json"}})
+result = orch.execute_plan(plan)
+
+# Analysis (no execution)
+analysis = orch.analyze_prompt("Read config.json and delete temp files")
+print(analysis["policy_blocked"])  # Shows delete_file blocked by policy
+```
+
+## Policy Configuration
+
+Policies are YAML files that define allowed actions.
+
+```yaml
+# policies/read_only.yaml
+name: read_only
+version: "1.0"
+description: "Read-only file access"
+
+default_decision: deny
+
+rules:
+  - action: read_file
+    decision: allow
+    
+  - action: list_directory
+    decision: allow
+    
+  - action: write_file
+    decision: deny
+    
+  - action: delete_file
+    decision: deny
+```
+
+### Example Policies
+
+| Policy | Description |
+|--------|-------------|
+| `minimal_safe.yaml` | Minimal read-only, maximum safety |
+| `read_only.yaml` | File reading only |
+| `development.yaml` | Broader permissions for development |
+| `filesystem_scoped.yaml` | Path-constrained file access |
+| `human_in_loop.yaml` | All actions require escalation |
+
+## Risk Levels
+
+Actions are classified by risk:
+
+| Level | Description | Default Behavior |
+|-------|-------------|------------------|
+| MINIMAL | Read-only, no side effects | Allowed |
+| LOW | Reversible side effects | Allowed |
+| MODERATE | Irreversible but recoverable | Allowed with caution |
+| HIGH | Potentially destructive | Requires escalation |
+| CRITICAL | Requires explicit approval | Always escalates |
+
+```python
+intent = compiler.compile(
+    prompt="Delete the temp files",
+    max_risk_level=ActionRiskLevel.MODERATE,  # HIGH/CRITICAL → escalation
+)
+
+print(intent.escalation_required)  # ['delete_file']
+```
+
+## CLI Tools
+
+```bash
+# Validate a policy file
+ape validate policies/my_policy.yaml
+
+# Scan MCP configuration
+ape scan ~/.config/claude/claude_desktop_config.json
+
+# Generate policy from MCP
+ape generate ~/.config/claude/claude_desktop_config.json -o policies/mcp_generated.yaml
+```
+
+## Error Handling
+
+APE provides typed, deterministic errors:
+
+```python
+from ape import (
+    PolicyDenyError,
+    EscalationRequiredError,
+    IntentAmbiguityError,
+    PlanValidationError,
+)
+
+try:
+    result = orch.execute("Delete all files")
+except PolicyDenyError as e:
+    print(f"Policy denied: {e.action_id}")
+except EscalationRequiredError as e:
+    print(f"Needs approval: {e.action_id}")
+```
+
+## Security Considerations
+
+### Threat Model
+
+APE mitigates:
+
+| Threat | Mitigation |
+|--------|------------|
+| Prompt Injection | Prompts compiled, never executed directly |
+| Confused Deputy | Actions bound to explicit intent |
+| Privilege Escalation | Policy narrowing, risk-based filtering |
+| Token Replay | Single-use, time-limited tokens |
+| Plan Tampering | Cryptographic plan hashing |
+
+### Best Practices
+
+1. **Start with minimal policies** - Add permissions as needed
+2. **Use escalation for high-risk actions** - Human approval for destructive operations
+3. **Enable audit logging** - Complete trail for compliance
+4. **Validate all policies** - Use `ape validate` before deployment
+5. **Test with dry-run** - Use `orch.analyze_prompt()` before execution
+
+## Development
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Type checking
+mypy ape
+
+# Linting
+ruff check ape
+```
+
+## License
+
+Apache License 2.0 - See [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions welcome! Please read our contributing guidelines and submit pull requests.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
