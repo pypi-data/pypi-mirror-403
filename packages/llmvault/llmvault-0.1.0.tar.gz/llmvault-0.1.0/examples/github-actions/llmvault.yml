@@ -1,0 +1,72 @@
+# .github/workflows/llmvault.yml
+# LLMVault Security Testing Workflow
+#
+# Copy this file to your repo's .github/workflows/ directory.
+# Configure OPENAI_API_KEY (or your provider's key) as a repository secret.
+
+name: LLM Security Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  security-events: write  # Required for SARIF upload to GitHub Security tab
+
+jobs:
+  llmvault:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install LLMVault
+        run: pip install llmvault[openai]
+
+      - name: Run LLM Security Tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          llmvault test \
+            --model gpt-4o \
+            --system-prompt "You are a helpful assistant for Acme Corp." \
+            --count 50 \
+            --parallel \
+            --fail-on high \
+            --output results.sarif \
+            --seed 42
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: llmvault
+
+      # Optional: also generate a JSON report as a build artifact
+      - name: Generate JSON Report
+        if: always()
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          llmvault test \
+            --model gpt-4o \
+            --system-prompt "You are a helpful assistant for Acme Corp." \
+            --count 50 \
+            --parallel \
+            --output results.json \
+            --seed 42
+        continue-on-error: true
+
+      - name: Upload JSON Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: llmvault-report
+          path: results.json
