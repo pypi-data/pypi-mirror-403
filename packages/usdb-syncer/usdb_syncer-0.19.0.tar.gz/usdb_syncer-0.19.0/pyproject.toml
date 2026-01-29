@@ -1,0 +1,197 @@
+[project]
+name = "usdb_syncer"
+dynamic = ["version"]
+description = "A download manager for USDB songs."
+authors = [{ name = "Markus Böhning", email = "markus.boehning@gmail.com" }]
+license = "GPL-3.0-only"
+license-files = ["LICENSE", "NOTICE.txt", "licenses/*"]
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+dependencies = [
+    "attrs",
+    "beautifulsoup4",
+    "diff-match-patch",
+    "ffmpeg-normalize>=1.27",
+    "filetype",
+    "flask>=3.1.1,<4",
+    "keyring",
+    "lxml",
+    "mutagen",
+    "numpy>=2.2.5,<3",
+    "packaging",
+    "pillow>=10",
+    "platformdirs",
+    "PySide6",
+    "qrcode[pil]~=8.2",
+    "reportlab",
+    "requests",
+    "send2trash",
+    "sounddevice>=0.5.1,<0.6",
+    "soundfile>=0.13.1,<0.14",
+    "unidecode",
+    "yt-dlp[curl_cffi, default]",
+]
+
+[project.urls]
+Repository = "https://github.com/bohning/usdb_syncer"
+
+[project.scripts]
+usdb_syncer = "usdb_syncer.gui:main"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "tox",
+    "ruff==0.14.13",
+    "mypy",
+    "types-requests",
+    "pytest",
+    "snakeviz",
+    "defusedxml>=0.7.1,<0.8",
+]
+bundle = [
+    "pyinstaller",
+    "pyinstaller-hooks-contrib",
+    "altgraph",
+    "macholib ; sys_platform == 'darwin'",
+    "pywin32-ctypes ; sys_platform == 'win32'",
+]
+
+[tool.uv]
+default-groups = [
+    "dev",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/usdb_syncer/gui/forms/*.py",
+    "src/usdb_syncer/gui/resources/qt/*.py",
+    "src/usdb_syncer/gui/resources/text/*",
+    "src/usdb_syncer/data/*.json",
+    "src/usdb_syncer/webserver/static/*",
+    "src/usdb_syncer/webserver/templates/*",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/usdb_syncer"]
+include = [
+    "src/usdb_syncer/gui/forms/*.py",
+    "src/usdb_syncer/gui/resources/qt/*.py",
+    "src/usdb_syncer/gui/resources/text/*",
+    "src/usdb_syncer/data/*.json",
+    "src/usdb_syncer/webserver/static/*",
+    "src/usdb_syncer/webserver/templates/*",
+]
+
+[tool.ruff]
+extend-exclude = [
+    "forms",
+    "qt",
+]
+target-version = "py312"
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = [
+    "A",
+    "ARG",
+    "B",
+    "BLE",
+    "C4",
+    "C90",
+    "COM",
+    "D",
+    "E",
+    "F",
+    "FA",
+    "FLY",
+    "I",
+    "ISC",
+    "INP",
+    "LOG",
+    "N",
+    "PERF",
+    "PIE",
+    "PTH",
+    "Q",
+    "RET",
+    "RUF",
+    "S",
+    "SIM",
+    "TC",
+    "TRY",
+    "UP",
+    "W",
+]
+ignore = [
+    # Since we're using the ruff formatter, we follow ruff's official guide on what
+    # rules to skip: https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "D206",
+    "D300",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "COM812",
+    "COM819",
+    # We're fine with `assert`s if they're not used for validation, but state facts
+    "S101",
+    # Allow `subprocess` and starting without shell.
+    "S404",
+    "S603",
+    "S606",
+    # Maybe investigate in the future, if it is possible to do this more safely.
+    "S607",
+    # This flags _all_ dynamic SQL constructions, so it's pointless.
+    "S608",
+    # Since we don't have a public api, we don't require docstrings for functions.
+    "D102",
+    "D103",
+    "D105",
+    "D107",
+    # D415 is handled by D400 already, so we skip it to avoid double warnings.
+    "D415",
+    # D203 and D211 are incompatible. We prefer D211.
+    "D203",
+    # D212 and D213 are incompatible. We prefer D212.
+    "D213",
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.isort]
+# For consistency with the formatter, see https://docs.astral.sh/ruff/settings/#lint_isort_split-on-trailing-comma
+split-on-trailing-comma = false
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG001", "D"]
+
+[tool.mypy]
+ignore_missing_imports = true
+disallow_untyped_defs = true
+follow_imports = "silent"
+exclude = ["src/usdb_syncer/gui/forms", "src/usdb_syncer/gui/resources"]
+
+[tool.pyright]
+# generates a lot of false positives for mutagen
+reportPrivateImportUsage = false
+exclude = [
+    "src/usdb_syncer/gui/forms",
+    "src/usdb_syncer/gui/resources",
+    "venv",
+    ".tox",
+]
