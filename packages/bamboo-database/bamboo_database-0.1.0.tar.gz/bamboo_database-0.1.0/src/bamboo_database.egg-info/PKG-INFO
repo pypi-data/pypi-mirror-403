@@ -1,0 +1,221 @@
+Metadata-Version: 2.4
+Name: bamboo-database
+Version: 0.1.0
+Summary: CLI tool for managing database migrations and seed data across multiple backends
+Author-email: Bamboo Tools <bamboo@bambooslips.xyz>
+License: MIT
+Project-URL: Homepage, https://github.com/tsl-bamboo/bamboo_database
+Project-URL: Documentation, https://github.com/tsl-bamboo/bamboo_database#readme
+Project-URL: Repository, https://github.com/tsl-bamboo/bamboo_database
+Project-URL: Issues, https://github.com/tsl-bamboo/bamboo_database/issues
+Keywords: database,migrations,seed,cli,postgresql,mysql,sqlite
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Database
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Typing :: Typed
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: tomli>=2.0.0; python_version < "3.11"
+Provides-Extra: postgresql
+Requires-Dist: psycopg[binary]>=3.0.0; extra == "postgresql"
+Provides-Extra: mysql
+Requires-Dist: mysql-connector-python>=8.0.0; extra == "mysql"
+Provides-Extra: sqlite
+Provides-Extra: all
+Requires-Dist: psycopg[binary]>=3.0.0; extra == "all"
+Requires-Dist: mysql-connector-python>=8.0.0; extra == "all"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
+
+# Bamboo Database
+
+A CLI tool for managing database structure (schema/migrations) and seed data across multiple database backends using raw SQL.
+
+## Features
+
+- **Multi-Database Support**: PostgreSQL, MySQL, and SQLite
+- **Raw SQL Migrations**: Full control with database-specific syntax
+- **Combined Migrations**: Schema changes and seed data in single atomic transactions
+- **Per-Database Configuration**: Separate migration folders for each database profile
+- **Schema Generation**: Auto-generate organized schema files from migrations
+- **AI-Friendly Rules**: Generate migration guidelines for AI assistants
+
+## Installation
+
+```bash
+# Basic installation (SQLite only)
+pip install bamboo-database
+
+# With PostgreSQL support
+pip install bamboo-database[postgresql]
+
+# With MySQL support
+pip install bamboo-database[mysql]
+
+# With all database backends
+pip install bamboo-database[all]
+
+# Development installation
+pip install bamboo-database[dev]
+```
+
+## Quick Start
+
+### 1. Create Configuration
+
+Create `bamboo_database.toml` in your project root:
+
+```toml
+[databases.default]
+type = "postgresql"
+host = "localhost"
+port = 5432
+database = "my_database"
+user = "postgres"
+password = "secret"
+migrations_path = "./migrations/default"
+
+[databases.analytics]
+type = "mysql"
+host = "localhost"
+port = 3306
+database = "analytics_db"
+user = "root"
+password = "secret"
+migrations_path = "./migrations/analytics"
+
+[databases.cache]
+type = "sqlite"
+path = "./cache.db"
+migrations_path = "./migrations/cache"
+```
+
+### 2. Create Migration Files
+
+Create migration files in your migrations folder:
+
+```sql
+-- migrations/default/0001_migrate_create_users.sql
+BEGIN;
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO users (id, email, name) VALUES
+    (1, 'admin@example.com', 'Admin User')
+ON CONFLICT (id) DO NOTHING;
+
+COMMIT;
+```
+
+### 3. Run Migrations
+
+```bash
+# Migrate all databases
+bamboodb migrate
+
+# Migrate specific database
+bamboodb migrate --database default
+
+# Check migration status
+bamboodb status
+
+# List configured databases
+bamboodb list-databases
+```
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `bamboodb migrate` | Run pending migrations |
+| `bamboodb status` | Show migration status |
+| `bamboodb list-databases` | List configured databases |
+| `bamboodb generate-schema` | Generate schema files from migrations |
+| `bamboodb generate-rules` | Generate AI migration guidelines |
+
+### Common Options
+
+- `--database NAME` - Target specific database (can be used multiple times)
+- `--help` - Show help for any command
+
+## Migration File Naming
+
+Files are named with type prefixes:
+
+- `{version}_migrate_{description}.sql` - Schema changes (CREATE, ALTER, DROP)
+- `{version}_seed_{description}.sql` - Initial/reference data
+- `{version}_index_{description}.sql` - Index creation
+
+Version format: 4-digit zero-padded (0001, 0002, 0003...)
+
+Examples:
+- `0001_migrate_create_users.sql`
+- `0002_seed_insert_admin_user.sql`
+- `0003_index_users_email_idx.sql`
+
+## Idempotent Seed Data
+
+Use database-specific syntax for idempotent inserts:
+
+**PostgreSQL:**
+```sql
+INSERT INTO users (id, email) VALUES (1, 'admin@example.com')
+ON CONFLICT (id) DO NOTHING;
+```
+
+**MySQL:**
+```sql
+INSERT IGNORE INTO users (id, email) VALUES (1, 'admin@example.com');
+```
+
+**SQLite:**
+```sql
+INSERT OR IGNORE INTO users (id, email) VALUES (1, 'admin@example.com');
+```
+
+## Python API
+
+```python
+from bamboo_database import load_config, create_adapter
+
+# Load configuration
+config = load_config()
+
+# Get a database profile
+profile = config.get_database("default")
+
+# Create an adapter
+with create_adapter(profile) as adapter:
+    adapter.execute("SELECT * FROM users")
+    results = adapter.fetch_all("SELECT * FROM users")
+```
+
+## Requirements
+
+- Python 3.10+
+- Database drivers (optional):
+  - PostgreSQL: `psycopg[binary]`
+  - MySQL: `mysql-connector-python`
+  - SQLite: Built-in
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
