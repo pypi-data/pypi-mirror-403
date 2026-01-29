@@ -1,0 +1,379 @@
+"""
+Micro Agent: 临时任务专用的轻量级 Agent
+
+设计理念：
+- 每个子任务都是一个临时的 Micro Agent
+- 简单的 think-negotiate-act 循环
+- 无 Session 概念，每次执行都是独立的
+- 类似函数调用：输入任务 -> 执行 -> 返回结果
+- 可重复使用：一次初始化组件，多次执行不同任务
+"""
+
+import asyncio
+import uuid
+from typing import Dict, List, Optional, Callable, Any
+import json
+import logging
+
+from ..core.log_util import AutoLoggerMixin
+
+
+class MicroAgent(AutoLoggerMixin):
+    """
+    临时任务专用的轻量级 Agent
+
+    特点：
+    1. 简单的 think-negotiate-act 循环
+    2. 直接从 think 输出中识别 action 名字
+    3. 通过 cerebellum 协商参数
+    4. LLM 自主决定何时返回
+    5. 可重复使用：一次设置组件，多次执行不同任务
+    """
+
+    _log_from_attr = "name"
+    _custom_log_level = logging.DEBUG
+
+    def __init__(
+        self,
+        brain: Any,
+        cerebellum: Any,
+        action_registry: Dict[str, Callable],
+        name: Optional[str] = None,
+        default_max_steps: int = 50,
+        return_action_name = None
+    ):
+        """
+        初始化 Micro Agent（一次性设置核心组件）
+
+        Args:
+            brain: LLM 接口（需要有 think 方法）
+            cerebellum: 参数协商器（需要有 negotiate 方法）
+            action_registry: action 注册表 {name: method}
+            name: Agent 名称（可选，自动生成）
+            default_max_steps: 默认最大步数
+        """
+        self.name = name or f"MicroAgent_{uuid.uuid4().hex[:8]}"
+
+        # 核心组件（一次性设置，可重复使用）
+        self.brain = brain
+        self.cerebellum = cerebellum
+        self.action_registry = action_registry
+
+        # 默认配置
+        self.default_max_steps = default_max_steps
+        self.messages: List[Dict] = []  # 对话历史
+        # 日志
+        self.logger.info(f"Micro Agent {self.name} initialized")
+
+    async def execute(
+        self,
+        persona: str,
+        task: str,
+        available_actions: List[str],
+        max_steps: Optional[int] = None,
+        initial_history: Optional[List[Dict]] = None,
+        result_params: Optional[Dict[str, str]] = None
+    ) -> Any:
+        """
+        执行任务（可重复调用）
+
+        Args:
+            persona: 角色/身份描述（作为 system prompt）
+            task: 任务描述
+            available_actions: 可用的 action 名称列表
+            max_steps: 最大步数（可选，默认使用 default_max_steps）
+            initial_history: 初始对话历史（用于恢复记忆，可选）
+            result_params: 返回值参数描述（可选），用于指定 finish_task 的参数结构
+
+        Returns:
+            Any: 最终结果
+                 - 如果 result_params 为 None，返回字符串（向后兼容）
+                 - 如果有 result_params，返回 Dict[str, Any]
+                 - 如果出错或超时，返回 None 或 {"error": str}
+        """
+        # 设置本次执行的参数
+        self.persona = persona
+        self.task = task
+        self.available_actions = available_actions
+        self.max_steps = max_steps or self.default_max_steps
+
+        # 重置执行状态
+        self.step_count = 0
+        self.result = None
+
+        # 确保 finish_task 在 action_registry 中
+        if "finish_task" not in self.action_registry:
+            self.action_registry["finish_task"] = finish_task
+
+        # 动态更新 finish_task 的元数据
+        if result_params:
+            # 更新参数描述
+            finish_task._action_param_infos = result_params
+
+            # 动态生成 description，包含参数的自然语言描述
+            param_descriptions = ", ".join(result_params.values())
+            finish_task._action_desc = (
+                f"完成任务并返回最终结果。需要提供：{param_descriptions}"
+            )
+        else:
+            # 默认模式
+            finish_task._action_param_infos = {"result": "最终结果的描述（可选）"}
+            finish_task._action_desc = "完成任务并返回最终结果。当你觉得任务已经完成时，调用此 action。"
+
+        # 确保 finish_task 在可用列表中
+        if "finish_task" not in available_actions:
+            available_actions.append("finish_task")
+
+        # 恢复或初始化对话历史
+        if initial_history:
+            # 恢复记忆：复制历史记录
+            self.messages = initial_history.copy()
+            self.logger.info(f"Micro Agent {self.name} restoring memory with {len(initial_history)} messages")
+            # 添加新的任务输入
+            self._add_message("user", f"\n[NEW INPUT]\n{self._format_task_message()}")
+        else:
+            # 新对话：初始化
+            self.messages = []
+            self._initialize_conversation()
+
+        self.logger.info(f"Micro Agent {self.name} executing task:")
+        self.logger.debug(f"{self.messages}")
+
+        try:
+            # 执行 think-negotiate-act 循环
+            await self._run_loop()
+
+            # 返回结果
+            self.logger.info(f"Micro Agent {self.name} completed in {self.step_count} steps")
+            return self.result
+
+        except Exception as e:
+            self.logger.exception(f"Micro Agent {self.name} failed")
+            return {"error": str(e)}
+
+    def _initialize_conversation(self):
+        """初始化对话历史"""
+        # 1. System Prompt
+        system_prompt = self._build_system_prompt()
+        self.messages.append({"role": "system", "content": system_prompt})
+
+        # 2. 任务描述
+        task_message = self._format_task_message()
+        self.messages.append({"role": "user", "content": task_message})
+
+    def _build_system_prompt(self) -> str:
+        """构建 System Prompt"""
+        prompt = f"""{self.persona}
+
+###  YOUR TOOLKIT (The Dashboard)
+
+
+You have access to the following actions:
+{self._format_actions_list()}
+
+Instructions:
+1. Think step by step about what needs to be done
+2. When you need to use an action, include the action name in your response
+3. The system will negotiate parameters with you if needed
+4. When you have completed the task, use the action: finish_task
+
+
+"""
+        return prompt
+
+
+
+    def _format_actions_list(self) -> str:
+        """格式化可用 actions 列表"""
+        lines = []
+        for action_name in self.available_actions:
+            if action_name in self.action_registry:
+                method = self.action_registry[action_name]
+                # 尝试获取描述
+                desc = getattr(method, "_action_desc", "No description")
+                lines.append(f"- {action_name}: {desc}")
+        return "\n".join(lines)
+
+    def _format_task_message(self) -> str:
+        """格式化任务消息"""
+        msg = f"[TASK]\n{self.task}\n"
+
+        #if self.task_context:
+        #    msg += f"\n[CONTEXT]\n"
+        #    msg += json.dumps(self.task_context, ensure_ascii=False, indent=2)
+
+        msg += "\n\nPlease complete this task step by step."
+        return msg
+
+    async def _run_loop(self):
+        """执行主循环"""
+        for self.step_count in range(1, self.max_steps + 1):
+            self.logger.debug(f"Step {self.step_count}/{self.max_steps}")
+
+            # 1. Think
+            thought = await self._think()
+            self.logger.debug(f"Thought: {thought[:200]}...")
+
+            # 2. 识别 action
+            action_name = self._detect_action(thought)
+
+            if action_name == "finish_task":
+                # finish_task: 执行并直接返回结果
+                result = await self._execute_action(action_name, thought)
+                self.result = result
+                self.return_action_name = action_name
+                break
+
+            elif action_name == "rest_n_wait":
+
+                self.return_action_name = action_name
+                self._add_message("assistant", thought)
+                self.result = {}
+                break
+
+            elif action_name:
+                # 执行普通 action
+                try:
+                    result = await self._execute_action(action_name, thought)
+                    self._add_message("assistant", thought)
+                    self._add_message("user", f"Action '{action_name}' executed. Result: {result}")
+                except Exception as e:
+                    self.logger.exception(f"Action {action_name} failed")
+                    self._add_message("assistant", thought)
+                    self._add_message("user", f"Action '{action_name}' failed with error: {str(e)}")
+
+                    
+            else:
+                # 没有检测到 action，只是思考
+                self._add_message("assistant", thought)
+                # 提示需要采取行动
+                self._add_message("user", "Please use an available action to proceed.")
+
+        else:
+            # 超过最大步数
+            self.logger.warning(f"Reached max steps ({self.max_steps})")
+            self.result = None
+
+    async def _think(self) -> str:
+        """调用 Brain 进行思考"""
+        response = await self.brain.think(self.messages)
+        return response['reply']
+
+    def _detect_action(self, thought: str) -> Optional[str]:
+        """
+        从思考内容中检测 action
+
+        策略：
+        1. 查找可用的 action 名字
+        2. 返回第一个匹配到的 action
+        3. 如果没有匹配，返回 None
+        """
+        thought_lower = thought.lower()
+
+        # 按优先级检查（避免部分匹配问题）
+        # 先检查较长的名字
+        sorted_actions = sorted(
+            self.available_actions,
+            key=lambda x: len(x),
+            reverse=True
+        )
+
+        for action_name in sorted_actions:
+            if action_name.lower() in thought_lower:
+                return action_name
+
+        return None
+
+    async def _execute_action(self, action_name: str, thought: str) -> Any:
+        """
+        执行 action
+
+        流程：
+        1. 获取 action 方法和参数 schema
+        2. 通过 cerebellum 解析参数
+        3. 调用方法
+        """
+        # 1. 获取方法
+        if action_name not in self.action_registry:
+            raise ValueError(f"Action '{action_name}' not found in registry")
+
+        method = self.action_registry[action_name]
+
+        # 2. 获取参数信息
+        param_schema = getattr(method, "_action_param_infos", {})
+
+        # 3. 如果有参数，通过 cerebellum 解析
+        if param_schema:
+            # 通过 cerebellum 解析参数
+            async def brain_clarification(question: str) -> str:
+                temp_msgs = self.messages.copy()
+                temp_msgs.append({"role": "assistant", "content": thought})
+                temp_msgs.append({"role": "user", "content": f"[PARAMETER CLARIFICATION] {question}"})
+                response = await self.brain.think(temp_msgs)
+                return response['reply']
+
+            action_json = await self.cerebellum.parse_action_params(
+                intent=thought,
+                action_name=action_name,
+                param_schema=param_schema,
+                brain_callback=brain_clarification
+            )
+
+            params = action_json.get("params", {})
+        else:
+            params = {}
+
+        # 4. 执行方法
+        self.logger.debug(f"Executing {action_name} with params: {params}")
+        result = await method(**params)
+
+        return result
+
+    def _add_message(self, role: str, content: str):
+        """添加消息到对话历史"""
+        self.messages.append({"role": role, "content": content})
+
+    def get_history(self) -> List[Dict]:
+        """
+        获取完整的对话历史
+
+        Returns:
+            List[Dict]: 完整的对话历史（包括初始历史 + 新增对话）
+        """
+        return self.messages
+
+
+# ============================================================================
+# 通用的 finish_task action
+# ============================================================================
+
+async def finish_task(**kwargs):
+    """
+    [TERMINAL ACTION] 完成任务并返回最终结果
+
+    当你认为任务已经完成时，调用此 action。
+    根据提供的参数返回结构化结果。
+
+    Returns:
+        - 如果只有一个 result 参数：返回字符串（向后兼容）
+        - 如果有多个参数：返回字典
+    """
+    # 如果是简单模式（只有一个 result），返回字符串以保持兼容
+    if len(kwargs) == 1 and "result" in kwargs:
+        return kwargs["result"]
+    # 否则返回字典
+    return kwargs
+
+
+# 附加基础元数据
+finish_task._is_action = True
+finish_task._action_desc = "完成任务并返回最终结果。当你觉得任务已经完成时，调用此 action。"
+finish_task._action_param_infos = {"result": "最终结果的描述（可选）"}
+
+
+# finish_task 的注册信息（用于添加到 action_registry）
+FINISH_TASK_INFO = {
+    "description": finish_task._action_desc,
+    "param_infos": finish_task._action_param_infos,
+    "method": finish_task
+}
