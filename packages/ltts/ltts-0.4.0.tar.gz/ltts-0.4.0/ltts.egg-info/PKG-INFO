@@ -1,0 +1,159 @@
+Metadata-Version: 2.4
+Name: ltts
+Version: 0.4.0
+Summary: Text-to-speech CLI using Qwen3-TTS or Kokoro TTS
+Author: Frank Chiarulli Jr.
+License-Expression: MIT
+Project-URL: Repository, https://github.com/fcjr/ltts
+Project-URL: Issues, https://github.com/fcjr/ltts/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: soundfile>=0.13.1
+Requires-Dist: sounddevice>=0.4.6
+Requires-Dist: qwen-tts>=0.0.5
+Requires-Dist: kokoro>=0.9.4
+Requires-Dist: misaki[ja,zh]>=0.9.4
+Requires-Dist: spacy>=3.8.0
+Requires-Dist: unidic>=1.1.0
+Provides-Extra: cuda
+Requires-Dist: flash-attn>=2.0.0; extra == "cuda"
+Dynamic: license-file
+
+# ltts
+
+[![PyPI Version](https://img.shields.io/pypi/v/ltts)](https://pypi.org/project/ltts/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/ltts)](https://pypi.org/project/ltts/)
+[![License](https://img.shields.io/pypi/l/ltts)](LICENSE)
+[![UV Friendly](https://img.shields.io/badge/uv-friendly-5A2DAA)](https://docs.astral.sh/uv/)
+[![CI Publish](https://img.shields.io/github/actions/workflow/status/fcjr/ltts/publish.yml?label=publish)](https://github.com/fcjr/ltts/actions/workflows/publish.yml)
+
+Quick CLI for local text-to-speech with two backends: [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) (default) and [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M).
+
+## Install
+
+Recommended (fast, reproducible):
+
+```bash
+uv tool install ltts
+```
+
+Run without installing:
+
+```bash
+uvx ltts "hello world" --say
+```
+
+With pip:
+
+```bash
+pip install ltts
+```
+
+### NVIDIA GPU (Optional)
+
+For faster inference on NVIDIA GPUs:
+
+```bash
+pip install 'ltts[cuda]'
+```
+
+## Usage
+
+```bash
+# Generate speech (saves to output.mp3 by default)
+ltts "Hello, world!"
+
+# Play through speakers
+ltts "Hello, world!" --say
+
+# Save to specific file
+ltts "Hello, world!" -o speech.wav
+
+# Read from stdin
+echo "Hello from pipe" | ltts --say
+cat article.txt | ltts -o article.mp3
+```
+
+## Backends
+
+### Qwen3-TTS (default)
+
+Higher quality with voice cloning and emotional control. Supports 10 languages.
+
+```bash
+# Preset voices
+ltts "Hello, world!" -v Ryan --say       # English male (default)
+ltts "Hello, world!" -v Aiden --say      # English male
+ltts "你好世界" -v Vivian --say           # Chinese female
+ltts "こんにちは" -v Ono_Anna --say       # Japanese female
+ltts "안녕하세요" -v Sohee --say           # Korean female
+
+# Voice cloning (3+ seconds of reference audio)
+ltts "Hello in your voice" --ref-audio voice.wav --say
+ltts "Hello" --ref-audio voice.wav --ref-text "transcript" --say
+
+# Emotional control
+ltts "I can't believe we won!" --instruct "speak with excitement" --say
+
+# Smaller model for faster inference
+ltts "Hello world" --model-size 0.6B --say
+```
+
+**Preset voices:** Ryan, Aiden (English), Vivian, Serena, Dylan, Eric, Uncle_Fu (Chinese), Ono_Anna (Japanese), Sohee (Korean)
+
+**Languages:** en, zh, ja, ko, de, fr, es, pt, it, ru
+
+### Kokoro TTS
+
+Lightweight with 50+ voices. Supports streaming for faster time-to-first-audio.
+
+```bash
+# Use Kokoro backend
+ltts "Hello world" -b kokoro -v af_heart --say
+ltts "こんにちは" -b kokoro -v jf_alpha --say
+
+# Stream chunks as generated (lower latency)
+ltts "Hello world" -b kokoro --say --chunk
+```
+
+**Voices:** af_heart, af_alloy, af_bella, am_adam, am_michael (American), bf_alice, bf_emma, bm_daniel (British), jf_alpha, jm_kumo (Japanese), zf_xiaobei, zm_yunxi (Chinese), ef_dora, em_alex (Spanish), ff_siwis (French), and more.
+
+Full voice list: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
+
+## Options
+
+```bash
+# Device selection
+ltts "Hello" -d cpu --say    # CPU (default)
+ltts "Hello" -d cuda --say   # NVIDIA GPU
+ltts "Hello" -d mps --say    # Apple Silicon
+
+# Output formats
+ltts "test" -o out.mp3       # MP3 (default)
+ltts "test" -o out.wav       # WAV
+ltts "test" -o out.ogg       # OGG
+ltts "test" -o out.flac      # FLAC
+
+# Language override
+ltts "Bonjour" -l fr --say
+```
+
+## Notes
+
+- First run downloads models to `~/.cache/huggingface/` (~3GB for Qwen 1.7B, ~330MB for Kokoro)
+- Audio playback (`--say`) runs at 24 kHz
+- On Linux, ensure PulseAudio/PipeWire is running for audio playback
+
+## Development
+
+```bash
+uv sync
+uv run ltts "hello world" --say
+uv run ltts "hello world" -b kokoro -v af_heart --say
+./scripts/release.sh
+```
