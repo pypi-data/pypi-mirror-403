@@ -1,0 +1,111 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      run_tests: ${{ steps.changes.outputs.run_tests }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - id: changes
+        name: Check for file changes
+        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
+        with:
+          base: ${{ github.ref }}
+          token: ${{ github.token }}
+          filters: .github/file-filters.yml
+
+  test:
+    needs: [ changes ]
+    if: needs.changes.outputs.run_tests == 'true'
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ "3.12", "3.13" ]
+        django: [ "52", "42", "32" ]
+        exclude:
+          - python: 3.13
+            django: 32
+    services:
+      redis:
+        image: redis
+        ports:
+        - 16379:6379
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_DATABASE: dms
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USERNAME: postgres
+        ports:
+        - 5400:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PY_VER: ${{ matrix.python}}
+      DJ_VER: ${{ matrix.django}}
+      DATABASE_URL: postgres://postgres:postgres@localhost:5400/dms
+      ALLOWED_HOSTS: 0.0.0.0,localhost,127.0.0.1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      -   name: Install the latest version of uv
+          uses: astral-sh/setup-uv@v5
+          with:
+              version: "latest"
+              enable-cache: true
+              cache-dependency-glob: |
+                  pyproject.toml
+                  uv.lock
+              cache-suffix: ${{ matrix.python }}-${{ matrix.django }}
+              github-token: ${{ secrets.GITHUB_TOKEN }}
+              python-version: ${{ matrix.python }}
+
+      -   name: Install tox
+          run: uv tool install --python-preference only-managed --python ${{ matrix.python }} tox --with tox-uv --with tox-gh-actions
+
+      -   name: Install Python
+          if: matrix.python != '3.13'
+          run: uv python install --python-preference only-managed ${{ matrix.python }}
+
+      -   name: Setup test suite
+          run: tox run -vv --notest --skip-missing-interpreters false
+
+      - name: Test with
+        run: tox run -e d${DJ_VER//.}-py${PY_VER//.}
+
+      -   name: Upload test results to Codecov
+          uses: codecov/test-results-action@v1
+          with:
+              env_vars: OS
+              flags: ${{ matrix.django }} ${{ matrix.python }}
+              token: ${{ secrets.CODECOV_TOKEN }}
+              verbose: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        continue-on-error: true
+        with:
+          env_vars: OS,PYTHON
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: false
+          name: codecov-${{env.GITHUB_REF_NAME}}
