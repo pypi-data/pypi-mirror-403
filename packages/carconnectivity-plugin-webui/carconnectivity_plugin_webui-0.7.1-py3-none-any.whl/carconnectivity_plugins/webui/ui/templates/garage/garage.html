@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block header %}
+  {% block title %}Garage{% endblock %}
+{% endblock %}
+
+{% block content %}
+  {% if garage.list_vehicles() %}
+    <div class="card-deck">
+    {% for vehicle in garage.list_vehicles() %}
+      <div class="card" style="display:inline-block;">
+        <img src="{{ url_for('garage.vehicle_img', vin=vehicle.vin.value, fallback='icons/vehicle.png') }}" class="card-img-top bg-light" alt="..." style="width: 300px">
+        <div class="card-body" style="min-height: 300px;">
+            <h5 class="card-title text-center">
+              <a href="{{ url_for('garage.vehicle', vin=vehicle.vin.value) }}" {% if vehicle.license_plate.enabled %} data-toggle="tooltip" title="{{vehicle.license_plate}}" {% endif %} class="text-decoration-none">
+              {{vehicle.name.value if vehicle.name.enabled else vehicle.id}}
+              </a>
+            </h5>
+            <p class="card-text">
+              {{format_cc_element(vehicle.model, '', with_tooltip=false, linebreak=true)}}
+              {% if vehicle.drives.enabled and vehicle.drives.drives|length > 0 %}
+                Level: {% for drive in vehicle.drives.drives.values() %}{{format_cc_element(drive.level, '')}}{% if not loop.last %}, {% endif %}{% endfor %}<br>
+              {% endif %}
+              {{format_cc_element(vehicle.drives.total_range, 'Range', linebreak=true)}}
+              {{format_cc_element(vehicle.odometer, 'Odometer', linebreak=true)}}
+            </p>
+            <a href="{{ url_for('garage.vehicle', vin=vehicle.vin.value) }}" class="btn btn-primary">View Vehicle</a>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p>No vehicles in the garage yet. You might need to add a connector to see vehicles.</p>
+  {% endif %}
+
+{% endblock %}
