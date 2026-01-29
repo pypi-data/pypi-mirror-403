@@ -1,0 +1,141 @@
+# znumbers — Z-Number Arithmetic and Linear System Solver in Python
+
+This package implements arithmetic operations and linear system solvers for
+"Z-numbers", introduced by Lotfi A. Zadeh as a powerful model for representing
+both uncertainty and reliability in information.
+
+A Z-number is defined as:
+
+Z = (A, B)
+
+where:
+- A is a fuzzy restriction (Triangular Fuzzy Number, TFN)
+- B is the reliability of the restriction (also TFN)
+
+This library is intended for research, education, and experimental modeling
+in fuzzy systems and uncertainty-based decision making.
+
+
+## Features
+
+- Triangular Fuzzy Number (TFN) implementation
+- Z-number arithmetic:
+  - Addition
+  - Subtraction
+  - Multiplication
+  - Division (regularized to avoid zero-support singularities)
+- Reliability propagation using:
+  - Linear Programming (LP)
+  - Probabilistic convolution
+- Linear system solvers with Z-number coefficients:
+  - Regularized Gauss elimination (recommended for 2x2 and 3x3 systems)
+- Fast approximate solver using only TFN parts (for large systems)
+
+
+## Installation
+
+```bash
+pip install znumbers
+Basic Example
+Creating Z-numbers
+python
+Копировать код
+from znumbers import TFN, ZNumber
+
+Z1 = ZNumber(TFN(2, 3, 4), TFN(0.7, 0.8, 0.9))
+Z2 = ZNumber(TFN(1, 2, 3), TFN(0.6, 0.7, 0.8))
+
+print("Z1 =", Z1)
+print("Z2 =", Z2)
+Arithmetic Operations
+python
+Копировать код
+print("Z1 + Z2 =", Z1 + Z2)
+print("Z1 - Z2 =", Z1 - Z2)
+print("Z1 * Z2 =", Z1 * Z2)
+print("Z1 / Z2 =", Z1 / Z2)
+All operations propagate both the fuzzy restriction (A-part)
+and the reliability (B-part).
+
+Solving Linear Systems with Z-Numbers
+Consider the system:
+
+A x = b
+
+where all coefficients are Z-numbers.
+
+Example: 2x2 Z-number System
+python
+Копировать код
+from znumbers import TFN, ZNumber, solve_gauss_regularized
+
+Z11 = ZNumber(TFN(2,3,4), TFN(0.7,0.8,0.9))
+Z12 = ZNumber(TFN(1,2,3), TFN(0.6,0.7,0.8))
+
+Z21 = ZNumber(TFN(3,4,5), TFN(0.7,0.8,0.9))
+Z22 = ZNumber(TFN(2,3,4), TFN(0.6,0.7,0.8))
+
+b1 = ZNumber(TFN(5,6,7), TFN(0.7,0.8,0.9))
+b2 = ZNumber(TFN(6,7,8), TFN(0.6,0.7,0.8))
+
+A = [[Z11, Z12],
+     [Z21, Z22]]
+b = [b1, b2]
+
+x = solve_gauss_regularized(A, b)
+
+print("x1 =", x[0])
+print("x2 =", x[1])
+The solution is also returned as Z-numbers:
+
+Z(A = (a, b, c), B = (a, b, c))
+
+Fast Approximate Solver (TFN Only)
+For large systems, full Z-number computation may be very slow.
+A fast solver is provided using only the fuzzy restriction parts.
+
+python
+Копировать код
+from znumbers import solve_tfn_system
+
+x = solve_tfn_system(A, b)
+This method returns TFN solutions and does not propagate reliability.
+
+Mathematical Background
+Reliability propagation is performed using linear programming (LP)
+to obtain probability distributions over fuzzy supports.
+
+Convolution of fuzzy supports is used to combine probabilities.
+
+Division is regularized by shifting TFN supports when zero is included,
+which ensures numerical stability.
+
+Regularized Gauss elimination allows solving small Z-number systems
+while preserving reliability information.
+
+Performance Notes
+Z-number arithmetic is computationally expensive due to:
+
+repeated LP optimization
+
+convolution of probability distributions
+
+Recommended usage:
+
+Full Z-number solver: small systems (2x2, 3x3)
+
+TFN-only solver: large systems or fast approximation
+
+Citation
+If you use this package in academic work, please cite:
+
+Lotfi A. Zadeh,
+"Z-numbers — a new paradigm for representing uncertainty",
+Information Sciences, 181(3), 2011.
+
+## Author
+Dilmurod Yusupov  
+Uzbekistan  
+Affiliation: Cyber University  
+Email: cazinoroyal@1987gmail.com  
+Research interests: fuzzy logic, Z-numbers, uncertainty modeling, numerical methods
