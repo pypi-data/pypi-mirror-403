@@ -1,0 +1,741 @@
+import os
+from importlib import metadata
+from typing import Optional
+
+import numpy as np
+import xarray as xr
+import zarr
+from zarr.codecs import BloscCodec, BloscShuffle
+from zarr.core.group import Group
+
+from water_column_sonar_processing.utility import Constants, Coordinates, Timestamp
+
+# https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
+compressors = BloscCodec(
+    cname="zstd",
+    clevel=9,
+    shuffle=BloscShuffle.bitshuffle,
+)
+
+
+# creates the latlon dataset: foo = ep.consolidate.add_location(ds_Sv, echodata)
+class ZarrManager:
+    #######################################################
+    def __init__(
+        self,
+        # endpoint_url: Optional[str] = None,
+    ):
+        self.__overwrite = True
+        self.key = os.environ.get("OUTPUT_BUCKET_ACCESS_KEY")
+        self.secret = os.environ.get("OUTPUT_BUCKET_SECRET_ACCESS_KEY")
+
+    #######################################################
+    @staticmethod
+    def get_depth_values(
+        max_echo_range: float,  # maximum depth measured from whole cruise
+        cruise_min_epsilon: float = 0.20,  # delta subsequent measurements
+    ) -> np.ndarray[tuple]:
+        # Gets the set of depth values that will be used when resampling and
+        # regridding the dataset to a cruise level model store.
+        # Note: returned values start at zero!
+        # For more info see here: https://echopype.readthedocs.io/en/stable/data-proc-additional.html
+        all_cruise_depth_values = np.linspace(  # TODO: PROBLEM HERE
+            start=0,  # start it at zero
+            stop=np.ceil(max_echo_range),  # round up
+            num=int(np.ceil(max_echo_range) / cruise_min_epsilon) + 1,
+            endpoint=True,
+        )
+
+        if np.any(np.isnan(all_cruise_depth_values)):
+            raise Exception("Problem depth values returned were NaN.")
+
+        return all_cruise_depth_values.round(decimals=2)
+
+    #######################################################
+    def create_zarr_store(
+        self,
+        path: str,  # 'level_2/Henry_B._Bigelow/HB0707/EK60/HB0707.model/tmp/HB0707.zarr/.zattrs'
+        ship_name: str,
+        cruise_name: str,
+        sensor_name: str,
+        frequencies: list,  # units in Hz, type(frequencies) == np.ndarray
+        width: int,
+        max_echo_range: float,
+        calibration_status: bool = False,  # Assume uncalibrated
+    ) -> str:
+        """
+        Creates a new zarr store in a local temporary directory(?)
+        This includes the water_level on top of the max_echo_range already, nothing extra needs to be done.
+        """
+        try:
+            print(f"Creating local zarr store, {cruise_name}.zarr for ship {ship_name}")
+            if len(frequencies) != len(set(frequencies)):
+                raise Exception(
+                    "Number of frequencies does not match number of channels"
+                )
+
+            zarr_path = f"{path}/{cruise_name}.zarr"
+            #####################################################################
+            frequencies = np.array(
+                frequencies, dtype=np.dtype(Coordinates.FREQUENCY_DTYPE.value)
+            )
+            #####################################################################
+            # Define the chunk sizes and the encoding
+            depth_chunk_shape = (Constants.TILE_SIZE.value,)
+            time_chunk_shape = (Constants.SPATIOTEMPORAL_CHUNK_SIZE.value,)
+            frequency_chunk_shape = (len(frequencies),)
+            latitude_chunk_shape = (Constants.SPATIOTEMPORAL_CHUNK_SIZE.value,)
+            longitude_chunk_shape = (Constants.SPATIOTEMPORAL_CHUNK_SIZE.value,)
+            bottom_chunk_shape = (Constants.SPATIOTEMPORAL_CHUNK_SIZE.value,)
+            speed_chunk_shape = (Constants.SPATIOTEMPORAL_CHUNK_SIZE.value,)
+            distance_chunk_shape = (Constants.SPATIOTEMPORAL_CHUNK_SIZE.value,)
+            sv_chunk_shape = (Constants.TILE_SIZE.value, Constants.TILE_SIZE.value, 1)
+            #####################################################################
+            root = zarr.create_group(store=zarr_path, zarr_format=3, overwrite=True)
+            #####################################################################
+            # --- Coordinate: Time --- #
+            # https://zarr.readthedocs.io/en/stable/spec/v2.html#data-type-encoding
+            #  "data_type": "int64", "fill_value": 0, "units": "nanoseconds since 1970-01-01", "calendar": "proleptic_gregorian"
+            #
+            time_values = np.repeat(0.0, width)
+            time_values.astype(np.dtype(Coordinates.TIME_DTYPE.value))
+            root.create_array(
+                name=Coordinates.TIME.value,
+                # shape=width_indices,
+                # dtype=np.dtype(Coordinates.TIME_DTYPE.value),
+                data=time_values,
+                chunks=time_chunk_shape,
+                compressors=compressors,
+                fill_value=np.nan,
+                attributes=dict(
+                    calendar=Coordinates.TIME_CALENDAR.value,
+                    units=Coordinates.TIME_UNITS.value,
+                    long_name=Coordinates.TIME_LONG_NAME.value,
+                    standard_name=Coordinates.TIME_STANDARD_NAME.value,
+                ),
+                dimension_names=[Coordinates.TIME.value],
+                overwrite=True,
+            )
+            #####################################################################
+            #####################################################################
+            # # --- Coordinate: Depth --- #
+            depth_data_values = self.get_depth_values(
+                max_echo_range=max_echo_range,
+            )
+            depth_data = np.array(
+                depth_data_values, dtype=Coordinates.DEPTH_DTYPE.value
+            )
+            root.create_array(
+                name=Coordinates.DEPTH.value,
+                # shape=depth_indices,
+                # dtype=np.dtype(Coordinates.DEPTH_DTYPE.value),
+                data=depth_data,
+                chunks=depth_chunk_shape,
+                compressors=compressors,
+                # fill_value=np.nan,
+                attributes=dict(
+                    units=Coordinates.DEPTH_UNITS.value,
+                    long_name=Coordinates.DEPTH_LONG_NAME.value,
+                    standard_name=Coordinates.DEPTH_STANDARD_NAME.value,
+                ),
+                dimension_names=[Coordinates.DEPTH.value],  # TODO: is this right
+                overwrite=True,
+            )
+            # #####################################################################
+            # # --- Coordinate: Latitude --- #
+            # latitude_values = np.rep(np.nan, width_indices)
+            # latitude_values.astype(np.dtype(Coordinates.LATITUDE_DTYPE.value))
+            root.create_array(
+                name=Coordinates.LATITUDE.value,
+                shape=width,
+                dtype=np.dtype(Coordinates.LATITUDE_DTYPE.value),
+                # data=latitude_values,
+                chunks=latitude_chunk_shape,
+                compressors=compressors,
+                fill_value=np.nan,
+                attributes=dict(
+                    units=Coordinates.LATITUDE_UNITS.value,
+                    long_name=Coordinates.LATITUDE_LONG_NAME.value,
+                    standard_name=Coordinates.LATITUDE_STANDARD_NAME.value,
+                ),
+                dimension_names=[Coordinates.TIME.value],
+                overwrite=True,
+            )
+            # #####################################################################
+            # # --- Coordinate: Longitude --- #
+            # longitude_values = np.arange(0, width_indices)
+            # longitude_values.astype(np.dtype(Coordinates.LONGITUDE_DTYPE.value))
+            root.create_array(
+                name=Coordinates.LONGITUDE.value,
+                shape=width,
+                dtype=np.dtype(Coordinates.LONGITUDE_DTYPE.value),
+                # data=longitude_values,
+                chunks=longitude_chunk_shape,
+                compressors=compressors,
+                fill_value=np.nan,
+                attributes=dict(
+                    units=Coordinates.LONGITUDE_UNITS.value,
+                    long_name=Coordinates.LONGITUDE_LONG_NAME.value,
+                    standard_name=Coordinates.LONGITUDE_STANDARD_NAME.value,
+                ),
+                dimension_names=[
+                    Coordinates.TIME.value
+                ],  # Note: LONGITUDE is indexed by TIME
+                overwrite=True,
+            )
+            # #####################################################################
+            # # --- Coordinate: Bottom --- #
+            # bottom_values = np.repeat(12.34, width_indices)
+            # bottom_values.astype(np.dtype(Coordinates.BOTTOM_DTYPE.value))
+            root.create_array(
+                name=Coordinates.BOTTOM.value,
+                shape=width,
+                dtype=np.dtype(Coordinates.BOTTOM_DTYPE.value),
+                # data=bottom_values,
+                chunks=bottom_chunk_shape,
+                compressors=compressors,
+                fill_value=np.nan,
+                attributes=dict(
+                    units=Coordinates.BOTTOM_UNITS.value,
+                    long_name=Coordinates.BOTTOM_LONG_NAME.value,
+                    standard_name=Coordinates.BOTTOM_STANDARD_NAME.value,
+                ),
+                dimension_names=[Coordinates.TIME.value],  # Note: _ is indexed by TIME
+                overwrite=True,
+            )
+            # #####################################################################
+            # # --- Coordinate: Speed --- #
+            # speed_values = np.repeat(5.67, width_indices)
+            # speed_values.astype(np.dtype(Coordinates.SPEED_DTYPE.value))
+            root.create_array(
+                name=Coordinates.SPEED.value,
+                shape=width,
+                dtype=np.dtype(Coordinates.SPEED_DTYPE.value),
+                # data=speed_values,
+                chunks=speed_chunk_shape,
+                compressors=compressors,
+                fill_value=np.nan,
+                attributes=dict(
+                    units=Coordinates.SPEED_UNITS.value,
+                    long_name=Coordinates.SPEED_LONG_NAME.value,
+                    standard_name=Coordinates.SPEED_STANDARD_NAME.value,
+                ),
+                dimension_names=[Coordinates.TIME.value],  # Note: _ is indexed by TIME
+                overwrite=True,
+            )
+            # #####################################################################
+            # # --- Coordinate: Distance --- #
+            # distance_values = np.repeat(8.90, width_indices)
+            # distance_values.astype(np.dtype(Coordinates.DISTANCE_DTYPE.value))
+            root.create_array(
+                name=Coordinates.DISTANCE.value,
+                shape=width,
+                dtype=np.dtype(Coordinates.DISTANCE_DTYPE.value),
+                # data=distance_values,
+                chunks=distance_chunk_shape,
+                compressors=compressors,
+                fill_value=np.nan,
+                attributes=dict(
+                    units=Coordinates.DISTANCE_UNITS.value,
+                    long_name=Coordinates.DISTANCE_LONG_NAME.value,
+                    standard_name=Coordinates.DISTANCE_STANDARD_NAME.value,
+                ),
+                dimension_names=[Coordinates.TIME.value],  # Note: _ is indexed by TIME
+                overwrite=True,
+            )
+            # #####################################################################
+            # # --- Coordinate: Frequency --- #
+            root.create_array(
+                name=Coordinates.FREQUENCY.value,
+                # shape=frequency_indices,
+                # dtype=np.dtype(Coordinates.FREQUENCY_DTYPE.value),
+                data=frequencies,
+                # chunks=(Constants.SPATIOTEMPORAL_CHUNK_SIZE.value,),
+                chunks=frequency_chunk_shape,
+                compressors=compressors,
+                # fill_value=0,
+                attributes=dict(
+                    units=Coordinates.FREQUENCY_UNITS.value,
+                    long_name=Coordinates.FREQUENCY_LONG_NAME.value,
+                    standard_name=Coordinates.FREQUENCY_STANDARD_NAME.value,
+                ),
+                dimension_names=[Coordinates.FREQUENCY.value],
+                overwrite=True,
+            )
+            # #####################################################################
+            # # --- Sv Data --- #
+            root.create_array(
+                name=Coordinates.SV.value,
+                shape=(len(depth_data), width, len(frequencies)),
+                dtype=np.dtype(Coordinates.SV_DTYPE.value),
+                # data=,
+                chunks=sv_chunk_shape,
+                compressors=compressors,
+                fill_value=np.nan,
+                attributes=dict(
+                    units=Coordinates.SV_UNITS.value,
+                    long_name=Coordinates.SV_LONG_NAME.value,
+                    standard_name=Coordinates.SV_STANDARD_NAME.value,
+                ),
+                dimension_names=[
+                    Coordinates.DEPTH.value,
+                    Coordinates.TIME.value,
+                    Coordinates.FREQUENCY.value,
+                ],
+                overwrite=True,
+            )
+            #####################################################################
+            # # --- Metadata --- #
+            root.attrs["ship_name"] = ship_name
+            root.attrs["cruise_name"] = cruise_name
+            root.attrs["sensor_name"] = sensor_name
+            #
+            root.attrs["processing_software_name"] = Coordinates.PROJECT_NAME.value
+            # NOTE: for the version to be parsable you need to build the python package locally first.
+            root.attrs["processing_software_version"] = metadata.version(
+                "water-column-sonar-processing"
+            )
+            root.attrs["processing_software_time"] = Timestamp.get_timestamp()
+            #
+            root.attrs["calibration_status"] = calibration_status
+            root.attrs["tile_size"] = Constants.TILE_SIZE.value
+            #
+            return zarr_path
+        except Exception as err:
+            raise RuntimeError(f"Problem trying to create zarr store, {err}")
+
+    # #######################################################
+    # def create_zarr_store_old(
+    #         self,
+    #         path: str,  # 'level_2/Henry_B._Bigelow/HB0707/EK60/HB0707.model/tmp/HB0707.zarr/.zattrs'
+    #         ship_name: str,
+    #         cruise_name: str,
+    #         sensor_name: str,
+    #         frequencies: list,  # units in Hz
+    #         width: int,
+    #         max_echo_range: float,
+    #         # cruise_min_epsilon: float,  # smallest resolution in meters
+    #         calibration_status: bool = False,  # Assume uncalibrated
+    # ) -> str:
+    #     """
+    #     Creates a new zarr store in a local temporary directory(?)
+    #     """
+    #     try:
+    #         print(f"Creating local zarr store, {cruise_name}.zarr for ship {ship_name}")
+    #         if len(frequencies) != len(set(frequencies)):
+    #             raise Exception(
+    #                 "Number of frequencies does not match number of channels"
+    #             )
+    #
+    #         zarr_path = f"{path}/{cruise_name}.zarr"
+    #         #####################################################################
+    #         # Define the chunk sizes and the encoding
+    #         # 1_000_000 data points for quickest download
+    #         spatiotemporal_chunk_size = int(1e6)
+    #         depth_chunk_shape = (512,)
+    #         time_chunk_shape = (spatiotemporal_chunk_size,)
+    #         frequency_chunk_shape = (len(frequencies),)
+    #         latitude_chunk_shape = (spatiotemporal_chunk_size,)
+    #         longitude_chunk_shape = (spatiotemporal_chunk_size,)
+    #         bottom_chunk_shape = (spatiotemporal_chunk_size,)
+    #         speed_chunk_shape = (spatiotemporal_chunk_size,)
+    #         distance_chunk_shape = (spatiotemporal_chunk_size,)
+    #         sv_chunk_shape = (512, 512, 1)  # TODO: move to constants
+    #
+    #         #####################################################################
+    #         ##### Depth #####
+    #         depth_data_values = self.get_depth_values(
+    #             max_echo_range=max_echo_range,
+    #         )
+    #
+    #         depth_data = np.array(
+    #             depth_data_values, dtype=Coordinates.DEPTH_DTYPE.value
+    #         )
+    #         depth_da = xr.DataArray(
+    #             data=depth_data,
+    #             dims=Coordinates.DEPTH.value,
+    #             name=Coordinates.DEPTH.value,
+    #             attrs=dict(
+    #                 units=Coordinates.DEPTH_UNITS.value,
+    #                 long_name=Coordinates.DEPTH_LONG_NAME.value,
+    #                 standard_name=Coordinates.DEPTH_STANDARD_NAME.value,
+    #             ),
+    #         )
+    #
+    #         ##### Time #####
+    #         # https://zarr.readthedocs.io/en/stable/spec/v2.html#data-type-encoding
+    #         time_data = np.array(
+    #             np.repeat(np.datetime64(0, "ns"), width),
+    #             dtype="datetime64[ns]",
+    #         )
+    #         time_da = xr.DataArray(
+    #             data=time_data,
+    #             dims=Coordinates.TIME.value,
+    #             name=Coordinates.TIME.value,
+    #             attrs=dict(
+    #                 # Note: cal & units are written automatically by xarray
+    #                 # calendar="proleptic_gregorian",
+    #                 # units="seconds since 1970-01-01 00:00:00",
+    #                 long_name=Coordinates.TIME_LONG_NAME.value,
+    #                 standard_name=Coordinates.TIME_STANDARD_NAME.value,
+    #             ),
+    #         )
+    #
+    #         ##### Frequency #####
+    #         frequency_data = np.array(
+    #             frequencies,
+    #             dtype=np.dtype(Coordinates.FREQUENCY_DTYPE.value),
+    #         )
+    #         frequency_da = xr.DataArray(
+    #             data=frequency_data,
+    #             dims=Coordinates.FREQUENCY.value,
+    #             name=Coordinates.FREQUENCY.value,
+    #             attrs=dict(
+    #                 units=Coordinates.FREQUENCY_UNITS.value,
+    #                 long_name=Coordinates.FREQUENCY_LONG_NAME.value,
+    #                 standard_name=Coordinates.FREQUENCY_STANDARD_NAME.value,
+    #             ),
+    #         )
+    #
+    #         ##### Latitude #####
+    #         gps_data = np.array(
+    #             np.repeat(np.nan, width),
+    #             dtype=np.dtype(Coordinates.LATITUDE_DTYPE.value),
+    #         )
+    #         latitude_da = xr.DataArray(
+    #             data=gps_data,
+    #             coords=dict(
+    #                 time=time_da,
+    #             ),
+    #             dims=Coordinates.TIME.value,  # Note: "TIME"
+    #             name=Coordinates.LATITUDE.value,
+    #             attrs=dict(
+    #                 units=Coordinates.LATITUDE_UNITS.value,
+    #                 long_name=Coordinates.LATITUDE_LONG_NAME.value,
+    #                 standard_name=Coordinates.LATITUDE_STANDARD_NAME.value,
+    #             ),
+    #         )  # Note: LATITUDE is indexed by TIME
+    #
+    #         ##### Longitude #####
+    #         longitude_da = xr.DataArray(
+    #             data=gps_data,
+    #             coords=dict(
+    #                 time=time_da,
+    #             ),
+    #             dims=Coordinates.TIME.value,  # Note: "TIME"
+    #             name=Coordinates.LONGITUDE.value,
+    #             attrs=dict(
+    #                 units=Coordinates.LONGITUDE_UNITS.value,
+    #                 long_name=Coordinates.LONGITUDE_LONG_NAME.value,
+    #                 standard_name=Coordinates.LONGITUDE_STANDARD_NAME.value,
+    #             ),
+    #         )  # Note: LONGITUDE is indexed by TIME
+    #
+    #         ##### Bottom #####
+    #         bottom_data = np.array(
+    #             np.repeat(np.nan, width), dtype=np.dtype(Coordinates.BOTTOM_DTYPE.value)
+    #         )
+    #         bottom_da = xr.DataArray(
+    #             data=bottom_data,
+    #             coords=dict(
+    #                 time=time_da,
+    #             ),
+    #             dims=Coordinates.TIME.value,  # Note: "TIME"
+    #             name=Coordinates.BOTTOM.value,
+    #             attrs=dict(
+    #                 units=Coordinates.BOTTOM_UNITS.value,
+    #                 long_name=Coordinates.BOTTOM_LONG_NAME.value,
+    #                 standard_name=Coordinates.BOTTOM_STANDARD_NAME.value,
+    #             ),
+    #         )
+    #
+    #         ##### Speed #####
+    #         speed_data = np.array(
+    #             np.repeat(np.nan, width), dtype=np.dtype(Coordinates.SPEED_DTYPE.value)
+    #         )
+    #         speed_da = xr.DataArray(
+    #             data=speed_data,
+    #             coords=dict(
+    #                 time=time_da,
+    #             ),
+    #             dims=Coordinates.TIME.value,  # Note: "TIME"
+    #             name=Coordinates.SPEED.value,
+    #             attrs=dict(
+    #                 units=Coordinates.SPEED_UNITS.value,
+    #                 long_name=Coordinates.SPEED_LONG_NAME.value,
+    #                 standard_name=Coordinates.SPEED_STANDARD_NAME.value,
+    #             ),
+    #         )
+    #
+    #         ##### Distance #####
+    #         distance_data = np.array(
+    #             np.repeat(np.nan, width),
+    #             dtype=np.dtype(Coordinates.DISTANCE_DTYPE.value),
+    #         )
+    #         distance_da = xr.DataArray(
+    #             data=distance_data,
+    #             coords=dict(
+    #                 time=time_da,
+    #             ),
+    #             dims=Coordinates.TIME.value,  # Note: "TIME"
+    #             name=Coordinates.DISTANCE.value,
+    #             attrs=dict(
+    #                 units=Coordinates.DISTANCE_UNITS.value,
+    #                 long_name=Coordinates.DISTANCE_LONG_NAME.value,
+    #                 standard_name=Coordinates.DISTANCE_STANDARD_NAME.value,
+    #             ),
+    #         )
+    #
+    #         ##### Sv #####
+    #         gc.collect()
+    #         # sv_data = np.empty(
+    #         #     (len(depth_data), width, len(frequencies)),
+    #         #     # (2501, 4_100_782, 4), # large cruise used for testing
+    #         #     dtype=np.dtype(Coordinates.SV_DTYPE.value),
+    #         # )
+    #         sv_data = np.full(
+    #             (len(depth_data), width, len(frequencies)),
+    #             np.nan,
+    #             dtype=np.dtype(Coordinates.SV_DTYPE.value),
+    #         )
+    #         print(f"one: {sys.getsizeof(sv_data)}")
+    #         # sv_data[:] = np.nan  # initialize all
+    #
+    #         sv_da = xr.DataArray(
+    #             data=sv_data,
+    #             coords=dict(
+    #                 depth=depth_da,
+    #                 time=time_da,
+    #                 frequency=frequency_da,
+    #                 #
+    #                 latitude=latitude_da,
+    #                 longitude=longitude_da,
+    #                 bottom=bottom_da,
+    #                 speed=speed_da,
+    #                 distance=distance_da,
+    #             ),
+    #             dims=(  # Depth * Time * Frequency
+    #                 Coordinates.DEPTH.value,
+    #                 Coordinates.TIME.value,
+    #                 Coordinates.FREQUENCY.value,
+    #             ),
+    #             name=Coordinates.SV.value,
+    #             attrs=dict(
+    #                 units=Coordinates.SV_UNITS.value,
+    #                 long_name=Coordinates.SV_LONG_NAME.value,
+    #                 standard_name=Coordinates.SV_STANDARD_NAME.value,
+    #                 tiles_size=Constants.TILE_SIZE.value,
+    #                 _FillValue=np.nan,
+    #             ),
+    #         )
+    #         print(f"two: {sys.getsizeof(sv_data)}")  # getting to at least here
+    #         del sv_data
+    #         sv_da.encoding = {"compressors": [compressor], "chunks": sv_chunk_shape}
+    #         # sv_da = sv_da.astype(np.float32)  # was crashing here
+    #         gc.collect()
+    #         #####################################################################
+    #         ### Now create the xarray.Dataset
+    #         ds = xr.Dataset(
+    #             data_vars=dict(
+    #                 Sv=sv_da,
+    #                 #
+    #                 bottom=bottom_da,
+    #                 speed=speed_da,
+    #                 distance=distance_da,
+    #             ),
+    #             coords=dict(
+    #                 depth=depth_da,
+    #                 time=time_da,
+    #                 frequency=frequency_da,
+    #                 #
+    #                 latitude=latitude_da,
+    #                 longitude=longitude_da,
+    #             ),
+    #             attrs=dict(
+    #                 # --- Metadata --- #
+    #                 ship_name=ship_name,
+    #                 cruise_name=cruise_name,
+    #                 sensor_name=sensor_name,
+    #                 processing_software_name=Coordinates.PROJECT_NAME.value,
+    #                 # NOTE: for the version to be parsable you need to build the python package
+    #                 #  locally first.
+    #                 processing_software_version=importlib.metadata.version(
+    #                     "water-column-sonar-processing"
+    #                 ),
+    #                 processing_software_time=Timestamp.get_timestamp(),
+    #                 calibration_status=calibration_status,
+    #                 tile_size=Constants.TILE_SIZE.value,
+    #             ),
+    #         )
+    #         del sv_da
+    #         gc.collect()
+    #         print(f"three: {sys.getsizeof(ds)}")
+    #         #####################################################################
+    #         encodings = dict(
+    #             depth={
+    #                 "compressors": [compressor],
+    #                 "chunks": depth_chunk_shape,
+    #             },
+    #             time={
+    #                 "compressors": [compressor],
+    #                 "chunks": time_chunk_shape,
+    #                 "units": Coordinates.TIME_UNITS.value,
+    #             },
+    #             frequency={
+    #                 "compressors": [compressor],
+    #                 "chunks": frequency_chunk_shape,
+    #             },
+    #             latitude={
+    #                 "compressors": [compressor],
+    #                 "chunks": latitude_chunk_shape,
+    #             },
+    #             longitude={
+    #                 "compressors": [compressor],
+    #                 "chunks": longitude_chunk_shape,
+    #             },
+    #             bottom={
+    #                 "compressors": [compressor],
+    #                 "chunks": bottom_chunk_shape,
+    #             },
+    #             speed={
+    #                 "compressors": [compressor],
+    #                 "chunks": speed_chunk_shape,
+    #             },
+    #             distance={
+    #                 "compressors": [compressor],
+    #                 "chunks": distance_chunk_shape,
+    #             },
+    #             Sv={
+    #                 "compressors": [compressor],
+    #                 "chunks": sv_chunk_shape,
+    #             },
+    #         )
+    #         gc.collect()
+    #         ds.to_zarr(
+    #             store=zarr_path,
+    #             mode="w",  # “w” means create (overwrite if exists)
+    #             encoding=encodings,
+    #             consolidated=False,
+    #             safe_chunks=False,
+    #             align_chunks=True,
+    #             zarr_format=3,
+    #             write_empty_chunks=False,  # Might need to change this
+    #         )
+    #         #####################################################################
+    #         return zarr_path
+    #     except Exception as err:
+    #         raise RuntimeError(f"Problem trying to create zarr store, {err}")
+    #     # finally:
+    #     #     cleaner = Cleaner()
+    #     #     cleaner.delete_local_files()
+    #     # TODO: should delete zarr store in temp directory too?
+
+    ############################################################################
+    def open_s3_zarr_store_with_zarr(
+        self,
+        ship_name: str,
+        cruise_name: str,
+        sensor_name: str,
+        output_bucket_name: str,
+        endpoint_url: Optional[str] = None,
+    ) -> Group:
+        # Mounts a Zarr store using pythons Zarr implementation. The mounted store
+        #  will have read/write privileges so that store can be updated.
+        print("Opening L2 Zarr store with Zarr for writing.")
+        try:
+            level = str(Constants.LEVEL_2.value)
+            store = f"s3://{output_bucket_name}/{level}/{ship_name}/{cruise_name}/{sensor_name}/{cruise_name}.zarr"
+            print(f"endpoint url: {endpoint_url}")
+            cruise_zarr = zarr.open(
+                store=store,
+                mode="r+",
+                zarr_format=3,
+                storage_options={
+                    "endpoint_url": endpoint_url,
+                    "key": self.key,
+                    "secret": self.secret,
+                },
+            )
+            print("Done opening store with Zarr.")
+            return cruise_zarr
+        except Exception as err:  # Failure
+            raise RuntimeError(f"Exception encountered opening store with Zarr, {err}")
+
+    ###########################################################################
+    @staticmethod
+    def open_s3_zarr_store_with_xarray(
+        ship_name: str,
+        cruise_name: str,
+        sensor_name: str,
+        file_name_stem: str,
+        bucket_name: str,
+        # level: str, # TODO: add level
+        endpoint_url: Optional[str] = None,  # needed for moto testing
+    ) -> xr.Dataset:
+        print("Opening L1 Zarr store in S3 with Xarray.")
+        try:
+            zarr_path = f"s3://{bucket_name}/level_1/{ship_name}/{cruise_name}/{sensor_name}/{file_name_stem}.zarr"
+            kwargs = {"consolidated": False}
+            ds = xr.open_dataset(
+                filename_or_obj=zarr_path,
+                engine="zarr",
+                backend_kwargs={
+                    "storage_options": {
+                        "endpoint_url": endpoint_url,
+                        "anon": True,
+                    },
+                },
+                **kwargs,
+            )
+            return ds
+        except Exception as err:
+            raise RuntimeError(f"Problem opening Zarr store in S3 as Xarray, {err}")
+
+    ###########################################################################
+    # TODO: can this be consolidated with above
+    @staticmethod
+    def open_l2_zarr_store_with_xarray(
+        ship_name: str,
+        cruise_name: str,
+        sensor_name: str,
+        bucket_name: str,
+        endpoint_url: Optional[str] = None,  # needed for moto testing
+    ) -> xr.Dataset:
+        print("Opening L2 Zarr store in S3 with Xarray.")
+        try:
+            level = str(Constants.LEVEL_2.value)
+            zarr_path = f"s3://{bucket_name}/{level}/{ship_name}/{cruise_name}/{sensor_name}/{cruise_name}.zarr"
+            kwargs = {"consolidated": False}
+            ds = xr.open_dataset(
+                filename_or_obj=zarr_path,
+                engine="zarr",
+                backend_kwargs={
+                    "storage_options": {
+                        "endpoint_url": endpoint_url,
+                        "anon": True,
+                    }
+                },
+                **kwargs,
+            )
+            return ds
+        except Exception as err:
+            raise RuntimeError(f"Problem opening Zarr store in S3 as Xarray, {err}")
+
+    ###########################################################################
+
+    ###########################################################################
+    # def create_process_synchronizer(self):
+    #     # TODO: explore aws redis options
+    #     pass
+
+    ###########################################################################
+    # def verify_cruise_store_data(self):
+    #     # TODO: run a check on a finished model store to ensure that
+    #     #   none of the time, latitude, longitude, or depth values
+    #     #   are NaN.
+    #     pass
+
+    ###########################################################################
+
+
+###########################################################
