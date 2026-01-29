@@ -1,0 +1,682 @@
+# Dataskipper Boat
+
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](pyproject.toml)
+[![Python](https://img.shields.io/badge/python-3.8%2B-green.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
+
+**Dataskipper Boat** is an industrial-grade Modbus/IEC61850 RTU monitoring system with a built-in web portal for configuration, diagnostics, and real-time device management. Designed for deployment on edge devices (Raspberry Pi, industrial PCs) to collect data from energy meters, relay panels, and other Modbus-compatible devices.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [System Architecture](#system-architecture)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Web Portal](#web-portal)
+- [Services](#services)
+- [API Reference](#api-reference)
+- [Deployment](#deployment)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
+## Features
+
+### Core Capabilities
+- **Multi-Protocol Support**: Modbus RTU (Serial RS485/RS232) and Modbus TCP
+- **Real-time Monitoring**: Continuous polling with configurable intervals
+- **Data Publishing**: HTTP API, MQTT, and local storage
+- **Alert System**: Threshold-based alerts with Discord/Telegram notifications
+- **Modbus TCP Gateway**: Expose cached readings via Modbus TCP server
+
+### Web Portal
+- **Dashboard**: Real-time system metrics and service status
+- **Device Health**: Monitor connection status and register values
+- **Configuration Editor**: Visual YAML editor with validation
+- **Test Mode**: Safe configuration testing before production deployment
+- **Diagnostics**: Hardware info, network tools, and log viewer
+
+### Advanced Features
+- **Meter Registry**: Pre-configured profiles for popular energy meters
+- **Register Caching**: Efficient data sharing between consumers
+- **Auto-Reconnection**: Resilient connection handling with exponential backoff
+- **Performance Monitoring**: CPU, memory, and polling rate tracking
+
+---
+
+## System Architecture
+
+### High-Level Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           DATASKIPPER BOAT RTU                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                  │
+│  │   RS485/232  │    │  Modbus TCP  │    │  IEC 61850   │                  │
+│  │   Serial     │    │   Client     │    │   Client     │                  │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘                  │
+│         │                   │                   │                          │
+│         └───────────────────┼───────────────────┘                          │
+│                             │                                              │
+│                    ┌────────▼────────┐                                     │
+│                    │  Register Cache │                                     │
+│                    │  (In-Memory)    │                                     │
+│                    └────────┬────────┘                                     │
+│                             │                                              │
+│         ┌───────────────────┼───────────────────┐                          │
+│         │                   │                   │                          │
+│  ┌──────▼──────┐    ┌───────▼───────┐   ┌──────▼──────┐                   │
+│  │  HTTP API   │    │  MQTT Broker  │   │  TCP Server │                   │
+│  │  Publisher  │    │  Publisher    │   │  (Gateway)  │                   │
+│  └──────┬──────┘    └───────┬───────┘   └──────┬──────┘                   │
+│         │                   │                   │                          │
+├─────────┼───────────────────┼───────────────────┼──────────────────────────┤
+│         │                   │                   │                          │
+│         ▼                   ▼                   ▼                          │
+│    ┌─────────┐        ┌─────────┐        ┌─────────┐                      │
+│    │ Backend │        │  MQTT   │        │ SCADA/  │                      │
+│    │ Server  │        │ Broker  │        │ HMI     │                      │
+│    └─────────┘        └─────────┘        └─────────┘                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Component Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              main.py                                        │
+│                         (Application Core)                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         SERVICES LAYER                               │   │
+│  ├─────────────────────────────────────────────────────────────────────┤   │
+│  │                                                                      │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │   │
+│  │  │ API Service  │  │ MQTT Service │  │ TCP Gateway  │              │   │
+│  │  │ (HTTP POST)  │  │ (Pub/Sub)    │  │ (Modbus TCP) │              │   │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘              │   │
+│  │                                                                      │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │   │
+│  │  │ Register     │  │ Aggregation  │  │ Performance  │              │   │
+│  │  │ Cache        │  │ Service      │  │ Monitor      │              │   │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘              │   │
+│  │                                                                      │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │   │
+│  │  │ Discord      │  │ Telegram     │  │ Watchdog     │              │   │
+│  │  │ Notifier     │  │ Notifier     │  │ Service      │              │   │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘              │   │
+│  │                                                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         WEB PORTAL                                   │   │
+│  ├─────────────────────────────────────────────────────────────────────┤   │
+│  │                                                                      │   │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │   │
+│  │  │Dashboard │ │ Devices  │ │  Config  │ │  Diag-   │ │   Logs   │ │   │
+│  │  │          │ │  Health  │ │  Editor  │ │ nostics  │ │  Viewer  │ │   │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │   │
+│  │                                                                      │   │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐                            │   │
+│  │  │  Test    │ │  Config  │ │  Alerts  │                            │   │
+│  │  │  Mode    │ │  Wizard  │ │  Panel   │                            │   │
+│  │  └──────────┘ └──────────┘ └──────────┘                            │   │
+│  │                                                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+```
+┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
+│ Modbus  │────▶│ Polling │────▶│ Register│────▶│ Format  │────▶│ Publish │
+│ Device  │     │  Loop   │     │  Cache  │     │  Data   │     │         │
+└─────────┘     └─────────┘     └─────────┘     └─────────┘     └────┬────┘
+                                                                      │
+                     ┌────────────────────────────────────────────────┤
+                     │                    │                           │
+                     ▼                    ▼                           ▼
+              ┌─────────────┐     ┌─────────────┐             ┌─────────────┐
+              │  HTTP API   │     │    MQTT     │             │ TCP Gateway │
+              │  (Backend)  │     │   Broker    │             │   (SCADA)   │
+              └─────────────┘     └─────────────┘             └─────────────┘
+```
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python 3.8 or higher
+- pip (Python package manager)
+- Supervisor (for production deployment)
+- Git
+
+### Quick Install
+
+```bash
+# Clone the repository
+git clone https://github.com/datasailors/dataskipper-boat.git
+cd dataskipper-boat
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Or install as package
+pip install -e .
+```
+
+### Production Install (Raspberry Pi)
+
+```bash
+# Install as user package
+pip install --user dataskipper-boat
+
+# Or from source
+pip install --user -e /path/to/dataskipper-boat
+```
+
+---
+
+## Configuration
+
+### Directory Structure
+
+```
+/home/dcu/
+├── dataskipper-boat/          # Application code
+├── config_<instance>/         # Instance-specific config
+│   ├── communication.yaml     # API, MQTT, gateway settings
+│   └── slave_config.yaml      # Modbus device definitions
+└── data_<instance>/           # Runtime data storage
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CONFIG_DIR` | Path to configuration directory | `~/config` |
+| `DATA_DIR` | Path to data storage directory | `~/data` |
+| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
+
+### Configuration Files
+
+#### communication.yaml
+
+```yaml
+# Device identifier
+device_id: "my-rtu-device"
+
+communication:
+  # Backend API endpoints
+  api_endpoints:
+    electrical:
+      measurements:
+        url: "https://api.example.com/v1/electrical"
+        headers:
+          Content-Type: "application/json"
+      alerts:
+        url: "https://api.example.com/v1/alerts"
+
+  # MQTT broker configuration
+  mqtt_config:
+    host: "mqtt.example.com"
+    port: 1883
+    username: "device-user"
+    password: "secret"
+    topics:
+      electrical:
+        measurements: "sensors/electrical/data"
+        alerts: "sensors/electrical/alerts"
+
+  # Modbus TCP Gateway
+  modbus_tcp_gateway:
+    enabled: true
+    host: "0.0.0.0"
+    port: 4196
+    cache_ttl: 180
+
+  # Performance monitoring
+  performance_config:
+    enabled: true
+    monitor_interval: 60
+    cpu_threshold: 80.0
+    memory_threshold: 80.0
+
+# Discord webhook for alerts
+discord_webhook_url: "https://discord.com/api/webhooks/..."
+```
+
+#### slave_config.yaml
+
+```yaml
+connections:
+  - id: "main-panel"
+    label: "Main Electrical Panel"
+    connection_type: serial       # serial or tcp
+    port: "/dev/ttyS0"
+    baud_rate: 9600
+    parity: "N"
+    stop_bits: 1
+    timeout: 3
+    retries: 3
+
+    clients:
+      - id: "meter-1"
+        type: electrical
+        unit_id: 1
+        meter_model: "schneider_em6400"
+        profile: "basic_power"
+        http_enabled: true
+        http_interval: 60
+        mqtt_enabled: true
+        mqtt_interval: 10
+        expose_via_tcp: true
+
+  - id: "remote-panel"
+    connection_type: tcp
+    host: "192.168.1.100"
+    port: 502
+    timeout: 3
+
+    clients:
+      - id: "remote-meter"
+        unit_id: 1
+        meter_model: "elmeasure_lg5310"
+        profile: "full_power"
+```
+
+---
+
+## Web Portal
+
+The built-in web portal provides a comprehensive interface for monitoring and configuration.
+
+### Accessing the Portal
+
+```
+http://<device-ip>:8080
+```
+
+Default credentials: `admin` / `zxcvbnm@123`
+
+### Portal Pages
+
+| Page | Path | Description |
+|------|------|-------------|
+| **Dashboard** | `/` | System overview, service status, resource usage |
+| **Device Health** | `/devices` | Real-time device status and register values |
+| **Configuration** | `/config` | View and edit YAML configuration files |
+| **Visual Editor** | `/config/editor/slave` | Visual slave config editor with device cards |
+| **Comm Editor** | `/config/editor/communication` | Visual communication config editor |
+| **Config Wizard** | `/config/wizard` | Step-by-step device configuration wizard |
+| **Testing** | `/testing` | Test mode management and verification |
+| **Diagnostics** | `/diagnostics` | Hardware info, network tools, GPIO status |
+| **Logs** | `/logs` | Real-time log viewer with filtering |
+| **Alerts** | `/alerts` | Alert history and configuration |
+
+### Portal Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           WEB PORTAL (Port 8080)                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                          FRONTEND (Jinja2)                          │   │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │   │
+│  │  │base.html │ │dashboard │ │ devices  │ │  config  │ │   logs   │ │   │
+│  │  │(layout)  │ │  .html   │ │  .html   │ │  .html   │ │  .html   │ │   │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                     │                                       │
+│                                     ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         BACKEND (FastAPI)                           │   │
+│  │                                                                      │   │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │   │
+│  │  │   /api/metrics   │  │  /api/config/*   │  │  /api/test-mode  │  │   │
+│  │  │  System metrics  │  │  Config CRUD     │  │  Test operations │  │   │
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘  │   │
+│  │                                                                      │   │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │   │
+│  │  │   /api/devices   │  │   /api/service   │  │   /api/diag/*    │  │   │
+│  │  │  Device health   │  │  Service control │  │  Diagnostics     │  │   │
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘  │   │
+│  │                                                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                        AUTHENTICATION                                │   │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │   │
+│  │  │  Session-based auth  │  Brute-force protection  │  Lockout   │  │   │
+│  │  └──────────────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Test Mode Workflow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Enable    │────▶│    Edit     │────▶│   Verify    │────▶│    Save     │
+│  Test Mode  │     │   Config    │     │   Config    │     │  to Test    │
+└─────────────┘     └─────────────┘     └─────────────┘     └──────┬──────┘
+                                                                   │
+                    ┌──────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Publish   │────▶│   Apply     │────▶│  Restart    │────▶│   Disable   │
+│  to Backend │     │  to Prod    │     │  Service    │     │  Test Mode  │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+---
+
+## Services
+
+### Core Services
+
+| Service | File | Description |
+|---------|------|-------------|
+| **API Service** | `api_service.py` | HTTP client for backend API communication |
+| **MQTT Service** | `mqtt_service.py` | MQTT publisher with auto-reconnection |
+| **Register Cache** | `register_cache.py` | In-memory cache for Modbus readings |
+| **TCP Gateway** | `modbus_tcp_server.py` | Modbus TCP server exposing cached data |
+
+### Support Services
+
+| Service | File | Description |
+|---------|------|-------------|
+| **Aggregation** | `aggregation_service.py` | Time-window data aggregation |
+| **Performance Monitor** | `performance_monitor.py` | System resource monitoring |
+| **Watchdog** | `watchdog_service.py` | Health monitoring and systemd integration |
+| **NTP Service** | `ntp_service.py` | Time synchronization |
+| **Weather Service** | `weather_service.py` | Optional weather data integration |
+
+### Notification Services
+
+| Service | File | Description |
+|---------|------|-------------|
+| **Discord Notifier** | `discord_notifier.py` | Discord webhook alerts |
+| **Telegram Notifier** | `telegram_notifier.py` | Telegram bot alerts |
+
+### Modbus Clients
+
+| Client | File | Description |
+|--------|------|-------------|
+| **Serial Client** | `modbus/serial_client.py` | RS485/RS232 Modbus RTU |
+| **TCP Client** | `modbus/tcp_client.py` | Modbus TCP/IP |
+
+---
+
+## API Reference
+
+### REST API Endpoints
+
+#### System
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/metrics` | System metrics (CPU, memory, disk) |
+| GET | `/api/status` | Application status |
+| POST | `/api/service/restart` | Restart supervisor service |
+
+#### Configuration
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/config/<dir>/<file>` | Get config file content |
+| POST | `/api/config/<dir>/<file>` | Save config file |
+| GET | `/api/config/files` | List config files |
+
+#### Devices
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/device-health` | Device connection status |
+| GET | `/api/device/<id>/registers` | Device register values |
+
+#### Test Mode
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/test-mode/status` | Test mode status |
+| POST | `/api/test-mode/enable` | Enable test mode |
+| POST | `/api/test-mode/disable` | Disable test mode |
+| POST | `/api/test-mode/verify-config` | Verify configuration |
+| POST | `/api/test-mode/publish-config` | Publish to backend |
+
+#### Diagnostics
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/diag/hardware` | Hardware information |
+| GET | `/api/diag/network` | Network configuration |
+| POST | `/api/diag/ping` | Network ping test |
+
+---
+
+## Deployment
+
+### Supervisor Configuration
+
+Create `/etc/supervisor/conf.d/dataskipper-boat.conf`:
+
+```ini
+[group:ess1-unified]
+programs=ess1-unified_00
+
+[program:ess1-unified_00]
+command=/home/dcu/.local/bin/python3 -m dataskipper_boat.main
+directory=/home/dcu/dataskipper-boat
+user=dcu
+environment=CONFIG_DIR="/home/dcu/config_ess1",DATA_DIR="/home/dcu/data_ess1"
+autostart=true
+autorestart=true
+startsecs=10
+stopwaitsecs=30
+stdout_logfile=/var/log/supervisor/ess1-unified.log
+stderr_logfile=/var/log/supervisor/ess1-unified-error.log
+```
+
+### Management Commands
+
+```bash
+# View status
+sudo supervisorctl status
+
+# Start/stop/restart
+sudo supervisorctl start ess1-unified:*
+sudo supervisorctl stop ess1-unified:*
+sudo supervisorctl restart ess1-unified:*
+
+# View logs
+sudo supervisorctl tail -f ess1-unified:ess1-unified_00
+sudo supervisorctl tail -f ess1-unified:ess1-unified_00 stderr
+
+# Reload configuration
+sudo supervisorctl reread
+sudo supervisorctl update
+```
+
+### Remote Deployment
+
+```bash
+# Using deploy.py
+python deploy.py --target iitjmu-ess1 --service ess1-unified
+
+# Manual rsync
+rsync -avz --exclude '.venv' --exclude '__pycache__' \
+  src/ dcu@target:/home/dcu/dataskipper-boat/src/
+```
+
+---
+
+## Development
+
+### Project Structure
+
+```
+dataskipper-boat/
+├── main.py                    # Application entry point
+├── pyproject.toml             # Package configuration
+├── requirements.txt           # Dependencies
+├── README.md                  # This file
+│
+├── src/
+│   ├── config/
+│   │   └── meter_registry.yaml    # Meter profiles database
+│   │
+│   ├── interfaces/            # Abstract interfaces
+│   │   ├── modbus_client.py
+│   │   ├── notifier.py
+│   │   └── storage.py
+│   │
+│   ├── models/                # Data models
+│   │   ├── device.py          # ModbusClient, ModbusConnection
+│   │   ├── measurement.py     # Measurement data classes
+│   │   ├── alert.py           # Alert data classes
+│   │   └── modbus_types.py    # Enums and type definitions
+│   │
+│   ├── services/              # Business logic
+│   │   ├── modbus/            # Modbus clients
+│   │   ├── notifiers/         # Notification services
+│   │   ├── storage/           # Data persistence
+│   │   ├── api_service.py
+│   │   ├── mqtt_service.py
+│   │   ├── register_cache.py
+│   │   └── ...
+│   │
+│   ├── utils/                 # Utilities
+│   │   ├── modbus_utils.py
+│   │   ├── register_parser.py
+│   │   └── alert_checker.py
+│   │
+│   └── web_portal/            # Web interface
+│       ├── app.py             # FastAPI application
+│       ├── auth.py            # Authentication
+│       ├── templates/         # Jinja2 templates
+│       └── static/            # CSS, JS, images
+│
+├── config/                    # Example configurations
+├── tests/                     # Unit and integration tests
+└── scripts/                   # Utility scripts
+```
+
+### Adding a New Meter Model
+
+1. Edit `src/config/meter_registry.yaml`:
+
+```yaml
+meters:
+  - id: "my_new_meter"
+    manufacturer: "Acme Corp"
+    model: "PowerMeter 3000"
+    protocol: "modbus_rtu"
+    default_baud_rate: 9600
+    supported_profiles:
+      - basic_power
+      - full_power
+    registers:
+      voltage_l1:
+        address: 0
+        count: 2
+        data_type: float32
+        byte_order: big
+        unit: V
+```
+
+2. The meter will automatically appear in the Config Wizard.
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+
+# Run specific test file
+pytest tests/test_modbus_client.py -v
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### Device shows "Offline" in Device Health
+
+1. Check physical connection (RS485 wiring, termination)
+2. Verify baud rate and parity settings
+3. Confirm unit ID matches device configuration
+4. Check `/var/log/supervisor/` logs for errors
+
+#### MQTT not publishing
+
+1. Verify broker connectivity: `mosquitto_sub -h <host> -t '#'`
+2. Check credentials in `communication.yaml`
+3. Look for connection errors in logs
+
+#### Web portal not accessible
+
+1. Check if portal is enabled in main.py
+2. Verify port 8080 is not blocked
+3. Check service logs for startup errors
+
+### Debug Commands
+
+```bash
+# Test serial port
+python -c "import serial; s = serial.Serial('/dev/ttyS0', 9600); print('OK')"
+
+# Test Modbus device
+python -c "
+from pymodbus.client import ModbusSerialClient
+client = ModbusSerialClient('/dev/ttyS0', baudrate=9600)
+client.connect()
+result = client.read_holding_registers(0, 2, slave=1)
+print(result.registers if not result.isError() else result)
+"
+
+# Check network connectivity
+ping <mqtt-broker-host>
+curl -I http://<backend-api-url>/health
+```
+
+---
+
+## License
+
+This project is proprietary software owned by DataSailors. All rights reserved.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+---
+
+## Support
+
+- **Documentation**: https://docs.datasailors.io
+- **Issues**: https://github.com/datasailors/dataskipper-boat/issues
+- **Contact**: support@datasailors.io

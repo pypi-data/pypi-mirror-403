@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dataskipper Boat{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Global Test Mode Banner */
+        .global-test-banner {
+            display: none;
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            font-weight: 500;
+            position: sticky;
+            top: 0;
+            z-index: 1001;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .global-test-banner.active {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        .global-test-banner.expiring {
+            background: linear-gradient(135deg, #f44336, #d32f2f);
+            animation: pulse-banner 1s infinite;
+        }
+        @keyframes pulse-banner {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.85; }
+        }
+        .global-test-banner .banner-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .global-test-banner .banner-icon {
+            font-size: 1.2em;
+        }
+        .global-test-banner .banner-timer {
+            font-family: monospace;
+            font-size: 1.1em;
+            background: rgba(255,255,255,0.2);
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        .global-test-banner .banner-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+        .global-test-banner .banner-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* Logout button */
+        .logout-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 12px;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover {
+            background: rgba(244, 67, 54, 0.1);
+            border-color: #f44336;
+            color: #f44336;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Global Test Mode Banner - shown on all pages when test mode is active -->
+    <div id="global-test-banner" class="global-test-banner">
+        <div class="banner-info">
+            <span class="banner-icon">&#9888;</span>
+            <span>TEST MODE ACTIVE - Publishing disabled</span>
+            <span class="banner-timer" id="global-test-timer">--:--</span>
+        </div>
+        <button class="banner-btn" id="extend-test-btn" style="display: none; background: rgba(76,175,80,0.3);" onclick="window.extendTestMode()">+5 min</button>
+        <button class="banner-btn" onclick="window.exitTestModeGlobal()">Exit Test Mode</button>
+    </div>
+
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="nav-icon">&#9889;</span>
+            <span class="nav-title">Dataskipper Boat</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
+            <li><a href="/devices" class="{% if request.url.path == '/devices' %}active{% endif %}">Devices</a></li>
+            <li><a href="/diagnostics" class="{% if request.url.path == '/diagnostics' %}active{% endif %}">Diagnostics</a></li>
+            <li><a href="/testing" class="{% if request.url.path == '/testing' %}active{% endif %}">Testing</a></li>
+            <li><a href="/config" class="{% if request.url.path == '/config' %}active{% endif %}">Config</a></li>
+            <li><a href="/logs" class="{% if request.url.path == '/logs' %}active{% endif %}">Logs</a></li>
+            <li><a href="/alerts" class="{% if request.url.path == '/alerts' %}active{% endif %}">Alerts</a></li>
+        </ul>
+        <div class="nav-status">
+            <span id="connection-status" class="status-indicator status-unknown"></span>
+            <span id="status-text">Connecting...</span>
+            <button onclick="handleLogout()" class="logout-btn" title="Logout">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <span>Dataskipper Boat v1.0</span>
+        <span id="last-update">Last update: --</span>
+    </footer>
+
+    <script src="/static/js/main.js"></script>
+
+    <!-- Logout handler -->
+    <script>
+        async function handleLogout() {
+            if (!confirm('Are you sure you want to logout?')) return;
+
+            try {
+                const response = await fetch('/api/auth/logout', { method: 'POST' });
+                if (response.ok) {
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                window.location.href = '/login';
+            }
+        }
+    </script>
+
+    <!-- Global Test Mode Check - runs on every page -->
+    <script>
+        // Global test mode state
+        window.testModeActive = false;
+
+        async function checkGlobalTestMode() {
+            try {
+                const response = await fetch('/api/test-mode/status');
+                const data = await response.json();
+
+                const banner = document.getElementById('global-test-banner');
+                const timer = document.getElementById('global-test-timer');
+                const extendBtn = document.getElementById('extend-test-btn');
+
+                if (data.status === 'active' || data.status === 'expiring') {
+                    window.testModeActive = true;
+                    banner.classList.add('active');
+
+                    if (data.status === 'expiring') {
+                        banner.classList.add('expiring');
+                    } else {
+                        banner.classList.remove('expiring');
+                    }
+
+                    // Update timer
+                    const mins = Math.floor(data.remaining_seconds / 60);
+                    const secs = data.remaining_seconds % 60;
+                    timer.textContent = mins + ':' + secs.toString().padStart(2, '0');
+
+                    // Show extend button when less than 2 minutes remaining
+                    if (data.remaining_seconds <= 120) {
+                        extendBtn.style.display = 'inline-block';
+                    } else {
+                        extendBtn.style.display = 'none';
+                    }
+
+                    // Dispatch event for pages that need to know
+                    window.dispatchEvent(new CustomEvent('testModeChanged', { detail: data }));
+                } else {
+                    window.testModeActive = false;
+                    banner.classList.remove('active', 'expiring');
+                    extendBtn.style.display = 'none';
+                    window.dispatchEvent(new CustomEvent('testModeChanged', { detail: data }));
+                }
+            } catch (error) {
+                console.log('Test mode check failed:', error);
+            }
+        }
+
+        window.extendTestMode = async function() {
+            try {
+                const response = await fetch('/api/test-mode/extend', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    RTUPortal.showNotification('Test mode extended by 5 minutes', 'success');
+                } else {
+                    RTUPortal.showNotification(data.message || 'Failed to extend', 'error');
+                }
+                checkGlobalTestMode();
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        };
+
+        window.exitTestModeGlobal = async function() {
+            try {
+                const response = await fetch('/api/test-mode/exit', { method: 'POST' });
+                const data = await response.json();
+                checkGlobalTestMode();
+                if (data.message) {
+                    alert(data.message);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        };
+
+        // Check on page load and every 1 second for smooth timer updates
+        document.addEventListener('DOMContentLoaded', function() {
+            checkGlobalTestMode();
+            setInterval(checkGlobalTestMode, 1000);
+        });
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

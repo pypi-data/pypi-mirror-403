@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+
+{% block title %}Device Health - RTU Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title-group">
+        <h1>Device Health</h1>
+        <span class="page-subtitle">Real-time meter status monitoring</span>
+    </div>
+    <div class="header-actions">
+        <span class="last-refresh">Last refresh: <span id="refresh-time">--</span></span>
+        <button class="btn btn-sm btn-secondary" onclick="refreshDeviceStatus()">
+            <span class="btn-icon">↻</span> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="summary-bar">
+    <div class="summary-card summary-total">
+        <div class="summary-icon">📊</div>
+        <div class="summary-content">
+            <span class="summary-value" id="total-count">--</span>
+            <span class="summary-label">Total Devices</span>
+        </div>
+    </div>
+    <div class="summary-card summary-online">
+        <div class="summary-icon">✓</div>
+        <div class="summary-content">
+            <span class="summary-value" id="online-count">--</span>
+            <span class="summary-label">Online</span>
+        </div>
+    </div>
+    <div class="summary-card summary-stale">
+        <div class="summary-icon">⚠</div>
+        <div class="summary-content">
+            <span class="summary-value" id="stale-count">--</span>
+            <span class="summary-label">Stale</span>
+        </div>
+    </div>
+    <div class="summary-card summary-offline">
+        <div class="summary-icon">✗</div>
+        <div class="summary-content">
+            <span class="summary-value" id="offline-count">--</span>
+            <span class="summary-label">Offline</span>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Filter:</label>
+        <div class="filter-buttons">
+            <button class="filter-btn active" data-filter="all" onclick="filterDevices('all')">All</button>
+            <button class="filter-btn" data-filter="online" onclick="filterDevices('online')">Online</button>
+            <button class="filter-btn" data-filter="stale" onclick="filterDevices('stale')">Stale</button>
+            <button class="filter-btn" data-filter="offline" onclick="filterDevices('offline')">Offline</button>
+        </div>
+    </div>
+    <div class="search-group">
+        <input type="text" id="device-search" class="input-sm" placeholder="Search devices..." oninput="searchDevices(this.value)">
+    </div>
+</div>
+
+<!-- Device Grid -->
+<div class="device-grid" id="device-grid">
+    <div class="loading-state">
+        <div class="loading-spinner-lg"></div>
+        <p>Loading device status...</p>
+    </div>
+</div>
+
+<!-- Empty State (hidden by default) -->
+<div class="empty-state-container" id="empty-state" style="display: none;">
+    <div class="empty-icon">📡</div>
+    <h3>No Devices Found</h3>
+    <p>No devices match your current filter criteria.</p>
+    <button class="btn btn-primary" onclick="filterDevices('all')">Show All Devices</button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let allDevices = [];
+let currentFilter = 'all';
+let searchQuery = '';
+
+// Auto-refresh every 10 seconds
+setInterval(refreshDeviceStatus, 10000);
+
+// Initial load
+document.addEventListener('DOMContentLoaded', refreshDeviceStatus);
+
+async function refreshDeviceStatus() {
+    try {
+        const response = await fetch('/api/devices/status');
+        const data = await response.json();
+
+        allDevices = data.devices || [];
+
+        // Update summary
+        updateSummary(data.summary || {});
+
+        // Render devices
+        renderDevices();
+
+        // Update refresh time
+        document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+
+        updateConnectionStatus(true);
+    } catch (error) {
+        console.error('Error fetching device status:', error);
+        updateConnectionStatus(false);
+    }
+}
+
+function updateSummary(summary) {
+    document.getElementById('total-count').textContent = summary.total || 0;
+    document.getElementById('online-count').textContent = summary.online || 0;
+    document.getElementById('stale-count').textContent = summary.stale || 0;
+    document.getElementById('offline-count').textContent = summary.offline || 0;
+
+    // Update summary card colors based on values
+    const offlineCard = document.querySelector('.summary-offline');
+    const staleCard = document.querySelector('.summary-stale');
+
+    if (summary.offline > 0) {
+        offlineCard.classList.add('has-issues');
+    } else {
+        offlineCard.classList.remove('has-issues');
+    }
+
+    if (summary.stale > 0) {
+        staleCard.classList.add('has-issues');
+    } else {
+        staleCard.classList.remove('has-issues');
+    }
+}
+
+function filterDevices(filter) {
+    currentFilter = filter;
+
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+
+    renderDevices();
+}
+
+function searchDevices(query) {
+    searchQuery = query.toLowerCase();
+    renderDevices();
+}
+
+function renderDevices() {
+    const grid = document.getElementById('device-grid');
+    const emptyState = document.getElementById('empty-state');
+
+    // Filter devices
+    let filtered = allDevices.filter(device => {
+        // Status filter
+        if (currentFilter !== 'all' && device.status !== currentFilter) {
+            return false;
+        }
+
+        // Search filter
+        if (searchQuery) {
+            const searchText = `${device.id} ${device.label || ''} ${device.connection_label || ''}`.toLowerCase();
+            if (!searchText.includes(searchQuery)) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    // Sort: offline first, then stale, then online
+    const statusOrder = { offline: 0, stale: 1, online: 2 };
+    filtered.sort((a, b) => (statusOrder[a.status] || 3) - (statusOrder[b.status] || 3));
+
+    if (filtered.length === 0) {
+        grid.style.display = 'none';
+        emptyState.style.display = 'flex';
+        return;
+    }
+
+    grid.style.display = 'grid';
+    emptyState.style.display = 'none';
+
+    grid.innerHTML = filtered.map(device => renderDeviceCard(device)).join('');
+}
+
+function renderDeviceCard(device) {
+    const statusClass = `device-status-${device.status}`;
+    const statusIcon = getStatusIcon(device.status);
+    const statusText = getStatusText(device.status);
+    const lastSeenText = formatLastSeen(device.seconds_since_last);
+
+    // Get key metrics to display
+    const metrics = getDisplayMetrics(device);
+
+    return `
+        <div class="device-card ${statusClass}" data-device-id="${device.id}">
+            <div class="device-card-header">
+                <div class="device-status-indicator">
+                    <span class="status-icon">${statusIcon}</span>
+                    <span class="status-text">${statusText}</span>
+                </div>
+                <span class="device-type-badge ${device.type}">${device.type}</span>
+            </div>
+
+            <div class="device-card-body">
+                <div class="device-name">${device.label || device.id}</div>
+                <div class="device-id">${device.id}</div>
+
+                ${device.connection_label ? `
+                <div class="device-connection">
+                    <span class="conn-icon">🔌</span>
+                    <span>${device.connection_label}</span>
+                </div>
+                ` : ''}
+
+                <div class="device-metrics">
+                    ${metrics}
+                </div>
+            </div>
+
+            <div class="device-card-footer">
+                <div class="last-seen">
+                    <span class="last-seen-icon">🕐</span>
+                    <span class="last-seen-text">${lastSeenText}</span>
+                </div>
+                <div class="device-actions">
+                    <button class="device-action-btn" onclick="showDeviceDetails('${device.id}')" title="View Details">
+                        📋
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getStatusIcon(status) {
+    switch (status) {
+        case 'online': return '✓';
+        case 'stale': return '⚠';
+        case 'offline': return '✗';
+        default: return '?';
+    }
+}
+
+function getStatusText(status) {
+    switch (status) {
+        case 'online': return 'Online';
+        case 'stale': return 'Stale';
+        case 'offline': return 'Offline';
+        default: return 'Unknown';
+    }
+}
+
+function formatLastSeen(seconds) {
+    if (seconds === null || seconds === undefined) {
+        return 'Never';
+    }
+
+    if (seconds < 60) {
+        return `${Math.round(seconds)}s ago`;
+    } else if (seconds < 3600) {
+        return `${Math.round(seconds / 60)}m ago`;
+    } else if (seconds < 86400) {
+        return `${Math.round(seconds / 3600)}h ago`;
+    } else {
+        return `${Math.round(seconds / 86400)}d ago`;
+    }
+}
+
+function getDisplayMetrics(device) {
+    if (!device.latest_values || Object.keys(device.latest_values).length === 0) {
+        return '<div class="no-data">No data available</div>';
+    }
+
+    const values = device.latest_values;
+    let html = '';
+
+    // For electrical devices, show key metrics
+    if (device.type === 'electrical') {
+        if (values.avg_voltage_ll !== undefined) {
+            html += `<div class="metric"><span class="metric-label">Voltage</span><span class="metric-value">${formatValue(values.avg_voltage_ll, 'V')}</span></div>`;
+        } else if (values.voltage_ry !== undefined) {
+            html += `<div class="metric"><span class="metric-label">V (R-Y)</span><span class="metric-value">${formatValue(values.voltage_ry, 'V')}</span></div>`;
+        }
+
+        if (values.total_active_power !== undefined) {
+            html += `<div class="metric"><span class="metric-label">Power</span><span class="metric-value">${formatPower(values.total_active_power)}</span></div>`;
+        }
+
+        if (values.avg_power_factor !== undefined) {
+            html += `<div class="metric"><span class="metric-label">PF</span><span class="metric-value">${formatValue(values.avg_power_factor, '')}</span></div>`;
+        }
+
+        if (values.frequency !== undefined) {
+            html += `<div class="metric"><span class="metric-label">Freq</span><span class="metric-value">${formatValue(values.frequency, 'Hz')}</span></div>`;
+        }
+    }
+    // For water devices
+    else if (device.type === 'water') {
+        if (values.flow_rate !== undefined) {
+            html += `<div class="metric"><span class="metric-label">Flow</span><span class="metric-value">${formatValue(values.flow_rate, 'L/m')}</span></div>`;
+        }
+        if (values.total_flow !== undefined) {
+            html += `<div class="metric"><span class="metric-label">Total</span><span class="metric-value">${formatValue(values.total_flow, 'L')}</span></div>`;
+        }
+    }
+
+    // If no specific metrics found, show first 3 available
+    if (html === '') {
+        const keys = Object.keys(values).slice(0, 3);
+        keys.forEach(key => {
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            html += `<div class="metric"><span class="metric-label">${label.substring(0, 12)}</span><span class="metric-value">${formatValue(values[key], '')}</span></div>`;
+        });
+    }
+
+    return html || '<div class="no-data">No metrics</div>';
+}
+
+function formatValue(value, unit) {
+    if (value === null || value === undefined) return '--';
+    const num = parseFloat(value);
+    if (isNaN(num)) return value;
+    return num.toFixed(1) + (unit ? ' ' + unit : '');
+}
+
+function formatPower(watts) {
+    if (watts === null || watts === undefined) return '--';
+    const num = parseFloat(watts);
+    if (isNaN(num)) return watts;
+    if (Math.abs(num) >= 1000) {
+        return (num / 1000).toFixed(2) + ' kW';
+    }
+    return num.toFixed(1) + ' W';
+}
+
+function showDeviceDetails(deviceId) {
+    const device = allDevices.find(d => d.id === deviceId);
+    if (!device) return;
+
+    // Create modal with device details
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>${device.label || device.id}</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-section">
+                    <h4>Device Information</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Device ID</span>
+                            <span class="detail-value"><code>${device.id}</code></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Type</span>
+                            <span class="detail-value">${device.type}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Status</span>
+                            <span class="detail-value status-${device.status}">${getStatusIcon(device.status)} ${getStatusText(device.status)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Polling Interval</span>
+                            <span class="detail-value">${device.polling_interval}s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Unit ID</span>
+                            <span class="detail-value">${device.unit_id}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Last Reading</span>
+                            <span class="detail-value">${device.last_reading || 'Never'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${device.connection ? `
+                <div class="detail-section">
+                    <h4>Connection</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Type</span>
+                            <span class="detail-value">${device.connection.type}</span>
+                        </div>
+                        ${device.connection.host ? `
+                        <div class="detail-item">
+                            <span class="detail-label">Host</span>
+                            <span class="detail-value">${device.connection.host}:${device.connection.port}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                ` : ''}
+
+                ${device.latest_values && Object.keys(device.latest_values).length > 0 ? `
+                <div class="detail-section">
+                    <h4>Latest Readings</h4>
+                    <div class="readings-table">
+                        <table class="table table-compact">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(device.latest_values).map(([key, value]) => `
+                                <tr>
+                                    <td>${key.replace(/_/g, ' ')}</td>
+                                    <td><code>${formatValue(value, '')}</code></td>
+                                </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+</script>
+{% endblock %}
