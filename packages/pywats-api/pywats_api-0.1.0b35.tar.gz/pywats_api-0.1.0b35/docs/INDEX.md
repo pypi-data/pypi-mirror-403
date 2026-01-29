@@ -1,0 +1,108 @@
+# PyWATS Documentation
+
+Official documentation for pyWATS - Python API library for WATS (Web-based Automated Test System).
+
+## Getting Started
+
+- **[Getting Started Guide](GETTING_STARTED.md)** - Complete installation, configuration, and initialization guide
+- **[README](../README.md)** - Package overview and quick start
+- **[CHANGELOG](../CHANGELOG.md)** - Version history and release notes
+
+## Domain Guides
+
+Complete documentation for each WATS domain with examples and API reference:
+
+### Core Domains
+
+- **[Product Domain](PRODUCT.md)** - Products, revisions, BOMs, box build templates, vendors, categories
+- **[Asset Domain](ASSET.md)** - Equipment tracking, calibration, maintenance, hierarchy, logs
+- **[Production Domain](PRODUCTION.md)** - Unit lifecycle, serial numbers, assembly, verification, phases
+- **[Report Domain](REPORT.md)** - Test reports (UUT/UUR), all step types, querying, attachments
+
+### Analysis & Tracking
+
+- **[Analytics Domain](ANALYTICS.md)** - Yield analysis, measurements, Cpk statistics, Unit Flow visualization
+- **[Software Domain](SOFTWARE.md)** - Package management, versioning, distribution, tags, virtual folders
+- **[RootCause Domain](ROOTCAUSE.md)** - Issue tracking, defect management, status workflows, priorities
+- **[Process Domain](PROCESS.md)** - Operation types, test/repair processes, caching
+
+### Identity & Administration
+
+- **[SCIM Domain](SCIM.md)** - User provisioning from Azure AD, SCIM protocol support
+
+### Detailed Module Guides
+
+Legacy usage guides with comprehensive examples and patterns:
+
+- **[Report Module Guide](usage/REPORT_MODULE.md)** - Detailed report creation and querying
+- **[Product Module Guide](usage/PRODUCT_MODULE.md)** - Product and BOM management
+- **[Production Module Guide](usage/PRODUCTION_MODULE.md)** - Serial number and unit tracking
+- **[Asset Module Guide](usage/ASSET_MODULE.md)** - Equipment and calibration management
+- **[Software Module Guide](usage/SOFTWARE_MODULE.md)** - Package distribution
+- **[RootCause Module Guide](usage/ROOTCAUSE_MODULE.md)** - Ticket and defect tracking
+- **[Process Module Guide](usage/PROCESS_MODULE.md)** - Process operations
+- **[Box Build Guide](usage/BOX_BUILD_GUIDE.md)** - Assembly and box build workflows
+
+## Reference & Troubleshooting
+
+- **[Error Catalog](ERROR_CATALOG.md)** - Comprehensive error reference with causes, examples, and remediation
+- **[Docker Deployment](DOCKER.md)** - Container deployment guide for production and development
+- **[Quick Reference](QUICK_REFERENCE.md)** - Common patterns and code snippets
+
+## Project Management & Development
+
+Internal project tracking and review documents:
+
+- **[Project Documents](project/)** - Development tracking and technical reviews
+  - [Project Review](project/PROJECT_REVIEW.md) - Comprehensive technical assessment (⭐⭐⭐⭐ 8.5/10)
+  - [Improvements Plan](project/IMPROVEMENTS_PLAN.md) - Top 3 priorities tracking (✅ 100% complete)
+  - [Test Suite Summary](project/TEST_SUITE_SUMMARY.md) - Client test suite details (71 tests)
+
+## Client Documentation
+
+Documentation for the pyWATS Client application:
+
+- **[GUI Configuration](../src/pywats_client/GUI_CONFIGURATION.md)** - Configure GUI tabs, logging, and settings
+- **[Headless Operation Guide](../src/pywats_client/control/HEADLESS_GUIDE.md)** - Run on Raspberry Pi, servers, embedded systems
+
+## Quick Reference by Task
+
+### Async vs Sync Usage
+See [Getting Started - Async Usage](GETTING_STARTED.md#async-usage) - Use `AsyncWATS` for concurrent requests or `pyWATS` for simple blocking calls
+
+### Creating Test Reports
+Start with [Report Domain](REPORT.md) - Learn how to create UUT reports with all step types
+
+### Managing Products & BOMs
+See [Product Domain](PRODUCT.md) - Product creation, revisions, BOMs, box build workflows
+
+### Tracking Units Through Production
+See [Production Domain](PRODUCTION.md) - Serial numbers, unit phases, assembly, verification
+
+### Equipment & Calibration
+See [Asset Domain](ASSET.md) - Asset tracking, calibration schedules, maintenance
+
+### Analyzing Yield & Quality
+See [Analytics Domain](ANALYTICS.md) - Yield calculations, measurement statistics, Cpk analysis
+
+### Software Distribution
+See [Software Domain](SOFTWARE.md) - Package management, versioning, releases
+
+### Issue Tracking
+See [RootCause Domain](ROOTCAUSE.md) - Create tickets, track defects, manage workflows
+
+### Operation Types
+See [Process Domain](PROCESS.md) - Define test/repair operations, process caching
+
+## Links
+
+- **GitHub Repository**: https://github.com/olreppe/pyWATS
+- **WATS Website**: https://wats.com
+- **Virinco**: https://virinco.com
+- **PyPI Package**: https://pypi.org/project/pywats-api/
+
+## Support
+
+For issues, questions, or contributions:
+- GitHub Issues: https://github.com/olreppe/pyWATS/issues
+- Email: support@virinco.com
