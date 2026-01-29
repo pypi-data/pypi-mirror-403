@@ -1,0 +1,141 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/**
+      - tests/**
+      - pyproject.toml
+      - requirements/ci.constraints.txt
+      - .github/workflows/test.yaml
+  pull_request:
+    branches: [main]
+    paths:
+      - src/**
+      - tests/**
+      - pyproject.toml
+      - requirements/ci.constraints.txt
+      - .github/workflows/test.yaml
+  workflow_dispatch: {}
+  schedule:
+    - cron: "40 12 * * 1-5"
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+
+env:
+  FORCE_COLOR: "1"
+
+permissions: {}
+
+jobs:
+  typing:
+    name: Typing
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        id: setup-python
+        with:
+          python-version: "3.x"
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
+        with:
+          version: ">=0.6"
+      - name: Install tools
+        env:
+          UV_CONSTRAINT: ${{ github.workspace }}/requirements/ci.constraints.txt
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          uv tool install --with tox-uv tox
+      - name: Run typing
+        run: |
+          tox -e typing
+
+  test:
+    name: Pytest (Python ${{ matrix.python-version }}, ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-24.04"]
+        python-version:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+          - "3.15"
+        include:
+          - python-version: "3.14"
+            os: "windows-2025"
+          - python-version: "3.14"
+            os: "macos-15"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
+        with:
+          version: ">=0.6"
+      - name: Install tools
+        env:
+          UV_CONSTRAINT: ${{ github.workspace }}/requirements/ci.constraints.txt
+        run: |
+          uv tool install --with tox-uv tox
+      - name: Run tests
+        shell: sh
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          tox -e ${PYTHON_VERSION}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          include-hidden-files: true
+          name: coverage-data-${{ matrix.os }}-${{ matrix.python-version }}
+          path: ".coverage.*"
+      - name: Run doctests
+        run: |
+          tox -e doctest
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: 3.x
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
+        with:
+          version: ">=0.6"
+      - name: Install tools
+        env:
+          UV_CONSTRAINT: ${{ github.workspace }}/requirements/ci.constraints.txt
+        run: |
+          uv tool install --with tox-uv tox
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+      - name: Create coverage XML report
+        run: |
+          tox -e coverage
+      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        with:
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
