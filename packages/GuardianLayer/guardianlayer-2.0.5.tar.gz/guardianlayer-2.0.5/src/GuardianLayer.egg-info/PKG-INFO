@@ -1,0 +1,348 @@
+Metadata-Version: 2.4
+Name: GuardianLayer
+Version: 2.0.5
+Summary: Meta-cognition layer for AI agents - prevents infinite loops, learns from failures, provides self-awareness
+Author-email: Michael <xvorpxvobby@gmail.com>
+Maintainer-email: Michael <xvorpxvobby@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/Mk3Ang8l/GuardianLayer
+Project-URL: Repository, https://github.com/Mk3Ang8l/GuardianLayer
+Project-URL: Documentation, https://github.com/Mk3Ang8l/GuardianLayer
+Project-URL: Issue Tracker, https://github.com/Mk3Ang8l/GuardianLayer/issues
+Project-URL: Changelog, https://github.com/Mk3Ang8l/GuardianLayer/blob/main/CHANGELOG.md
+Project-URL: Funding (PayPal), https://www.paypal.com/paypalme/MicaPaul138
+Keywords: ai,agent,loop-detection,circuit-breaker,meta-cognition,llm,langchain,autogen,mcp,model-context-protocol,ai-safety,guardrails,observability
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Quality Assurance
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Environment :: Console
+Classifier: Operating System :: OS Independent
+Classifier: Framework :: AsyncIO
+Classifier: Framework :: Pydantic
+Classifier: Typing :: Typed
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: aiosqlite>=0.19.0
+Requires-Dist: sqlalchemy>=2.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: pre-commit>=2.20.0; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: sphinx>=5.0.0; extra == "docs"
+Requires-Dist: sphinx-rtd-theme>=1.2.0; extra == "docs"
+Requires-Dist: sphinx-autodoc-typehints>=1.23.0; extra == "docs"
+Requires-Dist: myst-parser>=1.0.0; extra == "docs"
+Provides-Extra: postgres
+Requires-Dist: asyncpg>=0.28.0; extra == "postgres"
+Provides-Extra: redis
+Requires-Dist: redis>=4.5.0; extra == "redis"
+Provides-Extra: all
+Requires-Dist: GuardianLayer[postgres]; extra == "all"
+Requires-Dist: GuardianLayer[redis]; extra == "all"
+Dynamic: license-file
+
+# GuardianLayer
+
+[![PyPI](https://img.shields.io/pypi/v/GuardianLayer.svg)](https://pypi.org/project/GuardianLayer/)
+[![Tests](https://github.com/Mk3Ang8l/GuardianLayer/actions/workflows/ci.yml/badge.svg)](https://github.com/Mk3Ang8l/GuardianLayer/actions)
+[![Docs](https://img.shields.io/badge/docs-Sphinx-blue)](https://github.com/Mk3Ang8l/GuardianLayer)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+
+**GuardianLayer** is a meta-cognition layer for AI agents that prevents infinite loops, learns from failures, and provides self-awareness capabilities. It acts as a safety shield between your AI agent and external tools, ensuring robust and reliable agent behavior.
+
+## 🌟 Key Features
+
+### 🛡️ 5-Layer Protection System
+
+- **Layer 0: Smart Circuit Breaker** - Three-state pattern (CLOSED/OPEN/HALF_OPEN) with automatic recovery and error classification
+- **Layer 1: Loop Detection** - Hash-based O(1) detection of infinite loops and repetitive behavior
+- **Layer 2: Schema Validation** - MCP-compatible tool call validation with custom hooks
+- **Layer 3: Experience Learning** - Multi-tiered storage (Session/Process/Global) that learns from past successes and failures
+- **Layer 4: Advice Injection** - Context-aware prompt injections to guide AI behavior
+
+### 🚀 Performance
+
+- **O(1) loop detection** using SHA-256 hashing instead of string comparison
+- **Smart caching** for validation results and advice generation
+- **Async/await support** for high-performance applications
+- **Pluggable backends** - Bring your own database (PostgreSQL, Redis, etc.)
+
+### 📊 Observability
+
+- **Health scoring** (0-100) for each tool
+- **Detailed metrics** for ROI visibility (tokens saved, loops prevented, etc.)
+- **Error classification** (system vs user vs business errors)
+- **Tool reliability tracking** based on historical success rates
+
+## 📦 Installation
+
+Install from PyPI:
+
+```bash
+pip install GuardianLayer
+```
+
+Or install from source for development:
+
+```bash
+git clone https://github.com/Mk3Ang8l/GuardianLayer.git
+cd GuardianLayer
+pip install -e '.[dev]'
+```
+
+## 🚀 Quick Start
+
+### Basic Usage
+
+```python
+from GuardianLayer import GuardianLayer, AdviceStyle
+
+# Initialize the guardian
+guardian = GuardianLayer(
+    db_path="experience.db",
+    max_repeats=2,
+    advice_style=AdviceStyle.EXPERT
+)
+
+# Register MCP tools
+mcp_tools = [{
+    "name": "web_search",
+    "description": "Search the web",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"}
+        },
+        "required": ["query"]
+    }
+}]
+guardian.ingest_tools(mcp_tools)
+
+# Check a tool call before executing
+tool_call = {"tool": "web_search", "arguments": {"query": "Python tutorials"}}
+result = guardian.check(tool_call)
+
+if result["allowed"]:
+    # Execute the tool
+    response = execute_tool(tool_call)
+    # Report success/failure for learning
+    guardian.report_result(tool_call, success=True)
+else:
+    print(f"Blocked: {result['reason']}")
+    print(f"Suggestion: {result['suggestion']}")
+```
+
+### Async Usage
+
+```python
+import asyncio
+from GuardianLayer import GuardianLayer
+
+async def main():
+    guardian = GuardianLayer()
+    
+    # Async check
+    result = await guardian.check_async(tool_call)
+    
+    if result["allowed"]:
+        response = await execute_tool_async(tool_call)
+        await guardian.report_result_async(tool_call, success=True)
+    
+    await guardian.close_async()
+
+asyncio.run(main())
+```
+
+### Prompt Injection for Self-Awareness
+
+```python
+# Get awareness context to inject into your LLM prompt
+awareness = guardian.get_awareness_context()
+
+prompt = f"""
+You are an AI assistant.
+
+{awareness}
+
+User: {user_message}
+"""
+```
+
+## 🏗️ Architecture
+
+GuardianLayer uses a layered protection model:
+
+```
+┌─────────────────────────────────────┐
+│      AI Agent (LLM)                 │
+└─────────────┬───────────────────────┘
+              │ Proposed Tool Call
+              ▼
+┌─────────────────────────────────────┐
+│  GuardianLayer                      │
+│  ┌─────────────────────────────┐    │
+│  │ L0: Circuit Breaker         │    │ ← Health monitoring
+│  ├─────────────────────────────┤    │
+│  │ L1: Loop Detection          │    │ ← Hash-based O(1)
+│  ├─────────────────────────────┤    │
+│  │ L2: Schema Validation       │    │ ← MCP compatible
+│  ├─────────────────────────────┤    │
+│  │ L3: Experience Learning     │    │ ← SQLite/PostgreSQL
+│  ├─────────────────────────────┤    │
+│  │ L4: Advice Generation       │    │ ← Prompt injection
+│  └─────────────────────────────┘    │
+└─────────────┬───────────────────────┘
+              │ ✅ Allowed / ❌ Blocked
+              ▼
+┌─────────────────────────────────────┐
+│      External Tools/APIs            │
+└─────────────────────────────────────┘
+```
+
+## 📚 Documentation
+
+- **[Quick Start Guide](docs/quickstart.rst)** - Get started in 5 minutes
+- **[Architecture](docs/architecture.rst)** - Understanding the protection layers
+- **[API Reference](docs/api.rst)** - Complete API documentation
+- **[Configuration](docs/configuration.rst)** - All configuration options
+- **[Integration Guide](docs/integration.rst)** - Integration with LangChain, AutoGen, etc.
+- **[Examples](examples/)** - Real-world usage examples
+
+## 🔧 Advanced Features
+
+### Custom Storage Providers
+
+```python
+from GuardianLayer import GuardianLayer
+from GuardianLayer.interfaces import StorageProvider
+
+class PostgreSQLStorageProvider(StorageProvider):
+    # Implement your custom storage backend
+    pass
+
+guardian = GuardianLayer(storage_provider=PostgreSQLStorageProvider())
+```
+
+### Custom Advice Resolvers
+
+```python
+from GuardianLayer import AdviceContext
+
+def my_custom_advice(context: AdviceContext) -> str:
+    if context.failure_count > 5:
+        return "🚨 CRITICAL: This tool is failing repeatedly!"
+    return ""
+
+guardian.set_custom_advice_resolver(my_custom_advice)
+```
+
+### Health Monitoring
+
+```python
+# Get health metrics for all tools
+health = guardian.health_monitor.get_all_health()
+
+for tool_name, status in health.items():
+    print(f"{tool_name}: {status['score']}/100 - {status['state']}")
+
+# Manually reset a tool's health
+guardian.reset_tool("problematic_tool")
+```
+
+### Metrics and ROI
+
+```python
+# Get comprehensive metrics
+metrics = guardian.get_metrics()
+
+print(f"Loops prevented: {metrics['loops_prevented']}")
+print(f"Circuit breaks: {metrics['circuit_breaks']}")
+print(f"Estimated tokens saved: {metrics['tokens_saved']}")
+print(f"Estimated latency saved: {metrics['latency_saved_ms']}ms")
+```
+
+## 🧪 Testing
+
+Run the test suite:
+
+```bash
+pytest tests/ -v --cov=src
+```
+
+Run the demo examples:
+
+```bash
+python examples/demo.py
+python examples/demo_v2.py
+python examples/demo_cache_perf.py
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Mk3Ang8l/GuardianLayer.git
+cd GuardianLayer
+
+# Install development dependencies
+pip install -e '.[dev]'
+
+# Run tests
+pytest -v
+
+# Run linters
+ruff check src/
+mypy src/
+```
+
+## 📄 License
+
+GuardianLayer is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- Inspired by the need for safer AI agent systems
+- Built for the MCP (Model Context Protocol) ecosystem
+- Designed to work with any AI framework (LangChain, AutoGen, CrewAI, etc.)
+
+## 💖 Support the Project
+
+If you find GuardianLayer useful, consider supporting its development:
+
+- **PayPal**: [paypal.me/MicaPaul138](https://www.paypal.com/paypalme/MicaPaul138)
+- **Litecoin**: `ltc1qr3qrxyccu5ssm22ny5ere5rl0ts0yergx6cy9c`
+
+Your support helps maintain and improve GuardianLayer!
+
+## 📞 Support
+
+- **Documentation**: [https://github.com/Mk3Ang8l/GuardianLayer](https://github.com/Mk3Ang8l/GuardianLayer)
+- **Issues**: [GitHub Issues](https://github.com/Mk3Ang8l/GuardianLayer/issues)
+
+
+---
+
+**Made with ❤️ for safer AI agents**
