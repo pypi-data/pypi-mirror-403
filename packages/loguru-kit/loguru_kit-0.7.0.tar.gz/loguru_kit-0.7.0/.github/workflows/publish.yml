@@ -1,0 +1,76 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version
+      run: |
+        TAG=${GITHUB_REF#refs/tags/}
+        VERSION=${TAG#v}
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Update pyproject.toml with version
+      run: |
+        sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.version }}"/' pyproject.toml
+
+    - name: Update __init__.py with version
+      run: |
+        sed -i 's/^__version__ = ".*"/__version__ = "${{ steps.version.outputs.version }}"/' src/loguru_kit/__init__.py
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: '3.12'
+
+    - name: Build
+      run: uv build
+
+    - name: Check metadata
+      run: uvx twine check dist/*
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+
+    - name: Create Release Notes
+      id: release_notes
+      run: |
+        cat > RELEASE_NOTES.md << 'EOF'
+        ## 🎉 loguru-kit v${{ steps.version.outputs.version }}
+
+        **Installation:**
+        ```bash
+        pip install loguru-kit
+        ```
+
+        **What's Changed:**
+        See [CHANGELOG.md](https://github.com/bestend/loguru-kit/blob/main/CHANGELOG.md) for details.
+
+        **Happy logging! 📝**
+        EOF
+        cat RELEASE_NOTES.md
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: dist/*
+        body_path: RELEASE_NOTES.md
+        draft: false
+        prerelease: false
+        token: ${{ secrets.GITHUB_TOKEN }}
+
