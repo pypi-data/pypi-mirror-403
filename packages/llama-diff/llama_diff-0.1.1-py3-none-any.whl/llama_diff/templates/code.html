@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}{{ file_path }} - Code Review{% endblock %}
+
+{% block header_extra %}
+<div class="stats">
+    <div class="code-header-file-path">{{ file_path }}</div>
+</div>
+{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+{% endblock %}
+
+{% block styles %}
+<style>
+.code-header-file-path {
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.file-header {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.file-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.file-path {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.line-jump {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.line-jump label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.line-jump input {
+    width: 80px;
+    padding: 4px 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.line-jump button {
+    padding: 4px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.line-jump button:hover {
+    background: var(--bg-primary);
+}
+
+.file-summary {
+    padding: 12px 16px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.diff-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.diff-header {
+    padding: 10px 16px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.diff-content {
+    padding: 12px 16px;
+    overflow-x: auto;
+    white-space: pre;
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.code-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.code-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.code-table tr:hover {
+    background: var(--bg-tertiary);
+}
+
+.code-table tr.highlighted {
+    background: var(--highlight);
+}
+
+.line-num {
+    width: 1%;
+    min-width: 50px;
+    padding: 0 12px;
+    text-align: right;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border-right: 1px solid var(--border);
+    user-select: none;
+    vertical-align: top;
+    cursor: pointer;
+}
+
+.line-num:hover {
+    color: var(--accent);
+}
+
+.line-num a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.line-code {
+    padding: 0 16px;
+    white-space: pre;
+    vertical-align: top;
+}
+
+.line-code code {
+    background: transparent !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">← Back to Review</a>
+
+<div class="file-header">
+    <div class="file-header-top">
+        <div class="file-info">
+            <span class="badge badge-{{ change_type|lower }}">{{ change_label }}</span>
+            <span class="file-path">{{ file_path }}</span>
+        </div>
+        <div class="line-jump">
+            <label>Go to line:</label>
+            <input type="number" id="line-input" min="1" max="{{ line_count }}" placeholder="#">
+            <button onclick="jumpToLine()">Go</button>
+        </div>
+    </div>
+    <div class="file-summary md-content">{{ summary }}</div>
+    {% if issues %}
+    <div class="review-list issues">
+        <h4>Issues ({{ issues|length }})</h4>
+        <ul>
+            {% for issue in issues %}
+            <li class="md-content">{{ issue }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    {% if suggestions %}
+    <div class="review-list suggestions">
+        <h4>Suggestions ({{ suggestions|length }})</h4>
+        <ul>
+            {% for suggestion in suggestions %}
+            <li class="md-content">{{ suggestion }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+<div class="diff-container">
+    <div class="diff-header">Diff</div>
+    <pre class="diff-content"><code>{{ diff_content }}</code></pre>
+</div>
+
+<div class="code-container">
+    <table class="code-table" id="code-table" data-line-count="{{ line_count }}" data-file-path="{{ file_path }}">
+        <tbody id="code-body"></tbody>
+    </table>
+</div>
+<pre id="raw-code" style="display:none"><code id="code-block" class="language-{{ language }}">{{ code_content }}</code></pre>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const pageData = document.getElementById('code-table');
+    const lineCount = parseInt(pageData?.dataset?.lineCount || '0', 10);
+    let highlightedLine = null;
+    
+    // First highlight the code
+    hljs.highlightElement(document.getElementById('code-block'));
+    
+    // Get highlighted HTML and split into lines
+    const codeBlock = document.getElementById('code-block');
+    const lines = codeBlock.innerHTML.split('\n');
+    
+    // Build table rows with line numbers and code
+    const tbody = document.getElementById('code-body');
+    lines.forEach((line, i) => {
+        const lineNum = i + 1;
+        const tr = document.createElement('tr');
+        tr.id = 'L' + lineNum;
+        tr.innerHTML = `<td class="line-num" onclick="highlightLine(${lineNum})"><a href="#L${lineNum}">${lineNum}</a></td><td class="line-code">${line || ' '}</td>`;
+        tbody.appendChild(tr);
+    });
+    
+    function highlightLine(lineNum) {
+        // Clear previous
+        if (highlightedLine) {
+            const prevRow = document.getElementById('L' + highlightedLine);
+            if (prevRow) prevRow.classList.remove('highlighted');
+        }
+        
+        // Highlight new row
+        const row = document.getElementById('L' + lineNum);
+        if (row) {
+            row.classList.add('highlighted');
+            highlightedLine = lineNum;
+            
+            // Scroll into view
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Update URL
+            history.replaceState(null, '', '#L' + lineNum);
+        }
+    }
+    
+    function jumpToLine() {
+        const input = document.getElementById('line-input');
+        const lineNum = parseInt(input.value);
+        if (lineNum >= 1 && lineNum <= lineCount) {
+            highlightLine(lineNum);
+        }
+    }
+    
+    // Handle enter key in input
+    document.getElementById('line-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') jumpToLine();
+    });
+    
+    // Handle URL hash on load
+    window.addEventListener('load', () => {
+        const hash = window.location.hash;
+        if (hash && hash.startsWith('#L')) {
+            const lineNum = parseInt(hash.substring(2));
+            if (lineNum >= 1 && lineNum <= lineCount) {
+                setTimeout(() => highlightLine(lineNum), 100);
+            }
+        }
+    });
+    
+    // Render markdown in review content
+    const filePath = pageData?.dataset?.filePath || '';
+    const fileName = filePath.split('/').pop() || 'file';
+    
+    document.querySelectorAll('.md-content').forEach(el => {
+        let html = marked.parse(el.textContent);
+        // Convert Line:X format to file.ext:NUM with link
+        html = html.replace(/Line:(\d+)/gi,
+            (match, num) => `<a href="#L${num}" class="line-ref" onclick="event.preventDefault(); highlightLine(${num})">${fileName}:${num}</a>`);
+        // Convert "line 42" or "lines 42" format
+        html = html.replace(/([Ll]ines?\s*)(\d+)/g,
+            (match, prefix, num) => `<a href="#L${num}" class="line-ref" onclick="event.preventDefault(); highlightLine(${num})">${fileName}:${num}</a>`);
+        el.innerHTML = html;
+    });
+</script>
+{% endblock %}
