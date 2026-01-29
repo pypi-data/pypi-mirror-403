@@ -1,0 +1,187 @@
+name: castella-skia Release
+
+on:
+  push:
+    tags:
+      - "castella-skia-v*"
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # Required for PyPI Trusted Publishing (OIDC)
+  contents: write  # Required for creating releases
+
+jobs:
+  # Build wheels for Linux x86_64
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          args: --release --out dist -i 3.11 3.12 3.13 3.14
+          sccache: "true"
+          manylinux: "2_34"
+          working-directory: bindings/python
+          before-script-linux: |
+            dnf install -y freetype-devel fontconfig-devel ninja-build clang gcc-c++
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-linux-x86_64
+          path: bindings/python/dist/*.whl
+
+  # Build wheels for Linux aarch64 (native arm64 runner, no Docker)
+  linux-aarch64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfreetype6-dev libfontconfig1-dev ninja-build clang g++ libstdc++-14-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build wheels
+        run: |
+          cd bindings/python
+          maturin build --release --out dist -i 3.11 3.12 3.13 3.14
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-linux-aarch64
+          path: bindings/python/dist/*.whl
+
+  # Build wheels for Windows
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [x64]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          architecture: ${{ matrix.target }}
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist -i 3.11 3.12 3.13 3.14
+          sccache: "true"
+          working-directory: bindings/python
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-windows-${{ matrix.target }}
+          path: bindings/python/dist/*.whl
+
+  # Build wheels for macOS (Apple Silicon only)
+  macos:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        target: [aarch64]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist -i 3.11 3.12 3.13 3.14
+          sccache: "true"
+          working-directory: bindings/python
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-macos-${{ matrix.target }}
+          path: bindings/python/dist/*.whl
+
+  # Build source distribution
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: bindings/python
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-sdist
+          path: bindings/python/dist/*.tar.gz
+
+  # Publish to PyPI
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [linux-x86_64, linux-aarch64, windows, macos, sdist]
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: pypi
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Upload to GitHub Release
+  release:
+    name: Upload to GitHub Release
+    runs-on: ubuntu-latest
+    needs: [linux-x86_64, linux-aarch64, windows, macos, sdist]
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
