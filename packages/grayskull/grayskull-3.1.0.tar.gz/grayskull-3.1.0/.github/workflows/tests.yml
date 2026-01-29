@@ -1,0 +1,97 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "*"
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+jobs:
+  run:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        py_ver: ["3.10", "3.11", "3.12", "3.13"]
+    env:
+      OS: ${{ matrix.os }}
+      PYTHON: ${{ matrix.py_ver }}
+    steps:
+    - uses: actions/checkout@v6
+    - uses: mamba-org/setup-micromamba@v2
+      with:
+        micromamba-version: "2.5.0-1"
+        environment-file: environment.yaml
+        create-args: >-
+          python=${{ matrix.py_ver }}
+        cache-environment: true
+    - name: Install conda-recipe-manager if possible
+      # Possible when the Python version is >=3.11
+      run: |
+        if [ $(python -c "import sys; print(sys.version_info[:2] >= (3,11))") = "True" ]; then
+          echo "Installing conda-recipe-manager"
+          micromamba install -y -c conda-forge conda-recipe-manager
+        else
+          echo "Skipping conda-recipe-manager installation"
+        fi
+    - name: Conda info
+      run: |
+        conda info --all
+        conda list
+
+    - name: Running doctests
+      run: |
+        pytest  grayskull \
+                -vv \
+                -n 0 \
+                --color=yes \
+                --cov=./ \
+                --cov-append \
+                --cov-report html:coverage-serial-html \
+                --cov-report xml:coverage-serial.xml \
+                --cov-config=.coveragerc \
+                --junit-xml=Linux-py${{ matrix.py_ver }}-serial.xml \
+                --junit-prefix=Linux-py${{ matrix.py_ver }}-serial
+
+    - name: Running serial tests
+      run: |
+        pytest  tests \
+                -vv \
+                -n 0 \
+                -m "serial" \
+                --color=yes \
+                --cov=./ \
+                --cov-append \
+                --cov-report html:coverage-serial-html \
+                --cov-report xml:coverage-serial.xml \
+                --cov-config=.coveragerc \
+                --junit-xml=Linux-py${{ matrix.py_ver }}-serial.xml \
+                --junit-prefix=Linux-py${{ matrix.py_ver }}-serial
+
+    - name: Running parallel tests
+      run: |
+        pytest  tests \
+                -vv \
+                -n auto \
+                -m "not serial" \
+                --color=yes \
+                --cov=./ \
+                --cov-append \
+                --cov-report html:coverage-parallel-html \
+                --cov-report xml:coverage-parallel.xml \
+                --cov-config=.coveragerc \
+                --junit-xml=Linux-py${{ matrix.py_ver }}-parallel.xml \
+                --junit-prefix=Linux-py${{ matrix.py_ver }}-parallel
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: ./coverage-serial.xml,./coverage-parallel.xml
+        directory: .
+        flags: unittests
