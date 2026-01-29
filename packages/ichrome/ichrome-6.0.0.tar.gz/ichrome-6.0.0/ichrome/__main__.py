@@ -1,0 +1,436 @@
+# -*- coding: utf-8 -*-
+import argparse
+import asyncio
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+from ichrome import ChromeDaemon, ChromeWorkers, __version__, logger
+from ichrome.base import get_readable_dir_size
+from ichrome.schemas.daemon_config import DefaultConfig
+
+
+def show_best(proxy=None):
+    def get_platform():
+        import platform
+
+        system = platform.system()
+        machine = platform.machine()
+        if system == "Linux":
+            return "linux64" if machine.endswith("64") else "linux32"
+        elif system == "Darwin":
+            if machine == "arm64":
+                return "mac-arm64"
+            elif machine == "x86_64":
+                return "mac-x64"
+        elif system == "Windows":
+            if "64" in platform.architecture()[0]:
+                return "win64"
+            else:
+                return "win32"
+        else:
+            return None
+        return f"{system.lower()}-{machine.lower()}"
+
+    def get_json(url, f):
+        from morebuiltins.request import req
+        import json
+
+        try:
+            r = req.get(
+                url,
+                timeout=3,
+                headers={"User-Agent": ""},
+                proxies={"all": proxy},
+            )
+            f.set_result(json.loads(getattr(r, "text", "{}")))
+        except Exception as e:
+            f.set_exception(e)
+
+    doc = r"""Chrome for testing:
+https://github.com/GoogleChromeLabs/chrome-for-testing
+Latest version downloads:
+https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json
+More version downloads:
+https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
+=============================="""
+    print(doc, flush=True)
+    current_platform = get_platform()
+    print("current platform:", current_platform, flush=True)
+    url = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+    print("fetching", url, flush=True)
+    try:
+        from concurrent.futures import Future
+        from threading import Thread
+
+        # use thread fix requests timeout issue
+        f = Future()
+        t = Thread(target=get_json, args=(url, f), daemon=True)
+        t.start()
+        data = f.result(timeout=3.1)
+        item = data["channels"]["Stable"]
+        item["platform"] = current_platform
+        downloads = item.pop("downloads")
+        print(item, flush=True)
+        for key, values in downloads.items():
+            print("-" * 30)
+            print(key, item["platform"])
+            print(
+                (
+                    [i["url"] for i in values if i["platform"] == item["platform"]]
+                    + [""]
+                )[0],
+                flush=True,
+            )
+    except Exception as e:
+        print("fetch url error:", repr(e), flush=True)
+
+
+def main():
+    usage = """
+    All the unknown args will be appended to extra_config as chrome original args.
+    Maybe you can have a try by typing: `python3 -m ichrome --try`
+
+Demo:
+    > python -m ichrome -H 127.0.0.1 -p 9222 --window-size=1212,1212 --incognito
+    > ChromeDaemon cmd args: port=9222, {'chrome_path': '', 'host': '127.0.0.1', 'headless': False, 'user_agent': '', 'proxy': '', 'user_data_dir': WindowsPath('C:/Users/root/ichrome_user_data'), 'disable_image': False, 'start_url': 'about:blank', 'extra_config': ['--window-size=1212,1212', '--incognito'], 'max_deaths': 1, 'timeout':1, 'proc_check_interval': 5, 'debug': False}
+
+    > python -m ichrome
+    > ChromeDaemon cmd args: port=9222, {'chrome_path': '', 'host': '127.0.0.1', 'headless': False, 'user_agent': '', 'proxy': '', 'user_data_dir': WindowsPath('C:/Users/root/ichrome_user_data'), 'disable_image': False, 'start_url': 'about:blank', 'extra_config': [], 'max_deaths': 1, 'timeout': 1, 'proc_check_interval': 5, 'debug': False}
+
+Other operations:
+    1. kill local chrome process with given port:
+        python -m ichrome -s 9222
+        python -m ichrome -k 9222
+    2. clear user_data_dir path (remove the folder and files):
+        python -m ichrome --clear
+        python -m ichrome --clean
+        python -m ichrome -C -p 9222
+    3. show ChromeDaemon.__doc__:
+        python -m ichrome --doc
+    4. crawl the URL, output the HTML DOM:
+        python -m ichrome --crawl --timeout=2 http://myip.ipip.net/
+"""
+
+    def show_help_and_chrome_paths():
+        parser.print_help()
+        print("\n" + "=" * 50)
+        print("Found Chrome paths:")
+        print("=" * 50)
+        chrome_paths = ChromeDaemon.get_exist_chrome_path_list()
+        if chrome_paths:
+            for i, path in enumerate(chrome_paths):
+                mtime_str = time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(path))
+                )
+                print(f"  - {mtime_str} | {path}{' (default)' if i == 0 else ''}")
+        else:
+            print("  (No Chrome installation found)")
+        print("=" * 50, flush=True)
+        return
+
+    parser = argparse.ArgumentParser(usage=usage, add_help=False)
+    parser.add_argument(
+        "-h", "--help", help="show this help message and exit", action="store_true"
+    )
+    parser.add_argument(
+        "-v", "-V", "--version", help="ichrome version info", action="store_true"
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        help="load config dict from JSON file of given path",
+        default="",
+    )
+    parser.add_argument(
+        "-cp",
+        "--chrome-path",
+        "--chrome_path",
+        help="chrome executable file path, default to null(automatic searching)",
+        default=DefaultConfig.chrome_path,
+    )
+    parser.add_argument(
+        "-H",
+        "--host",
+        help=f"--remote-debugging-address, default to {DefaultConfig.host}",
+        default=DefaultConfig.host,
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        help=f"--remote-debugging-port, default to {DefaultConfig.port}",
+        default=argparse.SUPPRESS,
+        type=int,
+    )
+    parser.add_argument(
+        "--log-level",
+        "--log_level",
+        help="logger level, will be overwrited by --debug",
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--headless",
+        help="--headless and --hide-scrollbars, default to False",
+        default=argparse.SUPPRESS,
+        action="store_true",
+    )
+    parser.add_argument(
+        "-s",
+        "-k",
+        "--shutdown",
+        help="shutdown the given port, only for local running chrome",
+        type=int,
+    )
+    parser.add_argument(
+        "-A",
+        "--user-agent",
+        "--user_agent",
+        help=f"--user-agent, default to Chrome PC: {ChromeDaemon.PC_UA}",
+        default="",
+    )
+    parser.add_argument(
+        "-x", "--proxy", help="--proxy-server, default to None", default=""
+    )
+    parser.add_argument(
+        "-U",
+        "--user-data-dir",
+        "--user_data_dir",
+        help=f"user_data_dir to save user data, default to {DefaultConfig.user_data_dir}",
+        default=Path(DefaultConfig.user_data_dir),
+    )
+    parser.add_argument(
+        "--disable-image",
+        "--disable_image",
+        help=f"disable image for loading performance, default to {DefaultConfig.disable_image}",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-url",
+        "--start-url",
+        "--start_url",
+        help=f"start url while launching chrome, default to {DefaultConfig.start_url}",
+        default=DefaultConfig.start_url,
+    )
+    parser.add_argument(
+        "--max-deaths",
+        "--max_deaths",
+        help=f"restart times. default to {DefaultConfig.max_deaths} for without auto-restart",
+        default=DefaultConfig.max_deaths,
+        type=int,
+    )
+    parser.add_argument(
+        "--timeout",
+        help=f"timeout to connect the remote server, default to {DefaultConfig.timeout} for localhost",
+        default=DefaultConfig.timeout,
+        type=int,
+    )
+    parser.add_argument(
+        "-w",
+        "--workers",
+        help=f"the number of worker processes, default to {DefaultConfig.workers}",
+        default=DefaultConfig.workers,
+        type=int,
+    )
+    parser.add_argument(
+        "--proc-check-interval",
+        "--proc_check_interval",
+        dest="proc_check_interval",
+        help=f"check chrome process alive every interval seconds, default to {DefaultConfig.proc_check_interval}",
+        default=DefaultConfig.proc_check_interval,
+        type=int,
+    )
+    parser.add_argument(
+        "-crawl",
+        "--crawl",
+        help="crawl the given URL, output the HTML DOM",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "-C",
+        "--clear",
+        "--clean",
+        dest="clean",
+        help="clean user_data_dir",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--doc",
+        dest="doc",
+        help="show ChromeDaemon.__doc__",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--debug",
+        dest="debug",
+        help="set logger level to DEBUG",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "-cc",
+        "--clear-cache",
+        "--clear_cache",
+        help="clear cache for given port, port default to 9222",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "-K",
+        "--killall",
+        help="killall chrome launched local with --remote-debugging-port",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "-t",
+        "--try",
+        "--demo",
+        "--repl",
+        help="Have a try for ichrome with repl mode.",
+        default=False,
+        dest="demo",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-tc",
+        "--try-connection",
+        "--repl-connection",
+        help="Have a try for ichrome with repl mode with a launched Chrome.",
+        default=False,
+        dest="demo_connection",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--install",
+        help="show the best chrome version for testing",
+        default=False,
+        action="store_true",
+    )
+    args, extra_config = parser.parse_known_args()
+
+    if args.help:
+        show_help_and_chrome_paths()
+        return
+    if args.version:
+        print(__version__)
+        return
+    if args.install:
+        return show_best(proxy=args.proxy)
+    if args.config:
+        path = Path(args.config)
+        import json
+
+        if not path.is_file() or path.stat().st_size == 0:
+            default_config = DefaultConfig.to_dict()
+            if not path.parent.is_dir():
+                path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(default_config, indent=4))
+            logger.warning(
+                f"config file {path.as_posix()} not found or empty, created default config."
+            )
+
+        kwargs = json.loads(path.read_text())
+        start_port = kwargs.pop("port", DefaultConfig.port)
+        workers = kwargs.pop("workers", DefaultConfig.workers)
+        asyncio.run(ChromeWorkers.run_chrome_workers(start_port, workers, kwargs))
+        return
+    if args.shutdown:
+        logger.setLevel(1)
+        ChromeDaemon.clear_chrome_process(
+            args.shutdown, max_deaths=args.max_deaths, host=args.host
+        )
+        return
+    if args.killall:
+        logger.setLevel(1)
+        ChromeDaemon.clear_chrome_process(None, max_deaths=args.max_deaths)
+        return
+    if args.clean:
+        logger.setLevel(1)
+        ChromeDaemon.clear_user_dir(
+            args.user_data_dir, port=getattr(args, "port", None)
+        )
+        return
+    if args.doc:
+        logger.setLevel(1)
+        print(ChromeDaemon.__doc__)
+        return
+
+    kwargs = {}
+    kwargs.update(
+        chrome_path=args.chrome_path,
+        host=args.host,
+        headless=getattr(args, "headless", False),
+        user_agent=args.user_agent,
+        proxy=args.proxy,
+        user_data_dir=args.user_data_dir,
+        disable_image=args.disable_image,
+        start_url=args.start_url,
+        extra_config=extra_config,
+        max_deaths=args.max_deaths,
+        timeout=args.timeout,
+        proc_check_interval=args.proc_check_interval,
+        debug=args.debug,
+    )
+    log_level = getattr(args, "log_level", None)
+    if log_level:
+        logger.setLevel(log_level)
+    if kwargs["start_url"] == "about:blank" or not kwargs["start_url"]:
+        # reset start_url from extra_config
+        for config in kwargs["extra_config"]:
+            if re.match("^https?://", config):
+                kwargs["start_url"] = config
+                kwargs["extra_config"].remove(config)
+                break
+
+    if "--dump-dom" in extra_config or args.crawl:
+        logger.setLevel(60)
+        from .debugger import crawl_once
+
+        if kwargs["start_url"] == "about:blank" or not kwargs["start_url"]:
+            kwargs["start_url"] = kwargs["extra_config"].pop(0)
+        if kwargs["start_url"] != "about:blank" and not kwargs["start_url"].startswith(
+            "http"
+        ):
+            kwargs["start_url"] = "http://" + kwargs["start_url"]
+        kwargs["headless"] = getattr(args, "headless", True)
+        kwargs["disable_image"] = True
+        kwargs["timeout"] = max([5, args.timeout])
+        print(asyncio.run(crawl_once(**kwargs)), flush=True)
+    elif args.clear_cache:
+        from .debugger import clear_cache_handler
+
+        kwargs["headless"] = getattr(args, "headless", True)
+        port = kwargs.get("port") or DefaultConfig.port
+        main_user_dir = ChromeDaemon._ensure_user_dir(kwargs["user_data_dir"])
+        if main_user_dir is None:
+            print("user_data_dir is None, cannot clear cache", flush=True)
+            return
+        port_user_dir = main_user_dir / f"chrome_{port}"
+        print(f"Clearing cache(port={port}): {get_readable_dir_size(port_user_dir)}")
+        asyncio.run(clear_cache_handler(**kwargs))
+        print(f"Cleared  cache(port={port}): {get_readable_dir_size(port_user_dir)}")
+    else:
+        start_port = getattr(args, "port", DefaultConfig.port)
+        if args.demo:
+            from .debugger import repl_tab
+
+            repl_tab(**kwargs)
+            return
+        elif args.demo_connection:
+            from .debugger import repl_tab_chrome
+
+            repl_tab_chrome(**kwargs)
+            return
+        else:
+            asyncio.run(
+                ChromeWorkers.run_chrome_workers(start_port, args.workers, kwargs)
+            )
+
+
+if __name__ == "__main__":
+    sys.exit(main())
