@@ -1,0 +1,49 @@
+# DocLM - Intelligent Document Analysis
+
+**DocLM** is a Python library that uses advanced AI to analyze any PDF document and generate comprehensive summary reports with smart analytics.
+
+## Features
+
+- **Multi-Format Support**: Analyze PDF, DOCX, TXT, and more.
+- **Smart Summarization**: AI-powered summaries that capture the essence of your documents.
+- **Detailed Analytics**: Get key insights and statistics from your content.
+- **Google Colab Ready**: Seamlessly integrate with Google Colab for cloud-based analysis.
+
+## How to Get Your API Token
+
+1.  Run the backend server: `python app.py`.
+2.  Open your browser to `http://127.0.0.1:5000`.
+3.  Click "Get Started" and fill out the signup form.
+4.  Your unique API token will be displayed and emailed to you.
+
+## Installation
+
+```bash
+pip install DocLM
+```
+
+## Quick Start
+
+```python
+from DocLM import DocumentAnalyzer
+
+# Initialize the analyzer with your token
+analyzer = DocumentAnalyzer(api_token="your_token_here")
+
+# Analyze any PDF document
+# Make sure you have a file named 'document.pdf' in the same directory
+try:
+    report = analyzer.analyze("document.pdf")
+
+    # Get the smart analytics report
+    print("Summary:")
+    print(report.summary)
+    print("\nKey Insights:")
+    for insight in report.key_insights:
+        print(f"- {insight}")
+
+except FileNotFoundError:
+    print("Error: 'document.pdf' not found. Please create a sample PDF to analyze.")
+except Exception as e:
+    print(f"An error occurred: {e}")
+```
