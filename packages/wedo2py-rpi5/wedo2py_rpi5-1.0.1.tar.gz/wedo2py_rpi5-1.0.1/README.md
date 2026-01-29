@@ -1,0 +1,173 @@
+# wedo2py-rpi5 - LEGO WeDo 2.0 BLE Python Library
+
+Control LEGO WeDo 2.0 over Bluetooth Low Energy (BLE) using Python and the **Bleak** library.
+This package is designed primarily for **Raspberry Pi 5 / Raspberry Pi OS Bookworm**, but works on most modern Linux systems with BLE support.
+
+## Features
+
+- Motor control (Port A / B)
+- Tilt sensor (read orientation)
+- Distance / Motion sensor
+- LED color control
+- Piezo / Sound tones
+- Battery level readout
+- GATT-based BLE communication (Bleak)
+
+## Requirements
+
+- Python **3.9+**
+- Linux with **BlueZ** + Bluetooth LE
+- Recommended device: **Raspberry Pi 5**
+- BLE library: **Bleak**
+
+## Installation
+
+### 1. Install System Dependencies (Raspberry Pi)
+
+```bash
+sudo apt update
+sudo apt install bluetooth bluez python3-dbus
+```
+
+### 2. Create and Activate a Virtual Environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install the Package
+
+```bash
+pip install --upgrade pip
+pip install wedo2py-rpi5
+```
+
+**Note:** Running outside a virtual environment may cause errors like:
+- `error: externally-managed-environment`
+- `ModuleNotFoundError: No module named 'bleak'`
+
+## Quick Example
+
+```python
+from wedo2python.app import WeDo2Python
+
+hub = WeDo2Python("AA:BB:CC:DD:EE:FF")  # Replace with your WeDo Hub MAC
+hub.connect()
+
+hub.set_color("green")
+hub.motor_this_way(hub.port("B"))
+hub.set_motor_power(hub.port("B"), 60)
+hub.motor_on(hub.port("B"))
+
+hub.disconnect()
+```
+
+## LED Colors Supported
+
+| Name      | Value |
+|-----------|-------|
+| off       | 0     |
+| pink      | 1     |
+| purple    | 2     |
+| blue      | 3     |
+| lightblue | 4     |
+| cyan      | 5     |
+| green     | 6     |
+| yellow    | 7     |
+| orange    | 8     |
+| red       | 9     |
+| white     | 10    |
+
+## Motor Example
+
+```python
+hub.motor_this_way(hub.port("B"))      # direction right
+hub.motor_that_way(hub.port("B"))      # direction left
+hub.set_motor_power(hub.port("B"), 80) # power 0�100
+hub.motor_on(hub.port("B"))
+hub.motor_off(hub.port("B"))
+```
+
+## Tilt Sensor
+
+```python
+hub.tilt_sensor(hub.port("A"))
+tilt = hub.read_tilt_value()
+print(tilt)
+```
+
+## Distance Sensor
+
+```python
+hub.distance_sensor(hub.port("A"))
+dist = hub.read_distance_value()
+print(dist, "cm")
+```
+
+## Sound (Piezo Tone)
+
+The hub supports 16 internal tones:
+
+```python
+hub.sound(1)   # tone A
+hub.sound(12)  # tone cSH
+hub.sound(16)  # long tone
+hub.sound_off()
+```
+
+### Full List of Tones
+
+| Tone ID | Description |
+|---------|-------------|
+| 1       | A           |
+| 2       | F           |
+| 3       | cH          |
+| 4       | A (1000Hz)  |
+| 5       | eH          |
+| 6       | fH          |
+| 7       | gS          |
+| 8       | fS          |
+| 9       | G           |
+| 10      | aS          |
+| 11      | dH          |
+| 12      | cSH         |
+| 13      | B           |
+| 14      | fSH         |
+| 15      | A (500Hz)   |
+| 16      | cH (Long)   |
+
+## Finding the Hub's MAC Address
+
+```bash
+bluetoothctl
+scan on
+```
+
+Example output:
+```
+LEGO Hub 04:EE:03:16:ED:1D
+```
+
+## Troubleshooting
+
+| Issue                          | Solution                                           |
+|--------------------------------|----------------------------------------------------|
+| Cannot connect                 | Restart Hub, press button until LED flashes        |
+| Works once then disconnects    | Wait 3 seconds before next connection              |
+| Motor doesn't run              | Check correct port A/B                             |
+| Tilt sensor gives wrong value | Ensure tilt sensor is on Port A                    |
+| BLE permission denied          | Run: `sudo usermod -a -G bluetooth $USER && reboot` |
+
+## License
+
+This project is licensed under the Apache 2.0 License.
+
+## Credits
+
+Developed by **Evangelia Anastasaki**  
+BLE Python library for LEGO WeDo 2.0, optimized for Raspberry Pi 5.
+
+## Project Links
+
+- ?? [PyPI Project](https://pypi.org/project/wedo2py-rpi5/)
