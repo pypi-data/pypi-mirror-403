@@ -1,0 +1,3 @@
+from typing import Any, Literal
+
+def generate_openapi_oauth2_scheme(name: str, client_id: str, domain: str, audience: str, scopes: dict[str, str] | None = None, pkce: str | None = None, credentials_location: Literal['header', 'body'] | None = None) -> dict[str, dict[str, Any]]: ...
