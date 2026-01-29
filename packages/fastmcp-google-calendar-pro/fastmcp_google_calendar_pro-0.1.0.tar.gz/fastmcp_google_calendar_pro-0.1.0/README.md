@@ -1,0 +1,44 @@
+# FastMCP Google Calendar Pro
+
+Manage Google Calendar events with tools for creating, listing, searching, and checking availability
+
+## Installation
+
+```bash
+uvx fastmcp-google-calendar-pro
+```
+
+## Tools
+
+- `create_event`: Create a new event in Google Calendar
+- `list_upcoming_events`: List upcoming events from Google Calendar
+- `check_availability`: Check if a time slot is available in the calendar
+- `search_events`: Search for events in Google Calendar
+
+## Resources
+
+- `calendar://settings`: Get current calendar settings and configuration
+- `calendar://auth`: Check Google Calendar API authentication status
+
+## Prompts
+
+- `meeting_scheduler`: Generate a prompt for scheduling meetings with specific requirements
+- `calendar_review`: Generate a prompt for reviewing and analyzing calendar events
+- `event_planner`: Generate a prompt for planning complex events with multiple considerations
+
+## Claude Desktop Configuration
+
+```json
+{
+  "mcpServers": {
+    "fastmcp-google-calendar-pro": {
+      "command": "uvx",
+      "args": ["fastmcp-google-calendar-pro"]
+    }
+  }
+}
+```
+
+---
+
+Generated with MCP Builder
