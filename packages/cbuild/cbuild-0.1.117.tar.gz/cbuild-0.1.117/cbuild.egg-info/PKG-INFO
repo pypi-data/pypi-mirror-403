@@ -1,0 +1,374 @@
+Metadata-Version: 2.4
+Name: cbuild
+Version: 0.1.117
+Summary: A tool like Nuitka and PyInstaller for packaging Python applications
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: toml
+Dynamic: license-file
+
+# CBuild
+
+CBuild是一个统一的Python应用打包工具，提供了简单易用的命令行接口和配置文件支持，让你可以轻松地将Python脚本打包成可执行文件。
+
+## 功能特点
+
+- 支持PyInstaller和Nuitka两种主流打包方式
+- 统一的配置文件格式，支持跨平台使用
+- 自动检测和使用虚拟环境
+- 智能过滤工具自身的虚拟环境
+- 支持Windows、Linux和macOS平台
+- 丰富的命令行参数和配置选项
+- 支持单文件和目录模式打包
+- 支持UPX压缩
+- 支持自定义构建参数
+- 自动处理版本号和元数据
+- 提供详细的构建日志和错误信息
+- 兼容Python 3.7及以上版本
+- 支持从pyproject.toml、setup.py或Git标签自动读取版本号
+- 支持Nuitka插件系统
+- 更好的Windows控制台模式和UAC管理
+- 改进的虚拟环境检测算法，支持多种环境管理器（venv、conda、poetry、pipenv等）
+
+## 安装方式
+
+### 使用pip安装
+
+```bash
+pip install cbuild
+```
+
+##### 更新
+
+```
+pip install --upgrade cbuild
+```
+
+
+
+### 使用uv工具安装
+
+```
+uv tool install cbuild
+```
+
+##### 更新
+
+```
+uv tool upgrade cbuild
+```
+
+
+
+## 快速开始
+
+### 1. 初始化配置文件
+
+在你的Python项目根目录下，运行以下命令生成默认配置文件：
+
+```bash
+cbuild
+```
+
+这将生成一个名为`cbuild.toml`的配置文件，你可以根据需要修改它。
+
+### 2. 配置你的项目
+
+编辑`cbuild.toml`文件，配置你的项目信息：
+
+```toml
+[general]
+# 主脚本文件路径
+main_script = "main.py"
+# 输出目录
+output_dir = "dist"
+# 输出文件名
+build_filename = "your-app-name"
+```
+
+### 3. 开始打包
+
+使用Nuitka打包：
+
+```bash
+cbuild --nuitka
+```
+
+使用PyInstaller打包：
+
+```bash
+cbuild --pyinstaller
+```
+
+## 命令行参数
+
+### 基本参数
+
+- `--nuitka, -n`: 使用Nuitka打包
+- `--pyinstaller, -p`: 使用PyInstaller打包
+- `--clean`: 先清理输出目录
+- `--dry-run, -d`: 仅打印将运行的命令，不实际执行
+- `--verbose, -v`: 显示完整命令（便于调试）
+
+### 配置参数
+
+- `--main-script, -m`: 指定主脚本文件路径
+- `--output-dir, -D`: 指定输出目录
+- `--build-filename, -f`: 指定输出文件名
+
+### Windows特定参数
+
+- `--console, -c`: 显示控制台窗口（Windows）
+- `--noconsole, -w`: 隐藏控制台窗口（Windows）
+- `--uac, -a`: 请求管理员权限（Windows）
+
+## 配置文件说明
+
+### 通用配置
+
+```toml
+[general]
+# 主脚本文件路径
+main_script = "main.py"
+# 输出目录
+output_dir = "dist"
+# 输出文件名配置
+build_filename = ""
+# Python优化级别 (0-2)
+optimize_level = 2
+# 日志级别: DEBUG, INFO, WARNING, ERROR
+log_level = "INFO"
+```
+
+### 打包配置
+
+```toml
+[packaging]
+# 生成单文件可执行文件
+use_single_file = true
+# 移除调试符号以减小文件大小
+remove_debug_symbols = true
+# 自动跟随导入的模块
+follow_imports = true
+# 使用链接时优化
+use_lto = true
+# 使用UPX压缩可执行文件
+use_upx = false
+# 打包时排除的模块列表
+exclude_modules = [
+    "pyinstaller",
+    "nuitka",
+    "test",
+    "tests",
+    "__pycache__",
+    "setuptools",
+    "pkg_resources",
+    "distutils",
+    "cbuild"
+]
+```
+
+### 资源配置
+
+```toml
+[resources]
+# 应用图标路径（仅Windows支持.ico）
+app_icon = ""
+# 要添加的数据文件列表 [["src", "dst"], ...]
+add_data = []
+# UPX工具目录
+upx_dir = "D:/upx"
+# UPX压缩排除的文件
+upx_exclude = ["vcruntime140.dll"]
+# 显式包含的额外模块
+include_modules = []
+```
+
+### 编译器配置（已弃用）
+
+```toml
+[compiler]
+# 旧版编译器配置，现已迁移到[nuitka]部分
+# use_clang = true
+# use_latest_msvc = true
+```
+
+### Windows系统特定配置
+
+```toml
+[windows]
+# 控制台模式: true - 显示控制台, false - 隐藏控制台
+console_mode = true
+# 需要管理员权限
+uac_admin = false
+# 是否从git或pyproject.toml读取版本号并设置到编译后的程序
+use_pyproject_version = false
+```
+
+### Nuitka 特定配置
+
+```toml
+[nuitka]
+# 使用Clang编译器（仅Nuitka支持）
+use_clang = true
+# 使用最新的MSVC编译器（仅Windows和Nuitka支持）
+use_latest_msvc = true
+# 启用的Nuitka插件列表
+# 所有可用插件列表及描述:
+# - anti-bloat: 从广泛使用的库模块源代码中移除不必要的导入(默认启用)
+# - data-files: 包含由包配置文件指定的数据文件
+# - delvewheel: 在独立模式下支持使用'delvewheel'的包
+# - dill-compat: 支持'dill'包和'cloudpickle'兼容性
+# - dll-files: 包含包配置文件指定的DLL文件
+# - enum-compat: Python2和'enum'包所需
+# - eventlet: 支持包含'eventlet'依赖及其对'dns'包猴子补丁的需求
+# - gevent: 'gevent'包所需
+# - gi: 支持GI包类型库依赖
+# - glfw: 在独立模式下支持'OpenGL' (PyOpenGL)和'glfw'包
+# - implicit-imports: 按照包配置文件提供包的隐式导入
+# - kivy: 'kivy'包所需
+# - matplotlib: 'matplotlib'模块所需
+# - multiprocessing: Python的'multiprocessing'模块所需
+# - no-qt: 禁用所有Qt绑定的包含
+# - options-nanny: 根据包配置文件告知用户潜在问题
+# - pbr-compat: 在独立模式下'pbr'包所需
+# - pkg-resources: 'pkg_resources'的解决方法
+# - playwright: 'playwright'包所需
+# - pmw-freezer: 'Pmw'包所需
+# - pyqt5: PyQt5包所需
+# - pyqt6: PyQt6包在独立模式下所需
+# - pyside2: PySide2包所需
+# - pyside6: PySide6包在独立模式下所需
+# - pywebview: 'webview'包(pywebview on PyPI)所需
+# - spacy: 'spacy'包所需
+# - tk-inter: Python的Tk模块所需
+# - transformers: 为transformers包提供隐式导入
+# - upx: 自动使用UPX压缩创建的二进制文件(单文件模式下无效)
+# 示例: plugins = ["multiprocessing", "tk-inter", "pyqt5", "matplotlib", "data-files"]
+plugins = []
+# Nuitka自定义参数列表
+# 可以添加本工具未支持的Nuitka参数
+# 示例: custom_args = ["--enable-plugin=qml", "--include-plugin-directory=path/to/plugin"]
+custom_args = []
+```
+
+### PyInstaller 特定配置
+
+```toml
+[pyinstaller]
+# PyInstaller自定义参数列表
+custom_args = []
+```
+
+## 高级用法
+
+### 使用虚拟环境
+
+CBuild会自动检测并使用项目目录下的虚拟环境。如果项目中存在虚拟环境，CBuild会优先使用虚拟环境中的Python解释器和打包工具。
+
+支持的虚拟环境管理器：
+- venv (标准Python虚拟环境)
+- conda (Anaconda/Miniconda)
+- poetry
+- pipenv
+
+### Nuitka插件系统
+
+CBuild支持使用Nuitka的插件系统来增强打包功能：
+
+```toml
+[nuitka]
+# 启用multiprocessing插件支持多进程
+plugins = ["multiprocessing", "tk-inter", "pyqt5", "matplotlib", "data-files"]
+```
+
+### 版本号管理
+
+您可以启用自动版本号获取功能，从项目配置或Git标签中自动读取版本：
+
+```toml
+[windows]
+# 从pyproject.toml、setup.py或Git标签自动读取版本号
+use_pyproject_version = true
+```
+
+### 自定义打包参数
+
+你可以在配置文件中为Nuitka和PyInstaller添加自定义参数：
+
+```toml
+[nuitka]
+custom_args = ["--enable-plugin=qml", "--include-plugin-directory=path/to/plugin"]
+
+[pyinstaller]
+custom_args = ["--console", "--noupx", "--add-binary=path/to/binary:."]
+```
+
+### 排除和包含模块
+
+你可以在配置文件中指定要排除或包含的模块：
+
+```toml
+[packaging]
+exclude_modules = ["pyinstaller", "nuitka", "test", "tests"]
+
+[resources]
+include_modules = ["requests", "beautifulsoup4"]
+```
+
+## 常见问题
+
+### 1. 虚拟环境检测问题
+
+如果CBuild未能正确检测到你的虚拟环境，你可以尝试：
+
+- 确保虚拟环境目录位于项目根目录下
+- 确保虚拟环境目录名称为`.venv`、`venv`或其他常见名称
+- 检查虚拟环境中是否安装了所需的打包工具
+
+### 2. 打包工具未找到
+
+如果CBuild提示未找到打包工具，你可以：
+
+- 在虚拟环境中安装所需的打包工具：`pip install nuitka` 或 `pip install pyinstaller`
+- 确保全局环境中安装了打包工具
+- 检查PATH环境变量是否包含打包工具的路径
+
+### 3. 打包过程中出现错误
+
+如果打包过程中出现错误，你可以：
+
+- 使用`--verbose`参数查看详细的错误信息
+- 检查主脚本文件是否存在
+- 检查配置文件中的路径是否正确
+- 检查依赖项是否安装完整
+
+### 4. 版本号获取问题
+
+如果版本号获取功能不能正常工作，你可以：
+
+- 确认项目中包含pyproject.toml或setup.py文件
+- 检查文件中是否包含有效的版本号配置
+- 确保安装了setuptools_scm（如果是从Git标签获取版本）
+- 检查Git仓库是否已初始化（如果使用Git标签版本）
+
+### 5. 虚拟环境识别问题
+
+如果CBuild未能正确识别您的虚拟环境，您可以：
+
+- 确保虚拟环境位于项目根目录下（如.venv、venv等标准名称）
+- 检查虚拟环境中是否安装了所需的打包工具
+- 验证CONDA、Poetry或Pipenv环境是否正确激活
+
+## 许可证
+
+MIT License
+
+
+
+## 相关项目
+
+- [Nuitka](https://nuitka.net/)
+- [PyInstaller](https://www.pyinstaller.org/)
+- [uv](https://github.com/astral-sh/uv)
