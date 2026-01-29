@@ -1,0 +1,3 @@
+class CLIBase:
+    def run(self, argv):
+        ...
