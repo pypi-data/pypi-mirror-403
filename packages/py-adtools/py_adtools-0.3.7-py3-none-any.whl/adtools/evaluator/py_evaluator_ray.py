@@ -1,0 +1,111 @@
+"""
+Copyright (c) 2025 Rui Zhang <rzhang.cs@gmail.com>
+
+NOTICE: This code is under MIT license.
+"""
+
+from abc import abstractmethod
+from typing import Any, Dict, List, Callable
+
+from adtools.py_code import PyProgram
+from adtools.evaluator.py_evaluator import PyEvaluator
+from adtools.sandbox.sandbox_executor_ray import SandboxExecutorRay, ExecutionResults
+
+
+__all__ = ["PyEvaluatorRay"]
+
+
+class PyEvaluatorRay(PyEvaluator):
+
+    def __init__(
+        self,
+        init_ray: bool = True,
+        exec_code: bool = True,
+        debug_mode: bool = False,
+        *,
+        ray_rotation_max_bytes: int = 50 * 1024 * 1024,  # 50 MB
+        ray_rotation_backup_count: int = 1,
+    ):
+        """Evaluator using Ray for secure, isolated execution.
+        It supports efficient zero-copy return of large objects (e.g., Tensors).
+
+        Args:
+            init_ray: Whether to initialize the ray.
+            exec_code: Whether to execute the code using 'exec()'.
+            debug_mode: Enable debug print statements.
+            ray_rotation_max_bytes: Max bytes for ray log rotation.
+            ray_rotation_backup_count: Backup count for ray log rotation.
+        """
+        super().__init__(
+            exec_code=exec_code,
+            debug_mode=debug_mode,
+        )
+
+        self.sandbox_executor = SandboxExecutorRay(
+            evaluate_worker=self,
+            init_ray=init_ray,
+            debug_mode=debug_mode,
+            ray_rotation_max_bytes=ray_rotation_max_bytes,
+            ray_rotation_backup_count=ray_rotation_backup_count,
+        )
+
+    @abstractmethod
+    def evaluate_program(
+        self,
+        program_str: str,
+        callable_functions_dict: Dict[str, Callable] | None,
+        callable_functions_list: List[Callable] | None,
+        callable_classes_dict: Dict[str, Callable] | None,
+        callable_classes_list: List[Callable] | None,
+        **kwargs,
+    ) -> Any:
+        """Evaluate a given program.
+
+        Args:
+            program_str: The raw program text.
+            callable_functions_dict: A dictionary where keys are the names of functions
+                defined in the `program_str` and values are the corresponding callable function objects.
+            callable_functions_list: A list of callable function objects
+                defined in the `program_str`, ordered as they appear in the program.
+            callable_classes_dict: A dictionary where keys are the names of classes
+                defined in the `program_str` and values are the corresponding callable class objects.
+            callable_classes_list: A list of callable class objects
+                defined in the `program_str`, ordered as they appear in the program.
+
+        Returns:
+            Returns the evaluation result.
+        """
+        raise NotImplementedError(
+            "Must provide an evaluator for a python program. "
+            "Override this method in a subclass."
+        )
+
+    def secure_evaluate(
+        self,
+        program: str | PyProgram,
+        timeout_seconds: int | float = None,
+        redirect_to_devnull: bool = False,
+        *,
+        ray_actor_options: dict[str, Any] = None,
+        **kwargs,
+    ) -> ExecutionResults:
+        """Evaluates the program in a separate Ray Actor (process).
+
+        Args:
+            program: the program to be evaluated.
+            timeout_seconds: return 'None' if the execution time exceeds 'timeout_seconds'.
+            redirect_to_devnull: redirect any output to '/dev/null'.
+            ray_actor_options: kwargs pass to RayWorkerClass.options(...).
+            **kwargs: additional keyword arguments to pass to 'evaluate_program'.
+
+        Returns:
+            Returns the evaluation results.
+        """
+        return self.sandbox_executor.secure_execute(
+            worker_execute_method_name="_exec_and_get_res",
+            method_args=[program],
+            method_kwargs=kwargs,
+            timeout_seconds=timeout_seconds,
+            redirect_to_devnull=redirect_to_devnull,
+            ray_actor_options=ray_actor_options,
+        )
