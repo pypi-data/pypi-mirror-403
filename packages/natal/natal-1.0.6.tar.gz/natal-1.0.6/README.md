@@ -1,0 +1,163 @@
+# Natal
+
+> create Natal Chart with ease
+
+## Features
+
+- SVG natal chart generation in pure python
+- supported chart types:
+    - birth chart
+    - transit chart
+    - synastry chart
+    - solar return chart
+- highly configurable
+    - all planets, asteroids, vertices can be enabled / disabled
+    - orbs for each aspect
+    - light, dark, or mono theme
+    - light / dark theme color definitions
+    - chart stroke, opacity, font, spacing between planets ...etc
+- high precision astrological data with [Swiss Ephemeris]
+- chart data statistics
+    - element, modality, and polarity counts
+    - planets in each houses
+    - quadrant and hemisphere distribution
+    - aspect pair counts
+    - composite chart aspects
+    - aspects cross reference table
+- thoroughly tested with `pytest`
+
+## Quick Start
+
+- installation
+
+`uv add natal`
+
+- generate a chart
+
+```python
+from natal import Data, Chart
+
+# create chart data object
+mimi = Data(
+    name="MiMi",
+    utc_dt="1980-04-20 06:30",
+    lat=25.0531,
+    lon=121.526,
+)
+
+# create a Chart object
+chart = Chart(mimi, width=600)
+
+# view the chart in jupyter notebook
+from IPython.display import HTML
+
+HTML(chart.svg)
+```
+
+following SVG chart will be created:
+
+<img src="https://raw.githubusercontent.com/hoishing/natal/refs/heads/main/birth_chart_example.jpg" width=600/>
+
+- see [demo.ipynb] for other examples:
+    - transit chart
+    - light theme
+    - mono theme
+    - Orb configuration
+
+## Data Object
+
+```python
+## -- retrieve natal chart properties -- ##
+
+mimi.planets     # list[Planet]
+mimi.houses      # list[House]
+mimi.extras      # list[Extra]
+mimi.vertices    # list[Vertex]
+mimi.signs       # list[Sign]
+mimi.aspects     # list[Aspect]
+mimi.quadrants   # list[list[Aspectable]]
+
+# Planet object 
+sun = mimi.planets[0]
+
+sun.degree # 30.33039116987769
+sun.normalized_degree # 230.62043431588035 # degree relative to Asc
+sun.color # fire
+sun.speed # 0.9761994105153413
+sun.retro # False
+sun.dms # 00°19'
+sun.signed_dms # 00°♉19'
+sun.signed_deg # 0
+sun.sign.name # taurus
+sun.sign.symbol # ♉
+sun.sign.value # 2
+sun.sign.color # earth
+sun.sign.ruler # venus
+sun.sign.classic_ruler # venus
+sun.sign.element # earth
+sun.sign.modality # fixed
+sun.sign.polarity # negative
+
+# Aspect object
+aspect = mimi.aspects[0]
+
+aspect.body1 # sun Planet obj 
+aspect.body2 # mars Planet obj
+aspect.aspect_member # AspectMember(name='trine', symbol='△', value=120, color='air')
+aspect.applying # False
+aspect.orb # 3.3424
+```
+
+## Configuration
+
+- create a `Config` object and assign it to `Data` object
+- it will override the default settings in `config.py`
+- a sample config as follow:
+
+```py
+from natal.config import Display, Config, Orb
+
+# adjust which celestial bodies to display
+display = Display(
+    mc = False,
+    north_node = False,
+    chiron = True
+)
+
+# adjust orbs for each aspect
+orb = Orb(
+    conjunction = 8,
+    opposition = 8,
+    trine = 6,
+    square = 6,
+    sextile = 6
+)
+
+# the complete config object
+config = Config(
+    theme_type = "light", # or "dark", "mono"
+    display = display,
+    orb = orb
+)
+
+# create data object with the config
+data = Data(
+    name = "MiMi",
+    utc_dt = "1980-04-20 06:30",
+    lat = 25.0531,
+    lon = 121.526,
+    config = config,
+)
+```
+
+## Tech Stack
+
+- [tagit]: SVG / HTML generation and manipulation
+- [pyswisseph]: astrological data - Swiss Ephemeris
+- [pydantic]: data validation
+
+[demo.ipynb]: https://github.com/hoishing/natal/blob/main/demo.ipynb
+[pydantic]: https://github.com/pydantic/pydantic
+[pyswisseph]: https://github.com/astrorigin/pyswisseph
+[Swiss Ephemeris]: https://www.astro.com/swisseph/swephinfo_e.htm
+[tagit]: https://github.com/hoishing/tagit
