@@ -1,0 +1,192 @@
+framework: praisonai
+topic: "AI News {{today}}"
+
+# =============================================================================
+# AI BLOG POST GENERATOR - MODULAR PIPELINE (steps format)
+# =============================================================================
+# 
+# Stage 1: include: ai-topic-gatherer (MODULAR)
+# Stage 2: duplicate_checker - Check WordPress for duplicates
+# Stage 3: deep_researcher - Crawl URLs and gather facts
+# Stage 4: content_writer - Write Gutenberg-formatted post
+# Stage 5: include: wordpress-publisher (MODULAR)
+# =============================================================================
+
+# Define agents (referenced in steps)
+agents:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 2: DUPLICATE CHECK
+  # ═══════════════════════════════════════════════════════════════════════════
+  duplicate_checker:
+    role: Content Deduplication Agent
+    goal: Find ONE unique topic that hasn't been published yet
+    backstory: You check for duplicate content and select the BEST unique topic.
+    tools:
+      - check_duplicate
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 3: DEEP RESEARCH
+  # ═══════════════════════════════════════════════════════════════════════════
+  deep_researcher:
+    role: Content Researcher
+    goal: Gather comprehensive facts about the ONE selected topic
+    backstory: |
+      You search extensively to extract facts, statistics, and quotes for ONE topic.
+      tavily_search returns FULL PAGE CONTENT in raw_content field - use it!
+    tools:
+      - tavily_search
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 4: CONTENT WRITING
+  # ═══════════════════════════════════════════════════════════════════════════
+  content_writer:
+    role: Visual Content Strategist and Technology Journalist
+    goal: Write ONE focused, visually-rich blog post with CORRECT Gutenberg format
+    backstory: |
+      You MUST use correct Gutenberg block format where content is inside HTML tags.
+      You write about ONE topic only - never combine multiple news items.
+      You use British English (colour, centre, organisation).
+
+# Explicit step order - includes can be placed anywhere!
+steps:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 1: TOPIC GATHERING (MODULAR RECIPE)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - include: ai-topic-gatherer
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 2: DUPLICATE CHECK
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: check_duplicates
+    agent: duplicate_checker
+    action: |
+      {{previous_output}}
+      
+      For each topic from the list above:
+      1. Call check_duplicate with the topic title
+      2. Remove any that are duplicates
+      3. From the remaining unique topics, pick the BEST ONE
+      
+      Output ONLY ONE topic - the most newsworthy unique topic.
+    expected_output: |
+      ONE unique topic with its URL
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 3: DEEP RESEARCH
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: research_topic
+    agent: deep_researcher
+    action: |
+      {{previous_output}}
+      
+      For the ONE topic above:
+      1. Use tavily_search to find relevant URLs about this topic
+      2. Call crawl_url on URLs to get detailed content
+      3. Extract: key facts, statistics, company names, dates, quotes
+      
+      Compile comprehensive research for this ONE topic.
+    expected_output: |
+      Research summary with facts, statistics, and source URLs for ONE topic
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 4: CONTENT WRITING
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: write_post
+    agent: content_writer
+    action: |
+      {{previous_output}}
+      
+      ═══════════════════════════════════════════════════════════════════════
+      GUTENBERG BLOCK FORMAT (CRITICAL)
+      ═══════════════════════════════════════════════════════════════════════
+      
+      ✅ CORRECT PARAGRAPH FORMAT:
+      <!-- wp:paragraph -->
+      <p>Your paragraph text goes here inside the p tags.</p>
+      <!-- /wp:paragraph -->
+      
+      ❌ WRONG FORMAT (text outside tags):
+      <!-- wp:paragraph -->  Text without p tags  <!-- /wp:paragraph -->
+      
+      ✅ CORRECT HEADING FORMAT:
+      <!-- wp:heading -->
+      <h2>Your Heading Text</h2>
+      <!-- /wp:heading -->
+      
+      ✅ CORRECT QUOTE FORMAT:
+      <!-- wp:quote -->
+      <blockquote class="wp-block-quote"><p>Quote text here.</p></blockquote>
+      <!-- /wp:quote -->
+      
+      ✅ CORRECT LIST FORMAT:
+      <!-- wp:list -->
+      <ul class="wp-block-list">
+      <li>First item</li>
+      <li>Second item</li>
+      </ul>
+      <!-- /wp:list -->
+      
+      ✅ CORRECT TABLE FORMAT (use wp:html):
+      <!-- wp:html -->
+      <table>
+      <thead><tr><th>Feature</th><th>Details</th></tr></thead>
+      <tbody><tr><td>Data</td><td>Value</td></tr></tbody>
+      </table>
+      <!-- /wp:html -->
+      
+      ═══════════════════════════════════════════════════════════════════════
+      CRITICAL RULES
+      ═══════════════════════════════════════════════════════════════════════
+      
+      1. ONE TOPIC ONLY - do NOT combine multiple news stories
+      2. Content MUST be inside HTML tags (<p>, <h2>, <ul>, etc.)
+      3. Do NOT put text directly between wp: comments
+      4. Do NOT use markdown (**bold**) - use <strong>bold</strong>
+      5. Do NOT start with H1 - title is separate
+      6. Use <strong> not **asterisks** for bold
+      
+      ═══════════════════════════════════════════════════════════════════════
+      VISUAL ELEMENTS (include at least 3)
+      ═══════════════════════════════════════════════════════════════════════
+      
+      ✓ TABLE - key facts, specs, comparisons
+      ✓ LIST - features, benefits, key points
+      ✓ QUOTE - statements from sources
+      ✓ SEPARATOR - between major sections
+      
+      ═══════════════════════════════════════════════════════════════════════
+      TITLE (SPECIFIC, NOT GENERIC)
+      ═══════════════════════════════════════════════════════════════════════
+      
+      REQUIRED in title:
+      - Specific company name (OpenAI, Google, Anthropic, etc.)
+      - Specific product/model name (GPT-5, Gemini, Claude, etc.)
+      - 6-10 words, NO colons
+      
+      GOOD titles:
+      - "OpenAI GPT-5 Launches with 1M Token Context"
+      - "Google Gemini 2.0 Beats GPT-4 on Coding Benchmarks"
+      - "Anthropic Claude 4 Now Available for Enterprise"
+      
+      BAD titles (TOO GENERIC - NEVER USE):
+      - "AI in Manufacturing Outlook 2026"
+      - "AI's Impact on Sustainability"
+      - "The Future of AI Agents"
+      
+      ═══════════════════════════════════════════════════════════════════════
+      
+      OUTPUT FORMAT:
+      ARTICLE_TITLE: [Title about ONE topic]
+      ARTICLE_CONTENT:
+      <!-- wp:paragraph -->
+      <p>Opening paragraph...</p>
+      <!-- /wp:paragraph -->
+      ...more blocks with content INSIDE HTML tags...
+    expected_output: |
+      ARTICLE_TITLE: focused title about ONE topic
+      ARTICLE_CONTENT: Gutenberg blocks with content inside HTML tags
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STAGE 5: PUBLISH (MODULAR RECIPE)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - include: wordpress-publisher
