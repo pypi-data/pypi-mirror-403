@@ -1,0 +1,419 @@
+Metadata-Version: 2.4
+Name: django-lark
+Version: 0.3.0
+Summary: Django integration for Lark billing
+Project-URL: Homepage, https://github.com/uselark/django-lark
+Project-URL: Documentation, https://github.com/uselark/django-lark#readme
+Project-URL: Repository, https://github.com/uselark/django-lark
+Project-URL: Issues, https://github.com/uselark/django-lark/issues
+Author-email: Lark <support@uselark.ai>
+License-Expression: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Web Environment
+Classifier: Framework :: Django
+Classifier: Framework :: Django :: 4.2
+Classifier: Framework :: Django :: 5.0
+Classifier: Framework :: Django :: 5.1
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.9
+Requires-Dist: django>=4.2
+Requires-Dist: lark-billing>=0.9.0
+Provides-Extra: dev
+Requires-Dist: django-stubs>=4.2; extra == 'dev'
+Requires-Dist: mypy>=1.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.21; extra == 'dev'
+Requires-Dist: pytest-django>=4.5; extra == 'dev'
+Requires-Dist: pytest>=7.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# django-lark
+
+Django integration for [Lark billing](https://uselark.ai).
+
+## Installation
+
+```bash
+pip install django-lark
+```
+
+## Quick Start
+
+1. Add `django_lark` to your `INSTALLED_APPS`:
+
+```python
+INSTALLED_APPS = [
+    ...
+    'django_lark',
+]
+```
+
+2. Configure your Lark API key in `settings.py`:
+
+```python
+LARK_API_KEY = "lark_api_..."
+```
+
+Or set the `LARK_API_KEY` environment variable.
+
+3. Include the URLs (optional, for customer portal):
+
+```python
+urlpatterns = [
+    ...
+    path('billing/', include('django_lark.urls')),
+]
+```
+
+## Configuration
+
+All settings are prefixed with `LARK_`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `LARK_API_KEY` | Required | Your Lark API key |
+| `LARK_BASE_URL` | `https://api.uselark.ai` | Lark API base URL |
+| `LARK_TIMEOUT` | `60.0` | Request timeout in seconds |
+| `LARK_MAX_RETRIES` | `2` | Max retry attempts |
+| `LARK_USER_SUBJECT_FIELD` | `email` | User field to use as external_id |
+| `LARK_AUTO_CREATE_SUBJECTS` | `False` | Auto-create Lark subjects for users |
+
+## How It Works
+
+django-lark uses Lark's `external_id` feature to identify users without maintaining a local database mapping. When you create a subject in Lark with an `external_id`, you can use that same `external_id` in any API call that accepts a `subject_id`.
+
+By default, django-lark uses the user's email as the `external_id`. You can customize this with the `LARK_USER_SUBJECT_FIELD` setting:
+
+```python
+# Use user's primary key
+LARK_USER_SUBJECT_FIELD = "id"  # Results in "django_user_{pk}"
+
+# Use email (default)
+LARK_USER_SUBJECT_FIELD = "email"
+
+# Use a custom field
+LARK_USER_SUBJECT_FIELD = "uuid"
+
+# Use a callable for full control
+LARK_USER_SUBJECT_FIELD = lambda user: f"myapp_{user.organization_id}_{user.id}"
+```
+
+## Usage
+
+### Client Access
+
+```python
+from django_lark import get_lark_client, get_async_lark_client
+
+# Sync
+client = get_lark_client()
+subjects = client.subjects.list()
+
+# Async
+async def my_view(request):
+    client = get_async_lark_client()
+    subjects = await client.subjects.list()
+```
+
+### Get External ID for a User
+
+```python
+from django_lark.utils import get_external_id_for_user
+
+external_id = get_external_id_for_user(user)
+# Use this external_id in any Lark API call
+```
+
+### Create Lark Subjects for Users
+
+```python
+from django_lark.utils import get_or_create_subject_for_user
+
+# Get or create a Lark subject for a Django user
+subject, created = get_or_create_subject_for_user(user)
+```
+
+### Check Subscription Status
+
+```python
+from django_lark.utils import get_billing_state_for_user
+
+billing_state = get_billing_state_for_user(user)
+if billing_state.has_active_subscription:
+    print("User has active subscription!")
+```
+
+### Create Subscriptions
+
+```python
+from django_lark.utils import create_subscription_for_user
+
+# Create a subscription and redirect to checkout
+response = create_subscription_for_user(
+    user,
+    rate_card_id="rc_pro",
+    success_url="https://example.com/welcome/",
+    cancelled_url="https://example.com/pricing/",
+)
+
+# Check if checkout is required
+if response.result.result_type == "requires_action":
+    return redirect(response.result.action.checkout_url)
+else:
+    # Subscription created directly (e.g., free plan or payment method on file)
+    subscription = response.result.subscription
+
+# With fixed rate quantities (e.g., seat-based pricing)
+subscription = create_subscription_for_user(
+    user,
+    rate_card_id="rc_team",
+    fixed_rate_quantities={"seats": 5},
+    success_url="https://example.com/welcome/",
+)
+
+# With price multipliers (e.g., discounts)
+subscription = create_subscription_for_user(
+    user,
+    rate_card_id="rc_pro",
+    rate_price_multipliers={"seats": 0.8},  # 20% discount
+    success_url="https://example.com/welcome/",
+)
+```
+
+### Cancel Subscriptions
+
+```python
+from django_lark.utils import cancel_subscription, cancel_subscription_for_user
+
+# Cancel by subscription ID (no ownership check)
+cancelled = cancel_subscription("sub_abc123")
+
+# Cancel with ownership verification (recommended)
+cancelled = cancel_subscription_for_user(user, "sub_abc123")
+```
+
+### Change Rate Card (Upgrade/Downgrade)
+
+```python
+from django_lark.utils import change_subscription_rate_card, change_subscription_rate_card_for_user
+
+# Change rate card by subscription ID (no ownership check)
+response = change_subscription_rate_card(
+    "sub_abc123",
+    rate_card_id="rc_enterprise",
+    success_url="https://example.com/upgraded/",
+    cancelled_url="https://example.com/plans/",
+    upgrade_behavior="prorate",  # or "rate_difference"
+)
+
+# Change with ownership verification (recommended)
+response = change_subscription_rate_card_for_user(
+    user,
+    "sub_abc123",
+    rate_card_id="rc_enterprise",
+    success_url="https://example.com/upgraded/",
+)
+
+# Check if checkout is required (e.g., for payment)
+if response.result.type == "requires_action":
+    return redirect(response.result.action.checkout_url)
+else:
+    # Rate card changed directly
+    subscription = response.result.subscription
+```
+
+The `upgrade_behavior` parameter controls how charges are calculated:
+- `"prorate"` - Customer is charged for the prorated difference based on remaining time
+- `"rate_difference"` - Customer is charged the full difference between rate cards
+
+### Usage Reporting
+
+Record usage events for metered/usage-based billing:
+
+```python
+import uuid
+from django_lark.utils import record_usage, record_usage_for_user
+
+# Record usage for a user (uses their external_id)
+record_usage_for_user(
+    user,
+    event_name="api_calls",
+    data={"count": 100},
+    idempotency_key=str(uuid.uuid4()),
+)
+
+# Record usage with explicit subject_id
+record_usage(
+    subject_id="user_123",
+    event_name="compute_hours",
+    data={"hours": "2.5", "instance_type": "gpu"},
+    idempotency_key=f"job_{job_id}",
+)
+
+# With timestamp (for backdated events)
+from datetime import datetime, timezone
+
+record_usage_for_user(
+    user,
+    event_name="storage_gb",
+    data={"amount": "50.5"},
+    idempotency_key=f"storage_{user.pk}_{date}",
+    timestamp=datetime.now(timezone.utc),
+)
+```
+
+The `idempotency_key` ensures the same event isn't processed multiple times. Use a unique, deterministic key based on the event (e.g., `f"job_{job_id}"` or `f"{user_id}_{event}_{timestamp}"`).
+
+### View Decorators
+
+```python
+from django_lark.decorators import subscription_required, usage_within_limits, track_usage
+
+@subscription_required()
+def premium_view(request):
+    return render(request, 'premium.html')
+
+@subscription_required(rate_card_ids=['rc_pro', 'rc_enterprise'])
+def pro_view(request):
+    return render(request, 'pro.html')
+
+@subscription_required(redirect_url='/pricing/')
+def feature_view(request):
+    return render(request, 'feature.html')
+
+# Block access if user has exceeded included usage limits
+@usage_within_limits()
+def metered_api(request):
+    return JsonResponse({"result": "ok"})
+
+@usage_within_limits(redirect_url='/upgrade/')
+def limited_api(request):
+    return JsonResponse({"result": "ok"})
+
+# Track usage automatically on successful responses
+@track_usage("api_calls")
+def my_api_view(request):
+    return JsonResponse({"result": "ok"})
+
+# With custom usage data
+@track_usage("api_calls", data={"endpoint": "weather_reports"})
+def weather_reports_api(request):
+    return JsonResponse({"weather_reports": []})
+
+# Dynamic data based on request/response
+@track_usage(
+    "tokens_used",
+    data=lambda req, res, *a, **kw: {"input_tokens": getattr(res, "input_tokens")}
+)
+def llm_api(request):
+    return JsonResponse({"response": "Hello!"})
+
+# Custom idempotency key
+@track_usage(
+    "file_uploads",
+    idempotency_key=lambda req, res, *a, **kw: f"upload_{req.POST['file_id']}"
+)
+def upload_file(request):
+    return JsonResponse({"status": "uploaded"})
+
+# Combine decorators: require subscription, check usage limits, then track usage
+@subscription_required(rate_card_ids=['rc_pro'])
+@usage_within_limits(redirect_url='/upgrade/')
+@track_usage("premium_api_calls")
+def premium_api(request):
+    return JsonResponse({"premium": True})
+```
+
+### Template Tags
+
+```django
+{% load lark_tags %}
+
+{% has_active_subscription as is_subscribed %}
+{% if is_subscribed %}
+    <p>Welcome, premium member!</p>
+{% else %}
+    <a href="/pricing/">Upgrade now</a>
+{% endif %}
+
+{% has_subscription_to_rate_card "rc_pro" as has_pro %}
+{% if has_pro %}
+    <p>Pro features unlocked!</p>
+{% endif %}
+
+{% get_subscriptions as subscriptions %}
+{% for sub in subscriptions %}
+    <p>{{ sub.rate_card_id }} -
+       <span class="badge {{ sub.status|lark_subscription_status_badge }}">
+           {{ sub.status }}
+       </span>
+    </p>
+{% endfor %}
+
+{% get_lark_external_id as external_id %}
+```
+
+### Customer Portal
+
+Redirect users to the Lark customer portal:
+
+```django
+<a href="{% url 'django_lark:customer_portal' %}?return_url={{ request.path }}">
+    Manage Subscription
+</a>
+```
+
+### Checkout
+
+Redirect users to Lark checkout to subscribe to a rate card:
+
+```django
+{# Link-based checkout #}
+<a href="{% url 'django_lark:checkout' %}?rate_card_id=rc_pro&success_url=/welcome/">
+    Subscribe to Pro
+</a>
+
+{# Form-based checkout #}
+<form method="post" action="{% url 'django_lark:checkout' %}">
+    {% csrf_token %}
+    <input type="hidden" name="rate_card_id" value="rc_pro">
+    <input type="hidden" name="success_url" value="/welcome/">
+    <input type="hidden" name="cancelled_url" value="/pricing/">
+    <button type="submit">Subscribe</button>
+</form>
+```
+
+### Change Rate Card
+
+Upgrade or downgrade a user's subscription to a different rate card:
+
+```django
+{# Link-based upgrade #}
+<a href="{% url 'django_lark:change_rate_card' %}?subscription_id={{ subscription.id }}&rate_card_id=rc_enterprise&success_url=/upgraded/">
+    Upgrade to Enterprise
+</a>
+
+{# Form-based upgrade with proration #}
+<form method="post" action="{% url 'django_lark:change_rate_card' %}">
+    {% csrf_token %}
+    <input type="hidden" name="subscription_id" value="{{ subscription.id }}">
+    <input type="hidden" name="rate_card_id" value="rc_enterprise">
+    <input type="hidden" name="success_url" value="/upgraded/">
+    <input type="hidden" name="cancelled_url" value="/plans/">
+    <input type="hidden" name="upgrade_behavior" value="prorate">
+    <button type="submit">Upgrade Plan</button>
+</form>
+```
+
+## License
+
+MIT
