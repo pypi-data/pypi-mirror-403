@@ -1,0 +1,151 @@
+# OpenWebUI Bootstrap Configuration
+# This file configures the OpenWebUI instance
+
+database:
+  type: sqlite # for now, only sqlite is supported, but postgresql will be an option later
+  database_location: /var/lib/docker/openwebui/_data/webui.db
+
+users: # List the users which should be created or updated
+  - name: Admin Adminmus # User visible name
+    email: admin@test.com # Users's emial and login
+    role: Admin # Admin or User
+  - name: Test_Team_1 # User visible name
+    email: test1@test.de # Users's emial and login
+    role: User # Admin or User
+  - name: Test_Team_2 # User visible name
+    email: test2@test.de # Users's emial and login
+    role: User # Admin or User
+
+groups:
+  - name: Schulung # group name
+    description: Training group with chat and function permissions
+    permissions: # A list of permissions the groups allows Unlisted permissions are denied.
+      - chat.controls
+      - chat.file_upload
+      - chat.edit
+      - chat.delete
+      - chat.continue_response
+      - chat.regenerate_response
+      - chat.rate_response
+      - chat.stt
+      - chat.tts
+      - chat.multiple_models
+      - chat.temporary
+      - features.web_search
+      - features.image_generation
+      - features.code_interpreter
+    members: # A list of users which are members in this group
+      - test1@test.de
+      - test2@test.de
+
+connections:
+  - type: openai # ollama or Azure OpenAI
+    url: https://api.mistral.ai/v1 # connection url
+    bearer: 3X5HGXswma5L8fM7fMaO29zh9pzmyP3x # auth token from .env file
+    extra_headers: null # extra headers in JSON format or None
+    model_prefix_id: mistral # A prefix that is prepended to the model name
+    model_ids: # A list of models to be imported (all, if empty)
+      - ministral-3b-2512
+    tags: # Tags to sort the model (optional)
+      - Online-Models
+
+  - type: ollama
+    url: http://ollama:11434
+    bearer: null
+    extra_headers: null
+    model_prefix_id: ollama
+    model_ids: []  # Empty to import all available models
+    tags:
+      - Local-Models
+
+models:
+  prompt_path: ./system_prompts # Path to system prompts directory
+  icon_path: ./icons # Path to extra icons
+  model_setup: # Extra settings on per-model base (optional)
+    mistral.ministral-3b-2512: # Model ID from connection including prefix (dictionary)
+      context_size: "32768" # Context size (32k) - must be string
+      system_prompt: ai-teacher.txt # System prompt for the model, located in prompt_path
+      icon: mistral.png # The icon to use for the model (optional)
+      capabilities: "image-recognition,file-upload,file-context,websearch,image-generation,code-interpreter,usage-statistics,citations,status-updates,builtin-tools" # Capabilities as comma-separated string
+      default_capabilities: "websearch,image-generation,code-interpreter" # Capabilities that are always activated as comma-separated string
+
+# UI Settings Configuration
+ui_settings:
+  enable_signup: true # Enable user signup (default: true)
+  default_locale: "de" # Default locale for UI (optional)
+  default_models: # List of default model IDs to show (optional)
+    - "mistral.ministral-3b-2512"
+
+# User Permission System Configuration
+permissions:
+  workspace:
+    models: true # Access to models
+    knowledge: true # Access to knowledge bases
+    prompts: true # Access to prompts
+    tools: true # Access to tools
+    models_import: false # Allow importing models
+    models_export: false # Allow exporting models
+    prompts_import: false # Allow importing prompts
+    prompts_export: false # Allow exporting prompts
+    tools_import: false # Allow importing tools
+    tools_export: false # Allow exporting tools
+  chat:
+    controls: true # Chat controls
+    valves: true # Chat valves
+    system_prompt: true # System prompt editing
+    params: true # Parameter editing
+    file_upload: true # File upload
+    delete: true # Delete chats
+    delete_message: true # Delete messages
+    continue_response: true # Continue response
+    regenerate_response: true # Regenerate response
+    rate_response: true # Rate responses
+    edit: true # Edit messages
+    share: true # Share chats
+    export: true # Export chats
+    stt: true # Speech-to-text
+    tts: true # Text-to-speech
+    call: true # Call functionality
+    multiple_models: true # Multiple models
+    temporary: true # Temporary chats
+    temporary_enforced: false # Enforce temporary chats
+  features:
+    api_keys: false # API keys management
+    notes: true # Notes feature
+    folders: true # Folders feature
+    channels: true # Channels feature
+    direct_tool_servers: false # Direct tool servers
+    web_search: true # Web search
+    image_generation: true # Image generation
+    code_interpreter: true # Code interpreter
+    memories: true # Memories
+  sharing:
+    models: false # Allow model sharing
+    public_models: false # Allow public model sharing
+    knowledge: false # Allow knowledge sharing
+    public_knowledge: false # Allow public knowledge sharing
+    prompts: false # Allow prompt sharing
+    public_prompts: false # Allow public prompt sharing
+    tools: false # Allow tool sharing
+    public_tools: false # Allow public tool sharing
+    notes: false # Allow note sharing
+    public_notes: false # Allow public note sharing
+  settings:
+    interface: true # Interface settings
+
+# Image Generation Configuration
+image_generation:
+  enable: true # Enable image generation (default: true)
+  engine: "openai" # Image generation engine: openai, mistral, or comfyui
+  model: "dall-e-3" # Default image generation model (optional)
+  # OpenAI/Mistral API configuration (optional)
+  openai:
+    api_base_url: "https://api.openai.com/v1"
+    api_key: "your-api-key-here"
+    size: "1024x1024"
+    steps: 50
+  # ComfyUI server configuration (optional)
+  comfyui:
+    base_url: "http://localhost:8188"
+    api_key: "your-comfyui-api-key"
+    workflow: "{}"

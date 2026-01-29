@@ -1,0 +1,147 @@
+database:
+  type: sqlite # for now, only sqlite is supported, but postgresql will be an option later
+  database_location: /var/lib/docker/<container-name>/_data/webui.db
+
+users: # List the users which should be created or updated
+  - name: User Name # User visible name
+    email: user@test.com # Users's emial and login
+    role: Admin # Admin or User
+  - name: Another User # User visible name
+    email: user2@test.com # Users's emial and login
+    role: User # Admin or User
+
+groups:
+  - name: special_users # group name
+    description: A group for users with special permissions
+    permissions: # A list of permissions the groups allows Unlisted permissions are denied.
+      - import_models
+      - export_models
+    members: # A list of users which are members in this group
+      - user@test.com
+      - user2@test.com
+
+connections:
+  type: openai # ollama or Azure OpenAI
+  url: https://api.mistral.ai/v1 # connection url
+  bearer: <auth token here>
+  extra_headers: # extra headers in JSON format or None
+  model_prefix_id: mistral # A prefix that is prepended to the model name
+  model_ids: # A list of models to be imported (all, if empty)
+    - model-1
+    - model-2
+  tags: # Tags to sort the model (optional)
+    - Online-Models
+
+
+models:
+  prompt_path: /path/to/model/system-prompts # Path to system prompts directory.
+  icon_path: /path/to/extra/icons
+  model_setup: # Extra settings on per-model base (optional)
+    mistral.model-1: # Model ID from connection including prefix (dictionary)
+      context_size: 8192 # Context size (default 32k)
+      system_prompt: prompt_for_mistral_model_1.txt # System prompt for the model, located in prompt_path (optional)
+      icon: mistral_1.png # The icon to use for the model (optional)
+      capabilities: # The capabilities (the list below represents all possible options)
+        - image-recognition
+        - file-upload
+        - file-context
+        - websearch
+        - image-generation
+        - code-interpreter
+        - usage-statistics
+        - citations
+        - status-updates
+        - builtin-tools
+      default_capabilities: # Capabilities that are always activated
+        - websearch
+        - image-generation
+        - code-interpreter
+
+# UI Settings Configuration
+ui_settings:
+  enable_signup: true # Enable user signup (default: true)
+  default_locale: "en" # Default locale for UI (optional)
+  default_models: # List of default model IDs to show (optional)
+    - "mistral.model-1"
+    - "gpt-4"
+
+# User Permission System Configuration
+permissions:
+  workspace:
+    models: true # Access to models
+    knowledge: true # Access to knowledge bases
+    prompts: true # Access to prompts
+    tools: true # Access to tools
+    models_import: false # Allow importing models
+    models_export: false # Allow exporting models
+    prompts_import: false # Allow importing prompts
+    prompts_export: false # Allow exporting prompts
+    tools_import: false # Allow importing tools
+    tools_export: false # Allow exporting tools
+
+  chat:
+    controls: true # Chat controls
+    valves: true # Chat valves
+    system_prompt: true # System prompt editing
+    params: true # Parameter editing
+    file_upload: true # File upload
+    delete: true # Delete chats
+    delete_message: true # Delete messages
+    continue_response: true # Continue response
+    regenerate_response: true # Regenerate response
+    rate_response: true # Rate responses
+    edit: true # Edit messages
+    share: true # Share chats
+    export: true # Export chats
+    stt: true # Speech-to-text
+    tts: true # Text-to-speech
+    call: true # Call functionality
+    multiple_models: true # Multiple models
+    temporary: true # Temporary chats
+    temporary_enforced: false # Enforce temporary chats
+
+  features:
+    api_keys: false # API keys management
+    notes: true # Notes feature
+    folders: true # Folders feature
+    channels: true # Channels feature
+    direct_tool_servers: false # Direct tool servers
+    web_search: true # Web search
+    image_generation: true # Image generation
+    code_interpreter: true # Code interpreter
+    memories: true # Memories
+
+  sharing:
+    models: false # Allow model sharing
+    public_models: false # Allow public model sharing
+    knowledge: false # Allow knowledge sharing
+    public_knowledge: false # Allow public knowledge sharing
+    prompts: false # Allow prompt sharing
+    public_prompts: false # Allow public prompt sharing
+    tools: false # Allow tool sharing
+    public_tools: false # Allow public tool sharing
+    notes: false # Allow note sharing
+    public_notes: false # Allow public note sharing
+
+  settings:
+    interface: true # Interface settings
+
+# Image Generation Configuration
+image_generation:
+  enable: true # Enable image generation (default: true)
+  engine: "openai" # Image generation engine: openai, mistral, or comfyui
+  model: "dall-e-3" # Default image generation model (optional)
+
+  # OpenAI/Mistral API configuration (optional)
+  openai:
+    api_base_url: "https://api.openai.com/v1"
+    api_key: "your-api-key-here"
+    size: "1024x1024"
+    steps: 50
+
+  # ComfyUI server configuration (optional)
+  comfyui:
+    base_url: "http://localhost:8188"
+    api_key: "your-comfyui-api-key"
+    workflow: # ComfyUI workflow configuration
+      # Add your ComfyUI workflow JSON here
