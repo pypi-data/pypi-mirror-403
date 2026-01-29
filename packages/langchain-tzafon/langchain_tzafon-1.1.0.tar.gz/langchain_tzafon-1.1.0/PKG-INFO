@@ -1,0 +1,169 @@
+Metadata-Version: 2.4
+Name: langchain-tzafon
+Version: 1.1.0
+Summary: An integration package connecting Tzafon and LangChain
+Requires-Python: >=3.11
+Requires-Dist: langchain-core>=1.1.3
+Requires-Dist: openai>=1.0.0
+Requires-Dist: playwright>=1.57.0
+Requires-Dist: pydantic-settings>=2.12.0
+Requires-Dist: pydantic>=2.12.5
+Requires-Dist: tzafon>=2.8.1
+Description-Content-Type: text/markdown
+
+# 🦜 langchain-tzafon
+
+An integration package connecting **[Tzafon](https://tzafon.ai)** and **[LangChain](https://www.langchain.com/)**.
+
+`langchain-tzafon` provides two powerful integrations:
+- **ChatTzafon**: A LangChain chat model for Tzafon's AI models (chat completions with streaming support)
+- **TzafonLoader**: A Document Loader using Tzafon's headless browser infrastructure
+
+---
+
+## ✨ Features
+
+- **Chat Completions**: Access Tzafon's AI models via LangChain's chat model interface
+- **Streaming Support**: Real-time token streaming for chat responses
+- **Headless Browser Rendering**: Powered by Tzafon's cloud-based browser instances
+- **JavaScript Support**: Naturally handles SPAs and dynamically loaded content
+- **Sync & Async Support**: Features both synchronous and asynchronous APIs
+- **Seamless Integration**: Fully compatible with LangChain's interfaces
+
+---
+
+## 🚀 Installation
+
+```bash
+pip install langchain-tzafon
+```
+
+*Note: This package requires Playwright for connecting to the remote browser.*
+
+---
+
+## 🔑 Configuration
+
+To use this package, you need a Tzafon API Key.
+
+1.  Sign up or log in at **[tzafon.ai](https://tzafon.ai)** to get your API key.
+2.  Set it as an environment variable (recommended):
+
+```bash
+export TZAFON_API_KEY="your_api_key_here"
+```
+
+Alternatively, you can pass the API key directly when initializing the loader.
+
+---
+
+## 📖 Usage
+
+### ChatTzafon - Chat Completions
+
+Use Tzafon's AI models for chat completions:
+
+```python
+from langchain_tzafon import ChatTzafon
+
+# Initialize the chat model
+chat = ChatTzafon(model="tzafon.sm-1")
+
+# Simple invocation
+response = chat.invoke("Hello, how are you?")
+print(response.content)
+```
+
+### ChatTzafon - Streaming
+
+Stream responses token by token:
+
+```python
+from langchain_tzafon import ChatTzafon
+
+chat = ChatTzafon(model="tzafon.sm-1", temperature=0.8)
+
+for chunk in chat.stream("Write a haiku about coding"):
+    print(chunk.content, end="", flush=True)
+```
+
+### ChatTzafon - With Messages
+
+Use structured messages for conversations:
+
+```python
+from langchain_tzafon import ChatTzafon
+from langchain_core.messages import HumanMessage, SystemMessage
+
+chat = ChatTzafon()
+messages = [
+    SystemMessage(content="You are a helpful assistant."),
+    HumanMessage(content="What is the capital of France?"),
+]
+response = chat.invoke(messages)
+print(response.content)
+```
+
+### TzafonLoader - Text Extraction
+
+Load web pages using Tzafon's headless browser:
+
+```python
+from langchain_tzafon import TzafonLoader
+
+loader = TzafonLoader(urls=["https://example.com"])
+documents = loader.load()
+
+for doc in documents:
+    print(f"Content from {doc.metadata['url']}:")
+    print(doc.page_content[:200])
+```
+
+### TzafonLoader - Async Loading
+
+For better performance when handling multiple URLs:
+
+```python
+import asyncio
+from langchain_tzafon import TzafonLoader
+
+async def main():
+    loader = TzafonLoader(urls=[
+        "https://example.com",
+        "https://tzafon.ai"
+    ])
+    
+    async for doc in loader.alazy_load():
+        print(f"Loaded {doc.metadata['url']}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+---
+
+## 🛠️ API Reference
+
+### `ChatTzafon`
+
+| Argument | Type | Description |
+| :--- | :--- | :--- |
+| `model` | `str` | Tzafon model ID. Defaults to `"tzafon.sm-1"`. Options: `tzafon.sm-1`, `tzafon.northstar.cua.sft`. |
+| `temperature` | `float` | Sampling temperature (0-1). Defaults to `0.7`. |
+| `max_tokens` | `Optional[int]` | Maximum tokens to generate. |
+| `stop` | `Optional[List[str]]` | Stop sequences. |
+| `api_key` | `Optional[str]` | Tzafon API key. Defaults to `TZAFON_API_KEY` env var. |
+
+### `TzafonLoader`
+
+| Argument | Type | Description |
+| :--- | :--- | :--- |
+| `urls` | `str \| List[str]` | A single URL or a list of URLs to load. |
+| `api_key` | `Optional[str]` | Your Tzafon API key. Defaults to `TZAFON_API_KEY` env var. |
+| `text_content` | `bool` | If `True` (default), extracts visible text. If `False`, returns raw HTML. |
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
