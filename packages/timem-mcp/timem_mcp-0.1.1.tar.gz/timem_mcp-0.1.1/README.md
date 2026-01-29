@@ -1,0 +1,94 @@
+# TiMEM MCP Server
+
+[Model Context Protocol](https://modelcontextprotocol.io) server for [TiMEM Engine](https://timem.cloud), providing memory management tools for AI applications.
+
+## Get Your API key
+
+To use this server, you need to obtain an API key from [TiMEM Engine](https://console.timem.cloud).
+
+
+## Configure and Use
+
+### Configure
+
+Add to your AI IDE configuration:
+
+```json
+{
+  "mcpServers": {
+    "TiMEM-MCP": {
+      "command": "uvx",
+      "args": ["timem-mcp"],
+      "env": {
+        "TiMEM_API_KEY": "<your-api-key>",
+        "TiMEM_API_HOST": "https://api.timem.cloud",  // optional
+        "TiMEM_USER_ID": "<your-user-id>" // optional
+      }
+    }
+  }
+}
+```
+
+The server reads configuration from environment variables:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TiMEM_API_KEY` | Yes | - | Your TiMEM Engine API key |
+| `TiMEM_USER_ID` | No | - | User identifier for memory operations |
+| `TiMEM_API_HOST` | No | `https://api.timem.cloud` | TiMEM Engine API endpoint |
+
+### Add Rules
+
+Add the following rules to your AI IDE:
+
+```text
+当识别到“请记住”或你认为需要积累的记忆、经验时，请调用create_memory tool；
+
+当你认为需要检索历史记忆时，调用search_memories搜索相关记忆。
+```
+
+```text
+When you identify "please remember" or you think you need to accumulate memories or experiences, please call the create_memory tool;
+
+When you think you need to retrieve past memories, call the search_memories tool.
+```
+
+
+### Use
+
+Restart your AI IDE and chat!
+
+## Available Tools
+
+### `create_memory`
+
+Create memories from conversation history.
+
+**Parameters:**
+- `messages` (required): List of message objects with `role` and `content`
+- `session_id` (required): Session identifier
+- `expert_id` (optional): Expert ID, default "default"
+- `domain` (optional): Business domain, default "general"
+
+
+### `search_memories`
+
+Search and retrieve stored memories.
+
+**Parameters:**
+- `query` (optional): Search keywords
+- `layer` (optional): Memory layer (L1-L5)
+- `domain` (optional): Business domain
+- `limit` (optional): Result count, default 10
+
+
+## Development
+
+```bash
+# Run with MCP Inspector
+npx @modelcontextprotocol/inspector uvx --from <your-local-path> timem-mcp -e TiMEM_API_HOST=http://localhost:8000 -e TiMEM_API_KEY=<your-api-key>
+```
+
+## License
+
+MIT License - see LICENSE file for details.
