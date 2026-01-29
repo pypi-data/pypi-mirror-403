@@ -1,0 +1,150 @@
+Metadata-Version: 2.4
+Name: ddtols
+Version: 0.1.7
+Summary: A small Python utility library skeleton.
+Author: ddtols contributors
+License: MIT
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: cryptography>=41.0.0
+Requires-Dist: never-jscore>=2.5.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
+Requires-Dist: ruff>=0.6; extra == "dev"
+Requires-Dist: mypy>=1.8; extra == "dev"
+Dynamic: license-file
+
+# ddtols
+
+一个功能丰富的 Python 工具库，集成加密、JS 执行环境和增强型日志系统。
+
+## 功能特性
+
+- **加密工具**：封装 AES-GCM 和 RSA 加解密，开箱即用。
+- **JS 执行环境**：基于 V8 (never_jscore) 的高性能 JS 运行时，支持文件加载和函数调用。
+- **日志增强**：提供 `@log_execution` 装饰器，自动记录函数调用参数、返回值、耗时和异常。
+
+## 安装
+
+```bash
+# 安装运行时依赖
+pip install .
+
+# 安装开发依赖（测试、lint 等）
+pip install -e ".[dev]"
+```
+
+运行时依赖已在 `pyproject.toml` 中声明并会随包一并安装（包含 `cryptography` 与 `never-jscore`）。
+
+## 快速开始
+
+### 1. 全局初始化
+
+使用前必须先初始化（配置日志系统）：
+
+```python
+import ddtols
+
+# 初始化（默认在当前目录生成 logs 文件夹）
+ddtols.init()
+```
+
+### 2. 加密工具 (Cipher)
+
+#### AES 加密
+
+```python
+from ddtols import AESCipher
+
+# 生成随机密钥
+key = AESCipher.generate_key()
+cipher = AESCipher(key)
+
+# 加密
+encrypted = cipher.encrypt("Secret Message")
+print(f"Encrypted: {encrypted}")
+
+# 解密
+decrypted = cipher.decrypt(encrypted)
+print(f"Decrypted: {decrypted}")
+```
+
+#### RSA 加密
+
+```python
+from ddtols import RSACipher
+
+# 生成密钥对
+priv_pem, pub_pem = RSACipher.generate_keys()
+
+# 发送方使用公钥加密
+sender = RSACipher(public_key_pem=pub_pem)
+ciphertext = sender.encrypt("Hello RSA")
+
+# 接收方使用私钥解密
+receiver = RSACipher(private_key_pem=priv_pem)
+plaintext = receiver.decrypt(ciphertext)
+print(f"Decrypted: {plaintext}")
+```
+
+### 3. JavaScript 执行环境 (JSEnv)
+
+无需安装 Node.js，直接在 Python 中运行 JS 代码。
+
+```python
+from ddtols import JSEnv
+
+# 使用上下文管理器（推荐，自动释放 V8 资源）
+with JSEnv() as js:
+    # 1. 执行简单代码
+    print(js.eval("1 + 1"))  # 2
+
+    # 2. 定义函数 (注意：挂载到 globalThis 并在末尾返回 true)
+    js.compile("""
+        globalThis.add = function(a, b) {
+            return a + b;
+        };
+        true;
+    """)
+    
+    # 3. 调用函数
+    res = js.call("add", 10, 20)
+    print(res)  # 30
+    
+    # 4. 加载外部 JS 文件
+    # js.load_file("path/to/script.js")
+```
+
+### 4. 日志装饰器
+
+自动记录函数执行详情。
+
+```python
+from ddtols import log_execution
+
+@log_execution
+def my_task(x, y):
+    return x * y
+
+# 调用时会自动在 logs/ddtols.log 中记录：
+# [INFO] 开始执行: 函数名=my_task, 参数=(2, 3)
+# [INFO] 执行结束: 函数名=my_task, 状态=成功, 耗时=0.0001s, 结果=6
+my_task(2, 3)
+```
+
+## 运行测试
+
+```bash
+python -m pytest
+```
+
+## pipy发布
+twine upload dist/* -u __token__ -p <你的Token>
