@@ -1,0 +1,152 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+dependencies = [
+  "httpx>=0.28.1,<0.29",
+  "lxml>=4.9.2,<6.0.0",
+  "livereload",
+  "myst-parser>=4.0.1,<5",
+  "packaging==24.2",
+  "pydantic>=2.0.0,<3.0.0",
+  "pydantic-settings>=2.0.0,<3.0.0",
+  "PyYAML>=6.0.0,<7.0.0",
+  "sphinx>=8.2.3,<9",
+  "sphinx_external_toc>=1.0.1,<2",
+  "sphinx-book-theme>=1.1.4,<2",
+  "strictyaml>=1.7.3,<2",
+  "tomlkit>=0.13.2,<0.14",
+  "typer<1.0.0",
+]
+name = "uEdition"
+description = ''
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [{ name = "Mark Hall", email = "mark.hall@work.room3b.eu" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+
+[project.scripts]
+uEdition = "uedition.cli:app"
+
+[project.urls]
+Documentation = "https://github.com/uEdition/uEdition#readme"
+Issues = "https://github.com/uEdition/uEdition/issues"
+Source = "https://github.com/uEdition/uEdition"
+
+[project.entry-points."sphinx.builders"]
+tei = "uedition.ext.tei.builder"
+
+[tool.hatch.version]
+path = "uedition/__about__.py"
+
+[tool.hatch.envs.default]
+extra-dependencies = ["coverage[toml]>=6.5", "pytest", "ruff==0.9.5"]
+
+[tool.hatch.envs.default.scripts]
+docs-server = "cd docs && uEdition serve"
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = ["- coverage combine", "coverage report"]
+cov = ["test-cov", "cov-report"]
+ruff-check = "ruff check --exit-non-zero-on-fix {args:.}"
+ruff-format-check = "ruff format --check {args:.}"
+style-check = ["ruff-check", "ruff-format-check"]
+style-fix = [
+  "ruff check --fix {args:.}",
+  "ruff format {args:.}"
+]
+
+[tool.ruff]
+target-version = "py37"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ARG",
+  "B",
+  "C",
+  "D",
+  "DTZ",
+  "E",
+  "EM",
+  "F",
+  "FBT",
+  "I",
+  "ICN",
+  "ISC",
+  "N",
+  "PLC",
+  "PLE",
+  "PLR",
+  "PLW",
+  "Q",
+  "RUF",
+  "S",
+  "T",
+  "TID",
+  "UP",
+  "W",
+  "YTT",
+]
+ignore = [
+  # Allow non-abstract empty methods in abstract base classes
+  "B027",
+  # Allow boolean positional values in function calls, like `dict.get(... True)`
+  "FBT003",
+  # Ignore checks for possible passwords
+  "S105",
+  "S106",
+  "S107",
+  # Ignore complexity
+  "C901",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+  # Pydocstyle settings
+  "D203",
+  "D212",
+]
+unfixable = [
+  # Don't touch unused imports
+  "F401",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["uedition_editor"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use magic values, assertions, and relative imports
+"tests/**/*" = ["PLR2004", "S101", "TID252"]
+
+[tool.coverage.run]
+source_pkgs = ["uedition", "tests"]
+branch = true
+parallel = true
+omit = ["uedition/__about__.py", "uedition/__main__.py"]
+
+[tool.coverage.paths]
+uedition = ["uedition", "*/uedition/uedition"]
+tests = ["tests", "*/uedition/tests"]
+
+[tool.coverage.report]
+exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
+skip_covered = true
+show_missing = true

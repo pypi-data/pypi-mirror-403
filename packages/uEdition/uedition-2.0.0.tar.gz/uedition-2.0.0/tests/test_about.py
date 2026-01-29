@@ -1,0 +1,16 @@
+"""Tests for the 'about' functionality."""
+
+from typer import Typer
+from typer.testing import CliRunner
+
+from uedition.__about__ import __version__
+
+
+def test_version(runner: CliRunner, basic_app: Typer) -> None:
+    """Test that the correct version string is reported."""
+    result = runner.invoke(basic_app, ["version"])
+    assert result.exit_code == 0
+    assert "μEdition:" in result.stdout
+    assert __version__ in result.stdout
+    assert "Configuration:" in result.stdout
+    assert "2" in result.stdout
