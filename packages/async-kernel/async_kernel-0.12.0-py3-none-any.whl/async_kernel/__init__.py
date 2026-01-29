@@ -1,0 +1,32 @@
+import sys
+from importlib.metadata import version
+
+from async_kernel import utils
+from async_kernel.caller import Caller
+from async_kernel.kernel import Kernel
+from async_kernel.kernelspec import PROTOCOL_VERSION
+from async_kernel.pending import Pending
+
+__version__ = version(distribution_name="async-kernel")
+
+kernel_protocol_version = PROTOCOL_VERSION
+kernel_protocol_version_info = {
+    "name": "python",
+    "version": ".".join(map(str, sys.version_info[0:3])),
+    "mimetype": "text/x-python",
+    "codemirror_mode": {"name": "ipython", "version": 3},
+    "pygments_lexer": "ipython3",
+    "nbconvert_exporter": "python",
+    "file_extension": ".py",
+}
+
+
+__all__ = [
+    "Caller",
+    "Kernel",
+    "Pending",
+    "__version__",
+    "kernel_protocol_version",
+    "kernel_protocol_version_info",
+    "utils",
+]
