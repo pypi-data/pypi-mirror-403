@@ -1,0 +1,705 @@
+[
+  {
+    "name": "civic_search_genes",
+    "description": "Search for genes in CIViC (Clinical Interpretation of Variants in Cancer) database. CIViC is a community knowledgebase for expert-curated interpretations of variants in cancer. Returns genes with their IDs, names, and descriptions. Use this to find genes of interest before querying variants or evidence.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Optional search query to filter genes by name or description. If not provided, returns all genes up to the limit."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of genes to return (default: 10, recommended max: 100)",
+          "default": 10
+        }
+      },
+      "required": []
+    },
+    "fields": {
+      "query": "query GetGenes($limit: Int) { genes(first: $limit) { nodes { id name description entrezId } } }",
+      "operation_name": "GetGenes"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "genes": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "description": "CIViC gene ID"
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Gene symbol/name"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Gene description"
+                      },
+                      "entrezId": {
+                        "type": "string",
+                        "description": "Entrez Gene ID"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "format": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "limit": 5
+      },
+      {
+        "query": "BRCA",
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "name": "civic_get_variants_by_gene",
+    "description": "Get all variants associated with a specific gene in CIViC database. Returns variant information including names, coordinates, and associated evidence. Use this after finding a gene ID with civic_search_genes to explore all cancer variants for that gene.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "gene_id": {
+          "type": "integer",
+          "description": "CIViC gene ID (e.g., 4244 for ABCB1). Find gene IDs using civic_search_genes."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of variants to return (default: 50, recommended max: 200)",
+          "default": 50
+        }
+      },
+      "required": [
+        "gene_id"
+      ]
+    },
+    "fields": {
+      "query": "query GetVariantsByGene($gene_id: Int!, $limit: Int) { gene(id: $gene_id) { id name variants(first: $limit) { nodes { id name } } } }",
+      "operation_name": "GetVariantsByGene"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "gene": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "variants": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "description": "CIViC variant ID"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "Variant name"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "format": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "gene_id": 4244,
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "name": "civic_get_variant",
+    "description": "Get detailed information about a specific variant in CIViC database by variant ID. Variants represent specific genetic alterations (SNVs, indels, structural variants, etc.) with clinical significance in cancer. Returns variant name, coordinates, gene association, and related information.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "variant_id": {
+          "type": "integer",
+          "description": "CIViC variant ID (e.g., 4170)"
+        }
+      },
+      "required": [
+        "variant_id"
+      ]
+    },
+    "fields": {
+      "query": "query GetVariant($variant_id: Int!) { variant(id: $variant_id) { id name } }",
+      "operation_name": "GetVariant"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "variant": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "description": "CIViC variant ID"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Variant name"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "variant_id": 4170
+      }
+    ]
+  },
+  {
+    "name": "civic_search_variants",
+    "description": "Search for variants in CIViC database. Returns a list of variants with their IDs and names. Variants represent specific genetic alterations with clinical significance in cancer.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of variants to return (default: 20, recommended max: 100)",
+          "default": 20
+        }
+      },
+      "required": []
+    },
+    "fields": {
+      "query": "query SearchVariants($limit: Int) { variants(first: $limit) { nodes { id name } } }",
+      "operation_name": "SearchVariants"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "variants": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "name": "civic_get_evidence_item",
+    "description": "Get detailed information about a specific evidence item in CIViC database by evidence ID. Evidence items link molecular profiles or variants to clinical outcomes, therapies, or disease states with curated literature support. Returns evidence description, level (A-E), type (PREDICTIVE, DIAGNOSTIC, PROGNOSTIC), and associated information.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "integer",
+          "description": "CIViC evidence item ID (e.g., 116)"
+        }
+      },
+      "required": [
+        "evidence_id"
+      ]
+    },
+    "fields": {
+      "query": "query GetEvidenceItem($evidence_id: Int!) { evidenceItem(id: $evidence_id) { id description evidenceLevel evidenceType } }",
+      "operation_name": "GetEvidenceItem"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "evidenceItem": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "evidenceLevel": {
+                  "type": "string",
+                  "description": "Evidence level (A, B, C, D, E)"
+                },
+                "evidenceType": {
+                  "type": "string",
+                  "description": "Evidence type (PREDICTIVE, DIAGNOSTIC, PROGNOSTIC, etc.)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "evidence_id": 116
+      }
+    ]
+  },
+  {
+    "name": "civic_search_evidence_items",
+    "description": "Search for evidence items in CIViC database. Evidence items are curated statements linking variants or molecular profiles to clinical outcomes, therapies, or disease states. Returns a list of evidence items with descriptions, evidence levels (A-E), and evidence types (PREDICTIVE, DIAGNOSTIC, PROGNOSTIC).",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of evidence items to return (default: 20, recommended max: 100)",
+          "default": 20
+        }
+      },
+      "required": []
+    },
+    "fields": {
+      "query": "query SearchEvidenceItems($limit: Int) { evidenceItems(first: $limit) { nodes { id description evidenceLevel evidenceType } } }",
+      "operation_name": "SearchEvidenceItems"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "evidenceItems": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "evidenceLevel": {
+                        "type": "string"
+                      },
+                      "evidenceType": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "name": "civic_get_assertion",
+    "description": "Get detailed information about a specific assertion in CIViC database by assertion ID. Assertions are higher-level clinical interpretations that integrate multiple evidence items into formal statements about clinical actionability. Returns assertion description, evidence summary, and associated molecular profile or variant information.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "assertion_id": {
+          "type": "integer",
+          "description": "CIViC assertion ID (e.g., 101)"
+        }
+      },
+      "required": [
+        "assertion_id"
+      ]
+    },
+    "fields": {
+      "query": "query GetAssertion($assertion_id: Int!) { assertion(id: $assertion_id) { id description status } }",
+      "operation_name": "GetAssertion"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "assertion": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Assertion status (ACCEPTED, SUBMITTED, etc.)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "assertion_id": 101
+      }
+    ]
+  },
+  {
+    "name": "civic_search_assertions",
+    "description": "Search for assertions in CIViC database. Assertions are higher-level clinical interpretations that integrate multiple evidence items into formal statements about clinical actionability. Returns a list of assertions with descriptions and associated molecular profiles or variants.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of assertions to return (default: 20, recommended max: 100)",
+          "default": 20
+        }
+      },
+      "required": []
+    },
+    "fields": {
+      "query": "query SearchAssertions($limit: Int) { assertions(first: $limit) { nodes { id description status } } }",
+      "operation_name": "SearchAssertions"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "assertions": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "name": "civic_get_molecular_profile",
+    "description": "Get detailed information about a specific molecular profile in CIViC database by molecular profile ID. Molecular profiles represent combinations of variants or features (e.g., 'BRAF V600E') that serve as biomarkers for clinical interpretation. Returns profile name, description, and associated variants.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "molecular_profile_id": {
+          "type": "integer",
+          "description": "CIViC molecular profile ID (e.g., 12 for BRAF V600E)"
+        }
+      },
+      "required": [
+        "molecular_profile_id"
+      ]
+    },
+    "fields": {
+      "query": "query GetMolecularProfile($molecular_profile_id: Int!) { molecularProfile(id: $molecular_profile_id) { id name } }",
+      "operation_name": "GetMolecularProfile"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "molecularProfile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "molecular_profile_id": 12
+      }
+    ]
+  },
+  {
+    "name": "civic_search_molecular_profiles",
+    "description": "Search for molecular profiles in CIViC database. Molecular profiles represent combinations of variants or features (e.g., 'BRAF V600E', 'EGFR T790M') that serve as biomarkers for clinical interpretation. Returns a list of molecular profiles with IDs, names, and descriptions.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of molecular profiles to return (default: 20, recommended max: 100)",
+          "default": 20
+        }
+      },
+      "required": []
+    },
+    "fields": {
+      "query": "query SearchMolecularProfiles($limit: Int) { molecularProfiles(first: $limit) { nodes { id name } } }",
+      "operation_name": "SearchMolecularProfiles"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "molecularProfiles": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "name": "civic_search_diseases",
+    "description": "Search for diseases in CIViC database. Returns a list of cancer diseases and conditions (with IDs and names) that are associated with variants and evidence in CIViC. Use this to browse available disease entities before querying variants or evidence by disease.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of diseases to return (default: 20, recommended max: 100)",
+          "default": 20
+        }
+      },
+      "required": []
+    },
+    "fields": {
+      "query": "query SearchDiseases($limit: Int) { browseDiseases(first: $limit) { nodes { id name } } }",
+      "operation_name": "SearchDiseases"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "browseDiseases": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "name": "civic_search_therapies",
+    "description": "Search for therapies (drugs/treatments) in CIViC database. Returns a list of cancer therapies and drugs (with IDs and names) that are associated with variants and evidence in CIViC. Use this to browse available therapies before querying evidence items or assertions by therapy.",
+    "type": "CIViCTool",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of therapies to return (default: 20, recommended max: 100)",
+          "default": 20
+        }
+      },
+      "required": []
+    },
+    "fields": {
+      "query": "query SearchTherapies($limit: Int) { browseTherapies(first: $limit) { nodes { id name } } }",
+      "operation_name": "SearchTherapies"
+    },
+    "return_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "browseTherapies": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "test_examples": [
+      {
+        "limit": 10
+      }
+    ]
+  }
+]

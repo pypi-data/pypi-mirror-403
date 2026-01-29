@@ -1,0 +1,536 @@
+[
+  {
+    "type": "gnomADGetGeneConstraints",
+    "name": "gnomad_get_gene_constraints",
+    "description": "Get gene constraint metrics from gnomAD for a gene symbol (GRCh38). Returns constraint fields under `exac_constraint` and `gnomad_constraint` (e.g., pLI, oe_lof/oe_mis/oe_syn, exp/obs counts).",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "gene_symbol": {
+          "type": "string",
+          "description": "Gene symbol (e.g., 'BRCA1', 'TP53')"
+        },
+        "reference_genome": {
+          "type": "string",
+          "enum": ["GRCh37", "GRCh38"],
+          "default": "GRCh38",
+          "description": "Reference genome."
+        }
+      },
+      "required": ["gene_symbol"]
+    },
+    "fields": {
+      "endpoint": "https://gnomad.broadinstitute.org/api",
+      "return_format": "JSON",
+      "query_schema": "query GeneConstraints($geneSymbol: String!, $referenceGenome: ReferenceGenomeId!) { gene(gene_symbol: $geneSymbol, reference_genome: $referenceGenome) { symbol gene_id exac_constraint { exp_lof obs_lof pLI exp_mis obs_mis exp_syn obs_syn } gnomad_constraint { exp_lof obs_lof oe_lof pLI exp_mis obs_mis oe_mis exp_syn obs_syn oe_syn } } }"
+    },
+    "return_schema": {
+      "type": "object",
+      "description": "ToolUniverse wrapper around a gnomAD GraphQL query result.",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "data": {
+          "type": ["object", "null"],
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["gene"],
+              "properties": {
+                "gene": {
+                  "type": ["object", "null"],
+                  "required": ["symbol", "gene_id"],
+                  "properties": {
+                    "symbol": { "type": "string" },
+                    "gene_id": { "type": "string" },
+                    "exac_constraint": { "type": ["object", "null"], "additionalProperties": true },
+                    "gnomad_constraint": { "type": ["object", "null"], "additionalProperties": true }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "url": { "type": ["string", "null"] },
+        "status_code": { "type": ["integer", "null"] },
+        "detail": {
+          "description": "Optional error detail (GraphQL errors array or HTTP response text snippet).",
+          "type": ["array", "object", "string", "null"]
+        },
+        "error": { "type": ["string", "null"] },
+        "gene_symbol": { "type": ["string", "null"] }
+      }
+    },
+    "test_examples": [
+      { "gene_symbol": "BRCA1", "reference_genome": "GRCh38" }
+    ],
+    "metadata": {
+      "tags": ["constraint", "pLI", "LOEUF", "gnomAD"],
+      "difficulty_level": "intermediate",
+      "estimated_execution_time": "< 3 seconds"
+    }
+  },
+  {
+    "type": "gnomADGraphQLQueryTool",
+    "name": "gnomad_search_genes",
+    "description": "Search for genes in gnomAD by free-text query (typically a gene symbol). Returns matching `ensembl_id` (Ensembl gene ID) and `symbol`. Use `ensembl_id` as `gene_id` for `gnomad_get_gene`.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "Gene search string (e.g., 'BRCA1')." },
+        "reference_genome": {
+          "type": "string",
+          "enum": ["GRCh37", "GRCh38"],
+          "default": "GRCh38",
+          "description": "Reference genome for the search."
+        }
+      },
+      "required": ["query"]
+    },
+    "fields": {
+      "endpoint": "https://gnomad.broadinstitute.org/api",
+      "return_format": "JSON",
+      "query_schema": "query($query: String!, $referenceGenome: ReferenceGenomeId!) { gene_search(query: $query, reference_genome: $referenceGenome) { ensembl_id ensembl_version symbol } }",
+      "variable_map": { "reference_genome": "referenceGenome" },
+      "default_variables": { "referenceGenome": "GRCh38" }
+    },
+    "return_schema": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "data": {
+          "type": ["object", "null"],
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["gene_search"],
+              "properties": {
+                "gene_search": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["ensembl_id", "symbol"],
+                    "properties": {
+                      "ensembl_id": { "type": "string" },
+                      "ensembl_version": { "type": ["string", "integer", "null"] },
+                      "symbol": { "type": "string" }
+                    },
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "url": { "type": ["string", "null"] },
+        "status_code": { "type": ["integer", "null"] },
+        "detail": {
+          "description": "Optional error detail (GraphQL errors array or HTTP response text snippet).",
+          "type": ["array", "object", "string", "null"]
+        },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "test_examples": [
+      { "query": "BRCA1", "reference_genome": "GRCh38" }
+    ]
+  },
+  {
+    "type": "gnomADGraphQLQueryTool",
+    "name": "gnomad_get_gene",
+    "description": "Get basic gene metadata from gnomAD by `gene_symbol` or `gene_id` (Ensembl gene ID). Use `gnomad_search_genes` to discover `gene_id`. Use the returned `canonical_transcript_id` with `gnomad_get_transcript`.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "gene_symbol": { "type": "string", "description": "Gene symbol (e.g., 'BRCA1')." },
+        "gene_id": { "type": "string", "description": "Ensembl gene ID (e.g., 'ENSG00000012048')." },
+        "reference_genome": {
+          "type": "string",
+          "enum": ["GRCh37", "GRCh38"],
+          "default": "GRCh38",
+          "description": "Reference genome."
+        }
+      },
+      "oneOf": [
+        { "required": ["gene_symbol"] },
+        { "required": ["gene_id"] }
+      ]
+    },
+    "fields": {
+      "endpoint": "https://gnomad.broadinstitute.org/api",
+      "return_format": "JSON",
+      "query_schema": "query($geneSymbol: String, $geneId: String, $referenceGenome: ReferenceGenomeId!) { gene(gene_symbol: $geneSymbol, gene_id: $geneId, reference_genome: $referenceGenome) { gene_id symbol name chrom start stop strand canonical_transcript_id } }",
+      "variable_map": {
+        "gene_symbol": "geneSymbol",
+        "gene_id": "geneId",
+        "reference_genome": "referenceGenome"
+      },
+      "default_variables": { "referenceGenome": "GRCh38" }
+    },
+    "return_schema": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "data": {
+          "type": ["object", "null"],
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["gene"],
+              "properties": {
+                "gene": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "gene_id": { "type": "string" },
+                    "symbol": { "type": "string" },
+                    "name": { "type": ["string", "null"] },
+                    "chrom": { "type": ["string", "null"] },
+                    "start": { "type": ["integer", "null"] },
+                    "stop": { "type": ["integer", "null"] },
+                    "strand": { "type": ["string", "null"] },
+                    "canonical_transcript_id": { "type": ["string", "null"] }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "url": { "type": ["string", "null"] },
+        "status_code": { "type": ["integer", "null"] },
+        "detail": {
+          "description": "Optional error detail (GraphQL errors array or HTTP response text snippet).",
+          "type": ["array", "object", "string", "null"]
+        },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "test_examples": [
+      { "gene_symbol": "BRCA1", "reference_genome": "GRCh38" }
+    ]
+  },
+  {
+    "type": "gnomADGraphQLQueryTool",
+    "name": "gnomad_get_transcript",
+    "description": "Get basic transcript metadata from gnomAD by Ensembl transcript ID (e.g., ENST...). The response includes the linked `gene` object (gene ID + symbol). Use `gnomad_get_gene` to find a gene's `canonical_transcript_id`.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "transcript_id": { "type": "string", "description": "Ensembl transcript ID (e.g., 'ENST00000357654')." },
+        "reference_genome": {
+          "type": "string",
+          "enum": ["GRCh37", "GRCh38"],
+          "default": "GRCh38",
+          "description": "Reference genome."
+        }
+      },
+      "required": ["transcript_id"]
+    },
+    "fields": {
+      "endpoint": "https://gnomad.broadinstitute.org/api",
+      "return_format": "JSON",
+      "query_schema": "query($transcriptId: String!, $referenceGenome: ReferenceGenomeId!) { transcript(transcript_id: $transcriptId, reference_genome: $referenceGenome) { transcript_id gene_id gene { gene_id symbol } chrom start stop strand } }",
+      "variable_map": {
+        "transcript_id": "transcriptId",
+        "reference_genome": "referenceGenome"
+      },
+      "default_variables": { "referenceGenome": "GRCh38" }
+    },
+    "return_schema": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "data": {
+          "type": ["object", "null"],
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["transcript"],
+              "properties": {
+                "transcript": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "transcript_id": { "type": "string" },
+                    "gene_id": { "type": ["string", "null"] },
+                    "gene": {
+                      "type": ["object", "null"],
+                      "properties": {
+                        "gene_id": { "type": ["string", "null"] },
+                        "symbol": { "type": ["string", "null"] }
+                      },
+                      "additionalProperties": true
+                    },
+                    "chrom": { "type": ["string", "null"] },
+                    "start": { "type": ["integer", "null"] },
+                    "stop": { "type": ["integer", "null"] },
+                    "strand": { "type": ["string", "null"] }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "url": { "type": ["string", "null"] },
+        "status_code": { "type": ["integer", "null"] },
+        "detail": {
+          "description": "Optional error detail (GraphQL errors array or HTTP response text snippet).",
+          "type": ["array", "object", "string", "null"]
+        },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "test_examples": [
+      { "transcript_id": "ENST00000357654", "reference_genome": "GRCh38" }
+    ]
+  },
+  {
+    "type": "gnomADGraphQLQueryTool",
+    "name": "gnomad_search_variants",
+    "description": "Search for variants in gnomAD by free-text query (commonly an rsID like 'rs7412'). Returns matching `variant_id` strings. Note: gnomAD's `variant_search` response only exposes `variant_id`. Use the returned `variant_id` with `gnomad_get_variant`.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "Variant search query (e.g., 'rs7412')." },
+        "dataset": {
+          "type": "string",
+          "default": "gnomad_r3",
+          "description": "gnomAD dataset ID. Allowed values: gnomad_r4, gnomad_r4_non_ukb, gnomad_r3, gnomad_r3_controls_and_biobanks, gnomad_r3_non_cancer, gnomad_r3_non_neuro, gnomad_r3_non_topmed, gnomad_r3_non_v2, gnomad_r2_1, gnomad_r2_1_controls, gnomad_r2_1_non_neuro, gnomad_r2_1_non_cancer, gnomad_r2_1_non_topmed, exac."
+        }
+      },
+      "required": ["query"]
+    },
+    "fields": {
+      "endpoint": "https://gnomad.broadinstitute.org/api",
+      "return_format": "JSON",
+      "query_schema": "query($query: String!, $dataset: DatasetId!) { variant_search(query: $query, dataset: $dataset) { variant_id } }",
+      "default_variables": { "dataset": "gnomad_r3" }
+    },
+    "return_schema": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "data": {
+          "type": ["object", "null"],
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["variant_search"],
+              "properties": {
+                "variant_search": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["variant_id"],
+                    "properties": { "variant_id": { "type": "string" } },
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "url": { "type": ["string", "null"] },
+        "status_code": { "type": ["integer", "null"] },
+        "detail": {
+          "description": "Optional error detail (GraphQL errors array or HTTP response text snippet).",
+          "type": ["array", "object", "string", "null"]
+        },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "test_examples": [
+      { "query": "rs7412", "dataset": "gnomad_r3" }
+    ]
+  },
+  {
+    "type": "gnomADGraphQLQueryTool",
+    "name": "gnomad_get_variant",
+    "description": "Get basic variant metadata from gnomAD by `variant_id` (format like '19-44908822-C-T'). Use `gnomad_search_variants` to discover valid `variant_id` values from an rsID query. `dataset` is required by gnomAD and defaults to `gnomad_r3`.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "variant_id": { "type": "string", "description": "Variant ID (e.g., '19-44908822-C-T')." },
+        "dataset": {
+          "type": "string",
+          "default": "gnomad_r3",
+          "description": "gnomAD dataset ID. Allowed values: gnomad_r4, gnomad_r4_non_ukb, gnomad_r3, gnomad_r3_controls_and_biobanks, gnomad_r3_non_cancer, gnomad_r3_non_neuro, gnomad_r3_non_topmed, gnomad_r3_non_v2, gnomad_r2_1, gnomad_r2_1_controls, gnomad_r2_1_non_neuro, gnomad_r2_1_non_cancer, gnomad_r2_1_non_topmed, exac."
+        }
+      },
+      "required": ["variant_id"]
+    },
+    "fields": {
+      "endpoint": "https://gnomad.broadinstitute.org/api",
+      "return_format": "JSON",
+      "query_schema": "query($variantId: String!, $dataset: DatasetId!) { variant(variantId: $variantId, dataset: $dataset) { variant_id chrom pos ref alt rsid } }",
+      "variable_map": { "variant_id": "variantId" },
+      "default_variables": { "dataset": "gnomad_r3" }
+    },
+    "return_schema": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "data": {
+          "type": ["object", "null"],
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["variant"],
+              "properties": {
+                "variant": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "variant_id": { "type": "string" },
+                    "chrom": { "type": ["string", "null"] },
+                    "pos": { "type": ["integer", "null"] },
+                    "ref": { "type": ["string", "null"] },
+                    "alt": { "type": ["string", "null"] },
+                    "rsid": { "type": ["string", "null"] }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "url": { "type": ["string", "null"] },
+        "status_code": { "type": ["integer", "null"] },
+        "detail": {
+          "description": "Optional error detail (GraphQL errors array or HTTP response text snippet).",
+          "type": ["array", "object", "string", "null"]
+        },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "test_examples": [
+      { "variant_id": "19-44908822-C-T", "dataset": "gnomad_r3" }
+    ]
+  },
+  {
+    "type": "gnomADGraphQLQueryTool",
+    "name": "gnomad_get_region",
+    "description": "Get basic regional information from gnomAD by genomic interval. Returns genes overlapping the region and a list of `variant_id` values in the region for the selected dataset. Use those IDs with `gnomad_get_variant`. Keep regions small to avoid large payloads.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "chrom": { "type": "string", "description": "Chromosome (e.g., '19')." },
+        "start": { "type": "integer", "description": "1-based start position." },
+        "stop": { "type": "integer", "description": "1-based stop position." },
+        "reference_genome": {
+          "type": "string",
+          "enum": ["GRCh37", "GRCh38"],
+          "default": "GRCh38",
+          "description": "Reference genome."
+        },
+        "dataset": {
+          "type": "string",
+          "default": "gnomad_r3",
+          "description": "gnomAD dataset ID used for `variants(dataset: ...)`. Allowed values: gnomad_r4, gnomad_r4_non_ukb, gnomad_r3, gnomad_r3_controls_and_biobanks, gnomad_r3_non_cancer, gnomad_r3_non_neuro, gnomad_r3_non_topmed, gnomad_r3_non_v2, gnomad_r2_1, gnomad_r2_1_controls, gnomad_r2_1_non_neuro, gnomad_r2_1_non_cancer, gnomad_r2_1_non_topmed, exac."
+        }
+      },
+      "required": ["chrom", "start", "stop"]
+    },
+    "fields": {
+      "endpoint": "https://gnomad.broadinstitute.org/api",
+      "return_format": "JSON",
+      "query_schema": "query($chrom: String!, $start: Int!, $stop: Int!, $dataset: DatasetId!, $referenceGenome: ReferenceGenomeId!) { region(chrom: $chrom, start: $start, stop: $stop, reference_genome: $referenceGenome) { chrom start stop genes { gene_id symbol } variants(dataset: $dataset) { variant_id } } }",
+      "variable_map": { "reference_genome": "referenceGenome" },
+      "default_variables": { "dataset": "gnomad_r3", "referenceGenome": "GRCh38" }
+    },
+    "return_schema": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "data": {
+          "type": ["object", "null"],
+          "required": ["data"],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["region"],
+              "properties": {
+                "region": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "chrom": { "type": ["string", "null"] },
+                    "start": { "type": ["integer", "null"] },
+                    "stop": { "type": ["integer", "null"] },
+                    "genes": {
+                      "type": ["array", "null"],
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "gene_id": { "type": ["string", "null"] },
+                          "symbol": { "type": ["string", "null"] }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "variants": {
+                      "type": ["array", "null"],
+                      "items": {
+                        "type": "object",
+                        "properties": { "variant_id": { "type": "string" } },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "url": { "type": ["string", "null"] },
+        "status_code": { "type": ["integer", "null"] },
+        "detail": {
+          "description": "Optional error detail (GraphQL errors array or HTTP response text snippet).",
+          "type": ["array", "object", "string", "null"]
+        },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "test_examples": [
+      {
+        "chrom": "19",
+        "start": 44908800,
+        "stop": 44908950,
+        "reference_genome": "GRCh38",
+        "dataset": "gnomad_r3"
+      }
+    ]
+  }
+]
