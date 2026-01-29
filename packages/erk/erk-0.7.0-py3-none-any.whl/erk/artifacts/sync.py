@@ -1,0 +1,703 @@
+"""Sync artifacts from erk package to project's .claude/ directory."""
+
+import json
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+
+from erk.artifacts.detection import is_in_erk_repo
+from erk.artifacts.discovery import _compute_directory_hash, _compute_file_hash, _compute_hook_hash
+from erk.artifacts.models import ArtifactFileState, ArtifactState
+from erk.artifacts.paths import get_bundled_claude_dir, get_bundled_github_dir
+from erk.artifacts.state import load_installed_capabilities, save_artifact_state
+from erk.core.claude_settings import (
+    ERK_EXIT_PLAN_HOOK_COMMAND,
+    ERK_USER_PROMPT_HOOK_COMMAND,
+    add_erk_hooks,
+    get_repo_claude_settings_path,
+    has_exit_plan_hook,
+    has_user_prompt_hook,
+)
+from erk.core.release_notes import get_current_version
+
+
+@dataclass(frozen=True)
+class SyncResult:
+    """Result of artifact sync operation."""
+
+    success: bool
+    artifacts_installed: int
+    message: str
+
+
+@dataclass(frozen=True)
+class ArtifactSyncConfig:
+    """Configuration for artifact sync - enables testing without mocks."""
+
+    bundled_claude_dir: Path
+    bundled_github_dir: Path
+    current_version: str
+    installed_capabilities: frozenset[str]
+    sync_capabilities: bool  # False in tests to avoid capability install overwriting test fixtures
+
+
+def create_artifact_sync_config(project_dir: Path) -> ArtifactSyncConfig:
+    """Create config with real values for production use."""
+    return ArtifactSyncConfig(
+        bundled_claude_dir=get_bundled_claude_dir(),
+        bundled_github_dir=get_bundled_github_dir(),
+        current_version=get_current_version(),
+        installed_capabilities=load_installed_capabilities(project_dir),
+        sync_capabilities=True,
+    )
+
+
+def _copy_directory_contents(source_dir: Path, target_dir: Path) -> int:
+    """Copy directory contents recursively, returning count of files copied."""
+    if not source_dir.exists():
+        return 0
+
+    count = 0
+    for source_path in source_dir.rglob("*"):
+        if source_path.is_file():
+            relative = source_path.relative_to(source_dir)
+            target_path = target_dir / relative
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+            count += 1
+    return count
+
+
+@dataclass(frozen=True)
+class SyncedArtifact:
+    """Represents an artifact that was synced, with its computed hash."""
+
+    key: str  # e.g. "skills/dignified-python", "commands/erk/system/impl-execute.md"
+    hash: str
+    file_count: int
+
+
+def _sync_directory_artifacts(
+    source_dir: Path, target_dir: Path, names: frozenset[str], key_prefix: str
+) -> tuple[int, list[SyncedArtifact]]:
+    """Sync directory-based artifacts (skills) to project.
+
+    Args:
+        source_dir: Parent directory containing source artifacts (e.g., bundled/skills/)
+        target_dir: Parent directory for target artifacts (e.g., project/.claude/skills/)
+        names: Set of artifact names to sync (e.g., BUNDLED_SKILLS)
+        key_prefix: Prefix for artifact keys (e.g., "skills")
+
+    Returns tuple of (file_count, synced_artifacts).
+    """
+    if not source_dir.exists():
+        return 0, []
+
+    copied = 0
+    synced: list[SyncedArtifact] = []
+    for name in sorted(names):
+        source = source_dir / name
+        if source.exists():
+            target = target_dir / name
+            count = _copy_directory_contents(source, target)
+            copied += count
+            synced.append(
+                SyncedArtifact(
+                    key=f"{key_prefix}/{name}",
+                    hash=_compute_directory_hash(target),
+                    file_count=count,
+                )
+            )
+    return copied, synced
+
+
+def _sync_agent_artifacts(
+    source_dir: Path, target_dir: Path, names: frozenset[str]
+) -> tuple[int, list[SyncedArtifact]]:
+    """Sync agent artifacts to project (supports both directory-based and single-file).
+
+    Key format depends on structure:
+      - Directory: agents/{name} (like skills)
+      - Single-file: agents/{name}.md (like commands)
+
+    Returns tuple of (file_count, synced_artifacts).
+    """
+    if not source_dir.exists():
+        return 0, []
+
+    copied = 0
+    synced: list[SyncedArtifact] = []
+    for name in sorted(names):
+        source_dir_path = source_dir / name
+        source_file_path = source_dir / f"{name}.md"
+
+        # Directory-based takes precedence, then single-file
+        if source_dir_path.exists() and source_dir_path.is_dir():
+            target = target_dir / name
+            count = _copy_directory_contents(source_dir_path, target)
+            copied += count
+            synced.append(
+                SyncedArtifact(
+                    key=f"agents/{name}",
+                    hash=_compute_directory_hash(target),
+                    file_count=count,
+                )
+            )
+        elif source_file_path.exists() and source_file_path.is_file():
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_file = target_dir / f"{name}.md"
+            shutil.copy2(source_file_path, target_file)
+            copied += 1
+            synced.append(
+                SyncedArtifact(
+                    key=f"agents/{name}.md",
+                    hash=_compute_file_hash(target_file),
+                    file_count=1,
+                )
+            )
+    return copied, synced
+
+
+def _sync_commands(
+    source_commands_dir: Path, target_commands_dir: Path
+) -> tuple[int, list[SyncedArtifact]]:
+    """Sync bundled commands to project. Only syncs erk namespace.
+
+    Returns tuple of (file_count, synced_artifacts).
+    Each command is tracked individually.
+    """
+    if not source_commands_dir.exists():
+        return 0, []
+
+    source = source_commands_dir / "erk"
+    if not source.exists():
+        return 0, []
+
+    target = target_commands_dir / "erk"
+    count = _copy_directory_contents(source, target)
+
+    # Track each command file individually (including nested directories)
+    synced: list[SyncedArtifact] = []
+    if target.exists():
+        for cmd_file in target.rglob("*.md"):
+            # Compute relative path (e.g., "system/impl-execute.md" or "plan-save.md")
+            relative_path = cmd_file.relative_to(target)
+            synced.append(
+                SyncedArtifact(
+                    key=f"commands/erk/{relative_path}",
+                    hash=_compute_file_hash(cmd_file),
+                    file_count=1,
+                )
+            )
+
+    return count, synced
+
+
+def _sync_workflows(
+    bundled_github_dir: Path,
+    target_workflows_dir: Path,
+    *,
+    installed_capabilities: frozenset[str],
+) -> tuple[int, list[SyncedArtifact]]:
+    """Sync erk-managed workflows to project's .github/workflows/ directory.
+
+    Only syncs files listed in managed artifacts registry.
+    Returns tuple of (file_count, synced_artifacts).
+    """
+    # Inline import: artifact_health.py imports get_bundled_*_dir from this module
+    from erk.artifacts.artifact_health import _get_bundled_by_type
+
+    source_workflows_dir = bundled_github_dir / "workflows"
+    if not source_workflows_dir.exists():
+        return 0, []
+
+    count = 0
+    synced: list[SyncedArtifact] = []
+    for name in sorted(
+        _get_bundled_by_type("workflow", installed_capabilities=installed_capabilities)
+    ):
+        workflow_name = f"{name}.yml"
+        source_path = source_workflows_dir / workflow_name
+        if source_path.exists():
+            target_workflows_dir.mkdir(parents=True, exist_ok=True)
+            target_path = target_workflows_dir / workflow_name
+            shutil.copy2(source_path, target_path)
+            count += 1
+            synced.append(
+                SyncedArtifact(
+                    key=f"workflows/{workflow_name}",
+                    hash=_compute_file_hash(target_path),
+                    file_count=1,
+                )
+            )
+    return count, synced
+
+
+def _sync_actions(
+    bundled_github_dir: Path,
+    target_actions_dir: Path,
+    *,
+    installed_capabilities: frozenset[str],
+) -> tuple[int, list[SyncedArtifact]]:
+    """Sync erk-managed actions to project's .github/actions/ directory.
+
+    Only syncs directories listed in managed artifacts registry.
+    Returns tuple of (file_count, synced_artifacts).
+    """
+    # Inline import: artifact_health.py imports get_bundled_*_dir from this module
+    from erk.artifacts.artifact_health import _get_bundled_by_type
+
+    source_actions_dir = bundled_github_dir / "actions"
+    if not source_actions_dir.exists():
+        return 0, []
+
+    count = 0
+    synced: list[SyncedArtifact] = []
+    for action_name in sorted(
+        _get_bundled_by_type("action", installed_capabilities=installed_capabilities)
+    ):
+        source_path = source_actions_dir / action_name
+        if source_path.exists() and source_path.is_dir():
+            target_path = target_actions_dir / action_name
+            file_count = _copy_directory_contents(source_path, target_path)
+            count += file_count
+            synced.append(
+                SyncedArtifact(
+                    key=f"actions/{action_name}",
+                    hash=_compute_directory_hash(target_path),
+                    file_count=file_count,
+                )
+            )
+    return count, synced
+
+
+def _sync_reviews(
+    bundled_github_dir: Path,
+    target_reviews_dir: Path,
+    *,
+    installed_capabilities: frozenset[str],
+) -> tuple[int, list[SyncedArtifact]]:
+    """Sync erk-managed reviews to project's .claude/reviews/ directory.
+
+    Reviews are bundled in .github/reviews/ but installed to .claude/reviews/.
+    Only syncs files listed in managed artifacts registry.
+    Returns tuple of (file_count, synced_artifacts).
+    """
+    # Inline import: artifact_health.py imports get_bundled_*_dir from this module
+    from erk.artifacts.artifact_health import _get_bundled_by_type
+
+    source_reviews_dir = bundled_github_dir / "reviews"
+    if not source_reviews_dir.exists():
+        return 0, []
+
+    count = 0
+    synced: list[SyncedArtifact] = []
+    for review_name in sorted(
+        _get_bundled_by_type("review", installed_capabilities=installed_capabilities)
+    ):
+        review_filename = f"{review_name}.md"
+        source_path = source_reviews_dir / review_filename
+        if source_path.exists() and source_path.is_file():
+            target_reviews_dir.mkdir(parents=True, exist_ok=True)
+            target_path = target_reviews_dir / review_filename
+            shutil.copy2(source_path, target_path)
+            count += 1
+            synced.append(
+                SyncedArtifact(
+                    key=f"reviews/{review_filename}",
+                    hash=_compute_file_hash(target_path),
+                    file_count=1,
+                )
+            )
+    return count, synced
+
+
+def _hash_directory_artifacts(
+    parent_dir: Path, names: frozenset[str], key_prefix: str
+) -> list[SyncedArtifact]:
+    """Compute hashes for directory-based artifacts without copying."""
+    if not parent_dir.exists():
+        return []
+
+    artifacts: list[SyncedArtifact] = []
+    for name in sorted(names):
+        artifact_dir = parent_dir / name
+        if artifact_dir.exists():
+            artifacts.append(
+                SyncedArtifact(
+                    key=f"{key_prefix}/{name}",
+                    hash=_compute_directory_hash(artifact_dir),
+                    file_count=sum(1 for f in artifact_dir.rglob("*") if f.is_file()),
+                )
+            )
+    return artifacts
+
+
+def _hash_agent_artifacts(agents_dir: Path, names: frozenset[str]) -> list[SyncedArtifact]:
+    """Compute hashes for agents (supports both directory-based and single-file).
+
+    Key format depends on structure:
+      - Directory: agents/{name} (like skills)
+      - Single-file: agents/{name}.md (like commands)
+    """
+    if not agents_dir.exists():
+        return []
+
+    artifacts: list[SyncedArtifact] = []
+    for name in sorted(names):
+        dir_path = agents_dir / name
+        file_path = agents_dir / f"{name}.md"
+
+        # Directory-based takes precedence, then single-file
+        if dir_path.exists() and dir_path.is_dir():
+            artifacts.append(
+                SyncedArtifact(
+                    key=f"agents/{name}",
+                    hash=_compute_directory_hash(dir_path),
+                    file_count=sum(1 for f in dir_path.rglob("*") if f.is_file()),
+                )
+            )
+        elif file_path.exists() and file_path.is_file():
+            artifacts.append(
+                SyncedArtifact(
+                    key=f"agents/{name}.md",
+                    hash=_compute_file_hash(file_path),
+                    file_count=1,
+                )
+            )
+    return artifacts
+
+
+def _compute_source_artifact_state(project_dir: Path) -> list[SyncedArtifact]:
+    """Compute artifact state from source (for erk repo dogfooding).
+
+    Instead of copying files, just compute hashes from the source artifacts.
+    """
+    from erk.artifacts.artifact_health import _get_bundled_by_type
+
+    bundled_claude_dir = get_bundled_claude_dir()
+    bundled_github_dir = get_bundled_github_dir()
+    artifacts: list[SyncedArtifact] = []
+
+    # Hash directory-based skills
+    skills_dir = bundled_claude_dir / "skills"
+    skill_names = _get_bundled_by_type("skill", installed_capabilities=None)
+    artifacts.extend(_hash_directory_artifacts(skills_dir, skill_names, "skills"))
+
+    # Hash agents (supports both directory-based and single-file)
+    agents_dir = bundled_claude_dir / "agents"
+    agent_names = _get_bundled_by_type("agent", installed_capabilities=None)
+    artifacts.extend(_hash_agent_artifacts(agents_dir, agent_names))
+
+    # Hash commands from source (including nested directories)
+    commands_dir = bundled_claude_dir / "commands" / "erk"
+    if commands_dir.exists():
+        for cmd_file in sorted(commands_dir.rglob("*.md")):
+            # Compute relative path (e.g., "system/impl-execute.md" or "plan-save.md")
+            relative_path = cmd_file.relative_to(commands_dir)
+            artifacts.append(
+                SyncedArtifact(
+                    key=f"commands/erk/{relative_path}",
+                    hash=_compute_file_hash(cmd_file),
+                    file_count=1,
+                )
+            )
+
+    # Hash workflows from source
+    workflows_dir = bundled_github_dir / "workflows"
+    if workflows_dir.exists():
+        for name in sorted(_get_bundled_by_type("workflow", installed_capabilities=None)):
+            workflow_name = f"{name}.yml"
+            workflow_file = workflows_dir / workflow_name
+            if workflow_file.exists():
+                artifacts.append(
+                    SyncedArtifact(
+                        key=f"workflows/{workflow_name}",
+                        hash=_compute_file_hash(workflow_file),
+                        file_count=1,
+                    )
+                )
+
+    # Hash actions from source
+    actions_dir = bundled_github_dir / "actions"
+    action_names = _get_bundled_by_type("action", installed_capabilities=None)
+    artifacts.extend(_hash_directory_artifacts(actions_dir, action_names, "actions"))
+
+    # Hash reviews from source (bundled in .github/reviews/, installed to .claude/reviews/)
+    reviews_dir = bundled_github_dir / "reviews"
+    if reviews_dir.exists():
+        for review_name in sorted(_get_bundled_by_type("review", installed_capabilities=None)):
+            review_filename = f"{review_name}.md"
+            review_file = reviews_dir / review_filename
+            if review_file.exists():
+                artifacts.append(
+                    SyncedArtifact(
+                        key=f"reviews/{review_filename}",
+                        hash=_compute_file_hash(review_file),
+                        file_count=1,
+                    )
+                )
+
+    # Hash hooks (check if installed in settings.json)
+    settings_path = project_dir / ".claude" / "settings.json"
+    if settings_path.exists():
+        content = settings_path.read_text(encoding="utf-8")
+        settings = json.loads(content)
+        hook_checks = [
+            ("hooks/user-prompt-hook", has_user_prompt_hook, ERK_USER_PROMPT_HOOK_COMMAND),
+            ("hooks/exit-plan-mode-hook", has_exit_plan_hook, ERK_EXIT_PLAN_HOOK_COMMAND),
+        ]
+        for key, check_fn, command in hook_checks:
+            if check_fn(settings):
+                artifacts.append(
+                    SyncedArtifact(key=key, hash=_compute_hook_hash(command), file_count=1)
+                )
+
+    return artifacts
+
+
+def sync_dignified_review(project_dir: Path) -> SyncResult:
+    """Sync dignified-review feature artifacts to project.
+
+    Installs opt-in artifacts for the dignified-review workflow:
+    - dignified-python skill (.claude/skills/dignified-python/)
+    - dignified-python-review.yml workflow (.github/workflows/)
+    - dignified-python-review.md prompt (.github/prompts/)
+
+    Args:
+        project_dir: Project root directory
+
+    Returns:
+        SyncResult indicating success/failure and count of files installed.
+    """
+    bundled_claude_dir = get_bundled_claude_dir()
+    bundled_github_dir = get_bundled_github_dir()
+
+    target_claude_dir = project_dir / ".claude"
+    target_github_dir = project_dir / ".github"
+
+    total_copied = 0
+
+    # 1. Sync dignified-python skill
+    skill_src = bundled_claude_dir / "skills" / "dignified-python"
+    if skill_src.exists():
+        skill_dst = target_claude_dir / "skills" / "dignified-python"
+        count = _copy_directory_contents(skill_src, skill_dst)
+        total_copied += count
+
+    # 2. Sync dignified-python-review.yml workflow
+    workflow_src = bundled_github_dir / "workflows" / "dignified-python-review.yml"
+    if workflow_src.exists():
+        workflow_dst = target_github_dir / "workflows" / "dignified-python-review.yml"
+        workflow_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(workflow_src, workflow_dst)
+        total_copied += 1
+
+    # 3. Sync dignified-python-review.md prompt
+    prompt_src = bundled_github_dir / "prompts" / "dignified-python-review.md"
+    if prompt_src.exists():
+        prompt_dst = target_github_dir / "prompts" / "dignified-python-review.md"
+        prompt_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(prompt_src, prompt_dst)
+        total_copied += 1
+
+    return SyncResult(
+        success=True,
+        artifacts_installed=total_copied,
+        message=f"Installed dignified-review ({total_copied} files)",
+    )
+
+
+def _sync_hooks(project_dir: Path) -> list[SyncedArtifact]:
+    """Update EXISTING hooks in settings.json to current erk hook commands.
+
+    Only updates hooks that are already installed (identified by ERK_HOOK_ID marker).
+    Fresh hook installation is handled by HooksCapability during erk init.
+
+    Only updates hooks if they already exist - initial installation is the
+    responsibility of HooksCapability via the required capabilities system.
+
+    Returns list of SyncedArtifact entries for state tracking.
+    """
+    # Inline import: breaks circular dependency with capabilities module
+    from erk.core.capabilities.hooks import HooksCapability
+
+    settings_path = get_repo_claude_settings_path(project_dir)
+    if not settings_path.exists():
+        return []
+
+    # Only update if hooks already exist (by marker, not by current command version)
+    hooks_cap = HooksCapability()
+    if not hooks_cap.has_any_erk_hooks(project_dir):
+        return []
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    # Only update if hooks already exist - initial install is via HooksCapability
+    if not has_user_prompt_hook(settings) and not has_exit_plan_hook(settings):
+        return []
+
+    updated_settings = add_erk_hooks(settings)
+
+    # Only write if hooks actually changed
+    if updated_settings != settings:
+        settings_path.write_text(json.dumps(updated_settings, indent=2) + "\n", encoding="utf-8")
+
+    # Return artifact entries for both hooks (always tracked regardless of changes)
+    synced: list[SyncedArtifact] = []
+    if has_user_prompt_hook(updated_settings):
+        synced.append(
+            SyncedArtifact(
+                key="hooks/user-prompt-hook",
+                hash=_compute_hook_hash(ERK_USER_PROMPT_HOOK_COMMAND),
+                file_count=1,
+            )
+        )
+    if has_exit_plan_hook(updated_settings):
+        synced.append(
+            SyncedArtifact(
+                key="hooks/exit-plan-mode-hook",
+                hash=_compute_hook_hash(ERK_EXIT_PLAN_HOOK_COMMAND),
+                file_count=1,
+            )
+        )
+    return synced
+
+
+def sync_artifacts(
+    project_dir: Path,
+    force: bool,
+    *,
+    config: ArtifactSyncConfig,
+) -> SyncResult:
+    """Sync artifacts from erk package to project's .claude/ and .github/ directories.
+
+    When running in the erk repo itself, skips file copying but still computes
+    and saves state for dogfooding.
+
+    Args:
+        project_dir: Target project directory
+        force: Force sync even if up to date
+        config: Configuration for artifact sync (use create_artifact_sync_config for production)
+    """
+    # Inline import: artifact_health.py imports get_bundled_*_dir from this module
+    from erk.artifacts.artifact_health import _get_bundled_by_type
+
+    # In erk repo: skip copying but still save state for dogfooding
+    if is_in_erk_repo(project_dir):
+        all_synced = _compute_source_artifact_state(project_dir)
+        current_version = get_current_version()
+        files: dict[str, ArtifactFileState] = {}
+        for artifact in all_synced:
+            files[artifact.key] = ArtifactFileState(
+                version=current_version,
+                hash=artifact.hash,
+            )
+        save_artifact_state(project_dir, ArtifactState(version=current_version, files=files))
+        return SyncResult(
+            success=True,
+            artifacts_installed=0,
+            message="Development mode: state.toml updated (artifacts read from source)",
+        )
+
+    if not config.bundled_claude_dir.exists():
+        return SyncResult(
+            success=False,
+            artifacts_installed=0,
+            message=f"Bundled .claude/ not found at {config.bundled_claude_dir}",
+        )
+
+    target_claude_dir = project_dir / ".claude"
+    target_claude_dir.mkdir(parents=True, exist_ok=True)
+
+    total_copied = 0
+    all_synced: list[SyncedArtifact] = []
+
+    # Sync directory-based skills
+    count, synced = _sync_directory_artifacts(
+        config.bundled_claude_dir / "skills",
+        target_claude_dir / "skills",
+        _get_bundled_by_type("skill", installed_capabilities=config.installed_capabilities),
+        "skills",
+    )
+    total_copied += count
+    all_synced.extend(synced)
+
+    # Sync agents (supports both directory-based and single-file)
+    agent_names = _get_bundled_by_type(
+        "agent", installed_capabilities=config.installed_capabilities
+    )
+    count, synced = _sync_agent_artifacts(
+        config.bundled_claude_dir / "agents", target_claude_dir / "agents", agent_names
+    )
+    total_copied += count
+    all_synced.extend(synced)
+
+    count, synced = _sync_commands(
+        config.bundled_claude_dir / "commands", target_claude_dir / "commands"
+    )
+    total_copied += count
+    all_synced.extend(synced)
+
+    # Sync workflows and actions from .github/
+    if config.bundled_github_dir.exists():
+        target_workflows_dir = project_dir / ".github" / "workflows"
+        count, synced = _sync_workflows(
+            config.bundled_github_dir,
+            target_workflows_dir,
+            installed_capabilities=config.installed_capabilities,
+        )
+        total_copied += count
+        all_synced.extend(synced)
+
+        target_actions_dir = project_dir / ".github" / "actions"
+        count, synced = _sync_actions(
+            config.bundled_github_dir,
+            target_actions_dir,
+            installed_capabilities=config.installed_capabilities,
+        )
+        total_copied += count
+        all_synced.extend(synced)
+
+        # Sync reviews (from .github/reviews/ to .claude/reviews/)
+        target_reviews_dir = project_dir / ".claude" / "reviews"
+        count, synced = _sync_reviews(
+            config.bundled_github_dir,
+            target_reviews_dir,
+            installed_capabilities=config.installed_capabilities,
+        )
+        total_copied += count
+        all_synced.extend(synced)
+
+    # Sync hooks in settings.json - update to current erk hook commands
+    synced_hooks = _sync_hooks(project_dir)
+    all_synced.extend(synced_hooks)
+
+    # Sync installed capabilities - for each project-scoped capability that is
+    # already installed, call install() to ensure it's up-to-date. Since install()
+    # is idempotent, this safely updates existing capabilities.
+    # Skip when sync_capabilities=False (test mode) - capabilities use
+    # get_bundled_*_dir() directly and would overwrite test fixtures.
+    if config.sync_capabilities:
+        from erk.core.capabilities.registry import list_capabilities
+
+        for cap in list_capabilities():
+            if cap.scope == "project" and cap.is_installed(project_dir):
+                cap.install(project_dir)
+
+    # Build per-artifact state from synced artifacts
+    files: dict[str, ArtifactFileState] = {}
+    for artifact in all_synced:
+        files[artifact.key] = ArtifactFileState(
+            version=config.current_version,
+            hash=artifact.hash,
+        )
+
+    # Save state with current version and per-artifact state
+    save_artifact_state(project_dir, ArtifactState(version=config.current_version, files=files))
+
+    return SyncResult(
+        success=True,
+        artifacts_installed=total_copied,
+        message=f"Synced {total_copied} artifact files",
+    )
