@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Cybrushwifi</title>
+<style>
+body { background:#0f172a; color:#e5e7eb; font-family:Segoe UI; }
+button { background:#0284c7; color:white; border:none; padding:10px 15px; border-radius:6px; cursor:pointer; }
+table { width:100%; border-collapse:collapse; margin-top:15px; }
+th, td { padding:10px; border-bottom:1px solid #1e293b; }
+.risk-HIGH { color:#ef4444; }
+.risk-MEDIUM { color:#facc15; }
+</style>
+</head>
+<body>
+
+<h1>Cybrushwifi – Wireless Security Dashboard</h1>
+
+<button onclick="scan()">Scan Networks</button>
+
+<p id="info"></p>
+<p id="alerts"></p>
+
+<table>
+<thead>
+<tr><th>SSID</th><th>Encryption</th><th>Signal</th><th>Risk</th></tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+
+<script>
+async function scan() {
+    const data = await pywebview.api.scan();
+
+    document.getElementById("info").innerText =
+        `Local IP: ${data.local_ip} | Public IP: ${data.public_ip}`;
+
+    document.getElementById("alerts").innerText =
+        data.alerts.join(" | ");
+
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+
+    data.networks.forEach(n => {
+        tbody.innerHTML += `
+        <tr>
+            <td>${n.SSID}</td>
+            <td>${n.Encryption}</td>
+            <td>${n.Signal}</td>
+            <td class="risk-${n.Risk}">${n.Risk}</td>
+        </tr>`;
+    });
+}
+</script>
+
+</body>
+</html>
