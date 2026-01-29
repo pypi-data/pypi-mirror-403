@@ -1,0 +1,467 @@
+# Copyright 2025-2026 hingebase
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+__all__ = ["Address", "Config", "Predicate", "Server"]
+
+import asyncio
+import contextlib
+import functools
+import ipaddress
+import itertools
+import os
+import sys
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Literal,
+    cast,
+    no_type_check,
+    override,
+)
+
+import annotated_types as at
+import anysqlite
+import dask.config
+import dask.system
+import distributed
+import hishel
+import httpx
+import pydantic
+import pydantic_settings
+import rattler.networking
+import rattler.platform
+import uvicorn.config
+
+from mahoraga import __version__, _core
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Iterator
+    from logging.config import (
+        _DictConfigArgs,  # pyright: ignore[reportPrivateUsage]
+    )
+    from pathlib import Path
+
+    from fastapi import FastAPI
+
+if sys.platform == "win32":
+    import winloop as uvloop  # pyright: ignore[reportMissingImports]
+else:
+    import uvloop  # pyright: ignore[reportMissingImports]
+
+_DASK_DASHBOARD = 8787
+
+Predicate = functools.singledispatch(at.Predicate)
+
+
+@Predicate.register
+def _(func: str) -> at.Predicate:
+    def wrapper(input_value: object, /) -> bool:
+        return eval(func, {"input_value": input_value})  # noqa: S307
+    wrapper.__qualname__ = func
+    return at.Predicate(wrapper)
+
+
+_model_config: pydantic.ConfigDict = {
+    "alias_generator": lambda x: x.replace("_", "-"),
+}
+
+
+class Address(pydantic.BaseModel):
+    host: Annotated[
+        ipaddress.IPv4Address,
+        pydantic.Field(description="The host to serve on"),
+        Predicate("not (input_value.is_multicast or input_value.is_reserved)"),
+    ] = ipaddress.IPv4Address("127.0.0.1")
+    port: Annotated[
+        pydantic.PositiveInt,
+        pydantic.Field(description="The TCP port to serve on"),
+        at.Le(65535),
+    ] = 3450
+
+    @pydantic.field_validator("port")
+    @classmethod
+    def conflict(cls, port: int) -> int:
+        if port == _DASK_DASHBOARD:
+            message = "TCP port 8787 is occupied by Dask dashboard"
+            raise ValueError(message)
+        return port
+
+
+class Server(Address, **_model_config):
+    implementation: Annotated[
+        Literal["granian", "uvicorn"],
+        pydantic.Field(description="ASGI server implementation"),
+    ] = "uvicorn"
+    limit_concurrency: Annotated[
+        int,
+        pydantic.Field(description="Maximum number of simultaneous connections"
+                                   " to allow"),
+        at.Ge(2),
+    ] = 512
+    backlog: Annotated[
+        int,
+        pydantic.Field(description="Maximum number of pending connections to "
+                                   "allow"),
+        at.Ge(128),
+    ] = 511
+    keep_alive: Annotated[
+        pydantic.PositiveInt,
+        pydantic.Field(description="Time in seconds to wait before closing "
+                                   "idle connections"),
+    ] = 5
+    timeout_graceful_shutdown: Annotated[
+        pydantic.NonNegativeInt,
+        pydantic.Field(description="Time in seconds to wait before graceful "
+                                   "shutdown"),
+    ] = 0
+
+    def is_granian(self) -> bool:
+        return self.implementation == "granian"
+
+    def is_uvicorn(self) -> bool:
+        return self.implementation == "uvicorn"
+
+    def rattler_client(self) -> rattler.Client:
+        return _rattler_client(self.host, self.port)
+
+    def workers_kill_timeout(self) -> int | None:
+        return self.timeout_graceful_shutdown or None
+
+
+class _HttpUrl(pydantic.AnyUrl):
+    _constraints = pydantic.UrlConstraints(
+        max_length=1900,
+        allowed_schemes=["http", "https"],
+        host_required=True,
+    )
+
+
+class _Log(pydantic.BaseModel):
+    level: Literal["debug", "info", "warning", "error", "critical"] = "info"
+    access: bool = True
+
+    def levelno(self) -> int:
+        return uvicorn.config.LOG_LEVELS[self.level]
+
+
+class _CORS(pydantic.BaseModel, **_model_config):
+    allow_origins: list[str] = []
+    allow_methods: list[str] = ["GET"]
+    allow_headers: list[str] = []
+    allow_credentials: bool = False
+    allow_origin_regex: str | None = None
+    expose_headers: list[str] = []
+    max_age: pydantic.NonNegativeInt = 600
+
+
+_adapter = pydantic.TypeAdapter(list[_HttpUrl])
+
+
+class _Conda(pydantic.BaseModel, **_model_config):
+    default: list[_HttpUrl] = _adapter.validate_python([
+        "https://conda.anaconda.org/",
+    ])
+    with_label: dict[str, str | list[_HttpUrl]] = {
+        "nvidia": _adapter.validate_python([
+            "https://mirrors.sustech.edu.cn/anaconda-extra/cloud/",
+        ]),
+    }
+    without_label: dict[str, str | list[_HttpUrl]] = {
+        "auto": _adapter.validate_python([
+            "https://mirror.nju.edu.cn/anaconda/cloud/",
+            "https://mirror.nyist.edu.cn/anaconda/cloud/",
+            "https://mirrors.cqupt.edu.cn/anaconda/cloud/",
+            "https://mirrors.lzu.edu.cn/anaconda/cloud/",
+            "https://mirrors.pku.edu.cn/anaconda/cloud/",
+            "https://mirrors.sustech.edu.cn/anaconda/cloud/",
+            "https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/",
+        ]),
+        "biobakery": "auto",
+        "bioconda": _adapter.validate_python([
+            "https://mirror.nju.edu.cn/anaconda/cloud/",
+            "https://mirror.nyist.edu.cn/anaconda/cloud/",
+            "https://mirrors.cqupt.edu.cn/anaconda/cloud/",
+            "https://mirrors.lzu.edu.cn/anaconda/cloud/",
+            "https://mirrors.pku.edu.cn/anaconda/cloud/",
+            "https://mirrors.sustech.edu.cn/anaconda/cloud/",
+            "https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/",
+            "https://prefix.dev/",
+        ]),
+        "c4aarch64": "auto",
+        "caffe2": "auto",
+        "conda-forge": "bioconda",
+        "deepmodeling": "auto",
+        "dglteam": "auto",
+        "fastai": "auto",
+        "fermi": "auto",
+        "idaholab": "auto",
+        "matsci": "auto",
+        "menpo": "auto",
+        "MindSpore": "auto",
+        "mordred-descriptor": "auto",
+        "msys2": "auto",
+        "numba": "auto",
+        "nvidia": _adapter.validate_python([
+            "https://prefix.dev/",
+        ]),
+        "ohmeta": "auto",
+        "omnia": "auto",
+        "Paddle": "auto",
+        "peterjc123": "auto",
+        "plotly": "auto",
+        "psi4": "auto",
+        "pytorch": "bioconda",
+        "pytorch-lts": "auto",
+        "pytorch-test": "auto",
+        "pytorch3d": "auto",
+        "pyviz": "auto",
+        "qiime2": "auto",
+        "rapidsai": "bioconda",
+        "rdkit": "auto",
+        "robostack": "nvidia",
+        "robostack-humble": "nvidia",
+        "robostack-jazzy": "nvidia",
+        "robostack-noetic": "nvidia",
+        "robostack-staging": "nvidia",
+        "simpleitk": "auto",
+        "speleo3": "auto",
+        "stackless": "auto",
+        "ursky": "auto",
+    }
+    channel_alias: dict[str, _HttpUrl] = pydantic.TypeAdapter(
+        dict[str, _HttpUrl],
+    ).validate_python({
+        "emscripten-forge-dev": "https://prefix.dev/",
+    })
+
+
+class _PyPI(pydantic.BaseModel):
+    html: list[_HttpUrl] = _adapter.validate_python([
+        "https://mirror.nju.edu.cn/pypi/web/",
+        "https://mirrors.aliyun.com/pypi/web/",
+        "https://mirrors.cloud.tencent.com/pypi/",
+        "https://mirrors.huaweicloud.com/repository/pypi/",
+        "https://mirrors.pku.edu.cn/pypi/web/",
+        "https://mirrors.sustech.edu.cn/pypi/web/",
+    ])
+    json_: Annotated[list[_HttpUrl], pydantic.Field(alias="json")] = (
+        _adapter.validate_python([
+            "https://mirrors.bfsu.edu.cn/pypi/web/",
+            "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/",
+            "https://pypi.org/",
+        ])
+    )
+
+    def all(self) -> Iterator[_HttpUrl]:
+        return itertools.chain(self.html, self.json_)
+
+
+class _Uv(pydantic.BaseModel):
+    latest: list[_HttpUrl] = _adapter.validate_python([
+        "https://mirror.nyist.edu.cn/github-release/astral-sh/uv/LatestRelease/",
+        "https://mirrors.ustc.edu.cn/github-release/astral-sh/uv/LatestRelease/",
+        "https://github.com/astral-sh/uv/releases/latest/download/",
+    ])
+    tag: list[_HttpUrl] = _adapter.validate_python([
+        "https://mirror.nyist.edu.cn/github-release/astral-sh/uv/",
+        "https://mirrors.ustc.edu.cn/github-release/astral-sh/uv/",
+        "https://github.com/astral-sh/uv/releases/download/",
+    ])
+
+
+class _Upstream(pydantic.BaseModel, **_model_config):
+    conda: _Conda = _Conda()
+    pyodide: list[_HttpUrl] = _adapter.validate_python([
+        "https://cdn.jsdelivr.net/",
+        "https://fastly.jsdelivr.net/",
+        "https://gcore.jsdelivr.net/",
+        "https://originfastly.jsdelivr.net/",
+        "https://quantil.jsdelivr.net/",
+        "https://testingcf.jsdelivr.net/",
+    ])
+    pypi: _PyPI = _PyPI()
+    python: list[_HttpUrl] = _adapter.validate_python([
+        "https://cdn.npmmirror.com/binaries/python/{version}/{name}",
+        "https://mirror.nju.edu.cn/python/{version}/{name}",
+        "https://mirrors.aliyun.com/python-release/windows/{name}",
+        "https://mirrors.bfsu.edu.cn/python/{version}/{name}",
+        "https://mirrors.huaweicloud.com/python/{version}/{name}",
+        "https://mirrors.jcut.edu.cn/python/{version}/{name}",
+        "https://mirrors.tuna.tsinghua.edu.cn/python/{version}/{name}",
+        "https://mirrors.ustc.edu.cn/python/{version}/{name}",
+        "https://www.python.org/ftp/python/{version}/{name}",
+    ])
+    python_build_standalone: list[_HttpUrl] = _adapter.validate_python([
+        "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone/",
+        "https://mirrors.lzu.edu.cn/github-release/astral-sh/python-build-standalone/",
+        "https://cdn.npmmirror.com/binaries/python-build-standalone/",
+        "https://pycdn-2025-03-02.oss-cn-shanghai.aliyuncs.com/mirror/astral-sh/python-build-standalone/",
+        "https://github.com/astral-sh/python-build-standalone/releases/download/",
+    ])
+    uv: _Uv = _Uv()
+    backup: set[str] = {
+        "anaconda.org",
+        "conda.anaconda.org",
+        "github.com",
+        "prefix.dev",
+        "pycdn-2025-03-02.oss-cn-shanghai.aliyuncs.com",
+        "pypi.org",
+        "www.python.org",
+    }
+
+
+class Config(pydantic_settings.BaseSettings, **_model_config):
+    server: Server = Server()
+    log: _Log = _Log()
+    shard: dict[str, set[rattler.platform.PlatformLiteral]] = {}
+    cors: _CORS = _CORS()
+    upstream: _Upstream = _Upstream()
+    eager_task_execution: bool = False
+
+    @contextlib.asynccontextmanager
+    async def lifespan(self, _: FastAPI) -> AsyncIterator[_core.Context]:
+        # Discard all Dask environment variables which have been read into the
+        # global config
+        for name in [name for name in os.environ if name.startswith("DASK_")]:
+            del os.environ[name]
+
+        # Configure subprocess logging before importing `distributed`
+        log_config: _DictConfigArgs = {
+            "version": 1,
+            "formatters": {
+                "plain": {
+                    "format": "%(message)s",
+                },
+            },
+            "filters": {
+                "distributed_worker": {
+                    "()": "mahoraga._preload.DistributedWorker",
+                },
+            },
+            "handlers": {
+                "default": {
+                    "class": "mahoraga._preload.HTTPHandler",
+                    "formatter": "plain",
+                    "host": "127.0.0.1:8787",
+                    "url": "/log",
+                },
+            },
+            "loggers": {
+                "distributed.worker": {
+                    "filters": ["distributed_worker"],
+                },
+            },
+            "root": {
+                "handlers": ["default"],
+                "level": self.log.levelno(),
+            },
+            "disable_existing_loggers": False,
+        }
+        os.environ["DASK_INTERNAL_INHERIT_CONFIG"] = dask.config.serialize(
+            {"distributed": {"logging": log_config}},
+        )
+
+        # FastAPI has not launched yet, collect worker logs with Tornado
+        dask.config.set({
+            "distributed.scheduler.http.routes": ["mahoraga._preload"],
+        })
+        async with distributed.LocalCluster(
+            n_workers=min(
+                sum(map(len, self.shard.values())),
+                dask.system.CPU_COUNT or 1,
+            ),
+            threads_per_worker=1,
+            dashboard_address=cast("str", None),
+            asynchronous=True,
+            preload="mahoraga._preload",
+            preload_argv=["--log-level", self.log.level],
+        ) as cluster, distributed.Client(
+            cluster,
+            asynchronous=True,
+        ) as dask_client, _core.AsyncClient(
+            headers={"User-Agent": f"mahoraga/{__version__}"},
+            timeout=httpx.Timeout(15, read=60),
+            follow_redirects=False,
+            limits=httpx.Limits(
+                max_connections=self.server.limit_concurrency,
+                keepalive_expiry=self.server.keep_alive,
+            ),
+            storage=_AsyncSqliteStorage(
+                connection=await anysqlite.connect(":memory:"),
+            ),
+        ) as httpx_client:
+            yield {
+                "config": self,
+                "dask_client": dask_client,
+                "futures": set(),
+                "httpx_client": httpx_client,
+                "locks": _core.WeakValueDictionary(),
+                "statistics": _core.Statistics(
+                    backup_servers=self.upstream.backup,
+                ),
+            }
+
+    @no_type_check
+    def loop_factory(self) -> asyncio.AbstractEventLoop:
+        loop = uvloop.new_event_loop()
+        if self.eager_task_execution:
+            loop.set_task_factory(asyncio.eager_task_factory)
+        return loop
+
+    @override
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[pydantic_settings.BaseSettings],
+        init_settings: pydantic_settings.PydanticBaseSettingsSource,
+        env_settings: pydantic_settings.PydanticBaseSettingsSource,
+        dotenv_settings: pydantic_settings.PydanticBaseSettingsSource,
+        file_secret_settings: pydantic_settings.PydanticBaseSettingsSource,
+    ) -> tuple[pydantic_settings.PydanticBaseSettingsSource, ...]:
+        return (
+            pydantic_settings.TomlConfigSettingsSource(settings_cls),
+            init_settings,
+        )
+
+
+class _AsyncSqliteStorage(hishel.AsyncSqliteStorage):
+    @override
+    def __init__(
+        self,
+        *,
+        connection: anysqlite.Connection | None = None,
+        database_path: str | Path = "hishel_cache.db",
+        default_ttl: float | None = 600.,
+        refresh_ttl_on_access: bool = True,
+    ) -> None:
+        super().__init__(
+            connection=connection,
+            database_path=database_path,
+            default_ttl=default_ttl,
+            refresh_ttl_on_access=refresh_ttl_on_access,
+        )
+        self._lock = asyncio.Lock()
+
+
+@functools.lru_cache(maxsize=1)
+def _rattler_client(host: ipaddress.IPv4Address, port: int) -> rattler.Client:
+    if host.is_unspecified:
+        host = ipaddress.IPv4Address("127.0.0.1")
+    return rattler.Client([
+        rattler.networking.MirrorMiddleware({
+            "https://conda.anaconda.org/": [
+                str(_HttpUrl(f"http://{host}:{port}/conda/")),
+            ],
+        }),
+    ])
