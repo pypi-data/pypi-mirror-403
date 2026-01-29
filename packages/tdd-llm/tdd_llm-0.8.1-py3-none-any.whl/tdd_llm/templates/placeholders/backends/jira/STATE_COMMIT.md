@@ -1,0 +1,1 @@
+State is already updated in Jira via CLI commands. No local state files to commit.

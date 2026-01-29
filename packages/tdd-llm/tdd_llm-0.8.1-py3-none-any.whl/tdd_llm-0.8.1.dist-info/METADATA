@@ -1,0 +1,366 @@
+Metadata-Version: 2.4
+Name: tdd-llm
+Version: 0.8.1
+Summary: Deploy TDD workflow templates for Claude and Gemini AI assistants
+Project-URL: Homepage, https://github.com/mxdumas/tdd-llm-workflow
+Project-URL: Repository, https://github.com/mxdumas/tdd-llm-workflow
+License-Expression: MIT
+Keywords: ai,claude,gemini,tdd,templates,workflow
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development
+Requires-Python: >=3.10
+Requires-Dist: cryptography>=41.0.0
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rich>=13.0
+Requires-Dist: typer>=0.9.0
+Provides-Extra: dev
+Requires-Dist: pre-commit>=3.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0; extra == 'dev'
+Requires-Dist: pytest>=7.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# tdd-llm
+
+**AI-Powered TDD Workflows for Claude and Gemini**
+
+Deploy structured Test-Driven Development workflows to your AI coding assistants. Guide Claude and Gemini through the RED-GREEN-REFACTOR cycle with consistent, reproducible prompts.
+
+## Features
+
+- Deploy `.claude/` and `.gemini/` configuration directories
+- Automatic conversion from Claude (.md) to Gemini (.toml) format
+- Language-specific placeholders (Python, C#, TypeScript)
+- Backend support for local files or Jira (via REST API)
+- Migrate existing projects from files to Jira
+- Global and project-level configuration (project overrides global)
+- Configurable coverage thresholds per project
+- Cross-platform (Linux, macOS, Windows)
+- Update templates from GitHub without reinstalling the package
+
+## Installation
+
+```bash
+pip install tdd-llm
+```
+
+## Quick Start
+
+```bash
+# Initialize project config (creates .tdd-llm.yaml)
+tdd-llm init --lang python --backend files
+
+# Deploy TDD templates to current project
+tdd-llm deploy
+
+# Deploy to user-level directories
+tdd-llm deploy --target user --lang csharp --backend jira
+
+# Preview changes without writing
+tdd-llm deploy --lang typescript --dry-run
+
+# List available languages and backends
+tdd-llm list
+
+# Show configuration (merged global + project)
+tdd-llm config --show
+
+# Update templates from GitHub (without reinstalling)
+tdd-llm update
+```
+
+## Configuration
+
+tdd-llm supports two configuration levels:
+- **Global** (user-level): Applies to all projects
+- **Project** (local): Overrides global settings for a specific project
+
+### Global Configuration
+
+Location:
+- Linux/macOS: `~/.config/tdd-llm/config.yaml`
+- Windows: `%APPDATA%\tdd-llm\config.yaml`
+
+```yaml
+default_target: "project"  # or "user"
+default_language: "python"
+default_backend: "files"   # or "jira"
+platforms:
+  - claude
+  - gemini
+coverage:
+  line: 80      # Line coverage threshold (%)
+  branch: 70    # Branch coverage threshold (%)
+```
+
+### Project Configuration
+
+Create a `.tdd-llm.yaml` file in your project root to override global settings:
+
+```bash
+# Initialize project config with custom settings
+tdd-llm init --lang typescript --coverage-line 90
+
+# Or modify existing project config
+tdd-llm config --project --set-lang csharp
+```
+
+Project config file: `.tdd-llm.yaml`
+```yaml
+default_language: "typescript"
+coverage:
+  line: 90      # Override only what you need
+```
+
+### Configuration Commands
+
+```bash
+# Show effective configuration (merged global + project)
+tdd-llm config --show
+
+# Modify global config
+tdd-llm config --set-coverage-line 80
+
+# Modify project config
+tdd-llm config --project --set-lang typescript
+```
+
+Coverage thresholds are applied to the generated TDD templates and enforced during the review phase.
+
+## Updating Templates
+
+Templates can be updated from GitHub without reinstalling the package:
+
+```bash
+# Update to latest templates
+tdd-llm update
+
+# Force re-download all templates
+tdd-llm update --force
+
+# Update and deploy in one command
+tdd-llm deploy --update
+
+# Force re-download and overwrite existing files
+tdd-llm deploy --update --force
+
+# Deploy using package templates (ignore cached updates)
+tdd-llm deploy --no-cache
+```
+
+Updated templates are cached in:
+- Linux/macOS: `~/.config/tdd-llm/templates/`
+- Windows: `%APPDATA%\tdd-llm\templates\`
+
+## Supported Languages
+
+| Language | Placeholders |
+|----------|--------------|
+| Python | pytest, coverage, architecture/integration/perf tests |
+| C# | dotnet test, xUnit, architecture/integration/perf tests |
+| TypeScript | Jest, Vitest, architecture/integration/perf tests |
+
+## Backends
+
+### Files (default)
+
+Uses local markdown files for epic/story management:
+- `docs/epics/*.md` - Epic definitions with tasks
+- `docs/state.json` - Progress tracking
+- `.tdd-state.local.json` - Session state (gitignored)
+
+### Jira
+
+Uses Jira REST API for epic/story management. Supports OAuth 2.0 (recommended) or API token authentication.
+
+#### OAuth 2.0 Authentication (Recommended)
+
+OAuth provides secure, token-based authentication with automatic refresh. Credentials are stored encrypted locally.
+
+```bash
+# Login with OAuth (interactive setup on first run)
+tdd-llm jira login
+
+# Check authentication status
+tdd-llm jira status
+
+# Logout (remove stored tokens and credentials)
+tdd-llm jira logout
+```
+
+**First-time setup:**
+
+1. Create an OAuth app at https://developer.atlassian.com/console/myapps/
+2. Configure your app:
+   - Callback URL: `http://localhost:8089/callback`
+   - Permissions: Jira API > `read:jira-work`, `write:jira-work`, `read:jira-user`
+3. Run `tdd-llm jira login` and enter your Client ID and Client Secret when prompted
+4. Complete authorization in your browser
+
+Credentials and tokens are encrypted and stored in:
+- Linux/macOS: `~/.config/tdd-llm/`
+- Windows: `%APPDATA%\tdd-llm\`
+
+#### API Token Authentication (Alternative)
+
+For simpler setups or environments where OAuth isn't available:
+
+```bash
+# Set API token
+export JIRA_API_TOKEN=your-api-token
+```
+
+Generate an API token at: https://id.atlassian.com/manage-profile/security/api-tokens
+
+#### Configuration
+
+```yaml
+# In config.yaml
+default_backend: "jira"
+jira:
+  base_url: "https://company.atlassian.net"
+  email: "user@company.com"
+  project_key: "PROJ"
+
+  # Optional: custom field mappings
+  fields:
+    acceptance_criteria: "customfield_10001"
+
+  # Optional: status mapping (adapt to your Jira language/workflow)
+  status_map:
+    "To Do": "not_started"
+    "In Progress": "in_progress"
+    "Done": "completed"
+  # French example:
+  # status_map:
+  #   "À faire": "not_started"
+  #   "En cours": "in_progress"
+  #   "Terminé": "completed"
+```
+
+Environment variables (override config):
+- `JIRA_API_TOKEN` - API token for basic auth
+- `JIRA_BASE_URL` - Jira instance URL
+- `JIRA_EMAIL` - User email
+- `JIRA_PROJECT_KEY` - Default project key
+
+#### Backend Commands
+
+Commands for AI assistants to interact with Jira:
+
+```bash
+# Get current workflow state
+tdd-llm backend status
+
+# Get epic with all tasks
+tdd-llm backend get-epic PROJ-100
+
+# Get task details
+tdd-llm backend get-task PROJ-1234
+
+# Get next incomplete task
+tdd-llm backend next-task PROJ-100
+
+# Update task status
+tdd-llm backend update-status PROJ-1234 Done
+
+# Set TDD phase (adds label tdd:test, tdd:dev, etc.)
+tdd-llm backend set-phase PROJ-1234 test
+
+# Set current task
+tdd-llm backend set-current PROJ-100 PROJ-1234
+
+# Add comment to task
+tdd-llm backend add-comment PROJ-1234 "Task completed"
+```
+
+### Migration: Files to Jira
+
+Migrate existing epics and tasks from files backend to Jira:
+
+```bash
+# Preview what will be created (dry run)
+tdd-llm migrate --dry-run
+
+# Run migration
+tdd-llm migrate
+
+# Custom output path for mapping file
+tdd-llm migrate --output my-mapping.json
+```
+
+The migration:
+1. Reads epics from `docs/epics/*.md`
+2. Creates epics in Jira with format `E1: Epic Name`
+3. Creates tasks linked to epics with format `T1: Task Title`
+4. Marks completed tasks as "Done" in Jira
+5. Generates `docs/jira-mapping.json`:
+
+```json
+{
+  "E1": "PROJ-100",
+  "E1/T1": "PROJ-101",
+  "E1/T2": "PROJ-102",
+  "E2": "PROJ-200"
+}
+```
+
+## TDD Workflow Commands
+
+After deployment, use these commands with Claude or Gemini:
+
+### Flow Commands
+
+| Command | Phase | Description |
+|---------|-------|-------------|
+| `/tdd:flow:1-analyze` | Plan | Analyze task, write specs |
+| `/tdd:flow:2-test` | RED | Write failing tests |
+| `/tdd:flow:3-dev` | GREEN+REFACTOR | Implement, then refactor |
+| `/tdd:flow:4-docs` | Document | Update docs, CHANGELOG |
+| `/tdd:flow:5-review` | Review | Code review, create PR |
+| `/tdd:flow:6-done` | Done | Commit, update state |
+| `/tdd:flow:status` | - | Show current progress |
+
+### Init Commands
+
+| Command | Description |
+|---------|-------------|
+| `/tdd:init:1-project` | Initialize project structure |
+| `/tdd:init:2-architecture` | Define architecture |
+| `/tdd:init:3-standards` | Define code standards |
+| `/tdd:init:4-readme` | Generate README |
+
+## Development
+
+```bash
+# Clone and install in dev mode
+git clone https://github.com/mxdumas/tdd-llm-workflow
+cd tdd-llm-workflow
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+pip install -e ".[dev]"
+pre-commit install
+
+# Run tests
+pytest
+
+# Run linter
+ruff check src/
+
+# Format code
+ruff format src/
+```
+
+## License
+
+MIT
