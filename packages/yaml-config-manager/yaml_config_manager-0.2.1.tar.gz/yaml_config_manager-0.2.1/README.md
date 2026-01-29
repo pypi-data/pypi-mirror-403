@@ -1,0 +1,55 @@
+# YAML Config Manager
+
+A robust, "LLM-friendly" Python library for managing Deep Learning configurations. It seamlessly combines YAML files with command-line overrides, supporting dotted notation, scientific notation, and flexible argument styles.
+
+## Features
+
+- **YAML + CLI:** Load defaults from YAML, override via CLI.
+- **Dotted Access:** `config.model.layer_count` instead of `config['model']['layer_count']`.
+- **Robust Parsing:** 
+    - Supports scientific notation (`1e-4` is a float, not string).
+    - Smart boolean parsing (`yes`, `on`, `true` -> `True`).
+- **Flexible CLI:** Supports both `--param=value` and `--param value`.
+- **Safety:** Raises `AttributeError` for missing keys (no silent failures).
+
+## Installation
+
+```bash
+pip install .
+```
+
+## Quick Start
+
+**1. Create `config.yaml`**
+```yaml
+training:
+  lr: 1e-4
+  batch_size: 32
+model:
+  type: transformer
+  layers: 12
+```
+
+**2. Use in Python**
+```python
+from yaml_config_manager import load_config
+
+# Automatically parses sys.argv
+config = load_config() 
+
+print(f"Model: {config.model.type}")
+print(f"LR: {config.training.lr} (type: {type(config.training.lr)})")
+```
+
+**3. Run with Overrides**
+
+Mixed styles supported:
+```bash
+python train.py --config config.yaml --training.lr 2e-5 --model.layers=24 --debug_mode
+```
+
+## Advanced Usage
+
+- **Manual Args:** `load_config(args=['--param', 'val'])`
+- **Default Path:** `load_config(config_path='default.yaml')`
+- **Missing Keys:** Accessing `config.missing` raises `AttributeError` to catch typos early.
