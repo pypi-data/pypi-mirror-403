@@ -1,0 +1,132 @@
+import peegy.io.paths.defaults
+from peegy.processing.pipe.pipeline import PipePool
+from peegy.processing.pipe.general import FilterData, ReferenceData, AutoRemoveBadChannels, ReSampling, \
+    RegressOutEOG, RemoveBadChannels
+from peegy.processing.pipe.epochs import EpochData, AverageEpochsFrequencyDomain, AverageEpochs
+from peegy.processing.pipe.spatial_filtering import CreateAndApplySpatialFilter
+from peegy.processing.pipe.io import ReadInputData
+from peegy.io.external_tools.file_tools import get_files_and_meta_files
+from peegy.processing.pipe.storage import SubjectInformation, MeasurementInformation, SaveToDatabase
+import astropy.units as u
+import numpy as np
+import os
+import matplotlib
+if 'Qt5Agg' in matplotlib.rcsetup.all_backends:
+    matplotlib.use('Qt5Agg')
+
+
+def my_pipe(data_links=None, experiment='', database_path=None):
+    folder_naming = os.path.splitext(os.path.basename(data_links.parameters_file))[0]
+    test_frequencies = np.array([
+        data_links.measurement_parameters['Measurement']['StimuliModule']['Stimulus'][0]['Parameters']['ITDModRate'],
+        data_links.measurement_parameters['Measurement']['StimuliModule']['Stimulus'][0]['Parameters'][
+            'ModulationFrequency']
+    ])
+    _code = 1.0
+    reader = ReadInputData(file_path=data_links.data_file,
+                           ini_time=data_links.ini_time,
+                           end_time=data_links.end_time,
+                           layout_file_name='biosemi64_2_EXT.lay',
+                           figures_subset_folder=folder_naming)
+    reader.run()
+
+    pipeline = PipePool()
+
+    pipeline['remove_unused_channels'] = RemoveBadChannels(reader,
+                                                           bad_channels=['EXG5', 'EXG6', 'EXG7', 'EXG8'])
+    pipeline['referenced'] = ReferenceData(pipeline['remove_unused_channels'],
+                                           reference_channels=['Cz'],
+                                           invert_polarity=True)
+
+    pipeline['down_sampled'] = ReSampling(pipeline['referenced'],
+                                          new_sampling_rate=512. * u.Hz)
+    pipeline.run()
+    pipeline['eog_removed'] = RegressOutEOG(pipeline['down_sampled'],
+                                            ref_channel_labels=['EXG3', 'EXG4'],
+                                            kernel_bandwidth=0.15)
+    pipeline.run()
+    pipeline['channel_cleaned'] = AutoRemoveBadChannels(pipeline['eog_removed'],
+                                                        thr_sd=2.0)
+    pipeline.run()
+    pipeline['time_filtered_data_full'] = FilterData(pipeline['eog_removed'],
+                                                     high_pass=2.0 * u.Hz,
+                                                     low_pass=48.0 * u.Hz)
+    pipeline.run()
+    pipeline['time_filtered_data_itd_fr'] = FilterData(pipeline['time_filtered_data_full'],
+                                                       high_pass=None,
+                                                       low_pass=8.0 * u.Hz)
+    pipeline.run()
+
+    pipeline['time_epochs_full'] = EpochData(pipeline['time_filtered_data_full'],
+                                             event_code=_code,
+                                             pre_stimulus_interval=0 * u.s,
+                                             post_stimulus_interval=4.75 * u.s)
+
+    pipeline['time_epochs_itd_fr'] = EpochData(pipeline['time_filtered_data_itd_fr'],
+                                               event_code=_code,
+                                               pre_stimulus_interval=0 * u.s,
+                                               post_stimulus_interval=4.75 * u.s)
+
+    pipeline['dss_time_epochs_full'] = CreateAndApplySpatialFilter(
+        pipeline['time_epochs_full'],
+        weight_data=False,
+        components_to_plot=None,
+        plot_x_lim=[0, 50])
+    pipeline.run()
+    # bias filter to towards ITD-FR power
+    pipeline['dss_time_epochs_itd_fr'] = CreateAndApplySpatialFilter(
+        pipeline['time_epochs_itd_fr'],
+        weight_data=False,
+        components_to_plot=None,
+        plot_x_lim=[0, 50])
+    pipeline.run()
+
+    # time-domain average of ITD-FR
+    pipeline['time_average_ipm_fr'] = AverageEpochs(pipeline['dss_time_epochs_itd_fr'],
+                                                    weighted_average=True,
+                                                    weight_across_epochs=False)
+    pipeline.run()
+
+    # frequency-domain average of ITD-FR and ASSR
+    pipeline['fft_ave_full_freq'] = AverageEpochsFrequencyDomain(pipeline['dss_time_epochs_full'],
+                                                                 weighted_average=True,
+                                                                 weight_across_epochs=False,
+                                                                 test_frequencies=test_frequencies)
+
+    pipeline['fft_ave_no_dss'] = AverageEpochsFrequencyDomain(pipeline['time_epochs_full'],
+                                                              weighted_average=True,
+                                                              weight_across_epochs=False,
+                                                              test_frequencies=test_frequencies)
+
+    pipeline.run()
+
+    # now we save our data to a database
+    subject_info = SubjectInformation(
+        subject_id=data_links.measurement_parameters['Measurement']['MeasurementModule']['Subject'])
+    measurement_info = MeasurementInformation(
+        date=data_links.measurement_parameters['Measurement']['MeasurementModule']['Date'],
+        experiment=experiment)
+    _parameters = data_links.measurement_parameters['Measurement']['StimuliModule']['Stimulus'][0]['Parameters']
+    _recording = data_links.measurement_parameters['Measurement']['RecordingModule']
+    pipeline['database'] = SaveToDatabase(database_path=database_path,
+                                          subject_information=subject_info,
+                                          measurement_information=measurement_info,
+                                          recording_information=_recording,
+                                          stimuli_information=_parameters,
+                                          processes_list=[pipeline['time_average_ipm_fr'],
+                                                          pipeline['fft_ave_no_dss'],
+                                                          pipeline['fft_ave_full_freq'],
+                                                          pipeline['dss_time_epochs_full'],
+                                                          pipeline['dss_time_epochs_itd_fr']
+                                                          ],
+                                          include_waveforms=[True, True, True, False, False])
+    pipeline.run()
+
+
+if __name__ == "__main__":
+    database_path = peegy.io.paths.defaults.default_path.joinpath('eeg_data.sqlite')
+    eeg_data_directory = r'/home/jundurraga/Documents/Measurements/peegy_data/IPM-FR/JU/'
+    to_process = get_files_and_meta_files(eeg_data_directory)
+
+    for _, _data_links in to_process.iterrows():
+        my_pipe(data_links=_data_links.data_links, experiment='ipd-fr', database_path=database_path)

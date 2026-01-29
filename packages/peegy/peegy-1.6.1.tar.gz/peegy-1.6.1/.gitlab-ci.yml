@@ -1,0 +1,106 @@
+image: python:3.12
+variables:
+    QT_QPA_PLATFORM: 'offscreen'
+    XDG_RUNTIME_DIR: '/tmp/runtime-root'
+    TWINE_USERNAME: '__token__'
+    TWINE_PYPI_TEST: $PYPI_TEST_TOKEN
+    TWINE_PYPI: $PYPI_TOKEN
+
+make_doc:
+  stage: test
+  script:
+    - echo "$XDG_RUNTIME_DIR"
+    - apt-get update
+    - apt-get -y install graphviz
+    - apt-get -y install libgl1 libglx-mesa0
+    - pip install -U sphinx sphinx-gallery memory_profiler sphinx-multiversion twine build wheel setuptools
+    - pip install -r requirements.txt
+    - cd doc
+    - sphinx-build . ../public
+  artifacts:
+    paths:
+      - public
+  only:
+    - branches
+  except:
+    - master
+    - stable
+
+check_pip8:
+  stage: test
+  script:
+    - pip install -U flake8
+    - flake8 --max-line-length 120 peegy
+  only:
+    - branches
+  except:
+    - master
+    - stable
+
+code_speller_check:
+  stage: test
+  script:
+    - pip install codespell
+    - codespell peegy
+  only:
+    - branches
+  except:
+    - master
+    - stable
+
+make_wheel:
+  stage: test
+  script:
+    - echo "$XDG_RUNTIME_DIR"
+    - apt-get update
+    - apt-get -y install graphviz
+    - apt-get -y install libgl1 libglx-mesa0
+    - pip install -U sphinx sphinx-gallery memory_profiler sphinx-multiversion twine build wheel setuptools
+    - pip install -r requirements.txt
+    - python3 -m build
+  only:
+    - branches
+  except:
+    - master
+    - stable
+
+pages:
+  stage: deploy
+  script:
+    - echo "$XDG_RUNTIME_DIR"
+    - apt-get update
+    - apt-get -y install graphviz
+    - apt-get -y install libgl1 libglx-mesa0
+    - pip install -U sphinx sphinx-gallery memory_profiler sphinx-multiversion twine build wheel setuptools
+    - pip install -r requirements.txt
+    - cd doc
+    - sphinx-build . ../public
+    - cd ..
+    - python3 -m build
+  artifacts:
+    paths:
+      - public
+  only:
+    - master
+
+stable:
+  stage: deploy
+  script:
+    - echo "$XDG_RUNTIME_DIR"
+    - apt-get update
+    - apt-get -y install graphviz
+    - apt-get -y install libgl1 libglx-mesa0
+    - pip install -U sphinx sphinx-gallery memory_profiler sphinx-multiversion twine build wheel setuptools
+    - pip install -r requirements.txt
+    - cd doc
+    - sphinx-build . ../public
+    - cd ..
+    - python3 -m build
+    - python3 -m twine upload --repository testpypi dist/* -u $TWINE_USERNAME -p $TWINE_PYPI_TEST
+    - pip install -i https://test.pypi.org/simple/ peegy
+    - python3 -m twine upload dist/* -u $TWINE_USERNAME -p $TWINE_PYPI
+  artifacts:
+    paths:
+      - dist
+  only:
+    - stable

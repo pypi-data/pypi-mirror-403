@@ -1,0 +1,39 @@
+parameters:
+- name: 'TOKEN'
+  type: string
+  default: 'Nothing'
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: $(PYTHON_VERSION)
+      architecture: $(PYTHON_ARCH)
+      addToPath: true
+    displayName: 'Get Python'
+  - bash:
+      echo "DROPBOX_TOKEN = ${{ parameters['TOKEN'] }}"
+      export "DROPBOX_TOKEN = ${{ parameters['TOKEN'] }}"
+      echo "env variable is $(DROPBOX_TOKEN)"
+
+  - script: |
+      echo $XDG_RUNTIME_DIR
+      echo "Token dropbox 2 $DROPBOX_TOKEN" 
+      sudo apt-get update
+      sudo apt-get -y install graphviz
+      sudo apt-get -y install libgl1 libglx-mesa0
+      pip install -U sphinx sphinx-gallery memory_profiler sphinx-multiversion twine build wheel setuptools
+      pip install -r requirements.txt
+      cd doc
+      sphinx-build . ../public
+      cp ../staticwebapp.config.json ../public/staticwebapp.config.json
+    displayName: 'build documentation'
+  - task: CopyFiles@2
+    inputs:
+      SourceFolder: '$(Build.SourcesDirectory)/public/'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+      Contents: '**'
+    displayName: 'Copy documentation files to artifact directory'
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: '$(Build.ArtifactStagingDirectory)'
+      artifactName: documentation

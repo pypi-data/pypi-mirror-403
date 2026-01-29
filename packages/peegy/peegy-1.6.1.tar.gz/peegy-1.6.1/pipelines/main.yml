@@ -1,0 +1,141 @@
+name: $(TeamProject)-$(BuildDefinitionName)-$(SourceBranchName)
+
+trigger:
+  # start a new build every push test non stable push
+  batch: false
+  branches:
+    include:
+      - '*'
+    exclude:
+      - stable
+pr:
+  branches:
+    include:
+      - '*'  # must quote since "*" is a YAML reserved character; we want a string
+
+parameters:
+  - name: deployProd
+    displayName: Deploy PROD env
+    type: boolean
+    default: false
+
+variables:
+  - group: IRU-Docs-Site
+  - name: localRepoPath
+    value: $(Build.Repository.LocalPath)
+  - name: QT_QPA_PLATFORM
+    value: 'offscreen'
+  - name: PYTHON_VERSION
+    value: '3.11'
+  - name: PYTHON_ARCH
+    value: 'x64'
+  - name: MAPPED_DROPBOX_TOKEN
+    value: $(DROPBOX_TOKEN)
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: check_spelling
+    jobs:
+      - job: docs
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+              architecture: $(PYTHON_ARCH)
+              addToPath: true
+            displayName: 'Get Python'
+          - script: |
+              pip install codespell
+              codespell peegy
+            displayName: 'checking spelling'
+
+  - stage: check_flake8
+    jobs:
+      - job: check_code
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+              architecture: $(PYTHON_ARCH)
+              addToPath: true
+            displayName: 'Get Python'
+          - script: |
+              pip install -U flake8
+              flake8 --max-line-length 120 peegy
+            displayName: 'checking code'
+
+  - stage: BuildDocumentation
+    jobs:
+      - job: BuildJob
+        timeoutInMinutes: 0
+        steps:
+          - template: /pipelines/documentation.yml
+            parameters:
+              TOKEN: ${{ variables.MAPPED_DROPBOX_TOKEN }} # use expression syntax
+
+  - stage: DEV
+    dependsOn: BuildDocumentation
+    condition: ne(variables['Build.Reason'], 'PullRequest')
+    jobs:
+      - job: DEV
+        timeoutInMinutes: 0
+        steps:
+          - template: /pipelines/deploy-env.yml
+            parameters:
+              appName: iru-dev-euw-stapp
+              azureSvcCon: $(NonProdServiceConnection)
+              resourceGroup: iru-dev-euw-rg
+
+  - stage: PROD
+    dependsOn: BuildDocumentation
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/processing'), ${{ parameters.deployProd }})
+    jobs:
+      - job: PROD
+        timeoutInMinutes: 0
+        steps:
+          - bash:
+            env:
+              MAPPED_DROPBOX_TOKEN: $(DROPBOX_TOKEN)
+          - template: /pipelines/deploy-env.yml
+            parameters:
+              appName: iru-prod-euw-stapp
+              azureSvcCon: $(ProdServiceConnection)
+              resourceGroup: iru-prod-euw-rg
+
+  - stage: Retain_Pipeline
+    displayName: Retain pipeline
+    dependsOn: PROD
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: retainPipeline
+        steps:
+          - task: PowerShell@2
+            displayName: Retain pipeline run
+            condition: succeeded()
+            inputs:
+              failOnStderr: true
+              targetType: inline
+              pwsh: true
+              script: |
+                $contentType = "application/json";
+                $headers = @{ Authorization = 'Bearer $(System.AccessToken)' };
+                $rawRequest = @{
+                  daysValid = 365 * 10;
+                  definitionId = $(System.DefinitionId);
+                  ownerId = 'User:$(Build.RequestedForId)';
+                  protectPipeline = $false;
+                  runId = $(Build.BuildId)
+                };
+                $request = ConvertTo-Json @($rawRequest);
+                $projectNameEncoded=[uri]::EscapeDataString("$(System.TeamProject)")
+                $uri = "$(System.CollectionUri)$projectNameEncoded/_apis/build/retention/leases?api-version=6.0-preview.1"
+
+                Write-Host "URL: $uri"
+
+                Invoke-RestMethod -uri $uri `
+                  -method POST `
+                  -Headers $headers `
+                  -ContentType $contentType `
+                  -Body $request;
