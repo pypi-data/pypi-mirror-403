@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Swagger UI</title>
+    <link rel="icon" href="/docs/img/favicon.ico" type="image/x-icon" />
+    <link href='css/typography-css' media='screen' rel='stylesheet' type='text/css' />
+    <link href='css/reset-css' media='screen' rel='stylesheet' type='text/css' />
+    <link href='css/screen-css' media='screen' rel='stylesheet' type='text/css' />
+    <link href='css/reset-css' media='print' rel='stylesheet' type='text/css' />
+    <link href='css/print-css' media='print' rel='stylesheet' type='text/css' />
+
+    <link href='ext/Castle-DataApi-Content-Swagger-SwaggerUi-css' media='screen' rel='stylesheet' type='text/css' />
+
+
+    <script src='lib/object-assign-pollyfill-js' type='text/javascript'></script>
+    <script src='lib/jquery-1-8-0-min-js' type='text/javascript'></script>
+    <script src='lib/jquery-slideto-min-js' type='text/javascript'></script>
+    <script src='lib/jquery-wiggle-min-js' type='text/javascript'></script>
+    <script src='lib/jquery-ba-bbq-min-js' type='text/javascript'></script>
+    <script src='lib/handlebars-4-0-5-js' type='text/javascript'></script>
+    <script src='lib/lodash-min-js' type='text/javascript'></script>
+    <script src='lib/backbone-min-js' type='text/javascript'></script>
+    <script src='swagger-ui-min-js' type='text/javascript'></script>
+    <script src='lib/highlight-9-1-0-pack-js' type='text/javascript'></script>
+    <script src='lib/highlight-9-1-0-pack_extended-js' type='text/javascript'></script>
+    <script src='lib/jsoneditor-min-js' type='text/javascript'></script>
+    <script src='lib/marked-js' type='text/javascript'></script>
+    <script src='lib/swagger-oauth-js' type='text/javascript'></script>
+
+    <script type="text/javascript">
+    $(function () {
+        document.getElementById('year').innerText = new Date().getFullYear();
+      // Get Swashbuckle config into JavaScript
+      function arrayFrom(configString) {
+        return (configString !== "") ? configString.split('|') : [];
+      }
+
+      function stringOrNullFrom(configString) {
+        return (configString !== "null") ? configString : null;
+      }
+
+      window.swashbuckleConfig = {
+        rootUrl: 'https://api.connect.spglobal.com',
+        discoveryPaths: arrayFrom('swagger/docs/v1'),
+        booleanValues: arrayFrom('true|false'),
+        validatorUrl: stringOrNullFrom('null'),
+        customScripts: arrayFrom(''),
+        docExpansion: 'none',
+        supportedSubmitMethods: arrayFrom('get|put|post|delete|options|head|patch'),
+        oAuth2Enabled: ('false' == 'true'),
+        oAuth2ClientId: '',
+        oAuth2ClientSecret: '',
+        oAuth2Realm: '',
+        oAuth2AppName: '',
+        oAuth2ScopeSeperator: ' ',
+        oAuth2AdditionalQueryStringParams: JSON.parse('{}'),
+        apiKeyName: 'api_key',
+        apiKeyIn: 'query'
+      };
+
+      hljs.configure({
+        highlightSizeThreshold: 5000
+      });
+
+      // Pre load translate...
+      if(window.SwaggerTranslator) {
+        window.SwaggerTranslator.translate();
+      }
+      window.swaggerUi = new SwaggerUi({
+        url: swashbuckleConfig.rootUrl + "/" + swashbuckleConfig.discoveryPaths[0],
+        dom_id: "swagger-ui-container",
+        booleanValues: swashbuckleConfig.booleanValues,
+        supportedSubmitMethods: swashbuckleConfig.supportedSubmitMethods,
+        timeout: 120000,
+        onComplete: function(swaggerApi, swaggerUi){
+          if (typeof initOAuth == "function" && swashbuckleConfig.oAuth2Enabled) {
+            initOAuth({
+              clientId: swashbuckleConfig.oAuth2ClientId,
+              clientSecret: swashbuckleConfig.oAuth2ClientSecret,
+              realm: swashbuckleConfig.oAuth2Realm,
+              appName: swashbuckleConfig.oAuth2AppName,
+              scopeSeparator: swashbuckleConfig.oAuth2ScopeSeperator,
+              additionalQueryStringParams: swashbuckleConfig.oAuth2AdditionalQueryStringParams
+            });
+          }
+
+          if(window.SwaggerTranslator) {
+            window.SwaggerTranslator.translate();
+          }
+
+          addApiKeyAuthorization();
+
+          window.swaggerApi = swaggerApi;
+          _.each(swashbuckleConfig.customScripts, function (script) {
+            $.getScript(script);
+          });
+        },
+        onFailure: function(data) {
+          log("Unable to Load SwaggerUI");
+        },
+        docExpansion: swashbuckleConfig.docExpansion,
+        jsonEditor: false,
+        apisSorter: 'alpha', // default to server
+        operationsSorter : "alpha",
+        defaultModelRendering: 'schema',
+        showRequestHeaders: false,
+        oauth2RedirectUrl: window.location.href.replace('index', 'o2c-html').split('#')[0]
+      });
+
+      if (window.swashbuckleConfig.validatorUrl !== '')
+        window.swaggerUi.options.validatorUrl = window.swashbuckleConfig.validatorUrl;
+
+      function addApiKeyAuthorization() {
+        var key = $('#input_apiKey')[0].value;
+        if (key && key.trim() != "") {
+          if (swashbuckleConfig.apiKeyIn === "query") {
+              key = encodeURIComponent(key);
+          }
+          var apiKeyAuth = new SwaggerClient.ApiKeyAuthorization(swashbuckleConfig.apiKeyName, key, swashbuckleConfig.apiKeyIn);
+          window.swaggerUi.api.clientAuthorizations.add("api_key", apiKeyAuth);
+          log("added key " + key);
+        }
+      }
+      $('#input_apiKey').change(addApiKeyAuthorization);
+
+      window.swaggerUi.load();
+
+      function log() {
+        if ('console' in window) {
+          console.log.apply(console, arguments);
+        }
+      }
+  });
+    </script>
+</head>
+
+<body class="swagger-section">
+    <div id='header'>
+        <div class="swagger-ui-wrap">
+            <a id="connect" href="https://connect.ihsmarkit.com"><img alt="connect" height="50" width="150" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjEuMTcgNDAuMTkiPjxnIGlkPSJMYXllcl8yIiBkYXRhLW5hbWU9IkxheWVyIDIiPjxnIGlkPSJMYXllcl8xLTIiIGRhdGEtbmFtZT0iTGF5ZXIgMSI+PHBhdGggZD0iTTguNTEsMy40OGEzLjgzLDMuODMsMCwwLDEsNC4xNywzLjg0aDMuN0E3LjQ3LDcuNDcsMCwwLDAsOC42Mi4yMSw4LDgsMCwwLDAsMi43NywyLjQyQy42Miw0LjU3LDAsNy4yNiwwLDEwLjUxcy42Miw2LDIuNzQsOC4xMmE4LjA4LDguMDgsMCwwLDAsNS44OCwyLjIxLDcuNTUsNy41NSwwLDAsMCw3Ljc2LTdoLTMuN2E0LDQsMCwwLDEtNC4xNywzLjc4LDQuMjcsNC4yNywwLDAsMS0zLjIyLTEuMzJDNCwxNC44MiwzLjY3LDEzLDMuNjcsMTAuNTFTNCw2LjIsNS4yOSw0LjhBNC40LDQuNCwwLDAsMSw4LjUxLDMuNDhaIi8+PHBhdGggZD0iTTI1LjY3LDIwLjg0YTYuNzgsNi43OCwwLDAsMCw1LjI0LTIuMjEsNy41NCw3LjU0LDAsMCwwLDEuODUtNS40Niw3LjU0LDcuNTQsMCwwLDAtMS44NS01LjQ2QTYuNzgsNi43OCwwLDAsMCwyNS42Nyw1LjVhNi43OSw2Ljc5LDAsMCwwLTUuMjMsMi4yMSw3LjU0LDcuNTQsMCwwLDAtMS44NSw1LjQ2LDcuNTQsNy41NCwwLDAsMCwxLjg1LDUuNDZBNi43OSw2Ljc5LDAsMCwwLDI1LjY3LDIwLjg0Wk0yMy4yOSw5LjQ3YTMuMzEsMy4zMSwwLDAsMSwyLjM4LS45MiwzLjI3LDMuMjcsMCwwLDEsMi4zOC45Miw1LDUsMCwwLDEsMS4xNSwzLjcsNSw1LDAsMCwxLTEuMTUsMy43LDMuMjcsMy4yNywwLDAsMS0yLjM4LjkyLDMuMzEsMy4zMSwwLDAsMS0yLjM4LS45Miw1LjA1LDUuMDUsMCwwLDEtMS4xNC0zLjdBNS4wNSw1LjA1LDAsMCwxLDIzLjI5LDkuNDdaIi8+PHBhdGggZD0iTTQ4LjYxLDIwLjQ1VjEwLjcxYzAtMy4wNi0xLjkxLTUuMjEtNS01LjIxYTQuOTEsNC45MSwwLDAsMC00LjM0LDIuMjlsLS4xNi0xLjlIMzZWMjAuNDVoMy41VjEzYzAtMi4yNywxLTQuMiwzLjEzLTQuMiwxLjYyLDAsMi40NCwxLjA2LDIuNDQsMi43N3Y4LjkzWiIvPjxwYXRoIGQ9Ik02NS4xMywyMC40NVYxMC43MWMwLTMuMDYtMS45MS01LjIxLTUtNS4yMWE0LjksNC45LDAsMCwwLTQuMzQsMi4yOWwtLjE2LTEuOUg1Mi41NVYyMC40NWgzLjVWMTNjMC0yLjI3LDEtNC4yLDMuMTQtNC4yLDEuNjIsMCwyLjQ0LDEuMDYsMi40NCwyLjc3djguOTNaIi8+PHBhdGggZD0iTTc1LjI5LDIwLjg0YzMuMTQsMCw1Ljc0LTEuODcsNi4xNi00LjczSDc4LjE3YTIuNzQsMi43NCwwLDAsMS0yLjkzLDIsMy42MiwzLjYyLDAsMCwxLTMuNS0zLjg5aDEwYTguOTQsOC45NCwwLDAsMCwuMDgtMS40YzAtNC4zNC0yLjUyLTcuMjgtNi43Mi03LjI4YTYuMzksNi4zOSwwLDAsMC00LjY0LDEuODUsOCw4LDAsMCwwLTIuMjQsNS44Miw3Ljk0LDcuOTQsMCwwLDAsMi4yNiw1Ljg4QTYuNzYsNi43NiwwLDAsMCw3NS4yOSwyMC44NFpNNzUuMjEsOC4yN2MxLjg3LDAsMy4xMywxLjIsMy4xMywzLjM2SDcxLjc2QTMuNCwzLjQsMCwwLDEsNzUuMjEsOC4yN1oiLz48cGF0aCBkPSJNOTEuMiw4LjUyQTIuNTQsMi41NCwwLDAsMSw5NCwxMWgzLjM5Yy0uMTctMy4zMS0yLjc0LTUuNDktNi4zLTUuNDlhNi42Myw2LjYzLDAsMCwwLTUuMTgsMi4yOSw4LjIsOC4yLDAsMCwwLTEuNzEsNS4zOCw4LjQxLDguNDEsMCwwLDAsMS42OCw1LjM4LDYuNTUsNi41NSwwLDAsMCw1LjIxLDIuMjljMy40NCwwLDYuMTMtMi4yMSw2LjMtNS40Nkg5NGEyLjU5LDIuNTksMCwwLDEtMi44MiwyLjQ0LDMuMSwzLjEsMCwwLDEtMi4zOC0xLDUuMjQsNS4yNCwwLDAsMS0xLTMuNjcsNS4zNiw1LjM2LDAsMCwxLDEtMy43QTMsMywwLDAsMSw5MS4yLDguNTJaIi8+PHBhdGggZD0iTTEwNS4yOCwxNS44NlY4Ljc3aDMuNTNWNS44OWgtMy41M1YxLjMzbC0zLjUuODZ2My43SDk5VjguNzdoMi43N3Y3LjU5YzAsMi44LDEuNjgsNC4yOSw0LjYyLDQuMjlhNyw3LDAsMCwwLDIuNDMtLjM3di0zYTYuODgsNi44OCwwLDAsMS0xLjcuMTlDMTA2LDE3LjQ1LDEwNS4yOCwxNywxMDUuMjgsMTUuODZaIi8+PHBvbHlnb24gcG9pbnRzPSIxMDkuODkgMC45OCAxMTEuNjkgMC45OCAxMTEuNjkgNS43OSAxMTIuNzQgNS43OSAxMTIuNzQgMC45OCAxMTQuNTQgMC45OCAxMTQuNTQgMCAxMDkuODkgMCAxMDkuODkgMC45OCIvPjxwb2x5Z29uIHBvaW50cz0iMTE5LjcyIDAgMTE4LjI4IDQuMjMgMTE2Ljg1IDAgMTE1LjMzIDAgMTE1LjMzIDUuNzkgMTE2LjM1IDUuNzkgMTE2LjM1IDEuMjcgMTE3Ljg0IDUuNzEgMTE4LjY1IDUuNzEgMTIwLjE1IDEuMzYgMTIwLjE1IDUuNzkgMTIxLjE3IDUuNzkgMTIxLjE3IDAgMTE5LjcyIDAiLz48cGF0aCBkPSJNMy42OSwyOS43OUEyLjM3LDIuMzcsMCwwLDAsMS41OCwzMC45di00SC4zOVYzNy4wNmgxTDEuNTIsMzZhMi4zLDIuMywwLDAsMCwyLjE3LDEuMjYsMi44MSwyLjgxLDAsMCwwLDIuMDYtLjc5LDQuMTEsNC4xMSwwLDAsMCwxLTIuOTQsNC4wNSw0LjA1LDAsMCwwLTEuMDktM0EzLDMsMCwwLDAsMy42OSwyOS43OVpNNSwzNS42MmExLjg1LDEuODUsMCwwLDEtMS40NS42MywxLjcxLDEuNzEsMCwwLDEtMS4xOS0uNDgsMi44NCwyLjg0LDAsMCwxLS43OS0yLjI1LDIuODgsMi44OCwwLDAsMSwuNzktMi4yNkExLjc1LDEuNzUsMCwwLDEsMy41LDMwLjhhMS44NywxLjg3LDAsMCwxLDEuMzguNTMsMywzLDAsMCwxLC42OSwyLjE5QTMuMjEsMy4yMSwwLDAsMSw1LDM1LjYyWiIvPjxwYXRoIGQ9Ik0xMS4xOCwzNS41Niw5LjExLDMwSDcuNzVsMi44Myw3LjA3LS40MSwxLjA5YTEuMjksMS4yOSwwLDAsMS0xLjM3LDFBMiwyLDAsMCwxLDgsMzl2MWEyLjUxLDIuNTEsMCwwLDAsMSwuMiwyLjI2LDIuMjYsMCwwLDAsMi4yNC0xLjc3TDE0LjQyLDMwSDEzLjE2WiIvPjxwYXRoIGQ9Ik0yMywzMS41MmwtMS42NS0uMjZjLS43NS0uMTEtMS40OS0uNS0xLjQ5LTEuNDNzLjk0LTEuNzUsMi4xNy0xLjc1YTIsMiwwLDAsMSwyLjI0LDJoMS4zMUEzLjI5LDMuMjksMCwwLDAsMjIsMjYuOTNhMy4yNiwzLjI2LDAsMCwwLTMuNDgsM2MwLDEuNTgsMS4xNCwyLjQxLDIuNjUsMi42M2wxLjU3LjI0YzEuMTYuMTgsMS42Ni44MywxLjY2LDEuNTgsMCwxLjEzLTEsMS43Ny0yLjM1LDEuNzdhMi4zNCwyLjM0LDAsMCwxLTIuNi0yLjE5SDE4LjE1YzAsMiwxLjY3LDMuMzQsMy45MSwzLjM0LDIsMCwzLjY2LTEuMTIsMy42Ni0yLjkyQTIuODcsMi44NywwLDAsMCwyMywzMS41MloiLz48cGF0aCBkPSJNMzMuMzMsMzEuNzhhNS4zNiw1LjM2LDAsMCwxLS40NSwyLjM3bC0yLTIuMjEuNzEtLjQ3YTIuNTgsMi41OCwwLDAsMCwxLjI5LTIuMjIsMi4zMywyLjMzLDAsMCwwLTIuNS0yLjMyLDIuMzgsMi4zOCwwLDAsMC0yLjU0LDIuMzMsMi43NCwyLjc0LDAsMCwwLC44NywybC4zMi4zNy0uMzQuMjJhMywzLDAsMCwwLTEuNTYsMi42NCwyLjkxLDIuOTEsMCwwLDAsMy4xMSwyLjhBMy42NSwzLjY1LDAsMCwwLDMzLDM2bDEsMS4wOWgxLjUxbC0xLjc5LTJhNS44MSw1LjgxLDAsMCwwLC43OC0yLjY0aDF2LTFIMzMuMzNaTTI5LDI5LjI1YTEuMzYsMS4zNiwwLDAsMSwyLjcyLDBjMCwuNjUtLjI5LDEuMDgtMS4xOCwxLjY0bC0uNDIuMjctLjM2LS40MUEyLjMsMi4zLDAsMCwxLDI5LDI5LjI1Wm0xLjE5LDYuOWExLjc2LDEuNzYsMCwwLDEtMS44Ny0xLjcyLDIsMiwwLDAsMSwxLTEuNzdsLjM5LS4yNiwyLjQ4LDIuNzZBMi41NiwyLjU2LDAsMCwxLDMwLjIyLDM2LjE1WiIvPjxwYXRoIGQ9Ik00MC44OCwyNy4xM2gtMy42djkuOTNoMS4yNFYzM2gyLjM2YzIsMCwzLjM2LTEuMDYsMy4zNi0yLjk1UzQyLjkxLDI3LjEzLDQwLjg4LDI3LjEzWm0wLDQuNzhIMzguNTJWMjguMjdoMi4zM2MxLjMzLDAsMi4xLjYsMi4xLDEuODJTNDIuMTgsMzEuOTEsNDAuODUsMzEuOTFaIi8+PHBhdGggZD0iTTUyLjIzLDMzLjA4SDU1LjN2LjA3YzAsMS44MS0xLDIuOTMtMi42OSwyLjkzYTIuNzQsMi43NCwwLDAsMS0yLS43Niw0LjU3LDQuNTcsMCwwLDEtMS0zLjIyLDQuNDYsNC40NiwwLDAsMSwxLTMuMTksMi42NywyLjY3LDAsMCwxLDEuOTEtLjc4LDIuNTMsMi41MywwLDAsMSwyLC43NCwyLjE4LDIuMTgsMCwwLDEsLjUzLDEuMzFoMS4zNGEzLjI0LDMuMjQsMCwwLDAtLjc5LTIsMy44OSwzLjg5LDAsMCwwLTMuMDktMS4yNEE0LDQsMCwwLDAsNDkuNzcsMjhhNS4yOCw1LjI4LDAsMCwwLTEuNDYsNC4wNyw1LjM0LDUuMzQsMCwwLDAsMS40MSw0LjEyLDQuMDcsNC4wNywwLDAsMCwyLjg1LDEsMi45NCwyLjk0LDAsMCwwLDIuNzYtMS42MWwuMTQsMS40MWgxVjMxLjkyaC00LjJaIi8+PHBhdGggZD0iTTU5Ljc1LDM1LjM1VjI2LjkySDU4LjU2djguNTdjMCwxLjEyLjU3LDEuNjcsMS41NSwxLjY3YTIuNDQsMi40NCwwLDAsMCwuNzctLjF2LTFhNC4xMSw0LjExLDAsMCwxLS40OSwwQzU5LjksMzYuMDgsNTkuNzUsMzUuODMsNTkuNzUsMzUuMzVaIi8+PHBhdGggZD0iTTY1LjI0LDI5Ljc5YTMuMDksMy4wOSwwLDAsMC0yLjIuODMsMy43NywzLjc3LDAsMCwwLTEsMi45LDMuNzksMy43OSwwLDAsMCwxLDIuOTEsMy4wOSwzLjA5LDAsMCwwLDIuMi44MywzLjEyLDMuMTIsMCwwLDAsMi4yLS44MywzLjgyLDMuODIsMCwwLDAsMS0yLjkxLDMuOCwzLjgsMCwwLDAtMS0yLjlBMy4xMiwzLjEyLDAsMCwwLDY1LjI0LDI5Ljc5Wm0xLjMzLDUuOTRhMS44NiwxLjg2LDAsMCwxLTEuMzMuNTEsMS44MiwxLjgyLDAsMCwxLTEuMzMtLjUxLDMsMywwLDAsMS0uNjktMi4yMSwzLDMsMCwwLDEsLjY5LTIuMiwxLjgyLDEuODIsMCwwLDEsMS4zMy0uNTEsMS44NiwxLjg2LDAsMCwxLDEuMzMuNTEsMywzLDAsMCwxLC42OCwyLjJBMywzLDAsMCwxLDY2LjU3LDM1LjczWiIvPjxwYXRoIGQ9Ik03My44MSwyOS43OWEyLjM3LDIuMzcsMCwwLDAtMi4xMiwxLjExdi00SDcwLjVWMzcuMDZoMUw3MS42MywzNmEyLjMsMi4zLDAsMCwwLDIuMTgsMS4yNiwyLjgsMi44LDAsMCwwLDItLjc5LDQuMTEsNC4xMSwwLDAsMCwxLTIuOTQsNC4wNSw0LjA1LDAsMCwwLTEuMDktM0EzLDMsMCwwLDAsNzMuODEsMjkuNzlabTEuMjYsNS44M2ExLjg5LDEuODksMCwwLDEtMS40Ni42MywxLjcxLDEuNzEsMCwwLDEtMS4xOS0uNDgsMi44OCwyLjg4LDAsMCwxLS43OS0yLjI1LDIuOTEsMi45MSwwLDAsMSwuNzktMi4yNiwxLjc1LDEuNzUsMCwwLDEsMS4xOS0uNDYsMS45LDEuOSwwLDAsMSwxLjM5LjUzLDMuMDgsMy4wOCwwLDAsMSwuNjgsMi4xOUEzLjI2LDMuMjYsMCwwLDEsNzUuMDcsMzUuNjJaIi8+PHBhdGggZD0iTTg0LjIyLDM1LjY4VjMyLjI0YzAtMS41OC0xLjA2LTIuNDUtMi43MS0yLjQ1cy0yLjc2LjgxLTIuNzksMi4yNmgxLjE2YzAtLjguNjYtMS4yOSwxLjYzLTEuMjlzMS41NC40NiwxLjU0LDEuNDd2LjQ5bC0yLjE2LjEzYy0xLjkzLjExLTIuNTIsMS4zMS0yLjUyLDIuMjJhMi4yMiwyLjIyLDAsMCwwLDIuNDMsMi4xOSwyLjY4LDIuNjgsMCwwLDAsMi4zLTEuMTgsMSwxLDAsMCwwLDEsMS4wOCwxLjU5LDEuNTksMCwwLDAsLjc4LS4xN3YtLjg4YTEuMzgsMS4zOCwwLDAsMS0uMzEsMEM4NC4zOCwzNi4xNSw4NC4yMiwzNi4wNSw4NC4yMiwzNS42OFptLTEuMTctMS42MkEyLDIsMCwwLDEsODEsMzYuMjZhMS4yMywxLjIzLDAsMCwxLTEuNC0xLjIxQTEuMzMsMS4zMywwLDAsMSw4MSwzMy43NmwyLS4xMloiLz48cGF0aCBkPSJNODcuODIsMzUuMzVWMjYuOTJIODYuNjN2OC41N2MwLDEuMTIuNTcsMS42NywxLjU1LDEuNjdhMi40NCwyLjQ0LDAsMCwwLC43Ny0uMXYtMWE0LjExLDQuMTEsMCwwLDEtLjQ5LDBDODgsMzYuMDgsODcuODIsMzUuODMsODcuODIsMzUuMzVaIi8+PC9nPjwvZz48L3N2Zz4=" /></a>
+            <form id='api_selector'>
+                <div class='input'><input placeholder="http://example.com/api" id="input_baseUrl" name="baseUrl" type="text" /></div>
+                <div class='input'><input placeholder="api_key" id="input_apiKey" name="apiKey" type="text" /></div>
+                <div class='input'><a class="submit" href="#" data-sw-translate>Explore</a></div>
+            </form>
+        </div>
+    </div>
+    <div id="message-bar">
+        <div id="message-bar" class="swagger-ui-wrap" data-sw-translate>&nbsp;test text</div>
+    </div>
+
+    <div id="swagger-ui-container" class="swagger-ui-wrap"></div>
+
+    <div id="castle-footer" class="footer footer-default">
+        <label class="footer-expand-icon ihs-icon" for="footer-expand"></label>
+        <div class="copyright-links">
+            <ul class="no-print">
+                <li><a href="https://www.spglobal.com/en/terms-of-use">Terms of Use</a></li>
+                <li><a href="https://www.spglobal.com/en/legal/privacy">Privacy Policy</a></li>
+                <li><a href="https://www.spglobal.com/en/enterprise/about/contact-us.html">Customer Care</a></li>
+            </ul>
+            <small class="copyright-full">
+                © <span id="year"></span>, S&P Global. All rights reserved. Reproduction in whole or part without permission is prohibited.
+            </small>
+        </div>
+        <div class="logo pull-right">
+            <div class="footer-logo"></div>
+        </div>
+    </div>
+</body>
+</html>
