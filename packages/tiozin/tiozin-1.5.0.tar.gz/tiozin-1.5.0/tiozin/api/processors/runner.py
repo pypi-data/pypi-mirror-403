@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+from ...assembly import tioproxy
+from ...assembly.runner_proxy import RunnerProxy
+from .. import PlugIn
+
+if TYPE_CHECKING:
+    from tiozin import Context, JobContext
+
+T = TypeVar("T")
+
+
+@tioproxy(RunnerProxy)
+class Runner(PlugIn, Generic[T]):
+    """
+    Execution backend for Tiozin pipelines.
+
+    A Runner defines the execution engine (e.g., Spark, Flink, DuckDB) and manages
+    the lifecycle of job execution: environment setup, pipeline processing, and
+    resource cleanup.
+
+    The Runner does not own its own context. Instead, it receives the context from
+    whoever invokes it—typically a Job or a Step. This design keeps the Runner
+    stateless and reusable across different execution scopes.
+
+    Lifecycle:
+        1. setup(job_context): Called once when the Job initializes the Runner.
+           Use this to create sessions, connections, or shared resources.
+
+        2. run(context, plan): Called to execute work. May be invoked:
+           - Lazily by the Job with a JobContext (after all steps complete)
+           - Eagerly by each Step with a StepContext (as steps execute)
+
+        3. teardown(job_context): Called once when the Job releases the Runner.
+           Use this to close sessions and release resources.
+
+    Usage:
+        with runner(job_context) as runner:
+            # Steps may call runner.run(step_context, ...) eagerly
+            for step in steps:
+                step.execute(runner)
+            # Or Job calls runner.run(job_context, ...) lazily at the end
+            runner.run(job_context, accumulated_plan)
+
+    Attributes:
+        streaming: Indicates whether this runner executes streaming workloads.
+        options: Provider-specific configuration parameters.
+    """
+
+    def __init__(
+        self,
+        name: str = None,
+        description: str = None,
+        streaming: bool = False,
+        **options,
+    ) -> None:
+        super().__init__(name, description, **options)
+        self.streaming = streaming
+
+    @abstractmethod
+    def setup(self, context: JobContext) -> None:
+        """Initialize the runner's resources (sessions, connections, etc.)."""
+        pass
+
+    @abstractmethod
+    def run(self, context: Context, execution_plan: T) -> Any:
+        """
+        Execute the given plan using the caller's context.
+
+        May be called multiple times during a job's lifecycle—either lazily
+        by the Job (with a JobContext) or eagerly by each Step (with a StepContext).
+        The context identifies who is requesting the execution.
+        """
+
+    @abstractmethod
+    def teardown(self, context: JobContext) -> None:
+        """Release the runner's resources (close sessions, connections, etc.)."""
+        pass

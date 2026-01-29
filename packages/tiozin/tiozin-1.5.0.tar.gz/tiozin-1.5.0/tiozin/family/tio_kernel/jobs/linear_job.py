@@ -1,0 +1,69 @@
+from typing import Any
+
+from tiozin.api import CoTransform, Job, JobContext
+from tiozin.utils.helpers import as_list
+
+
+class LinearJob(Job[Any]):
+    """
+    Execute a job using a linear, sequential execution model.
+
+    A LinearJob represents the simplest and most common pipeline shape: data flows forward in a
+    single direction, from Inputs through a sequence of Transforms, and finally into one or more
+    Outputs.
+
+    Each stage consumes the result of the previous one. Inputs produce the initial datasets,
+    Transforms are applied sequentially to evolve the data, and Outputs persist the final result.
+    There are no branches or arbitrary dependencies—execution follows a clear, predictable order.
+
+    Pipeline patterns supported by LinearJob include:
+
+    Simple pipeline (single input, single output):
+        ┌───────┐    ┌─────────────┐    ┌─────────────┐    ┌────────┐
+        │ Input │───►│ Transform 1 │───►│ Transform 2 │───►│ Output │
+        └───────┘    └─────────────┘    └─────────────┘    └────────┘
+
+    Multiple inputs (explicitly combined into a single stream):
+        ┌─────────┐
+        │ Input 1 │───┐
+        └─────────┘   │
+        ┌─────────┐   │    ┌──────────────────┐    ┌─────────────┐    ┌────────┐
+        │ Input 2 │───────►│ CombineTransform │───►│ Transform 2 │───►│ Output │
+        └─────────┘   │    └──────────────────┘    └─────────────┘    └────────┘
+        ┌─────────┐   │        (join, union, etc.)
+        │ Input N │───┘
+        └─────────┘
+
+    Multiple outputs (the same transformed data written to different destinations):
+        ┌───────┐    ┌─────────────┐    ┌──────────┐
+        │ Input │───►│ Transform 1 │───►│ Output 1 │
+        └───────┘    └─────────────┘    └──────────┘
+                                    ───►│ Output 2 │
+                                        └──────────┘
+                                    ───►│ Output N │
+                                        └──────────┘
+
+    LinearJob intentionally avoids modeling arbitrary DAGs. Its goal is to provide a clear,
+    easy-to-reason-about execution model suitable for most ETL workloads. More complex dependency
+    graphs may be supported by future implementations.
+    """
+
+    def submit(self, context: JobContext) -> Any:
+        with self.runner(context):
+            # Multiple datasets may be loaded
+            datasets = [input.execute(context) for input in self.inputs]
+
+            # Transformers run sequentially
+            for t in self.transforms:
+                if isinstance(t, CoTransform):
+                    datasets = [t.execute(context, *as_list(datasets))]
+                else:
+                    datasets = [t.execute(context, d) for d in as_list(datasets)]
+
+            # Each output writes the same datasets
+            datasets = [
+                output.execute(context, dataset) for output in self.outputs for dataset in datasets
+            ]
+
+            # The runner executes the final plan
+            return self.runner.run(context, datasets)

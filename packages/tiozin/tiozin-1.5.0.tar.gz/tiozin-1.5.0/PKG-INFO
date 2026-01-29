@@ -1,0 +1,134 @@
+Metadata-Version: 2.4
+Name: tiozin
+Version: 1.5.0
+Summary: Tiozin, your friendly ETL framework
+Project-URL: Homepage, https://github.com/fdmorison/tiozin
+Project-URL: Repository, https://github.com/fdmorison/tiozin
+Project-URL: Issues, https://github.com/fdmorison/tiozin/issues
+Author-email: Fabricio D'Morison <fabricio.dmorison@gmail.com>
+License-Expression: MPL-2.0
+License-File: LICENSE
+Keywords: data,declarative,etl,framework,pipeline,yaml
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.11
+Requires-Dist: environs~=14.3
+Requires-Dist: fsspec~=2026.1
+Requires-Dist: jinja2~=3.1.6
+Requires-Dist: pendulum~=3.1.0
+Requires-Dist: pydantic~=2.12
+Requires-Dist: ruamel-yaml~=0.18
+Requires-Dist: single-source~=0.4
+Requires-Dist: structlog~=25.5
+Requires-Dist: typer~=0.20
+Requires-Dist: uuid-utils~=0.12
+Requires-Dist: wrapt~=2.0.1
+Provides-Extra: aws
+Requires-Dist: s3fs~=2026.1; extra == 'aws'
+Provides-Extra: azure
+Requires-Dist: adlfs~=2025.8; extra == 'azure'
+Provides-Extra: gcp
+Requires-Dist: gcsfs~=2026.1; extra == 'gcp'
+Provides-Extra: tio-spark
+Requires-Dist: pyspark<4.0.0,>=3.5.0; extra == 'tio-spark'
+Description-Content-Type: text/markdown
+
+# Tiozin
+
+<p align="center">
+  <img src="docs/tiozin.png" alt="Tiozin - Your friendly ETL framework">
+</p>
+
+---
+
+ETL shouldn't require 80 files, 50 YAMLs, and a PhD in complexity.
+
+Tiozin brings it back to basics: **Transform. Input. Output.** Nothing more, nothing less.
+
+A lightweight Python framework that makes data jobs declarative, testable, and actually enjoyable to write.
+
+## Quick Start
+
+```bash
+pip install tiozin
+```
+
+**Option 1: Define a job in YAML**
+
+```yaml
+kind: Job
+name: kinglear_word_count_job
+
+org: tiozin
+region: latam
+domain: literature
+product: shakespeare
+model: kinglear
+layer: refined
+
+runner:
+  kind: SparkRunner
+
+inputs:
+  - kind: SparkFileInput
+    name: load_poems
+    path: s3://{{org}}-{{domain}}-raw/{{product}}/{{model}}/date={{ DAY[-1] }}
+
+transforms:
+  - kind: SparkWordCountTransform
+    name: word_count
+
+outputs:
+  - kind: SparkFileOutput
+    name: save_word_counts
+    path: s3://{{org}}-{{domain}}-{{layer}}/{{product}}/{{model}}/date={{ today }}
+```
+
+Run it:
+
+```bash
+tiozin run examples/jobs/shakespeare/kinglear_word_count_job.yaml
+```
+
+**Option 2: Use Python directly**
+
+```python
+from tiozin import TiozinApp
+
+app = TiozinApp()
+app.run("examples/jobs/shakespeare/kinglear_word_count_job.yaml")
+```
+
+Done. No ceremony, no boilerplate.
+
+## Documentation
+
+- [Installation](docs/installation.md)
+- [Jobs](docs/pipeline.md)
+- [Runners](docs/runners.md)
+- [Transforms, Inputs & Outputs](docs/transforms.md)
+- [Registries](docs/registries.md)
+- [Plugins](docs/plugins.md)
+- [Testing](docs/testing.md)
+
+## Philosophy
+
+Your uncle's advice: Keep it simple, readable, and testable.
+
+- **Declarative** – Define what, not how
+- **Pluggable** – Swap runners, registries, plugins as needed
+- **Metadata** – Built-in metadata integration
+- **Observable** – Logs that help
+- **Testable** – Mock anything, validate everything
+
+No magic. No surprises. Just clean data pipelines.
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](docs/contributing.md) for guidelines.
+
+## License
+
+This project is licensed under the [Mozilla Public License 2.0](LICENSE).
