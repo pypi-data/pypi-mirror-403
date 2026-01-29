@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NanoPy Dual - Hashcat GPU Cracker</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header class="header">
+        <h1>NanoPy <span>Dual</span></h1>
+        <div class="header-status">
+            <div class="status-badge">
+                <div class="status-dot" id="hashcatDot"></div>
+                <span id="hashcatStatus">Checking...</span>
+            </div>
+            <div class="status-badge">
+                <div class="status-dot" id="loopDot"></div>
+                <span id="loopStatus">Idle</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <nav class="sidebar">
+            <div class="nav-item active" data-section="crack">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+                Loop Cracker
+            </div>
+            <div class="nav-item" data-section="patterns">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="3" y1="9" x2="21" y2="9"/>
+                    <line x1="9" y1="21" x2="9" y2="9"/>
+                </svg>
+                Patterns
+            </div>
+            <div class="nav-item" data-section="cracked">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                Cracked
+            </div>
+            <div class="nav-item" data-section="learn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                Learn AI
+            </div>
+            <div class="nav-item" data-section="tracking">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+                </svg>
+                Tracking
+            </div>
+            <div class="nav-item" data-section="smart">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/>
+                    <path d="M12 6v6l4 2"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+                Smart Mode
+            </div>
+            <div class="nav-item" data-section="stats">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10"/>
+                    <line x1="12" y1="20" x2="12" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+                Stats
+            </div>
+        </nav>
+
+        <div class="content">
+            <!-- CRACK SECTION -->
+            <section id="crack" class="section active">
+                <h2 style="margin-bottom: 20px;">Loop Cracker</h2>
+
+                <!-- Loop Status Panel -->
+                <div class="loop-panel" id="loopPanel">
+                    <div class="loop-phase" id="loopPhase">IDLE</div>
+                    <div class="loop-stats">
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="loopCount">0</div>
+                            <div class="loop-stat-label">Loops</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="currentLen">-</div>
+                            <div class="loop-stat-label">Current Length</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="existingUsed">0</div>
+                            <div class="loop-stat-label">Existing Patterns</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="patternsGen">0</div>
+                            <div class="loop-stat-label">Patterns Gen</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="patternsLearned">0</div>
+                            <div class="loop-stat-label">Patterns Learned</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="masksTried">0</div>
+                            <div class="loop-stat-label">Masks Tried</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="masksCurrent">0</div>
+                            <div class="loop-stat-label">Masks Current</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="smartModeStatus" style="font-size: 14px;">-</div>
+                            <div class="loop-stat-label">Smart Mode</div>
+                        </div>
+                        <div class="loop-stat">
+                            <div class="loop-stat-value" id="currentCategory" style="font-size: 12px;">-</div>
+                            <div class="loop-stat-label">Category</div>
+                        </div>
+                    </div>
+                    <!-- Batch Info Bar -->
+                    <div id="batchInfo" style="display: none; margin-top: 12px; padding: 10px 16px; background: var(--bg-tertiary); border-radius: 6px; color: var(--accent-yellow); font-family: monospace; font-size: 13px;"></div>
+                    <div class="result-box" id="resultBox" style="display: none;">
+                        <div style="color: var(--text-secondary); margin-bottom: 8px;">PASSWORD FOUND</div>
+                        <div class="result-password" id="resultPassword"></div>
+                    </div>
+                </div>
+
+                <!-- Crack Form -->
+                <div class="card" style="margin-top: 20px;">
+                    <div class="card-header">
+                        <span class="card-title">Start Crack</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Target Hash</label>
+                        <div class="hash-input-group">
+                            <input type="text" id="targetHash" class="form-input mono"
+                                placeholder="Enter SHA256/SHA1/MD5 hash...">
+                            <button class="btn btn-secondary" onclick="generateTestHash()">Generate Test</button>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label class="form-label">Hash Type</label>
+                            <select id="hashType" class="form-select">
+                                <option value="sha256">SHA256</option>
+                                <option value="sha1">SHA1</option>
+                                <option value="md5">MD5</option>
+                                <option value="sha512">SHA512</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Min Length</label>
+                            <input type="number" id="pwdMinLen" class="form-input" value="6" min="1" max="32">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Max Length</label>
+                            <input type="number" id="pwdMaxLen" class="form-input" value="10" min="1" max="32">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Test Password</label>
+                            <input type="text" id="testPassword" class="form-input" placeholder="test password">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; margin-top: 16px; align-items: center;">
+                        <button class="btn btn-success" id="startBtn" onclick="startLoop()">
+                            ▶ Start Loop
+                        </button>
+                        <button class="btn btn-danger" id="stopBtn" onclick="stopLoop()" disabled>
+                            ■ Stop
+                        </button>
+                        <button class="btn btn-primary" id="trainBtn" onclick="trainPatterns()" title="Generate ALL patterns for length range (exhaustive)">
+                            Train Patterns
+                        </button>
+                        <label style="display: flex; align-items: center; gap: 8px; margin-left: 16px; cursor: pointer;">
+                            <input type="checkbox" id="smartModeToggle" checked style="width: 18px; height: 18px; cursor: pointer;">
+                            <span style="color: var(--text-secondary);">Smart Mode</span>
+                            <span style="font-size: 11px; color: var(--text-dim);" title="Intelligent pattern ordering by category (word+date, capitalized+digits, etc.)">(priorité patterns)</span>
+                        </label>
+                    </div>
+                    <div id="trainResult" style="margin-top: 12px; display: none;"></div>
+                </div>
+            </section>
+
+            <!-- PATTERNS SECTION -->
+            <section id="patterns" class="section">
+                <div class="card-header">
+                    <h2>Learned Patterns</h2>
+                    <button class="btn btn-secondary" onclick="loadPatterns()">Refresh</button>
+                </div>
+
+                <!-- Filters -->
+                <div class="card" style="margin-bottom: 16px; padding: 12px;">
+                    <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label" style="margin-bottom: 4px;">Length</label>
+                            <select id="filterLength" class="form-select" style="width: 100px;" onchange="applyFilters()">
+                                <option value="">All</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label" style="margin-bottom: 4px;">Characters</label>
+                            <select id="filterChars" class="form-select" style="width: 140px;" onchange="applyFilters()">
+                                <option value="">All</option>
+                                <option value="has_special">Has Special (?s)</option>
+                                <option value="no_special">No Special</option>
+                                <option value="has_upper">Has Uppercase (?u)</option>
+                                <option value="has_lower">Has Lowercase (?l)</option>
+                                <option value="has_digit">Has Digits (?d)</option>
+                                <option value="only_lower">Only Lowercase</option>
+                                <option value="only_upper">Only Uppercase</option>
+                                <option value="only_digit">Only Digits</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label" style="margin-bottom: 4px;">Search Pattern</label>
+                            <input type="text" id="filterSearch" class="form-input" style="width: 150px;"
+                                placeholder="e.g. LLDD" oninput="applyFilters()">
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <button class="btn btn-secondary" onclick="clearFilters()">Clear Filters</button>
+                        </div>
+                        <div style="margin-top: 20px; margin-left: auto;">
+                            <span id="filterCount" style="color: var(--text-secondary);"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Pattern</th>
+                                <th>Hashcat Mask</th>
+                                <th>Count</th>
+                                <th>Length</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="patternsTable">
+                            <tr><td colspan="6" style="text-align: center; color: var(--text-dim);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="patternsPagination"></div>
+            </section>
+
+            <!-- CRACKED SECTION -->
+            <section id="cracked" class="section">
+                <div class="card-header">
+                    <h2>Cracked Passwords</h2>
+                    <button class="btn btn-secondary" onclick="loadCracked()">Refresh</button>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Hash</th>
+                                <th>Password</th>
+                                <th>Type</th>
+                                <th>Pattern</th>
+                                <th>Method</th>
+                            </tr>
+                        </thead>
+                        <tbody id="crackedTable">
+                            <tr><td colspan="5" style="text-align: center; color: var(--text-dim);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- LEARN SECTION -->
+            <section id="learn" class="section">
+                <h2 style="margin-bottom: 20px;">Learning AI</h2>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Learned</div>
+                        <div class="stat-value blue" id="aiLearned">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Unique Patterns</div>
+                        <div class="stat-value green" id="aiPatterns">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Generation</div>
+                        <div class="stat-value purple" id="aiGeneration">0</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Learn from Passwords</div>
+                    <div class="form-group" style="margin-top: 16px;">
+                        <textarea id="learnPasswords" class="form-input" rows="5"
+                            placeholder="Enter passwords to learn from (one per line)..."></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="learnPasswords()">Learn</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Generate Passwords</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+                        <div class="form-group">
+                            <label class="form-label">Count</label>
+                            <input type="number" id="genCount" class="form-input" value="10" min="1" max="100">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Length</label>
+                            <input type="number" id="genLength" class="form-input" value="8" min="1" max="32">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Method</label>
+                            <select id="genMethod" class="form-select">
+                                <option value="auto">Auto</option>
+                                <option value="random">Random</option>
+                                <option value="pattern">Pattern</option>
+                                <option value="weighted">Weighted</option>
+                                <option value="markov">Markov</option>
+                                <option value="genetic">Genetic</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="generatePasswords()">Generate</button>
+                    <div id="generatedList" style="margin-top: 16px;"></div>
+                </div>
+            </section>
+
+            <!-- TRACKING SECTION -->
+            <section id="tracking" class="section">
+                <h2 style="margin-bottom: 20px;">Target Tracking</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                    Track pattern evolution per target. When you crack a password, record it here to predict their next password pattern.
+                </p>
+
+                <!-- Add Target -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">Add/Select Target</div>
+                    <div style="display: flex; gap: 12px; margin-top: 12px; align-items: flex-end;">
+                        <div class="form-group" style="flex: 1; margin: 0;">
+                            <label class="form-label">Target ID</label>
+                            <input type="text" id="targetIdInput" class="form-input" placeholder="user@domain.com or unique ID">
+                        </div>
+                        <div class="form-group" style="flex: 1; margin: 0;">
+                            <label class="form-label">Name (optional)</label>
+                            <input type="text" id="targetNameInput" class="form-input" placeholder="John Doe">
+                        </div>
+                        <button class="btn btn-primary" onclick="addTarget()">Add Target</button>
+                    </div>
+                </div>
+
+                <!-- Track Cracked Password -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">Track Cracked Password</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 12px;">
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label">Target</label>
+                            <select id="trackTargetSelect" class="form-select">
+                                <option value="">Select target...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label">Hash</label>
+                            <input type="text" id="trackHashInput" class="form-input mono" placeholder="Hash that was cracked">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label">Password</label>
+                            <input type="text" id="trackPasswordInput" class="form-input mono" placeholder="Cracked password">
+                        </div>
+                    </div>
+                    <button class="btn btn-success" style="margin-top: 12px;" onclick="trackPassword()">Track Password</button>
+                    <div id="trackResult" style="margin-top: 12px; display: none;"></div>
+                </div>
+
+                <!-- Targets List -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <span class="card-title">Tracked Targets</span>
+                        <button class="btn btn-secondary" onclick="loadTargets()">Refresh</button>
+                    </div>
+                    <div class="table-container" style="margin-top: 12px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Target ID</th>
+                                    <th>Name</th>
+                                    <th>Cracks</th>
+                                    <th>Last Seen</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="targetsTable">
+                                <tr><td colspan="5" style="text-align: center; color: var(--text-dim);">No targets tracked yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Target History & Prediction -->
+                <div class="card" id="targetDetailsCard" style="display: none;">
+                    <div class="card-title">Pattern Evolution: <span id="targetDetailsId"></span></div>
+
+                    <!-- Predictions -->
+                    <div style="margin-top: 16px;">
+                        <h4 style="color: var(--accent-green); margin-bottom: 8px;">Predicted Next Patterns</h4>
+                        <div id="predictionsBox" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                    </div>
+
+                    <!-- History Timeline -->
+                    <div style="margin-top: 20px;">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 12px;">Password History</h4>
+                        <div id="historyTimeline"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SMART MODE SECTION -->
+            <section id="smart" class="section">
+                <h2 style="margin-bottom: 20px;">Smart Mode - Pattern Categories</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                    Intelligent attack strategy based on real-world password patterns. Categories are ordered by frequency.
+                </p>
+
+                <!-- Category Stats -->
+                <div class="stats-grid" id="categoryStats">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Categories</div>
+                        <div class="stat-value blue" id="totalCategories">7</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Length Range</div>
+                        <div class="stat-value green" id="sampleLength">6-10</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Priority Masks</div>
+                        <div class="stat-value yellow" id="totalPriorityMasks">0</div>
+                    </div>
+                </div>
+
+                <!-- Length Selector -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <span class="card-title">Configure</span>
+                    </div>
+                    <div style="display: flex; gap: 16px; align-items: flex-end; margin-top: 12px;">
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label">Min Length</label>
+                            <input type="number" id="smartMinLen" class="form-input" value="6" min="4" max="16" style="width: 80px;">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label class="form-label">Max Length</label>
+                            <input type="number" id="smartMaxLen" class="form-input" value="10" min="4" max="16" style="width: 80px;">
+                        </div>
+                        <button class="btn btn-primary" onclick="loadCategories()">Load Masks</button>
+                        <button class="btn btn-secondary" onclick="generateAllPatterns()">Generate All Patterns</button>
+                    </div>
+                </div>
+
+                <!-- Categories List -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <span class="card-title">Pattern Categories (by priority)</span>
+                        <button class="btn btn-secondary" onclick="loadCategories()">Refresh</button>
+                    </div>
+                    <div id="categoriesContainer" style="margin-top: 16px;">
+                        <p style="color: var(--text-dim);">Loading categories...</p>
+                    </div>
+                </div>
+
+                <!-- Selected Category Masks -->
+                <div class="card" id="categoryMasksCard" style="display: none;">
+                    <div class="card-header">
+                        <span class="card-title">Masks for: <span id="selectedCategoryName" style="color: var(--accent-green);"></span></span>
+                        <span id="categoryMaskCount" style="color: var(--text-secondary);"></span>
+                    </div>
+                    <p id="categoryDescription" style="color: var(--text-dim); margin: 12px 0;"></p>
+                    <div id="categoryMasksList" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;"></div>
+                </div>
+
+                <!-- Category Selection -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Enable/Disable Categories</span>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary" onclick="selectAllCategories()">Select All</button>
+                            <button class="btn btn-secondary" onclick="selectNoneCategories()">Select None</button>
+                            <button class="btn btn-primary" onclick="saveCategorySelection()">Save</button>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin: 12px 0;">
+                        Choose which pattern categories to test. Unchecked categories will be skipped.
+                    </p>
+                    <div id="categoryCheckboxes" style="margin-top: 12px;">
+                        <!-- Will be populated dynamically -->
+                        <p style="color: var(--text-dim);">Loading categories...</p>
+                    </div>
+                    <p style="color: var(--text-dim); margin-top: 16px; font-size: 12px;">
+                        Tip: Disable "exhaustive" for faster attacks on common passwords. Enable it to test ALL patterns.
+                    </p>
+                </div>
+            </section>
+
+            <!-- STATS SECTION -->
+            <section id="stats" class="section">
+                <h2 style="margin-bottom: 20px;">Statistics</h2>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Patterns in DB</div>
+                        <div class="stat-value blue" id="statPatterns">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Cracked Total</div>
+                        <div class="stat-value green" id="statCracked">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Learned</div>
+                        <div class="stat-value yellow" id="statLearned">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">LevelDB</div>
+                        <div class="stat-value purple" id="statLeveldb">-</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Hashcat Info</div>
+                    <div style="margin-top: 12px;">
+                        <p><strong>Available:</strong> <span id="hcAvailable">-</span></p>
+                        <p><strong>Version:</strong> <span id="hcVersion">-</span></p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>
