@@ -1,0 +1,225 @@
+# creed-sdk
+
+Official Python SDK for Creed Space - governance infrastructure for AI agents.
+
+## Installation
+
+```bash
+pip install creed-sdk
+# or
+poetry add creed-sdk
+# or
+uv add creed-sdk
+```
+
+## Quick Start
+
+```python
+from creed_sdk import create_client
+
+client = create_client(api_key="crd_live_...")
+
+# Get a governance decision for a tool call
+result = await client.decide(
+    tool_name="send_email",
+    arguments={
+        "to": "user@example.com",
+        "subject": "Hello",
+    },
+    on_allow=lambda d: print(f"Authorized: {d.decision_token}"),
+    on_deny=lambda d: print(f"Denied: {d.reasons}"),
+)
+
+# Don't forget to close the client
+await client.close()
+```
+
+### Context Manager (Recommended)
+
+```python
+async with create_client(api_key="crd_live_...") as client:
+    result = await client.decide(
+        tool_name="send_email",
+        arguments={"to": "user@example.com"},
+    )
+```
+
+## Features
+
+- **Governance Decisions** - Get ALLOW/DENY decisions for tool calls
+- **Cryptographic Tokens** - Signed JWT tokens for authorization proof
+- **Callback Flow Control** - `on_allow`, `on_deny`, `on_require_human` callbacks
+- **Audit Trail** - Query tamper-evident hash-chain audit logs
+- **Async Native** - Built on httpx for async/await support
+- **Type Hints** - Full type annotations for IDE support
+
+## API Reference
+
+### `create_client(api_key, base_url, timeout_ms)`
+
+Create a new Creed Space client.
+
+```python
+client = create_client(
+    api_key="crd_live_...",  # Required: Your API key
+    base_url="https://api.creed.space",  # Optional: Custom API URL
+    timeout_ms=30000,  # Optional: Request timeout (default: 30s)
+)
+```
+
+### `client.decide(...)`
+
+Get a governance decision for a tool call.
+
+```python
+result = await client.decide(
+    tool_name="send_email",
+    arguments={"to": "user@example.com"},
+    constitution_id="default",  # Optional
+    context={  # Optional
+        "tenant_id": "...",
+        "user_id": "...",
+    },
+    on_allow=handle_allow,  # Optional callback
+    on_deny=handle_deny,  # Optional callback
+    on_require_human=handle_human,  # Optional callback (planned feature)
+)
+
+# Async callbacks supported
+async def handle_allow(decision):
+    await execute_tool(decision.decision_token)
+```
+
+### `client.authorize(...)`
+
+Verify a decision token before execution.
+
+```python
+auth = await client.authorize(
+    decision_token=result.decision_token,
+    tool_name="send_email",  # Optional: verify tool name matches
+)
+
+if auth.authorized:
+    print(f"Token valid until: {auth.claims.expires_at}")
+```
+
+### `client.audit(...)`
+
+Query the audit trail for a run.
+
+```python
+audit = await client.audit(
+    run_id="run_123",
+    action_id=None,  # Optional: specific action
+    limit=50,
+)
+
+print(f"Events: {audit.events}")
+print(f"Integrity verified: {audit.integrity.verified}")
+```
+
+### `client.status()`
+
+Get service status and feature availability.
+
+```python
+status = await client.status()
+print(f"Service: {status.service}")
+print(f"Features: {status.features}")
+```
+
+## Utilities
+
+### `compute_args_hash(args)`
+
+Compute SHA-256 hash of arguments for verification.
+
+```python
+from creed_sdk import compute_args_hash
+
+hash_value = compute_args_hash({"to": "user@example.com"})
+# 'sha256:...'
+```
+
+### `is_token_expired(token)`
+
+Check if a decision token is expired.
+
+```python
+from creed_sdk import is_token_expired
+
+if is_token_expired(token):
+    # Request a new decision
+    pass
+```
+
+## Error Handling
+
+```python
+from creed_sdk import create_client
+from creed_sdk.errors import (
+    CreedError,
+    AuthenticationError,
+    RateLimitError,
+    TimeoutError,
+)
+
+try:
+    result = await client.decide(...)
+except AuthenticationError:
+    print("Invalid API key")
+except RateLimitError as e:
+    print(f"Rate limited, retry after {e.retry_after}s")
+except TimeoutError:
+    print("Request timed out")
+except CreedError as e:
+    print(f"Error: {e.code} - {e.message}")
+```
+
+## Decision Types
+
+| Decision | Status | Description |
+|----------|--------|-------------|
+| `ALLOW` | Active | Tool execution authorized |
+| `DENY` | Active | Tool execution blocked |
+| `REQUIRE_HUMAN` | Planned | Human review required |
+| `REQUIRE_STEPUP` | Planned | Step-up authentication required |
+
+## Type Definitions
+
+```python
+from creed_sdk.types import (
+    AllowDecision,
+    DenyDecision,
+    RequireHumanDecision,
+    AuthorizeResult,
+    AuditResult,
+    StatusResult,
+)
+```
+
+## Requirements
+
+- Python 3.10+
+- httpx 0.25+
+
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Type check
+mypy creed_sdk
+
+# Lint
+ruff check creed_sdk
+```
+
+## License
+
+MIT
