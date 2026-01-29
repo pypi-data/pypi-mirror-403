@@ -1,0 +1,56 @@
+# Built from:
+# https://docs.github.com/en/actions/guides/building-and-testing-python
+---
+name: Build and test linkml-store
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+env:
+  FORCE_COLOR: "1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        mongodb-version: ['7.0']
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install project
+        run: uv sync --group dev --all-extras
+
+      - name: Check common spelling errors
+        run: uv run codespell
+
+      - name: Start MongoDB
+        uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: ${{ matrix.mongodb-version }}
+
+      - name: Test with pytest
+        run: uv run pytest -m "not integration and not neo4j" --ignore=tests/test_api/test_neo4j_adapter.py tests
