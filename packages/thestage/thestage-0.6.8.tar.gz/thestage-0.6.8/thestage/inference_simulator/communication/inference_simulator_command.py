@@ -1,0 +1,347 @@
+from pathlib import Path
+from typing import Optional, List
+
+import typer
+
+from thestage.cli_command import CliCommand
+from thestage.cli_command_helper import get_command_metadata, check_command_permission
+from thestage.controllers.utils_controller import validate_config_and_get_service_factory, get_current_directory
+from thestage.helpers.logger.app_logger import app_logger
+from thestage.i18n.translation import __
+from thestage.inference_simulator.dto.get_inference_simulator_response import GetInferenceSimulatorResponse
+from thestage.logging.business.logging_service import LoggingService
+
+app = typer.Typer(no_args_is_help=True, help="Manage project inference simulators")
+
+@app.command(name='run', no_args_is_help=True, help="Run inference simulator within the project", **get_command_metadata(CliCommand.PROJECT_INFERENCE_SIMULATOR_RUN))
+def run_inference_simulator(
+        rented_instance_public_id: Optional[str] = typer.Option(
+            None,
+            '--rented-instance-id',
+            '-rid',
+            help=__("Rented instance ID on which the inference simulator will run"),
+            is_eager=False,
+        ),
+        rented_instance_slug: Optional[str] = typer.Option(
+            None,
+            '--rented-instance-name',
+            '-rn',
+            help=__("Rented instance name on which the inference simulator will run"),
+            is_eager=False,
+        ),
+        self_hosted_instance_public_id: Optional[str] = typer.Option(
+            None,
+            '--self-hosted-instance-id',
+            '-sid',
+            help=__("Self-hosted instance ID on which the inference simulator will run"),
+            is_eager=False,
+        ),
+        self_hosted_instance_slug: Optional[str] = typer.Option(
+            None,
+            '--self-hosted-instance-name',
+            '-sn',
+            help=__("Self-hosted instance name on which the inference simulator will run"),
+            is_eager=False,
+        ),
+        commit_hash: Optional[str] = typer.Option(
+            None,
+            '--commit-hash',
+            '-hash',
+            help=__("Commit hash to use. By default, the current HEAD commit is used."),
+            is_eager=False,
+        ),
+        working_directory: Optional[str] = typer.Option(
+            None,
+            "--working-directory",
+            "-wd",
+            help=__("Full path to working directory. By default, the current directory is used"),
+            show_default=False,
+            is_eager=False,
+        ),
+        enable_log_stream: Optional[bool] = typer.Option(
+            True,
+            "--no-logs",
+            "-nl",
+            help=__("Disable real-time log streaming"),
+            is_eager=False,
+        ),
+        is_skip_installation: Optional[bool] = typer.Option(
+            False,
+            "--skip-installation",
+            "-si",
+            help=__("Skip installing dependencies from requirements.txt and install.sh"),
+            is_eager=False,
+        ),
+        files_to_add: Optional[str] = typer.Option(
+            None,
+            "--files-add",
+            "-fa",
+            help=__("Files to add to the commit. You can add files by their relative path from the working directory with a comma as a separator."),
+            is_eager=False,
+        ),
+        is_skip_auto_commit: Optional[bool] = typer.Option(
+            False,
+            "--skip-autocommit",
+            "-sa",
+            help=__("Skip automatic commit of the changes"),
+            is_eager=False,
+        ),
+):
+    command_name = CliCommand.PROJECT_INFERENCE_SIMULATOR_RUN
+    app_logger.info(f'Running {command_name} from {get_current_directory()}')
+    check_command_permission(command_name)
+
+    service_factory = validate_config_and_get_service_factory(working_directory=working_directory)
+    config = service_factory.get_config_provider().get_config()
+
+    working_dir_path = Path(working_directory) if working_directory else Path(config.runtime.working_directory)
+    inference_files = list(working_dir_path.rglob("inference.py"))
+    if not inference_files:
+        typer.echo("No inference.py file found in the project directory.")
+        raise typer.Exit(1)
+    elif len(inference_files) == 1:
+        selected_inference = inference_files[0]
+    else:
+        choices = [str(path.relative_to(working_dir_path)) for path in inference_files]
+        typer.echo("Multiple inference.py files found:")
+        for idx, choice in enumerate(choices, start=1):
+            typer.echo(f"{idx}) {choice}")
+        choice_str = typer.prompt("Choose which inference.py to use")
+        try:
+            choice_index = int(choice_str)
+        except ValueError:
+            raise typer.BadParameter("Invalid input. Enter a number.")
+        if not (1 <= choice_index <= len(choices)):
+            raise typer.BadParameter("Choice out of range.")
+        selected_inference = inference_files[choice_index - 1]
+
+    relative_inference = selected_inference.relative_to(working_dir_path)
+    parent_dir = relative_inference.parent
+    if parent_dir == Path("../../controllers"):
+        inference_dir = "/"
+    else:
+        inference_dir = f"{parent_dir.as_posix()}/"
+    typer.echo(f"Selected inference file relative path: {inference_dir}")
+
+    inference_simulator_service = service_factory.get_inference_simulator_service()
+
+    inference_simulator = inference_simulator_service.project_run_inference_simulator(
+        commit_hash=commit_hash,
+        rented_instance_public_id=rented_instance_public_id,
+        rented_instance_slug=rented_instance_slug,
+        self_hosted_instance_public_id=self_hosted_instance_public_id,
+        self_hosted_instance_slug=self_hosted_instance_slug,
+        inference_dir=inference_dir,
+        is_skip_installation=is_skip_installation,
+        files_to_add=files_to_add,
+        is_skip_auto_commit=is_skip_auto_commit,
+    )
+
+    if enable_log_stream:
+        logging_service: LoggingService = service_factory.get_logging_service()
+
+        logging_service.stream_inference_simulator_logs_with_controls(
+            slug=inference_simulator.slug
+        )
+    raise typer.Exit(0)
+
+
+@app.command(name='save-metadata', no_args_is_help=True, help="Save inference simulator metadata", **get_command_metadata(CliCommand.PROJECT_INFERENCE_SIMULATOR_SAVE_METADATA))
+def get_and_save_inference_simulator_metadata(
+        inference_simulator_public_id: Optional[str] = typer.Option(
+            None,
+            '--inference-simulator-id',
+            '-isid',
+            help=__("Inference simulator ID"),
+            is_eager=False,
+        ),
+        inference_simulator_slug: Optional[str] = typer.Option(
+            None,
+            '--inference-simulator-name',
+            '-isn',
+            help=__("Inference simulator name"),
+            is_eager=False,
+        ),
+        file_path: Optional[str] = typer.Option(
+            None,
+            "--file-path",
+            "-fp",
+            help=__("Full path to a new file. By default metadata is saved to the current directory as metadata.json"),
+            show_default=False,
+            is_eager=False,
+        ),
+):
+    command_name = CliCommand.PROJECT_INFERENCE_SIMULATOR_SAVE_METADATA
+    app_logger.info(f'Running {command_name} from {get_current_directory()}')
+    check_command_permission(command_name)
+
+    if sum(v is not None for v in [inference_simulator_public_id, inference_simulator_slug]) != 1:
+        typer.echo("Provide a single identifier for inference simulator - ID or name.")
+        raise typer.Exit(1)
+
+    service_factory = validate_config_and_get_service_factory()
+    inference_simulator_service = service_factory.get_inference_simulator_service()
+
+    inference_simulator_service.project_get_and_save_inference_simulator_metadata(
+        file_path=file_path,
+        inference_simulator_public_id=inference_simulator_public_id,
+        inference_simulator_slug=inference_simulator_slug,
+    )
+
+    raise typer.Exit(0)
+
+
+@app.command(name='push', no_args_is_help=True, help="Push inference simulator to model registry", **get_command_metadata(CliCommand.PROJECT_INFERENCE_SIMULATOR_PUSH))
+def push_inference_simulator(
+        inference_simulator_public_id: Optional[str] = typer.Option(
+            None,
+            '--inference-simulator-id',
+            '-isid',
+            help=__("Inference simulator ID"),
+            is_eager=False,
+        ),
+        inference_simulator_slug: Optional[str] = typer.Option(
+            None,
+            '--inference-simulator-name',
+            '-isn',
+            help=__("Inference simulator name"),
+            is_eager=False,
+        ),
+):
+    command_name = CliCommand.PROJECT_INFERENCE_SIMULATOR_PUSH
+    app_logger.info(f'Running {command_name} from {get_current_directory()}')
+    check_command_permission(command_name)
+
+    if sum(v is not None for v in [inference_simulator_public_id, inference_simulator_slug]) != 1:
+        typer.echo("Provide a single identifier for inference simulator - ID or name.")
+        raise typer.Exit(1)
+
+    service_factory = validate_config_and_get_service_factory()
+    inference_simulator_service = service_factory.get_inference_simulator_service()
+
+    inference_simulator_service.project_push_inference_simulator(
+        public_id=inference_simulator_public_id,
+        slug=inference_simulator_slug,
+    )
+
+    raise typer.Exit(0)
+
+
+@app.command("ls", help=__("List inference simulators"), **get_command_metadata(CliCommand.PROJECT_INFERENCE_SIMULATOR_LS))
+def list_inference_simulators(
+        project_public_id: Optional[str] = typer.Option(
+            None,
+            '--project-id',
+            '-pid',
+            help=__("Project ID. By default, project info is taken from the current directory"),
+            is_eager=False,
+        ),
+        project_slug: Optional[str] = typer.Option(
+            None,
+            '--project-name',
+            '-pn',
+            help=__("Project name. By default, project info is taken from the current directory"),
+            is_eager=False,
+        ),
+        row: int = typer.Option(
+            5,
+            '--row',
+            '-r',
+            help=__("Set number of rows displayed per page"),
+            is_eager=False,
+        ),
+        page: int = typer.Option(
+            1,
+            '--page',
+            '-p',
+            help=__("Set starting page for displaying output"),
+            is_eager=False,
+        ),
+        statuses: List[str] = typer.Option(
+            None,
+            '--status',
+            '-s',
+            help=__("Filter by status, use --status all to list all inference simulators"),
+            is_eager=False,
+        ),
+):
+    command_name = CliCommand.PROJECT_INFERENCE_SIMULATOR_LS
+    app_logger.info(f'Running {command_name} from {get_current_directory()}')
+    check_command_permission(command_name)
+
+    if sum(v is not None for v in [project_public_id, project_slug]) > 1:
+        typer.echo("Provide a single identifier for project - ID or name.")
+        raise typer.Exit(1)
+
+    service_factory = validate_config_and_get_service_factory()
+    inference_simulator_service = service_factory.get_inference_simulator_service()
+
+    inference_simulator_service.print_inference_simulator_list(
+        project_public_id=project_public_id,
+        project_slug=project_slug,
+        statuses=statuses,
+        row=row,
+        page=page
+    )
+
+    typer.echo(__("Inference simulators listing complete"))
+    raise typer.Exit(0)
+
+@app.command(name="logs", no_args_is_help=True, help=__("Stream real-time inference simulator logs or view last logs for an inference simulator"), **get_command_metadata(CliCommand.PROJECT_INFERENCE_SIMULATOR_LOGS))
+def inference_simulator_logs(
+        #TODO doesn't work with public_id
+        public_id: Optional[str] = typer.Option(
+            None,
+            '--inference-simulator-id',
+            '-isid',
+            help="Inference simulator ID",
+            is_eager=False,
+        ),
+        slug: Optional[str] = typer.Option(
+            None,
+            '--inference-simulator-name',
+            '-isn',
+            help="Inference simulator name",
+            is_eager=False,
+        ),
+        logs_number: Optional[int] = typer.Option(
+            None,
+            '--number',
+            '-n',
+            help=__("Display a number of latest log entries. No real-time stream if provided."),
+            is_eager=False,
+        ),
+):
+    command_name = CliCommand.PROJECT_INFERENCE_SIMULATOR_LOGS
+    app_logger.info(f'Running {command_name} from {get_current_directory()}')
+    check_command_permission(command_name)
+
+    if sum(v is not None for v in [public_id, slug]) != 1:
+        typer.echo("Provide a single identifier for inference simulator - ID or name.")
+        raise typer.Exit(1)
+
+    service_factory = validate_config_and_get_service_factory()
+    logging_service: LoggingService = service_factory.get_logging_service()
+
+    if logs_number is None:
+        logging_service.stream_inference_simulator_logs_with_controls(
+            public_id=public_id,
+            slug=slug,
+        )
+    else:
+        inference_simulator_api_client = service_factory.get_inference_simulator_api_client()
+
+        get_inference_simulator_response: Optional[
+            GetInferenceSimulatorResponse] = inference_simulator_api_client.get_inference_simulator(
+            public_id=public_id,
+            slug=slug,
+        )
+        if not get_inference_simulator_response:
+            typer.echo("Inference simulator not found")
+            raise typer.Exit(1)
+        else:
+            inference_simulator_public_id = get_inference_simulator_response.inferenceSimulator.public_id
+            logging_service.print_last_inference_simulator_logs(inference_simulator_public_id=inference_simulator_public_id, logs_number=logs_number)
+
+    app_logger.info(f'Inference simulator log streaming completed')
+    raise typer.Exit(0)
