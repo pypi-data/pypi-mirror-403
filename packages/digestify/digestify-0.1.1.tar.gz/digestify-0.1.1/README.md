@@ -1,0 +1,61 @@
+# Digestify
+
+Digestify is a Python library that generates comprehensive news digests and content summaries for specific topics using OpenAI and the WebQuest MCP server. It intelligently gathers latest updates, including processing video transcripts, to provide structured summaries.
+
+## Installation
+
+Installing using pip:
+
+```bash
+pip install digestify
+```
+
+Installing using uv:
+
+```bash
+uv add digestify
+```
+
+## Configuration
+
+Digestify requires the following environment variables to be set (either in your environment or a `.env` file):
+
+- `OPENAI_API_KEY`: Your OpenAI API key.
+- `WEBQUEST_MCP_ACCESS_TOKEN`: Access token for the WebQuest MCP server.
+- `WEBQUEST_MCP_URL`: URL for the WebQuest MCP server.
+- `OPENAI_MODEL`: (Optional) The OpenAI model to use (default: "gpt-5.2").
+
+## Usage
+
+Here is a simple example of how to use Digestify to get a digest for a topic:
+
+```python
+import asyncio
+from digestify import Digestify, Topic
+
+async def main():
+    # Define the topic you want a digest for
+    topic = Topic(
+        name="Artificial Intelligence",
+        description="Latest advancements in AI, machine learning, and LLMs."
+    )
+
+    # Initialize the client (automatically loads settings from env/files)
+    client = Digestify()
+
+    # Get the digest
+    digest = await client.get_stories(topic)
+
+    # Print stories
+    for story in digest.stories:
+        print(f"Title: {story.title}")
+        print(f"Published: {story.published_at}")
+        print(f"Summary: {story.content}")
+        print("References:")
+        for url in story.reference_urls:
+            print(f"- {url}")
+        print("-" * 20)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
