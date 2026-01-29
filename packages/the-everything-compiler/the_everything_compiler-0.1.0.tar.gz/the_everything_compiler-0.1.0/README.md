@@ -1,0 +1,103 @@
+# ![The Everything Compiler](https://raw.githubusercontent.com/longhirar/The-Everything-Compiler/main/assets/tec-logo.svg)
+
+> **Note**: This is an esoteric toy. It is strictly for educational and entertainment purposes. Do not use this in production. It solves dependency hell by hallucinating the dependencies. You have been warned.
+
+The Everything Compiler (TEC) is the final evolution of the build toolchain. It does not care about syntax, types, standard libraries, or the laws of physics. It simply takes what you wrote, assumes your intent was pure, and forces the machine to execute it.
+
+By leveraging state-of-the-art Large Language Models, TEC bypasses the traditional "parsing" and "semantic analysis" phases, replacing them with "vibes-based transpilation."
+
+## Never Debug Again
+
+We believe that compiler errors are a failure of imagination. Why should a missing semicolon stop your genius? Why should a type mismatch prevent your code from changing the world?
+
+With TEC, you will never see a syntax error again. If your code is wrong, TEC assumes you defined a new language feature and compiles it anyway. The only errors you will see are the ones hallucinated by the AI, which are at least more creative than `segmentation fault`.
+
+## Universal Compatibility
+
+TEC supports every language that has ever existed, and—more importantly—every language that *has not* existed.
+
+### Real Languages
+Compile Python, C++, Rust, Go, or Swift. TEC will transpile them all to native source code—be it C, C++, or Objective-C—and force it through your local compiler (`clang`, `gcc`, `cl`), often ignoring your actual build system entirely.
+
+### Imaginary Languages
+Have you ever wanted to code in `Flux-Imaginary`, `DreamScript`, or plain English? Now you can.
+
+**main.flx**:
+```flux-imaginary
+use io
+use math
+
+fn main() {
+    print("Enter numbers (empty line to stop):")
+    // ... complex logic ...
+    print("Average:", avg)
+}
+```
+
+**Command**:
+```bash
+tec .
+```
+
+**Result**:
+A fully compiled, optimized native binary. The compiler simply reads the file, understands you want to calculate an average, and writes the code to make it happen.
+
+## Installation
+
+Install it directly from PyPI:
+
+```bash
+pip install the-everything-compiler
+```
+
+You need to have a C compiler installed on your system. TEC will try to find `clang`, `gcc`, or `cl` in your PATH.
+
+## Usage
+
+### Initialization
+First, go to your project directory and initialize the configuration. This generates a `tec.toml` file where you define your AI Oracle.
+
+```bash
+tec init
+```
+
+### Configuration
+Edit `tec.toml` to set your API key. We support Google Gemini and OpenAI.
+
+```toml
+[ai]
+service = "google"
+model = "gemini-3-flash-preview"
+api_key = "YOUR_KEY_HERE"
+# Or preferably set TEC_API_KEY env variable
+```
+
+### Compiling
+Navigate to any directory containing source files (of any kind) and run:
+
+```bash
+tec .
+```
+
+### Debugging
+If the Oracle is feeling capricious and the code fails to compile, TEC enters a **Self-Correction Loop**. It feeds the compiler error back to the AI, demands a fix, and retries up to 5 times.
+
+To see what the AI is actually writing, use the save flag:
+
+```bash
+tec . --save-intermediate
+```
+or
+```bash
+tec . -s
+```
+
+This will save `tec_output_0.c`, `tec_output_1.c`, etc., allowing you to witness the hallucination process in real-time.
+
+## Contributing
+
+Contributions are welcome, and new demos too! But you are probably better off using your skills for something else.
+
+## License
+
+MIT License. See LICENSE.TXT for details.
