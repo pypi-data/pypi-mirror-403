@@ -1,0 +1,511 @@
+Metadata-Version: 2.4
+Name: logweave
+Version: 1.0.0
+Summary: Enterprise-grade logging framework for Python services
+Author-email: Akash Jagdale <akashjagdaledev@gmail.com>
+License-Expression: Apache-2.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+License-File: NOTICE
+Requires-Dist: loguru
+Requires-Dist: structlog
+Requires-Dist: opentelemetry-api
+Requires-Dist: opentelemetry-sdk
+Requires-Dist: opentelemetry-instrumentation-logging
+Requires-Dist: sentry-sdk>=2.0.0
+Provides-Extra: fastapi
+Requires-Dist: fastapi; extra == "fastapi"
+Requires-Dist: opentelemetry-instrumentation-fastapi; extra == "fastapi"
+Provides-Extra: otel-exporter
+Requires-Dist: opentelemetry-exporter-otlp; extra == "otel-exporter"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Dynamic: license-file
+
+# LogWeave 🧶
+
+**Enterprise-grade, production-ready logging framework for modern Python services.**
+
+LogWeave is a high-performance, unified logging wrapper that consolidates **Loguru**, **Structlog**, and **OpenTelemetry** into a single, cohesive engine. It abstracts away the complexity of logging infrastructure (file rotation, sensitive data masking, distributed tracing) so you can focus on building business logic.
+
+> **Status:** ✅ Actively developed | Used in real-world scenarios
+
+---
+
+## 🎯 Who Is LogWeave For?
+
+- Backend engineers building Python services
+- Teams that need structured logs + tracing without boilerplate
+- FastAPI / async services running in production
+
+---
+
+## ✨ Key Features
+
+### Core Logging
+
+- **Standardized Facade:** SLF4J-style `LoggerFactory` for familiar, clean, and consistent API usage
+- **Dual Outputs:** Simultaneous human-readable `.log` and machine-readable `.json.log` files for different consumption patterns
+- **Automatic Formatting:** Format strings use Python's `str.format()` pattern with SLF4J-style placeholders
+
+### Observability & Tracing
+
+- **OpenTelemetry Integration:** Automatic injection of `trace_id` and `span_id` into every log record
+- **Request Context Propagation:** Trace context automatically follows async contexts and thread boundaries
+- **Performance Optimized:** Smart logger binding caching reduces overhead by 80-90% in stable trace contexts
+
+### Security & Compliance
+
+- **PII Masking:** Global regex-based redaction of sensitive data (passwords, tokens, secrets, API keys)
+- **Custom Masking Keys:** Extend masking via `LOG_MASK_KEYS` environment variable
+- **Compliance Ready:** Supports GDPR/privacy-by-design with automatic sensitive data removal at sink level
+
+### Enterprise Features
+
+- **Sentry Integration:** Automatic error reporting (disabled in dev mode)
+- **File Rotation & Retention:** Configurable log rotation by size with compression and time-based retention
+- **Third-Party Library Bridging:** Automatically captures logs from Uvicorn, SQLAlchemy, FastAPI, etc.
+- **Structured Logging Bridge:** Seamlessly integrates Structlog events through LogWeave pipeline
+- **Thread-Safe & Async-Safe:** Fully concurrent and async-compatible with Loguru's enqueued handlers
+
+---
+
+## 🚀 Quick Start
+
+### 1. Installation
+
+#### 1. Install from PyPI (recommended)
+
+```bash
+pip install logweave
+```
+
+#### 2. Install with optional integrations
+
+##### pip install "logweave[fastapi]"
+
+```bash
+# Or with FastAPI support
+pip install "logweave[fastapi]"
+```
+
+##### OpenTelemetry OTLP exporter
+
+```bash
+# Or with FastAPI support
+pip install "logweave[otel-exporter]"
+```
+
+##### FastAPI + OTLP exporter together
+
+```bash
+# Or with FastAPI + OTLP exporter support
+pip install "logweave[fastapi,otel-exporter]"
+```
+
+#### 3. Install from GitHub (latest development version)
+
+```bash
+pip install "git+https://github.com/<your-username>/logweave.git"
+
+# With optional features:
+pip install "git+https://github.com/<your-username>/logweave.git#egg=logweave[fastapi,otel-exporter]"
+
+# Or a specific branch/tag:
+pip install "git+https://github.com/<your-username>/logweave.git@main#egg=logweave[fastapi]"
+```
+
+#### 4. Local development / editable install
+
+```bash
+git clone https://github.com/<your-username>/logweave.git
+cd logweave
+
+# Core only
+pip install -e .
+
+# With all optional integrations
+pip install -e ".[fastapi,otel-exporter,dev]"
+```
+
+### 2. Initialization (One-time Setup)
+
+```python
+from logweave import init
+from fastapi import FastAPI
+
+app = FastAPI()
+
+# Initializes Logging, Tracing, and Sentry
+init(app=app)
+```
+
+### 3. Usage
+
+```python
+from logweave import LoggerFactory
+
+logger = LoggerFactory.getLogger(__name__)
+
+# Simple logging
+logger.info("Application initialized for service")
+
+# Support for SLF4J style formatting
+logger.warning("Retrying connection to {host} (Attempt {n})", "localhost", 3)
+
+# Exception logging with full traceback
+try:
+    1 / 0
+except Exception as e:
+    logger.error("Calculation failed", exc=e)
+
+```
+
+## ⚙️ Configuration
+
+LogWeave is configured entirely via environment variables. All settings are read on-demand with intelligent caching (60-second TTL for config, 5-minute TTL for hostname lookup).
+
+### Core Settings
+
+| Variable        | Default           | Type   | Description                                                        |
+| --------------- | ----------------- | ------ | ------------------------------------------------------------------ |
+| `SERVICE_NAME`  | `unknown-service` | String | Service identifier used in logs, Sentry, and directory structure   |
+| `LOG_LEVEL`     | `INFO`            | String | Minimum log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `LOG_MODE`      | `dev`             | String | `dev` (no Sentry) or `prod` (enables Sentry if DSN configured)     |
+| `LOG_DIR`       | `logs`            | String | Base directory for log storage                                     |
+| `LOG_FILE_NAME` | `{SERVICE_NAME}`  | String | Name of log files (defaults to SERVICE_NAME)                       |
+
+### Log File Management
+
+| Variable                 | Default   | Type    | Description                                                    |
+| ------------------------ | --------- | ------- | -------------------------------------------------------------- |
+| `LOG_MAX_FILE_SIZE`      | `20 MB`   | String  | Size threshold for log rotation (e.g., `10 MB`, `100 MB`)      |
+| `LOG_MAX_HISTORY`        | `30 days` | String  | Retention period for archived logs (e.g., `7 days`, `90 days`) |
+| `LOG_COMPRESSED_ENABLED` | `true`    | Boolean | Compress rotated log files with gzip                           |
+| `ENABLE_JSON_LOGS`       | `true`    | Boolean | Create `.json.log` files for log aggregation tools             |
+
+### Security & Masking
+
+| Variable        | Default | Type | Description                                                                              |
+| --------------- | ------- | ---- | ---------------------------------------------------------------------------------------- |
+| `LOG_MASK_KEYS` | (empty) | CSV  | Additional keys to mask beyond `password`, `token`, `secret` (e.g., `email,ssn,api_key`) |
+
+### Observability & Tracing
+
+| Variable                 | Default | Type    | Description                                        |
+| ------------------------ | ------- | ------- | -------------------------------------------------- |
+| `ENABLE_TRACING_EXPORT`  | `false` | Boolean | Enable export of traces to OpenTelemetry endpoint  |
+| `OTEL_EXPORTER_ENDPOINT` | (empty) | String  | OTLP HTTP endpoint (e.g., `http://localhost:4318`) |
+
+### Error Reporting
+
+| Variable        | Default | Type    | Description                                        |
+| --------------- | ------- | ------- | -------------------------------------------------- |
+| `ENABLE_SENTRY` | `true`  | Boolean | Enable Sentry error tracking (ignored in dev mode) |
+| `SENTRY_DSN`    | (empty) | String  | Sentry project DSN for error reporting             |
+
+### Example Configuration
+
+```bash
+# .env file
+SERVICE_NAME=my-api
+LOG_LEVEL=INFO
+LOG_MODE=prod
+LOG_DIR=/var/log/myapp
+LOG_MAX_FILE_SIZE=50 MB
+LOG_MAX_HISTORY=90 days
+LOG_MASK_KEYS=email,phone,ssn
+ENABLE_TRACING_EXPORT=true
+OTEL_EXPORTER_ENDPOINT=http://otel-collector:4318
+SENTRY_DSN=https://key@sentry.io/project
+```
+
+## 📂 Log Directory Structure
+
+```text
+{LOG_DIR}/
+└── {SERVICE_NAME}/
+    ├── {SERVICE_NAME}.log         # Human-readable format with colors & timestamps
+    └── {SERVICE_NAME}.json.log    # Machine-readable JSON format (one log per line)
+```
+
+**Example:**
+
+```text
+logs/
+└── my-api/
+    ├── my-api.log
+    └── my-api.json.log
+```
+
+---
+
+## 🛡️ Automatic PII Masking
+
+LogWeave automatically redacts sensitive information at the formatter level (before writing to disk). By default, it masks:
+
+- `password`
+- `token`
+- `secret`
+
+**Features:**
+
+- ✅ Works with multiple formats: `key=value`, `key: value`, `"key": "value"`, `'key': 'value'`
+- ✅ Case-insensitive matching
+- ✅ Applied to both human and JSON logs
+- ✅ Extensible via `LOG_MASK_KEYS` environment variable
+
+**Example:**
+
+```python
+logger.info("User login with password={}", "secret123")
+# Output: User login with password=****
+```
+
+**Custom Masking:**
+
+```bash
+export LOG_MASK_KEYS=email,phone,ssn
+```
+
+```python
+logger.info("Contact: {}", {"email": "user@example.com", "phone": "555-1234", "ssn": "123-45-6789"})
+# Output: Contact: {"email": "****", "phone": "****", "ssn": "****"}
+```
+
+---
+
+## 🔗 Structlog Integration
+
+LogWeave bridges **Structlog** seamlessly, allowing deeply nested structured data to flow through the unified pipeline:
+
+```python
+import structlog
+
+log = structlog.get_logger()
+
+# All structlog events automatically:
+# ✅ Get masked (sensitive fields redacted)
+# ✅ Get traced (trace_id/span_id injected)
+# ✅ Get formatted & saved (JSON + human logs)
+
+log.info("order_processed",
+         order_id="ORD-99",
+         price=45.0,
+         customer_email="user@example.com")  # Will be masked
+```
+
+---
+
+## 🚀 Usage Patterns
+
+### Basic Logging
+
+```python
+from logweave import LoggerFactory
+
+logger = LoggerFactory.getLogger(__name__)
+
+logger.info("Application started")
+logger.debug("Debug information", extra_data)
+logger.warning("Deprecated API endpoint called")
+```
+
+### Format Strings (SLF4J Style)
+
+```python
+# Use positional formatting (not f-strings!)
+logger.info("User {} logged in from {}", user_id, ip_address)
+logger.warning("Retrying connection to {} (attempt {})", host, attempt_num)
+```
+
+### Exception Logging
+
+```python
+try:
+    result = external_api_call()
+except Exception as e:
+    logger.error("API call failed", exc=e)  # Full traceback included
+```
+
+### Structured Data
+
+```python
+from logweave import LoggerFactory
+import structlog
+
+# Via LogWeave
+logger = LoggerFactory.getLogger(__name__)
+logger.info("Request processed", status=200, duration_ms=125)
+
+# Via Structlog (automatically bridged)
+log = structlog.get_logger()
+log.info("Payment processed", amount=99.99, currency="USD", status="approved")
+```
+
+---
+
+## 🔍 Monitoring & Observability
+
+### Trace ID Injection
+
+Every log automatically includes OpenTelemetry trace context:
+
+```json
+{
+  "trace.id": "abc123def456",
+  "span.id": "xyz789",
+  "message": "Processing request"
+}
+```
+
+### FastAPI Integration
+
+```python
+from fastapi import FastAPI
+from logweave import init
+
+app = FastAPI()
+
+# Auto-instruments routes with tracing
+init(app=app)
+
+logger.info("Trace context auto-injected on every log")
+```
+
+### Sentry Integration
+
+```bash
+# Enable in production
+export LOG_MODE=prod
+export SENTRY_DSN=https://key@sentry.io/project
+```
+
+All errors logged via `logger.error()` automatically report to Sentry.
+
+---
+
+## 🧪 Testing
+
+LogWeave includes 58 comprehensive tests covering:
+
+- ✅ Cache isolation between test runs
+- ✅ Configuration management
+- ✅ PII masking edge cases
+- ✅ Concurrent logging from multiple threads
+- ✅ Async handler flushing
+- ✅ Memory safety (frame/traceback cleanup)
+- ✅ Exception handling
+- ✅ File rotation
+
+### Key Test Fixtures
+
+All tests use automatic cache cleanup to ensure isolation:
+
+```python
+@pytest.fixture(autouse=True)
+def cleanup_before_test():
+    """Automatic cleanup of caches before/after each test."""
+    settings._cache.clear()
+    settings._last_refresh.clear()
+    logger.remove()
+    yield
+    logger.remove()
+```
+
+### Running Tests
+
+```bash
+
+# Run full test suite
+pytest src/tests/ -v
+
+# Specific test file
+pytest src/tests/test_masking.py -v
+
+# Run with coverage
+pytest src/tests/ --cov=src/logweave
+pytest src/tests/ --cov=src/logweave --cov-report=html
+```
+
+### Performance Benchmarks
+
+LogWeave includes optimizations for high-volume logging:
+
+- **Regex Caching:** Pattern cache reduces compilation overhead
+- **Config Caching:** 60-second TTL for environment variables
+- **Logger Binding:** Smart caching reduces bind() calls by 80-90%
+- **Hostname Caching:** 5-minute TTL with dynamic refresh support
+
+Test results: **58/58 passing** | Concurrent: ✅ | Memory-safe: ✅
+
+---
+
+## 🛠️ Development & Contribution
+
+### Project Structure
+
+```text
+src/logweave/
+├── __init__.py                  # Public API exports
+├── setup.py                     # Bootstrap function
+├── logger_factory.py            # SLF4J-style facade
+├── _internal.py                 # Core formatters & setup
+├── config.py                    # Environment configuration
+├── masking.py                   # PII masking logic
+├── trace_context.py             # OpenTelemetry integration
+├── telemetry.py                 # Tracer provider setup
+├── interceptor_handler.py        # stdlib logging bridge
+└── utils/
+    └── instance_resolver.py      # Instance management
+
+src/tests/
+├── test_logger_factory.py       # LogWeaveLogger tests
+├── test_logging_backend.py      # File & format tests
+├── test_masking.py              # PII masking tests
+├── test_memory_and_deadlock.py  # Performance & safety tests
+├── test_integration_advanced.py  # 26 integration tests
+└── ...
+```
+
+## 📜 License
+
+LogWeave is licensed under the **Apache License 2.0**.
+
+You are free to:
+
+- use it commercially
+- modify it
+- redistribute it
+
+See the [LICENSE](LICENSE) file for full details.
+
+## 🤝 Contributing
+
+Contributions are welcome!
+
+By submitting a pull request or contribution, you agree that your contribution will be licensed under the **Apache License 2.0**, the same license as this project.
+
+Please ensure:
+
+- code is well-tested
+- tests pass
+- no proprietary or confidential code is included
+
+## 💬 Support
+
+This project is provided as open source, **without any official support or SLA**.
+
+Issues and discussions are welcome on GitHub, but responses are best-effort.
+
+> This project is a personal open-source initiative and is not affiliated with any employer.
+
+## 💬 Community & Discussions
+
+For questions, ideas, or design discussions, please use **GitHub Discussions**.
+Bug reports and feature requests should be filed as GitHub Issues.
