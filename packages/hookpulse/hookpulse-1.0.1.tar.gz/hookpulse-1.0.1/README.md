@@ -1,0 +1,396 @@
+# HookPulse Python SDK
+
+[![PyPI version](https://badge.fury.io/py/hookpulse.svg)](https://badge.fury.io/py/hookpulse)
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Downloads](https://pepy.tech/badge/hookpulse)](https://pepy.tech/project/hookpulse)
+
+**Official Python SDK for HookPulse** - The #1 enterprise-grade serverless task scheduling and webhook orchestration platform. Built with **Elixir/OTP** for unmatched reliability, millisecond precision, and 99.9% uptime. Replace Celery, Redis, Sidekiq with a simple HTTP API.
+
+## Why HookPulse Python SDK?
+
+HookPulse is the **only** task scheduling platform built on **Elixir/OTP** - the same battle-tested technology stack powering WhatsApp (100B+ messages/day) and Discord (150M+ users). This provides fundamental architectural advantages:
+
+- **99.9% Uptime SLA**: Enterprise-grade reliability with automatic fault tolerance
+- **Millisecond Precision**: Exact timing for all schedule types (interval, cron, solar, clocked)
+- **Zero Infrastructure**: No Redis, workers, or servers to manage - save 20+ hours/month
+- **95% Cost Reduction**: Cheaper than self-hosted Celery/Redis solutions
+- **Built-in Protection**: Automatic concurrency control and rate limiting per domain
+- **Global Reliability**: Distributed architecture ensures consistent performance worldwide
+
+## Installation
+
+```bash
+pip install hookpulse
+```
+
+## Quick Start
+
+```python
+from hookpulse import HookPulseClient
+
+# Initialize the client
+client = HookPulseClient(
+    api_key="your-api-key",
+    brand_uuid="your-brand-uuid"
+)
+
+# Create an interval schedule (every hour)
+schedule = client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="interval",
+    interval_seconds=3600
+)
+
+# Create a cron schedule (daily at 9 AM)
+schedule = client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="cron",
+    cron_expression="0 9 * * *",
+    timezone="America/New_York"
+)
+```
+
+## Enterprise-Grade Reliability Built on Elixir/OTP
+
+HookPulse is architected on **Elixir/OTP** and **BEAM VM** - the same technology foundation that powers some of the world's most reliable systems:
+
+- **WhatsApp**: 100+ billion messages daily with 99.9% uptime
+- **Discord**: 150+ million users, handles 8+ billion events per day
+- **Pinterest**: Processes billions of pins with Elixir/OTP
+
+### Key Advantages:
+
+- **Fault Tolerance**: OTP's supervision trees ensure automatic recovery from failures
+- **Concurrency**: Millions of lightweight processes without performance degradation
+- **Hot Code Swapping**: Update production systems without downtime
+- **Process Isolation**: Individual failures don't affect the entire system
+- **Preemptive Scheduling**: BEAM VM ensures fair resource allocation
+
+## Features
+
+### Schedule Management with Millisecond Precision
+
+Schedule webhooks and API calls with exact timing using multiple schedule types:
+
+#### Interval Schedules
+```python
+# Schedule every 5 minutes
+client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="interval",
+    interval_seconds=300
+)
+
+# Schedule every 2 hours
+client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="interval",
+    interval_seconds=7200
+)
+```
+
+#### Cron Schedules
+```python
+# Daily at 9 AM
+client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="cron",
+    cron_expression="0 9 * * *",
+    timezone="America/New_York"
+)
+
+# Every Monday at 8 AM
+client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="cron",
+    cron_expression="0 8 * * 1",
+    timezone="UTC"
+)
+```
+
+#### Clocked Schedules (One-time)
+```python
+from datetime import datetime
+
+# Schedule for a specific date/time
+client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="clocked",
+    scheduled_time="2024-12-25T09:00:00Z",
+    timezone="UTC"
+)
+```
+
+#### Solar Schedules
+```python
+# Trigger at sunrise
+client.create_schedule(
+    webhook_url="https://example.com/webhook",
+    schedule_type="solar",
+    solar_event="sunrise",
+    latitude=40.7128,
+    longitude=-74.0060,
+    timezone="America/New_York"
+)
+```
+
+### Webhook Templates
+
+Create reusable webhook templates with dynamic variable substitution:
+
+```python
+# Create a webhook template
+template = client.create_webhook_template(
+    name="Payment Notification",
+    url="https://api.example.com/payments",
+    method="POST",
+    headers={"Authorization": "Bearer {{ #api_key }}"},
+    body={"amount": "{{ amount }}", "currency": "USD"}
+)
+
+# Get all templates
+templates = client.get_webhook_templates(page=1)
+
+# Update a template
+client.update_webhook_template(
+    template_uuid=template["data"]["uuid"],
+    name="Updated Payment Notification"
+)
+
+# Delete a template
+client.delete_webhook_template(template_uuid=template["data"]["uuid"])
+```
+
+### Workflow Templates
+
+Build complex multi-step workflows with conditional execution:
+
+```python
+# Create a workflow template
+workflow = client.create_workflow_template(
+    name="Payment Processing",
+    mode="fifo",  # or "concurrent"
+    steps=[
+        {
+            "name": "Validate Payment",
+            "type": "webhook",
+            "url": "https://api.example.com/validate",
+            "method": "POST"
+        },
+        {
+            "name": "Process Payment",
+            "type": "webhook",
+            "url": "https://api.example.com/process",
+            "method": "POST",
+            "condition": {
+                "field": "{{ step.validate.response.status }}",
+                "operator": "eq",
+                "value": "valid"
+            }
+        }
+    ]
+)
+```
+
+### Schedule Management
+
+```python
+# Get all schedules
+schedules = client.get_schedules(page=1, status="active")
+
+# Get a specific schedule
+schedule = client.get_schedule(schedule_uuid="uuid-here")
+
+# Update a schedule
+client.update_schedule(
+    schedule_uuid="uuid-here",
+    webhook_url="https://new-url.com/webhook"
+)
+
+# Pause a schedule
+client.update_schedule_status("uuid-here", "paused")
+
+# Resume a schedule
+client.update_schedule_status("uuid-here", "active")
+
+# Delete a schedule
+client.delete_schedule("uuid-here")
+```
+
+### System Secrets
+
+Securely manage API keys and secrets with the System Secret Vault:
+
+```python
+# Create a secret
+secret = client.create_secret(
+    key="api_key",
+    value="secret-value-123"
+)
+
+# Get all secrets
+secrets = client.get_secrets(page=1)
+
+# Update a secret
+client.update_secret(
+    secret_uuid=secret["data"]["uuid"],
+    value="new-secret-value"
+)
+
+# Delete a secret
+client.delete_secret(secret_uuid=secret["data"]["uuid"])
+```
+
+### Human Approvals
+
+Integrate human-in-the-loop approval workflows:
+
+```python
+# Approve a workflow execution
+client.approve_execution(execution_plan_uuid="uuid-here")
+
+# Reject a workflow execution
+client.reject_execution(execution_plan_uuid="uuid-here")
+```
+
+### Timezones
+
+Access 500+ IANA timezones with automatic DST handling:
+
+```python
+# Get all supported timezones
+timezones = client.get_timezones()
+```
+
+## Configuration
+
+### Default Configuration
+
+By default, the SDK uses `https://api.hookpulse.io` as the base URL. You can change this if needed:
+
+```python
+client = HookPulseClient(
+    api_key="your-api-key",
+    brand_uuid="your-brand-uuid",
+    base_url="https://custom-api.example.com"  # Optional
+)
+```
+
+### Authentication
+
+The SDK requires two authentication headers:
+- `x-hookpulse-api-key`: Your API key (get from dashboard → API Keys)
+- `x-brand-uuid`: Your brand UUID (get from dashboard after adding a brand)
+
+Both are automatically included in all requests.
+
+### Request Timeout
+
+```python
+# Set custom timeout (default: 30 seconds)
+client = HookPulseClient(
+    api_key="your-api-key",
+    brand_uuid="your-brand-uuid",
+    timeout=60
+)
+```
+
+## Error Handling
+
+```python
+from hookpulse import HookPulseClient, HookPulseError, HookPulseAPIError, HookPulseAuthError
+
+try:
+    client = HookPulseClient(api_key="invalid", brand_uuid="invalid")
+    schedule = client.create_schedule(...)
+except HookPulseAuthError as e:
+    print(f"Authentication failed: {e}")
+except HookPulseAPIError as e:
+    print(f"API error ({e.status_code}): {e}")
+except HookPulseError as e:
+    print(f"Error: {e}")
+```
+
+## Use Cases
+
+### AI Agents & LLMs
+- Long-term memory for Agents (Wake up in 3 days)
+- Polite scraping (Check URL every hour)
+- Rate-limit management for OpenAI API calls
+- Autonomous follow-ups (Email user if no reply in 24h)
+
+### Payment & Subscription Management
+- Payment reminders and subscription renewal flows
+- Abandoned cart recovery with time-delayed triggers
+- Invoice generation and billing automation
+- Dunning management for failed payments
+
+### IoT & Device Scheduling
+- Schedule device operations based on solar events
+- Smart home automation
+- Agricultural systems and industrial IoT
+- Location-based timing with geographic coordinates
+
+### Reporting & Analytics
+- Daily, weekly, and monthly report generation
+- Data synchronization and ETL jobs
+- Backup automation and maintenance tasks
+- Dashboard updates and metric aggregation
+
+## HookPulse vs. Traditional Solutions
+
+### HookPulse vs. Celery + Redis
+
+| Feature               | HookPulse             | Celery + Redis                |
+| --------------------- | --------------------- | ----------------------------- |
+| **Setup Time**        | 5 minutes             | 2-3 days                      |
+| **Infrastructure**    | Zero (managed)        | Redis cluster + workers       |
+| **Maintenance**       | Zero hours/month      | 20+ hours/month               |
+| **Cost**              | $1.18/month base      | $200-500/month (self-hosted)  |
+| **Reliability**       | 99.9% SLA             | Depends on your setup         |
+| **Scaling**           | Automatic             | Manual configuration          |
+| **Monitoring**        | Built-in dashboards   | Requires additional tools     |
+| **Timezone Support**  | 500+ IANA timezones   | Manual implementation        |
+
+**Result**: HookPulse saves 95% on costs and 20+ hours/month in maintenance while providing better reliability.
+
+## Why Developers Choose HookPulse
+
+- **No Infrastructure Needed**: Forget about setting up Celery, Sidekiq, or Bull
+- **Flexible Scheduling**: Cron expressions, intervals, solar events, or specific times
+- **Built for Scale**: Handle thousands of scheduled jobs effortlessly
+- **Developer-Friendly API**: Simple REST API with comprehensive documentation
+- **Language Agnostic**: Works with Python, Node.js, Go, Java, Ruby, PHP, and more
+
+## Requirements
+
+- Python 3.7+
+- requests >= 2.25.0
+
+## Documentation
+
+- [Full API Documentation](https://docs.hookpulse.io/docs)
+- [HookPulse Website](https://hookpulse.io)
+- [Python SDK Source Code](https://github.com/ayushgupta87/hookpulse-packages/tree/main/hookpulse-python)
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support
+
+- Email: care@hookpulse.io
+- Documentation: https://docs.hookpulse.io/docs
+- Issues: [Report an issue](https://github.com/ayushgupta87/hookpulse-packages/issues/new?title=[Python]%20Your%20Issue%20Title&labels=python) for the Python SDK
+- Source: [hookpulse-python/](https://github.com/ayushgupta87/hookpulse-packages/tree/main/hookpulse-python)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## About HookPulse
+
+HookPulse is the #1 enterprise-grade serverless task scheduling and webhook orchestration platform. Built with Elixir/OTP for 99.9% uptime. Trusted by developers and CTOs worldwide. The #1 choice for replacing Celery, Redis, Sidekiq, and AWS EventBridge.
+
+**Built on Elixir/OTP** - The same technology powering WhatsApp, Discord, and Pinterest. This choice isn't accidental—it's strategic for unmatched reliability, fault tolerance, and precision.
