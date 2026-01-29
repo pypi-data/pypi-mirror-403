@@ -1,0 +1,258 @@
+# Anet Common Library
+
+Ushbu kutubxona Anet loyihasining mikroservislari uchun umumiy standartlar, sozlamalar va yordamchi vositalarni (utilities) o'z ichiga oladi.
+
+## O'rnatish
+
+```bash
+pip install anet-common
+```
+*(Yoki private repodan o'rnatish)*
+
+## Foydalanish
+
+Mikroservisning `settings.py` faylida ushbu kutubxonadan standart konfiguratsiyalarni import qiling va ularni kengaytiring (extend).
+
+### `settings.py` namunasi:
+
+```python
+from anet_common.conf import (
+    COMMON_LANGUAGES, 
+    COMMON_MODELTRANSLATION_LANGUAGES,
+    COMMON_REST_FRAMEWORK,
+    COMMON_SPECTACULAR_SETTINGS
+)
+
+# INSTALLED APPS
+INSTALLED_APPS = [
+    "modeltranslation"
+    # ...
+    "drf_spectacular",
+    "rest_framework",
+    # ...
+]
+
+# 1. MIDDLEWARE
+MIDDLEWARE = [
+    "anet_common.middleware.RequestIdMiddleware", # Eng yuqorida tursin
+    "django.middleware.locale.LocaleMiddleware",
+    # ... boshqa middlewarelar
+]
+
+# 2. TILLAR VA VAQT
+TIME_ZONE = "Asia/Tashkent"
+LANGUAGE_CODE = "uz"
+LANGUAGES = COMMON_LANGUAGES 
+# Natija: (('uz', "O'zbek"), ('ru', "Русский"), ('en', "English"))
+
+MODELTRANSLATION_LANGUAGES = COMMON_MODELTRANSLATION_LANGUAGES
+MODELTRANSLATION_DEFAULT_LANGUAGE = "uz"
+
+# 3. DRF SOZLAMALARI
+REST_FRAMEWORK = COMMON_REST_FRAMEWORK.copy()
+REST_FRAMEWORK.update({
+    # Loyihaga xos qo'shimchalar
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+})
+
+# 4. SPECTACULAR (SWAGGER) SOZLAMALARI
+SPECTACULAR_SETTINGS = COMMON_SPECTACULAR_SETTINGS.copy()
+SPECTACULAR_SETTINGS.update({
+    "TITLE": "Mening Mikroservis API",
+    "DESCRIPTION": "Bu servis faqat ... uchun javob beradi",
+    "VERSION": "1.0.0",
+})
+
+# 5. SERVIS MA'LUMOTLARI (Meta uchun)
+SERVICE_NAME = "my-service"
+SERVICE_VERSION = "v1"
+```
+
+### `urls.py` namunasi:
+
+```python
+from drf_spectacular.views import (
+    SpectacularAPIView, 
+    SpectacularRedocView, 
+    SpectacularSwaggerView
+)
+
+urlpatterns = [
+    # YOUR PATTERNS
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Optional UI:
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
+    # ... boshqa urls'lar
+]
+```
+
+### `views.py` da handle API uchun namunasi:
+```python
+class TestAPIView(generics.APIView): # or GenericAPIView
+    queryset = MyObject.objects.all()
+    serializer_class = MyObjectSerializer
+
+    def get(self, request):
+        qs = self.get_queryset()
+        
+        # 1. Querysetni sahifalash
+        page = self.paginate_queryset(qs)
+        
+        # 2. Agar sahifalash muvaffaqiyatli bo'lsa (page_size yetarli bo'lsa)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            # 3. Paginatsiyalangan javob qaytarish (bu bizning anet-common dagi meta_pagination ni ham ishga tushiradi)
+            return self.get_paginated_response(serializer.data)
+
+        # Agar paginatsiya kerak bo'lmasa (yoki o'chirilgan bo'lsa)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+```
+
+## Tarkibi va Konstantalar
+
+### 1. `COMMON_LANGUAGES`
+Loyiha qo'llab quvvatlaydigan 3 ta asosiy til:
+- `uz`: O'zbek
+- `ru`: Rus
+- `en`: Ingliz
+
+### Umimiy `COMMAN_` qiymatlarining tarkibi
+```python
+from django.utils.translation import gettext_lazy as _
+
+# 1. COMMON LANGUAGES
+COMMON_LANGUAGES = (
+    ("uz", "O'zbek"),
+    ("ru", "Русский"),
+    ("en", "English"),
+)
+
+COMMON_MODELTRANSLATION_LANGUAGES = ("uz", "ru", "en")
+COMMON_MODELTRANSLATION_DEFAULT_LANGUAGE = "uz"
+
+# 2. COMMON REST FRAMEWORK SETTINGS
+COMMON_REST_FRAMEWORK = {
+    "DEFAULT_RENDERER_CLASSES": (
+        # Bizning custom renderer birinchi turishi kerak
+        "anet_common.drf.renderers.AnetJSONRenderer",
+    ),
+    "DEFAULT_PARSER_CLASSES": (
+        "djangorestframework_camel_case.parser.CamelCaseJSONParser",
+        "rest_framework.parsers.JSONParser",
+        "rest_framework.parsers.FormParser",
+        "rest_framework.parsers.MultiPartParser",
+    ),
+    "EXCEPTION_HANDLER": "anet_common.drf.exceptions.custom_exception_handler",
+    "DEFAULT_PAGINATION_CLASS": "anet_common.drf.pagination.StandardPageNumberPagination",
+    "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "anet_common.spectacular.schema.StandardAutoSchema",
+    "TEST_REQUEST_DEFAULT_FORMAT": "json",
+}
+
+# 3. COMMON SPECTACULAR SETTINGS
+COMMON_SPECTACULAR_SETTINGS = {
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "COMPONENT_NO_READ_ONLY_REQUIRED": True,
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+    ],
+}
+```
+
+### 2. `COMMON_REST_FRAMEWORK`
+Quyidagi standart sozlamalarni o'z ichiga oladi:
+- **Renderer:** `anet_common.drf.renderers.AnetJSONRenderer`. Bu javoblarni standart formatga o'tkazadi.
+- **Parser:** `CamelCaseJSONParser` va standart parserlar.
+- **Exception Handler:** `anet_common.drf.exceptions.custom_exception_handler`. Bu handler barcha xatolarni katalogdan olib, yagona formatga o'tkazadi.
+- **Pagination:** `StandardPageNumberPagination` (default `page_size=20`).
+
+### 3. Response Formati
+
+Ushbu kutubxona ishlatilganda, API javoblari quyidagi standart formatlarda qaytadi:
+
+#### A. Success - List (Pagination bilan)
+
+```json
+{
+  "success": true,
+  "data": [
+    {"id": 1, "name": "Acme LLC"},
+    {"id": 2, "name": "Beta LLC"}
+  ],
+  "errors": [],
+  "meta": {
+    "request_id": "req-123",
+    "timestamp": "2026-01-21T10:15:30Z",
+    "service": "company-service",
+    "version": "v1",
+    "language": "uz",
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total_items": 120,
+      "total_pages": 6,
+      "has_next": true,
+      "has_prev": false
+    }
+  }
+}
+```
+
+#### B. Success - Detail (Single Object)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "Acme LLC"
+  },
+  "errors": [],
+  "meta": {
+    "request_id": "req-123",
+    "timestamp": "2026-01-21T10:15:30Z",
+    "service": "company-service",
+    "version": "v1",
+    "language": "uz"
+  }
+}
+```
+
+#### C. Error Response
+
+Xatoliklar har doim `errors` ro'yxati ichida qaytadi. `data` null bo'ladi.
+`details`: Agar raise `MyException(extra_details={...})` deb chaqirilsa, bu maydon to'ldiriladi.
+
+```json
+{
+  "success": false,
+  "data": null,
+  "errors": [
+    {
+      "code": "VAL-0001",
+      "message": "Topilmadi", 
+      "detail_message": "No BookingItem matches the given query.",
+      "field": "email",
+      "source": null,
+      "details": null
+    }
+  ],
+  "meta": {
+    "request_id": "req-123",
+    "timestamp": "2026-01-21T10:15:30Z",
+    "service": "auth-service",
+    "version": "v1",
+    "language": "uz"
+  }
+}
+```
+
+## Xatoliklar Katalogi
+Xatoliklar markazlashgan JSON katalogi orqali boshqariladi.
+Yangi xatolik qo'shish uchun kutubxona yangilanishi kerak.
