@@ -1,0 +1,58 @@
+name: Auto-update Pre-commit Hooks
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-update:
+    name: Update pre-commit hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install pre-commit
+        run: uv pip install pre-commit
+
+      - name: Run pre-commit autoupdate
+        run: uv run pre-commit autoupdate
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: update/pre-commit-autoupdate
+          delete-branch: true
+          title: "🔄 Auto-update pre-commit hooks"
+          commit-message: "chore: auto-update pre-commit hooks"
+          body: |
+            ## Pre-commit Hook Updates
+
+            This PR updates the pre-commit hooks to their latest versions.
+
+            ### Changes
+            - Updated hook versions in `.pre-commit-config.yaml`
+
+            ### Testing
+            Please review the changes and ensure all pre-commit checks pass.
+
+            ---
+            *This PR was automatically created by the auto-update workflow.*
+          labels: |
+            dependencies
+            automated
+          assignees: ${{ github.repository_owner }}
