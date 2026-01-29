@@ -1,0 +1,399 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>docp_dbi.databases.chroma &mdash; docp_dbi - v1.0.0.dev1 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/s5defs-rules.css?v=0345028d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=9a09b0f8"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            docp_dbi
+              <img src="../../../_static/s3dev_tri_white_sm.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../library.html">Library API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Change Log</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contact.html">Contact Us</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">docp_dbi</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">docp_dbi.databases.chroma</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for docp_dbi.databases.chroma</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">:Purpose:   This module provides a localised wrapper and specialised</span>
+<span class="sd">            functionality around the :class:`langchain_chroma.Chroma`</span>
+<span class="sd">            class, for interacting with a ChromaDB database.</span>
+
+<span class="sd">:Platform:  Linux/Windows | Python 3.11+</span>
+<span class="sd">:Developer: J Berendt</span>
+<span class="sd">:Email:     development@s3dev.uk</span>
+
+<span class="sd">:Comments:  This module uses the :class:`langchain_chroma.Chroma`</span>
+<span class="sd">            class, rather than the base ``chromadb`` library  as</span>
+<span class="sd">            langchain&#39;s implementation provides the ``add_texts`` method</span>
+<span class="sd">            which supports **GPU processing** and parallelisation. This</span>
+<span class="sd">            functionality is implemented and accessed through the</span>
+<span class="sd">            :meth:`~ChromaDB.add_documents` method.</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="c1"># pylint: disable=wrong-import-order</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">chromadb</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hashlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">md5</span>
+<span class="c1"># langchain&#39;s Chroma is used rather than the base chromadb as it provides</span>
+<span class="c1"># the add_texts method which support GPU processing and parallelisation.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">langchain_chroma</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chroma</span> <span class="k">as</span> <span class="n">_LangChroma</span>
+<span class="c1"># locals</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">._embeddingfunctions</span><span class="w"> </span><span class="kn">import</span> <span class="n">CustomEmbeddingFunction</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">docp_dbi.databases._embeddingfunctions</span><span class="w"> </span><span class="kn">import</span> <span class="n">CustomEmbeddingFunction</span>
+
+
+<div class="viewcode-block" id="ChromaDB">
+<a class="viewcode-back" href="../../../databases_chroma.html#docp_dbi.databases.chroma.ChromaDB">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChromaDB</span><span class="p">(</span><span class="n">_LangChroma</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Wrapper class around the ``chromadb`` library.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path (str): Path to the chromadb database&#39;s *directory*.</span>
+<span class="sd">        collection (str): Collection name.</span>
+<span class="sd">        embedding_model_path (str, optional): Path to a *local* embedding</span>
+<span class="sd">            model *repo* of your choosing. Defaults to None.</span>
+<span class="sd">            If not provided, the ``SentenceTransformers`` class be be</span>
+<span class="sd">            allowed free reign to download or use the model named in the</span>
+<span class="sd">            :attr:`DEFAULT_EMBEDDING_MODEL` attribute.</span>
+<span class="sd">        repo_id (str, optional): HuggingFace repository ID for the</span>
+<span class="sd">            requested embedding model. Defaults to None.</span>
+<span class="sd">        offline (bool, optional): Remain offline. Use the local model</span>
+<span class="sd">            embedding function model repo rather than obtaining one</span>
+<span class="sd">            online. Defaults to False.</span>
+
+<span class="sd">    :Examples:</span>
+
+<span class="sd">        Load a new PDF document into ChromaDB::</span>
+
+<span class="sd">            &gt;&gt;&gt; from docp_dbi import ChromaDB</span>
+<span class="sd">            &gt;&gt;&gt; from docp_parsers import PDFParser</span>
+<span class="sd">            &gt;&gt;&gt; from langchain_text_splitters import RecursiveCharacterTextSplitter</span>
+
+<span class="sd">            # Parse the PDF document.</span>
+<span class="sd">            &gt;&gt;&gt; pdf = PDFParser(path=&#39;/path/to/documents/rag-pipelines-how-to.pdf&#39;)</span>
+<span class="sd">            &gt;&gt;&gt; pdf.extract_text()</span>
+
+<span class="sd">            # Setup a text splitter (for chunking the document).</span>
+<span class="sd">            &gt;&gt;&gt; splitter = RecursiveCharacterTextSplitter(</span>
+<span class="sd">            ...     separators=[&#39;\n\n\n&#39;, &#39;\n\n&#39;, &#39;\n&#39;, &#39;.&#39;],</span>
+<span class="sd">            ...     chunk_size=512,</span>
+<span class="sd">            ...     chunk_overlap=128</span>
+<span class="sd">            ... )</span>
+<span class="sd">            # Split the document for storage.</span>
+<span class="sd">            &gt;&gt;&gt; docs = splitter.split_documents(pdf.doc.documents)</span>
+
+<span class="sd">            # Create a database interface, using an offline, local user-defined embedding model.</span>
+<span class="sd">            &gt;&gt;&gt; db = ChromaDB(path=&#39;/path/to/databases/chroma/&#39;,</span>
+<span class="sd">            ...               collection=&#39;test&#39;,</span>
+<span class="sd">            ...               embedding_model_path=(&#39;/path/to/models/sentence-transformers/&#39;</span>
+<span class="sd">                                                    &#39;all-MiniLM-L6-v2&#39;),</span>
+<span class="sd">            ...               offline=True)</span>
+<span class="sd">            # Embed and store the document chunks.</span>
+<span class="sd">            &gt;&gt;&gt; db.add_documents(documents=docs)</span>
+
+<span class="sd">            # Run your first query.</span>
+<span class="sd">            &gt;&gt;&gt; result = db.collection.query(query_texts=[&#39;How do I implement a RAG pipeline?&#39;])</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># TODO: Move this to a config file in docp-core.</span>
+    <span class="n">DEFAULT_EMBEDDING_MODEL</span> <span class="o">=</span> <span class="s1">&#39;sentence-transformers/all-MiniLM-L6-v2&#39;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                 <span class="n">collection</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                 <span class="o">*</span><span class="p">,</span>
+                 <span class="n">embedding_model_path</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">repo_id</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">offline</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Chroma database class initialiser.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">realpath</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cname</span> <span class="o">=</span> <span class="n">collection</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_embpath</span> <span class="o">=</span> <span class="n">embedding_model_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_repo_id</span> <span class="o">=</span> <span class="n">repo_id</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_offline</span> <span class="o">=</span> <span class="n">offline</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_oclient</span> <span class="o">=</span> <span class="kc">None</span>         <span class="c1"># Database &#39;client&#39; object</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ocollection</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># Database &#39;collection&#39; object.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_client</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_embedding_fn</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_collection</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">client</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_oclient</span><span class="p">,</span>
+                         <span class="n">collection_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_cname</span><span class="p">,</span>
+                         <span class="n">embedding_function</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_embfn</span><span class="p">,</span>
+                         <span class="n">persist_directory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Define the information about this class to be displayed.&quot;&quot;&quot;</span>
+        <span class="n">metric</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">collection</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">[</span><span class="s1">&#39;_model&#39;</span><span class="p">][</span><span class="s1">&#39;configuration_json&#39;</span><span class="p">][</span><span class="s1">&#39;hnsw&#39;</span><span class="p">][</span><span class="s1">&#39;space&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;&lt;class: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">&gt;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;Collection: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">collection</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;Similarity metric: </span><span class="si">{</span><span class="n">metric</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;Embedding function: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">embedding_function</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;Embedding model path: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">embedding_function</span><span class="o">.</span><span class="n">model_path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">client</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">chromadb</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Client</span><span class="p">:</span>  <span class="c1"># nocover</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accessor to the :class:`chromadb.PersistentClient` class.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_oclient</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">collection</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">chromadb</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">Collection</span><span class="o">.</span><span class="n">Collection</span><span class="p">:</span>  <span class="c1"># nocover</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accessor to the chromadb client&#39;s collection object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ocollection</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">embedding_function</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CustomEmbeddingFunction</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accessor to the embedding function used.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embfn</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">path</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accessor to the database&#39;s path.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path</span>
+
+<div class="viewcode-block" id="ChromaDB.add_documents">
+<a class="viewcode-back" href="../../../databases_chroma.html#docp_dbi.databases.chroma.ChromaDB.add_documents">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_documents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">documents</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Document</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># noqa  # pylint: disable=undefined-variable</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add multiple documents to the collection.</span>
+
+<span class="sd">        This method overrides the base class&#39; ``add_documents`` method</span>
+<span class="sd">        to enable local ID derivation. Knowing *how* the IDs are derived</span>
+<span class="sd">        gives us greater understanding and querying ability of the</span>
+<span class="sd">        documents in the database. Each ID is derived locally by the</span>
+<span class="sd">        :meth:`_preproc` method from the file&#39;s basename, page number</span>
+<span class="sd">        and page content.</span>
+
+<span class="sd">        Additionally, this method wraps the</span>
+<span class="sd">        :func:`langchain_chroma.Chroma.add_texts` method which supports</span>
+<span class="sd">        GPU processing and parallelisation.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            documents (list[Document]): A list of :class:`Document`</span>
+<span class="sd">                objects. These objects can be of either type:</span>
+
+<span class="sd">                    - :class:`langchain_core.documents.Document`</span>
+<span class="sd">                    - :class:`docp_core.objects.documentobject.Document`</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># pylint: disable=arguments-differ</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">documents</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">documents</span> <span class="o">=</span> <span class="p">[</span><span class="n">documents</span><span class="p">]</span>
+        <span class="n">ids_</span><span class="p">,</span> <span class="n">docs_</span><span class="p">,</span> <span class="n">meta_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_preproc</span><span class="p">(</span><span class="n">docs</span><span class="o">=</span><span class="n">documents</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">add_texts</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="n">ids_</span><span class="p">,</span> <span class="n">texts</span><span class="o">=</span><span class="n">docs_</span><span class="p">,</span> <span class="n">metadatas</span><span class="o">=</span><span class="n">meta_</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ChromaDB.show_all">
+<a class="viewcode-back" href="../../../databases_chroma.html#docp_dbi.databases.chroma.ChromaDB.show_all">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">show_all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">include</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the entire contents of the collection.</span>
+
+<span class="sd">        This is an alias around ``.collection.get()``.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            include (list[str], optional): A list of what to include in</span>
+<span class="sd">                the results. Can contain `&quot;embeddings&quot;`, `&quot;metadatas&quot;`,</span>
+<span class="sd">                `&quot;documents&quot;`. IDs are always included.</span>
+<span class="sd">                Defaults to `[&quot;metadatas&quot;, &quot;documents&quot;]`.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">include</span> <span class="o">=</span> <span class="n">include</span> <span class="ow">or</span> <span class="p">[</span><span class="s1">&#39;metadatas&#39;</span><span class="p">,</span> <span class="s1">&#39;documents&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ocollection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">include</span><span class="o">=</span><span class="n">include</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_embedding_function_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Derive the path to the embedding function model.</span>
+
+<span class="sd">        .. note::</span>
+<span class="sd">            If the user has specified a *local* embedding model path,</span>
+<span class="sd">            and that path exists, this model path is returned.</span>
+
+<span class="sd">            If the user provides a repository ID, this ID is passed into</span>
+<span class="sd">            the :class:`SentenceTransformer` class to handle as</span>
+<span class="sd">            appropriate, via the :class:`CustomEmbeddingFunction`. class</span>
+
+<span class="sd">            If the user does not provide either an embedding model path,</span>
+<span class="sd">            nor a repository ID, the default embedding model value is</span>
+<span class="sd">            used.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            FileNotFoundError: If the requested embedding model path does</span>
+<span class="sd">            not exist.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str: The path to the local embedding model, the model</span>
+<span class="sd">            repository ID or the default embedding model ID.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># User has specified the path to the local model they want to use.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embpath</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_embpath</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embpath</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="s1">&#39;The requested model path cannot be found:</span><span class="se">\n</span><span class="s1">&#39;</span>
+                                    <span class="sa">f</span><span class="s1">&#39;-- </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_embpath</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="c1"># User has specified repo_id *only*. Lets SentenceTransformer decide how to handle.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repo_id</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_embpath</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># nocover  # N/A in testing env.</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repo_id</span>
+        <span class="c1"># User has *not* specified an embedding model path, nor a repo ID.</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">DEFAULT_EMBEDDING_MODEL</span>  <span class="c1"># nocover  # N/A in testing env.</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_preproc</span><span class="p">(</span><span class="n">docs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Document</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>  <span class="c1"># noqa  # pylint: disable=undefined-variable</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pre-process the document objects to create the IDs.</span>
+
+<span class="sd">        Parse the ``Document`` object into its parts for storage.</span>
+<span class="sd">        Additionally, create the ID as a hash of the source document&#39;s</span>
+<span class="sd">        basename, page number and content.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            docs (list[Document]): A list of Document objects which are</span>
+<span class="sd">                used to derive the database ID, and split into the</span>
+<span class="sd">                return values.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: A tuple containing:</span>
+
+<span class="sd">                - ([ids], [texts], [metadatas])</span>
+
+<span class="sd">            These values are passed into the :meth:`~add_texts` method</span>
+<span class="sd">            for embedding and storage.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ids</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">txts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">metas</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">docs</span><span class="p">:</span>
+            <span class="n">pc</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">page_content</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">metadata</span>
+            <span class="n">pc_</span><span class="p">,</span> <span class="n">src_</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="o">.</span><span class="n">encode</span><span class="p">,</span> <span class="p">(</span><span class="n">pc</span><span class="p">,</span> <span class="n">m</span><span class="p">[</span><span class="s1">&#39;source&#39;</span><span class="p">]))</span>
+            <span class="n">pg_</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;pageno&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span><span class="o">.</span><span class="n">zfill</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+            <span class="n">id_</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;id_</span><span class="si">{</span><span class="n">md5</span><span class="p">(</span><span class="n">src_</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span><span class="si">}</span><span class="s1">_</span><span class="si">{</span><span class="n">pg_</span><span class="si">}</span><span class="s1">_</span><span class="si">{</span><span class="n">md5</span><span class="p">(</span><span class="n">pc_</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">id_</span><span class="p">)</span>
+            <span class="n">txts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pc</span><span class="p">)</span>
+            <span class="n">metas</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ids</span><span class="p">,</span> <span class="n">txts</span><span class="p">,</span> <span class="n">metas</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_client</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set the database client object.</span>
+
+<span class="sd">        :Note:</span>
+<span class="sd">            ChromaDB telemetry has been disabled.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># pylint: disable=no-member  # Settings, PersistentClient</span>
+        <span class="n">settings</span> <span class="o">=</span> <span class="n">chromadb</span><span class="o">.</span><span class="n">Settings</span><span class="p">(</span><span class="n">anonymized_telemetry</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_oclient</span> <span class="o">=</span> <span class="n">chromadb</span><span class="o">.</span><span class="n">PersistentClient</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="n">settings</span><span class="o">=</span><span class="n">settings</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_collection</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set the database collection object.</span>
+
+<span class="sd">        If the collection does not already exist, it is created using</span>
+<span class="sd">        *cosine* as a similarity metric.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ocollection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_oclient</span><span class="o">.</span><span class="n">get_or_create_collection</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cname</span><span class="p">,</span>
+                                                                   <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;hnsw:space&#39;</span><span class="p">:</span>
+                                                                             <span class="s1">&#39;cosine&#39;</span><span class="p">},</span>
+                                                                   <span class="n">embedding_function</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_embfn</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_embedding_fn</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set the embeddings function object.&quot;&quot;&quot;</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_embedding_function_model</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_embfn</span> <span class="o">=</span> <span class="n">CustomEmbeddingFunction</span><span class="p">(</span><span class="n">embedding_model_path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span>
+                                              <span class="n">local_files_only</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_offline</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026 | s3dev | version 1.0.0.dev1.</p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
