@@ -1,0 +1,214 @@
+[build-system]
+requires = ["setuptools>=80.9.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "valanga"
+version = "0.1.6"
+description = "Shared types and utilities for evaluation"
+requires-python = ">=3.13"
+dependencies = []
+readme = "README.md"
+license = { file = "LICENSE"} 
+authors = [{ name="Victor Gabillon", email="victorgabillon@gmail.com" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+]
+
+
+[project.optional-dependencies]
+test = [
+    # Testing dependencies
+    "pytest>=8.4.1",
+    "coverage",
+    "pytest-cov>=6.0.0"
+]
+
+lint = [
+  "ruff>=0.14.10",
+  "pylint>=4.0.4",
+]
+
+typecheck = [
+  "mypy>=1.19.1",
+  "pyright[nodejs]>=1.1.408",
+]
+
+
+dev = [
+    # Development dependencies (includes test)
+    "tox>=4.32.0",
+    "types-PyYAML>=6.0.12.12",
+
+    # Linting & formatting
+    "ruff>=0.14.10",
+    "pylint>=4.0.4",
+    "black>=25.12.0",
+
+    # Type checking
+    "mypy>=1.19.1",
+    "pyright[nodejs]>=1.1.408",
+
+    # Building & publishing
+    "build",
+    "twine",
+
+    # Documentation
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints",
+
+    # Pre-commit hooks
+    "pre-commit"
+
+]
+
+
+
+
+
+[tool.pytest.ini_options]
+addopts = "--cov=valanga"
+testpaths = [
+    "tests"
+]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
+ignore_missing_imports = true
+show_error_codes = true
+warn_unreachable = true
+no_implicit_reexport = true
+
+# Disallow untyped definitions and calls
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+
+# None and optional handling
+no_implicit_optional = true
+
+# Configuring warnings
+warn_unused_ignores = true
+warn_no_return = true
+warn_return_any = true
+warn_redundant_casts = true
+
+# Misc things
+strict_equality = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "PySide6",
+    "PySide6.*"
+]
+ignore_missing_imports = true
+follow_imports = 'skip'
+
+
+
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+# Enable import sorting (alphabetical + group order)
+lint.select = ["I", "F", "E", "B", "TCH"]  # I = imports, F = pyflakes, E = pycodestyle, TCH = type-checking, B = black
+
+# Allow auto-fixing for imports and type-checking imports
+lint.fixable = ["I", "TCH", "F401"]
+
+# Ignore rules you don't care about
+lint.ignore = [ "E501"]
+
+# Optional: add your first-party package to extend the known group
+[tool.ruff.lint.per-file-ignores]
+# If needed, can add file-specific ignores
+
+[tool.black]
+line-length = 88
+target-version = ['py313']
+
+[tool.pylint]
+py-version = "3.13"
+extension-pkg-whitelist = ["PyQt5", "PySide6"]
+
+[tool.pylint.format]
+max-line-length = 88
+
+#[tool.pylint.messages_control]
+disable = [
+    "C0301",
+    "unnecessary-ellipsis",
+    "W0511"
+    ]
+
+
+[tool.pylint.typecheck]
+# Optional: same as init-hook in .pylintrc
+init-hook = "import sys; sys.path.append('.')"
+
+[tool.pylint.design]
+min-public-methods = 1
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingImports = true
+reportUnusedImport = true
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportPrivateImportUsage = false
+
+
+#################### TOX ####################
+
+[tool.tox]
+min_version = "4.32.0"
+env_list = ["py313", "lint", "typecheck", "build"]
+isolated_build = true
+
+[tool.tox.env_run_base]
+base_python = ["python3.13"]
+
+[tool.tox.env.py313]
+description = "Run tests"
+extras = ["test"]
+commands = [["pytest", "{posargs}"]]
+
+[tool.tox.env.lint]
+description = "ruff + pylint (fast, no package install)"
+package = "skip"
+deps = ["ruff>=0.14.10", "pylint>=4.0.4"]
+set_env = { PYTHONPATH = "{toxinidir}/src" }
+commands = [
+  ["python", "-m", "ruff", "check", "src", "tests"],
+  ["python", "-m", "ruff", "format", "--check", "src", "tests"],
+  ["python", "-m", "pylint", "src/valanga"],
+]
+
+[tool.tox.env.typecheck]
+description = "mypy + pyright (fast, no package install)"
+package = "skip"
+deps = ["mypy>=1.19.1", "pyright[nodejs]>=1.1.408"]
+set_env = { MYPYPATH = "{toxinidir}/src" }
+commands = [
+  ["python", "-m", "mypy", "--config-file", "pyproject.toml", "src/valanga"],
+  ["python", "-m", "pyright", "src/valanga"],
+]
+
+
+[tool.tox.env.build]
+deps = ["build"]
+commands = [["python", "-m", "build"]]
+
+
+
+#################### END TOX ####################
