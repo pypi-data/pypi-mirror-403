@@ -1,0 +1,280 @@
+# dyncusum
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**CUSUM Tests for Structural Change in Dynamic Models**
+
+A Python library implementing the CUSUM tests for structural change as described in:
+
+> Krämer, W., Ploberger, W., & Alt, R. (1988). "Testing for Structural Change in Dynamic Models." *Econometrica*, Vol. 56, No. 6, pp. 1355-1369.
+
+## Overview
+
+This library provides a complete implementation of the CUSUM (Cumulative Sum) test for detecting structural change in linear regression models with lagged dependent variables. The implementation follows the original paper exactly, including:
+
+1. **Dynamic CUSUM Test**: The straightforward CUSUM test applied to dynamic models
+2. **Dufour Test**: Modified procedure from Dufour (1982) that first eliminates dynamics
+3. **Critical Values**: Both tabulated values from BDE (1975) and Monte Carlo simulation
+4. **Power Analysis**: Tools to analyze test power under various structural change scenarios
+5. **Visualization**: Publication-quality plots for CUSUM processes
+6. **Tables**: Formatted output for academic publications
+
+## Installation
+
+```bash
+pip install dyncusum
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/merwanroudane/cusum.git
+cd cusum
+pip install -e .
+```
+
+## Quick Start
+
+### Basic Usage
+
+```python
+import numpy as np
+from dyncusum import dynamic_cusum_test, plot_cusum, print_test_summary
+
+# Generate sample data
+np.random.seed(42)
+T = 100
+y = np.zeros(T)
+u = np.random.normal(0, 1, T)
+
+# AR(1) process: y_t = 0.5 * y_{t-1} + u_t
+for t in range(1, T):
+    y[t] = 0.5 * y[t-1] + u[t]
+
+# Prepare data for test
+y_current = y[1:]
+y_lagged = y[:-1]
+X = np.ones((T-1, 1))  # Constant term
+
+# Perform the Dynamic CUSUM test
+result = dynamic_cusum_test(y_current, X, y_lagged, significance_level=0.05)
+
+# Print summary
+print_test_summary(result)
+
+# Plot the CUSUM process
+fig = plot_cusum(result, save_path='cusum_plot.png')
+```
+
+### Comparing Tests
+
+```python
+from dyncusum import dynamic_cusum_test, dufour_test, plot_comparison
+
+# Run both tests
+result_dc = dynamic_cusum_test(y_current, X, y_lagged)
+result_duf = dufour_test(y_current, X, y_lagged)
+
+# Compare results
+fig = plot_comparison(result_dc, result_duf, save_path='comparison.png')
+```
+
+## Theoretical Background
+
+### The Model
+
+The library considers the dynamic linear regression model:
+
+$$y_t = \gamma y_{t-1} + \beta_1 x_{t1} + \cdots + \beta_K x_{tK} + u_t \quad (t = 1, \ldots, T)$$
+
+where:
+- $y_t$ is the dependent variable
+- $\gamma$ is the coefficient of the lagged dependent variable ($|\gamma| < 1$)
+- $x_{t1}, \ldots, x_{tK}$ are exogenous regressors
+- $u_t$ are iid$(0, \sigma^2)$ disturbances
+
+### The CUSUM Test
+
+The test statistic is based on recursive residuals:
+
+$$w_r = (y_r - z'_r \hat{\delta}^{(r-1)}) / f_r$$
+
+where $f_r = (1 + z'_r(Z^{(r-1)'}Z^{(r-1)})^{-1}z_r)^{1/2}$
+
+The CUSUM process is:
+
+$$W^{(r)} = \frac{1}{\hat{\sigma}} \sum_{t=K+2}^{r} w_t$$
+
+And the test statistic is:
+
+$$S = \max_{K+1 < r \leq T} \left| \frac{W^{(r)}}{\sqrt{T-K-1}} \right| / \left(1 + 2\frac{r-K-1}{T-K-1}\right)$$
+
+### Key Theorems
+
+**Theorem 1**: Both the Dynamic CUSUM test and the Dufour test retain their asymptotic nominal significance levels in dynamic models.
+
+**Theorem 2**: If the structural change $g(z)$ is orthogonal to the mean regressor $d$ for almost all $z$, the limiting rejection probability equals the nominal significance level (no power).
+
+## Critical Values
+
+Critical values are based on Brownian motion theory (BDE, 1975):
+
+| Significance Level | Critical Value |
+|-------------------|----------------|
+| 0.01              | 1.143          |
+| 0.025             | 1.035          |
+| 0.05              | 0.948          |
+| 0.10              | 0.850          |
+
+## API Reference
+
+### Core Functions
+
+#### `dynamic_cusum_test(y, X, y_lagged=None, significance_level=0.05, sigma_method='harvey', n_simulations=10000)`
+
+Perform the Dynamic CUSUM test for structural change.
+
+**Parameters:**
+- `y`: Dependent variable vector
+- `X`: Exogenous regressors matrix
+- `y_lagged`: Lagged dependent variable (optional)
+- `significance_level`: Significance level (default: 0.05)
+- `sigma_method`: 'harvey' or 'ols' (default: 'harvey')
+- `n_simulations`: Monte Carlo simulations for p-value
+
+**Returns:** `CUSUMResult` object
+
+#### `dufour_test(y, X, y_lagged, significance_level=0.05, sigma_method='harvey', n_simulations=10000)`
+
+Perform the Dufour (1982) modified CUSUM test.
+
+### Power Analysis
+
+#### `monte_carlo_power(gamma, psi, z_star, b, T=120, n_simulations=1000, ...)`
+
+Compute power via Monte Carlo simulation.
+
+#### `replicate_table_1(T=120, n_simulations=1000, ...)`
+
+Replicate Table I from the original paper.
+
+### Visualization
+
+#### `plot_cusum(result, title=None, figsize=(10, 6), ...)`
+
+Plot the CUSUM process with critical boundaries.
+
+#### `create_summary_figure(result, figsize=(14, 10), ...)`
+
+Create a comprehensive summary figure with multiple panels.
+
+## Examples
+
+### Detecting Structural Change
+
+```python
+import numpy as np
+from dyncusum import dynamic_cusum_test, generate_dynamic_data
+
+# Generate data with a structural break at t = 60
+T = 100
+gamma = 0.5
+beta = np.array([2, 10])
+
+# Break: coefficients change by 20% after observation 60
+structural_break = {
+    'z_star': 0.6,  # Break at 60% of sample
+    'delta_delta': np.array([0, 0.4, 2.0])  # Change in [γ, β_1, β_2]
+}
+
+y, X, y_lagged = generate_dynamic_data(T, gamma, beta, 
+                                        structural_break=structural_break, 
+                                        seed=42)
+
+# Test for structural change
+result = dynamic_cusum_test(y, X, y_lagged)
+print(f"Test Statistic: {result.statistic:.4f}")
+print(f"P-value: {result.p_value:.4f}")
+print(f"Reject H0: {result.reject_null}")
+```
+
+### Power Analysis
+
+```python
+from dyncusum import analyze_power_vs_angle, plot_power_curve
+
+# Analyze how power varies with the angle ψ
+results = analyze_power_vs_angle(gamma=0.0, z_star=0.5, b=12, T=120)
+
+# Plot power curve
+fig = plot_power_curve(
+    np.array(results['angles']), 
+    np.array(results['powers']),
+    save_path='power_curve.png'
+)
+```
+
+## Replicating Paper Results
+
+The library can replicate the Monte Carlo results from Table I:
+
+```python
+from dyncusum import replicate_table_1, format_power_table
+
+# Note: This takes several hours with default settings
+results = replicate_table_1(
+    T=120,
+    n_simulations=100,  # Use 1000 for publication
+    gamma_values=[-0.5, 0, 0.5],
+    psi_values=[0, 30, 60, 90],
+    z_star_values=[0.3, 0.5, 0.7],
+    b_values=[3, 6, 12]
+)
+
+# Format as table
+print(format_power_table(results))
+```
+
+## Citation
+
+If you use this library in your research, please cite both the original paper and this implementation:
+
+```bibtex
+@article{kramer1988testing,
+  title={Testing for Structural Change in Dynamic Models},
+  author={Kr{\"a}mer, Walter and Ploberger, Werner and Alt, Raimund},
+  journal={Econometrica},
+  volume={56},
+  number={6},
+  pages={1355--1369},
+  year={1988}
+}
+
+@software{roudane2024dyncusum,
+  author = {Roudane, Merwan},
+  title = {dyncusum: CUSUM Tests for Structural Change in Dynamic Models},
+  year = {2024},
+  url = {https://github.com/merwanroudane/cusum}
+}
+```
+
+## References
+
+- Brown, R. L., Durbin, J., & Evans, J. M. (1975). Techniques for Testing the Constancy of Regression Relationships over Time. *Journal of the Royal Statistical Society, Series B*, 37, 149-163.
+- Dufour, J. M. (1982). Recursive Stability Analysis of Linear Regression Relationships. *Journal of Econometrics*, 19, 31-76.
+- Harvey, A. (1975). Comment on the Paper by Brown, Durbin and Evans. *Journal of the Royal Statistical Society, B*, 37, 179-180.
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Author
+
+**Dr. Merwan Roudane**
+- Email: merwanroudane920@gmail.com
+- GitHub: https://github.com/merwanroudane/cusum
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
