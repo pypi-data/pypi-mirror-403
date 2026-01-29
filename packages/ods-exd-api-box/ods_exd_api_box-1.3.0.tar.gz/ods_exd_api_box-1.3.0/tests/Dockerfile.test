@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+LABEL org.opencontainers.image.source=https://github.com/totonga/ods-exd-api-box
+LABEL org.opencontainers.image.description="Helper package to build ASAM ODS EXD API grpc plugins."
+LABEL org.opencontainers.image.licenses=MIT
+WORKDIR /app
+# Create a non-root user and change ownership of /app
+RUN useradd -ms /bin/bash appuser && chown -R appuser /app
+
+# test with latest grpcio versions
+RUN pip3 install --upgrade pip && pip3 install grpcio grpcio-health-checking
+
+COPY ods_exd_api_box/ ./ods_exd_api_box/
+COPY tests/external_data_file.py ./
+
+USER appuser
+# Start server
+CMD [ "python3", "external_data_file.py"]
