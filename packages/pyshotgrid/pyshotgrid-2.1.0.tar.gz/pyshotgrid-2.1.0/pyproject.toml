@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+
+[project]
+name = "pyshotgrid"
+authors = [
+  { name="Fabian Geisler", email="info@fasbue.com" },
+]
+description = "A pythonic and object oriented way to talk to Autodesk ShotGrid."
+dependencies = ["shotgun-api3>=3.9.2"]
+readme.file = "README.md"
+readme.content-type = "text/markdown"
+license.text="MIT"
+requires-python = ">=3.9"
+keywords = ['shotgrid']
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+dynamic = ["version"]
+
+[project.urls]
+"Homepage" = "https://github.com/fabiangeisler/pyshotgrid"
+"Documentation" = "https://fabiangeisler.github.io/pyshotgrid"
+"Bug Tracker" = "https://github.com/fabiangeisler/pyshotgrid/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "pyshotgrid.VERSION"}
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+testpaths = "tests/"
+addopts = "--cov=pyshotgrid"
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+skip_missing_interpreters = true
+envlist = py39, py310, py311, py312
+
+[gh-actions]
+python =
+    3.9: py39
+    3.10: py310
+    3.11: py311
+    3.12: py312
+
+[testenv:py311_docs]
+description=Documentation generation
+basepython=3.11
+changedir=docs
+deps=
+    -rrequirements_docs.txt
+commands=
+    sphinx-build -b html -d {envtmpdir}/doctrees . _builds
+
+[testenv]
+deps =
+    -rrequirements.txt
+commands = pytest
+"""
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = false
+pretty = true
+
+[[tool.mypy.overrides]]
+module = [
+    "shotgun_api3.*",
+    "tank_vendor.*",
+]
+ignore_missing_imports = true
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "2.1.0"
+tag_format = "v$version"
+update_changelog_on_bump = true
+annotated_tag = true
+version_files = [
+    "src/pyshotgrid/__init__.py:VERSION",
+]
+
+[tool.ruff]
+line-length = 100
+exclude = ["tasks.py", "conf.py"]
+lint.select = [
+    "E",  # pycodestyle
+    "W",
+    "F",  # PyFlakes
+    "B",  # flake8-bugbear
+    "T20",  # "print" in code
+    "N",  # pep8 naming convention
+    "I",  # isort
+    "RUF",  # Bad unicode characters in code
+]
+src = ["src", "tests"]
