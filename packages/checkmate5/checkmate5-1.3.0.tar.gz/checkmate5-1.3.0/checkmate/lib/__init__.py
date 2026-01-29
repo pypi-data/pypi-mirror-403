@@ -1,0 +1,4 @@
+"""
+checkmate.lib package
+"""
+

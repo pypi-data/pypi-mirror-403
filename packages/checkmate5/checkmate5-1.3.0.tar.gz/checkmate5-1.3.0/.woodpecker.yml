@@ -1,0 +1,29 @@
+# .woodpecker.yml
+labels:
+  platform: linux/amd64
+
+steps:
+  # 1. BUILD STAGE
+  build_package:
+    image: python:3.13
+    commands:
+      - pip install --upgrade pip
+      - pip install build
+      - python -m build
+    when:
+      - event: [push, tag]
+        branch: main
+
+  # 2. PUBLISH STAGE (PyPI)
+  publish_to_pypi:
+    image: python:3.13
+    environment:
+      PYPI_TOKEN:
+        from_secret: PYPI_TOKEN # Matches uppercase secret in UI
+    commands:
+      - pip install twine
+      - export TWINE_USERNAME="__token__"
+      - export TWINE_PASSWORD=$PYPI_TOKEN
+      - python -m twine upload --verbose dist/*
+    when:
+      - event: tag
