@@ -1,0 +1,303 @@
+"""Fake plan data provider for testing TUI components."""
+
+from pathlib import Path
+
+from erk.tui.data.provider import PlanDataProvider
+from erk.tui.data.types import PlanFilters, PlanRowData
+from erk.tui.sorting.types import BranchActivity
+from erk_shared.gateway.browser.abc import BrowserLauncher
+from erk_shared.gateway.browser.fake import FakeBrowserLauncher
+from erk_shared.gateway.clipboard.abc import Clipboard
+from erk_shared.gateway.clipboard.fake import FakeClipboard
+
+
+class FakePlanDataProvider(PlanDataProvider):
+    """Fake implementation of PlanDataProvider for testing.
+
+    Returns canned data without making any API calls.
+    """
+
+    def __init__(
+        self,
+        *,
+        plans: list[PlanRowData] | None = None,
+        clipboard: Clipboard | None = None,
+        browser: BrowserLauncher | None = None,
+        repo_root: Path | None = None,
+        fetch_error: str | None = None,
+    ) -> None:
+        """Initialize with optional canned plan data.
+
+        Args:
+            plans: List of PlanRowData to return, or None for empty list
+            clipboard: Clipboard interface, defaults to FakeClipboard()
+            browser: BrowserLauncher interface, defaults to FakeBrowserLauncher()
+            repo_root: Repository root path, defaults to Path("/fake/repo")
+            fetch_error: If set, fetch_plans() raises RuntimeError with this message.
+                Use to simulate API failures.
+        """
+        self._plans = plans or []
+        self._fetch_count = 0
+        self._clipboard = clipboard if clipboard is not None else FakeClipboard()
+        self._browser = browser if browser is not None else FakeBrowserLauncher()
+        self._repo_root = repo_root if repo_root is not None else Path("/fake/repo")
+        self._fetch_error = fetch_error
+        self._plan_content_by_issue: dict[int, str] = {}
+
+    @property
+    def repo_root(self) -> Path:
+        """Get the repository root path."""
+        return self._repo_root
+
+    @property
+    def clipboard(self) -> Clipboard:
+        """Get the clipboard interface for copy operations."""
+        return self._clipboard
+
+    @property
+    def browser(self) -> BrowserLauncher:
+        """Get the browser launcher interface for opening URLs."""
+        return self._browser
+
+    def fetch_plans(self, filters: PlanFilters) -> list[PlanRowData]:
+        """Return canned plan data.
+
+        Args:
+            filters: Ignored in fake - returns all canned data
+
+        Returns:
+            List of canned PlanRowData
+
+        Raises:
+            RuntimeError: If fetch_error is set
+        """
+        self._fetch_count += 1
+        if self._fetch_error is not None:
+            raise RuntimeError(self._fetch_error)
+        return self._plans
+
+    @property
+    def fetch_count(self) -> int:
+        """Number of times fetch_plans was called."""
+        return self._fetch_count
+
+    def set_plans(self, plans: list[PlanRowData]) -> None:
+        """Update the canned plan data.
+
+        Args:
+            plans: New list of PlanRowData to return
+        """
+        self._plans = plans
+
+    def close_plan(self, issue_number: int, issue_url: str) -> list[int]:
+        """Fake close plan implementation.
+
+        Removes the plan from the internal list and tracks the closure.
+
+        Args:
+            issue_number: The issue number to close
+            issue_url: The issue URL (unused in fake)
+
+        Returns:
+            Empty list (no PRs closed in fake)
+        """
+        self._plans = [p for p in self._plans if p.issue_number != issue_number]
+        return []
+
+    def submit_to_queue(self, issue_number: int, issue_url: str) -> None:
+        """Fake submit to queue implementation.
+
+        Tracks the submission without actually submitting.
+
+        Args:
+            issue_number: The issue number to submit
+            issue_url: The issue URL (unused in fake)
+        """
+        # Just track the call - actual submit is complex and not needed for UI tests
+        pass
+
+    def fetch_branch_activity(self, rows: list[PlanRowData]) -> dict[int, BranchActivity]:
+        """Fake branch activity implementation.
+
+        Returns empty activity for all plans.
+
+        Args:
+            rows: List of plan rows (unused in fake)
+
+        Returns:
+            Empty dict - no activity in fake implementation
+        """
+        return {}
+
+    def fetch_plan_content(self, issue_number: int, issue_body: str) -> str | None:
+        """Fake plan content fetch implementation.
+
+        Returns the plan_content if configured, otherwise None.
+
+        Args:
+            issue_number: The GitHub issue number
+            issue_body: The issue body (unused in fake)
+
+        Returns:
+            The configured plan content for this issue, or None
+        """
+        return self._plan_content_by_issue.get(issue_number)
+
+    def set_plan_content(self, issue_number: int, content: str) -> None:
+        """Set the plan content to return for a specific issue.
+
+        Args:
+            issue_number: The GitHub issue number
+            content: The plan content to return
+        """
+        self._plan_content_by_issue[issue_number] = content
+
+
+def make_plan_row(
+    issue_number: int,
+    title: str = "Test Plan",
+    *,
+    issue_url: str | None = None,
+    issue_body: str = "",
+    pr_number: int | None = None,
+    pr_url: str | None = None,
+    pr_title: str | None = None,
+    pr_state: str | None = None,
+    pr_head_branch: str | None = None,
+    pr_display: str | None = None,
+    worktree_name: str = "",
+    worktree_branch: str | None = None,
+    exists_locally: bool = False,
+    run_url: str | None = None,
+    run_id: str | None = None,
+    run_status: str | None = None,
+    run_conclusion: str | None = None,
+    comment_counts: tuple[int, int] | None = None,
+    learn_status: str | None = None,
+    learn_plan_issue: int | None = None,
+    learn_plan_issue_closed: bool | None = None,
+    learn_plan_pr: int | None = None,
+    learn_run_url: str | None = None,
+    objective_issue: int | None = None,
+) -> PlanRowData:
+    """Create a PlanRowData for testing with sensible defaults.
+
+    Args:
+        issue_number: GitHub issue number
+        title: Plan title
+        issue_url: URL to the issue (defaults to GitHub URL pattern)
+        issue_body: Raw issue body text (markdown)
+        pr_number: PR number if linked
+        pr_url: URL to PR
+        pr_title: PR title
+        pr_state: PR state (e.g., "OPEN", "MERGED")
+        pr_head_branch: Head branch from PR metadata (for landing)
+        pr_display: Custom PR display string (overrides default "#N" format)
+        worktree_name: Local worktree name
+        worktree_branch: Branch name in worktree
+        exists_locally: Whether worktree exists locally
+        run_url: URL to the GitHub Actions run
+        run_id: Workflow run ID
+        run_status: Workflow run status
+        run_conclusion: Workflow run conclusion
+        comment_counts: Tuple of (resolved, total) comment counts (None shows "-")
+        learn_status: Learn workflow status ("pending", "completed_with_plan", etc.)
+        learn_plan_issue: Issue number of generated learn plan
+        learn_plan_issue_closed: Whether the learn plan issue is closed (True/False/None)
+        learn_plan_pr: PR number that implemented the learn plan
+        learn_run_url: URL to GitHub Actions workflow run (for pending status)
+        objective_issue: Objective issue number (for linking plans to objectives)
+
+    Returns:
+        PlanRowData populated with test data
+    """
+    if issue_url is None:
+        issue_url = f"https://github.com/test/repo/issues/{issue_number}"
+
+    # Compute learn_display (full text) and learn_display_icon (icon-only)
+    if learn_status is None or learn_status == "not_started":
+        learn_display = "- not started"
+        learn_display_icon = "-"
+    elif learn_status == "pending":
+        learn_display = "⟳ in progress"
+        learn_display_icon = "⟳"
+    elif learn_status == "completed_no_plan":
+        learn_display = "∅ no insights"
+        learn_display_icon = "∅"
+    elif learn_status == "completed_with_plan" and learn_plan_issue is not None:
+        if learn_plan_issue_closed is True:
+            learn_display = f"✅ #{learn_plan_issue}"
+            learn_display_icon = f"✅ #{learn_plan_issue}"
+        else:
+            learn_display = f"📋 #{learn_plan_issue}"
+            learn_display_icon = f"📋 #{learn_plan_issue}"
+    elif learn_status == "plan_completed" and learn_plan_pr is not None:
+        learn_display = f"✓ #{learn_plan_pr}"
+        learn_display_icon = f"✓ #{learn_plan_pr}"
+    else:
+        learn_display = "- not started"
+        learn_display_icon = "-"
+
+    computed_pr_display = "-"
+    if pr_number is not None:
+        computed_pr_display = f"#{pr_number}"
+
+    # Allow override of pr_display for testing indicators like 🔗
+    final_pr_display = pr_display if pr_display is not None else computed_pr_display
+
+    # Compute comment counts display based on pr_number presence
+    if pr_number is None:
+        resolved_count = 0
+        total_count = 0
+        comments_display = "-"
+    elif comment_counts is None:
+        resolved_count = 0
+        total_count = 0
+        comments_display = "0/0"
+    else:
+        resolved_count, total_count = comment_counts
+        comments_display = f"{resolved_count}/{total_count}"
+
+    # Compute objective display
+    objective_display = f"#{objective_issue}" if objective_issue is not None else "-"
+
+    return PlanRowData(
+        issue_number=issue_number,
+        issue_url=issue_url,
+        title=title,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        pr_display=final_pr_display,
+        checks_display="-",
+        worktree_name=worktree_name,
+        exists_locally=exists_locally,
+        local_impl_display="-",
+        remote_impl_display="-",
+        run_id_display="-",
+        run_state_display="-",
+        run_url=run_url,
+        full_title=title,
+        issue_body=issue_body,
+        pr_title=pr_title,
+        pr_state=pr_state,
+        pr_head_branch=pr_head_branch,
+        worktree_branch=worktree_branch,
+        last_local_impl_at=None,
+        last_remote_impl_at=None,
+        run_id=run_id,
+        run_status=run_status,
+        run_conclusion=run_conclusion,
+        log_entries=(),
+        resolved_comment_count=resolved_count,
+        total_comment_count=total_count,
+        comments_display=comments_display,
+        learn_status=learn_status,
+        learn_plan_issue=learn_plan_issue,
+        learn_plan_issue_closed=learn_plan_issue_closed,
+        learn_plan_pr=learn_plan_pr,
+        learn_run_url=learn_run_url,
+        learn_display=learn_display,
+        learn_display_icon=learn_display_icon,
+        objective_issue=objective_issue,
+        objective_display=objective_display,
+    )

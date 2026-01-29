@@ -1,0 +1,221 @@
+"""Tests for PR info display in wt list command.
+
+The list command shows PR info from GitHub API. It displays:
+emoji + #number (no title, no plan summary).
+"""
+
+import pytest
+from click.testing import CliRunner
+
+from erk.cli.cli import cli
+from erk_shared.git.abc import WorktreeInfo
+from erk_shared.git.fake import FakeGit
+from erk_shared.github.fake import FakeGitHub
+from erk_shared.github.types import PullRequestInfo
+from tests.test_utils.builders import PullRequestInfoBuilder
+from tests.test_utils.env_helpers import erk_inmem_env
+
+# ===========================
+# Emoji Rendering Tests
+# ===========================
+
+
+@pytest.mark.parametrize(
+    "state,is_draft,checks,expected_emoji",
+    [
+        ("OPEN", False, True, "✅"),  # Open PR with passing checks
+        ("OPEN", False, False, "❌"),  # Open PR with failing checks
+        ("OPEN", False, None, "👀"),  # Open PR with no checks
+        ("OPEN", True, None, "🚧"),  # Draft PR
+        ("MERGED", False, True, "🎉"),  # Merged PR
+        ("CLOSED", False, None, "⛔"),  # Closed (not merged) PR
+    ],
+)
+def test_list_pr_emoji_mapping(
+    state: str, is_draft: bool, checks: bool | None, expected_emoji: str
+) -> None:
+    """Verify PR state → emoji mapping for all cases."""
+    runner = CliRunner()
+    with erk_inmem_env(runner) as env:
+        branch_name = "test-branch"
+
+        # Use builder pattern for PR creation
+        builder = PullRequestInfoBuilder(number=100, branch=branch_name)
+        builder.state = state
+        builder.is_draft = is_draft
+        builder.checks_passing = checks
+        pr = builder.build()
+
+        repo_name = env.cwd.name
+        repo_dir = env.erk_root / repo_name
+        feature_worktree = repo_dir / branch_name
+
+        git_ops = FakeGit(
+            worktrees={
+                env.cwd: [
+                    WorktreeInfo(path=env.cwd, branch="main"),
+                    WorktreeInfo(path=feature_worktree, branch=branch_name),
+                ]
+            },
+            git_common_dirs={env.cwd: env.git_dir, feature_worktree: env.git_dir},
+            current_branches={env.cwd: "main", feature_worktree: branch_name},
+        )
+
+        test_ctx = env.build_context(
+            git=git_ops,
+            github=FakeGitHub(prs={branch_name: pr}),
+        )
+
+        result = runner.invoke(cli, ["wt", "list"], obj=test_ctx)
+        assert result.exit_code == 0, result.output
+
+        # Verify emoji appears in output
+        assert expected_emoji in result.output
+        assert "#100" in result.output
+
+
+# ===========================
+# Merge Conflict Tests
+# ===========================
+
+
+def test_list_pr_with_merge_conflicts() -> None:
+    """Test that PRs with merge conflicts show the conflict emoji 💥."""
+    runner = CliRunner()
+    with erk_inmem_env(runner) as env:
+        branch_name = "conflict-branch"
+
+        # Create PR with conflicts
+        pr = PullRequestInfo(
+            number=200,
+            state="OPEN",
+            url="https://github.com/testowner/testrepo/pull/200",
+            is_draft=False,
+            title=None,
+            checks_passing=True,
+            owner="testowner",
+            repo="testrepo",
+            has_conflicts=True,  # This PR has merge conflicts
+        )
+
+        repo_name = env.cwd.name
+        repo_dir = env.erk_root / repo_name
+        feature_worktree = repo_dir / branch_name
+
+        git_ops = FakeGit(
+            worktrees={
+                env.cwd: [
+                    WorktreeInfo(path=env.cwd, branch="main"),
+                    WorktreeInfo(path=feature_worktree, branch=branch_name),
+                ]
+            },
+            git_common_dirs={env.cwd: env.git_dir, feature_worktree: env.git_dir},
+            current_branches={env.cwd: "main", feature_worktree: branch_name},
+        )
+
+        test_ctx = env.build_context(
+            git=git_ops,
+            github=FakeGitHub(prs={branch_name: pr}),
+        )
+
+        result = runner.invoke(cli, ["wt", "list"], obj=test_ctx)
+        assert result.exit_code == 0, result.output
+
+        # Verify both the base emoji and conflict emoji appear
+        assert "✅💥" in result.output  # PR with passing checks and conflicts
+        assert "#200" in result.output
+
+
+# ===========================
+# Graceful Degradation Tests
+# ===========================
+
+
+def test_list_graceful_degradation_no_pr_info() -> None:
+    """Test that list works gracefully when no PR info is available from GitHub."""
+    runner = CliRunner()
+    with erk_inmem_env(runner) as env:
+        branch_name = "feature-branch"
+
+        repo_name = env.cwd.name
+        repo_dir = env.erk_root / repo_name
+        feature_worktree = repo_dir / branch_name
+
+        git_ops = FakeGit(
+            worktrees={
+                env.cwd: [
+                    WorktreeInfo(path=env.cwd, branch="main"),
+                    WorktreeInfo(path=feature_worktree, branch=branch_name),
+                ]
+            },
+            git_common_dirs={env.cwd: env.git_dir, feature_worktree: env.git_dir},
+            current_branches={env.cwd: "main", feature_worktree: branch_name},
+        )
+
+        # No PR info from GitHub API
+        test_ctx = env.build_context(
+            git=git_ops,
+            github=FakeGitHub(prs={}),
+        )
+
+        result = runner.invoke(cli, ["wt", "list"], obj=test_ctx)
+        # Should succeed even without PR info
+        assert result.exit_code == 0, result.output
+
+        # Should still show worktree info
+        assert "root" in result.output
+        assert branch_name in result.output
+
+        # PR column should show "-" for no PR info
+        assert "-" in result.output
+
+
+# ===========================
+# GitHub API Tests
+# ===========================
+
+
+def test_list_shows_pr_info_from_github_api() -> None:
+    """Test that PR info is displayed from GitHub API."""
+    runner = CliRunner()
+    with erk_inmem_env(runner) as env:
+        branch_name = "feature-branch"
+
+        repo_name = env.cwd.name
+        repo_dir = env.erk_root / repo_name
+        feature_worktree = repo_dir / branch_name
+
+        git_ops = FakeGit(
+            worktrees={
+                env.cwd: [
+                    WorktreeInfo(path=env.cwd, branch="main"),
+                    WorktreeInfo(path=feature_worktree, branch=branch_name),
+                ]
+            },
+            git_common_dirs={env.cwd: env.git_dir, feature_worktree: env.git_dir},
+            current_branches={env.cwd: "main", feature_worktree: branch_name},
+        )
+
+        # Create PR info for GitHub API
+        github_pr = PullRequestInfo(
+            number=123,
+            state="OPEN",
+            url="https://github.com/owner/repo/pull/123",
+            is_draft=False,
+            title="Test PR",
+            checks_passing=True,
+            owner="owner",
+            repo="repo",
+        )
+
+        test_ctx = env.build_context(
+            git=git_ops,
+            github=FakeGitHub(prs={branch_name: github_pr}),
+        )
+
+        result = runner.invoke(cli, ["wt", "list"], obj=test_ctx)
+        assert result.exit_code == 0, result.output
+
+        # Should show PR from GitHub API
+        assert "#123" in result.output
+        assert "✅" in result.output  # Open PR with passing checks

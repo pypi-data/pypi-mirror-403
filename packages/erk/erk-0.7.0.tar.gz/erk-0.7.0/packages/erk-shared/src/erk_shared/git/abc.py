@@ -1,0 +1,849 @@
+"""High-level git operations interface.
+
+This module provides a clean abstraction over git subprocess calls, making the
+codebase more testable and maintainable.
+
+Architecture:
+- Git: Abstract base class defining the interface
+- RealGit: Production implementation using subprocess
+- Standalone functions: Convenience wrappers delegating to module singleton
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from erk_shared.git.worktree.abc import Worktree
+
+
+class BranchDivergence(NamedTuple):
+    """Result of checking if a branch has diverged from its remote tracking branch.
+
+    Attributes:
+        is_diverged: True if the branch has commits both ahead and behind the remote.
+            A branch is diverged when it cannot be fast-forwarded in either direction.
+        ahead: Number of commits on local branch not present on remote.
+        behind: Number of commits on remote branch not present locally.
+    """
+
+    is_diverged: bool
+    ahead: int
+    behind: int
+
+
+@dataclass(frozen=True)
+class WorktreeInfo:
+    """Information about a single git worktree."""
+
+    path: Path
+    branch: str | None
+    is_root: bool = False
+
+
+@dataclass(frozen=True)
+class BranchSyncInfo:
+    """Sync status for a branch relative to its upstream."""
+
+    branch: str
+    upstream: str | None  # None if no tracking branch
+    ahead: int
+    behind: int
+
+
+@dataclass(frozen=True)
+class RebaseResult:
+    """Result of a git rebase operation.
+
+    Attributes:
+        success: True if rebase completed without conflicts
+        conflict_files: Tuple of file paths with conflicts (empty if success=True)
+    """
+
+    success: bool
+    conflict_files: tuple[str, ...]
+
+
+def find_worktree_for_branch(worktrees: list[WorktreeInfo], branch: str) -> Path | None:
+    """Find the path of the worktree that has the given branch checked out.
+
+    Args:
+        worktrees: List of worktrees to search
+        branch: Branch name to find
+
+    Returns:
+        Path to the worktree with the branch checked out, or None if not found
+    """
+    for wt in worktrees:
+        if wt.branch == branch:
+            return wt.path
+    return None
+
+
+# ============================================================================
+# Abstract Interface
+# ============================================================================
+
+
+class Git(ABC):
+    """Abstract interface for git operations.
+
+    All implementations (real and fake) must implement this interface.
+    This interface contains ONLY runtime operations - no test setup methods.
+    """
+
+    @property
+    @abstractmethod
+    def worktree(self) -> Worktree:
+        """Access worktree operations subgateway."""
+        ...
+
+    def list_worktrees(self, repo_root: Path) -> list[WorktreeInfo]:
+        """List all worktrees in the repository."""
+        return self.worktree.list_worktrees(repo_root)
+
+    @abstractmethod
+    def get_current_branch(self, cwd: Path) -> str | None:
+        """Get the currently checked-out branch."""
+        ...
+
+    @abstractmethod
+    def detect_trunk_branch(self, repo_root: Path) -> str:
+        """Auto-detect the trunk branch name.
+
+        Checks git's remote HEAD reference, then falls back to checking for
+        existence of 'main' then 'master'. Returns 'main' as final fallback
+        if neither branch exists.
+
+        Args:
+            repo_root: Path to the repository root
+
+        Returns:
+            Trunk branch name (e.g., 'main', 'master')
+        """
+        ...
+
+    @abstractmethod
+    def validate_trunk_branch(self, repo_root: Path, name: str) -> str:
+        """Validate that a configured trunk branch exists.
+
+        Args:
+            repo_root: Path to the repository root
+            name: Trunk branch name to validate
+
+        Returns:
+            The validated trunk branch name
+
+        Raises:
+            RuntimeError: If the specified branch doesn't exist
+        """
+        ...
+
+    @abstractmethod
+    def list_local_branches(self, repo_root: Path) -> list[str]:
+        """List all local branch names in the repository.
+
+        Args:
+            repo_root: Path to the repository root
+
+        Returns:
+            List of local branch names
+        """
+        ...
+
+    @abstractmethod
+    def list_remote_branches(self, repo_root: Path) -> list[str]:
+        """List all remote branch names in the repository.
+
+        Returns branch names in format 'origin/branch-name', 'upstream/feature', etc.
+        Only includes refs from configured remotes, not local branches.
+
+        Args:
+            repo_root: Path to the repository root
+
+        Returns:
+            List of remote branch names with remote prefix (e.g., 'origin/main')
+        """
+        ...
+
+    @abstractmethod
+    def get_git_common_dir(self, cwd: Path) -> Path | None:
+        """Get the common git directory."""
+        ...
+
+    @abstractmethod
+    def has_staged_changes(self, repo_root: Path) -> bool:
+        """Check if the repository has staged changes."""
+        ...
+
+    @abstractmethod
+    def has_uncommitted_changes(self, cwd: Path) -> bool:
+        """Check if a worktree has uncommitted changes.
+
+        Uses git status --porcelain to detect any uncommitted changes.
+        Returns False if git command fails (worktree might be in invalid state).
+
+        Args:
+            cwd: Working directory to check
+
+        Returns:
+            True if there are any uncommitted changes (staged, modified, or untracked)
+        """
+        ...
+
+    def is_worktree_clean(self, worktree_path: Path) -> bool:
+        """Check if worktree has no uncommitted changes, staged changes, or untracked files.
+
+        Args:
+            worktree_path: Path to the worktree to check
+
+        Returns:
+            True if worktree is clean (no uncommitted, staged, or untracked files)
+        """
+        return self.worktree.is_worktree_clean(worktree_path)
+
+    def add_worktree(
+        self,
+        repo_root: Path,
+        path: Path,
+        *,
+        branch: str | None,
+        ref: str | None,
+        create_branch: bool,
+    ) -> None:
+        """Add a new git worktree.
+
+        Args:
+            repo_root: Path to the git repository root
+            path: Path where the worktree should be created
+            branch: Branch name (None creates detached HEAD or uses ref)
+            ref: Git ref to base worktree on (None defaults to HEAD when creating branches)
+            create_branch: True to create new branch, False to checkout existing
+        """
+        self.worktree.add_worktree(
+            repo_root, path, branch=branch, ref=ref, create_branch=create_branch
+        )
+
+    def move_worktree(self, repo_root: Path, old_path: Path, new_path: Path) -> None:
+        """Move a worktree to a new location."""
+        self.worktree.move_worktree(repo_root, old_path, new_path)
+
+    def remove_worktree(self, repo_root: Path, path: Path, *, force: bool) -> None:
+        """Remove a worktree.
+
+        Args:
+            repo_root: Path to the git repository root
+            path: Path to the worktree to remove
+            force: True to force removal even if worktree has uncommitted changes
+        """
+        self.worktree.remove_worktree(repo_root, path, force=force)
+
+    def prune_worktrees(self, repo_root: Path) -> None:
+        """Prune stale worktree metadata."""
+        self.worktree.prune_worktrees(repo_root)
+
+    def path_exists(self, path: Path) -> bool:
+        """Check if a path exists on the filesystem.
+
+        This is primarily used for checking if worktree directories still exist,
+        particularly after cleanup operations. In production (RealGit), this
+        delegates to Path.exists(). In tests (FakeGit), this checks an in-memory
+        set of existing paths to avoid filesystem I/O.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            True if path exists, False otherwise
+        """
+        return self.worktree.path_exists(path)
+
+    def is_dir(self, path: Path) -> bool:
+        """Check if a path is a directory.
+
+        This is used for distinguishing between .git directories (normal repos)
+        and .git files (worktrees with gitdir pointers). In production (RealGit),
+        this delegates to Path.is_dir(). In tests (FakeGit), this checks an
+        in-memory set of directory paths to avoid filesystem I/O.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            True if path is a directory, False otherwise
+        """
+        return self.worktree.is_dir(path)
+
+    def safe_chdir(self, path: Path) -> bool:
+        """Change current directory if path exists on real filesystem.
+
+        Used when removing worktrees or switching contexts to prevent shell from
+        being in a deleted directory. In production (RealGit), checks if path
+        exists then changes directory. In tests (FakeGit), handles sentinel
+        paths by returning False without changing directory.
+
+        Args:
+            path: Directory to change to
+
+        Returns:
+            True if directory change succeeded, False otherwise
+        """
+        return self.worktree.safe_chdir(path)
+
+    def is_branch_checked_out(self, repo_root: Path, branch: str) -> Path | None:
+        """Check if a branch is already checked out in any worktree.
+
+        Args:
+            repo_root: Path to the git repository root
+            branch: Branch name to check
+
+        Returns:
+            Path to the worktree where branch is checked out, or None if not checked out.
+        """
+        return self.worktree.is_branch_checked_out(repo_root, branch)
+
+    def find_worktree_for_branch(self, repo_root: Path, branch: str) -> Path | None:
+        """Find worktree path for given branch name.
+
+        Args:
+            repo_root: Repository root path
+            branch: Branch name to search for
+
+        Returns:
+            Path to worktree if branch is checked out, None otherwise
+        """
+        return self.worktree.find_worktree_for_branch(repo_root, branch)
+
+    @abstractmethod
+    def get_branch_head(self, repo_root: Path, branch: str) -> str | None:
+        """Get the commit SHA at the head of a branch.
+
+        Args:
+            repo_root: Path to the git repository root
+            branch: Branch name to query
+
+        Returns:
+            Commit SHA as a string, or None if branch doesn't exist.
+        """
+        ...
+
+    @abstractmethod
+    def get_commit_message(self, repo_root: Path, commit_sha: str) -> str | None:
+        """Get the commit message for a given commit SHA.
+
+        Args:
+            repo_root: Path to the git repository root
+            commit_sha: Commit SHA to query
+
+        Returns:
+            First line of commit message, or None if commit doesn't exist.
+        """
+        ...
+
+    @abstractmethod
+    def get_file_status(self, cwd: Path) -> tuple[list[str], list[str], list[str]]:
+        """Get lists of staged, modified, and untracked files.
+
+        Args:
+            cwd: Working directory
+
+        Returns:
+            Tuple of (staged, modified, untracked) file lists
+        """
+        ...
+
+    @abstractmethod
+    def get_ahead_behind(self, cwd: Path, branch: str) -> tuple[int, int]:
+        """Get number of commits ahead and behind tracking branch.
+
+        Args:
+            cwd: Working directory
+            branch: Current branch name
+
+        Returns:
+            Tuple of (ahead, behind) counts
+        """
+        ...
+
+    @abstractmethod
+    def get_behind_commit_authors(self, cwd: Path, branch: str) -> list[str]:
+        """Get authors of commits on remote that are not in local branch.
+
+        Used to detect server-side commits (e.g., autofix from CI).
+
+        Args:
+            cwd: Working directory
+            branch: Local branch name
+
+        Returns:
+            List of author names for commits on origin/branch but not locally.
+            Empty list if no tracking branch or no behind commits.
+        """
+        ...
+
+    @abstractmethod
+    def get_all_branch_sync_info(self, repo_root: Path) -> dict[str, BranchSyncInfo]:
+        """Get sync status for all local branches in a single git call.
+
+        Uses git for-each-ref to batch-fetch upstream tracking information.
+
+        Args:
+            repo_root: Path to the git repository root
+
+        Returns:
+            Dict mapping branch name to BranchSyncInfo.
+        """
+        ...
+
+    @abstractmethod
+    def get_recent_commits(self, cwd: Path, *, limit: int = 5) -> list[dict[str, str]]:
+        """Get recent commit information.
+
+        Args:
+            cwd: Working directory
+            limit: Maximum number of commits to retrieve
+
+        Returns:
+            List of commit info dicts with keys: sha, message, author, date
+        """
+        ...
+
+    @abstractmethod
+    def fetch_branch(self, repo_root: Path, remote: str, branch: str) -> None:
+        """Fetch a specific branch from a remote.
+
+        Args:
+            repo_root: Path to the git repository root
+            remote: Remote name (e.g., "origin")
+            branch: Branch name to fetch
+        """
+        ...
+
+    @abstractmethod
+    def pull_branch(self, repo_root: Path, remote: str, branch: str, *, ff_only: bool) -> None:
+        """Pull a specific branch from a remote.
+
+        Args:
+            repo_root: Path to the git repository root
+            remote: Remote name (e.g., "origin")
+            branch: Branch name to pull
+            ff_only: If True, use --ff-only to prevent merge commits
+        """
+        ...
+
+    @abstractmethod
+    def branch_exists_on_remote(self, repo_root: Path, remote: str, branch: str) -> bool:
+        """Check if a branch exists on a remote.
+
+        Args:
+            repo_root: Path to the git repository root
+            remote: Remote name (e.g., "origin")
+            branch: Branch name to check
+
+        Returns:
+            True if branch exists on remote, False otherwise
+        """
+        ...
+
+    @abstractmethod
+    def get_branch_issue(self, repo_root: Path, branch: str) -> int | None:
+        """Extract GitHub issue number from branch name.
+
+        Branch names follow the pattern: {issue_number}-{slug}-{timestamp}
+        Examples: "2382-convert-erk-create-raw-ext-12-05-2359"
+
+        Args:
+            repo_root: Path to the git repository root (unused, kept for interface compat)
+            branch: Branch name to parse
+
+        Returns:
+            Issue number if branch starts with digits followed by hyphen, None otherwise
+        """
+        ...
+
+    @abstractmethod
+    def fetch_pr_ref(
+        self, *, repo_root: Path, remote: str, pr_number: int, local_branch: str
+    ) -> None:
+        """Fetch a PR ref into a local branch.
+
+        Uses GitHub's special refs/pull/<number>/head reference to fetch
+        the PR head commit and create a local branch tracking it.
+
+        Command: git fetch <remote> pull/<number>/head:<local_branch>
+
+        Args:
+            repo_root: Path to the git repository root
+            remote: Remote name (e.g., "origin")
+            pr_number: GitHub PR number
+            local_branch: Name for the local branch to create
+
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        ...
+
+    @abstractmethod
+    def stage_files(self, cwd: Path, paths: list[str]) -> None:
+        """Stage specific files for commit.
+
+        Args:
+            cwd: Working directory
+            paths: List of file paths to stage (relative to cwd)
+
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        ...
+
+    @abstractmethod
+    def commit(self, cwd: Path, message: str) -> None:
+        """Create a commit with staged changes.
+
+        Always uses --allow-empty to support creating commits even with no staged changes.
+
+        Args:
+            cwd: Working directory
+            message: Commit message
+
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        ...
+
+    @abstractmethod
+    def push_to_remote(
+        self,
+        cwd: Path,
+        remote: str,
+        branch: str,
+        *,
+        set_upstream: bool = False,
+        force: bool = False,
+    ) -> None:
+        """Push a branch to a remote.
+
+        Args:
+            cwd: Working directory
+            remote: Remote name (e.g., "origin")
+            branch: Branch name to push
+            set_upstream: If True, set upstream tracking (-u flag)
+            force: If True, force push (--force flag)
+
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        ...
+
+    @abstractmethod
+    def get_branch_last_commit_time(self, repo_root: Path, branch: str, trunk: str) -> str | None:
+        """Get the author date of the most recent commit unique to a branch.
+
+        Returns ISO 8601 timestamp of the latest commit on `branch` but not on `trunk`,
+        or None if branch has no unique commits or doesn't exist.
+
+        Args:
+            repo_root: Path to the repository root
+            branch: Branch name to check
+            trunk: Trunk branch name to compare against
+
+        Returns:
+            ISO 8601 timestamp string, or None if no unique commits
+        """
+        ...
+
+    @abstractmethod
+    def add_all(self, cwd: Path) -> None:
+        """Stage all changes for commit (git add -A)."""
+        ...
+
+    @abstractmethod
+    def amend_commit(self, cwd: Path, message: str) -> None:
+        """Amend the current commit with a new message."""
+        ...
+
+    @abstractmethod
+    def count_commits_ahead(self, cwd: Path, base_branch: str) -> int:
+        """Count commits in HEAD that are not in base_branch."""
+        ...
+
+    @abstractmethod
+    def get_repository_root(self, cwd: Path) -> Path:
+        """Get the repository root directory."""
+        ...
+
+    @abstractmethod
+    def get_diff_to_branch(self, cwd: Path, branch: str) -> str:
+        """Get diff between branch and HEAD."""
+        ...
+
+    @abstractmethod
+    def check_merge_conflicts(self, cwd: Path, base_branch: str, head_branch: str) -> bool:
+        """Check if merging would have conflicts using git merge-tree."""
+        ...
+
+    @abstractmethod
+    def get_remote_url(self, repo_root: Path, remote: str = "origin") -> str:
+        """Get the URL for a git remote.
+
+        Args:
+            repo_root: Path to the repository root
+            remote: Remote name (defaults to "origin")
+
+        Returns:
+            Remote URL as a string
+
+        Raises:
+            ValueError: If remote doesn't exist or has no URL
+        """
+        ...
+
+    @abstractmethod
+    def get_conflicted_files(self, cwd: Path) -> list[str]:
+        """Get list of files with merge conflicts from git status --porcelain.
+
+        Returns file paths with conflict status codes (UU, AA, DD, AU, UA, DU, UD).
+
+        Args:
+            cwd: Working directory
+
+        Returns:
+            List of file paths with conflicts
+        """
+        ...
+
+    @abstractmethod
+    def is_rebase_in_progress(self, cwd: Path) -> bool:
+        """Check if rebase in progress (.git/rebase-merge or .git/rebase-apply).
+
+        Handles worktrees by checking git common dir.
+
+        Args:
+            cwd: Working directory
+
+        Returns:
+            True if a rebase is in progress
+        """
+        ...
+
+    @abstractmethod
+    def rebase_continue(self, cwd: Path) -> None:
+        """Continue an in-progress rebase (git rebase --continue).
+
+        Args:
+            cwd: Working directory
+
+        Raises:
+            subprocess.CalledProcessError: If continue fails (e.g., unresolved conflicts)
+        """
+        ...
+
+    @abstractmethod
+    def get_commit_messages_since(self, cwd: Path, base_branch: str) -> list[str]:
+        """Get full commit messages for commits in HEAD but not in base_branch.
+
+        Returns commits in chronological order (oldest first).
+
+        Args:
+            cwd: Working directory
+            base_branch: Branch to compare against (e.g., parent branch)
+
+        Returns:
+            List of full commit messages (subject + body) for each unique commit
+        """
+        ...
+
+    @abstractmethod
+    def config_set(self, cwd: Path, key: str, value: str, *, scope: str = "local") -> None:
+        """Set a git configuration value.
+
+        Args:
+            cwd: Working directory
+            key: Configuration key (e.g., "user.name", "user.email")
+            value: Configuration value
+            scope: Configuration scope ("local", "global", or "system")
+
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        ...
+
+    @abstractmethod
+    def get_head_commit_message_full(self, cwd: Path) -> str:
+        """Get the full commit message (subject + body) of HEAD commit.
+
+        Uses git log -1 --format=%B HEAD to get the complete message.
+        Note: Existing get_commit_message() only returns subject line (%s).
+
+        Args:
+            cwd: Working directory
+
+        Returns:
+            Full commit message including subject and body
+        """
+        ...
+
+    @abstractmethod
+    def get_git_user_name(self, cwd: Path) -> str | None:
+        """Get the configured git user.name.
+
+        Args:
+            cwd: Working directory
+
+        Returns:
+            The configured user.name, or None if not set
+        """
+        ...
+
+    @abstractmethod
+    def get_branch_commits_with_authors(
+        self, repo_root: Path, branch: str, trunk: str, *, limit: int = 50
+    ) -> list[dict[str, str]]:
+        """Get commits on branch not on trunk, with author and timestamp.
+
+        Returns commits unique to the branch (not present on trunk),
+        ordered from newest to oldest.
+
+        Args:
+            repo_root: Path to the repository root
+            branch: Branch name to get commits from
+            trunk: Trunk branch name to compare against
+            limit: Maximum number of commits to retrieve
+
+        Returns:
+            List of commit info dicts with keys:
+            - sha: Commit SHA (full)
+            - author: Author name
+            - timestamp: ISO 8601 timestamp (author date)
+        """
+        ...
+
+    @abstractmethod
+    def tag_exists(self, repo_root: Path, tag_name: str) -> bool:
+        """Check if a git tag exists.
+
+        Args:
+            repo_root: Path to the repository root
+            tag_name: Tag name to check (e.g., 'v1.0.0')
+
+        Returns:
+            True if the tag exists, False otherwise
+        """
+        ...
+
+    @abstractmethod
+    def create_tag(self, repo_root: Path, tag_name: str, message: str) -> None:
+        """Create an annotated git tag.
+
+        Args:
+            repo_root: Path to the repository root
+            tag_name: Tag name to create (e.g., 'v1.0.0')
+            message: Tag message
+
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        ...
+
+    @abstractmethod
+    def push_tag(self, repo_root: Path, remote: str, tag_name: str) -> None:
+        """Push a tag to a remote.
+
+        Args:
+            repo_root: Path to the repository root
+            remote: Remote name (e.g., 'origin')
+            tag_name: Tag name to push
+
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        ...
+
+    @abstractmethod
+    def is_branch_diverged_from_remote(
+        self, cwd: Path, branch: str, remote: str
+    ) -> BranchDivergence:
+        """Check if a local branch has diverged from its remote tracking branch.
+
+        A branch is considered diverged when it has commits both ahead and behind
+        the remote tracking branch.
+
+        Args:
+            cwd: Working directory
+            branch: Local branch name to check
+            remote: Remote name (e.g., "origin")
+
+        Returns:
+            BranchDivergence with is_diverged flag and ahead/behind counts.
+        """
+        ...
+
+    @abstractmethod
+    def rebase_onto(self, cwd: Path, target_ref: str) -> RebaseResult:
+        """Rebase the current branch onto a target ref.
+
+        Runs `git rebase <target_ref>` to replay current branch commits on top
+        of the target ref.
+
+        Args:
+            cwd: Working directory (must be in a git repository)
+            target_ref: The ref to rebase onto (e.g., "origin/main", branch name)
+
+        Returns:
+            RebaseResult with success flag and any conflict files.
+            If conflicts occur, the rebase will be left in progress.
+        """
+        ...
+
+    @abstractmethod
+    def rebase_abort(self, cwd: Path) -> None:
+        """Abort an in-progress rebase operation.
+
+        Runs `git rebase --abort` to cancel a rebase that has conflicts
+        and restore the branch to its original state.
+
+        Args:
+            cwd: Working directory (must have a rebase in progress)
+
+        Raises:
+            subprocess.CalledProcessError: If no rebase is in progress
+        """
+        ...
+
+    @abstractmethod
+    def pull_rebase(self, cwd: Path, remote: str, branch: str) -> None:
+        """Pull and rebase from a remote branch.
+
+        Runs `git pull --rebase <remote> <branch>` to fetch remote changes
+        and rebase local commits on top of them. This is useful for integrating
+        CI commits or other remote changes before pushing.
+
+        Args:
+            cwd: Working directory (must be in a git repository)
+            remote: Remote name (e.g., "origin")
+            branch: Branch name to pull from
+
+        Raises:
+            subprocess.CalledProcessError: If rebase fails (e.g., conflicts)
+        """
+        ...
+
+    @abstractmethod
+    def get_merge_base(self, repo_root: Path, ref1: str, ref2: str) -> str | None:
+        """Get the merge base commit SHA between two refs.
+
+        The merge base is the best common ancestor of two commits, which is
+        useful for determining how branches have diverged.
+
+        Args:
+            repo_root: Path to the git repository root
+            ref1: First ref (branch name, commit SHA, or remote ref like origin/main)
+            ref2: Second ref (branch name, commit SHA, or remote ref like origin/main)
+
+        Returns:
+            Commit SHA of the merge base, or None if refs have no common ancestor
+        """
+        ...

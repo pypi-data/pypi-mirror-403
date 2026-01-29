@@ -1,0 +1,56 @@
+<!-- AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Edit source frontmatter, then run 'erk docs sync' to regenerate. -->
+
+# Architecture Documentation
+
+- **[abc-convenience-methods.md](abc-convenience-methods.md)** — adding non-abstract methods to gateway ABCs, composing primitive gateway operations into higher-level methods, handling exception type differences between real and fake implementations
+- **[at-reference-resolution.md](at-reference-resolution.md)** — Modifying @ reference validation, Debugging broken @ references in symlinked files, Understanding why validation passes but Claude Code fails
+- **[bundled-artifacts.md](bundled-artifacts.md)** — understanding artifact syncing, working with managed artifacts, debugging erk sync
+- **[capability-system.md](capability-system.md)** — creating new erk init capabilities, understanding how erk init works, adding installable features, working with capability tracking in state.toml, understanding how erk doctor filters artifacts by installed capabilities
+- **[claude-cli-error-reporting.md](claude-cli-error-reporting.md)** — handling Claude CLI errors, interpreting PromptResult.error, working with ErrorEvent, NoOutputEvent, NoTurnsEvent, ProcessErrorEvent
+- **[claude-cli-integration.md](claude-cli-integration.md)** — Invoking Claude from Python, Spawning Claude CLI from Python code, Understanding non-interactive vs interactive modes
+- **[claude-cli-progress.md](claude-cli-progress.md)** — adding progress output to Claude operations, wrapping Claude CLI with user feedback, using ProgressEvent or CompletionEvent, converting blocking operations to streaming progress
+- **[claude-executor-patterns.md](claude-executor-patterns.md)** — launching Claude from CLI commands, deciding which ClaudeExecutor method to use, testing code that executes Claude CLI
+- **[cli-binary-ops-pattern.md](cli-binary-ops-pattern.md)** — wrapping external CLI binary, testing subprocess calls, creating fake for external tool
+- **[command-boundaries.md](command-boundaries.md)** — Choosing between agent vs CLI command, Deciding when to use .claude/commands/ vs src/erk/cli/, Understanding when AI capabilities are needed
+- **[commandresult-extension-pattern.md](commandresult-extension-pattern.md)** — adding new field to CommandResult, extending CommandResult dataclass, adding metadata extraction, implementing new CommandResult field
+- **[erk-architecture.md](erk-architecture.md)** — understanding erk architecture, implementing dry-run patterns, regenerating context after os.chdir, detecting root worktree, detecting worktree location, adding composing template methods to ABC
+- **[erk-shared-package.md](erk-shared-package.md)** — deciding where to put new utilities, moving code between packages
+- **[erk-statusline.md](erk-statusline.md)** — modifying the Claude Code status line, adding new status indicators to the statusline, understanding how statusline fetches GitHub data, working with Token/TokenSeq patterns, debugging statusline performance
+- **[event-progress-pattern.md](event-progress-pattern.md)** — implementing operations that need progress reporting, separating business logic from UI output, building testable CLI operations, using ProgressEvent or CompletionEvent
+- **[gateway-abc-implementation.md](gateway-abc-implementation.md)** — adding or modifying methods in any gateway ABC interface (Git, GitHub, Graphite), implementing new gateway operations, composing one gateway inside another (e.g., GitHub composing GitHubIssues)
+- **[gateway-hierarchy.md](gateway-hierarchy.md)** — understanding gateway relationships, deciding which gateway to use for an operation, understanding BranchManager abstraction, understanding GraphiteDisabled sentinel pattern, querying both Graphite and GitHub for completeness, understanding dual-source patterns
+- **[gateway-inventory.md](gateway-inventory.md)** — understanding available gateways, adding a new gateway, creating test doubles for external services
+- **[generated-files.md](generated-files.md)** — understanding how agent docs sync works, debugging generated file issues, adding new generated file types
+- **[git-graphite-quirks.md](git-graphite-quirks.md)** — debugging unexpected git/gt behavior, handling rebase/restack edge cases, writing conflict detection logic, troubleshooting detached HEAD states, handling concurrent worktree operations, understanding worktree lock files
+- **[github-api-rate-limits.md](github-api-rate-limits.md)** — using gh CLI commands programmatically, encountering GraphQL rate limit errors, choosing between REST and GraphQL API, implementing GitHub API calls in gateways
+- **[github-api-retry-mechanism.md](github-api-retry-mechanism.md)** — implementing GitHub API calls with retry logic, handling transient network errors, using execute_gh_command_with_retry(), injecting Time for testable retry delays
+- **[github-cli-quirks.md](github-cli-quirks.md)** — using gh gist create with --filename flag, debugging unexpected gh CLI behavior, working with gh gist commands
+- **[github-gist-api.md](github-gist-api.md)** — constructing gist raw URLs, downloading gist content programmatically, working with single-file gists
+- **[github-graphql.md](github-graphql.md)** — using gh api graphql, writing GraphQL queries for GitHub, passing variables to GraphQL queries, fetching data not available in REST API
+- **[github-interface-patterns.md](github-interface-patterns.md)** — calling GitHub API from erk, working with gh api command, fetching PR or issue data efficiently, understanding PRDetails type
+- **[github-issue-autoclose.md](github-issue-autoclose.md)** — implementing PR-to-issue linking, debugging why issues didn't auto-close after PR merge, understanding closing keyword behavior, working with plan issue closure detection
+- **[github-parsing.md](github-parsing.md)** — parsing GitHub URLs, extracting PR or issue numbers from URLs, understanding github parsing layers
+- **[github-pr-linkage-api.md](github-pr-linkage-api.md)** — querying PRs linked to an issue, understanding how GitHub tracks issue-PR relationships, debugging why a PR doesn't show as linked to an issue, working with CrossReferencedEvent or closingIssuesReferences
+- **[graphite-cache-invalidation.md](graphite-cache-invalidation.md)** — implementing mtime-based cache invalidation, caching Graphite branch metadata, optimizing repeated calls to git or graphite operations
+- **[hook-marker-detection.md](hook-marker-detection.md)** — Adding a new hook managed by erk, Implementing version detection for artifacts, Understanding how hook updates work
+- **[impl-folder-lifecycle.md](impl-folder-lifecycle.md)** — working with .impl/ or .worker-impl/ folders, understanding remote implementation workflow, debugging plan visibility in PRs
+- **[issue-reference-flow.md](issue-reference-flow.md)** — issue references not appearing in PRs, debugging 'Closes #N' in PR body, working with issue.json, closing reference lost after erk pr submit
+- **[learn-origin-tracking.md](learn-origin-tracking.md)** — understanding how learn PRs are identified, modifying erk pr land behavior, working with erk-skip-learn label
+- **[markers.md](markers.md)** — creating worktree state tracking, adding friction before destructive operations, implementing pending learn workflow
+- **[metadata-blocks.md](metadata-blocks.md)** — working with erk metadata in GitHub issues, parsing or extracting data from issue comments, creating new event types for issue tracking
+- **[not-found-sentinel.md](not-found-sentinel.md)** — designing return types for lookup operations, handling missing resource cases without exceptions, checking if get_pr_for_branch() returned a PR, working with GitHub PR lookup results
+- **[parallel-agent-pattern.md](parallel-agent-pattern.md)** — launching multiple agents concurrently, using Task with run_in_background, collecting results with TaskOutput, running agents in parallel
+- **[pathlib-symlinks.md](pathlib-symlinks.md)** — Writing file validation code, Debugging unexpected path resolution behavior, Working with symlinked configuration files
+- **[pipeline-transformation-patterns.md](pipeline-transformation-patterns.md)** — designing data transformation pipelines, deciding when to enrich vs filter data, troubleshooting lost metadata in pipelines
+- **[plan-context-integration.md](plan-context-integration.md)** — using PlanContextProvider for PR generation, extracting plan content from branches, understanding how PR descriptions get plan context
+- **[pr-finalization-paths.md](pr-finalization-paths.md)** — debugging PR body content or issue closing, understanding local vs remote PR submission, working with 'Closes #N' in PRs
+- **[pre-destruction-capture.md](pre-destruction-capture.md)** — implementing operations that destroy or transform data, designing pipelines with data capture requirements, working with git squash, rebase, or other destructive operations
+- **[protocol-vs-abc.md](protocol-vs-abc.md)** — choosing between Protocol and ABC for interface design, designing interfaces with structural vs nominal typing, working with frozen dataclasses and Protocol @property patterns
+- **[sentinel-path-compatibility.md](sentinel-path-compatibility.md)** — writing functions that check path existence, seeing 'Called .exists() on sentinel path' errors, making functions testable with FakeGit
+- **[session-discovery.md](session-discovery.md)** — finding Claude Code sessions for a plan, implementing session lookup from GitHub issues, understanding dual-source discovery patterns, working with gist-based session storage, downloading remote sessions for learn workflow
+- **[subprocess-wrappers.md](subprocess-wrappers.md)** — using subprocess wrappers, executing shell commands, understanding subprocess patterns
+- **[symlink-validation-pattern.md](symlink-validation-pattern.md)** — Validating @ references in markdown files, Validating import paths in configuration, Any path validation where source files may be symlinks
+- **[type-safety-patterns.md](type-safety-patterns.md)** — designing flexible collection types, working with union types in Python, handling mixed-type lists
+- **[workflow-capability-pattern.md](workflow-capability-pattern.md)** — creating GitHub workflow capabilities, adding CI review workflows
+- **[worktree-metadata.md](worktree-metadata.md)** — storing per-worktree data, working with worktrees.toml, associating metadata with worktrees, implementing subdirectory navigation, preserving relative path on worktree switch
