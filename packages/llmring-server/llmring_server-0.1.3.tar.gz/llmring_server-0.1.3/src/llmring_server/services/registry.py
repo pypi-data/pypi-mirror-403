@@ -1,0 +1,209 @@
+"""Business logic for LLM model registry lookups from GitHub Pages. Fetches registry data with Redis caching and supports provider filtering."""
+
+from datetime import datetime
+from typing import Dict, List, Optional
+
+import httpx
+import redis.asyncio as redis
+
+from llmring_server.config import Settings
+from llmring_server.models.registry import LLMModel, ProviderInfo, RegistryResponse
+
+settings = Settings()
+
+
+class RegistryService:
+    """Service for managing model registry."""
+
+    def __init__(self):
+        self.redis = None
+        try:
+            self.redis = redis.from_url(settings.redis_url)
+        except (redis.ConnectionError, redis.RedisError, ValueError) as e:
+            # Redis is optional for caching, continue without it
+            pass
+
+    async def get_registry(self, version: Optional[str] = None) -> RegistryResponse:
+        base = settings.registry_base_url.rstrip("/") + "/"
+        providers = self._get_default_providers()
+        models: Dict[str, LLMModel] = {}
+        manifest_version: Optional[str] = None
+
+        # First, fetch manifest to derive a stable cache key per version
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                m = await client.get(base + "manifest.json")
+                if m.status_code == 200:
+                    manifest = m.json()
+                    # Prefer explicit numeric/string version if present
+                    if manifest.get("version") is not None:
+                        manifest_version = str(manifest.get("version"))
+                    elif manifest.get("schema_version") is not None:
+                        manifest_version = str(manifest.get("schema_version"))
+                    elif manifest.get("updated_at"):
+                        # Fall back to date-only portion of ISO timestamp if provided
+                        updated = str(manifest.get("updated_at"))
+                        manifest_version = updated.split("T")[0]
+            except (httpx.RequestError, httpx.HTTPStatusError, ValueError):
+                pass
+
+        # Use manifest version (if any) to key the cache; else honor optional version param
+        cache_key = f"registry:{manifest_version or (version or 'latest')}"
+        if self.redis:
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached:
+                    return RegistryResponse.model_validate_json(cached)
+            except (redis.RedisError, ValueError, TypeError):
+                pass
+
+        # Fetch provider model lists
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for provider_key in providers.keys():
+                url = f"{base}{provider_key}/models.json"
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        continue
+                    data = resp.json()
+                    raw_models = data.get("models") if isinstance(data, dict) else None
+                    if not isinstance(raw_models, dict):
+                        continue
+                    for model_key, info in raw_models.items():
+                        if not isinstance(info, dict):
+                            continue
+                        models[model_key] = self._create_llm_model(model_key, info, provider_key)
+                except (
+                    httpx.RequestError,
+                    httpx.HTTPStatusError,
+                    ValueError,
+                    KeyError,
+                ):
+                    continue
+
+        registry = RegistryResponse(
+            version=manifest_version
+            or (str(version) if version else datetime.now().strftime("%Y.%m.%d")),
+            generated_at=datetime.now(),
+            models=models,
+            providers=providers,
+        )
+
+        if self.redis:
+            try:
+                await self.redis.setex(cache_key, settings.cache_ttl, registry.model_dump_json())
+            except (redis.RedisError, ValueError):
+                pass
+
+        return registry
+
+    async def get_registry_version(self, version: str) -> RegistryResponse:
+        # Fetch archived provider-specific versions and merge.
+        base = settings.registry_base_url.rstrip("/") + "/"
+        providers = self._get_default_providers()
+        models: Dict[str, LLMModel] = {}
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for provider_key in providers.keys():
+                url = f"{base}{provider_key}/v/{version}/models.json"
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        continue
+                    data = resp.json()
+                    raw_models = data.get("models") if isinstance(data, dict) else None
+                    if not isinstance(raw_models, dict):
+                        continue
+                    for model_key, info in raw_models.items():
+                        if not isinstance(info, dict):
+                            continue
+                        models[model_key] = self._create_llm_model(model_key, info, provider_key)
+                except (
+                    httpx.RequestError,
+                    httpx.HTTPStatusError,
+                    ValueError,
+                    KeyError,
+                ):
+                    # Skip this provider if fetch fails or data is invalid
+                    continue
+
+        registry = RegistryResponse(
+            version=str(version),
+            generated_at=datetime.now(),
+            models=models,
+            providers=providers,
+        )
+        return registry
+
+    def filter_by_providers(
+        self, registry: RegistryResponse, providers: List[str]
+    ) -> RegistryResponse:
+        filtered_models = {k: v for k, v in registry.models.items() if v.provider in providers}
+        registry.models = filtered_models
+        return registry
+
+    def filter_by_capabilities(
+        self, registry: RegistryResponse, capabilities: List[str]
+    ) -> RegistryResponse:
+        filtered_models = {}
+        for model_name, model in registry.models.items():
+            has_all = True
+            for cap in capabilities:
+                cap_field = (
+                    f"supports_{cap}"
+                    if cap
+                    in [
+                        "vision",
+                        "function_calling",
+                        "json_mode",
+                        "parallel_tool_calls",
+                    ]
+                    else cap
+                )
+                if not getattr(model, cap_field, False):
+                    has_all = False
+                    break
+            if has_all:
+                filtered_models[model_name] = model
+        registry.models = filtered_models
+        return registry
+
+    # Removed deprecated DB formatting helper
+
+    def _create_llm_model(self, model_key: str, info: dict, provider_key: str) -> LLMModel:
+        """Create an LLMModel from raw model info."""
+        return LLMModel(
+            provider=info.get("provider") or provider_key,
+            model_name=info.get("model_name") or model_key.split(":", 1)[-1],
+            display_name=info.get("display_name"),
+            description=info.get("description"),
+            max_input_tokens=info.get("max_input_tokens"),
+            max_output_tokens=info.get("max_output_tokens"),
+            supports_vision=bool(info.get("supports_vision", False)),
+            supports_function_calling=bool(info.get("supports_function_calling", False)),
+            supports_json_mode=bool(info.get("supports_json_mode", False)),
+            supports_parallel_tool_calls=bool(info.get("supports_parallel_tool_calls", False)),
+            tool_call_format=info.get("tool_call_format"),
+            dollars_per_million_tokens_input=info.get("dollars_per_million_tokens_input"),
+            dollars_per_million_tokens_output=info.get("dollars_per_million_tokens_output"),
+            is_active=bool(info.get("is_active", True)),
+        )
+
+    def _get_default_providers(self) -> Dict[str, ProviderInfo]:
+        return {
+            "openai": ProviderInfo(
+                name="OpenAI",
+                base_url="https://api.openai.com/v1",
+                models_endpoint="/models",
+            ),
+            "anthropic": ProviderInfo(
+                name="Anthropic",
+                base_url="https://api.anthropic.com",
+                models_endpoint=None,
+            ),
+            "google": ProviderInfo(
+                name="Google",
+                base_url="https://generativelanguage.googleapis.com",
+                models_endpoint="/v1/models",
+            ),
+        }
