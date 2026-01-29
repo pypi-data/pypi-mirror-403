@@ -1,0 +1,42 @@
+principles:
+  - Use create_agent() with model, tools, and middleware for agent creation - it runs on LangGraph runtime for durability
+  - Define tools with @tool decorator and comprehensive docstrings describing purpose, when to use, parameters, return format, and examples
+  - Use TypedDict extending AgentState for custom state schemas - Pydantic models and dataclasses are not supported in 1.0+
+  - Use middleware (wrap_model_call, wrap_tool_call, before_model, after_model) for cross-cutting concerns instead of ad-hoc hooks
+  - Use ProviderStrategy for structured output when the model provider supports native structured output - fall back to ToolStrategy otherwise
+  - Use Pydantic BaseModel with Field() constraints for tool input schemas (args_schema) to ensure agents provide correct arguments
+  - Use streaming (stream_mode values/updates/messages) for multi-step agent tasks to provide real-time progress feedback
+
+forbidden:
+  - Using deprecated initialize_agent() or AgentExecutor - use create_agent() instead
+  - Using deprecated LLMChain, SequentialChain, or other legacy chain patterns - use create_agent() with middleware
+  - Using langgraph.prebuilt module (deprecated in 1.0) - use langchain.agents instead
+  - Using bind_tools() on models when also using response_format structured output (incompatible)
+  - Using Pydantic models or dataclasses for AgentState schemas (TypedDict only in 1.0+)
+  - Defining tools without docstrings - agents use docstrings to decide when to invoke tools
+  - Registering dynamic tools at runtime without implementing wrap_tool_call middleware
+
+principles_rag:
+  - Use EnsembleRetriever combining vector retriever with BM25Retriever for hybrid search with configurable weights
+  - Apply CrossEncoderReranker or CohereRerank as post-retrieval reranking step before passing context to LLM
+  - Use MultiVectorRetriever for parent-child document retrieval (store summaries, retrieve full parent documents)
+  - Always include metadata (source, page_number, chunk_index, model_version) during document ingestion
+  - Use SemanticChunker or RecursiveCharacterTextSplitter with structure-aware separators for heterogeneous document types
+  - Use multimodal document loaders (UnstructuredLoader, PyMuPDFLoader) for documents with tables and images
+
+forbidden_rag:
+  - Using CharacterTextSplitter with chunk_overlap=0 on structured documents (loses context at chunk boundaries)
+  - Calling similarity_search with k>20 without applying reranking (returns too many irrelevant results)
+  - Using deprecated langchain.document_loaders import path (use langchain_community.document_loaders)
+  - Ignoring document structure during chunking (splitting tables, code blocks, or lists mid-element)
+
+patterns:
+  agent_creation: "create_agent(model, tools=[...], middleware=[...], response_format=ProviderStrategy(Schema))"
+  tool_design: "@tool with verb-noun name, comprehensive docstring, and Pydantic args_schema for complex inputs"
+  middleware: "AgentMiddleware class with before_model, after_model, wrap_model_call, wrap_tool_call lifecycle hooks"
+  structured_output: "ProviderStrategy(Schema) for native provider output; ToolStrategy(Schema) as fallback for any model"
+  hybrid_retrieval: "EnsembleRetriever(retrievers=[vector_retriever, bm25_retriever], weights=[0.6, 0.4])"
+  semantic_chunking: "SemanticChunker(embeddings, breakpoint_threshold_type='percentile') for content-aware splitting"
+  parent_child: "MultiVectorRetriever(vectorstore=store, docstore=doc_store, id_key='doc_id') with summary embeddings"
+  multimodal_ingestion: "UnstructuredLoader(file_path, mode='elements', strategy='hi_res') for tables and images"
+  evaluation_pipeline: "RagasEvaluator(metrics=[faithfulness, context_precision, context_recall, answer_relevancy])"
