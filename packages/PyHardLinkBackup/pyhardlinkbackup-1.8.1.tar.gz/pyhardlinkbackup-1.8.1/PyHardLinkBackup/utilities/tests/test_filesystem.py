@@ -1,0 +1,167 @@
+import hashlib
+import logging
+import os
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
+from cli_base.cli_tools.test_utils.base_testcases import BaseTestCase
+
+from PyHardLinkBackup.constants import HASH_ALGO
+from PyHardLinkBackup.utilities.filesystem import (
+    copy_and_hash,
+    hash_file,
+    iter_scandir_files,
+    read_and_hash_file,
+    supports_hardlinks,
+)
+from PyHardLinkBackup.utilities.rich_utils import NoopProgress
+from PyHardLinkBackup.utilities.tests.unittest_utilities import TemporaryDirectoryPath
+
+
+class TestHashFile(BaseTestCase):
+    maxDiff = None
+
+    def test_hash_file(self):
+        self.assertEqual(
+            hashlib.new(HASH_ALGO, b'test content').hexdigest(),
+            '6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72',
+        )
+        with tempfile.NamedTemporaryFile() as temp:
+            temp_file_path = Path(temp.name)
+            temp_file_path.write_bytes(b'test content')
+
+            with self.assertLogs(level='INFO') as logs:
+                file_hash = hash_file(temp_file_path, progress=NoopProgress(), total_size=123)
+        self.assertEqual(file_hash, '6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72')
+        self.assertIn(' sha256 hash: 6ae8a7', ''.join(logs.output))
+
+    def test_copy_and_hash(self):
+        with TemporaryDirectoryPath() as temp_path:
+            src_path = temp_path / 'source.txt'
+            dst_path = temp_path / 'dest.txt'
+
+            src_path.write_bytes(b'test content')
+
+            with self.assertLogs(level='INFO') as logs:
+                file_hash = copy_and_hash(src=src_path, dst=dst_path, progress=NoopProgress(), total_size=123)
+
+            self.assertEqual(dst_path.read_bytes(), b'test content')
+        self.assertEqual(file_hash, '6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72')
+        self.assertIn(' backup to ', ''.join(logs.output))
+
+    def test_read_and_hash_file(self):
+        with tempfile.NamedTemporaryFile() as temp:
+            temp_file_path = Path(temp.name)
+            temp_file_path.write_bytes(b'test content')
+
+            with self.assertLogs(level='INFO') as logs:
+                content, file_hash = read_and_hash_file(temp_file_path)
+        self.assertEqual(content, b'test content')
+        self.assertEqual(file_hash, '6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72')
+        self.assertIn(' sha256 hash: 6ae8a7', ''.join(logs.output))
+
+    def test_iter_scandir_files(self):
+        with TemporaryDirectoryPath() as temp_path:
+            (temp_path / 'file1.txt').write_bytes(b'content1')
+            (temp_path / 'file2.txt').write_bytes(b'content2')
+            subdir = temp_path / 'subdir'
+            subdir.mkdir()
+            (subdir / 'file3.txt').write_bytes(b'content3')
+
+            symlink_dir = temp_path / 'symlink_dir2subdir'
+            symlink_dir.symlink_to(subdir, target_is_directory=True)
+
+            # Add a symlink to file1.txt
+            (temp_path / 'symlink_to_file1.txt').symlink_to(temp_path / 'file1.txt')
+
+            # Add a hardlink to file2.txt
+            os.link(temp_path / 'file2.txt', temp_path / 'hardlink_to_file2.txt')
+
+            exclude_subdir = temp_path / '__pycache__'
+            exclude_subdir.mkdir()
+            (exclude_subdir / 'BAM.txt').write_bytes(b'foobar')
+
+            broken_symlink_path = temp_path / 'broken_symlink'
+            broken_symlink_path.symlink_to(temp_path / 'not/existing/file.txt')
+
+            with self.assertLogs(level='DEBUG') as logs:
+                files = list(
+                    iter_scandir_files(
+                        path=temp_path,
+                        one_file_system=False,
+                        src_device_id=None,
+                        excludes={'__pycache__'},
+                    )
+                )
+
+        file_names = sorted([Path(f.path).relative_to(temp_path).as_posix() for f in files])
+
+        self.assertEqual(
+            file_names,
+            [
+                'broken_symlink',
+                'file1.txt',
+                'file2.txt',
+                'hardlink_to_file2.txt',
+                'subdir/file3.txt',
+                'symlink_dir2subdir',
+                'symlink_to_file1.txt',
+            ],
+        )
+        logs = ''.join(logs.output)
+        self.assertIn('Scanning directory ', logs)
+        self.assertIn('Excluding directory ', logs)
+
+    def test_one_file_system(self):
+        def scan(temp_path, *, one_file_system, src_device_id):
+            with self.assertLogs(level='DEBUG') as logs:
+                files = list(
+                    iter_scandir_files(
+                        path=temp_path,
+                        one_file_system=one_file_system,
+                        src_device_id=src_device_id,
+                        excludes=set(),
+                    )
+                )
+            file_names = sorted([Path(f.path).relative_to(temp_path).as_posix() for f in files])
+            return file_names, '\n'.join(logs.output)
+
+        with TemporaryDirectoryPath() as temp_path:
+            (temp_path / 'file1.txt').touch()
+            subdir = temp_path / 'subdir'
+            subdir.mkdir()
+            (subdir / 'file2.txt').touch()
+
+            file_names, logs = scan(temp_path, one_file_system=False, src_device_id=None)
+            self.assertEqual(file_names, ['file1.txt', 'subdir/file2.txt'])
+            self.assertIn('Scanning directory ', logs)
+            self.assertNotIn('Skipping', logs)
+
+            file_names, logs = scan(temp_path, one_file_system=True, src_device_id='FooBar')
+            self.assertEqual(file_names, ['file1.txt'])
+            self.assertIn('Scanning directory ', logs)
+            self.assertIn('Skipping directory ', logs)
+            self.assertIn('different device ID', logs)
+            self.assertIn('(src device ID: FooBar)', logs)
+
+    def test_supports_hardlinks(self):
+        with TemporaryDirectoryPath() as temp_path:
+            with self.assertLogs(level=logging.INFO) as logs:
+                self.assertTrue(supports_hardlinks(temp_path))
+            self.assertEqual(
+                ''.join(logs.output),
+                f'INFO:PyHardLinkBackup.utilities.filesystem:Hardlink support in {temp_path}: True',
+            )
+
+            with (
+                self.assertLogs(level=logging.ERROR) as logs,
+                patch('PyHardLinkBackup.utilities.filesystem.os.link', side_effect=OSError),
+            ):
+                self.assertFalse(supports_hardlinks(temp_path))
+            logs = ''.join(logs.output)
+            self.assertIn(f'Hardlink test failed in {temp_path}:', logs)
+            self.assertIn('OSError', logs)
+
+        with self.assertLogs(level=logging.DEBUG), self.assertRaises(NotADirectoryError):
+            supports_hardlinks(Path('/not/existing/directory'))

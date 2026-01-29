@@ -1,0 +1,86 @@
+# PyHardLinkBackup
+
+HardLink/Deduplication Backups with Python
+
+# PyHardLinkBackup - Backup Naming
+
+The backup name is optional.
+If not provided, the name of the source directory is used.
+
+# PyHardLinkBackup - Notes
+
+A log file is stored in the backup directory. e.g.:
+* `backups/source/2026-01-01-123456-backup.log`
+
+A finished backup also creates a summary file. e.g.:
+* `backups/source/2026-01-01-123456-summary.txt`
+
+## FileHashDatabase
+
+A simple "database" to store file content hash <-> relative path mappings.
+Uses a directory structure to avoid too many files in a single directory.
+Path structure:
+        {base_dst}/.phlb/hash-lookup/{XX}/{YY}/{hash}
+e.g.:
+    hash '12ab000a1b2c3...' results in: {base_dst}/.phlb/hash-lookup/12/ab/12ab000a1b2c3...
+
+Notes:
+  * Hash length will be not validated, so it can be used with any hash algorithm.
+  * The "relative path" that will be stored is not validated, so it can be any string.
+  * We don't "cache" anything in Memory, to avoid high memory consumption for large datasets.
+
+## FileHashDatabase - Missing hardlink target file
+
+If a hardlink source from a old backup is missing, we cannot create a hardlink to it.
+But it still works to hardlink same files within the current backup.
+
+We check if the hardlink source file still exists. If not, we remove the hash entry from the database.
+A warning is logged in this case.
+
+## FileSizeDatabase
+
+A simple "database" to track which file sizes have been seen.
+
+Uses a directory structure to avoid too many files in a single directory.
+We don't "cache" anything in Memory, to avoid high memory consumption for large datasets.
+
+Path structure:
+ * `{base_dst}/.phlb/size-lookup/{XX}/{YY}/{size}`
+
+e.g.:
+
+ * `1234567890` results in: `{base_dst}/.phlb/size-lookup/12/34/1234567890`
+
+All files are created empty, as we only care about their existence.
+
+## FileSizeDatabase - minimum file size
+
+The minimum file size that can be stored in the FileSizeDatabase is 1000 bytes.
+This is because no padding is made for sizes below 1000 bytes, which would
+break the directory structure.
+
+The idea is, that it's more efficient to backup small files directly, instead of
+checking for duplicates via hardlinks. Therefore, small files below this size
+are not tracked in the FileSizeDatabase.
+
+## SHA256SUMS
+
+A `SHA256SUMS` file is stored in each backup directory containing the SHA256 hashes of all files in that directory.
+It's the same format as e.g.: `sha256sum * > SHA256SUMS` command produces.
+So it's possible to verify the integrity of the backup files later.
+e.g.:
+```bash
+cd .../your/backup/foobar/20240101_120000/
+sha256sum -c SHA256SUMS
+```
+
+## backup implementation - Symlinks
+
+Symlinks are copied as symlinks in the backup.
+
+Symlinks are not stored in our FileHashDatabase, because they are not considered for hardlinking.
+
+A directory symlink will copy into the backup and points to the original subdir.
+
+If the directory symlink is broken, we still create the symlink in the backup,
+pointing to the original target. But in this case it's a file symlink.
