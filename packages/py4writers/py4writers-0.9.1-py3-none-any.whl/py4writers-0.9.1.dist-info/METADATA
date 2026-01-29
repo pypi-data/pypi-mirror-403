@@ -1,0 +1,516 @@
+Metadata-Version: 2.3
+Name: py4writers
+Version: 0.9.1
+Summary: Python library for 4writers.net automation
+Author: socalmy
+Author-email: sergeitoropov2003@gmail.com
+Requires-Python: >=3.12,<4.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Dist: aiohttp (>=3.11.10,<4.0.0)
+Requires-Dist: bs4 (>=0.0.2,<0.0.3)
+Requires-Dist: build (>=1.2.2.post1,<2.0.0)
+Requires-Dist: certifi (>=2024.8.30,<2025.0.0)
+Requires-Dist: envparse (>=0.2.0,<0.3.0)
+Requires-Dist: lxml (>=5.3.0,<6.0.0)
+Requires-Dist: setuptools (>=75.7.0,<76.0.0)
+Description-Content-Type: text/markdown
+
+# py4writers
+
+[![PyPI version](https://badge.fury.io/py/py4writers.svg)](https://badge.fury.io/py/py4writers)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+
+Python библиотека для автоматизации работы с [4writers.net](https://4writers.net) - асинхронный API для получения заказов, управления файлами и взаимодействия с платформой.
+
+## ✨ Основные возможности
+
+- 🔐 **Авторизация** - автоматическая авторизация и управление сессией
+- 📋 **Получение заказов** - доступные заказы (free orders) и выполненные (completed orders)
+- 📄 **Работа с файлами** - получение списка файлов и скачивание
+- 🔄 **Retry механизм** - автоматические повторные попытки при ошибках сети
+- ⚡ **Rate limiting** - контроль параллельных запросов (до 10 одновременно)
+- 🎯 **Context manager** - автоматическое управление ресурсами через `async with`
+- 🛡️ **Type hints** - полная типизация для IDE autocomplete
+- 📊 **Детальное логирование** - отслеживание всех операций
+
+## 📦 Установка
+
+```bash
+pip install py4writers
+```
+
+Или через poetry:
+
+```bash
+poetry add py4writers
+```
+
+## 🚀 Быстрый старт
+
+### Базовый пример
+
+```python
+import asyncio
+from py4writers import API
+
+async def main():
+    # Используем context manager для автоматического закрытия ресурсов
+    async with API(login="your_login", password="your_password") as api:
+        # Авторизация
+        await api.login()
+
+        # Получаем доступные заказы
+        orders = await api.get_orders(page=1, page_size=50)
+
+        for order in orders:
+            print(f"📦 {order.order_id}: {order.title}")
+            print(f"💰 ${order.total:.2f} | ⏰ {order.deadline}")
+            if order.description:
+                print(f"📝 {order.description[:100]}...")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Использование с .env файлом
+
+```python
+import asyncio
+from py4writers import API
+from envparse import env
+
+# Загружаем переменные окружения
+env.read_envfile(".env")
+LOGIN = env.str("LOGIN")
+PASSWORD = env.str("PASSWORD")
+
+async def main():
+    async with API(login=LOGIN, password=PASSWORD) as api:
+        await api.login()
+        orders = await api.get_orders()
+        print(f"Найдено заказов: {len(orders)}")
+
+asyncio.run(main())
+```
+
+## 📚 Примеры использования
+
+### 1. Получение доступных заказов
+
+#### Вариант A: Получить все заказы сразу (в память)
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Получить заказы с пагинацией
+    orders = await api.get_orders(
+        page=1,
+        page_size=50,
+        category="essay"
+    )
+
+    for order in orders:
+        print(f"Order #{order.order_id}")
+        print(f"  Название: {order.title}")
+        print(f"  Всего: ${order.total:.2f}")
+```
+
+#### Вариант B: Streaming через async generator (рекомендуется)
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Получаем заказы по одному (не загружает все в память)
+    async for order in api.iter_orders(page=1, page_size=50, max_pages=3):
+        print(f"📦 Order #{order.order_id}")
+        print(f"  Название: {order.title}")
+        print(f"  Тема: {order.subject}")
+        print(f"  Тип: {order.order_type}")
+        print(f"  Уровень: {order.academic_level}")
+        print(f"  Страниц: {order.pages}")
+        print(f"  Источников: {order.sources}")
+        print(f"  Стиль: {order.style}")
+        print(f"  Язык: {order.language}")
+        print(f"  Дедлайн: {order.deadline}")
+        print(f"  Осталось времени: {order.remaining}")
+        print(f"  Зарплата: ${order.salary:.2f}")
+        print(f"  Бонус: ${order.bonus:.2f}")
+        print(f"  Всего: ${order.total:.2f}")
+        print(f"  Описание: {order.description}")
+
+        # Можно прервать в любой момент
+        if order.total > 50.0:
+            print("Нашли дорогой заказ, останавливаемся!")
+            break
+```
+
+### 2. Получение выполненных заказов
+
+#### Вариант A: Получить все заказы сразу
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Получаем выполненные заказы
+    completed = await api.get_completed_orders(page=1)
+
+    for order in completed:
+        print(f"✅ Order #{order.order_id}")
+        print(f"  Название: {order.title}")
+        print(f"  Ваша выплата: ${order.your_payment:.2f}")
+        print(f"  Работа редактора: ${order.editor_work:.2f}")
+        print(f"  Страниц: {order.pages}")
+        print(f"  Описание: {order.description}")
+        print(f"  Файлов: {len(order.files) if order.files else 0}")
+```
+
+#### Вариант B: Streaming (рекомендуется)
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Получаем заказы по одному
+    async for order in api.iter_completed_orders():
+        print(f"✅ Order #{order.order_id}: {order.title}")
+        print(f"  💰 Ваша выплата: ${order.your_payment:.2f}")
+        print(f"  📝 Описание: {order.description[:100]}...")
+
+        # Обрабатываем файлы сразу
+        if order.files:
+            for file in order.files:
+                print(f"    📁 {file.name}")
+```
+
+### 3. Работа с файлами
+
+#### Вариант A: Получить все файлы сразу
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Получаем список файлов заказа
+    files = await api.get_order_files(order_index=2569038)
+
+    for file in files:
+        print(f"📁 {file.name}")
+        print(f"  ID: {file.id}")
+        print(f"  Автор: {file.author}")
+        print(f"  Дата: {file.date}")
+
+        # Скачиваем файл
+        file_bytes = await api.download_file(file.id)
+
+        if file_bytes:
+            # Сохраняем на диск
+            with open(f"downloaded_{file.name}", "wb") as f:
+                f.write(file_bytes)
+            print(f"  ✅ Скачан: {len(file_bytes):,} байт")
+```
+
+#### Вариант B: Streaming файлов (рекомендуется)
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Скачиваем файлы по одному (экономит память)
+    async for file in api.iter_order_files(order_index=2569038):
+        print(f"📁 Скачиваем: {file.name}")
+
+        # Скачиваем и сразу сохраняем
+        file_bytes = await api.download_file(file.id)
+        if file_bytes:
+            with open(f"downloads/{file.name}", "wb") as f:
+                f.write(file_bytes)
+            print(f"  ✅ Сохранен: {len(file_bytes):,} байт")
+```
+
+### 4. Получение деталей заказа
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Для обычного заказа
+    description = await api.fetch_order_details(
+        order_index=2569038,
+        is_completed=False
+    )
+
+    # Для выполненного заказа
+    description = await api.fetch_order_details(
+        order_index=2569038,
+        is_completed=True
+    )
+
+    print(f"Описание: {description}")
+```
+
+### 5. Взятие заказа в работу
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Берем заказ по индексу
+    success = await api.take_order(order_index=2569038)
+
+    if success:
+        print("✅ Заказ успешно взят!")
+    else:
+        print("❌ Не удалось взять заказ")
+```
+
+## 📊 Модели данных
+
+### Order
+
+```python
+@dataclass
+class Order:
+    order_id: str           # ID заказа
+    order_index: int        # Индекс заказа (для запросов)
+    title: str              # Название
+    subject: str            # Тема
+    deadline: str           # Дедлайн
+    remaining: str          # Оставшееся время
+    order_type: str         # Тип работы (Essay, Research Paper, etc.)
+    academic_level: str     # Академический уровень
+    style: str              # Стиль оформления (APA, MLA, etc.)
+    language: str           # Язык
+    pages: Optional[int]    # Количество страниц
+    sources: Optional[int]  # Количество источников
+    salary: Optional[float] # Зарплата
+    bonus: Optional[float]  # Бонус
+    total: Optional[float]  # Итого
+    description: Optional[str]      # Описание заказа
+    files: Optional[List[File]]     # Файлы заказа
+    editor_work: Optional[float]    # Работа редактора (completed)
+    your_payment: Optional[float]   # Ваша выплата (completed)
+```
+
+### File
+
+```python
+@dataclass
+class File:
+    id: int         # ID файла
+    name: str       # Название файла
+    author: str     # Автор загрузки
+    date: str       # Дата загрузки
+```
+
+## ⚙️ Конфигурация
+
+### Создание API клиента
+
+```python
+from py4writers import API
+
+# С credentials
+api = API(login="user", password="pass")
+
+# С кастомным HTTP клиентом
+from py4writers.client.aiohttp import AiohttpClient
+
+http_client = AiohttpClient(timeout=60)
+api = API(
+    login="user",
+    password="pass",
+    http_client=http_client
+)
+
+# Context manager (рекомендуется)
+async with API(login="user", password="pass") as api:
+    await api.login()
+    # ваш код
+```
+
+### Настройка логирования
+
+```python
+import logging
+
+# Базовая настройка
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Детальное логирование
+logging.basicConfig(level=logging.DEBUG)
+```
+
+## 🛡️ Обработка ошибок
+
+```python
+from py4writers import API
+from py4writers.exceptions import (
+    AuthenticationError,
+    SessionExpiredError,
+    NetworkError,
+    ParsingError
+)
+
+async with API(login=LOGIN, password=PASSWORD) as api:
+    try:
+        await api.login()
+        orders = await api.get_orders()
+
+    except AuthenticationError as e:
+        print(f"❌ Ошибка авторизации: {e}")
+
+    except SessionExpiredError as e:
+        print(f"⏰ Сессия истекла: {e}")
+        # API автоматически попытается переавторизоваться
+
+    except NetworkError as e:
+        print(f"🌐 Сетевая ошибка: {e}")
+        # Retry декоратор автоматически повторит запрос
+
+    except ParsingError as e:
+        print(f"📄 Ошибка парсинга: {e}")
+```
+
+## 🔧 Продвинутые возможности
+
+### Async Generators (Streaming)
+
+**Преимущества использования `iter_*` методов:**
+
+1. 🚀 **Меньше памяти** - заказы не загружаются все сразу
+2. ⚡ **Быстрее начало** - первый заказ доступен моментально
+3. 🔄 **Прерывание** - можно остановить в любой момент через `break`
+4. 📊 **Пагинация** - автоматически обходит все страницы
+
+```python
+async with API(login=LOGIN, password=PASSWORD) as api:
+    await api.login()
+
+    # Обрабатываем первые 100 заказов из всех страниц
+    count = 0
+    async for order in api.iter_orders(max_pages=None):  # None = все страницы
+        print(f"{order.order_id}: ${order.total}")
+
+        count += 1
+        if count >= 100:
+            break  # Останавливаемся после 100 заказов
+
+    # Скачиваем все файлы выполненного заказа
+    async for order in api.iter_completed_orders():
+        print(f"\n📦 {order.title}")
+
+        async for file in api.iter_order_files(order.order_index):
+            print(f"  📁 {file.name}")
+            file_bytes = await api.download_file(file.id)
+            # Сразу обрабатываем без хранения в памяти
+            process_file(file.name, file_bytes)
+```
+
+### Rate Limiting
+
+API автоматически ограничивает количество параллельных запросов (по умолчанию 10):
+
+```python
+from py4writers.utils.rate_limiter import RateLimiter
+
+# Кастомный лимит
+rate_limiter = RateLimiter(max_concurrent=5)
+api = API(
+    login=LOGIN,
+    password=PASSWORD,
+    rate_limiter=rate_limiter
+)
+```
+
+### Retry механизм
+
+Используйте декоратор для автоматических повторных попыток:
+
+```python
+from py4writers.utils.retry import async_retry
+from py4writers.exceptions import NetworkError
+
+@async_retry(
+    max_attempts=3,
+    delay=1.0,
+    backoff=2.0,
+    exceptions=(NetworkError,)
+)
+async def my_function():
+    # ваш код
+    pass
+```
+
+## 📝 Требования
+
+- Python 3.12+
+- aiohttp
+- beautifulsoup4
+- lxml
+- certifi
+
+## 🔄 Changelog
+
+### [0.8.0] - 2026-01-17
+
+#### ✨ Added
+- **Async Generators**: Новые методы для streaming
+  - `iter_orders()` - получение заказов по одному с автоматической пагинацией
+  - `iter_completed_orders()` - получение выполненных заказов по одному
+  - `iter_order_files()` - получение файлов по одному
+- **Преимущества**: меньше памяти, быстрее начало, можно прервать через `break`
+
+### [0.7.0] - 2026-01-17
+
+#### 🔄 Breaking Changes
+- Переименован модуль `fourwritersapi` → `py4writers`
+
+### [0.6.1] - 2026-01-17
+
+#### 🔧 Fixed
+- Исправлен парсинг описаний для completed orders
+- Добавлен отдельный endpoint для completed order details
+
+### [0.6.0] - 2026-01-17
+
+#### ✨ Added
+- Context Manager Support
+- Custom Exceptions
+- Retry Logic
+- Rate Limiting
+- OrderParser Class
+- Pagination Support
+- Better Logging
+
+#### 🔧 Fixed
+- Resource Leak в AiohttpClient
+- Session Expiration handling
+- BeautifulSoup warnings
+- Code duplication (200+ строк)
+
+## 📄 Лицензия
+
+MIT License
+
+## 🤝 Контрибьюция
+
+Pull requests приветствуются! Для больших изменений сначала откройте issue для обсуждения.
+
+## 📧 Контакты
+
+- Author: socalmy
+- Email: sergeitoropov2003@gmail.com
+- PyPI: https://pypi.org/project/py4writers/
+
+## ⭐ Поддержка
+
+Если библиотека была полезна, поставьте звезду на GitHub!
+
