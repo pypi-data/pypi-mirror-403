@@ -1,0 +1,27 @@
+
+the rationale for this library is creating variants of a base schema Pydantic models for various aspects of the data flow.
+to avoid code replication by craeting hardcoded multiple variants of the same model.
+
+in the context of developing an api,
+often the main model in the schema will contain some inner data, such as revision, id, timestamps or secret stuff.
+some of the fields might be changed only with some internal logic and one doesn't want to include them in the input validation. or for an update object one might want to turn most fields as optional.
+for an output variant one would like to expose only some fields.
+
+for this purpose this library offers a class decorator which uses model variant factory pipeline. the pipeline can contain transformers which manipulate the variant model and it's fields and also it's relation to the root model in some way.
+
+the architecture is easy to enhance with one's own transformers.
+
+a pipeline with transformers architecture was chosen to reduce code duplication. as common parts of pipelines can be reused in other pipelines.
+
+the order of transformers in the pipeline is important. ContextVariant opens up the supplied model, then any transformers which work with a DecomposedModel should be placed, then Build, and then transformers which work with built model.
+use `basic_model_pipeline` to avoid this boilerplate if desired.
+
+by attaching variants to the root_model under _variants dict attribute the library can allow creating nested deep variant model with the SwitchVariant transformer.
+i.e. by creating variant `Input` on `Address` model.
+and having a `Customer` model with an `Address` type field. the `Input` variant of customer can refer to the right `Input` variant of the `Address` 
+
+on rebuilding: if the schema has forward links. then the variants decorator should be used after the schema is completly defined and the models required rebuilt (using .rebuild_model() of pydantic).
+
+I've made this library during a project with FastApi, and beanie. FastApi generates automatic OpenApi schema from the route definitions. 
+wanting a single source of truth for the schema, without needing to duplicate fields acrross model variants which are mostly overlapping.
+
