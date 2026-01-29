@@ -1,0 +1,786 @@
+"""Interactive picker functions for selection workflows.
+
+This module provides high-level picker functions that compose ListScreen
+with domain formatters to create complete selection experiences. Each picker
+handles:
+- Loading data from domain sources
+- Converting to display items via formatters
+- Running the interactive selection loop
+- Returning the selected domain object(s)
+
+Supports both single-selection and multi-selection modes:
+- Single: pick_team(), pick_container(), pick_session(), pick_worktree(), pick_context()
+- Multi: pick_containers()
+
+Example:
+    >>> from scc_cli.ui.picker import pick_team, pick_containers
+    >>>
+    >>> # Single-select: Show team picker
+    >>> team = pick_team(available_teams, current_team="platform")
+    >>> if team is not None:
+    ...     print(f"Selected: {team['name']}")
+    >>>
+    >>> # Multi-select: Show container picker for stopping
+    >>> containers = pick_containers(running_containers)
+    >>> if containers:
+    ...     for c in containers:
+    ...         stop_container(c)
+
+The pickers respect the interactivity gate and should only be called
+after verifying is_interactive_allowed() returns True.
+
+Global hotkeys:
+- 't': Raises TeamSwitchRequested to allow callers to redirect to team selection
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, overload
+
+from rich.live import Live
+from rich.text import Text
+
+from ..contexts import normalize_path
+from ..ports.session_models import SessionSummary
+from ..theme import Indicators
+from .chrome import Chrome, ChromeConfig
+from .formatters import (
+    format_container,
+    format_context,
+    format_session,
+    format_team,
+    format_worktree,
+)
+from .keys import BACK as BACK_SENTINEL
+from .keys import ActionType, KeyReader, TeamSwitchRequested, _BackSentinel
+from .list_screen import ListItem, ListMode, ListScreen, ListState
+
+# Re-export for backwards compatibility
+__all__ = [
+    "QuickResumeResult",
+    "TeamSwitchRequested",
+    "NEW_SESSION_SENTINEL",
+    "SWITCH_TEAM_SENTINEL",
+]
+
+if TYPE_CHECKING:
+    from rich.console import RenderableType
+
+    from ..contexts import WorkContext
+
+# Type variable for generic picker return types
+T = TypeVar("T")
+
+
+class QuickResumeResult(Enum):
+    """Result of the Quick Resume picker interaction.
+
+    This enum distinguishes between five distinct user intents:
+    - SELECTED: User pressed Enter to resume the highlighted context
+    - NEW_SESSION: User pressed 'n' OR selected the "New Session" virtual entry
+    - BACK: User pressed Esc to go back to the previous screen
+    - CANCELLED: User pressed 'q' to quit the application entirely
+    - TOGGLE_ALL_TEAMS: User pressed 'a' to toggle all-teams view
+    """
+
+    SELECTED = "selected"
+    NEW_SESSION = "new_session"
+    BACK = "back"
+    CANCELLED = "cancelled"
+    TOGGLE_ALL_TEAMS = "toggle_all_teams"
+
+
+# Sentinel values for virtual entries
+NEW_SESSION_SENTINEL = object()
+SWITCH_TEAM_SENTINEL = object()
+
+
+def pick_team(
+    teams: Sequence[dict[str, Any]],
+    *,
+    current_team: str | None = None,
+    title: str = "Select Team",
+    subtitle: str | None = None,
+) -> dict[str, Any] | None:
+    """Show interactive team picker.
+
+    Display a list of teams with the current team marked. User can navigate
+    with arrow keys, filter by typing, and select with Enter. Escape or 'q'
+    cancels the selection.
+
+    Args:
+        teams: Sequence of team dicts with 'name' and optional 'description'.
+        current_team: Name of currently selected team (marked with checkmark).
+        title: Title shown in chrome header.
+        subtitle: Optional subtitle for additional context.
+
+    Returns:
+        Selected team dict, or None if cancelled.
+
+    Example:
+        >>> teams = [
+        ...     {"name": "platform", "description": "Platform team"},
+        ...     {"name": "backend", "description": "Backend team"},
+        ... ]
+        >>> result = pick_team(teams, current_team="platform")
+        >>> if result:
+        ...     print(f"Switching to: {result['name']}")
+    """
+    if not teams:
+        return None
+
+    # Convert teams to list items using formatter
+    items: list[ListItem[dict[str, Any]]] = [
+        format_team(team, current_team=current_team) for team in teams
+    ]
+
+    return _run_single_select_picker(
+        items=items,
+        title=title,
+        subtitle=subtitle or f"{len(teams)} teams available",
+        allow_back=False,
+    )
+
+
+def pick_container(
+    containers: Sequence[Any],
+    *,
+    title: str = "Select Container",
+    subtitle: str | None = None,
+) -> Any | None:
+    """Show interactive container picker (single-select).
+
+    Display a list of containers with status and workspace info. User can
+    navigate with arrow keys, filter by typing, and select with Enter.
+
+    Args:
+        containers: Sequence of ContainerInfo objects.
+        title: Title shown in chrome header.
+        subtitle: Optional subtitle for additional context.
+
+    Returns:
+        Selected ContainerInfo, or None if cancelled.
+    """
+    if not containers:
+        return None
+
+    # Convert containers to list items using formatter
+    items = [format_container(container) for container in containers]
+
+    return _run_single_select_picker(
+        items=items,
+        title=title,
+        subtitle=subtitle or f"{len(containers)} containers",
+        allow_back=False,
+    )
+
+
+def pick_containers(
+    containers: Sequence[Any],
+    *,
+    title: str = "Select Containers",
+    subtitle: str | None = None,
+    require_selection: bool = False,
+) -> list[Any]:
+    """Show interactive container picker (multi-select).
+
+    Display a list of containers with checkboxes. User can:
+    - Navigate with arrow keys (↑↓ or j/k)
+    - Toggle selection with Space
+    - Toggle all with 'a'
+    - Filter by typing
+    - Confirm selection with Enter
+
+    Args:
+        containers: Sequence of ContainerInfo objects.
+        title: Title shown in chrome header.
+        subtitle: Optional subtitle for additional context.
+        require_selection: If True, return empty list only if no containers.
+            If False, empty selection on Enter returns empty list.
+
+    Returns:
+        List of selected ContainerInfo objects (may be empty if cancelled).
+
+    Example:
+        >>> running = get_running_containers()
+        >>> to_stop = pick_containers(running, title="Stop Containers")
+        >>> for container in to_stop:
+        ...     docker.stop(container.id)
+    """
+    if not containers:
+        return []
+
+    # Convert containers to list items using formatter
+    items = [format_container(container) for container in containers]
+
+    # Use ListScreen in MULTI_SELECT mode
+    screen = ListScreen(
+        items,
+        title=title,
+        mode=ListMode.MULTI_SELECT,
+    )
+
+    result = screen.run()
+
+    # Handle cancellation (None) vs empty selection ([])
+    if result is None:
+        return []
+
+    # In MULTI_SELECT mode, result is list[ContainerInfo]
+    # Type narrowing: if not None, it's a list in multi-select mode
+    if isinstance(result, list):
+        return result
+    return []
+
+
+def pick_session(
+    sessions: Sequence[SessionSummary],
+    *,
+    title: str = "Select Session",
+    subtitle: str | None = None,
+) -> SessionSummary | None:
+    """Show interactive session picker.
+
+    Display a list of sessions with team, branch, and last used info.
+    User can navigate with arrow keys, filter by typing, and select with Enter.
+
+    Args:
+        sessions: Sequence of session summaries.
+        title: Title shown in chrome header.
+        subtitle: Optional subtitle for additional context.
+
+    Returns:
+        Selected session summary, or None if cancelled.
+    """
+    if not sessions:
+        return None
+
+    # Convert sessions to list items using formatter
+    items = [format_session(session) for session in sessions]
+
+    return _run_single_select_picker(
+        items=items,
+        title=title,
+        subtitle=subtitle or f"{len(sessions)} sessions",
+        allow_back=False,
+    )
+
+
+def pick_worktree(
+    worktrees: Sequence[Any],
+    *,
+    title: str = "Select Worktree",
+    subtitle: str | None = None,
+    initial_filter: str = "",
+) -> Any | None:
+    """Show interactive worktree picker.
+
+    Display a list of git worktrees with branch and status info.
+    User can navigate with arrow keys, filter by typing, and select with Enter.
+
+    Args:
+        worktrees: Sequence of WorktreeInfo objects.
+        title: Title shown in chrome header.
+        subtitle: Optional subtitle for additional context.
+        initial_filter: Pre-populate the filter query (for prefilled pickers).
+
+    Returns:
+        Selected WorktreeInfo, or None if cancelled.
+    """
+    if not worktrees:
+        return None
+
+    # Convert worktrees to list items using formatter
+    items = [format_worktree(worktree) for worktree in worktrees]
+
+    return _run_single_select_picker(
+        items=items,
+        title=title,
+        subtitle=subtitle or f"{len(worktrees)} worktrees",
+        initial_filter=initial_filter,
+        allow_back=False,
+    )
+
+
+def pick_context(
+    contexts: Sequence[WorkContext],
+    *,
+    title: str = "Recent Contexts",
+    subtitle: str | None = None,
+) -> WorkContext | None:
+    """Show interactive context picker for quick resume.
+
+    Display a list of recent work contexts (team + repo + worktree) with
+    pinned items first, then sorted by recency. User can filter by typing,
+    navigate with arrow keys, and select with Enter.
+
+    This is the primary entry point for the "context-first" UX pattern,
+    allowing developers to quickly resume where they left off.
+
+    Args:
+        contexts: Sequence of WorkContext objects (typically from load_recent_contexts).
+        title: Title shown in chrome header.
+        subtitle: Optional subtitle for additional context.
+
+    Returns:
+        Selected WorkContext, or None if cancelled.
+
+    Example:
+        >>> from scc_cli.contexts import load_recent_contexts
+        >>> from scc_cli.ui.picker import pick_context
+        >>>
+        >>> contexts = load_recent_contexts(limit=10)
+        >>> selected = pick_context(contexts)
+        >>> if selected:
+        ...     # Resume work in the selected context
+        ...     start_session(selected.team, selected.worktree_path)
+    """
+    if not contexts:
+        return None
+
+    # Convert contexts to list items using formatter
+    items = [format_context(context) for context in contexts]
+
+    return _run_single_select_picker(
+        items=items,
+        title=title,
+        subtitle=subtitle or f"{len(contexts)} recent contexts",
+        allow_back=False,
+    )
+
+
+def pick_context_quick_resume(
+    contexts: Sequence[WorkContext],
+    *,
+    title: str = "Quick Resume",
+    subtitle: str | None = None,
+    standalone: bool = False,
+    current_branch: str | None = None,
+    context_label: str | None = None,
+    effective_team: str | None = None,
+) -> tuple[QuickResumeResult, WorkContext | None]:
+    """Show Quick Resume picker with 5-way result semantics.
+
+    The picker always shows "New Session" as the first (default) option.
+    This picker distinguishes between five user intents:
+    - Enter on "New Session": Start fresh (NEW_SESSION)
+    - Enter on context: Resume the selected context (SELECTED)
+    - n: Explicitly start a new session (NEW_SESSION)
+    - a: Toggle all-teams view (TOGGLE_ALL_TEAMS)
+    - Esc: Go back to previous screen (BACK)
+    - q: Cancel the entire wizard (CANCELLED)
+
+    Args:
+        contexts: Sequence of WorkContext objects.
+        title: Title shown in chrome header.
+        subtitle: Optional subtitle (defaults to showing Esc hint).
+        standalone: If True, dim the "t teams" hint (not available without org).
+        current_branch: Current git branch from CWD, used to highlight
+            contexts matching this branch with a ★ indicator.
+        context_label: Optional context label (e.g., "Team: platform") shown in header.
+        effective_team: The effective team for display in "New Session" label.
+
+    Returns:
+        Tuple of (QuickResumeResult, selected WorkContext or None).
+
+    Example:
+        >>> from scc_cli.contexts import load_recent_contexts
+        >>> from scc_cli.ui.picker import pick_context_quick_resume, QuickResumeResult
+        >>>
+        >>> contexts = load_recent_contexts(limit=10)
+        >>> result, context = pick_context_quick_resume(contexts, standalone=True)
+        >>> match result:
+        ...     case QuickResumeResult.SELECTED:
+        ...         resume_session(context)
+        ...     case QuickResumeResult.NEW_SESSION:
+        ...         start_new_session()
+        ...     case QuickResumeResult.TOGGLE_ALL_TEAMS:
+        ...         # Reload with all teams filter
+        ...     case QuickResumeResult.BACK:
+        ...         continue  # Go back to previous screen
+        ...     case QuickResumeResult.CANCELLED:
+        ...         return  # Exit wizard
+    """
+    # Query running containers for status indicators
+    running_workspaces = _get_running_workspaces()
+
+    # Build "New Session" virtual entry as first item (always default)
+    team_label = effective_team or "standalone" if not standalone else "standalone"
+    new_session_desc = "Start fresh"
+    if not contexts:
+        new_session_desc = "No sessions yet — press Enter to start"
+    new_session_item: ListItem[WorkContext | object] = ListItem(
+        label=f"+ New session ({team_label})",
+        description=new_session_desc,
+        value=NEW_SESSION_SENTINEL,
+    )
+
+    switch_team_item: ListItem[WorkContext | object] | None = None
+    if not standalone:
+        switch_team_item = ListItem(
+            label="Switch team",
+            description="Choose a different team",
+            value=SWITCH_TEAM_SENTINEL,
+        )
+
+    # Convert contexts to list items with status and branch indicators
+    context_items = [
+        format_context(
+            context,
+            is_running=str(context.worktree_path) in running_workspaces,
+            is_current_branch=(
+                current_branch is not None and context.worktree_name == current_branch
+            ),
+        )
+        for context in contexts
+    ]
+
+    # New Session is always first (and default selection)
+    # Build combined list manually to handle type variance
+    items: list[ListItem[Any]] = [new_session_item]
+    if switch_team_item is not None:
+        items.append(switch_team_item)
+    items.extend(context_items)
+
+    return _run_quick_resume_picker(
+        items=items,
+        title=title,
+        subtitle=subtitle,
+        standalone=standalone,
+        context_label=context_label,
+    )
+
+
+def _get_running_workspaces() -> set[str]:
+    """Get set of workspace paths with running containers.
+
+    Paths are normalized (resolved symlinks, expanded ~) via normalize_path()
+    to ensure consistent comparison with context.worktree_path.
+
+    Returns an empty set if Docker is not available or on error.
+    This allows the picker to work without Docker status indicators.
+    """
+    try:
+        from ..docker import list_scc_containers
+
+        containers = list_scc_containers()
+        # Normalize paths using the same function as WorkContext for consistency
+        return {
+            str(normalize_path(c.workspace))
+            for c in containers
+            if c.workspace and c.status.startswith("Up")
+        }
+    except Exception:
+        # Docker not available or error - return empty set
+        return set()
+
+
+@overload
+def _run_single_select_picker(
+    items: list[ListItem[T]],
+    *,
+    title: str,
+    subtitle: str | None = None,
+    standalone: bool = False,
+    allow_back: Literal[True],
+    context_label: str | None = None,
+    initial_filter: str = "",
+) -> T | _BackSentinel | None: ...
+
+
+@overload
+def _run_single_select_picker(
+    items: list[ListItem[T]],
+    *,
+    title: str,
+    subtitle: str | None = None,
+    standalone: bool = False,
+    allow_back: Literal[False] = False,
+    context_label: str | None = None,
+    initial_filter: str = "",
+) -> T | None: ...
+
+
+def _run_single_select_picker(
+    items: list[ListItem[T]],
+    *,
+    title: str,
+    subtitle: str | None = None,
+    standalone: bool = False,
+    allow_back: bool = False,
+    context_label: str | None = None,
+    initial_filter: str = "",
+) -> T | _BackSentinel | None:
+    """Run the interactive single-selection picker loop.
+
+    This is the core picker implementation that handles:
+    - Rendering the list with chrome
+    - Processing keyboard input
+    - Managing navigation and filtering state
+    - Returning selection on Enter, BACK on Esc (if allow_back), or None on quit
+
+    Args:
+        items: List items to display.
+        title: Title for chrome header.
+        subtitle: Optional subtitle.
+        standalone: If True, dim the "t teams" hint (not available without org).
+        allow_back: If True, Esc returns BACK sentinel (for sub-screens).
+            If False, Esc returns None (for top-level screens).
+        context_label: Optional context label (e.g., "Team: platform") shown in header.
+        initial_filter: Pre-populate the filter query (for prefilled pickers).
+
+    Returns:
+        Value from selected item, BACK if allow_back and Esc pressed, or None if quit.
+    """
+    if not items:
+        return None
+
+    from ..console import get_err_console
+
+    console = get_err_console()
+    state = ListState(items=items, filter_query=initial_filter)
+    reader = KeyReader(enable_filter=True)
+
+    def render() -> RenderableType:
+        """Render current picker state."""
+        # Build list body
+        body = Text()
+        visible = state.visible_items
+
+        if not state.filtered_items:
+            body.append("No matches", style="dim italic")
+            return _wrap_in_chrome(body, title, subtitle, state.filter_query)
+
+        for i, item in enumerate(visible):
+            actual_index = state.scroll_offset + i
+            is_cursor = actual_index == state.cursor
+
+            # Cursor indicator
+            if is_cursor:
+                body.append(f"{Indicators.get('CURSOR')} ", style="cyan bold")
+            else:
+                body.append("  ")
+
+            # Label with governance styling
+            label_style = "bold" if is_cursor else ""
+            if item.governance_status == "blocked":
+                label_style += " red"
+            elif item.governance_status == "warning":
+                label_style += " yellow"
+
+            body.append(item.label, style=label_style.strip())
+
+            # Description
+            if item.description:
+                body.append(f"  {item.description}", style="dim")
+
+            body.append("\n")
+
+        return _wrap_in_chrome(body, title, subtitle, state.filter_query)
+
+    def _wrap_in_chrome(
+        body: Text, title: str, subtitle: str | None, filter_query: str
+    ) -> RenderableType:
+        """Wrap body content in chrome."""
+        # Capture `standalone` from outer scope for proper footer hint dimming
+        config = ChromeConfig.for_picker(title, subtitle, standalone=standalone)
+        if context_label:
+            config = config.with_context(context_label)
+        chrome = Chrome(config, console=console)
+        return chrome.render(body, search_query=filter_query)
+
+    # Run the picker loop
+    with Live(
+        render(),
+        console=console,
+        auto_refresh=False,
+        transient=True,
+    ) as live:
+        while True:
+            action = reader.read(filter_active=bool(state.filter_query))
+
+            match action.action_type:
+                case ActionType.NAVIGATE_UP:
+                    state.move_cursor(-1)
+
+                case ActionType.NAVIGATE_DOWN:
+                    state.move_cursor(1)
+
+                case ActionType.SELECT:
+                    # Enter = select current item
+                    current = state.current_item
+                    if current is not None:
+                        return current.value
+                    return None
+
+                case ActionType.CUSTOM:
+                    pass
+
+                case ActionType.CANCEL:
+                    # Esc = go back to previous screen (optional)
+                    if allow_back:
+                        return BACK_SENTINEL
+                    return None
+
+                case ActionType.QUIT:
+                    # q = quit app entirely
+                    return None
+
+                case ActionType.TEAM_SWITCH:
+                    raise TeamSwitchRequested()
+
+                case ActionType.FILTER_CHAR:
+                    if action.filter_char:
+                        state.add_filter_char(action.filter_char)
+
+                case ActionType.FILTER_DELETE:
+                    state.delete_filter_char()
+
+                case ActionType.NOOP:
+                    pass  # Unrecognized key - no action needed
+
+            if action.state_changed:
+                live.update(render(), refresh=True)
+
+
+def _run_quick_resume_picker(
+    items: list[ListItem[T]],
+    *,
+    title: str,
+    subtitle: str | None = None,
+    standalone: bool = False,
+    context_label: str | None = None,
+) -> tuple[QuickResumeResult, WorkContext | None]:
+    """Run the Quick Resume picker with 5-way result semantics.
+
+    Unlike the standard single-select picker, this distinguishes between:
+    - Enter on "New Session": Start fresh (NEW_SESSION)
+    - Enter on context: Resume the selected context (SELECTED)
+    - n: Explicitly start a new session (NEW_SESSION)
+    - a: Toggle all-teams view (TOGGLE_ALL_TEAMS)
+    - Esc: Go back to previous screen (BACK)
+    - q: Cancel the entire wizard (CANCELLED)
+    """
+    if not items:
+        return (QuickResumeResult.NEW_SESSION, None)
+
+    from ..console import get_err_console
+
+    console = get_err_console()
+    state = ListState(items=items)
+    reader = KeyReader(
+        custom_keys={"n": "new_session", "a": "toggle_all_teams"},
+        enable_filter=True,
+    )
+
+    def render() -> RenderableType:
+        """Render current picker state."""
+        body = Text()
+        visible = state.visible_items
+
+        if not state.filtered_items:
+            body.append("No matches", style="dim italic")
+            return _wrap_quick_resume_chrome(body, title, subtitle, state.filter_query)
+
+        for i, item in enumerate(visible):
+            actual_index = state.scroll_offset + i
+            is_cursor = actual_index == state.cursor
+
+            # Cursor indicator
+            if is_cursor:
+                body.append(f"{Indicators.get('CURSOR')} ", style="cyan bold")
+            else:
+                body.append("  ")
+
+            # Label with governance styling
+            label_style = "bold" if is_cursor else ""
+            if item.governance_status == "blocked":
+                label_style += " red"
+            elif item.governance_status == "warning":
+                label_style += " yellow"
+
+            body.append(item.label, style=label_style.strip())
+
+            # Description
+            if item.description:
+                body.append(f"  {item.description}", style="dim")
+
+            body.append("\n")
+
+        return _wrap_quick_resume_chrome(body, title, subtitle, state.filter_query)
+
+    def _wrap_quick_resume_chrome(
+        body: Text, title: str, subtitle: str | None, filter_query: str
+    ) -> RenderableType:
+        """Wrap body content in Quick Resume chrome with truthful hints."""
+        config = ChromeConfig.for_quick_resume(title, subtitle, standalone=standalone)
+        if context_label:
+            config = config.with_context(context_label)
+        chrome = Chrome(config, console=console)
+        return chrome.render(body, search_query=filter_query)
+
+    # Run the picker loop
+    with Live(
+        render(),
+        console=console,
+        auto_refresh=False,
+        transient=True,
+    ) as live:
+        while True:
+            action = reader.read(filter_active=bool(state.filter_query))
+
+            match action.action_type:
+                case ActionType.NAVIGATE_UP:
+                    state.move_cursor(-1)
+
+                case ActionType.NAVIGATE_DOWN:
+                    state.move_cursor(1)
+
+                case ActionType.SELECT:
+                    # Enter = select current item
+                    current = state.current_item
+                    if current is not None:
+                        # Check for virtual entries first
+                        if current.value is NEW_SESSION_SENTINEL:
+                            return (QuickResumeResult.NEW_SESSION, None)
+                        if current.value is SWITCH_TEAM_SENTINEL:
+                            raise TeamSwitchRequested()
+                        # Otherwise it's a WorkContext
+                        # Type ignore: we know context_items contain WorkContext values
+                        return (QuickResumeResult.SELECTED, current.value)  # type: ignore[return-value]
+                    return (QuickResumeResult.NEW_SESSION, None)
+
+                case ActionType.CUSTOM:
+                    # Handle screen-specific custom keys
+                    if action.custom_key == "new_session":
+                        # n = explicitly start new session (skip resume)
+                        return (QuickResumeResult.NEW_SESSION, None)
+                    if action.custom_key == "toggle_all_teams":
+                        # a = toggle all teams view (caller handles reload)
+                        return (QuickResumeResult.TOGGLE_ALL_TEAMS, None)
+
+                case ActionType.CANCEL:
+                    # Esc = go back to previous screen
+                    return (QuickResumeResult.BACK, None)
+
+                case ActionType.QUIT:
+                    # q = quit app entirely
+                    return (QuickResumeResult.CANCELLED, None)
+
+                case ActionType.TEAM_SWITCH:
+                    raise TeamSwitchRequested()
+
+                case ActionType.FILTER_CHAR:
+                    if action.filter_char:
+                        state.add_filter_char(action.filter_char)
+
+                case ActionType.FILTER_DELETE:
+                    state.delete_filter_char()
+
+                case ActionType.NOOP:
+                    pass  # Unrecognized key - no action needed
+
+            if action.state_changed:
+                live.update(render(), refresh=True)
