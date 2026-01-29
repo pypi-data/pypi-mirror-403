@@ -1,0 +1,168 @@
+Metadata-Version: 2.4
+Name: pypolymix
+Version: 0.1.1
+Summary: A light-weight PyTorch companion for building stochastic surrogate models
+License: BSD 3-Clause License
+         
+         Copyright 2026 National Technology & Engineering Solutions of Sandia, LLC 
+         (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the U.S. 
+         Government retains certain rights in this software.
+         
+         Redistribution and use in source and binary forms, with or without
+         modification, are permitted provided that the following conditions are met:
+         
+         1. Redistributions of source code must retain the above copyright notice, this
+            list of conditions and the following disclaimer.
+         
+         2. Redistributions in binary form must reproduce the above copyright notice,
+            this list of conditions and the following disclaimer in the documentation
+            and/or other materials provided with the distribution.
+         
+         3. Neither the name of the copyright holder nor the names of its
+            contributors may be used to endorse or promote products derived from
+            this software without specific prior written permission.
+         
+         THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+         AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+         IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+         DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+         FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+         DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+         SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+         CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+         OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+         OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+License-File: LICENSE
+Keywords: uncertainty quantification,surrogate modeling,pytorch,polynomial chaos expansion,stochastic modeling
+Author: pmrobbe
+Author-email: pmrobbe@sandia.gov
+Requires-Python: >=3.10,<4.0
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Topic :: Scientific/Engineering :: Physics
+Provides-Extra: dev
+Provides-Extra: docs
+Provides-Extra: examples
+Requires-Dist: ipykernel (>=6.30.1,<7.0.0) ; extra == "examples"
+Requires-Dist: matplotlib (>=3.10.6,<4.0.0) ; extra == "examples"
+Requires-Dist: mkdocs (>=1.6.1,<2.0.0) ; extra == "docs"
+Requires-Dist: mkdocs-jupyter (>=0.25.1,<0.26.0) ; extra == "docs"
+Requires-Dist: mkdocs-material (>=9.7.0,<10.0.0) ; extra == "docs"
+Requires-Dist: mkdocstrings[python] (>=0.30.1,<0.31.0) ; extra == "docs"
+Requires-Dist: papermill (>=2.6.0,<3.0.0) ; extra == "examples"
+Requires-Dist: pre-commit (>=4.3.0,<5.0.0) ; extra == "dev"
+Requires-Dist: torch (>=2.1.0,<3.0.0)
+Project-URL: Documentation, https://sandialabs.github.io/pypolymix
+Project-URL: Homepage, https://sandialabs.github.io/pypolymix
+Project-URL: Issues, https://github.com/sandialabs/pypolymix/issues
+Project-URL: Repository, https://github.com/sandialabs/pypolymix
+Description-Content-Type: text/markdown
+
+<p align="center">
+  <img src="docs/img/logo.png" alt="pypolymix logo" width="160">
+</p>
+
+<p align="center">
+  <a href="https://sandialabs.github.io/pypolymix">
+    <img src="https://img.shields.io/badge/docs-online-blue" alt="Docs">
+  </a>
+  <a href="https://github.com/psf/black">
+    <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black">
+  </a>
+</p>
+
+# Pypolymix
+
+`pypolymix` is a light-weight PyTorch companion for building **stochastic surrogate models**.
+
+## Documentation
+
+Project documentation lives at https://sandialabs.github.io/pypolymix.
+
+## Installation
+
+From PyPI:
+```
+python -m pip install pypolymix
+```
+
+Optional extras:
+```
+python -m pip install "pypolymix[examples]"
+python -m pip install "pypolymix[docs]"
+python -m pip install "pypolymix[dev]"
+```
+
+For local development:
+```
+python -m pip install -e ".[dev,docs,examples]"
+```
+
+## Quickstart
+
+Fit a 1D polynomial chaos model with a mix of stochastic and deterministic coefficients:
+
+```python
+import torch
+
+from pypolymix.parameter_groups import DeterministicGroup, IIDGaussianGroup
+from pypolymix.surrogate_models import PolynomialChaosExpansion
+from pypolymix import StochasticModel
+
+torch.manual_seed(0)
+x = torch.linspace(-1, 1, 200).unsqueeze(-1)
+y = torch.sin(3 * x) + 0.1 * torch.randn_like(x)
+
+surrogate_model = PolynomialChaosExpansion(num_inputs=1, num_outputs=1, degree=5)
+num_params = surrogate_model.num_params()
+
+parameter_groups = [
+    IIDGaussianGroup("stochastic", 2),
+    DeterministicGroup("deterministic", num_params - 2),
+]
+
+model = StochasticModel(surrogate_model=surrogate_model, parameter_groups=parameter_groups)
+
+optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
+for _ in range(500):
+    optimizer.zero_grad()
+    preds = model(x, num_samples=16).mean(dim=0)
+    data_loss = torch.mean((preds - y) ** 2)
+    loss = data_loss + 1e-3 * model.distribution_loss()
+    loss.backward()
+    optimizer.step()
+
+with torch.no_grad():
+    samples = model(x, num_samples=100)
+    mean = samples.mean(dim=0)
+    std = samples.std(dim=0)
+```
+
+<p align="center">
+  <img src="docs/img/pce.png" alt="Polynomial chaos example" width="720">
+</p>
+
+## Development
+
+If you use Poetry:
+```
+poetry install --with dev,docs,examples
+```
+
+Install the `pre-commit` hook:
+```
+pre-commit install
+```
+
+## Examples
+
+Notebooks live in `docs/examples/` and are rendered on the documentation site.
+
