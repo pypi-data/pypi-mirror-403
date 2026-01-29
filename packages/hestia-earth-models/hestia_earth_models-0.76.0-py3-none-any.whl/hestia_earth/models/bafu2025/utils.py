@@ -1,0 +1,3 @@
+LOOKUP_MAPPING_KEY = "bafuMapping"
+LOOKUP_NAME_PREFIX = "bafu2025-"
+LOOKUP_INDEX_KEY = "bafuProcessName"
