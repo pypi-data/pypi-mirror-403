@@ -1,0 +1,284 @@
+Metadata-Version: 2.4
+Name: iot-swarm
+Version: 0.2.0
+Summary: Orchestrate AI agent swarms on edge/IoT hardware with energy-efficient gossip protocols
+Author: The Swarm Orchestrator Contributors
+License-Expression: MIT
+License-File: LICENSE
+Keywords: agents,ai,distributed,edge,gossip,iot,swarm
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: System :: Distributed Computing
+Classifier: Topic :: System :: Networking
+Requires-Python: >=3.11
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: toml>=0.10.0
+Requires-Dist: typer[all]>=0.9.0
+Provides-Extra: all
+Requires-Dist: swarm-orchestrator[dev,metrics]; extra == 'all'
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.21.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Provides-Extra: metrics
+Requires-Dist: psutil>=5.9.0; extra == 'metrics'
+Description-Content-Type: text/markdown
+
+# Swarm Orchestrator
+
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/brody4321)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?logo=buymeacoffee)](https://buymeacoffee.com/brody4321)
+
+Orchestrate AI agent swarms on edge/IoT hardware (Raspberry Pi to ESP32) with energy-efficient gossip protocols and green metrics.
+
+## Features
+
+- **Gossip Protocol**: UDP-based node discovery and state propagation
+- **Adaptive Gossip** (v0.2.0): Dynamic parameter adjustment based on network health and energy
+- **Leader Election**: Raft-inspired consensus for automatic leader election
+- **Device Classes**: Support for full (RPi 4), standard (RPi Zero, ESP32-S3), and minimal (ESP32) devices
+- **Energy Metrics** (v0.2.0): Hardware-based power monitoring with carbon footprint tracking
+- **Green Dashboard** (v0.2.0): Energy-focused terminal dashboard with efficiency ratings
+- **Rich Dashboard**: Real-time terminal dashboard for swarm monitoring
+- **TOML Configuration**: Flexible configuration with sensible defaults
+
+## Installation
+
+```bash
+# Install from source
+pip install -e .
+
+# With metrics support (psutil)
+pip install -e ".[metrics]"
+
+# With development dependencies
+pip install -e ".[dev]"
+
+# Everything
+pip install -e ".[all]"
+```
+
+## Quick Start
+
+### 1. Initialize Configuration
+
+```bash
+swarm config init
+```
+
+This creates `~/.config/swarm_orchestrator/config.toml` with default settings.
+
+### 2. Start a Node
+
+```bash
+# Start in foreground with live dashboard
+swarm node start --foreground
+
+# Start with custom name
+swarm node start --name rpi-kitchen --foreground
+```
+
+### 3. Check Status
+
+```bash
+# Node status
+swarm node status
+
+# Swarm status
+swarm swarm status
+
+# Live dashboard
+swarm swarm dashboard
+
+# Green energy dashboard (v0.2.0)
+swarm swarm green
+
+# Energy metrics (v0.2.0)
+swarm swarm energy
+
+# Metrics
+swarm swarm metrics --json
+```
+
+## Multi-Node Setup
+
+Start nodes on multiple devices on the same network:
+
+```bash
+# Device 1 (RPi 4)
+swarm node start --name rpi-hub --foreground
+
+# Device 2 (RPi Zero)
+swarm node start --name rpi-sensor-1 --foreground
+
+# Device 3 (Another device)
+swarm node start --name rpi-sensor-2 --foreground
+```
+
+Nodes automatically discover each other via UDP multicast and elect a leader.
+
+## CLI Reference
+
+### Node Commands
+
+```bash
+swarm node start [--name NAME] [--foreground]  # Start a node
+swarm node stop                                  # Stop the running node
+swarm node status [--json]                       # Show node status
+```
+
+### Swarm Commands
+
+```bash
+swarm swarm status [--watch] [--json]  # Show swarm status
+swarm swarm dashboard                   # Live terminal dashboard
+swarm swarm green                       # Green energy dashboard (v0.2.0)
+swarm swarm energy [--json]             # Energy metrics (v0.2.0)
+swarm swarm metrics [--json]            # Show metrics
+```
+
+### Configuration Commands
+
+```bash
+swarm config init [--force]      # Initialize config file
+swarm config show                # Show current configuration
+swarm config set KEY VALUE       # Set a config value
+swarm config path                # Show config file path
+```
+
+## Configuration
+
+Configuration is stored in `~/.config/swarm_orchestrator/config.toml`:
+
+```toml
+[network]
+gossip_port = 5555
+multicast_group = "239.255.255.250"
+multicast_port = 5556
+bind_address = "0.0.0.0"
+
+[gossip]
+interval_ms = 1000          # Gossip interval
+fanout = 3                  # Nodes to gossip to per round
+ttl = 3                     # Message hop limit
+anti_entropy_interval_ms = 10000
+
+[consensus]
+heartbeat_interval_ms = 500
+election_timeout_min_ms = 1500
+election_timeout_max_ms = 3000
+
+[node]
+name = ""                   # Auto-generated if empty
+device_class = "standard"   # full, standard, or minimal
+
+[metrics]
+enabled = true
+collection_interval_ms = 5000
+
+# v0.2.0: Energy metrics
+[energy]
+enabled = true
+collection_interval_ms = 1000
+carbon_intensity_gco2_kwh = 400.0  # Grid carbon intensity
+low_power_threshold_percent = 30.0
+critical_threshold_percent = 10.0
+
+# v0.2.0: Adaptive gossip
+[adaptive_gossip]
+enabled = true
+adaptation_interval_ms = 5000
+min_interval_ms = 200
+max_interval_ms = 5000
+max_fanout = 10
+energy_aware = true
+```
+
+## Device Classes
+
+| Class | Examples | Capabilities | TDP |
+|-------|----------|--------------|-----|
+| `full` | RPi 4, RPi 5 | Can be leader, full participation | ~7.5W |
+| `standard` | RPi Zero, ESP32-S3 | Can be leader, full participation | ~1.5W |
+| `minimal` | ESP32, ESP8266 | Observer only, cannot be leader | ~0.5W |
+
+## Architecture
+
+### Gossip Protocol
+
+- **Discovery**: UDP multicast for initial node discovery
+- **State Propagation**: UDP unicast with configurable fanout
+- **Anti-Entropy**: Periodic full state sync to repair inconsistencies
+- **Message Deduplication**: LRU cache prevents message storms
+
+### Adaptive Gossip (v0.2.0)
+
+The adaptive gossip controller dynamically adjusts protocol parameters:
+
+| Mode | Interval | Fanout | Use Case |
+|------|----------|--------|----------|
+| `aggressive` | 0.5x base | 1.5x base | Network repair, high activity |
+| `normal` | 1x base | 1x base | Standard operation |
+| `conservative` | 2x base | 0.7x base | Good network health, save energy |
+| `emergency` | 4x base | 0.5x base | Critical battery, minimal gossip |
+
+Adaptation factors:
+- **Network health**: Loss rate, peer count, latency
+- **Activity level**: Message rate over sliding window
+- **Swarm size**: Larger swarms use slower intervals
+- **Energy state**: Battery level triggers mode changes
+
+### Leader Election
+
+- **Heartbeat-based**: Leader sends periodic heartbeats
+- **Term-based Voting**: Raft-inspired term numbers prevent split-brain
+- **Automatic Failover**: New leader elected within ~3 seconds
+
+### Energy Metrics (v0.2.0)
+
+- **Power monitoring**: Estimated from CPU usage and device profiles
+- **Temperature**: CPU temperature from Linux sysfs
+- **Battery**: Level monitoring for portable devices
+- **Carbon footprint**: CO2 emissions based on grid intensity
+- **Efficiency score**: A+ to F rating based on work per watt
+
+### Green Dashboard (v0.2.0)
+
+The green dashboard (`swarm swarm green`) shows:
+- Real-time power consumption with sparkline history
+- Energy efficiency rating (A+ to F)
+- Carbon footprint in grams CO2
+- Adaptive gossip mode and parameters
+- Per-node power and efficiency in swarm table
+
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=swarm_orchestrator --cov-report=html
+```
+
+## Roadmap
+
+- ~~**v0.2.0**: Advanced energy metrics, adaptive gossip, green dashboard~~ ✓
+- **v0.3.0**: MicroPython compatibility layer
+- **v0.4.0**: UART/I2C whisper protocol for non-WiFi devices
+- **v0.5.0**: TinyML energy prediction
+
+## License
+
+MIT License - see [LICENSE](LICENSE)
