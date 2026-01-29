@@ -1,0 +1,96 @@
+(usage)=
+
+# Usage
+
+cihai is designed to work out-of-the-box without configuration.
+
+## Installation
+
+```console
+$ pip install --user cihai-cli
+```
+
+Or manage it inside an existing project with uv:
+
+```console
+$ uv add cihai-cli
+```
+
+Install the CLI as a user-wide tool with uv:
+
+```console
+$ uv tool install cihai-cli
+```
+
+Run it on-demand without installing:
+
+```console
+$ uvx --from cihai-cli cihai --version
+```
+
+### Developmental releases
+
+New versions of cihai CLI are published to PyPI as alpha, beta, or release candidates. In their
+versions you will see notification like `a1`, `b1`, and `rc1`, respectively. `1.10.0b4` would mean
+the 4th beta release of `1.10.0` before general availability.
+
+- [pip]\:
+
+  ```console
+  $ pip install --user --upgrade --pre cihai-cli
+  ```
+
+- [pipx]\:
+
+  ```console
+  $ pipx install --suffix=@next 'cihai-cli' --pip-args '\--pre' --force
+  // Usage: cihai@next info 好
+  ```
+
+- [uv tool install][uv-tools]\:
+
+  ```console
+  $ uv tool install --prerelease=allow cihai-cli
+  ```
+
+- [uv]\:
+
+  ```console
+  $ uv add cihai-cli --prerelease allow
+  ```
+
+- [uvx]\:
+
+  ```console
+  $ uvx --from 'cihai-cli' --prerelease allow cihai
+  ```
+
+via trunk (can break easily):
+
+- [pip]\:
+
+  ```console
+  $ pip install --user -e git+https://github.com/cihai/cihai-cli.git#egg=cihai-cli
+  ```
+
+- [uv]\:
+
+  ```console
+  $ uv add git+https://github.com/cihai/cihai-cli.git#egg=cihai-cli
+  ```
+
+- [pipx]\:
+
+  ```console
+  $ pipx install --suffix=@master 'cihai-cli @ git+https://github.com/cihai/cihai.git@master' --include-deps --force
+  ```
+
+[pip]: https://pip.pypa.io/en/stable/
+[pipx]: https://pypa.github.io/pipx/docs/
+[uv]: https://docs.astral.sh/uv/
+[uv-tools]: https://docs.astral.sh/uv/concepts/tools/
+[uvx]: https://docs.astral.sh/uv/guides/tools/
+
+## Configuration
+
+See {ref}`cihai's configuration <cihai:configuration>` documentation.
