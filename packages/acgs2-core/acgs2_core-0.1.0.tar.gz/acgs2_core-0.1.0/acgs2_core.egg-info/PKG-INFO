@@ -1,0 +1,235 @@
+Metadata-Version: 2.4
+Name: acgs2-core
+Version: 0.1.0
+Summary: Cryptographic AI compliance verification in one line of code. Zero dependencies.
+Author-email: Soln AI <dev@soln.ai>
+Maintainer-email: Soln AI <dev@soln.ai>
+License: MIT
+Project-URL: Homepage, https://github.com/solnai/acgs2-core
+Project-URL: Documentation, https://soln.ai/docs
+Project-URL: Repository, https://github.com/solnai/acgs2-core
+Project-URL: Issues, https://github.com/solnai/acgs2-core/issues
+Project-URL: Changelog, https://github.com/solnai/acgs2-core/releases
+Keywords: ai,compliance,governance,verification,cryptographic,audit,constitutional,llm,safety
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Security :: Cryptography
+Classifier: Typing :: Typed
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
+
+# ACGS-2 Core
+
+> Cryptographic AI compliance verification in one line of code.
+
+[![PyPI version](https://badge.fury.io/py/acgs2-core.svg)](https://badge.fury.io/py/acgs2-core)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+
+## What is ACGS-2?
+
+ACGS-2 (Adaptive Constitutional Governance System) provides **cryptographic proof** of AI compliance, not just logs.
+
+```python
+from acgs2_core import verify
+
+result = verify("Your AI output here")
+
+print(result.compliant)    # True
+print(result.proof_hash)   # cdd01ef066bc6cf2a1b2c3d4...
+```
+
+**One line of code. Provable compliance. Sub-millisecond latency.**
+
+## Installation
+
+```bash
+pip install acgs2-core
+```
+
+**Zero dependencies.** Pure Python. Works everywhere.
+
+## Quick Start
+
+### Basic Verification
+
+```python
+from acgs2_core import verify
+
+# Verify AI output
+result = verify("The weather today is sunny and 72°F.")
+
+if result.compliant:
+    print(f"✓ Compliant | Proof: {result.proof_hash[:16]}...")
+else:
+    for violation in result.violations:
+        print(f"✗ {violation.rule_id}: {violation.description}")
+```
+
+### Check for PII Leakage
+
+```python
+from acgs2_core import verify
+
+# This will detect SSN patterns
+result = verify("Contact John at 123-45-6789 for more info.")
+
+print(result.compliant)  # False
+print(result.violations[0].rule_id)  # "no-ssn"
+print(result.violations[0].severity)  # "critical"
+```
+
+### Custom Policies
+
+```python
+from acgs2_core import Validator, Policy, PolicyType
+
+validator = Validator()
+
+# Add custom policy
+validator.add_policy(Policy(
+    id="no-competitor-names",
+    name="No Competitor Mentions",
+    description="Prevent mentioning competitor names",
+    policy_type=PolicyType.PATTERN,
+    rule=r"\b(CompetitorA|CompetitorB)\b",
+    severity="medium"
+))
+
+result = validator.verify("Our product is better than CompetitorA.")
+print(result.compliant)  # False (or True in non-strict mode)
+```
+
+### Strict Mode
+
+```python
+from acgs2_core import Validator
+
+# Strict mode: any violation = non-compliant
+validator = Validator(strict_mode=True)
+
+result = validator.verify("Call me at 555-1234")  # Phone number detected
+print(result.compliant)  # False (medium severity, but strict mode)
+```
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Cryptographic Proofs** | SHA-256 hashes anchored to constitutional hash |
+| **PII Detection** | SSN, credit cards, emails, phone numbers |
+| **Custom Policies** | Regex patterns or custom functions |
+| **Sub-ms Latency** | Designed for real-time verification |
+| **Zero Dependencies** | Pure Python, no bloat |
+| **Type Hints** | Full typing support |
+
+## Built-in Policies
+
+| Policy ID | Description | Severity |
+|-----------|-------------|----------|
+| `no-ssn` | Social Security Numbers | critical |
+| `no-credit-card` | Credit card numbers | critical |
+| `no-email-leak` | Email addresses | high |
+| `no-phone` | Phone numbers | medium |
+| `no-harmful-content` | Harmful keywords | high |
+
+## API Reference
+
+### `verify(content, context=None, policies=None)`
+
+Quick verification using default validator.
+
+```python
+result = verify("content to check")
+```
+
+### `Validator`
+
+Full-featured validator with customization.
+
+```python
+validator = Validator(
+    include_default_policies=True,
+    strict_mode=False
+)
+```
+
+### `VerificationResult`
+
+Result object with all verification details.
+
+```python
+result.compliant           # bool
+result.proof_hash          # str
+result.constitutional_anchor  # str ("cdd01ef066bc6cf2")
+result.timestamp           # datetime
+result.latency_ms          # float
+result.violations          # List[Violation]
+result.metadata            # Dict
+```
+
+## The Story Behind ACGS-2
+
+This project was built from scratch over **2 years** by a solo developer who started with **zero coding experience**.
+
+622,000+ lines of code. 52 integrated systems. Sub-millisecond latency.
+
+[Read the full story →](https://github.com/acgs2/acgs2-core/blob/main/FOUNDER_STORY.md)
+
+## Enterprise Version
+
+Need more features?
+
+- **Blockchain anchoring** (Ethereum, Solana, Arweave)
+- **Multi-agent verification** (MACI framework)
+- **Real-time semantic analysis**
+- **Compliance certifications** (SOC2, HIPAA, EU AI Act)
+- **SLA & dedicated support**
+
+[Contact us →](mailto:enterprise@acgs2.dev)
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+```bash
+# Setup development environment
+git clone https://github.com/acgs2/acgs2-core.git
+cd acgs2-core
+pip install -e ".[dev]"
+pytest
+```
+
+## License
+
+MIT License - Use it however you want.
+
+## Links
+
+- [Documentation](https://acgs2.dev/docs)
+- [GitHub](https://github.com/acgs2/acgs2-core)
+- [Discord Community](https://discord.gg/acgs2)
+- [Twitter @acgs2_ai](https://twitter.com/acgs2_ai)
+
+---
+
+**Constitutional Hash:** `cdd01ef066bc6cf2`
+
+*Built with obsession. Shared with hope.*
