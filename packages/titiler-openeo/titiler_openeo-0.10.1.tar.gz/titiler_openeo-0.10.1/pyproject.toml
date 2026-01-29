@@ -1,0 +1,152 @@
+[project]
+name = "titiler-openeo"
+version = "0.10.1"
+description = "TiTiler backend for openEO."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Vincent Sarago", email = "vincent@developmentseed.com" },
+    { name = "Emmanuel Mathot", email = "emmanuel@developmentseed.com" },
+]
+license = { text = "MIT" }
+keywords = [
+    "openEO",
+    "TiTiler",
+    "COG",
+    "STAC",
+    "Mosaic",
+    "FastAPI",
+    "Rasterio",
+    "rio-tiler",
+]
+classifiers = [
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+    "titiler.core>=1.1.1",
+    "starlette-cramjam>=0.4,<0.6",
+    "openeo-pg-parser-networkx==2026.1.2",
+    "pystac-client",
+    "pydantic-settings~=2.0",
+    "jsonpath-ng~=1.7.0",
+]
+
+[dependency-groups]
+docs = [
+    "mkdocs-jupyter~=0.24.0",
+    "mkdocs-material[imaging]>=9.6.14",
+    "mkdocs>=1.6.1",
+    "mkdocstrings[python]>=0.29.1",
+    "griffe-inherited-docstrings>=1.1.1",
+    "jupyter-contrib-nbextensions>=0.7.0",
+    "notebook>=6.5.4,<7.0.0",
+    "nbconvert>=7.2.9",
+]
+dev = [
+    "brotlipy",
+    "cryptography",
+    "duckdb",
+    "httpx",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-vcr",
+    "sqlalchemy>=2.0.0",
+    "pre-commit",
+    "ipython~=8.0.0",
+]
+notebook = [
+    "jupyter-contrib-nbextensions>=0.7.0",
+    "notebook>=6.5.4,<7.0.0",
+    "ipython~=8.0.0",
+    "matplotlib",
+    "openeo",
+]
+
+[project.optional-dependencies]
+server = ["uvicorn[standard]>=0.12.0,<0.19.0"]
+duckdb = ["duckdb"]
+postgres = ["sqlalchemy>=2.0.0", "psycopg2-binary"]
+oidc = ["cryptography", "httpx"]
+
+[project.urls]
+Homepage = "https://sentinel-hub.github.io/titiler-openeo/"
+Documentation = "https://sentinel-hub.github.io/titiler-openeo/"
+Issues = "https://github.com/sentinel-hub/titiler-openeo/issues"
+Source = "https://github.com/sentinel-hub/titiler-openeo"
+Changelog = "https://sentinel-hub.github.io/titiler-openeo/release-notes/"
+
+[tool.hatch.build.targets.sdist]
+only-include = ["titiler"]
+
+[tool.hatch.build.targets.wheel]
+only-include = ["titiler"]
+
+[tool.hatch.build.targets.wheel.sources]
+"titiler" = "titiler"
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.coverage.run]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
+
+[tool.pytest.ini_options]
+markers = ["vcr: mark tests that rely on vcr cassettes"]
+filterwarnings = [
+    # Silence pydantic v1 deprecation noise coming from openeo_pg_parser_networkx
+    "ignore::pydantic.warnings.PydanticDeprecatedSince20:openeo_pg_parser_networkx.*",
+    "ignore:The `parse_obj` method is deprecated:DeprecationWarning:openeo_pg_parser_networkx.*",
+    "ignore:.*allow_reuse.*:DeprecationWarning:openeo_pg_parser_networkx.*",
+]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["titiler"]
+known_third_party = [
+    "rasterio",
+    "morecantile",
+    "rio_tiler",
+    "cogeo_mosaic",
+    "geojson_pydantic",
+]
+default_section = "THIRDPARTY"
+
+[tool.ruff.lint]
+select = [
+    "D1", # pydocstyle errors
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # flake8
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+ignore = [
+    "D103",
+    "D101",
+    "E501", # line too long, handled by black
+    "B008", # do not perform function calls in argument defaults
+    "B905", # ignore zip() without an explicit strict= parameter, only support with python >3.10
+]
+
+[tool.mypy]
+no_implicit_optional = true
+strict_optional = true
+namespace_packages = true
+explicit_package_bases = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 14
+
