@@ -1,0 +1,40 @@
+from . import exception_pt
+from . import exception_arg
+
+pt = exception_pt
+arg = exception_arg
+
+# class ArgTypeError(PositiveToolError):
+#     """arg.ArgType的錯誤"""
+
+
+# class ArgTypeWrongTypeError(ArgTypeError):
+#     """參數錯誤"""
+
+
+# class ArgTypeInitError(ArgTypeError):
+#     """給ArgType的參數錯誤（初始化錯誤）"""
+
+
+# class ArgTypeUnknownType(ArgTypeWrongTypeError):
+#     """無法確認的類型"""
+
+
+# class DirDeepError(PositiveToolError):
+#     """`pt.py.find_project_path` 的自訂錯誤"""
+
+
+# class DirNotFoundError(PositiveToolError):
+#     """find_project_path：找不到資料夾時"""
+
+
+# class DirWrongType(PositiveToolError):
+#     """用在應為資料夾卻是檔案 或是 應為檔案卻是資料夾 的錯誤"""
+
+
+# class UIntValueError(PositiveToolError):
+#     """UInt錯誤，通常因為非正數（負數）"""
+
+
+# class FileTooLarge(ArgTypeError):
+#     """檔案過大"""
