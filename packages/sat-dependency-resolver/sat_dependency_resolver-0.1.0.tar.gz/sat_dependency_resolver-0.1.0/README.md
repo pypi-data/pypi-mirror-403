@@ -1,0 +1,110 @@
+<p align="center">
+  <a href="https://github.com/Apollo87z/sat-dependency-resolver">
+    <img src="https://i.ibb.co/hJVvqxKk/image.jpg" alt="SAT Dependency Resolver Logo" width="180" />
+  </a>
+</p>
+
+<h1 align="center">
+  SAT Dependency Resolver
+</h1>
+
+<p align="center">
+  <strong>Universal dependency solving powered by Boolean Satisfiability (SAT)</strong><br>
+  Finds valid combinations when possible — proves impossibility when not.
+</p>
+
+<p align="center">
+  <a href="https://sat-dependency-resolver-ae207ddb503e.herokuapp.com">
+    <img src="https://img.shields.io/badge/Live_API-Heroku-430098?style=for-the-badge&logo=heroku&logoColor=white" alt="Live API" />
+  </a>
+  <a href="https://github.com/Apollo87z/sat-dependency-resolver">
+    <img src="https://img.shields.io/badge/GitHub-Repo-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" />
+  </a>
+  <a href="https://github.com/Apollo87z/sat-dependency-resolver/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="MIT License" />
+  </a>
+  <a href="https://github.com/Apollo87z/sat-dependency-resolver/stargazers">
+    <img src="https://img.shields.io/github/stars/Apollo87z/sat-dependency-resolver?style=for-the-badge&logo=github" alt="Stars" />
+  </a>
+  <a href="https://shehans-organization.gitbook.io/sat-dependency-resolver-1/">
+    <img src="https://img.shields.io/badge/Documentation-GitBook-FF3366?style=for-the-badge&logo=gitbook&logoColor=white" alt="GitBook Docs" />
+  </a>
+</p>
+
+<p align="center">
+  <img src="https://i.ibb.co/BVCc4tG7/image-2.jpg" alt="SAT Dependency Resolver Banner" width="100%" />
+  <br><br>
+  <em>Exact solutions • Mathematical guarantees • Optional AI explanations</em>
+</p>
+
+## What It Does
+
+SAT Dependency Resolver turns **any dependency problem** into a Boolean satisfiability problem and uses a high-performance SAT solver to:
+
+- Find one or more valid selections of options/versions/items  
+- Mathematically prove that **no solution exists** (and report why)  
+- Optionally generate human-readable suggestions to resolve conflicts using AI
+
+It is **not** limited to software packages — it works wherever you have items with requirements/dependencies.
+
+### Key Capabilities
+
+| Capability                        | Description                                                                                   |
+|-----------------------------------|-----------------------------------------------------------------------------------------------|
+| Exact solving                     | Uses Glucose SAT solver — if a solution exists, it will be found                             |
+| Conflict detection                | Clear reporting of incompatibilities even without AI                                         |
+| AI conflict resolution            | Optional integration with Anthropic Claude for plain-English fix suggestions                 |
+| Universal domain                  | Software packages, courses, books, hardware, teams, recipes, scheduling, and more            |
+| Constraint support                | `any`, `>=`, `<=`, `>`, `<`, `==`, comma-separated ranges                                     |
+| Lightweight & fast                | No heavy package manager logic — pure SAT encoding                                            |
+| REST API                          | Simple POST /resolve endpoint — easy to integrate                                            |
+
+## Domains & Use Cases
+
+<div align="center">
+
+| Category              | Example Use Cases                                                                 |
+|-----------------------|-----------------------------------------------------------------------------------|
+| Software              | Python/pip, npm, Cargo, RubyGems, Go modules version resolution                  |
+| Education             | Course prerequisites, degree planning, certification paths                        |
+| Media & Entertainment | Book series order, movie franchise watching sequence, game mod compatibility     |
+| Hardware              | PC component compatibility, electronics part selection                            |
+| Business & Teams      | Required skills/roles for projects, team composition, resource allocation         |
+| Everyday Problems     | Recipe ingredient requirements, event scheduling with attendee constraints        |
+
+</div>
+
+## Features at a Glance
+
+- **SAT-based core** — mathematical correctness, no heuristics  
+- **Optional AI help** — send `use_ai: true` + Anthropic key for smart suggestions  
+- **Live demo** — try it instantly at https://sat-dependency-resolver-ae207ddb503e.herokuapp.com  
+- **Simple JSON format** — easy to generate from any language/tool  
+- **Open source** — MIT licensed, easy to fork or embed  
+
+## Links & Resources
+
+<p align="center" style="margin: 2.5rem 0;">
+  <strong>GitHub Repository</strong><br>
+  <a href="https://github.com/Apollo87z/sat-dependency-resolver">github.com/Apollo87z/sat-dependency-resolver</a>
+</p>
+
+<p align="center">
+  <strong>Live API Endpoint</strong><br>
+  <a href="https://sat-dependency-resolver-ae207ddb503e.herokuapp.com">https://sat-dependency-resolver-ae207ddb503e.herokuapp.com</a>
+</p>
+
+<p align="center">
+  <strong>Full Documentation (GitBook)</strong><br>
+  <a href="https://shehans-organization.gitbook.io/sat-dependency-resolver-1/">shehans-organization.gitbook.io/sat-dependency-resolver-1/</a>
+  <br><small>Installation, API reference, detailed examples, and more</small>
+</p>
+
+<p align="center" style="margin-top: 3rem; color: #888;">
+  Made with SAT solvers + modern tech • Perfect answers when possible • Clear explanations when not
+</p>
+
+<p align="center" style="margin-top: 2rem; font-size: 0.9em; color: #666;">
+  Want to learn how to use the API, run it locally, or see more examples?<br>
+  → Check out the <a href="https://shehans-organization.gitbook.io/sat-dependency-resolver-1/">complete GitBook documentation</a>
+</p>
