@@ -1,0 +1,767 @@
+from astroid import nodes  # type: ignore
+from typing import TYPE_CHECKING, Optional, List, Tuple, Union, Any
+
+from pylint.checkers import BaseChecker
+from pylint.checkers.utils import only_required_for_messages
+
+if TYPE_CHECKING:
+    from pylint.lint import PyLinter
+
+from edulint.linting.analyses.types import guess_type, Type
+from edulint.linting.analyses.utils import (
+    get_range_params,
+    get_const_value,
+    is_parents_elif,
+    get_statements_count,
+    is_negation,
+    is_pure_expression,
+    requires_data_dependency_analysis,
+)
+
+
+class Local(BaseChecker):
+    name = "local-defects"
+    msgs = {
+        "R6600": (
+            "Should never be emitted",
+            "noop",
+            "Never emitted, just to use if all other checks are disabled",
+        ),
+        "R6601": (
+            "Use %s.append(%s) instead of %s.",
+            "use-append",
+            "Emitted when code extends list by a single argument instead of appending it.",
+        ),
+        "R6602": (
+            "Use integral division //.",
+            "use-integral-division",
+            "Emitted when the code uses float division and converts the result to int.",
+        ),
+        "R6603": (
+            "Use isdecimal to test if string contains a number.",
+            "use-isdecimal",
+            "Emitted when the code uses isdigit or isnumeric.",
+        ),
+        "R6604": (
+            "Do not use %s loop with else.",
+            "no-loop-else",
+            "Emitted when the code contains loop with else block.",
+        ),
+        "R6605": (
+            "Use elif.",
+            "use-elif",
+            "Emitted when the code contains else: if construction instead of elif. Might return a false positive if "
+            "the code mixes tabs and spaces.",
+        ),
+        "R6606": (
+            "The for loop makes %s.",
+            "at-most-one-iteration-for-loop",
+            "Emitted when a for loop would always perform at most one iteration.",
+        ),
+        "R6607": (
+            "Use %s instead of repeated %s in %s.",
+            "no-repeated-op",
+            "Emitted when the code contains repeated adition/multiplication instead of multiplication/exponentiation.",
+        ),
+        "R6608": (
+            "Redundant arithmetic: %s",
+            "redundant-arithmetic",
+            "Emitted when there is redundant arithmetic (e.g. +0, *1) in an expression.",
+        ),
+        "R6609": (
+            "Use augmented assignment: '%s %s= %s'",
+            "use-augmented-assign",
+            "Emitted when an assignment can be simplified by using its augmented version.",
+        ),
+        "R6610": (
+            "Do not multiply list with mutable content.",
+            "do-not-multiply-mutable",
+            "Emitted when a list with mutable contents is being multiplied.",
+        ),
+        "R6611": (
+            "Use else instead of elif.",
+            "redundant-elif",
+            "Emitted when the condition in elif is negation of the condition in the if.",
+        ),
+        "R6612": (
+            "Unreachable else.",
+            "unreachable-else",
+            "Emitted when the else branch is unreachable due to totally exhaustive conditions before.",
+        ),
+        "R6613": (
+            "Use '%s' directly rather than as '%s'.",
+            "no-is-bool",
+            "Emitted when the is operator is used with a bool value.",
+        ),
+        "R6614": (
+            'Use "%s" instead of using the magical constant %i.',
+            "use-ord-letter",
+            "Emitted when the code uses a magical constant instead of a string literal.",
+        ),
+        "R6615": (
+            "Remove the call to 'ord' and compare to the string directly \"%s\" instead of using "
+            "the magical constant %i. Careful, this may require changing the comparison operator.",
+            "use-literal-letter",
+            "Emitted when the code uses a magical constant instead of a string literal in a comparison.",
+        ),
+        "R6616": (
+            "Use early return.",
+            "use-early-return",
+            "Emitted when a long block of code is followed by an else that just returns, breaks or continues.",
+        ),
+        "R6617": (
+            "Consider replacing '%s' with '%s'",
+            "in-range-instead-of-compare-small",
+            "Emitted when there is a problem like 'n in range(1, 5, 2)' and suggests 'n == 1 or n == 3'.",
+        ),
+        "R6618": (
+            "Consider replacing '%s' with '%s'",
+            "in-range-instead-of-compare",
+            "Emitted when there is a problem like 'n in range(1, 10)' and suggests '1 <= n and n < 10'.",
+        ),
+        "R6619": (
+            "Consider replacing '%s' with '%s'",
+            "in-range-instead-of-compare-step",
+            "Emitted when there is a problem like 'n in range(1, 10, 2)' and suggests '1 <= n and n < 5 and n % 2 == 1'.",
+        ),
+    }
+
+    def _check_extend(self, node: nodes.Call) -> None:
+        if (
+            isinstance(node.func, nodes.Attribute)
+            and node.func.attrname == "extend"
+            and len(node.args) == 1
+            and isinstance(node.args[0], nodes.List)
+            and len(node.args[0].elts) == 1
+        ):
+            self.add_message(
+                "use-append",
+                node=node,
+                args=(
+                    node.func.expr.as_string(),
+                    node.args[0].elts[0].as_string(),
+                    node.as_string(),
+                ),
+            )
+
+    def _check_augassign_extend(self, node: nodes.AugAssign) -> None:
+        if node.op == "+=" and isinstance(node.value, nodes.List) and len(node.value.elts) == 1:
+            self.add_message(
+                "use-append",
+                node=node,
+                args=(node.target.as_string(), node.value.elts[0].as_string(), node.as_string()),
+            )
+
+    def _check_isdecimal(self, node: nodes.Call) -> None:
+        if isinstance(node.func, nodes.Attribute) and node.func.attrname in (
+            "isdigit",
+            "isnumeric",
+        ):
+            self.add_message("use-isdecimal", node=node)
+
+    def _check_div(self, node: nodes.Call) -> None:
+        if (
+            isinstance(node.func, nodes.Name)
+            and node.func.name == "int"
+            and len(node.args) == 1
+            and isinstance(node.args[0], nodes.BinOp)
+            and node.args[0].op == "/"
+        ):
+            self.add_message("use-integral-division", node=node)
+
+    def _check_loop_else(self, nodes: List[nodes.NodeNG], parent_name: str) -> None:
+        if nodes:
+            self.add_message("no-loop-else", node=nodes[0].parent, args=(parent_name))
+
+    def _check_else_if(self, node: nodes.If) -> None:
+        if node.has_elif_block():
+            first_body = node.body[0]
+            first_orelse = node.orelse[0]
+            if first_body.col_offset == first_orelse.col_offset:
+                self.add_message("use-elif", node=node.orelse[0])
+
+    def _check_iteration_count(self, node: nodes.For) -> None:
+        range_params = get_range_params(node.iter)
+        if range_params is None:
+            return
+
+        start, stop, step = range_params
+        start, stop, step = get_const_value(start), get_const_value(stop), get_const_value(step)
+
+        if all(v is not None and isinstance(v, int) for v in (start, stop, step)):
+            if step > 0 and start >= stop or step < 0 and start <= stop:
+                self.add_message(
+                    "at-most-one-iteration-for-loop", node=node, args=("no iterations",)
+                )
+            elif step > 0 and start + step >= stop or step < 0 and start + step <= stop:
+                self.add_message(
+                    "at-most-one-iteration-for-loop", node=node, args=("only one iteration",)
+                )
+
+    def _check_repeated_operation_rec(
+        self, node: nodes.NodeNG, op: str, name: Optional[str] = None
+    ) -> Optional[Tuple[int, str]]:
+        if isinstance(node, nodes.BinOp):
+            if node.op != op:
+                return None
+
+            lt = self._check_repeated_operation_rec(node.left, op, name)
+            if lt is None:
+                return None
+
+            count_lt, name_lt = lt
+            assert name is None or name == name_lt
+            rt = self._check_repeated_operation_rec(node.right, op, name_lt)
+            if rt is None:
+                return None
+
+            count_rt, _ = rt
+            return count_lt + count_rt, name
+
+        if (
+            name is None and type(node) in (nodes.Name, nodes.Attribute, nodes.Subscript)
+        ) or name == node.as_string():
+            return 1, node.as_string()
+        return None
+
+    def _check_repeated_operation(self, node: nodes.BinOp) -> None:
+        if node.op in ("+", "*"):
+            result = self._check_repeated_operation_rec(node, node.op)
+            if result is None:
+                return
+
+            # DANGER: on some structures, + may be available but not *
+            self.add_message(
+                "no-repeated-op",
+                node=node,
+                args=(
+                    "multiplication" if node.op == "+" else "exponentiation",
+                    "addition" if node.op == "+" else "muliplication",
+                    node.as_string(),
+                ),
+            )
+
+    def _check_redundant_arithmetic(self, node: Union[nodes.BinOp, nodes.AugAssign]) -> None:
+        if isinstance(node, nodes.BinOp):
+            op = node.op
+            left = get_const_value(node.left)
+            right = get_const_value(node.right)
+        elif isinstance(node, nodes.AugAssign):
+            op = node.op[:-1]
+            left = None
+            right = get_const_value(node.value)
+        else:
+            assert False, "unreachable"
+
+        if (
+            (op == "+" and (left in (0, "") or right in (0, "")))
+            or (op == "-" and (left == 0 or right == 0))
+            or (op == "*" and (left in (0, 1) or right in (0, 1)))
+            or (op == "/" and right == 1)
+            or (
+                op in ("/", "//", "%")
+                and (
+                    isinstance(node, nodes.BinOp)
+                    and node.left.as_string() == node.right.as_string()
+                    or isinstance(node, nodes.AugAssign)
+                    and node.target.as_string() == node.value.as_string()
+                )
+            )
+            or (op == "**" and right in (0, 1))
+        ):
+            self.add_message("redundant-arithmetic", node=node, args=(node.as_string(),))
+
+    @requires_data_dependency_analysis()
+    def _check_augmentable(self, node: Union[nodes.Assign, nodes.AnnAssign]) -> None:
+        def add_message(target: str, param: nodes.BinOp) -> None:
+            self.add_message(
+                "use-augmented-assign",
+                node=node,
+                args=(target, node.value.op, param.as_string()),
+            )
+
+        if not isinstance(node.value, nodes.BinOp):
+            return
+        bin_op = node.value
+
+        if isinstance(node, nodes.Assign):
+            target = node.targets[0].as_string()
+        elif isinstance(node, nodes.AnnAssign):
+            target = node.target.as_string()
+        else:
+            assert False, "unreachable"
+
+        result_type = guess_type(bin_op)
+        if result_type is None or result_type.any_mutable():
+            return
+
+        if target == bin_op.left.as_string():
+            add_message(target, bin_op.right)
+        elif (
+            bin_op.op in "+*|&"
+            and target == bin_op.right.as_string()
+            and not result_type.any_container()
+        ):
+            add_message(target, bin_op.left)
+
+    def _check_multiplied_list(self, node: nodes.BinOp) -> None:
+        def is_mutable(elem: nodes.NodeNG) -> bool:
+            return type(elem) in (nodes.List, nodes.Set, nodes.Dict) or (
+                isinstance(elem, nodes.Call)
+                and isinstance(elem.func, nodes.Name)
+                and elem.func.name in ("list", "set", "dict")
+            )
+
+        if node.op != "*" or (
+            not isinstance(node.left, nodes.List) and not isinstance(node.right, nodes.List)
+        ):
+            return
+
+        assert not isinstance(node.left, nodes.List) or not isinstance(node.right, nodes.List)
+        lst = node.left if isinstance(node.left, nodes.List) else node.right
+
+        if any(is_mutable(elem) for elem in lst.elts):
+            self.add_message("do-not-multiply-mutable", node=node)
+
+    def _check_redundant_elif(self, node: nodes.If) -> None:
+        if_test = node.test
+        if node.has_elif_block():
+            next_if = node.orelse[0]
+        # TODO report another message (may be FP)
+        # elif isinstance(node.next_sibling(), nodes.If) and len(node.next_sibling().orelse) == 0:
+        #     next_if = node.next_sibling()
+        else:
+            return
+
+        if is_negation(if_test, next_if.test, negated_rt=False):
+            self.add_message("redundant-elif", node=next_if)
+            if (
+                node.has_elif_block()
+                and next_if == node.orelse[0]
+                and len(node.orelse[0].orelse) > 0
+            ):
+                self.add_message("unreachable-else", node=node.orelse[0].orelse[0])
+
+    def _check_no_is(self, node: nodes.Compare) -> None:
+        for i, (op, val) in enumerate(node.ops):
+            if (
+                op in ("is", "is not")
+                and isinstance(val, nodes.Const)
+                and isinstance(val.value, bool)
+            ):
+                prev_val = node.ops[i - 1][1] if i > 0 else node.left
+                negate = (op == "is") != val.value
+                self.add_message(
+                    "no-is-bool",
+                    node=node,
+                    args=(
+                        f"{'not ' if negate else ''}{prev_val.as_string()}",
+                        f"{prev_val.as_string()} {op} {val.as_string()}",
+                    ),
+                )
+
+    def _is_ord(self, node: nodes.NodeNG) -> bool:
+        return isinstance(node, nodes.Call) and node.func.as_string() == "ord"
+
+    def _contains_ord(self, node: nodes.NodeNG) -> bool:
+        if self._is_ord(node):
+            return True
+        if isinstance(node, nodes.BinOp):
+            return self._is_ord(node.left) or self._is_ord(node.right)
+        return False
+
+    def _is_preffered(self, value: int) -> bool:
+        return chr(value) in "azAZ09"
+
+    def _in_suggestable_range(self, value: int) -> bool:
+        return ord(" ") <= value < 127  # chr(127) is weird
+
+    def _check_use_ord_letter(self, node: nodes.BinOp) -> None:
+        def add_message(param: nodes.NodeNG, value: int, suggestion: str) -> None:
+            self.add_message("use-ord-letter", node=param, args=(suggestion, value))
+
+        if node.op not in ("+", "-"):
+            return
+
+        for ord_param, const_param in ((node.left, node.right), (node.right, node.left)):
+            value = get_const_value(const_param)
+            if (
+                value is None
+                or not isinstance(value, int)
+                or not self._in_suggestable_range(value)
+                or not self._contains_ord(ord_param)
+            ):
+                continue
+
+            if self._is_preffered(value + 1):
+                suggestion = f"ord('{chr(value + 1)}') - 1"
+            elif self._is_preffered(value - 1):
+                suggestion = f"ord('{chr(value - 1)}') + 1"
+            elif not isinstance(ord_param, nodes.BinOp) or self._is_preffered(value):
+                suggestion = f"ord('{chr(value)}')"
+            else:
+                continue
+
+            if (node.op == "-" and const_param == node.right and suggestion.endswith("+ 1")) or (
+                node.op == "+" and const_param == node.left and suggestion.endswith("- 1")
+            ):
+                add_message(const_param, value, f"({suggestion})")
+            else:
+                add_message(const_param, value, suggestion)
+
+    def _check_magical_constant_in_ord_compare(self, node: nodes.Compare) -> None:
+        def add_message(param: nodes.NodeNG, value: int, suggestion: str) -> None:
+            self.add_message("use-literal-letter", node=param, args=(suggestion, value))
+
+        def change(op: str) -> str:
+            if op == "<":
+                return "<="
+            if op == "<=":
+                return "<"
+            if op == ">":
+                return ">="
+            if op == ">=":
+                return ">"
+            assert False, "unreachable"
+
+        all_ops = [(None, node.left)] + node.ops
+        contains_ord = [self._contains_ord(param) for _, param in all_ops]
+
+        if not any(contains_ord):
+            return
+
+        for i, (op, param) in enumerate([(None, node.left), node.ops[-1]]):
+            value = get_const_value(param)
+            if value is None or not self._in_suggestable_range(value):
+                continue
+
+            if i == 0:
+                op, other = node.ops[0]
+                if self._is_preffered(value + 1) and op in ("<", ">="):
+                    add_message(param, value, f"'{chr(value + 1)}' {change(op)}")
+                elif self._is_preffered(value - 1) and op in (">", "<="):
+                    add_message(param, value, f"'{chr(value - 1)}' {change(op)}")
+                elif (
+                    not contains_ord[1]
+                    or not isinstance(other, nodes.BinOp)
+                    or self._is_preffered(value)
+                ):
+                    add_message(param, value, f"'{chr(value)}' {op}")
+            else:
+                if self._is_preffered(value + 1) and op in (">", "<="):
+                    add_message(param, value, f"{change(op)} '{chr(value + 1)}'")
+                elif self._is_preffered(value - 1) and op in ("<", ">="):
+                    add_message(param, value, f"{change(op)} '{chr(value - 1)}'")
+                elif (
+                    not contains_ord[-2]
+                    or not isinstance(all_ops[-2][1], nodes.BinOp)
+                    or self._is_preffered(value)
+                ):
+                    add_message(param, value, f"{op} '{chr(value)}'")
+
+    def _check_use_early_return(self, node: nodes.If):
+        def ends_block(node: nodes.NodeNG) -> bool:
+            if isinstance(node, nodes.If):
+                return (
+                    ends_block(node.body[-1])
+                    and len(node.orelse) > 0
+                    and ends_block(node.orelse[-1])
+                )
+            return isinstance(node, (nodes.Return, nodes.Break, nodes.Continue))
+
+        def large_terminated_if_elif_block(node: nodes.NodeNG) -> bool:
+            return (
+                isinstance(node, nodes.If)
+                and ends_block(node.body[-1])
+                and get_statements_count(node.body, include_defs=True, include_name_main=True) > 2
+                and (
+                    len(node.orelse) == 0
+                    or (len(node.orelse) == 1 and large_terminated_if_elif_block(node.orelse[0]))
+                )
+            )
+
+        prev_sibling = node.previous_sibling()
+        if is_parents_elif(node) or large_terminated_if_elif_block(prev_sibling):
+            return
+
+        if len(node.orelse) > 0:
+            last_block = node.orelse
+        elif ends_block(node.body[-1]):
+            last_block = [node.next_sibling()]
+        else:
+            return
+
+        if (
+            ends_block(last_block[-1])
+            and get_statements_count(last_block, include_defs=True, include_name_main=True) <= 2
+            and get_statements_count(node.body, include_defs=True, include_name_main=True) >= 4
+        ):
+            self.add_message("use-early-return", node=node)
+
+    @requires_data_dependency_analysis()
+    def _check_in_range_instead_of_compare(self, node: nodes.Compare) -> None:
+        def is_integer(value: Any) -> bool:
+            return isinstance(value, int) and not isinstance(value, bool)
+
+        def count_range_values(start: int, stop: int, step: int) -> int:
+            if (start < stop and step < 0) or (start > stop and step > 0):
+                return 0
+
+            return -((start - stop) // step)
+
+        def is_var(node: nodes.NodeNG) -> bool:
+            return isinstance(node, (nodes.Name, nodes.Call, nodes.Subscript, nodes.Attribute))
+
+        def takes_only_int_values(node: nodes.NodeNG) -> bool:
+            guessed_type = guess_type(node)
+            return guessed_type is not None and guessed_type.has_only(Type.INT)
+
+        def add_brackets_if_necessary(node: nodes.NodeNG) -> str:
+            if isinstance(node, (nodes.BinOp, nodes.UnaryOp)):
+                return f"({node.as_string()})"
+
+            return node.as_string()
+
+        def get_value_plus_constant(node: nodes.NodeNG) -> Optional[Tuple[str, int]]:
+            if is_var(node):
+                var = node.as_string()
+                const = 0
+                return var, const
+
+            if isinstance(node, nodes.BinOp) and (node.op == "+" or node.op == "-"):
+                if is_var(node.left) and isinstance(node.right, nodes.Const):
+                    var = node.left.as_string()
+                    const = node.right.value if node.op == "+" else -node.right.value
+                    return var, const
+
+                if is_var(node.right) and isinstance(node.left, nodes.Const) and node.op == "+":
+                    var = node.right.as_string()
+                    const = node.left.value
+                    return var, const
+
+            return None
+
+        def get_all_values_in_range_if_not_many(
+            start: nodes.NodeNG,
+            start_val: Optional[int],
+            stop: nodes.NodeNG,
+            stop_val: Optional[int],
+            step: int,
+        ) -> Optional[List[str]]:
+            if start_val is not None and stop_val is not None:
+                values_count = count_range_values(start_val, stop_val, step)
+                if values_count > 3 or values_count > 2 and abs(step) == 1:
+                    return None
+
+                return [str(value) for value in range(start_val, stop_val, step)]
+
+            if start_val is None and stop_val is None:
+                value_plus_constant = get_value_plus_constant(start)
+                if value_plus_constant is None:
+                    return None
+
+                val1, const1 = value_plus_constant
+
+                value_plus_constant = get_value_plus_constant(stop)
+                if value_plus_constant is None:
+                    return None
+
+                val2, const2 = value_plus_constant
+
+                if val1 != val2:
+                    return None
+
+                values_count = count_range_values(const1, const2, step)
+                if values_count > 3 or values_count > 2 and abs(step) == 1:
+                    return None
+
+                return [
+                    (
+                        val1
+                        if value == 0
+                        else (val1 + (" + " if value > 0 else " - ") + str(abs(value)))
+                    )
+                    for value in range(const1, const2, step)
+                ]
+
+            return None
+
+        if (
+            len(node.ops) != 1
+            or (node.ops[0][0] != "in" and node.ops[0][0] != "not in")
+            or not is_var(node.left)
+            or not takes_only_int_values(node.left)
+        ):
+            return
+
+        range_params = get_range_params(node.ops[0][1])
+        if range_params is None:
+            return
+
+        start, stop, step = range_params
+        start_val = get_const_value(start)
+        stop_val = get_const_value(stop)
+        step_val = get_const_value(step)
+
+        if (
+            not is_pure_expression(start)
+            or not is_pure_expression(stop)
+            or not is_integer(step_val)
+            or step_val == 0
+            or start_val is not None
+            and not is_integer(start_val)
+            or stop_val is not None
+            and not is_integer(stop_val)
+        ):
+            return
+
+        all_values = get_all_values_in_range_if_not_many(start, start_val, stop, stop_val, step_val)
+
+        if all_values is not None:
+            if len(all_values) == 0:
+                suggested_replacement = "False" if node.ops[0][0] == "in" else "True"
+            else:
+                comparison = f'{node.left.as_string()} {"==" if node.ops[0][0] == "in" else "!="} '
+                suggested_replacement = (
+                    comparison
+                    + f' {"or" if node.ops[0][0] == "in" else "and"} {comparison}'.join(all_values)
+                )
+
+            self.add_message(
+                "in-range-instead-of-compare-small",
+                node=node,
+                args=(node.as_string(), suggested_replacement),
+            )
+            return
+
+        left_compare = "<="
+        right_compare = "<"
+        left = start.as_string()
+        right = stop.as_string()
+
+        if step_val < 0:
+            left_compare, right_compare, left, right = right_compare, left_compare, right, left
+
+        var = node.left.as_string()
+
+        connection_operation = "and"
+        step_compare = "=="
+
+        if node.ops[0][0] == "in":
+            suggested_replacement = " ".join(
+                [
+                    left,
+                    left_compare,
+                    var,
+                    connection_operation,
+                    var,
+                    right_compare,
+                    right,
+                ]
+            )
+        else:
+            connection_operation = "or"
+            step_compare = "!="
+            suggested_replacement = " ".join(
+                [
+                    var,
+                    right_compare,
+                    left,
+                    connection_operation,
+                    right,
+                    left_compare,
+                    var,
+                ]
+            )
+
+        if abs(step_val) == 1:
+            self.add_message(
+                "in-range-instead-of-compare",
+                node=node,
+                args=(node.as_string(), suggested_replacement),
+            )
+            return
+
+        suggested_replacement = " ".join(
+            [
+                suggested_replacement,
+                connection_operation,
+                var,
+                "%",
+                str(abs(step_val)),
+                step_compare,
+                (
+                    str(start_val % abs(step_val))
+                    if start_val is not None
+                    else f"{add_brackets_if_necessary(start)} % {str(abs(step_val))}"
+                ),
+            ]
+        )
+
+        self.add_message(
+            "in-range-instead-of-compare-step",
+            node=node,
+            args=(node.as_string(), suggested_replacement),
+        )
+
+    @only_required_for_messages("use-append", "use-isdecimal", "use-integral-division")
+    def visit_call(self, node: nodes.Call) -> None:
+        self._check_extend(node)
+        self._check_isdecimal(node)
+        self._check_div(node)
+
+    @only_required_for_messages("use-append", "redundant-arithmetic")
+    def visit_augassign(self, node: nodes.AugAssign) -> None:
+        self._check_augassign_extend(node)
+        self._check_redundant_arithmetic(node)
+
+    @only_required_for_messages("no-loop-else")
+    def visit_while(self, node: nodes.While) -> None:
+        self._check_loop_else(node.orelse, "while")
+
+    @only_required_for_messages("no-loop-else", "at-most-one-iteration-for-loop")
+    def visit_for(self, node: nodes.For) -> None:
+        self._check_loop_else(node.orelse, "for")
+        self._check_iteration_count(node)
+
+    @only_required_for_messages("use-elif", "redundant-elif", "use-early-return")
+    def visit_if(self, node: nodes.If) -> None:
+        self._check_else_if(node)
+        self._check_redundant_elif(node)
+        self._check_use_early_return(node)
+
+    @only_required_for_messages(
+        "no-repeated-op", "redundant-arithmetic", "do-not-multiply-mutable", "use-ord-letter"
+    )
+    def visit_binop(self, node: nodes.BinOp) -> None:
+        self._check_repeated_operation(node)
+        self._check_redundant_arithmetic(node)
+        self._check_multiplied_list(node)
+        self._check_use_ord_letter(node)
+
+    @only_required_for_messages("use-augmented-assign")
+    def visit_assign(self, node: nodes.Assign) -> None:
+        self._check_augmentable(node)
+
+    @only_required_for_messages("use-augmented-assign")
+    def visit_annassign(self, node: nodes.AnnAssign) -> None:
+        self._check_augmentable(node)
+
+    @only_required_for_messages(
+        "no-is-bool",
+        "magical-constant-in-ord-compare",
+        "in-range-instead-of-compare-small",
+        "in-range-instead-of-compare-step",
+        "in-range-instead-of-compare",
+    )
+    def visit_compare(self, node: nodes.Compare) -> None:
+        self._check_no_is(node)
+        self._check_magical_constant_in_ord_compare(node)
+        self._check_in_range_instead_of_compare(node)
+
+
+def register(linter: "PyLinter") -> None:
+    """This required method auto registers the checker during initialization.
+    :param linter: The linter to register the checker to.
+    """
+    linter.register_checker(Local(linter))
