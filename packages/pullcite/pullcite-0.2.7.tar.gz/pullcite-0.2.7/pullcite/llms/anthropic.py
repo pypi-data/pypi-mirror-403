@@ -1,0 +1,314 @@
+"""
+Anthropic Claude LLM implementation.
+
+Uses the Anthropic API to generate completions with Claude models.
+"""
+
+from __future__ import annotations
+
+import os
+import time
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from .base import (
+    LLM,
+    LLMError,
+    LLMResponse,
+    Message,
+    Role,
+    Tool,
+    ToolCall,
+)
+
+
+# Model configurations
+ANTHROPIC_MODELS = {
+    # Claude 4.5 (latest)
+    "claude-opus-4-5-20251101": {"max_tokens": 8192},
+    "claude-opus-4-5": {"max_tokens": 8192},
+    "claude-sonnet-4-5": {"max_tokens": 8192},
+    "claude-haiku-4-5": {"max_tokens": 8192},
+    "claude-opus-4-1": {"max_tokens": 8192},
+    # Claude 4
+    "claude-sonnet-4-20250514": {"max_tokens": 8192},
+    # Claude 3.5
+    "claude-3-5-sonnet-20241022": {"max_tokens": 8192},
+    "claude-3-5-haiku-20241022": {"max_tokens": 8192},
+    # Claude 3
+    "claude-3-opus-20240229": {"max_tokens": 4096},
+    "claude-3-sonnet-20240229": {"max_tokens": 4096},
+    "claude-3-haiku-20240307": {"max_tokens": 4096},
+}
+
+
+@dataclass
+class AnthropicLLM(LLM):
+    """
+    Anthropic Claude LLM provider.
+
+    Uses the Anthropic API to generate completions. Requires anthropic package.
+
+    Attributes:
+        api_key: Anthropic API key. Defaults to ANTHROPIC_API_KEY env var.
+        model: Model name. Defaults to claude-sonnet-4-20250514.
+
+    Example:
+        >>> llm = AnthropicLLM()
+        >>> response = llm.complete([Message.user("Hello!")])
+        >>> print(response.content)
+    """
+
+    api_key: str | None = None
+    model: str = "claude-sonnet-4-20250514"
+    structured_output: bool = False
+    decimals_as: Literal["string", "number"] = "string"
+    citations: bool = False
+
+    def __post_init__(self) -> None:
+        """Initialize and validate."""
+        if self.api_key is None:
+            self.api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+        if not self.api_key:
+            raise LLMError(
+                "Anthropic API key required. Set ANTHROPIC_API_KEY env var or pass api_key."
+            )
+
+        if self.model not in ANTHROPIC_MODELS:
+            raise LLMError(
+                f"Unknown model: {self.model}. "
+                f"Supported: {list(ANTHROPIC_MODELS.keys())}"
+            )
+
+        if self.decimals_as not in ("string", "number"):
+            raise ValueError("decimals_as must be 'string' or 'number'")
+
+        if self.structured_output and self.citations:
+            raise ValueError(
+                "Claude citations are incompatible with structured outputs "
+                "(output_format). Disable citations or structured_output."
+            )
+
+    @property
+    def model_name(self) -> str:
+        """Return the model identifier."""
+        return self.model
+
+    def _get_client(self):
+        """Get Anthropic client (lazy import)."""
+        try:
+            from anthropic import Anthropic
+        except ImportError:
+            raise LLMError(
+                "anthropic package required. Install with: pip install anthropic"
+            )
+
+        return Anthropic(api_key=self.api_key)
+
+    def _convert_messages(
+        self, messages: list[Message]
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        """
+        Convert messages to Anthropic format.
+
+        Returns:
+            Tuple of (system_prompt, messages_list)
+        """
+        system_prompt = None
+        converted = []
+
+        for msg in messages:
+            if msg.role == Role.SYSTEM:
+                system_prompt = msg.content
+                continue
+
+            if msg.role == Role.USER:
+                converted.append({"role": "user", "content": msg.content})
+
+            elif msg.role == Role.ASSISTANT:
+                content: list[dict[str, Any]] = []
+
+                if msg.content:
+                    content.append({"type": "text", "text": msg.content})
+
+                for tc in msg.tool_calls:
+                    content.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.name,
+                            "input": tc.arguments,
+                        }
+                    )
+
+                converted.append(
+                    {"role": "assistant", "content": content or msg.content}
+                )
+
+            elif msg.role == Role.TOOL:
+                # Anthropic uses tool_result in user messages
+                converted.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.tool_call_id,
+                                "content": msg.content,
+                            }
+                        ],
+                    }
+                )
+
+        return system_prompt, converted
+
+    def _convert_tools(self, tools: list[Tool] | None) -> list[dict[str, Any]] | None:
+        """Convert tools to Anthropic format."""
+        if not tools:
+            return None
+
+        return [tool.to_dict() for tool in tools]
+
+    def _parse_response(self, response) -> LLMResponse:
+        """Parse Anthropic response to LLMResponse."""
+        content = None
+        tool_calls = []
+
+        for block in response.content:
+            if block.type == "text":
+                content = block.text
+            elif block.type == "tool_use":
+                tool_calls.append(
+                    ToolCall(
+                        id=block.id,
+                        name=block.name,
+                        arguments=block.input,
+                    )
+                )
+
+        return LLMResponse(
+            content=content,
+            tool_calls=tuple(tool_calls),
+            stop_reason=response.stop_reason,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            model=response.model,
+        )
+
+    def _normalize_output_format(
+        self, output_format: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """
+        Normalize output_format for Anthropic beta structured outputs.
+
+        Anthropic expects: {"type": "json_schema", "schema": {...}}
+        Pullcite builds: {"type": "json_schema", "json_schema": {"name": ..., "schema": {...}}}
+        """
+        if not output_format:
+            return None
+        json_schema = output_format.get("json_schema")
+        if json_schema:
+            schema = json_schema.get("schema", json_schema)
+            return {"type": "json_schema", "schema": schema}
+        return output_format
+
+    def _should_retry(self, error: Exception) -> bool:
+        """Return True for transient errors worth retrying."""
+        status_code = getattr(error, "status_code", None)
+        if status_code is None:
+            response = getattr(error, "response", None)
+            status_code = getattr(response, "status_code", None)
+        return status_code in {429, 500, 502, 503, 504}
+
+    def complete(
+        self,
+        messages: list[Message],
+        tools: list[Tool] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+        output_format: dict[str, Any] | None = None,
+    ) -> LLMResponse:
+        """
+        Generate a completion using Claude.
+
+        Args:
+            messages: Conversation history.
+            tools: Available tools (optional).
+            temperature: Sampling temperature (0.0 - 1.0).
+            max_tokens: Maximum tokens to generate.
+
+        Returns:
+            LLMResponse with content and/or tool calls.
+
+        Raises:
+            LLMError: If completion fails.
+        """
+        try:
+            client = self._get_client()
+
+            system_prompt, converted_messages = self._convert_messages(messages)
+            converted_tools = self._convert_tools(tools)
+
+            if self.structured_output and self.citations:
+                raise ValueError(
+                    "Claude citations are incompatible with structured outputs "
+                    "(output_format). Disable citations or structured_output."
+                )
+
+            if output_format is not None and not self.structured_output:
+                raise ValueError("output_format requires structured_output=True")
+
+            if self.structured_output and output_format is None:
+                raise ValueError("structured_output=True requires output_format")
+
+            if self.structured_output:
+                converted_tools = None
+
+            kwargs: dict[str, Any] = {
+                "model": self.model,
+                "messages": converted_messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+
+            if system_prompt:
+                kwargs["system"] = system_prompt
+
+            if converted_tools:
+                kwargs["tools"] = converted_tools
+
+            max_attempts = 3
+            backoff = 1.0
+
+            for attempt in range(max_attempts):
+                try:
+                    if self.structured_output:
+                        kwargs["output_format"] = self._normalize_output_format(
+                            output_format
+                        )
+                        kwargs["extra_headers"] = {
+                            "anthropic-beta": "structured-outputs-2025-11-13"
+                        }
+                        if not hasattr(client, "beta"):
+                            raise LLMError(
+                                "Anthropic beta client required for structured outputs."
+                            )
+                        response = client.beta.messages.create(**kwargs)
+                    else:
+                        response = client.messages.create(**kwargs)
+
+                    return self._parse_response(response)
+                except Exception as e:
+                    if attempt < max_attempts - 1 and self._should_retry(e):
+                        time.sleep(backoff * (2**attempt))
+                        continue
+                    raise
+
+        except LLMError:
+            raise
+        except Exception as e:
+            raise LLMError(f"Anthropic completion failed: {e}", cause=e)
+
+
+__all__ = ["AnthropicLLM", "ANTHROPIC_MODELS"]
