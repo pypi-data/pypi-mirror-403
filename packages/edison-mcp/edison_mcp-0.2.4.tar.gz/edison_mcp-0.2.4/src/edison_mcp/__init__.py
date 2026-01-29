@@ -1,0 +1,1 @@
+"""Edison Scientific MCP Server - A Model Context Protocol server for interacting with Edison Scientific platform (former FutureHouse).""" 
