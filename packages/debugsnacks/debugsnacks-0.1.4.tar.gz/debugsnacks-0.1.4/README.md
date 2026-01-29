@@ -1,0 +1,241 @@
+# 🍿 DebugSnacks
+
+A playful Python utility library that adds **fun, humor, facts, and controlled chaos** to your debugging and development workflow.
+
+DebugSnacks is not here to fix your bugs.
+It’s here to **keep you sane while fixing them** 😄
+
+---
+
+## ✨ Features
+
+* 🎲 Random fun facts or developer excuses
+* 😏 Sarcastic, dramatic, or proud messages
+* 👨‍👧 Classic programmer dad jokes
+* 🕒 Time-based mood reactions
+* 🔥 Adjustable chaos levels
+* 🚪 Dramatic exits for your scripts
+
+Perfect for:
+
+* Debug sessions
+* Demo scripts
+* CLI tools
+* Easter eggs in internal tools
+* Stress relief during late-night coding
+
+---
+
+## 📦 Installation
+
+```bash
+pip install debugsnacks
+```
+
+---
+
+## 🚀 Quick Start
+
+```python
+import debugsnacks
+
+debugsnacks.auto()
+```
+
+Example output:
+
+```
+🎲 Toybox warming up...
+
+📌 Fun fact: 💻 The first computer bug was an actual moth.
+```
+
+---
+
+## 🧩 Available Modules & Usage
+
+### 🎲 `auto()` — Surprise Me
+
+Randomly prints a **fun fact** or a **developer excuse**.
+
+```python
+debugsnacks.auto()
+```
+
+---
+
+### 🐞 `excuse()` — Developer Excuses
+
+Prints a random classic developer excuse.
+
+```python
+debugsnacks.excuse()
+```
+
+Example:
+
+```
+It works on my machine.
+```
+
+---
+
+### 📌 `fact()` — Fun Facts
+
+Prints a random fun or nerdy fact.
+
+```python
+debugsnacks.fact()
+```
+
+Example:
+
+```
+📌 Fun fact: 🐙 Octopuses have three hearts.
+```
+
+---
+
+### 😏 `say(text, mood="sarcastic")`
+
+Say something with attitude.
+
+Supported moods:
+
+* `sarcastic` (default)
+* `proud`
+* `dramatic`
+* `casual`
+
+```python
+debugsnacks.say("Build completed", mood="proud")
+```
+
+Example:
+
+```
+✨ Build completed. Look at you go!
+```
+
+---
+
+### 👨‍👧 `dadjoke()` — Programmer Dad Jokes
+
+Prints a random programming dad joke.
+
+```python
+debugsnacks.dadjoke()
+```
+
+Example:
+
+```
+Why do programmers prefer dark mode? Because light attracts bugs.
+```
+
+---
+
+### 🕒 `react()` — Time-Based Mood Reaction
+
+Prints a message based on the current time.
+
+```python
+debugsnacks.react()
+```
+
+Possible outputs:
+
+* Late night advice
+* Morning coffee motivation
+* Afternoon grind encouragement
+* Evening coding hype
+
+---
+
+### 🔥 `chaos(level=1)` — Control the Chaos
+
+Introduce controlled chaos into your program.
+
+Chaos levels:
+
+* `0` → Chaos disabled
+* `1` → Minor chaos (default)
+* `2+` → MAXIMUM CHAOS 🔥
+
+```python
+debugsnacks.chaos(2)
+```
+
+Output:
+
+```
+🔥 MAXIMUM CHAOS. MAY THE ODDS BE EVER IN YOUR FAVOR.
+```
+
+---
+
+### 🚪 `exit(style="dramatic")` — Exit with Style
+
+Exit your script dramatically.
+
+Available styles:
+
+* `dramatic` (default)
+* `theatrical`
+* `quiet`
+
+```python
+debugsnacks.exit("theatrical")
+```
+
+---
+
+## ⚙️ Configuration (Experimental)
+
+```python
+debugsnacks.config(verbosity="fun", chaos=1)
+```
+
+> ⚠️ Currently reserved for future behavior customization.
+
+---
+
+## 🧪 Example Test Script
+
+```python
+import debugsnacks
+
+debugsnacks.auto()
+debugsnacks.say("Tests passed", "dramatic")
+debugsnacks.dadjoke()
+debugsnacks.react()
+debugsnacks.chaos(1)
+debugsnacks.exit()
+```
+
+---
+
+## 🛠 Requirements
+
+* Python **3.8+**
+* No external dependencies 🎉
+
+---
+
+## 📄 License
+
+MIT License © Mohammad Razi
+
+---
+
+## ⭐ Why DebugSnacks?
+
+Because debugging doesn’t have to be miserable.
+
+Add a little humor.
+Add a little chaos.
+Add **DebugSnacks** 🍿
+
+---
+
+Happy debugging 😄
