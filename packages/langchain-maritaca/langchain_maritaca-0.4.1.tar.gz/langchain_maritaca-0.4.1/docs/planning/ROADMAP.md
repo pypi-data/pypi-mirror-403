@@ -1,0 +1,308 @@
+# langchain-maritaca Roadmap
+
+Consolidated roadmap with detailed implementation steps for each planned feature.
+
+> **Last Updated:** January 2026
+> **Current Version:** v0.4.0
+
+---
+
+## Summary
+
+| Feature | Priority | Complexity | Status |
+|---------|----------|------------|--------|
+| ~~Cache Integration~~ | High | Low | **IMPLEMENTED** |
+| ~~Configurable Retry Logic~~ | High | Low | **IMPLEMENTED** |
+| ~~Enhanced Callbacks~~ | Medium | Low | **IMPLEMENTED** |
+| ~~Token Counter~~ | Medium | Medium | **IMPLEMENTED** |
+| ~~Context Window Management~~ | Medium | Low | **IMPLEMENTED** |
+| ~~Model Selection Helper~~ | Low | Low | **IMPLEMENTED** |
+| ~~Batch Optimization~~ | Low | Medium | **IMPLEMENTED** |
+| ~~Multimodal/Vision Support~~ | Low | High | **IMPLEMENTED** |
+
+---
+
+## HIGH PRIORITY
+
+### 1. ~~Cache Integration~~ ✅ IMPLEMENTED
+
+**Goal:** Enable LangChain's native caching to reduce API costs for repeated queries.
+
+**Result:** LangChain's caching works natively with ChatMaritaca! No code changes needed.
+
+**Usage:**
+```python
+from langchain_core.caches import InMemoryCache
+from langchain_core.globals import set_llm_cache
+from langchain_maritaca import ChatMaritaca
+
+set_llm_cache(InMemoryCache())
+model = ChatMaritaca()
+
+# First call hits API, second call uses cache
+response1 = model.invoke("Hello")  # API call
+response2 = model.invoke("Hello")  # Cache hit (instant!)
+```
+
+**Supported cache backends:**
+- `InMemoryCache` - Simple in-memory caching
+- `SQLiteCache` - Persistent file-based caching
+- `RedisCache` - Distributed caching for production
+
+**Status:** ✅ IMPLEMENTED
+**Complexity:** Low (native LangChain support)
+**Impact:** Medium - Reduces costs for repeated queries
+
+---
+
+### 2. ~~Configurable Retry Logic~~ ✅ IMPLEMENTED
+
+**Goal:** Expose retry parameters for production resilience customization.
+
+**Implemented Parameters:**
+```python
+model = ChatMaritaca(
+    retry_if_rate_limited=True,   # Auto-retry on HTTP 429
+    retry_delay=1.0,              # Initial delay (seconds)
+    retry_max_delay=60.0,         # Maximum delay (seconds)
+    retry_multiplier=2.0,         # Exponential backoff multiplier
+    max_retries=2,                # Maximum retry attempts
+)
+```
+
+**Features:**
+- Exponential backoff with configurable multiplier
+- Delay capped at `retry_max_delay`
+- Rate limit retry can be disabled with `retry_if_rate_limited=False`
+- Validation for all retry parameters
+- Works for both sync and async requests
+
+**Status:** ✅ IMPLEMENTED
+**Complexity:** Low
+**Impact:** Medium - Better resilience in production
+
+---
+
+## MEDIUM PRIORITY
+
+### 3. ~~Enhanced Callbacks~~ ✅ IMPLEMENTED
+
+**Goal:** Provide granular callbacks for observability (cost tracking, latency, token streaming).
+
+**Implemented Callbacks:**
+- `CostTrackingCallback` - Track token usage and estimate API costs
+- `LatencyTrackingCallback` - Measure response times with percentile statistics
+- `TokenStreamingCallback` - Monitor streaming token rates
+- `CombinedCallback` - Combined cost and latency tracking
+
+**Usage:**
+```python
+from langchain_maritaca import ChatMaritaca, CostTrackingCallback, LatencyTrackingCallback
+
+cost_cb = CostTrackingCallback()
+latency_cb = LatencyTrackingCallback()
+
+model = ChatMaritaca(callbacks=[cost_cb, latency_cb])
+model.invoke("Hello!")
+
+print(f"Cost: ${cost_cb.total_cost:.6f}")
+print(f"Tokens: {cost_cb.total_tokens}")
+print(f"Latency: {latency_cb.average_latency:.2f}s")
+print(f"P95: {latency_cb.p95_latency:.2f}s")
+```
+
+**Features:**
+- Cost tracking based on Maritaca AI pricing (sabia-3.1, sabiazinho-3.1)
+- Latency statistics with P50, P95, P99 percentiles
+- Token streaming rate calculation
+- Easy integration with monitoring tools (Prometheus, logging)
+
+**Status:** ✅ IMPLEMENTED
+**Complexity:** Low
+**Impact:** Medium - Better observability
+
+---
+
+### 4. ~~Token Counter~~ ✅ IMPLEMENTED
+
+**Goal:** Implement `get_num_tokens()` for cost estimation before API calls.
+
+**Implemented Methods:**
+- `get_num_tokens()` - Count tokens in text using tiktoken (or fallback)
+- `get_num_tokens_from_messages()` - Count tokens in message list with overhead
+- `estimate_cost()` - Estimate request cost before making it
+
+**Usage:**
+```python
+from langchain_maritaca import ChatMaritaca
+from langchain_core.messages import HumanMessage
+
+model = ChatMaritaca(model="sabia-3.1")
+
+# Count tokens in text
+tokens = model.get_num_tokens("Olá, como você está?")
+
+# Estimate cost before request
+messages = [HumanMessage(content="Tell me about Brazil")]
+estimate = model.estimate_cost(messages, max_output_tokens=1000)
+print(f"Estimated cost: ${estimate['total_cost']:.6f}")
+```
+
+**Features:**
+- Uses tiktoken cl100k_base for accurate counting
+- Character-based fallback if tiktoken not installed
+- Accounts for message formatting overhead
+- Pricing for sabia-3.1 and sabiazinho-3.1 models
+
+**Status:** ✅ IMPLEMENTED
+**Complexity:** Medium
+**Impact:** Medium - Enables cost estimation before API calls
+
+---
+
+## v0.2.4 ✅ IMPLEMENTED
+
+All planned features for v0.2.4 have been implemented.
+
+### Implemented Features in v0.2.4
+
+| Feature | Priority | Complexity | Status |
+|---------|----------|------------|--------|
+| ~~Batch Optimization~~ | Medium | Medium | **IMPLEMENTED** |
+| ~~Context Window Management~~ | Medium | Low | **IMPLEMENTED** |
+| ~~Model Selection Helper~~ | Low | Low | **IMPLEMENTED** |
+
+### Context Window Management ✅ IMPLEMENTED
+
+**Implemented Features:**
+- `max_context_tokens` parameter to limit input tokens
+- `auto_truncate` parameter for automatic message truncation
+- `context_warning_threshold` parameter for warning customization
+- `get_context_limit()` method to get model's context limit
+- `check_context_usage()` method with automatic warnings
+- `truncate_messages()` method with intelligent truncation
+- `MODEL_CONTEXT_LIMITS` constant with per-model limits
+
+### Model Selection Helper ✅ IMPLEMENTED
+
+**Implemented Features:**
+- `list_available_models()` class method
+- `recommend_model()` class method with task complexity and priority options
+- `MODEL_SPECS` constant with detailed model specifications
+
+### Batch Optimization ✅ IMPLEMENTED
+
+**Implemented Features:**
+- `abatch_with_concurrency()` for async batch processing with semaphore
+- `batch_with_progress()` for sync batch with progress callback
+- `abatch_estimate_cost()` for batch cost estimation
+
+---
+
+## LOW PRIORITY
+
+### 5. Batch Optimization
+
+**Goal:** Use batch API endpoint for improved throughput on multiple requests.
+
+**Implementation Steps:**
+
+1. **Research Maritaca batch API**
+   - Check if Maritaca offers batch endpoints
+   - Document API differences from single request
+
+2. **If batch API exists:**
+   - Implement `_generate_batch` method
+   - Override `batch()` method to use batch API
+   - Handle batch size limits
+
+3. **If no batch API:**
+   - Implement client-side batching with async
+   - Use `asyncio.gather` for parallel requests
+   - Add rate limiting to avoid API throttling
+
+4. **Add benchmarks**
+   - Compare batch vs sequential performance
+   - Measure throughput improvements
+
+5. **Add documentation**
+   - Batch usage examples
+   - Performance tuning guide
+
+**Files to modify:**
+- `langchain_maritaca/chat_models.py`
+- `tests/unit_tests/test_batch.py` (new)
+- `tests/benchmarks/test_batch_performance.py` (new)
+
+---
+
+### 6. ~~Multimodal/Vision Support~~ ✅ IMPLEMENTED
+
+**Goal:** Support image inputs for vision capabilities.
+
+**Status:** ✅ IMPLEMENTED in v0.4.0
+
+**Implemented Features:**
+- Image URL support
+- Base64 image support
+- LangChain standard format compatibility
+- OpenAI `image_url` format compatibility
+- Anthropic-style API format (type: image, source: {type, url/data})
+
+**Usage:**
+```python
+from langchain_maritaca import ChatMaritaca
+from langchain_core.messages import HumanMessage
+
+model = ChatMaritaca(model="sabiazinho-4")
+
+# Image URL
+response = model.invoke([
+    HumanMessage(content=[
+        {"type": "text", "text": "O que você vê nesta imagem?"},
+        {"type": "image", "url": "https://example.com/image.jpg"}
+    ])
+])
+
+# Base64 image
+response = model.invoke([
+    HumanMessage(content=[
+        {"type": "text", "text": "Descreva esta imagem"},
+        {"type": "image", "base64": "...", "mime_type": "image/png"}
+    ])
+])
+```
+
+**Files modified:**
+- `langchain_maritaca/chat_models.py` - Added `_format_image_content()` function
+- `tests/unit_tests/test_vision.py` - Unit tests for vision support
+
+---
+
+## Completed Features
+
+| Feature | Version | Date |
+|---------|---------|------|
+| Embeddings Support (DeepInfra) | v0.2.2 | Dec 2025 |
+| Structured Output | v0.2.2 | Dec 2025 |
+| Tool Calling / Function Calling | v0.2.0 | Dec 2025 |
+| Coverage Badge | v0.2.3 | Dec 2025 |
+| Bilingual Documentation | v0.2.3 | Dec 2025 |
+| Configurable Retry Logic | v0.2.3 | Dec 2025 |
+| Cache Integration | v0.2.3 | Dec 2025 |
+| Enhanced Callbacks | v0.2.3 | Dec 2025 |
+| Token Counter | v0.2.3 | Dec 2025 |
+
+---
+
+## Contributing
+
+Want to work on one of these features? Here's how:
+
+1. **Pick a feature** from the roadmap above
+2. **Open an issue** to discuss your approach
+3. **Fork the repository** and create a feature branch
+4. **Follow the implementation steps** outlined above
+5. **Submit a pull request** with tests and documentation
+
+For questions, open an issue on GitHub or check the [Contributing Guide](../../CONTRIBUTING.md).
