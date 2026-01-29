@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyPowerwall Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: rgba(22, 27, 34, 0.8);
+            --border-color: rgba(48, 54, 61, 0.8);
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-orange: #db6d28;
+            --solar-color: #f0c000;
+            --battery-color: #3fb950;
+            --home-color: #58a6ff;
+            --grid-color: #8b949e;
+            --glow-blue: rgba(88, 166, 255, 0.15);
+            --glow-green: rgba(63, 185, 80, 0.15);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a2332 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo-icon {
+            font-size: 2em;
+        }
+        
+        .logo h1 {
+            font-size: 1.5em;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .version-badge {
+            font-size: 0.75em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .header-links {
+            display: flex;
+            gap: 16px;
+        }
+        
+        .header-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            font-size: 0.9em;
+        }
+        
+        .header-links a:hover {
+            color: var(--text-primary);
+            background: var(--bg-card);
+        }
+        
+        /* Status Banner */
+        .status-banner {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-banner.connected {
+            border-color: var(--accent-green);
+            background: rgba(63, 185, 80, 0.1);
+        }
+        
+        .status-banner.disconnected {
+            border-color: var(--accent-red);
+            background: rgba(248, 81, 73, 0.1);
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-banner.disconnected .status-dot {
+            background: var(--accent-red);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.4); }
+            50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(63, 185, 80, 0); }
+        }
+        
+        .status-text {
+            flex: 1;
+            font-size: 0.9em;
+        }
+        
+        .last-update {
+            color: var(--text-muted);
+            font-size: 0.85em;
+        }
+        
+        /* Grid Layout */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 20px;
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 20px var(--glow-blue);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .card-title {
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .card-title .icon {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .card-title .icon svg {
+            width: 100%;
+            height: 100%;
+            fill: var(--text-secondary);
+            stroke: var(--text-secondary);
+        }
+        
+        /* Power Flow Animation Card */
+        .power-flow-card {
+            grid-column: span 6;
+            min-height: 380px;
+        }
+        
+        .power-flow-card .card-content {
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .power-flow-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+        }
+        
+        /* Energy Summary Card */
+        .energy-card {
+            grid-column: span 6;
+        }
+        
+        .energy-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        
+        .energy-item {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .energy-item:hover {
+            transform: translateY(-2px);
+        }
+        
+        .energy-item.solar { border-left: 3px solid var(--solar-color); }
+        .energy-item.battery { border-left: 3px solid var(--battery-color); }
+        .energy-item.home { border-left: 3px solid var(--home-color); }
+        .energy-item.grid { border-left: 3px solid var(--grid-color); }
+        
+        .energy-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
+        
+        .energy-label .icon {
+            font-size: 1.3em;
+        }
+        
+        .energy-value {
+            font-size: 1.8em;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .energy-item.solar .energy-value { color: var(--solar-color); }
+        .energy-item.battery .energy-value { color: var(--battery-color); }
+        .energy-item.home .energy-value { color: var(--home-color); }
+        .energy-item.grid .energy-value { color: var(--grid-color); }
+        
+        .energy-detail {
+            font-size: 0.8em;
+            color: var(--text-muted);
+        }
+        
+        .energy-arrow {
+            font-weight: 600;
+            margin-left: 4px;
+        }
+        
+        .arrow-up { color: var(--accent-green); }
+        .arrow-down { color: var(--accent-orange); }
+        .grid-down { color: var(--accent-orange); font-weight: bold; }
+        
+        /* Alerts Card */
+        .alerts-card {
+            grid-column: span 4;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .alert-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+        
+        .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.85em;
+        }
+        
+        .alert-item.notice {
+            border-left: 3px solid #10b981;
+        }
+        
+        .alert-item.info {
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .alert-item.warning {
+            border-left: 3px solid var(--accent-yellow);
+        }
+        
+        .alert-item.error {
+            border-left: 3px solid var(--accent-red);
+        }
+        
+        .alert-icon {
+            font-size: 1.1em;
+        }
+        
+        .no-alerts {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 30px;
+            font-size: 0.9em;
+        }
+        
+        .no-alerts .icon {
+            font-size: 2em;
+            margin-bottom: 8px;
+            display: block;
+        }
+        
+        /* Strings Card */
+        .strings-card {
+            grid-column: span 4;
+        }
+        
+        .string-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .string-item {
+            display: grid;
+            grid-template-columns: 24px 1fr minmax(50px, 70px) minmax(50px, 70px) minmax(50px, 70px);
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+        }
+        
+        .string-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .string-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .string-icon.connected {
+            color: var(--solar-color);
+        }
+        
+        .string-icon.disconnected {
+            color: var(--text-muted);
+        }
+        
+        .string-name {
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+        
+        .string-value {
+            font-size: 0.85em;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+        
+        .string-value.power {
+            color: var(--solar-color);
+            font-weight: 600;
+        }
+        
+        .string-value.voltage {
+            color: var(--accent-blue);
+        }
+        
+        .string-value.current {
+            color: var(--accent-green);
+        }
+        
+        .string-item.disconnected .string-value {
+            color: var(--text-muted);
+            opacity: 0.6;
+        }
+        
+        .no-strings {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 30px;
+            font-size: 0.9em;
+        }
+        
+        /* System Health Card */
+        .health-card {
+            grid-column: span 4;
+        }
+        
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        .health-item {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+        }
+        
+        .health-label {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        
+        .health-value {
+            font-size: 1.1em;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        /* Powerwall Health Card */
+        .powerwall-card {
+            grid-column: span 12;
+        }
+        
+        .powerwall-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        
+        .powerwall-table thead {
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .powerwall-table th {
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-size: 0.75em;
+            letter-spacing: 0.5px;
+        }
+        
+        .powerwall-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .powerwall-table tbody tr:hover {
+            background: var(--bg-secondary);
+        }
+        
+        .powerwall-name {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .spec-good {
+            color: var(--accent-green);
+        }
+        
+        .spec-warning {
+            color: var(--accent-orange);
+        }
+        
+        .powerwall-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid var(--border-color);
+        }
+        
+        .powerwall-summary-item {
+            background: var(--bg-secondary);
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-blue);
+        }
+        
+        .powerwall-summary-label {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .powerwall-summary-value {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .powerwall-summary-detail {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        
+        /* Gateways Card */
+        .gateways-card {
+            grid-column: span 12;
+        }
+        
+        .gateway-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 16px;
+        }
+        
+        .gateway-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .gateway-item:hover {
+            border-color: var(--border-color);
+        }
+        
+        .gateway-item.online {
+            border-left: 3px solid var(--accent-green);
+        }
+        
+        .gateway-item.offline {
+            border-left: 3px solid var(--accent-red);
+        }
+        
+        .gateway-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .gateway-name {
+            font-weight: 600;
+            font-size: 1em;
+        }
+        
+        .gateway-host {
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+        
+        .gateway-details {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        
+        .gateway-mode {
+            font-size: 0.75em;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--bg-card);
+            color: var(--text-secondary);
+        }
+        
+        .gateway-firmware {
+            font-size: 0.75em;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-blue);
+        }
+        
+        .gateway-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .gateway-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .gateway-status-dot.online {
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+        
+        .gateway-status-dot.offline {
+            background: var(--accent-red);
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .gateway-status-text {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
+        
+        .gateway-error {
+            font-size: 0.75em;
+            color: var(--accent-red);
+            margin-top: 4px;
+        }
+        
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 24px 0;
+            margin-top: 40px;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-muted);
+            font-size: 0.85em;
+        }
+        
+        footer a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .power-flow-card,
+            .energy-card {
+                grid-column: span 6;
+            }
+            .alerts-card,
+            .strings-card,
+            .health-card {
+                grid-column: span 4;
+            }
+        }
+        
+        @media (max-width: 900px) {
+            .power-flow-card,
+            .energy-card,
+            .alerts-card,
+            .strings-card,
+            .health-card,
+            .gateways-card {
+                grid-column: span 12;
+            }
+            
+            .energy-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .health-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .health-grid {
+                grid-template-columns: 1fr;
+            }
+            .container {
+                padding: 12px;
+            }
+            
+            header {
+                flex-direction: column;
+                gap: 16px;
+            }
+            
+            .header-links {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .energy-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .gateway-list {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Loading skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-card) 50%, var(--bg-secondary) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+        
+        /* Mini Trend Charts */
+        .energy-item {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .trend-chart {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .energy-label,
+        .energy-value,
+        .energy-detail {
+            position: relative;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <span class="logo-icon">⚡</span>
+                <h1>PyPowerwall Server</h1>
+                <span id="version-badge" class="version-badge">v--</span>
+            </div>
+            <div class="header-links">
+                <a href="/">Power Flow</a>
+                <a href="/docs">API Docs</a>
+                <a href="/api/gateways">Gateways API</a>
+                <a href="https://github.com/jasonacox/pypowerwall-server" target="_blank">GitHub</a>
+            </div>
+        </header>
+        
+        <div id="status-banner" class="status-banner connected">
+            <div class="status-dot"></div>
+            <span class="status-text">Connected to <span id="gateway-count">0</span> gateway(s)</span>
+            <span class="last-update">Last update: <span id="last-update-time">--</span></span>
+        </div>
+        
+        <div class="dashboard-grid">
+            <!-- Power Flow Animation -->
+            <div class="card power-flow-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M13 2 L3 14 h8 l-2 8 L19 10 h-8 l2-8 z" fill="currentColor" stroke="none"/>
+                                <path d="M23 12 A11 11 0 0 1 19 19" fill="none"/>
+                                <path d="M19 5 A11 11 0 0 1 23 12" fill="none"/>
+                                <path d="M1 12 A11 11 0 0 1 5 5" fill="none"/>
+                                <path d="M5 19 A11 11 0 0 1 1 12" fill="none"/>
+                                <polyline points="19,3 21,5 19,7" fill="none"/>
+                                <polyline points="5,17 3,19 5,21" fill="none"/>
+                            </svg>
+                        </span>
+                        Power Flow
+                    </div>
+                </div>
+                <div class="card-content">
+                    <iframe src="/?style=clear" class="power-flow-iframe" title="Power Flow Animation"></iframe>
+                </div>
+            </div>
+            
+            <!-- Energy Summary -->
+            <div class="card energy-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 3v18h18" fill="none"/>
+                                <path d="M18 17 L13 9 L9 13 L3 7" fill="none"/>
+                            </svg>
+                        </span>
+                        Energy Summary
+                    </div>
+                </div>
+                <div class="energy-grid">
+                    <div class="energy-item solar">
+                        <canvas id="solar-trend" class="trend-chart"></canvas>
+                        <div class="energy-label">
+                            <span class="icon">☀️</span>
+                            Solar Generation
+                        </div>
+                        <div class="energy-value" id="solar-power">-- kW</div>
+                    </div>
+                    
+                    <div class="energy-item battery">
+                        <canvas id="battery-trend" class="trend-chart"></canvas>
+                        <div class="energy-label">
+                            <span class="icon">🔋</span>
+                            Battery
+                        </div>
+                        <div class="energy-value" id="battery-power">-- kW</div>
+                        <div class="energy-detail">
+                            Charge: <span id="battery-level">--%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="energy-item home">
+                        <canvas id="home-trend" class="trend-chart"></canvas>
+                        <div class="energy-label">
+                            <span class="icon">🏠</span>
+                            Home Usage
+                        </div>
+                        <div class="energy-value" id="home-power">-- kW</div>
+                    </div>
+                    
+                    <div class="energy-item grid">
+                        <canvas id="grid-trend" class="trend-chart"></canvas>
+                        <div class="energy-label">
+                            <span class="icon">⚡</span>
+                            Grid
+                        </div>
+                        <div class="energy-value" id="grid-power">-- kW</div>
+                        <div class="energy-detail" id="grid-status">--</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alerts -->
+            <div class="card alerts-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10.29 3.86 L1.82 18 A2 2 0 0 0 3.55 21 h16.9 a2 2 0 0 0 1.73-3 L13.71 3.86 a2 2 0 0 0-3.42 0 z" fill="none"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </span>
+                        Alerts
+                    </div>
+                </div>
+                <div id="alert-list" class="alert-list">
+                    <div class="no-alerts">
+                        No active alerts
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Solar Strings -->
+            <div class="card strings-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="7" height="7" rx="1" fill="none"/>
+                                <rect x="14" y="3" width="7" height="7" rx="1" fill="none"/>
+                                <rect x="3" y="14" width="7" height="7" rx="1" fill="none"/>
+                                <rect x="14" y="14" width="7" height="7" rx="1" fill="none"/>
+                            </svg>
+                        </span>
+                        Solar Strings
+                    </div>
+                </div>
+                <div id="string-list" class="string-list">
+                    <div class="no-strings">
+                        Loading string data...
+                    </div>
+                </div>
+            </div>
+            
+            <!-- System Health -->
+            <div class="card health-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" fill="none"/>
+                                <circle cx="12" cy="7" r="4" fill="none"/>
+                                <path d="M22 11h-4M20 9v4" fill="none"/>
+                            </svg>
+                        </span>
+                        System Health
+                    </div>
+                </div>
+                <div class="health-grid">
+                    <div class="health-item">
+                        <div class="health-label">Site Name</div>
+                        <div class="health-value" id="server-sitename">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Mode</div>
+                        <div class="health-value" id="server-mode">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Gateways</div>
+                        <div class="health-value" id="server-gateways">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Connection</div>
+                        <div class="health-value" id="server-connection">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Uptime</div>
+                        <div class="health-value" id="server-uptime">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Requests</div>
+                        <div class="health-value" id="server-calls">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Errors</div>
+                        <div class="health-value" id="server-errors">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Memory</div>
+                        <div class="health-value" id="server-memory">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Failures</div>
+                        <div class="health-value" id="server-failures">--</div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Offline</div>
+                        <div class="health-value" id="server-offline">--</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Powerwall Status -->
+            <div class="card powerwall-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="6" width="18" height="12" rx="2" fill="none"/>
+                                <line x1="3" y1="12" x2="21" y2="12"/>
+                                <line x1="12" y1="6" x2="12" y2="18"/>
+                            </svg>
+                        </span>
+                        Powerwall Status
+                    </div>
+                </div>
+                <div id="powerwall-content" class="powerwall-content">
+                    <div class="no-strings">Loading Powerwall data...</div>
+                </div>
+            </div>
+            
+            <!-- Connected Gateways -->
+            <div class="card gateways-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="7" width="20" height="14" rx="2" fill="none"/>
+                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" fill="none"/>
+                            </svg>
+                        </span>
+                        Connected Gateways
+                    </div>
+                </div>
+                <div id="gateway-list" class="gateway-list">
+                    <div class="no-strings">Loading gateways...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <p>
+            <span id="footer-versions">Server: v-- | PyPowerwall: v--</span>
+            | <a href="/docs">API Documentation</a> 
+            | <a href="https://github.com/jasonacox/pypowerwall-server" target="_blank">GitHub</a>
+        </p>
+    </footer>
+    
+    <script>
+        // WebSocket connection for real-time updates
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+        const reconnectDelay = 3000;
+        let lastUpdateTime = null;
+        
+        // Trend chart data (in-memory only, cleared on refresh)
+        const trendData = {
+            solar: [],
+            battery: [],
+            home: [],
+            grid: [],
+            maxPoints: 180  // 30 minutes at 10-second intervals
+        };
+        
+        function addTrendPoint(type, value) {
+            const data = trendData[type];
+            data.push(value);
+            // Keep only last maxPoints
+            if (data.length > trendData.maxPoints) {
+                data.shift();
+            }
+        }
+        
+        function drawTrendChart(canvasId, data, color, showZeroLine = false) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || !data || data.length < 2) return;
+            
+            // Set canvas size to match parent container
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Find min/max for scaling (handle negative values)
+            const max = Math.max(...data, 0);
+            const min = Math.min(...data, 0);
+            const range = max - min || 1;
+            
+            // Create gradient for fill
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(1, color.replace('rgb', 'rgba').replace(')', ', 0)'));
+            
+            // Draw filled area
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            
+            // Start from bottom left
+            const zeroY = showZeroLine && min < 0 ? height - ((0 - min) / range * height) : height;
+            ctx.moveTo(0, zeroY);
+            
+            // Draw the data line
+            data.forEach((value, i) => {
+                const x = (i / (data.length - 1)) * width;
+                const y = height - ((value - min) / range * height);
+                ctx.lineTo(x, y);
+            });
+            
+            // Close the path back to bottom
+            ctx.lineTo(width, zeroY);
+            ctx.lineTo(0, zeroY);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw zero line if needed
+            if (showZeroLine && min < 0) {
+                const zeroLineY = height - ((0 - min) / range * height);
+                ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(0, zeroLineY);
+                ctx.lineTo(width, zeroLineY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/aggregate`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateBannerStatus(true);
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                updateDashboard(data);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateBannerStatus(false);
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected, reconnecting...');
+                updateBannerStatus(false);
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+        
+        function updateBannerStatus(connected) {
+            const banner = document.getElementById('status-banner');
+            if (connected) {
+                banner.classList.remove('disconnected');
+                banner.classList.add('connected');
+            } else {
+                banner.classList.remove('connected');
+                banner.classList.add('disconnected');
+            }
+        }
+        
+        function formatPower(watts) {
+            const kw = watts / 1000;
+            return kw.toFixed(2);
+        }
+        
+        function formatPowerWithDirection(watts, type) {
+            const kw = watts / 1000;
+            const absKw = Math.abs(kw).toFixed(2);
+            let arrow = '';
+            let arrowClass = '';
+            
+            if (type === 'battery') {
+                // Positive = discharging, Negative = charging
+                if (kw > 0.01) {
+                    arrow = ' ↓';
+                    arrowClass = 'arrow-down';
+                } else if (kw < -0.01) {
+                    arrow = ' ↑';
+                    arrowClass = 'arrow-up';
+                }
+            } else if (type === 'grid') {
+                // Positive = importing, Negative = exporting
+                if (kw > 0.01) {
+                    arrow = ' ↓';
+                    arrowClass = 'arrow-down';
+                } else if (kw < -0.01) {
+                    arrow = ' ↑';
+                    arrowClass = 'arrow-up';
+                }
+            }
+            
+            return { value: `${absKw} kW`, arrow, arrowClass };
+        }
+        
+        function updateDashboard(data) {
+            lastUpdateTime = new Date();
+            document.getElementById('last-update-time').textContent = lastUpdateTime.toLocaleTimeString();
+            
+            // Solar
+            const solarKw = formatPower(data.total_solar_power || 0);
+            document.getElementById('solar-power').textContent = `${solarKw} kW`;
+            addTrendPoint('solar', (data.total_solar_power || 0) / 1000);
+            drawTrendChart('solar-trend', trendData.solar, '#f0c000');
+            
+            // Battery
+            const batteryData = formatPowerWithDirection(data.total_battery_power || 0, 'battery');
+            const batteryEl = document.getElementById('battery-power');
+            batteryEl.innerHTML = `${batteryData.value}<span class="energy-arrow ${batteryData.arrowClass}">${batteryData.arrow}</span>`;
+            
+            // Scale battery level using Tesla App formula: (level / 0.95) - (5 / 0.95)
+            let batteryLevel = '--';
+            if (data.total_battery_percent != null) {
+                const rawLevel = data.total_battery_percent;
+                batteryLevel = ((rawLevel / 0.95) - (5 / 0.95)).toFixed(1);
+            }
+            document.getElementById('battery-level').textContent = `${batteryLevel}%`;
+            addTrendPoint('battery', (data.total_battery_power || 0) / 1000);
+            drawTrendChart('battery-trend', trendData.battery, '#3fb950', true);
+            
+            // Home
+            const homeKw = formatPower(data.total_load_power || 0);
+            document.getElementById('home-power').textContent = `${homeKw} kW`;
+            addTrendPoint('home', (data.total_load_power || 0) / 1000);
+            drawTrendChart('home-trend', trendData.home, '#58a6ff');
+            
+            // Grid
+            const gridData = formatPowerWithDirection(data.total_grid_power || 0, 'grid');
+            const gridEl = document.getElementById('grid-power');
+            
+            // Show red X when grid is down, otherwise show power with arrows
+            if (data.grid_status === 'DOWN') {
+                gridEl.innerHTML = `${gridData.value}<span class="energy-arrow grid-down"> ✕</span>`;
+            } else {
+                gridEl.innerHTML = `${gridData.value}<span class="energy-arrow ${gridData.arrowClass}">${gridData.arrow}</span>`;
+            }
+            
+            // Check actual grid status first, then fallback to power-based status
+            let gridStatus = 'Idle';
+            if (data.grid_status === 'DOWN') {
+                gridStatus = 'Grid Down';
+            } else if ((data.total_grid_power || 0) > 10) {
+                gridStatus = 'Importing';
+            } else if ((data.total_grid_power || 0) < -10) {
+                gridStatus = 'Exporting';
+            }
+            document.getElementById('grid-status').textContent = gridStatus;
+            addTrendPoint('grid', (data.total_grid_power || 0) / 1000);
+            drawTrendChart('grid-trend', trendData.grid, '#8b949e', true);
+            
+            // Gateway count
+            document.getElementById('gateway-count').textContent = data.num_online || 0;
+        }
+        
+        // Fetch alerts
+        async function loadAlerts() {
+            try {
+                const response = await fetch('/alerts');
+                if (!response.ok) throw new Error('Failed to load alerts');
+                const alerts = await response.json();
+                
+                const container = document.getElementById('alert-list');
+                
+                if (!alerts || alerts.length === 0 || Object.keys(alerts).length === 0) {
+                    container.innerHTML = `
+                        <div class="no-alerts">
+                            <span class="icon">✅</span>
+                            No active alerts
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Define alert categories
+                const noticeAlerts = ['FWUpdateSucceeded', 'SystemConnectedToGrid', 'GridCodesWrite', 'PodCommissionTime'];
+                const infoAlerts = ['ScheduledIslandContactorOpen', 'SelfTest'];
+                
+                // Function to categorize alert
+                function categorizeAlert(alertText) {
+                    const alertName = alertText.split(':')[0].trim();
+                    
+                    if (noticeAlerts.some(notice => alertName.includes(notice))) {
+                        return { type: 'notice', icon: '✓' };
+                    }
+                    if (infoAlerts.some(info => alertName.includes(info))) {
+                        return { type: 'info', icon: 'ℹ' };
+                    }
+                    return { type: 'warning', icon: '⚠️' };
+                }
+                
+                // Handle both array and object formats
+                const alertArray = Array.isArray(alerts) ? alerts : Object.entries(alerts).map(([k, v]) => `${k}: ${v}`);
+                
+                // Sort alerts by type priority (notice -> info -> warning)
+                const typePriority = { 'notice': 1, 'info': 2, 'warning': 3 };
+                const sortedAlerts = alertArray.map(alert => {
+                    const alertText = typeof alert === 'string' ? alert : JSON.stringify(alert);
+                    const { type, icon } = categorizeAlert(alertText);
+                    return { alertText, type, icon };
+                }).sort((a, b) => typePriority[a.type] - typePriority[b.type]);
+                
+                container.innerHTML = sortedAlerts.slice(0, 10).map(({ alertText, type, icon }) => {
+                    return `
+                        <div class="alert-item ${type}">
+                            <span class="alert-icon">${icon}</span>
+                            <span>${alertText}</span>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.log('Alerts not available:', e.message);
+                document.getElementById('alert-list').innerHTML = `
+                    <div class="no-alerts">
+                        <span class="icon">✅</span>
+                        No active alerts
+                    </div>
+                `;
+            }
+        }
+        
+        // Fetch solar strings
+        async function loadStrings() {
+            try {
+                const response = await fetch('/strings');
+                if (!response.ok) throw new Error('Failed to load strings');
+                const strings = await response.json();
+                
+                const container = document.getElementById('string-list');
+                
+                if (!strings || Object.keys(strings).length === 0) {
+                    container.innerHTML = `<div class="no-strings">No string data available</div>`;
+                    return;
+                }
+                
+                // SVG icons for sun (connected) and moon (disconnected)
+                const sunIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/>
+                    <line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>`;
+                
+                const moonIcon = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>`;
+                
+                // Parse strings data - show all strings
+                let html = '';
+                let totalCount = 0;
+                for (const [name, data] of Object.entries(strings)) {
+                    if (typeof data === 'object' && data !== null) {
+                        totalCount++;
+                        const connected = data.Connected || data.connected;
+                        const voltage = data.Voltage || data.voltage || data.v || 0;
+                        const current = data.Current || data.current || data.i || 0;
+                        const power = data.Power || data.power || (voltage * current);
+                        
+                        const icon = connected ? sunIcon : moonIcon;
+                        const iconClass = connected ? 'connected' : 'disconnected';
+                        const rowClass = connected ? '' : 'disconnected';
+                        
+                        html += `
+                            <div class="string-item ${rowClass}">
+                                <div class="string-icon ${iconClass}">${icon}</div>
+                                <span class="string-name">${name}</span>
+                                <span class="string-value voltage">${typeof voltage === 'number' ? voltage.toFixed(1) : voltage}V</span>
+                                <span class="string-value current">${typeof current === 'number' ? current.toFixed(2) : current}A</span>
+                                <span class="string-value power">${typeof power === 'number' ? power.toFixed(0) : power}W</span>
+                            </div>
+                        `;
+                    }
+                }
+                
+                if (totalCount === 0) {
+                    container.innerHTML = `<div class="no-strings">No string data available</div>`;
+                } else {
+                    container.innerHTML = html;
+                }
+            } catch (e) {
+                console.log('Strings not available:', e.message);
+                document.getElementById('string-list').innerHTML = `<div class="no-strings">String data not available</div>`;
+            }
+        }
+        
+        // Fetch server stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/stats');
+                if (!response.ok) throw new Error('Failed to load stats');
+                const stats = await response.json();
+                
+                // Site Name
+                const siteName = stats.site_name || 'My Powerwall';
+                document.getElementById('server-sitename').textContent = siteName;
+                
+                // Mode
+                let mode = '--';
+                let qualifiers = [];
+                
+                // Determine base mode
+                if (stats.fleetapi || stats.cloudmode) {
+                    mode = 'Cloud';
+                    if (stats.fleetapi) {
+                        qualifiers.push('FleetAPI');
+                    }
+                } else {
+                    mode = 'Local';
+                    if (stats.tedapi) {
+                        qualifiers.push('TEDAPI');
+                    }
+                }
+                
+                // Add PW3 if applicable
+                if (stats.pw3) {
+                    qualifiers.push('PW3');
+                }
+                
+                // Build final mode string
+                if (qualifiers.length > 0) {
+                    mode += ' (' + qualifiers.join(' ') + ')';
+                }
+                
+                document.getElementById('server-mode').textContent = mode;
+                
+                // Gateways
+                const gwOnline = stats.gateways?.online || 0;
+                const gwTotal = stats.gateways?.total || 0;
+                const gwText = `${gwOnline}/${gwTotal}`;
+                document.getElementById('server-gateways').textContent = gwText;
+                
+                // Connection Health
+                const connHealth = stats.connection_health;
+                let connStatus = '--';
+                if (connHealth) {
+                    if (connHealth.is_degraded) {
+                        connStatus = '⚠️ Degraded';
+                    } else if (connHealth.consecutive_failures > 0) {
+                        connStatus = `⚠️ ${connHealth.consecutive_failures} fails`;
+                    } else {
+                        connStatus = '✓ Healthy';
+                    }
+                }
+                document.getElementById('server-connection').textContent = connStatus;
+                
+                // Uptime
+                document.getElementById('server-uptime').textContent = stats.uptime || '--';
+                
+                // API Requests
+                const totalCalls = (stats.gets || 0) + (stats.posts || 0);
+                document.getElementById('server-calls').textContent = totalCalls.toLocaleString();
+                
+                // Errors + Timeouts
+                const errorCount = (stats.errors || 0) + (stats.timeout || 0);
+                let errorText = errorCount.toString();
+                if (stats.timeout > 0) {
+                    errorText += ` (${stats.timeout} TO)`;
+                }
+                document.getElementById('server-errors').textContent = errorText;
+                
+                // Memory
+                const memMB = stats.mem ? (stats.mem / 1024).toFixed(1) : null;
+                document.getElementById('server-memory').textContent = memMB ? `${memMB} MB` : '--';
+                
+                // Consecutive Failures
+                const consecFailures = connHealth?.consecutive_failures || 0;
+                document.getElementById('server-failures').textContent = consecFailures.toString();
+                
+                // Offline Gateways
+                const gwOffline = stats.gateways?.offline || 0;
+                document.getElementById('server-offline').textContent = gwOffline.toString();
+                
+                // Update version info
+                const serverVersion = stats.server_version || '--';
+                const libVersion = stats.pypowerwall_version || '--';
+                document.getElementById('version-badge').textContent = `v${serverVersion}`;
+                document.getElementById('footer-versions').textContent = 
+                    `Server: v${serverVersion} | PyPowerwall: v${libVersion}`;
+            } catch (e) {
+                console.log('Stats not available:', e.message);
+            }
+        }
+        
+        // Fetch Powerwall pod data
+        async function loadPowerwalls() {
+            try {
+                const response = await fetch('/pod');
+                if (!response.ok) throw new Error('Failed to load pod data');
+                const pod = await response.json();
+                
+                const container = document.getElementById('powerwall-content');
+                
+                // Extract Powerwall data
+                const powerwalls = [];
+                const pwRegex = /^(PW\d+)_(POD_nom_full_pack_energy|v_out|p_out|f_out)$/;
+                const pwData = {};
+                
+                for (const [key, value] of Object.entries(pod)) {
+                    const match = key.match(pwRegex);
+                    if (match) {
+                        const pwName = match[1];
+                        const metric = match[2];
+                        if (!pwData[pwName]) pwData[pwName] = {};
+                        pwData[pwName][metric] = value;
+                    }
+                }
+                
+                // Convert to array and sort
+                const pwList = Object.entries(pwData).map(([name, data]) => ({ name, ...data }));
+                pwList.sort((a, b) => a.name.localeCompare(b.name));
+                
+                if (pwList.length === 0) {
+                    container.innerHTML = '<div class="no-strings">No Powerwall data available</div>';
+                    return;
+                }
+                
+                // Build table
+                let html = '<table class="powerwall-table"><thead><tr>';
+                html += '<th>Powerwall</th>';
+                html += '<th>Capacity</th>';
+                html += '<th>Voltage</th>';
+                html += '<th>Power</th>';
+                html += '<th>Frequency</th>';
+                html += '</tr></thead><tbody>';
+                
+                const SPEC_CAPACITY = 12.5; // kWh per Powerwall
+                
+                pwList.forEach(pw => {
+                    const capacity = pw.POD_nom_full_pack_energy ? (pw.POD_nom_full_pack_energy / 1000).toFixed(2) : '--';
+                    const capacityNum = pw.POD_nom_full_pack_energy ? pw.POD_nom_full_pack_energy / 1000 : 0;
+                    const capacityPct = capacityNum > 0 ? ((capacityNum / SPEC_CAPACITY) * 100).toFixed(1) : '--';
+                    const capacityClass = capacityNum >= SPEC_CAPACITY ? 'spec-good' : 'spec-warning';
+                    
+                    const voltage = pw.v_out ? pw.v_out.toFixed(1) : '--';
+                    const powerNum = pw.p_out || 0;
+                    const power = powerNum !== 0 ? Math.abs(powerNum).toFixed(2) : '--';
+                    const powerArrow = powerNum > 0 ? ' ↓' : powerNum < 0 ? ' ↑' : '';
+                    const powerArrowClass = powerNum > 0 ? 'arrow-down' : powerNum < 0 ? 'arrow-up' : '';
+                    const frequency = pw.f_out ? pw.f_out.toFixed(2) : '--';
+                    
+                    html += '<tr>';
+                    html += `<td class="powerwall-name">${pw.name}</td>`;
+                    html += `<td>${capacity} kWh <span class="${capacityClass}">(${capacityPct}%)</span></td>`;
+                    html += `<td>${voltage} V</td>`;
+                    html += `<td>${power} kW<span class="energy-arrow ${powerArrowClass}">${powerArrow}</span></td>`;
+                    html += `<td>${frequency} Hz</td>`;
+                    html += '</tr>';
+                });
+                
+                html += '</tbody></table>';
+                
+                // Add summary section
+                const totalCapacity = pod.nominal_full_pack_energy ? (pod.nominal_full_pack_energy / 1000).toFixed(2) : '--';
+                const totalCapacityNum = pod.nominal_full_pack_energy ? pod.nominal_full_pack_energy / 1000 : 0;
+                const totalSpec = SPEC_CAPACITY * pwList.length;
+                const totalCapacityPct = totalCapacityNum > 0 ? ((totalCapacityNum / totalSpec) * 100).toFixed(1) : '--';
+                const totalCapacityClass = totalCapacityNum >= totalSpec ? 'spec-good' : 'spec-warning';
+                
+                const currentCharge = pod.nominal_energy_remaining ? (pod.nominal_energy_remaining / 1000).toFixed(2) : '--';
+                const currentChargePct = (pod.nominal_energy_remaining && pod.nominal_full_pack_energy) 
+                    ? ((pod.nominal_energy_remaining / pod.nominal_full_pack_energy) * 100).toFixed(1) 
+                    : '--';
+                
+                // Calculate Tesla App percentage: (batterylevel / 0.95) - (5 / 0.95)
+                let teslaAppPct = '--';
+                if (currentChargePct !== '--') {
+                    const batteryLevel = parseFloat(currentChargePct);
+                    teslaAppPct = ((batteryLevel / 0.95) - (5 / 0.95)).toFixed(1);
+                }
+                
+                const timeRemaining = pod.time_remaining_hours ? pod.time_remaining_hours.toFixed(1) : '--';
+                // Scale backup reserve using Tesla App formula: (reserve / 0.95) - (5 / 0.95)
+                let backupReserve = '--';
+                if (pod.backup_reserve_percent != null) {
+                    const rawReserve = parseFloat(pod.backup_reserve_percent);
+                    backupReserve = ((rawReserve / 0.95) - (5 / 0.95)).toFixed(1);
+                }
+                
+                html += '<div class="powerwall-summary">';
+                
+                html += '<div class="powerwall-summary-item">';
+                html += '<div class="powerwall-summary-label">Total Capacity</div>';
+                html += `<div class="powerwall-summary-value">${totalCapacity} kWh</div>`;
+                html += `<div class="powerwall-summary-detail"><span class="${totalCapacityClass}">${totalCapacityPct}% of spec</span> (${totalSpec} kWh)</div>`;
+                html += '</div>';
+                
+                html += '<div class="powerwall-summary-item">';
+                html += '<div class="powerwall-summary-label">Current Charge</div>';
+                html += `<div class="powerwall-summary-value">${currentCharge} kWh</div>`;
+                html += `<div class="powerwall-summary-detail"><span class="spec-good">${teslaAppPct}% charged</span> (${currentChargePct}% actual)</div>`;
+                html += '</div>';
+                
+                html += '<div class="powerwall-summary-item">';
+                html += '<div class="powerwall-summary-label">Time Remaining</div>';
+                html += `<div class="powerwall-summary-value">${timeRemaining} hrs</div>`;
+                html += '<div class="powerwall-summary-detail">at current load</div>';
+                html += '</div>';
+                
+                html += '<div class="powerwall-summary-item">';
+                html += '<div class="powerwall-summary-label">Backup Reserve</div>';
+                html += `<div class="powerwall-summary-value">${backupReserve}%</div>`;
+                html += '<div class="powerwall-summary-detail">reserve setting</div>';
+                html += '</div>';
+                
+                html += '</div>';
+                
+                container.innerHTML = html;
+            } catch (e) {
+                console.log('Powerwall data not available:', e.message);
+                document.getElementById('powerwall-content').innerHTML = `<div class="no-strings">Powerwall data not available</div>`;
+            }
+        }
+        
+        // Fetch gateways
+        async function loadGateways() {
+            try {
+                const response = await fetch('/api/gateways/');
+                if (!response.ok) throw new Error('Failed to load gateways');
+                const gateways = await response.json();
+                
+                const container = document.getElementById('gateway-list');
+                
+                if (!gateways || Object.keys(gateways).length === 0) {
+                    container.innerHTML = `<div class="no-strings">No gateways configured</div>`;
+                    return;
+                }
+                
+                // Fetch firmware version
+                let firmwareVersion = '--';
+                try {
+                    const versionResponse = await fetch('/version');
+                    if (versionResponse.ok) {
+                        const versionData = await versionResponse.json();
+                        firmwareVersion = versionData.version || '--';
+                    }
+                } catch (e) {
+                    console.log('Firmware version not available');
+                }
+                
+                let html = '';
+                for (const [id, status] of Object.entries(gateways)) {
+                    // Handle both nested and flat response formats
+                    const gw = status.gateway || status;
+                    const isOnline = status.online ?? false;
+                    const mode = gw.fleetapi ? 'FleetAPI' : gw.cloud_mode ? 'Cloud' : 'TEDAPI';
+                    const hostInfo = (gw.cloud_mode || gw.fleetapi)
+                        ? (gw.site_id || gw.email || id)
+                        : (gw.host || id);
+                    
+                    html += `
+                        <div class="gateway-item ${isOnline ? 'online' : 'offline'}">
+                            <div class="gateway-info">
+                                <div class="gateway-name">${gw.name || id}</div>
+                                <div class="gateway-host">${hostInfo}</div>
+                                <div class="gateway-details">
+                                    <span class="gateway-mode">${mode}</span>
+                                    ${isOnline ? `<span class="gateway-firmware">Firmware: ${firmwareVersion}</span>` : ''}
+                                </div>
+                                ${status.error ? `<div class="gateway-error">${status.error}</div>` : ''}
+                            </div>
+                            <div class="gateway-status">
+                                <div class="gateway-status-dot ${isOnline ? 'online' : 'offline'}"></div>
+                                <span class="gateway-status-text">${isOnline ? 'Connected' : 'Connecting...'}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                container.innerHTML = html;
+            } catch (e) {
+                console.error('Gateways error:', e);
+                document.getElementById('gateway-list').innerHTML = `<div class="no-strings">Failed to load gateways</div>`;
+            }
+        }
+        
+        // Initialize
+        connectWebSocket();
+        loadAlerts();
+        loadStrings();
+        loadStats();
+        loadPowerwalls();
+        loadGateways();
+        
+        // Refresh secondary data periodically
+        setInterval(() => {
+            loadAlerts();
+            loadStrings();
+            loadStats();
+            loadPowerwalls();
+            loadGateways();
+        }, 30000);
+        
+        console.log('PyPowerwall Server console loaded');
+    </script>
+</body>
+</html>
