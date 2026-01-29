@@ -1,0 +1,15 @@
+# Unidade Fiscal do Estado de São Paulo (UFESP)
+
+[![Repo](https://img.shields.io/badge/GitHub-repo-blue?logo=github&logoColor=f5f5f5)](https://github.com/michelmetran/ufesp)
+[![Read the Docs](https://img.shields.io/readthedocs/ufesp?logo=ReadTheDocs&label=Read%20The%20Docs)](https://ufesp.readthedocs.io/)<br>
+[![Publish Python to PyPI](https://github.com/michelmetran/ufesp/actions/workflows/publish-to-pypi-uv.yml/badge.svg)](https://github.com/michelmetran/ufesp/actions/workflows/publish-to-pypi-uv.yml)
+[![PyPI](https://img.shields.io/pypi/v/ufesp?logo=pypi&label=PyPI&color=blue)](https://pypi.org/project/ufesp/)
+[![PyPI Test](https://img.shields.io/pypi/v/ufesp?logo=pypi&server=test&label=PyPI%20Test&color=orange)](https://test.pypi.org/project/ufesp/)
+
+A Unidade Fiscal do Estado de São Paulo (UFESP) é utilizada, dentre outras funções, para calcular as multas ambientais do estado de São Paulo. É definida pela Secretaria da Fazenda do Estado de São Paulo ([SEFAZ](https://portal.fazenda.sp.gov.br/)).
+
+Com objetivo de obter os dados, para cálculos de multas, optei por utilizar o [_site_ oficial](https://legislacao.fazenda.sp.gov.br/Paginas/ValoresDaUFESP.aspx) da SEFAZ com as informações. Fiz a partir de 1997 apenas.
+
+O repositório [ufesp](https://github.com/michelmetran/ufesp) objetivou disponibilizar os valores de UFESP de maneira facilitada, por meio de um servidor, com atualização periódica.
+
+![Photo by [**StellrWeb**](https://unsplash.com/photos/djb1whucfBY) on [Unsplash](https://unsplash.com)](./assets/stellrweb2.jpg)
