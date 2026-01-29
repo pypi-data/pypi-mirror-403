@@ -1,0 +1,135 @@
+Metadata-Version: 2.4
+Name: zootopia3
+Version: 1.2
+Summary: Fitting simple torch models
+Author-email: "Seth D. Temple" <sethtem@umich.edu>
+Project-URL: Homepage, https://github.com/sdtemple/zootopia3
+Project-URL: Bug Tracker, https://github.com/sdtemple/zootopia3/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=2.0
+Requires-Dist: scipy>=1.15
+Requires-Dist: pandas>=2.0
+Requires-Dist: scikit-learn>=1.6
+Requires-Dist: xgboost>=3.1.2
+Requires-Dist: statsmodels
+Requires-Dist: matplotlib>=3.10
+Requires-Dist: torch>=2.5
+Requires-Dist: transformers>=4.57.0
+Requires-Dist: torchvision
+Requires-Dist: timm
+Requires-Dist: pytest>=7.0.0
+Provides-Extra: vizualization
+Requires-Dist: seaborn; extra == "vizualization"
+Requires-Dist: plotly; extra == "vizualization"
+Provides-Extra: notebook
+Requires-Dist: jupyterlab>=4.0.0; extra == "notebook"
+Requires-Dist: ipykernel>=7.0.1; extra == "notebook"
+Dynamic: license-file
+
+# Fitting PyTorch models
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+<img src="icon.png" align="center" width="400px"/>
+
+This repository follows a workshop to set up a Python package, build some neural networks with `torch`, and publish the models on HuggingFace. 
+
+There are two datasets that we simulate:
+1. Colored shapes (circle, rectangle, triangle, diamond) in a pixellated image
+2. One-dimensional sinusoids
+
+Alongside these datasets, we fit the following model objectives:
+1. (Classification) Predict the shape and color in the image
+2. (Regression) Predict the next time steps of the sine function
+
+## Usage
+
+Learn how to train neural networks from scratch.
+
+1. Run `answers/simulate-exercise.ipynb` to get data.
+2. Fill in the ` # TO DO ` parts in `examples/modeling-exercise-*.ipynb`. 
+3. Compare to solutions in `answers/modeling-exercise-*.ipynb`.
+4. You can explore different parameters on big models with `scripts/modeling.py`.
+    - Write a shell script that invokes `scripts/modeling.py` and pass args to `slurm`.
+5. Run `scripts/modeling-final.py` for best model choice (train + val data).
+6. (Optional) Compare to the benchmark [here](https://huggingface.co/datasets/sdtemple/colored-shapes).
+
+The package defined under `src/` provides:
+- A class `Shape` that instantiates an image with 1 colored shape
+- A function `simulate_shapes()` to make many images for an image classifier
+- A model class `MyCNN` to fit a standard architecture
+
+Caution: you may need GPU resources if your models or data are large.
+
+## Requirements
+
+- Python 3.10+
+
+## Install
+
+If you want to install the package only from the internet:
+
+```
+pip install zootopia3
+```
+
+If you want to set up an isolated environment and build locally:
+
+```
+python -m venv path-to/your-environment
+source path-to/your-environment/bin/activate
+pip install -e .
+```
+
+You run the `pip` command within this repo.
+
+## Data
+
+I made a training and validation set with:
+- 2000 samples for each combo
+- `mix_x = 20`
+- `max_x = 100`
+- `shades = True`
+- `magnitude = 50`
+
+I made a testing set with:
+- 20 samples for each combo
+- `min_x = 10`
+- `max_x = 50`
+
+Therefore, the test set is a more difficult prediction problem.
+
+You can find the test data [here](https://huggingface.co/datasets/sdtemple/colored-shapes).
+
+## Sharing your work
+
+To upload your model to Hugging Face, run these short scripts.
+```
+python hf-push.py your-model.pth sdtemple/color-prediction-model
+```
+
+A less elegant solution where you have to manually write the `config.json` data is:
+```
+python scripts/hf-convert.py your-model.pt your-model.safetensors
+python scripts/hf-model.py your-model.safetensors sdtemple/color-prediction-model
+```
+
+To upload your data to Hugging Face, run this script.
+```
+python scripts/hf-dataset.py images.npy target_color.txt target_shape.txt your-username/colored-shapes
+```
+
+If you successfully uploaded a pretrained model to Hugging Face, you can run it on a CPU with `answers/inference-exercise.ipynb`.
+
+## Test
+
+You can run the test scripts in `tests/` with the following:
+
+```
+python -m pytest
+```
