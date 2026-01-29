@@ -1,0 +1,237 @@
+Metadata-Version: 2.4
+Name: archicore
+Version: 0.1.1
+Summary: Official Python SDK for ArchiCore Architecture Analysis API
+Author-email: ArchiCore Team <support@archicore.io>
+License: MIT
+Project-URL: Homepage, https://archicore.io
+Project-URL: Documentation, https://docs.archicore.io
+Project-URL: Repository, https://github.com/archicore/archicore-python
+Project-URL: Changelog, https://github.com/archicore/archicore-python/blob/main/CHANGELOG.md
+Keywords: archicore,architecture,code-analysis,api,sdk,ai,llm
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Software Development :: Quality Assurance
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.28.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: black>=23.0; extra == "dev"
+Requires-Dist: isort>=5.12; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Requires-Dist: types-requests>=2.28; extra == "dev"
+Dynamic: license-file
+
+# ArchiCore Python SDK
+
+Official Python client for the [ArchiCore](https://archicore.io) Architecture Analysis API.
+
+## Installation
+
+```bash
+pip install archicore
+```
+
+## Quick Start
+
+```python
+from archicore import ArchiCore
+
+# Initialize client
+client = ArchiCore(api_key="your-api-key")
+
+# List projects
+projects = client.projects.list()
+for project in projects:
+    print(f"{project['name']} - {project['id']}")
+
+# Search code semantically
+results = client.projects.search(
+    "project-id",
+    query="authentication middleware"
+)
+for result in results:
+    print(f"{result['file']}:{result['line']}")
+    print(result['code'])
+
+# Ask AI assistant
+answer = client.projects.ask(
+    "project-id",
+    question="How does the authentication system work?"
+)
+print(answer['response'])
+```
+
+## Features
+
+- **Projects**: Create, list, delete, and manage projects
+- **Semantic Search**: Search code using natural language
+- **AI Assistant**: Ask questions about your codebase
+- **Impact Analysis**: Analyze how changes affect your codebase
+- **Code Metrics**: Get code quality metrics
+- **Security Scanning**: Identify vulnerabilities
+- **Webhooks**: Subscribe to events
+
+## API Reference
+
+### Projects
+
+```python
+# List all projects
+projects = client.projects.list()
+
+# Get a specific project
+project = client.projects.get("project-id")
+
+# Create a project
+project = client.projects.create(
+    name="my-project",
+    github_url="https://github.com/user/repo"
+)
+
+# Delete a project
+client.projects.delete("project-id")
+
+# Trigger indexing
+client.projects.index("project-id", force=True)
+```
+
+### Search & AI
+
+```python
+# Semantic search
+results = client.projects.search(
+    "project-id",
+    query="error handling",
+    limit=20,
+    threshold=0.8
+)
+
+# Ask AI assistant
+answer = client.projects.ask(
+    "project-id",
+    question="What design patterns are used?",
+    context="Focus on the authentication module"
+)
+```
+
+### Analysis
+
+```python
+# Get code metrics
+metrics = client.projects.metrics("project-id")
+print(f"Total files: {metrics['total_files']}")
+print(f"Total lines: {metrics['total_lines']}")
+
+# Get security scan results
+security = client.projects.security("project-id")
+for vuln in security['vulnerabilities']:
+    print(f"[{vuln['severity']}] {vuln['message']}")
+
+# Impact analysis
+impact = client.projects.analyze(
+    "project-id",
+    files=["src/auth/login.ts", "src/auth/middleware.ts"]
+)
+print(f"Affected files: {len(impact['affected_files'])}")
+```
+
+### Webhooks
+
+```python
+# List webhooks
+webhooks = client.webhooks.list()
+
+# Create a webhook
+webhook = client.webhooks.create(
+    url="https://example.com/webhook",
+    events=["project.indexed", "analysis.complete"],
+    secret="your-webhook-secret"
+)
+
+# Delete a webhook
+client.webhooks.delete("webhook-id")
+```
+
+## Error Handling
+
+```python
+from archicore import (
+    ArchiCore,
+    AuthenticationError,
+    RateLimitError,
+    NotFoundError,
+    ValidationError,
+)
+
+client = ArchiCore(api_key="your-api-key")
+
+try:
+    project = client.projects.get("non-existent-id")
+except NotFoundError:
+    print("Project not found")
+except AuthenticationError:
+    print("Invalid API key")
+except RateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after} seconds")
+except ValidationError as e:
+    print(f"Invalid request: {e.message}")
+```
+
+## Configuration
+
+### Custom Base URL
+
+For self-hosted instances:
+
+```python
+client = ArchiCore(
+    api_key="your-api-key",
+    base_url="https://your-instance.com/api/v1"
+)
+```
+
+### Timeout
+
+```python
+client = ArchiCore(
+    api_key="your-api-key",
+    timeout=60  # seconds
+)
+```
+
+### Context Manager
+
+```python
+with ArchiCore(api_key="your-api-key") as client:
+    projects = client.projects.list()
+# Connection automatically closed
+```
+
+## Requirements
+
+- Python 3.8+
+- requests >= 2.28.0
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Links
+
+- [Documentation](https://docs.archicore.io)
+- [API Reference](https://docs.archicore.io/docs/api/overview)
+- [ArchiCore Website](https://archicore.io)
+- [Report Issues](https://archicore.io/report-issue)
