@@ -1,0 +1,142 @@
+[project]
+name = "honeycomb-api"
+description = "Python client for the Honeycomb.io API"
+authors = [
+    {name = "Irving Popovetsky"}
+]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["honeycomb", "observability", "api", "client", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dynamic = ["version", "dependencies"]
+
+[project.urls]
+Homepage = "https://irvingpop.github.io/honeycomb-api-python/"
+Repository = "https://github.com/irvingpop/honeycomb-api-python"
+
+[project.scripts]
+honeycomb = "honeycomb.cli:app"
+hny = "honeycomb.cli:app"
+honeycomb-api = "honeycomb.cli:app"  # Matches package name for uvx/pipx
+hny-mcp = "honeycomb.mcp:run_server"  # MCP server for Claude Desktop
+
+[tool.poetry]
+version = "0.7.4"
+packages = [{ include = "honeycomb", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+httpx = ">=0.27"
+pydantic = ">=2.0"
+pytest-xdist = "^3.8.0"
+typer = ">=0.21.0"
+rich = ">=13.0"
+pyyaml = ">=6.0"
+cachetools = ">=5.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+pytest-asyncio = ">=0.24"
+respx = ">=0.21"
+ruff = ">=0.8.0"
+mypy = ">=1.0"
+mkdocs-include-markdown-plugin = "^7.2.0"
+types-pyyaml = "^6.0.12.20250915"
+isort = "^7.0.0"
+pytest-cov = "^7.0.0"
+datamodel-code-generator = {extras = ["http", "ruff"], version = "^0.52.2"}
+jsonschema = ">=4.23.0"
+types-jsonschema = "^4.26.0.20260109"
+polyfactory = {version = ">=2.18.0", python = ">=3.10,<4.0"}
+types-cachetools = "^6.2.0.20251022"
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = ">=1.5"
+mkdocs-material = ">=9.5"
+mkdocstrings = {extras = ["python"], version = ">=0.24"}
+pymdown-extensions = ">=10.0"
+
+[tool.poetry.group.codegen.dependencies]
+pyyaml = ">=6.0"          # For patching OpenAPI spec
+
+[tool.poetry.group.evals]
+optional = true
+
+[tool.poetry.group.evals.dependencies]
+deepeval = {version = "^3.7.5", python = ">=3.10,<4.0"}
+anthropic = ">=0.75.0"
+tenacity = ">=8.0.0"
+
+[tool.poetry.group.mcp]
+optional = true
+
+[tool.poetry.group.mcp.dependencies]
+mcp = ">=1.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "evals: marks tests as Claude API evaluation tests (requires ANTHROPIC_API_KEY)",
+    "live: marks tests requiring live Honeycomb API access (requires HONEYCOMB_API_KEY)",
+    "live_tools: marks tests for live Claude tool execution (requires ANTHROPIC_API_KEY and HONEYCOMB_MANAGEMENT_KEY)",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+exclude = ["src/honeycomb/_generated_models.py"]  # Generated code - don't lint
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/honeycomb/cli/*.py" = ["B904"]  # CLI error exits don't need exception chaining
+"tests/factories/*.py" = ["E731"]  # Polyfactory uses lambda expressions for field providers
+
+[tool.ruff.lint.isort]
+known-first-party = ["honeycomb"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+# Relax some strict checks for pragmatic development
+disallow_any_generics = false
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+module = "honeycomb._generated_models"
+ignore_errors = true
