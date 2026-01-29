@@ -1,0 +1,165 @@
+import {LLMStateDisplay} from '../LLMStateDisplay/LLMStateDisplay';
+import {PlanStateDisplay} from '../PlanStateDisplay';
+
+/**
+ * Helper function to check if an element is hidden
+ */
+function isElementHidden(element: HTMLElement): boolean {
+  // Check if element has hidden class
+  if (element.classList.contains('hidden')) {
+    return true;
+  }
+
+  // Check computed display style (this accounts for inline styles)
+  const computedStyle = window.getComputedStyle(element);
+  if (computedStyle.display === 'none') {
+    return true;
+  }
+
+  // Also check inline style directly as a fallback
+  if (element.style.display === 'none') {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Create state display container and setup observers
+ */
+export function createStateDisplayContainer(
+  planStateDisplay: PlanStateDisplay,
+  llmStateDisplay: LLMStateDisplay,
+  inputContainer: HTMLElement,
+  onDisplayScrollDownButton: () => void
+): {
+  stateDisplayContainer: HTMLDivElement;
+  resizeObserver: ResizeObserver;
+  mutationObserver: MutationObserver;
+  planStateConnection: any;
+  updateDynamicBottomPositions: () => void;
+  updateStateDisplayPositions: () => void;
+} {
+  // Create wrapper for state displays with fixed positioning and flexbox
+  const stateDisplayContainer = document.createElement('div');
+  stateDisplayContainer.className = 'sage-ai-state-display-container';
+
+  // Widget nodes will get their styles from CSS classes
+  const planStateNode = planStateDisplay.getWidget().node;
+  const llmStateNode = llmStateDisplay.getWidget().node;
+
+  // Function to update dynamic bottom positioning based on visible siblings
+  const updateDynamicBottomPositions = () => {
+    // Use requestAnimationFrame to ensure DOM is fully updated
+    requestAnimationFrame(() => {
+      // Small delay to ensure all class changes are applied
+      setTimeout(() => {
+        const children = Array.from(
+          stateDisplayContainer.children
+        ) as HTMLElement[];
+
+        children.forEach((child, index) => {
+          // Count visible siblings after this element
+          let visibleSiblingsAfter = 0;
+          for (let i = index + 1; i < children.length; i++) {
+            if (!isElementHidden(children[i])) {
+              visibleSiblingsAfter++;
+            }
+          }
+
+          // Calculate bottom value: -12px for each visible sibling after + -12px for itself
+          // If this element is the last visible one, it should be -12px
+          const bottomValue = -12 * (1 + visibleSiblingsAfter);
+          child.style.bottom = `${bottomValue}px`;
+        });
+      }, 0);
+    });
+  };
+
+  // Function to update container positioning based on input container height
+  const updateWrapperPositions = () => {
+    // Update dynamic bottom positions first
+    updateDynamicBottomPositions();
+
+    // Use requestAnimationFrame to ensure DOM updates are complete before calculating heights
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        onDisplayScrollDownButton();
+      }, 200); // Additional delay to ensure transitions/animations complete
+    });
+  };
+
+  const planStateConnection = planStateDisplay.stateChanged.connect(() => {
+    setTimeout(() => {
+      updateDynamicBottomPositions();
+      updateWrapperPositions();
+    }, 100);
+  });
+
+  // Initial positioning
+  setTimeout(() => {
+    updateDynamicBottomPositions();
+    updateWrapperPositions();
+  }, 100);
+
+  // Update positioning when window resizes or layout changes
+  const resizeObserver = new ResizeObserver(updateWrapperPositions);
+  resizeObserver.observe(inputContainer);
+
+  // Add MutationObserver to watch for content changes in state displays
+  const mutationObserver = new MutationObserver(mutations => {
+    // Check if any mutation is a class change or child list change that might affect visibility
+    const hasRelevantChange = mutations.some(
+      mutation =>
+        (mutation.type === 'attributes' &&
+          mutation.attributeName === 'class') ||
+        mutation.type === 'childList'
+    );
+
+    if (hasRelevantChange) {
+      // Update dynamic bottom positions when visibility changes or children are added/removed
+      updateDynamicBottomPositions();
+    }
+
+    setTimeout(updateWrapperPositions, 100);
+  });
+
+  // Observe both state displays for changes
+  mutationObserver.observe(llmStateDisplay.node, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class']
+  });
+
+  mutationObserver.observe(planStateDisplay.node, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class']
+  });
+
+  // Observe the container itself for child changes
+  mutationObserver.observe(stateDisplayContainer, {
+    childList: true,
+    attributes: true,
+    attributeFilter: ['class'],
+    subtree: false
+  });
+
+  // Initial positioning
+  updateDynamicBottomPositions();
+
+  // Add widgets directly to container in order: plan state, LLM state
+  stateDisplayContainer.appendChild(planStateNode);
+  stateDisplayContainer.appendChild(llmStateNode);
+
+  return {
+    stateDisplayContainer,
+    resizeObserver,
+    mutationObserver,
+    planStateConnection,
+    updateDynamicBottomPositions,
+    updateStateDisplayPositions: updateWrapperPositions
+  };
+}

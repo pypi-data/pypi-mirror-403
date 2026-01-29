@@ -1,0 +1,1650 @@
+import * as React from 'react';
+import { PanelLayout, Widget } from '@lumino/widgets';
+
+import { ChatMessages } from '../../Chat/ChatMessages';
+import { ConversationService } from '../../Chat/ConversationService';
+import { ConfigService } from '../../Config/ConfigService';
+import { IChatService } from '../../Services/IChatService';
+import { ServiceFactory, ServiceProvider } from '../../Services/ServiceFactory';
+import { ChatHistoryManager, IChatThread } from '../../Chat/ChatHistoryManager';
+import { ThreadManager } from '../../ThreadManager';
+import {
+  ChatInputContainer,
+  ChatInputContainerRef,
+  ChatToolbar,
+  MoreOptionsPopover,
+  NewPromptCTA,
+  ThreadBanner
+} from '../Chat';
+import { IMountedComponent, mountComponent } from '../../utils/reactMount';
+import { ChatUIHelper } from '../../Chat/ChatUIHelper';
+import { AppStateService } from '../../AppState';
+import { ChatboxContext } from '../ChatboxContext';
+import { NewChatDisplayWidget } from '../NewChatDisplayWidget';
+import { LLMStateDisplay } from '../LLMStateDisplay/LLMStateDisplay';
+import { PlanStateDisplay } from '../PlanStateDisplay';
+import { UpdateBannerWidget } from '../UpdateBanner/UpdateBannerWidget';
+import { ActionHistory } from '../../Chat/ActionHistory';
+import { BackendCacheService, STATE_DB_KEYS } from '../../utils/backendCaching';
+import { JupyterAuthService } from '../../Services/JupyterAuthService';
+import {
+  subscribeToLauncherActive,
+  useAppStore,
+  useChatStore,
+  useLLMStateStore,
+  usePlanStateStore,
+  useSettingsStore,
+  useToolbarStore,
+  useWaitingReplyStore
+} from '../../stores';
+import { useChatInputStore } from '../../stores/chatInput/chatInputStore';
+
+import { ClaudeSettings } from './types';
+import { RECOMMENDED_PROMPTS } from './constants';
+import {
+  createHistoryContainer,
+  setupScrollHandling
+} from './createHistoryContainer';
+import { StateDisplayContainer } from './StateDisplayContainer';
+
+/**
+ * ChatBoxWidget: A widget for interacting with AI services via a chat interface
+ */
+export class ChatBoxWidget extends Widget {
+  private chatHistory: HTMLDivElement;
+  private lastNotebookId: string | null = null;
+
+  // Widget management
+  private historyWidget: Widget | null = null;
+  private newChatDisplayWidget: NewChatDisplayWidget | null = null;
+  public llmStateDisplay: LLMStateDisplay;
+  private planStateDisplay: PlanStateDisplay;
+  private chatHistoryLoadingOverlay: HTMLDivElement | null = null;
+  private updateBanner: UpdateBannerWidget | null = null;
+  private scrollDownButton: HTMLButtonElement;
+  private stateDisplayContainer: HTMLDivElement | null = null;
+
+  // React toolbar components
+  private toolbarContainerElement: HTMLDivElement;
+  private toolbarMounted?: IMountedComponent;
+  private threadBannerMounted?: IMountedComponent;
+  private moreOptionsPopoverMounted?: IMountedComponent;
+
+  // Chat services
+  public messageComponent: ChatMessages;
+  private chatService: IChatService;
+  public conversationService: ConversationService;
+  private currentServiceProvider: ServiceProvider = ServiceProvider.ANTHROPIC;
+  public chatHistoryManager: ChatHistoryManager;
+
+  // Helper classes
+  public threadManager: ThreadManager;
+  private uiHelper: ChatUIHelper;
+
+  // React-based input container
+  private inputContainerRef = React.createRef<ChatInputContainerRef>();
+  private inputContainerMounted?: IMountedComponent;
+  private inputContainerElement?: HTMLDivElement;
+  private contextHandler: ChatboxContext;
+
+  // New prompt CTA (React component)
+  private newPromptCtaContainer: HTMLDivElement | null = null;
+  private newPromptCtaMounted?: IMountedComponent;
+
+  // State display (React component)
+  private stateDisplayMounted?: IMountedComponent;
+
+  // Scroll handling cleanup
+  private scrollHandlingCleanup?: () => void;
+  // Zustand subscription cleanup functions
+  private unsubscribeLauncherActive?: () => void;
+  private unsubscribeSettings?: () => void;
+  private lastClaudeSettings?: ClaudeSettings;
+
+  // Track if welcome message has been shown
+  private hasShownWelcomeMessage: boolean = false;
+
+  // Track welcome message state for pre-loading during demos
+  private welcomeMessagePromise: Promise<void> | null = null;
+  private isWelcomeMessageReady: boolean = false;
+  private isWelcomeMessageHidden: boolean = false;
+
+  // Track if chatbox is fully ready (after launcher setup completes)
+  private isReady: boolean = false;
+
+  constructor(actionHistory: ActionHistory) {
+    super();
+    this.id = 'sage-ai-chat';
+    this.title.label = 'AI Chat';
+    this.title.closable = true;
+    this.addClass('sage-ai-chatbox');
+
+    // Initialize the chat history manager
+    this.chatHistoryManager = new ChatHistoryManager();
+
+    // Initialize services
+    this.chatService = ServiceFactory.createService(
+      this.currentServiceProvider
+    );
+    AppStateService.setChatService(this.chatService);
+
+    // Create layout for the chat box
+    const layout = new PanelLayout();
+    this.layout = layout;
+
+    // Create toolbar container for React component
+    this.toolbarContainerElement = document.createElement('div');
+    this.toolbarContainerElement.className = 'sage-ai-toolbar-container';
+
+    // Create history container using helper function
+    const historyElements = createHistoryContainer(() => {
+      this.messageComponent.scrollToBottom();
+      this.hideScrollDownButton();
+    });
+
+    this.chatHistory = historyElements.chatHistory;
+    this.chatHistoryLoadingOverlay = historyElements.chatHistoryLoadingOverlay;
+    this.scrollDownButton = historyElements.scrollDownButton;
+
+    // Set the loading state in chat history manager from the start
+    this.chatHistoryManager.startLoading();
+
+    // Create the initial history widget
+    this.historyWidget = new Widget({ node: historyElements.historyContainer });
+
+    this.llmStateDisplay = AppStateService.getLlmStateDisplay()!;
+    this.planStateDisplay = AppStateService.getPlanStateDisplay();
+
+    // Initialize message component with the chat history manager
+    this.messageComponent = new ChatMessages({
+      container: this.chatHistory,
+      historyManager: this.chatHistoryManager,
+      notebookTools: AppStateService.getNotebookTools(),
+      onScrollDownButtonDisplay: () => this.handleDisplayScrollDownButton()
+    });
+
+    // Setup scroll handling and store cleanup function
+    const scrollHandlingResult = setupScrollHandling(
+      this.chatHistory,
+      this.scrollDownButton,
+      this.messageComponent,
+      () => this.handleChatHistoryResize()
+    );
+    this.scrollHandlingCleanup = scrollHandlingResult.cleanup;
+
+    // Create new prompt CTA container and mount React component
+    this.newPromptCtaContainer = document.createElement('div');
+    this.newPromptCtaContainer.className = 'sage-ai-new-prompt-cta-container';
+    const newPromptCtaElement = React.createElement(NewPromptCTA, {
+      onNewChat: () => this.createNewChat()
+    });
+    this.newPromptCtaMounted = mountComponent(
+      this.newPromptCtaContainer,
+      newPromptCtaElement
+    );
+
+    this.newChatDisplayWidget = new NewChatDisplayWidget(
+      {
+        onPromptSelected: prompt => {
+          this.inputContainerRef.current?.setInputValue(prompt);
+          void this.inputContainerRef.current?.sendMessage();
+          this.showHistoryWidget();
+        },
+        onRemoveDisplay: () => {
+          this.showHistoryWidget();
+        }
+      },
+      RECOMMENDED_PROMPTS
+    );
+
+    // Initialize UpdateBanner
+    const extensions = AppStateService.getExtensions();
+    if (extensions) {
+      this.updateBanner = new UpdateBannerWidget(extensions);
+      this.updateBanner.showBanner();
+    }
+
+    // Add components to the layout
+    layout.addWidget(new Widget({ node: this.toolbarContainerElement }));
+    layout.addWidget(this.historyWidget);
+    layout.addWidget(this.newChatDisplayWidget);
+
+    document.body.appendChild(
+      this.updateBanner?.node || document.createElement('div')
+    );
+
+    // Update placeholder for demo mode
+    setTimeout(async () => {
+      const isAuthenticated = await JupyterAuthService.isAuthenticated();
+      const isDemoMode = AppStateService.getState().isDemoMode;
+      if (isDemoMode && !isAuthenticated) {
+        this.inputContainerRef.current?.setPlaceholder(
+          'Demo is read-only. Click Take Over to chat with SignalPilot about this notebook'
+        );
+      }
+    }, 200);
+
+    this.showHistoryWidget();
+    void this.updateBanner?.checkForUpdates();
+
+    // Initialize helper classes first (needed by input container)
+    this.threadManager = new ThreadManager(
+      this.chatHistoryManager,
+      this.messageComponent,
+      this.chatService,
+      this.node
+    );
+
+    this.uiHelper = new ChatUIHelper(
+      this.chatHistory,
+      this.messageComponent,
+      this.llmStateDisplay
+    );
+
+    this.contextHandler = new ChatboxContext(
+      this.messageComponent,
+      () => this.inputContainerRef.current?.renderContextRow(),
+      this.node
+    );
+
+    // Initialize the conversation service with the diffManager
+    this.conversationService = new ConversationService(
+      this.chatService,
+      AppStateService.getToolService(),
+      AppStateService.getContentManager(),
+      this.messageComponent,
+      this.chatHistory,
+      actionHistory,
+      {
+        updateLoadingIndicator: (text?: string) =>
+          this.updateLoadingIndicator(text),
+        removeLoadingIndicator: () => this.removeLoadingIndicator(),
+        hideLoadingIndicator: () => this.llmStateDisplay.hide()
+      }
+    );
+
+    // Set the diff manager in the conversation service if available
+    const diffManager = AppStateService.getState().notebookDiffManager;
+    if (diffManager) {
+      this.conversationService.setDiffManager(diffManager);
+    }
+
+    // Create the React input container (now with all dependencies available)
+    const inputContainer = this.createReactInputContainer();
+    const inputContainerWidget = new Widget({ node: inputContainer });
+
+    // Create state display container using React component
+    this.stateDisplayContainer = document.createElement('div');
+    this.stateDisplayContainer.className = 'sage-ai-state-display-container';
+
+    // Mount the React StateDisplayContainer
+    const stateDisplayElement = React.createElement(StateDisplayContainer, {
+      onVisibilityChange: () => this.handleDisplayScrollDownButton()
+    });
+    this.stateDisplayMounted = mountComponent(
+      this.stateDisplayContainer,
+      stateDisplayElement
+    );
+
+    // Add the container to the layout
+    layout.addWidget(new Widget({ node: this.stateDisplayContainer }));
+    layout.addWidget(inputContainerWidget);
+    layout.addWidget(new Widget({ node: this.newPromptCtaContainer! }));
+
+    // Mount React toolbar components
+    this.mountToolbarComponents();
+
+    // Set up event handlers
+    this.setupEventHandlers();
+
+    // Initialize services
+    void this.initializeServices();
+
+    // Subscribe to AppState changes
+    this.subscribeToAppStateChanges();
+
+    // Set up polling to update undo button state (updates Zustand store)
+    setInterval(() => this.updateUndoButtonState(), 1000);
+
+    // Initialize waiting reply store callbacks
+    useWaitingReplyStore.getState().setContinueCallback(() => {
+      this.sendContinueMessage();
+    });
+
+    useWaitingReplyStore.getState().setPromptCallback((prompt: string) => {
+      this.sendPromptMessage(prompt);
+    });
+
+    // Also set the prompt callback on messageComponent for the React WaitingUserReplyBox
+    this.messageComponent.setPromptCallback((prompt: string) => {
+      this.sendPromptMessage(prompt);
+    });
+
+    this.contextHandler.updateContextDisplay();
+
+    this.isReady = true;
+  }
+
+  // ============================================
+  // Input Helper Methods (call React input container ref)
+  // ============================================
+
+  /**
+   * Get the current input value.
+   */
+  private getInputValue(): string {
+    return this.inputContainerRef.current?.getCurrentInputValue() ?? '';
+  }
+
+  /**
+   * Set the input value.
+   */
+  public setInputValue(value: string): void {
+    this.inputContainerRef.current?.setInputValue(value);
+  }
+
+  /**
+   * Send a message.
+   */
+  public async sendMessage(
+    cellContext?: string,
+    hidden?: boolean
+  ): Promise<void> {
+    await this.inputContainerRef.current?.sendMessage(cellContext, hidden);
+  }
+
+  /**
+   * Continue a message.
+   */
+  public async continueMessage(cellContext?: string): Promise<void> {
+    await this.inputContainerRef.current?.continueMessage(cellContext);
+  }
+
+  /**
+   * Focus the input.
+   */
+  public focusInput(): void {
+    this.inputContainerRef.current?.focus();
+  }
+
+  /**
+   * Clear the input.
+   */
+  public clearInput(): void {
+    this.inputContainerRef.current?.clearInput();
+  }
+
+  /**
+   * Set placeholder text.
+   */
+  public setPlaceholder(placeholder: string): void {
+    this.inputContainerRef.current?.setPlaceholder(placeholder);
+  }
+
+  /**
+   * Load user message history.
+   */
+  public async loadUserMessageHistory(): Promise<void> {
+    await this.inputContainerRef.current?.loadUserMessageHistory();
+  }
+
+  /**
+   * Update token progress.
+   */
+  public updateTokenProgress(): void {
+    this.inputContainerRef.current?.updateTokenProgress();
+  }
+
+  /**
+   * Get processing state.
+   */
+  private getIsProcessingMessage(): boolean {
+    return this.inputContainerRef.current?.getIsProcessingMessage() ?? false;
+  }
+
+  /**
+   * Set processing state.
+   */
+  private setIsProcessingMessage(value: boolean): void {
+    this.inputContainerRef.current?.setIsProcessingMessage(value);
+  }
+
+  /**
+   * Render context row.
+   */
+  private renderContextRow(): void {
+    this.inputContainerRef.current?.renderContextRow();
+  }
+
+  // ============================================
+  // React Input Container methods
+  // ============================================
+
+  /**
+   * Create and mount the React-based ChatInputContainer.
+   */
+  private createReactInputContainer(): HTMLDivElement {
+    console.log('[ChatBoxWidget] Creating React input container...');
+
+    // Create container element
+    this.inputContainerElement = document.createElement('div');
+    this.inputContainerElement.className = 'sage-ai-react-input-container';
+
+    // Mount the ChatInputContainer React component
+    // Pass initialDependencies so the component has them from the start
+    const element = React.createElement(ChatInputContainer, {
+      ref: this.inputContainerRef,
+      chatHistoryManager: this.chatHistoryManager,
+      contentManager: AppStateService.getContentManager(),
+      toolService: AppStateService.getToolService(),
+      initialDependencies: {
+        chatService: this.chatService,
+        conversationService: this.conversationService,
+        messageComponent: this.messageComponent,
+        uiHelper: this.uiHelper,
+        contextHandler: this.contextHandler
+      },
+      placeholder: 'What would you like me to generate or analyze?',
+      onContextSelected: (context: any) => {
+        this.messageComponent.addMentionContext(context);
+        this.contextHandler.updateContextDisplay();
+        console.log('Context added:', context);
+      },
+      onContextRemoved: (contextId: string) => {
+        this.messageComponent.removeMentionContext(contextId);
+        this.contextHandler.updateContextDisplay();
+        console.log(`Context removed: ${contextId}`);
+      },
+      onResetChat: () => this.createNewChat(),
+      onModeSelected: (mode: 'agent' | 'ask' | 'fast') => {
+        let displayName = '';
+        let tools: any[] = [];
+
+        switch (mode) {
+          case 'ask':
+            displayName = 'Ask';
+            tools = AppStateService.getToolService().getAskModeTools();
+            break;
+          case 'fast':
+            displayName = 'Hands-on';
+            tools = AppStateService.getToolService().getFastModeTools();
+            break;
+          default:
+            displayName = 'Agent';
+            tools = AppStateService.getToolService().getTools();
+        }
+
+        this.messageComponent.addSystemMessage(
+          `Mode switched to: ${displayName}`
+        );
+
+        if (tools.length > 0) {
+          this.messageComponent.addSystemMessage(
+            `Enabled tools: ${tools.map(t => t.name).join(', ')}`
+          );
+        }
+      },
+      onMessageSent: () => this.showHistoryWidget(),
+      onCancel: () => this.cancelMessage()
+    });
+
+    console.log('[ChatBoxWidget] Mounting ChatInputContainer...');
+    this.inputContainerMounted = mountComponent(
+      this.inputContainerElement,
+      element
+    );
+    console.log(
+      '[ChatBoxWidget] ChatInputContainer mounted, element:',
+      this.inputContainerElement
+    );
+
+    return this.inputContainerElement;
+  }
+
+  /**
+   * Mount the React toolbar components (ChatToolbar, ThreadBanner, MoreOptionsPopover)
+   */
+  private mountToolbarComponents(): void {
+    console.log('[ChatBoxWidget] Mounting toolbar components...');
+
+    // Get thread data for the banner
+    const getThreads = () => {
+      const notebookId = AppStateService.getCurrentNotebookId();
+      if (!notebookId) return [];
+      const threads = this.chatHistoryManager.getThreadsForNotebook(notebookId);
+      return (threads || []).map(t => ({
+        id: t.id,
+        name: t.name,
+        lastUpdated: t.lastUpdated
+      }));
+    };
+
+    const getCurrentThreadId = () => {
+      return this.chatHistoryManager.getCurrentThread()?.id || null;
+    };
+
+    // Get current thread name from history manager
+    const getThreadName = () => {
+      return this.chatHistoryManager.getCurrentThread()?.name || 'New Chat';
+    };
+
+    // Create a wrapper component that provides all toolbar parts
+    const ToolbarWrapper = () => {
+      const [threads, setThreads] = React.useState(getThreads());
+      const [currentThreadId, setCurrentThreadId] =
+        React.useState(getCurrentThreadId());
+      const [threadName, setThreadName] = React.useState(getThreadName());
+      const [hasNotebook, setHasNotebook] = React.useState(
+        !!AppStateService.getCurrentNotebookId()
+      );
+      const [isLoadingThreads, setIsLoadingThreads] = React.useState(false);
+
+      // Update threads and notebook state when banner opens
+      const isBannerOpen = useToolbarStore(state => state.isBannerOpen);
+      React.useEffect(() => {
+        if (isBannerOpen) {
+          // Show loading state immediately
+          setIsLoadingThreads(true);
+
+          // Small delay to allow UI to show loading state before fetching data
+          const loadData = async () => {
+            // Wait a tick for any pending state updates
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            const notebookId = AppStateService.getCurrentNotebookId();
+            setHasNotebook(!!notebookId);
+
+            // Wait for chat history to be ready if it's loading
+            while (this.chatHistoryManager.isLoading()) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            setThreads(getThreads());
+            setCurrentThreadId(getCurrentThreadId());
+            setIsLoadingThreads(false);
+
+            console.log('[ToolbarWrapper] Banner data loaded:', {
+              hasNotebook: !!notebookId,
+              threads: getThreads()
+            });
+          };
+
+          void loadData();
+        }
+      }, [isBannerOpen]);
+
+      // Poll for thread name changes (until we have proper store sync)
+      React.useEffect(() => {
+        const interval = setInterval(() => {
+          const newName = getThreadName();
+          setThreadName(prevName => {
+            if (prevName !== newName) {
+              return newName;
+            }
+            return prevName;
+          });
+        }, 500);
+        return () => clearInterval(interval);
+      }, []);
+
+      return React.createElement(
+        React.Fragment,
+        null,
+        // ChatToolbar
+        React.createElement(ChatToolbar, {
+          threadName,
+          onNewChat: () => this.createNewChat(),
+          onUndo: () => this.undoLastAction(),
+          onRenameChat: () => this.handleRenameChat(),
+          onDeleteChat: () => this.handleDeleteChat()
+        }),
+        // ThreadBanner - uses portal to render at chatbox level
+        React.createElement(ThreadBanner, {
+          threads,
+          currentThreadId,
+          onSelectThread: (threadId: string) =>
+            this.threadManager.selectThread(threadId),
+          hasNotebook,
+          portalContainer: this.node, // Render portal at chatbox level for proper positioning
+          isLoading: isLoadingThreads
+        }),
+        // MoreOptionsPopover
+        React.createElement(MoreOptionsPopover, {
+          onRenameChat: () => this.handleRenameChat(),
+          onDeleteChat: () => this.handleDeleteChat()
+        })
+      );
+    };
+
+    // Mount the wrapper component
+    this.toolbarMounted = mountComponent(
+      this.toolbarContainerElement,
+      React.createElement(ToolbarWrapper)
+    );
+
+    console.log('[ChatBoxWidget] Toolbar components mounted');
+  }
+
+  // ============================================
+  // Scroll handling methods
+  // ============================================
+
+  private handleDisplayScrollDownButton(): void {
+    if (this.isScrolledToBottom()) {
+      this.hideScrollDownButton();
+    } else {
+      this.showScrollDownButton();
+    }
+  }
+
+  private showScrollDownButton(): void {
+    this.scrollDownButton.classList.remove('hidden');
+  }
+
+  private hideScrollDownButton(): void {
+    this.scrollDownButton.classList.add('hidden');
+  }
+
+  private handleChatHistoryResize(): void {
+    if (this.isScrolledToBottom()) {
+      this.scrollChatHistoryToBottom();
+    } else {
+      this.handleDisplayScrollDownButton();
+    }
+  }
+
+  public scrollChatHistoryToBottom(): void {
+    this.chatHistory.scrollTop = this.chatHistory.scrollHeight;
+  }
+
+  private updateScrollAttribute(): boolean {
+    const scrollTop = this.chatHistory.scrollTop;
+    const scrollHeight = this.chatHistory.scrollHeight;
+    const isScrolledToBottom =
+      Math.ceil(scrollTop + this.chatHistory.clientHeight) >= scrollHeight;
+
+    this.chatHistory.setAttribute(
+      'data-is-scrolled-to-bottom',
+      isScrolledToBottom.toString()
+    );
+
+    return isScrolledToBottom;
+  }
+
+  private isScrolledToBottom(): boolean {
+    return (
+      this.chatHistory.getAttribute('data-is-scrolled-to-bottom') === 'true'
+    );
+  }
+
+  // ============================================
+  // Loading overlay methods
+  // ============================================
+
+  private showChatHistoryLoader(): void {
+    if (this.chatHistoryLoadingOverlay) {
+      this.chatHistoryLoadingOverlay.classList.remove('hidden');
+    }
+  }
+
+  private hideChatHistoryLoader(): void {
+    if (this.chatHistoryLoadingOverlay) {
+      this.chatHistoryLoadingOverlay.classList.add('hidden');
+    }
+  }
+
+  // ============================================
+  // Notebook ID methods
+  // ============================================
+
+  public updateNotebookId(newId: string): void {
+    AppStateService.setCurrentNotebookId(newId);
+    this.threadManager.updateNotebookId(newId);
+    this.conversationService.updateNotebookId(newId);
+  }
+
+  public updateNotebookPath(newPath: string): void {
+    this.updateNotebookId(newPath);
+  }
+
+  public getStateDisplayContainer(): HTMLDivElement | null {
+    return this.stateDisplayContainer;
+  }
+
+  public updateDynamicBottomPositions(): void {
+    // No-op: positioning is now handled by React StateDisplayContainer
+    // This method is kept for backwards compatibility with DemoControlPanel
+  }
+
+  // ============================================
+  // Event handlers
+  // ============================================
+
+  private setupEventHandlers(): void {
+    // Subscribe to autoRun changes from Zustand store for system messages
+    // The actual checkbox state is handled by the React ChatToolbar component
+    useAppStore.subscribe(
+      state => state.autoRun,
+      (autoRun, prevAutoRun) => {
+        if (autoRun !== prevAutoRun) {
+          // Sync with conversation service
+          this.conversationService.setAutoRun(autoRun);
+
+          // Show system message
+          if (autoRun) {
+            this.messageComponent.addSystemMessage(
+              'Auto-run mode enabled. Code will execute automatically without confirmation.'
+            );
+          } else {
+            this.messageComponent.addSystemMessage(
+              'Auto-run mode disabled. You will be prompted for code execution.'
+            );
+          }
+        }
+      }
+    );
+  }
+
+  // ============================================
+  // Service initialization
+  // ============================================
+
+  private async initializeServices(): Promise<void> {
+    try {
+      AppStateService.setConfig(await ConfigService.getConfig());
+
+      const initialized = await this.chatService.initialize();
+      console.log('Chat service initialized:', initialized);
+
+      const toolService = AppStateService.getToolService();
+      await toolService.initialize();
+      console.log('Connected to MCP server successfully.');
+      console.log(
+        `Loaded ${toolService.getTools().length} tools from MCP server.`
+      );
+    } catch (error) {
+      console.error('Failed to connect to MCP server:', error);
+      this.messageComponent.addSystemMessage(
+        '❌ Failed to connect to MCP server. Some features may not work.'
+      );
+    }
+  }
+
+  // ============================================
+  // Notebook management
+  // ============================================
+
+  public async setNotebookId(notebookId: string | undefined): Promise<void> {
+    if (!notebookId) {
+      AppStateService.setCurrentNotebookId(null);
+      this.threadManager.setNotebookId(null);
+      return;
+    }
+
+    if (this.lastNotebookId === notebookId) {
+      return;
+    }
+
+    this.lastNotebookId = notebookId;
+
+    this.showChatHistoryLoader();
+    this.chatHistoryManager.startLoading();
+
+    AppStateService.setCurrentNotebookId(notebookId);
+    this.conversationService.setNotebookId(notebookId);
+
+    // Wait for chat history to finish loading before updating thread manager
+    // This ensures we have the correct thread to display
+    while (this.chatHistoryManager.isLoading()) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    // Now that history is loaded, update thread manager with correct notebook
+    this.threadManager.setNotebookId(notebookId);
+
+    await this.restoreLastThreadForNotebook(notebookId);
+
+    this.hideChatHistoryLoader();
+
+    void this.loadUserMessageHistory();
+
+    const contextManager = AppStateService.getState().notebookContextManager;
+    if (contextManager) {
+      const contextCells = contextManager.getContextCells(notebookId);
+      this.contextHandler.updateContextCellsIndicator(contextCells.length);
+    }
+
+    const notebookTools = AppStateService.getState().notebookTools;
+    if (notebookTools) {
+      const planCell = notebookTools.getPlanCell(notebookId);
+
+      if (planCell) {
+        const currentStep =
+          (planCell.model.sharedModel.getMetadata().custom as any)
+            ?.current_step_string || '';
+        const nextStep =
+          (planCell.model.sharedModel.getMetadata().custom as any)
+            ?.next_step_string || '';
+        const source = planCell.model.sharedModel.getSource() || '';
+
+        void this.planStateDisplay.updatePlan(
+          currentStep || 'Plan active',
+          nextStep,
+          source,
+          false
+        );
+      } else {
+        void this.planStateDisplay.updatePlan(undefined, undefined, undefined);
+      }
+    }
+
+    this.llmStateDisplay.hide();
+  }
+
+  public async reinitializeForNotebook(notebookId: string): Promise<void> {
+    console.log(`[ChatBoxWidget] Re-initializing for notebook: ${notebookId}`);
+
+    if (this.getIsProcessingMessage()) {
+      this.cancelMessage();
+    } else {
+      this.chatService.cancelRequest();
+    }
+
+    this.lastNotebookId = null;
+
+    this.showChatHistoryLoader();
+    this.chatHistoryManager.startLoading();
+
+    AppStateService.setCurrentNotebookId(notebookId);
+    this.conversationService.setNotebookId(notebookId);
+
+    // Wait for chat history to fully reinitialize before updating thread manager
+    const currentThread =
+      await this.chatHistoryManager.reinitializeForNotebook(notebookId);
+
+    // Now that history is loaded, update thread manager with correct notebook
+    this.threadManager.setNotebookId(notebookId);
+
+    await this.restoreLastThreadForNotebook(notebookId);
+
+    this.hideChatHistoryLoader();
+
+    await this.loadUserMessageHistory();
+
+    this.contextHandler.updateContextDisplay();
+
+    const notebookTools = AppStateService.getNotebookTools();
+    if (notebookTools) {
+      const planCell = notebookTools.getPlanCell(notebookId);
+
+      if (planCell) {
+        const currentStep =
+          (planCell.model.sharedModel.getMetadata().custom as any)
+            ?.current_step_string || '';
+        const nextStep =
+          (planCell.model.sharedModel.getMetadata().custom as any)
+            ?.next_step_string || '';
+        const source = planCell.model.sharedModel.getSource() || '';
+
+        void this.planStateDisplay.updatePlan(
+          currentStep || 'Plan active',
+          nextStep,
+          source,
+          false
+        );
+      } else {
+        void this.planStateDisplay.updatePlan(undefined, undefined, undefined);
+      }
+    }
+
+    this.llmStateDisplay.hide();
+
+    this.lastNotebookId = notebookId;
+
+    console.log(
+      `[ChatBoxWidget] Re-initialization complete for notebook: ${notebookId}`
+    );
+    console.log(
+      '[ChatBoxWidget] Current thread after reinitialization:',
+      currentThread
+    );
+    console.log(
+      '[ChatBoxWidget] Current thread messages:',
+      currentThread?.messages
+    );
+
+    if (currentThread.needsContinue) {
+      console.log('CONTINUING MESSAGE...');
+      await this.continueMessage();
+    }
+  }
+
+  private async restoreLastThreadForNotebook(
+    notebookId: string
+  ): Promise<void> {
+    try {
+      const currentThread = this.chatHistoryManager.getCurrentThread();
+
+      if (currentThread && currentThread.messages.length > 0) {
+        console.log(
+          `[ChatBoxWidget] Restoring current thread: ${currentThread.name} for notebook ${notebookId}`
+        );
+        await this.showHistoryWidgetFromThread(currentThread);
+        return;
+      } else if (currentThread) {
+        console.log(
+          `[ChatBoxWidget] Current thread is empty for notebook ${notebookId}, showing new chat display`
+        );
+        await this.messageComponent.loadFromThread(currentThread);
+        // Thread name is managed by React ChatToolbar via chatStore
+        if (currentThread.messages.length === 0) {
+          this.showNewChatDisplay();
+        }
+        return;
+      } else {
+        console.log(
+          `[ChatBoxWidget] No current thread for notebook ${notebookId}, showing default view`
+        );
+        await this.createNewChat();
+        this.showNewChatDisplay();
+        return;
+      }
+    } catch (error) {
+      console.warn(
+        `[ChatBoxWidget] Failed to restore last thread for notebook ${notebookId}:`,
+        error
+      );
+      await this.showNewChatDisplayOrHistory();
+    }
+  }
+
+  // ============================================
+  // Chat management
+  // ============================================
+
+  private async createNewChat(): Promise<void> {
+    useWaitingReplyStore.getState().hide();
+
+    const isLauncherActive = AppStateService.isLauncherActive();
+
+    if (isLauncherActive) {
+      console.log(
+        '[ChatBox] New Chat in launcher mode - clearing without saving'
+      );
+
+      if (this.getIsProcessingMessage()) {
+        this.cancelMessage();
+      } else {
+        this.chatService.cancelRequest();
+      }
+
+      this.messageComponent.messageHistory = [];
+      this.chatHistory.innerHTML = '';
+
+      this.conversationService.clearActionHistory();
+      this.updateUndoButtonState();
+
+      this.messageComponent.setMentionContexts(new Map());
+      this.contextHandler.updateContextDisplay();
+
+      this.llmStateDisplay.hide();
+      this.planStateDisplay.hide();
+
+      const diffNavigationWidget =
+        AppStateService.getDiffNavigationWidgetSafe();
+      if (diffNavigationWidget) {
+        diffNavigationWidget.hidePendingDiffs();
+      }
+
+      // Thread name is managed by React ChatToolbar via chatStore
+
+      this.showNewChatDisplay();
+
+      return;
+    }
+
+    const currentNotebookId = AppStateService.getCurrentNotebookId();
+    if (!currentNotebookId) {
+      this.messageComponent.addSystemMessage('Please open a notebook first.');
+      return;
+    }
+
+    if (this.getIsProcessingMessage()) {
+      this.cancelMessage();
+    } else {
+      this.chatService.cancelRequest();
+    }
+
+    const newThread = await this.threadManager.createNewThread();
+
+    if (newThread) {
+      this.conversationService.clearActionHistory();
+      this.updateUndoButtonState();
+      this.contextHandler.updateContextDisplay();
+
+      this.showNewChatDisplay();
+      this.llmStateDisplay.hide();
+
+      const diffNavigationWidget =
+        AppStateService.getDiffNavigationWidgetSafe();
+      if (diffNavigationWidget) {
+        diffNavigationWidget.hidePendingDiffs();
+      }
+    }
+  }
+
+  private updateUndoButtonState(): void {
+    const canUndo = this.conversationService.canUndo();
+    const description = canUndo
+      ? `Undo: ${this.conversationService.getLastActionDescription()}`
+      : 'No action to undo';
+
+    // Update Zustand store - React components will re-render automatically
+    useToolbarStore.getState().setUndoState(canUndo, description);
+  }
+
+  private async undoLastAction(): Promise<void> {
+    if (!this.conversationService.canUndo()) {
+      return;
+    }
+
+    // Update store to show undoing state
+    useToolbarStore.getState().setUndoState(false, 'Undoing...');
+
+    try {
+      await this.conversationService.undoLastAction();
+    } catch (error) {
+      console.error('Error during undo:', error);
+      this.messageComponent.addErrorMessage(
+        `Error during undo: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    } finally {
+      this.updateUndoButtonState();
+    }
+  }
+
+  public cancelMessage(): void {
+    if (!this.getIsProcessingMessage()) {
+      return;
+    }
+
+    console.log('Cancelling message...');
+    console.log(this.getIsProcessingMessage());
+
+    this.chatService.cancelRequest();
+
+    this.setIsProcessingMessage(false);
+
+    this.uiHelper.removeLoadingIndicator();
+
+    this.messageComponent.removeLoadingText();
+    // Update chatStore for React components (SendButton, ModeSelector auto-update via store)
+    useChatStore.getState().setProcessing(false);
+    usePlanStateStore.getState().setLoading(false);
+
+    const currentThread = this.chatHistoryManager.getCurrentThread();
+    if (currentThread && currentThread.needsContinue) {
+      currentThread.needsContinue = false;
+      console.log(
+        '[ChatBoxWidget] Set needsContinue to false after user cancelled request'
+      );
+    }
+
+    const diffManager = AppStateService.getState().notebookDiffManager;
+    if (
+      diffManager &&
+      diffManager.hasPendingDiffs() &&
+      !diffManager.isDialogOpen()
+    ) {
+      if (this.llmStateDisplay) {
+        const currentNotebookId = AppStateService.getCurrentNotebookId();
+        this.llmStateDisplay.showPendingDiffs(currentNotebookId);
+
+        const diffNavigationWidget =
+          AppStateService.getDiffNavigationWidgetSafe();
+        if (diffNavigationWidget) {
+          diffNavigationWidget.showPendingDiffs(currentNotebookId);
+        }
+      }
+
+      setTimeout(async () => {
+        const currentNotebookId = AppStateService.getCurrentNotebookId();
+        await diffManager?.showCancellationApprovalDialog(
+          this.chatHistory,
+          currentNotebookId
+        );
+      }, 100);
+    } else {
+      this.llmStateDisplay.show();
+      this.llmStateDisplay.hide();
+    }
+  }
+
+  protected onAfterShow(): void {
+    this.focusInput();
+  }
+
+  public updateLoadingIndicator(text: string = 'Generating...'): void {
+    this.uiHelper.updateLoadingIndicator(text);
+  }
+
+  public removeLoadingIndicator(): void {
+    this.uiHelper.removeLoadingIndicator();
+  }
+
+  // ============================================
+  // Context methods
+  // ============================================
+
+  public onCellAddedToContext(notebookPath: string): void {
+    this.contextHandler.onCellAddedToContext(notebookPath);
+  }
+
+  public onCellRemovedFromContext(notebookPath: string): void {
+    this.contextHandler.onCellRemovedFromContext(notebookPath);
+  }
+
+  // ============================================
+  // Display methods
+  // ============================================
+
+  public async showNewChatDisplayOrHistory(): Promise<void> {
+    const currentThread = this.chatHistoryManager.getCurrentThread();
+    const hasMessages = currentThread && currentThread.messages.length > 0;
+
+    if (hasMessages) {
+      await this.showHistoryWidgetFromThread(currentThread);
+    } else {
+      this.showNewChatDisplay();
+    }
+  }
+
+  public showNewChatCta(): void {
+    useChatInputStore.getState().setShowNewPromptCta(true);
+  }
+
+  public hideNewChatCta(): void {
+    useChatInputStore.getState().setShowNewPromptCta(false);
+  }
+
+  public updateNewPromptCtaVisibility(tokenPercentage: number): void {
+    useChatInputStore
+      .getState()
+      .updateNewPromptCtaFromTokenPercentage(tokenPercentage);
+  }
+
+  public showNewChatDisplay(): void {
+    if (this.messageComponent.getMessageHistory().length > 0) {
+      return;
+    }
+    if (this.newChatDisplayWidget) {
+      this.newChatDisplayWidget.showWidget();
+    }
+    if (this.historyWidget) {
+      this.historyWidget.node.style.display = 'none';
+    }
+
+    this.hideNewChatCta();
+  }
+
+  public showHistoryWidget(): void {
+    if (this.newChatDisplayWidget) {
+      this.newChatDisplayWidget.hideWidget();
+    }
+    if (this.historyWidget) {
+      this.historyWidget.node.style.display = 'block';
+    }
+
+    this.updateTokenProgress();
+  }
+
+  public async showHistoryWidgetFromThread(thread: IChatThread): Promise<void> {
+    await this.threadManager.selectThread(thread.id);
+    this.showHistoryWidget();
+  }
+
+  // ============================================
+  // Chat actions
+  // ============================================
+
+  private async handleRenameChat(): Promise<void> {
+    const currentThread = this.chatHistoryManager.getCurrentThread();
+    if (!currentThread) {
+      this.messageComponent.addSystemMessage('No active chat to rename.');
+      return;
+    }
+
+    const newName = prompt('Enter new chat name:', currentThread.name);
+    if (newName && newName.trim() !== '' && newName !== currentThread.name) {
+      const success = this.chatHistoryManager.renameCurrentThread(
+        newName.trim()
+      );
+      if (success) {
+        // Also update chatStore so React toolbar reflects the change
+        useChatStore.getState().renameCurrentThread(newName.trim());
+        this.messageComponent.addSystemMessage(
+          `Chat renamed to: ${newName.trim()}`
+        );
+      } else {
+        this.messageComponent.addSystemMessage('Failed to rename chat.');
+      }
+    }
+  }
+
+  private async handleDeleteChat(): Promise<void> {
+    const currentThread = this.chatHistoryManager.getCurrentThread();
+    if (!currentThread) {
+      this.messageComponent.addSystemMessage('No active chat to delete.');
+      return;
+    }
+
+    const confirmDelete = confirm(
+      `Are you sure you want to delete the chat "${currentThread.name}"? This action cannot be undone.`
+    );
+    if (confirmDelete) {
+      const deletedThreadName = currentThread.name;
+      const success = this.chatHistoryManager.deleteThread(currentThread.id);
+      if (success) {
+        this.messageComponent.addSystemMessage(
+          `Chat "${deletedThreadName}" has been deleted.`
+        );
+
+        const newCurrentThread = this.chatHistoryManager.getCurrentThread();
+        if (newCurrentThread) {
+          // Thread name is managed by React ChatToolbar via chatStore
+          await this.messageComponent.loadFromThread(newCurrentThread);
+          if (newCurrentThread.messages.length > 0) {
+            this.showHistoryWidget();
+          } else {
+            this.showNewChatDisplay();
+          }
+        } else {
+          this.showNewChatDisplay();
+        }
+      } else {
+        this.messageComponent.addSystemMessage('Failed to delete chat.');
+      }
+    }
+  }
+
+  // ============================================
+  // AppState subscription
+  // ============================================
+
+  private subscribeToAppStateChanges(): void {
+    // Initialize last settings from settingsStore
+    const initialSettings = useSettingsStore.getState();
+    this.lastClaudeSettings = {
+      claudeApiKey: initialSettings.claudeApiKey,
+      claudeModelId: initialSettings.claudeModelId,
+      claudeModelUrl: initialSettings.claudeModelUrl
+    };
+
+    // AutoRun changes are handled by React ChatToolbar component
+    // and setupEventHandlers() subscribes to show system messages
+
+    // Subscribe to launcher state changes via Zustand
+    this.unsubscribeLauncherActive = subscribeToLauncherActive(
+      isLauncherActive => {
+        console.log(`[ChatBox] Launcher state changed: ${isLauncherActive}`);
+        if (isLauncherActive) {
+          this.handleSwitchToLauncher();
+        }
+      }
+    );
+
+    // Subscribe to settings changes via Zustand
+    this.unsubscribeSettings = useSettingsStore.subscribe(
+      state => ({
+        claudeApiKey: state.claudeApiKey,
+        claudeModelId: state.claudeModelId,
+        claudeModelUrl: state.claudeModelUrl
+      }),
+      (currentSettings, prevSettings) => {
+        const hasChanged =
+          !prevSettings ||
+          prevSettings.claudeApiKey !== currentSettings.claudeApiKey ||
+          prevSettings.claudeModelId !== currentSettings.claudeModelId ||
+          prevSettings.claudeModelUrl !== currentSettings.claudeModelUrl;
+
+        if (hasChanged) {
+          console.log(
+            'Claude settings changed, re-initializing chat service...',
+            {
+              previous: this.lastClaudeSettings,
+              current: currentSettings
+            }
+          );
+
+          this.lastClaudeSettings = currentSettings;
+          void this.reinitializeChatService();
+        }
+      }
+    );
+  }
+
+  private async reinitializeChatService(): Promise<void> {
+    try {
+      console.log(
+        'Re-initializing chat service with updated Claude settings...'
+      );
+
+      const initialized = await this.chatService.initialize();
+      console.log('Chat service re-initialized:', initialized);
+
+      if (!initialized) {
+        this.messageComponent.addSystemMessage(
+          '⚠️ Failed to re-initialize with updated settings. Please check your API key.'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to re-initialize chat service:', error);
+      this.messageComponent.addSystemMessage(
+        '⚠️ Error updating settings. Please try again.'
+      );
+    }
+  }
+
+  // ============================================
+  // Launcher mode
+  // ============================================
+
+  private handleSwitchToLauncher(): void {
+    console.log(
+      '[ChatBox] Switching to launcher mode - saving current chat before clearing'
+    );
+
+    this.isReady = false;
+    console.log('[ChatBox] Marked as not ready during launcher setup');
+
+    this.hideChatHistoryLoader();
+
+    const currentNotebookId = AppStateService.getCurrentNotebookId();
+    if (currentNotebookId && this.messageComponent.messageHistory.length > 0) {
+      console.log(
+        `[ChatBox] Saving chat state for notebook ${currentNotebookId} before switching to launcher`
+      );
+      this.chatHistoryManager.updateCurrentThreadMessages(
+        this.messageComponent.messageHistory,
+        this.messageComponent.getMentionContexts()
+      );
+    }
+
+    if (this.getIsProcessingMessage()) {
+      this.cancelMessage();
+    } else {
+      this.chatService.cancelRequest();
+    }
+
+    this.messageComponent.messageHistory = [];
+    this.chatHistory.innerHTML = '';
+
+    this.conversationService.clearActionHistory();
+    this.updateUndoButtonState();
+
+    this.messageComponent.setMentionContexts(new Map());
+    this.contextHandler.updateContextDisplay();
+
+    this.threadManager.setNotebookId(null);
+
+    this.chatHistoryManager.clearCurrentNotebook();
+
+    // Thread name is managed by React ChatToolbar via chatStore
+
+    this.lastNotebookId = null;
+
+    this.planStateDisplay.hide();
+
+    this.llmStateDisplay.hide();
+
+    const diffNavigationWidget = AppStateService.getDiffNavigationWidgetSafe();
+    if (diffNavigationWidget) {
+      diffNavigationWidget.hidePendingDiffs();
+    }
+
+    this.showNewChatDisplay();
+
+    this.isReady = true;
+    console.log('[ChatBox] Launcher setup complete, chatbox marked as ready');
+
+    setTimeout(async () => {
+      await this.sendWelcomeMessage();
+    }, 100);
+
+    console.log('[ChatBox] Launcher mode: Chat cleared without saving');
+  }
+
+  // ============================================
+  // Welcome message methods
+  // ============================================
+
+  public startWelcomeMessagePreload(): Promise<void> {
+    if (this.welcomeMessagePromise) {
+      console.log(
+        '[ChatBox] Welcome message already started, returning existing promise'
+      );
+      return this.welcomeMessagePromise;
+    }
+
+    console.log('[ChatBox] Starting welcome message pre-load');
+    this.isWelcomeMessageHidden = true;
+
+    this.messageComponent.setWelcomeMessageHiddenMode(true);
+
+    this.welcomeMessagePromise = this.sendWelcomeMessageInternal().then(() => {
+      this.isWelcomeMessageReady = true;
+      console.log('[ChatBox] Welcome message pre-load complete');
+    });
+
+    return this.welcomeMessagePromise;
+  }
+
+  public async showWelcomeMessage(): Promise<void> {
+    console.log('[ChatBox] showWelcomeMessage called');
+
+    this.isWelcomeMessageHidden = false;
+
+    this.messageComponent.setWelcomeMessageHiddenMode(false);
+
+    if (this.isWelcomeMessageReady) {
+      console.log('[ChatBox] Welcome message is ready, showing it now');
+      this.unhideWelcomeMessageInDOM();
+      return;
+    }
+
+    if (this.welcomeMessagePromise) {
+      console.log('[ChatBox] Waiting for welcome message to complete...');
+      await this.welcomeMessagePromise;
+      this.unhideWelcomeMessageInDOM();
+      return;
+    }
+
+    console.log('[ChatBox] No welcome message started, starting now');
+    await this.sendWelcomeMessage();
+  }
+
+  private unhideWelcomeMessageInDOM(): void {
+    const hiddenUserMessage =
+      this.chatHistory.querySelector(
+        '.sage-ai-user-message[style*="display: none"]'
+      ) ||
+      this.chatHistory.querySelector(
+        '.sage-ai-user-message[style="display: none;"]'
+      );
+    const hiddenAssistantMessage =
+      this.chatHistory.querySelector(
+        '.sage-ai-assistant-message[style*="display: none"]'
+      ) ||
+      this.chatHistory.querySelector(
+        '.sage-ai-ai-message[style*="display: none"]'
+      ) ||
+      this.chatHistory.querySelector(
+        '.sage-ai-ai-message[style="display: none;"]'
+      );
+
+    if (hiddenUserMessage instanceof HTMLElement) {
+      hiddenUserMessage.style.display = '';
+      console.log('[ChatBox] Unhid welcome user message');
+    }
+    if (hiddenAssistantMessage instanceof HTMLElement) {
+      hiddenAssistantMessage.style.display = '';
+      console.log('[ChatBox] Unhid welcome assistant message');
+    }
+
+    this.messageComponent.scrollToBottom();
+  }
+
+  public async sendWelcomeMessage(): Promise<void> {
+    return this.sendWelcomeMessageInternal();
+  }
+
+  private async sendWelcomeMessageInternal(): Promise<void> {
+    if (this.hasShownWelcomeMessage) {
+      console.log('[ChatBox] Welcome message already shown, skipping');
+      return;
+    }
+
+    if (AppStateService.isDemoMode()) {
+      console.log('[ChatBox] Skipping welcome message - demo mode active');
+      this.hasShownWelcomeMessage = true;
+      return;
+    }
+
+    if (AppStateService.isTakeoverMode()) {
+      console.log('[ChatBox] Skipping welcome message - takeover mode active');
+      this.hasShownWelcomeMessage = true;
+      return;
+    }
+
+    const { getStoredLastNotebookPath } = await import(
+      '../../utils/replayIdManager'
+    );
+    if (getStoredLastNotebookPath()) {
+      console.log(
+        '[ChatBox] Skipping welcome message - notebook restoration pending'
+      );
+      this.hasShownWelcomeMessage = true;
+      return;
+    }
+
+    const isLauncher = AppStateService.getState().isLauncherActive;
+
+    if (isLauncher) {
+      const tourCompleted = await BackendCacheService.getValue(
+        STATE_DB_KEYS.WELCOME_TOUR_COMPLETED,
+        false
+      );
+
+      if (!tourCompleted) {
+        console.log(
+          '[ChatBox] Tour not completed - skipping welcome message on launcher'
+        );
+        return;
+      }
+
+      console.log(
+        '[ChatBox] Tour completed - sending welcome message on launcher'
+      );
+    }
+
+    console.log('[ChatBox] Sending automatic welcome message');
+
+    this.setInputValue('Create Welcome Message');
+
+    await this.sendMessage(undefined, this.isWelcomeMessageHidden);
+
+    this.hasShownWelcomeMessage = true;
+  }
+
+  // ============================================
+  // Message sending methods
+  // ============================================
+
+  public sendContinueMessage(): void {
+    this.setInputValue('Continue');
+    // Use requestAnimationFrame to ensure DOM update is complete before reading
+    requestAnimationFrame(() => {
+      void this.sendMessage();
+    });
+    this.messageComponent.hideWaitingReplyBox();
+  }
+
+  public sendPromptMessage(prompt: string, hidden?: boolean): void {
+    console.log('[ChatBoxWidget] sendPromptMessage called with:', prompt);
+    // Pass the message directly to avoid timing issues with setInputValue
+    void this.inputContainerRef.current?.sendMessage(undefined, hidden, prompt);
+    this.messageComponent.hideWaitingReplyBox();
+  }
+
+  public getMessageComponent(): ChatMessages {
+    return this.messageComponent;
+  }
+
+  public isFullyReady(): boolean {
+    return this.isReady;
+  }
+
+  public setReady(): void {
+    this.isReady = true;
+    console.log('[ChatBox] Marked as fully ready');
+  }
+
+  /**
+   * TEST FUNCTION: Debug message sending
+   * Call from console: AppStateService.getState().chatContainer?.chatWidget.testSendMessage('test')
+   */
+  public testSendMessage(message: string): void {
+    console.log('[TEST] testSendMessage called with:', message);
+    console.log(
+      '[TEST] inputContainerRef.current:',
+      this.inputContainerRef.current
+    );
+
+    if (!this.inputContainerRef.current) {
+      console.error('[TEST] Input container ref not available');
+      return;
+    }
+
+    console.log('[TEST] Setting input value...');
+    this.inputContainerRef.current.setInputValue(message);
+
+    // Check value immediately
+    const immediateValue =
+      this.inputContainerRef.current.getCurrentInputValue();
+    console.log('[TEST] Immediate value after set:', immediateValue);
+
+    // Check after requestAnimationFrame
+    requestAnimationFrame(() => {
+      const rafValue = this.inputContainerRef.current?.getCurrentInputValue();
+      console.log('[TEST] Value after rAF:', rafValue);
+
+      // Check isProcessingMessage
+      const isProcessing =
+        this.inputContainerRef.current?.getIsProcessingMessage();
+      console.log('[TEST] isProcessingMessage:', isProcessing);
+
+      // Try to send
+      console.log('[TEST] Calling sendMessage...');
+      void this.inputContainerRef.current?.sendMessage();
+    });
+  }
+
+  // ============================================
+  // Cleanup
+  // ============================================
+
+  public dispose(): void {
+    // Cleanup scroll handling (includes window event listeners)
+    this.scrollHandlingCleanup?.();
+    this.updateBanner?.dispose();
+    // Cleanup React components
+    this.toolbarMounted?.unmount();
+    this.inputContainerMounted?.unmount();
+    this.newPromptCtaMounted?.unmount();
+    this.stateDisplayMounted?.unmount();
+    // Cleanup Zustand subscriptions
+    this.unsubscribeLauncherActive?.();
+    this.unsubscribeSettings?.();
+    super.dispose();
+  }
+}

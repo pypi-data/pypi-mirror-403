@@ -1,0 +1,5 @@
+"""Schema search namespace constants."""
+
+DEFAULT_SCHEMA_SEARCH_LIMIT = 5
+MIN_SCHEMA_SEARCH_LIMIT = 1
+MAX_SCHEMA_SEARCH_LIMIT = 10

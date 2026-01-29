@@ -1,0 +1,1 @@
+export { registerAddCtaDivCommand } from './welcomeCTAMount';

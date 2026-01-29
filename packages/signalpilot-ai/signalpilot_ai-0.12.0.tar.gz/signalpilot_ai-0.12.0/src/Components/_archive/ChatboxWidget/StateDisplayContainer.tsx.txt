@@ -1,0 +1,104 @@
+/**
+ * StateDisplayContainer - Pure React component for displaying LLM and Plan state
+ *
+ * This component combines both LLMStateDisplayComponent and PlanStateDisplayComponent
+ * into a single container that can be mounted directly into the chatbox.
+ */
+import * as React from 'react';
+import { LLMStateContent } from '../LLMStateDisplay/LLMStateContent';
+import { PlanStateContent } from '../PlanStateDisplay';
+import {
+  LLMDisplayState,
+  useLLMStateStore,
+  usePlanStateStore
+} from '../../stores';
+
+interface IStateDisplayContainerProps {
+  /**
+   * Callback when either display visibility changes (for scroll button handling)
+   */
+  onVisibilityChange?: () => void;
+}
+
+/**
+ * Combined container for LLM and Plan state displays.
+ * Uses Zustand stores for state management.
+ */
+export function StateDisplayContainer({
+  onVisibilityChange
+}: IStateDisplayContainerProps): JSX.Element {
+  const llmIsVisible = useLLMStateStore(state => state.isVisible);
+  const llmState = useLLMStateStore(state => state.state);
+  const llmDiffs = useLLMStateStore(state => state.diffs);
+  const planIsVisible = usePlanStateStore(state => state.isVisible);
+
+  // Determine actual visibility for LLM state
+  const llmActuallyVisible =
+    llmIsVisible &&
+    llmState !== LLMDisplayState.IDLE &&
+    !(
+      llmState === LLMDisplayState.DIFF &&
+      (!llmDiffs || llmDiffs.length === 0)
+    );
+
+  // Track previous visibility for change detection
+  const prevVisibilityRef = React.useRef({
+    llm: llmActuallyVisible,
+    plan: planIsVisible
+  });
+
+  // Notify parent when visibility changes
+  React.useEffect(() => {
+    if (
+      onVisibilityChange &&
+      (prevVisibilityRef.current.llm !== llmActuallyVisible ||
+        prevVisibilityRef.current.plan !== planIsVisible)
+    ) {
+      prevVisibilityRef.current = {
+        llm: llmActuallyVisible,
+        plan: planIsVisible
+      };
+      onVisibilityChange();
+    }
+  }, [llmActuallyVisible, planIsVisible, onVisibilityChange]);
+
+  // Use negative margin to pull the displays into the input below
+  // Only the last visible element needs the negative margin
+  // First visible element gets margin-top for spacing from chat history
+  const llmStyle: React.CSSProperties = {
+    marginBottom: llmActuallyVisible ? '-12px' : undefined,
+    // Add top spacing if LLM is the first visible element (plan is hidden)
+    marginTop: llmActuallyVisible && !planIsVisible ? '4px' : undefined
+  };
+
+  // Plan only gets negative margin if LLM is hidden (plan is the last visible)
+  // Plan is always the first element when visible, so it gets top spacing
+  const planStyle: React.CSSProperties = {
+    marginBottom: planIsVisible && !llmActuallyVisible ? '-12px' : undefined,
+    marginTop: planIsVisible ? '4px' : undefined
+  };
+
+  // Note: Parent container already has sage-ai-state-display-container class
+  // We use React.Fragment to avoid nesting another container
+  return (
+    <>
+      <div
+        className={`sage-ai-plan-state-widget ${!planIsVisible ? 'hidden' : ''}`}
+        style={planStyle}
+      >
+        <PlanStateContent useStore={true} isVisible={true} isLoading={false} />
+      </div>
+      <div
+        className={`sage-ai-llm-state-widget ${!llmActuallyVisible ? 'hidden' : ''}`}
+        style={llmStyle}
+      >
+        <LLMStateContent
+          useStore={true}
+          isVisible={true}
+          state={LLMDisplayState.IDLE}
+          text=""
+        />
+      </div>
+    </>
+  );
+}

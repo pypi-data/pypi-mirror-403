@@ -1,0 +1,3116 @@
+import React from 'react';
+import { NotebookTools } from '../Notebook/NotebookTools';
+import { ToolCall } from '../Services/ToolService';
+import { IChatMessage, ICheckpoint, IToolCall } from '../types';
+import { ChatHistoryManager, IChatThread } from './ChatHistoryManager';
+import { IMentionContext } from './ChatContextMenu/ChatContextMenu';
+import {
+  getToolDisplayMessage,
+  getToolIcon,
+  shouldShowExpandableDetails,
+  isToolSearchTool
+} from '../utils/toolDisplay';
+import hljs from 'highlight.js/lib/core';
+import json from 'highlight.js/lib/languages/json';
+import { DiffApprovalDialog } from '../Components/DiffApprovalDialog';
+import { ServiceUtils } from '../Services/ServiceUtils';
+import { AppStateService } from '../AppState';
+import { useContextStore, subscribeToContextChanges } from '../stores';
+import {
+  renderContextTagsAsStyled,
+  getTagTypeFromCssClass
+} from '../utils/contextTagUtils';
+import {
+  useDiffStore,
+  subscribeToAllDiffsResolved,
+  subscribeToApprovalStatus
+} from '../stores/diffStore';
+import { CheckpointManager } from '../Services/CheckpointManager';
+import { CheckpointRestorationModal } from '../Components/CheckpointRestorationModal';
+import { NotebookCellStateService } from '../Services/NotebookCellStateService';
+import { IStreamingState } from './ConversationServiceUtils';
+import { ChatInputManager } from './ChatInputManager';
+import { mountComponent, IMountedComponent } from '../utils/reactMount';
+import {
+  ThinkingIndicator,
+  SystemMessage,
+  ErrorMessage,
+  LoadingIndicator,
+  AuthenticationCard,
+  SubscriptionCard,
+  ToolCallDisplay,
+  UserMessage,
+  AssistantMessage,
+  StreamingMessage,
+  WaitingUserReplyBox
+} from '../Components/Chat/Messages';
+import {
+  useChatMessagesStore,
+  getChatMessagesState
+} from '../stores/chatMessagesStore';
+import { createContainer } from '../utils/reactMount';
+
+/**
+ * Component for handling chat message display
+ *
+ * This class manages the chat message container and renders different types of messages.
+ * It is being incrementally migrated to use React components via the mountComponent utility.
+ *
+ * Migration Status:
+ * - ThinkingIndicator: ✅ React (uses mountComponent)
+ * - SystemMessage: 🔄 In progress
+ * - Others: ⏳ Pending
+ */
+export class ChatMessages {
+  /** Main container element for all chat messages */
+  private container: HTMLDivElement;
+
+  /** Full message history sent to the LLM */
+  public messageHistory: Array<IChatMessage> = [];
+
+  /** Original user inputs only (for context reset) */
+  private userMessages: Array<IChatMessage> = [];
+
+  /** Tracks the type of last added message for UI grouping */
+  private lastAddedMessageType: 'tool' | 'normal' | 'user' | null = null;
+
+  /** Manages chat history persistence */
+  private historyManager: ChatHistoryManager;
+
+  /** Notebook manipulation utilities */
+  private notebookTools: NotebookTools;
+
+  /** Context mentions attached to messages */
+  private mentionContexts: Map<string, IMentionContext> = new Map();
+
+  /** Callback to show/hide scroll-to-bottom button */
+  private onScrollDownButtonDisplay: () => void;
+
+  /** Manages notebook checkpoints for rollback */
+  private checkpointManager: CheckpointManager;
+
+  /** Modal for checkpoint restoration UI */
+  private restorationModal: CheckpointRestorationModal;
+
+  /** Currently selected checkpoint for restoration */
+  private checkpointToRestore: ICheckpoint | null = null;
+
+  /** Reference to the chat input manager */
+  private inputManager: ChatInputManager | null = null;
+
+  // Continue button related properties
+  private waitingReplyBox: HTMLElement | null = null;
+  private continueButton: HTMLElement | null = null;
+  private onContinueCallback: (() => void) | null = null;
+  private keyboardHandler: ((event: KeyboardEvent) => void) | null = null;
+
+  /** Whether to hide streaming messages (for welcome message pre-loading) */
+  private isWelcomeMessageHiddenMode: boolean = false;
+
+  // ============================================================
+  // React Component Tracking
+  // These track mounted React components for proper cleanup
+  // ============================================================
+
+  /** Mounted ThinkingIndicator React component */
+  private thinkingIndicatorMounted: IMountedComponent | null = null;
+
+  /** Container element for ThinkingIndicator (needed for DOM operations) */
+  private thinkingIndicatorContainer: HTMLElement | null = null;
+
+  constructor(
+    container: HTMLDivElement,
+    historyManager: ChatHistoryManager,
+    notebookTools: NotebookTools,
+    onScrollDownButtonDisplay: () => void
+  ) {
+    this.container = container;
+    this.historyManager = historyManager;
+    this.notebookTools = notebookTools;
+    this.onScrollDownButtonDisplay = onScrollDownButtonDisplay;
+    this.checkpointManager = CheckpointManager.getInstance();
+    this.restorationModal = new CheckpointRestorationModal();
+    this.checkpointToRestore = null;
+    console.log('[ChatMessages] Initialized with empty message history');
+
+    // Register JSON language for highlight.js
+    hljs.registerLanguage('json', json);
+
+    // Initialize continue button for new chats
+    this.addContinueButton();
+
+    // Sync context service with current mention contexts
+    this.syncContextService();
+
+    // Subscribe to context changes to refresh message displays
+    this.subscribeToContextChanges();
+
+    // Subscribe to diff state changes to update prompt buttons
+    this.subscribeToDiffStateChanges();
+  }
+
+  setInputManager(inputManager: ChatInputManager): void {
+    this.inputManager = inputManager;
+  }
+
+  /**
+   * Generate a unique message ID
+   */
+  private generateMessageId(): string {
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Generate a thread name from a user message
+   * @param message User message to generate name from
+   * @returns Short thread name (max 30 chars)
+   */
+  private generateThreadName(message: string): string {
+    // Remove context tags for cleaner naming
+    const processedMessage = message
+      .replace(/<context[^>]*>.*?<\/context>/gi, '')
+      .trim();
+
+    // Take the first 5-8 words, max 30 chars
+    const words = processedMessage.split(/\s+/);
+    const selectedWords = words.slice(0, Math.min(8, words.length));
+    let threadName = selectedWords.join(' ');
+
+    // Truncate if too long
+    if (threadName.length > 30) {
+      threadName = threadName.substring(0, 27) + '...';
+    }
+
+    return threadName || 'New Chat';
+  }
+
+  /**
+   * Load messages from an existing chat thread
+   * @param thread The chat thread to load
+   */
+  async loadFromThread(thread: IChatThread): Promise<void> {
+    // Backup current state before clearing
+    const backupMessageHistory = [...this.messageHistory];
+    const backupUserMessages = [...this.userMessages];
+    const backupMentionContexts = new Map(this.mentionContexts);
+    const backupLastAddedMessageType = this.lastAddedMessageType;
+    const backupContainerHTML = this.container.innerHTML;
+
+    try {
+      this.messageHistory = [];
+      this.userMessages = [];
+
+      // First clear the UI display
+      this.container.innerHTML = '';
+
+      // Set the messageHistory from the thread
+      this.messageHistory = [...thread.messages];
+
+      this.inputManager?.updateTokenProgress(this.messageHistory);
+
+      // Extract user messages for context reset situations
+      this.userMessages = thread.messages.filter(msg => msg.role === 'user');
+
+      // Load mention contexts from the thread
+      this.mentionContexts = new Map(thread.contexts || new Map());
+
+      // Sync mention contexts with the Zustand context store
+      useContextStore.getState().setContextItems(this.mentionContexts);
+
+      // Set current notebook ID for checkpoint manager
+      const currentNotebookId = AppStateService.getCurrentNotebookId();
+      if (currentNotebookId) {
+        this.checkpointManager.setCurrentNotebookId(currentNotebookId);
+      }
+
+      this.lastAddedMessageType = null;
+
+      // Render all messages to the UI
+      await this.renderAllMessages();
+
+      // Initialize continue button after loading messages
+      this.addContinueButton();
+
+      console.log(
+        `[ChatMessages] Loaded ${thread.messages.length} messages from thread`
+      );
+    } catch (error) {
+      console.error(
+        '[ChatMessages] Failed to load thread, restoring backup:',
+        error
+      );
+      // Restore backed up state
+      this.messageHistory = backupMessageHistory;
+      this.userMessages = backupUserMessages;
+      this.mentionContexts = backupMentionContexts;
+      this.lastAddedMessageType = backupLastAddedMessageType;
+      this.container.innerHTML = backupContainerHTML;
+
+      // Re-throw the error to let the caller handle it
+      throw error;
+    }
+  }
+
+  /**
+   * Render all messages from the history to the UI
+   */
+  private async renderAllMessages(): Promise<void> {
+    // Keep track of consecutive message types to group tools
+    let lastToolGroup: { assistant: any; results: any[] } | null = null;
+
+    for (const message of this.messageHistory) {
+      if (message.role === 'user') {
+        // Check if this is a tool result
+        if (
+          Array.isArray(message.content) &&
+          message.content.length > 0 &&
+          typeof message.content[0] === 'object' &&
+          message.content[0].type === 'tool_result'
+        ) {
+          // This is a tool result - add it to the current tool group
+          if (lastToolGroup) {
+            // Render the tool result to UI
+            this.renderToolResult(
+              message.content[0].tool_name || 'tool',
+              message.content[0].content,
+              lastToolGroup
+            );
+            lastToolGroup.results.push(message.content[0]);
+          }
+        } else {
+          // Regular user message
+          lastToolGroup = null;
+
+          // Find checkpoint for this user message
+          const userMessageContent =
+            typeof message.content === 'string'
+              ? message.content
+              : JSON.stringify(message.content);
+          const checkpoint = message.id
+            ? this.checkpointManager.findCheckpointByUserMessageId(message.id)
+            : this.checkpointManager.findCheckpointByUserMessage(
+                userMessageContent
+              );
+
+          this.renderUserMessage(
+            userMessageContent,
+            message,
+            checkpoint || undefined
+          );
+        }
+      } else if (message.role === 'assistant') {
+        // Check if this is a tool call
+        if (
+          Array.isArray(message.content) &&
+          message.content.length > 0 &&
+          typeof message.content[0] === 'object' &&
+          message.content[0].type === 'tool_use'
+        ) {
+          // This is the start of a new tool group
+          lastToolGroup = {
+            assistant: message,
+            results: []
+          };
+
+          // Render each tool call to UI
+          for (const content of message.content) {
+            if (content.type === 'tool_use') {
+              // Check if this is a tool search tool - render with expandable UI
+              if (isToolSearchTool(content.name)) {
+                this.renderToolSearchToolFromHistory(content);
+              } else {
+                this.renderToolCall(content);
+              }
+            }
+          }
+        } else {
+          // Regular assistant message
+          lastToolGroup = null;
+          await this.renderAssistantMessage(
+            typeof message.content === 'string'
+              ? message.content
+              : Array.isArray(message.content) &&
+                  typeof message.content[0] === 'object' &&
+                  message.content[0].text
+                ? message.content[0].text
+                : JSON.stringify(message.content)
+          );
+        }
+      } else if (ServiceUtils.isDiffApprovalMessage(message)) {
+        this.renderDiffApprovalFromHistory(message.content[0]);
+      }
+    }
+
+    this.scrollToBottom();
+
+    this.removeLoadingText();
+
+    // Update continue button visibility after rendering all messages
+    this.updateContinueButtonVisibility();
+
+    // Ensure the waiting reply box is at the bottom after all messages are rendered
+    this.ensureWaitingReplyBoxIsLast();
+  }
+
+  /**
+   * Remove the tool loading text
+   */
+  public removeLoadingText(): void {
+    this.container
+      .querySelectorAll('.sage-ai-loading-text')
+      .forEach(content => {
+        content.classList.remove('sage-ai-loading-text');
+      });
+  }
+
+  /**
+   * Ensure the waiting reply box is positioned as the last child if it exists
+   * Call this after adding any new message elements to the container
+   */
+  private ensureWaitingReplyBoxIsLast(): void {
+    if (
+      this.waitingReplyBox &&
+      this.waitingReplyBox.parentNode === this.container
+    ) {
+      this.container.removeChild(this.waitingReplyBox);
+      this.container.appendChild(this.waitingReplyBox);
+    }
+  }
+
+  /**
+   * Safely render markdown content with sanitization
+   */
+  /**
+   * Render a user message to the UI (without adding to history)
+   * Used for restoring messages from saved chat history.
+   */
+  private renderUserMessage(
+    message: string,
+    messageData: IChatMessage,
+    checkpoint?: ICheckpoint
+  ): void {
+    this.closeToolGroupIfOpen();
+
+    // Check if this is the welcome trigger message and we're in launcher mode
+    const isLauncherActive = AppStateService.isLauncherActive();
+    const isWelcomeTrigger = message.trim() === 'Create Welcome Message';
+    const shouldHideMessage =
+      messageData.hidden || (isLauncherActive && isWelcomeTrigger);
+
+    // Create container and mount React UserMessage component
+    const container = createContainer();
+
+    mountComponent(
+      container,
+      React.createElement(UserMessage, {
+        content: message,
+        checkpoint,
+        hidden: shouldHideMessage,
+        isDemo: false,
+        onRestore: checkpoint
+          ? (cp: ICheckpoint) => {
+              void this.performCheckpointRestoration(cp);
+            }
+          : undefined,
+        onRedo: () => {
+          void this.cancelCheckpointRestoration();
+        }
+      })
+    );
+
+    this.container.appendChild(container);
+    this.ensureWaitingReplyBoxIsLast();
+
+    this.lastAddedMessageType = 'user';
+    this.handleScroll();
+  }
+
+  public isFullyScrolledToBottom(): boolean {
+    const isScrolledToBottom =
+      this.container.getAttribute('data-is-scrolled-to-bottom') === 'true';
+    return isScrolledToBottom;
+  }
+
+  /**
+   * Render an assistant message to the UI (without adding to history)
+   */
+  private async renderAssistantMessage(
+    message: string,
+    _container?: HTMLElement
+  ): Promise<void> {
+    this.closeToolGroupIfOpen();
+
+    // Determine if header should be shown (only after user messages)
+    const showHeader = this.lastAddedMessageType === 'user';
+
+    // Create container and mount React AssistantMessage component
+    const reactContainer = createContainer();
+
+    mountComponent(
+      reactContainer,
+      React.createElement(AssistantMessage, {
+        content: message,
+        showHeader
+      })
+    );
+
+    // Append to target container
+    const container: HTMLElement = _container ?? this.container;
+    container.appendChild(reactContainer);
+
+    // Only reposition waiting reply box if we're adding to the main container
+    if (container === this.container) {
+      this.ensureWaitingReplyBoxIsLast();
+    }
+
+    this.lastAddedMessageType = 'normal';
+    this.handleScroll();
+  }
+
+  /**
+   * Get the current mention contexts
+   * @returns Map of mention contexts
+   */
+  public getMentionContexts(): Map<string, IMentionContext> {
+    return new Map(this.mentionContexts);
+  }
+
+  /**
+   * Set mention contexts
+   * @param contexts Map of mention contexts to set
+   */
+  public setMentionContexts(contexts: Map<string, IMentionContext>): void {
+    this.mentionContexts = new Map(contexts);
+    // Sync with context store
+    useContextStore.getState().setContextItems(this.mentionContexts);
+  }
+
+  /**
+   * Add a mention context
+   * @param context The mention context to add
+   */
+  public addMentionContext(context: IMentionContext): void {
+    this.mentionContexts.set(context.id, context);
+    // Update the persistent storage
+    this.historyManager.updateCurrentThreadContexts(this.mentionContexts);
+    // Sync with context store
+    useContextStore.getState().addContext(context);
+  }
+
+  /**
+   * Remove a mention context
+   * @param contextId The ID of the context to remove
+   */
+  public removeMentionContext(contextId: string): void {
+    console.log(`[ChatMessages] Removing mention context: ${contextId}`);
+    console.log(
+      `[ChatMessages] Current contexts before removal:`,
+      Array.from(this.mentionContexts.keys())
+    );
+
+    this.mentionContexts.delete(contextId);
+
+    console.log(
+      `[ChatMessages] Contexts after removal:`,
+      Array.from(this.mentionContexts.keys())
+    );
+
+    // Update the persistent storage
+    this.historyManager.updateCurrentThreadContexts(this.mentionContexts);
+
+    // Sync with context store
+    useContextStore.getState().removeContext(contextId);
+
+    console.log(`[ChatMessages] Context removal complete for: ${contextId}`);
+  }
+
+  /**
+   * Display an authentication card prompting the user to log in
+   *
+   * This clears the chat container and shows a login prompt card.
+   * Uses the React AuthenticationCard component.
+   */
+  public displayAuthenticationCard(): void {
+    console.log('[ChatMessages] Displaying authentication card (React)');
+
+    // Clear existing content first
+    this.container.innerHTML = '';
+
+    // Create container for the React component
+    const container = createContainer();
+
+    // Handler for login button click
+    const handleLogin = () => {
+      void import('../Services/JupyterAuthService').then(
+        ({ JupyterAuthService }) => {
+          JupyterAuthService.openLoginPage();
+        }
+      );
+    };
+
+    // Mount the React AuthenticationCard component
+    mountComponent(
+      container,
+      React.createElement(AuthenticationCard, { onLogin: handleLogin })
+    );
+
+    // Add the card to the container
+    this.container.appendChild(container);
+
+    // Remove the "waiting reply box" if it exists since we're not actually waiting for a reply
+    this.removeContinueButton();
+    AppStateService.getState().chatContainer?.chatWidget.cancelMessage();
+  }
+
+  /**
+   * Display a subscription card prompting the user to subscribe
+   *
+   * This clears the chat container and shows a subscription prompt card.
+   * Uses the React SubscriptionCard component.
+   */
+  public displaySubscriptionCard(): void {
+    console.log('[ChatMessages] Displaying subscription card (React)');
+
+    // Clear existing content first
+    this.container.innerHTML = '';
+
+    // Create container for the React component
+    const container = createContainer();
+
+    // Handler for subscribe button click
+    const handleSubscribe = () => {
+      window.open('https://app.signalpilot.ai/subscription', '_blank');
+    };
+
+    // Mount the React SubscriptionCard component
+    mountComponent(
+      container,
+      React.createElement(SubscriptionCard, { onSubscribe: handleSubscribe })
+    );
+
+    // Add the card to the container
+    this.container.appendChild(container);
+
+    // Remove the "waiting reply box" if it exists since we're not actually waiting for a reply
+    this.removeContinueButton();
+    AppStateService.getState().chatContainer?.chatWidget.cancelMessage();
+  }
+
+  /**
+   * Sync the local mention contexts with the global context service
+   */
+  private syncContextService(): void {
+    useContextStore.getState().setContextItems(this.mentionContexts);
+  }
+
+  /**
+   * Subscribe to context changes to refresh message displays when contexts become available
+   */
+  private subscribeToContextChanges(): void {
+    subscribeToContextChanges(newContexts => {
+      // Check if we have any user messages that contain context tags that might now be available
+      const hasContextTags = this.messageHistory.some(
+        message =>
+          message.role === 'user' &&
+          typeof message.content === 'string' &&
+          message.content.includes('<') &&
+          message.content.includes('_CONTEXT>')
+      );
+
+      if (hasContextTags) {
+        console.log(
+          '[ChatMessages] Context items updated, refreshing message displays'
+        );
+        this.refreshMessageDisplays();
+      }
+    });
+  }
+
+  /**
+   * Subscribe to diff state changes to update prompt buttons when diffs are resolved
+   */
+  private subscribeToDiffStateChanges(): void {
+    // Listen for when all diffs are resolved using Zustand
+    subscribeToAllDiffsResolved(undefined, (resolved, notebookId) => {
+      console.log(
+        '[ChatMessages] All diffs resolved, checking prompt buttons',
+        { notebookId, resolved }
+      );
+      if (resolved && this.shouldShowContinueButton()) {
+        this.checkAndShowPromptButtons();
+        this.ensureWaitingReplyBoxIsLast();
+      }
+    });
+
+    // Also listen for approval status changes to react immediately when diffs are approved
+    subscribeToApprovalStatus(undefined, status => {
+      console.log('[ChatMessages] Diff approval status changed', status);
+      if (status.allResolved) {
+        if (this.shouldShowContinueButton()) {
+          this.checkAndShowPromptButtons();
+          this.ensureWaitingReplyBoxIsLast();
+        }
+      }
+    });
+  }
+
+  /**
+   * Refresh displays of existing messages that contain context tags
+   */
+  private refreshMessageDisplays(): void {
+    // Find all user message elements that may contain context tags
+    const userMessages = this.container.querySelectorAll(
+      '.sage-ai-user-message .sage-ai-message-content'
+    );
+
+    userMessages.forEach(messageContent => {
+      const currentHTML = messageContent.innerHTML;
+
+      // Check if this message contains context mentions (broken or valid)
+      if (currentHTML.includes('sage-ai-mention')) {
+        // Extract the original message by looking for data attributes or parsing
+        // We'll need to reverse engineer the original message from the HTML
+        const originalMessage =
+          this.extractOriginalMessageFromHTML(currentHTML);
+
+        if (originalMessage) {
+          // Re-render the message with updated context
+          const renderedMessage = renderContextTagsAsStyled(originalMessage);
+          messageContent.innerHTML = renderedMessage.replace(/\n/g, '<br>');
+        }
+      }
+    });
+  }
+
+  /**
+   * Extract the original message content from rendered HTML
+   * This is needed to re-render messages when contexts become available
+   */
+  private extractOriginalMessageFromHTML(html: string): string | null {
+    try {
+      // Create a temporary element to parse the HTML
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+
+      // Extract text content and context tags
+      let originalMessage = '';
+
+      tempDiv.childNodes.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          originalMessage += node.textContent || '';
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element;
+
+          if (element.classList.contains('sage-ai-mention')) {
+            // This is a mention - extract the context ID and recreate the tag
+            const contextId = element.getAttribute('data-context-id');
+            const mentionText = element.textContent || '';
+
+            if (contextId) {
+              // Determine the tag type from CSS classes instead of checking context validity
+              const tagType = getTagTypeFromCssClass(element);
+              originalMessage += `<${tagType}>#{${contextId}}</${tagType}>`;
+            } else {
+              // Fallback to the displayed text
+              originalMessage += mentionText;
+            }
+          } else if (element.tagName === 'BR') {
+            originalMessage += '\n';
+          } else {
+            originalMessage += element.textContent || '';
+          }
+        }
+      });
+
+      return originalMessage;
+    } catch (error) {
+      console.warn('[ChatMessages] Failed to extract original message:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Add a user message to the chat history
+   * @param message The sanitized message
+   * @param hidden Whether to hide the message from display
+   * @param is_demo Whether this is a demo message (won't be saved to history)
+   */
+  addUserMessage(message: string, hidden = false, is_demo = false): void {
+    this.closeToolGroupIfOpen();
+
+    console.log('[ChatMessages] Adding user message:', message);
+
+    // Check if this is the welcome trigger message and we're in launcher mode
+    const isLauncherActive = AppStateService.isLauncherActive();
+    const isWelcomeTrigger = message.trim() === 'Create Welcome Message';
+    const shouldHideMessage = hidden || (isLauncherActive && isWelcomeTrigger);
+
+    // Add to message history for context (skip if demo mode)
+    const userMessage: IChatMessage = {
+      role: 'user',
+      content: message,
+      id: this.generateMessageId(),
+      hidden: hidden
+    };
+
+    if (!is_demo) {
+      this.messageHistory.push(userMessage);
+      // Also store in userMessages for context reset situations
+      this.userMessages.push({
+        role: 'user',
+        content: message,
+        id: userMessage.id,
+        hidden: hidden
+      });
+    }
+
+    // Create checkpoint (if not demo mode)
+    let checkpoint: ICheckpoint | undefined;
+    try {
+      if (!is_demo) {
+        checkpoint = this.createCheckpoint(userMessage);
+      }
+    } catch (error) {
+      console.error('[ChatMessages] Error creating checkpoint:', error);
+    }
+
+    // Create container and mount React UserMessage component
+    const container = createContainer();
+
+    mountComponent(
+      container,
+      React.createElement(UserMessage, {
+        content: message,
+        checkpoint,
+        hidden: shouldHideMessage,
+        isDemo: is_demo,
+        onRestore: checkpoint
+          ? (cp: ICheckpoint) => {
+              void this.performCheckpointRestoration(cp);
+            }
+          : undefined,
+        onRedo: () => {
+          void this.cancelCheckpointRestoration();
+        }
+      })
+    );
+
+    this.container.appendChild(container);
+    this.ensureWaitingReplyBoxIsLast();
+
+    // Update the persistent storage with contexts (skip if demo mode)
+    if (!is_demo) {
+      this.historyManager.updateCurrentThreadMessages(
+        this.messageHistory,
+        this.mentionContexts
+      );
+
+      // Auto-rename thread if this is the first user message in a "New Chat" thread
+      const currentThread = this.historyManager.getCurrentThread();
+      if (currentThread && currentThread.name === 'New Chat') {
+        // Count only user messages (not tool results or system messages)
+        const userMessageCount = this.messageHistory.filter(
+          msg => msg.role === 'user' && !msg.hidden
+        ).length;
+
+        // If this is the first user message, auto-rename the thread
+        if (userMessageCount === 1) {
+          const threadName = this.generateThreadName(message);
+          this.historyManager.renameCurrentThread(threadName);
+          console.log(
+            `[ChatMessages] Auto-renamed thread from "New Chat" to "${threadName}"`
+          );
+        }
+      }
+    }
+
+    this.lastAddedMessageType = 'user';
+
+    // Hide the waiting reply box when user sends a new message
+    this.hideWaitingReplyBox();
+
+    // Do NOT automatically check continue button visibility after user message
+    // The waiting reply box should only be shown when wait_user_reply tool is called
+
+    this.handleScroll();
+
+    console.log('[ChatMessages] User message added to history');
+    console.log(
+      '[ChatMessages] Current message history:',
+      JSON.stringify(this.messageHistory)
+    );
+    console.log(
+      '[ChatMessages] Current user messages:',
+      JSON.stringify(this.userMessages)
+    );
+  }
+
+  /**
+   * Add a system message to the chat history
+   *
+   * System messages are informational (e.g., mode changes, status updates).
+   * They are NOT saved to message history - they're UI-only.
+   *
+   * Uses the React SystemMessage component.
+   *
+   * @param message - The message content (can contain HTML)
+   */
+  addSystemMessage(message: string): void {
+    this.closeToolGroupIfOpen();
+
+    console.log('[ChatMessages] Adding system message (React):', message);
+
+    // Create container for the React component
+    const container = createContainer();
+
+    // Mount the React SystemMessage component
+    mountComponent(container, React.createElement(SystemMessage, { message }));
+
+    // Add to DOM
+    this.container.appendChild(container);
+    this.ensureWaitingReplyBoxIsLast();
+
+    this.lastAddedMessageType = 'normal';
+
+    this.handleScroll();
+
+    console.log(
+      '[ChatMessages] System message added (React, not saved to history)'
+    );
+    // System messages are not saved to history
+  }
+
+  /**
+   * Add a diff approval dialog to the chat history
+   * This creates a persistent chat entry that won't be sent to the LLM
+   */
+  addDiffApprovalDialog(
+    notebookPath?: string,
+    diffCells?: any[],
+    renderImmediately: boolean = false
+  ): void {
+    console.log('[ChatMessages] Adding diff approval dialog to chat');
+
+    // Add to message history in a format that will be filtered from LLM requests
+    // Save the actual diff content instead of HTML
+    const diffApprovalMessage = {
+      role: 'diff_approval',
+      content: [
+        {
+          type: 'diff_approval',
+          id: `diff_approval_${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          notebook_path: notebookPath,
+          diff_cells: diffCells
+            ? diffCells.map(cell => ({
+                cellId: cell.cellId,
+                type: cell.type,
+                originalContent: cell.originalContent || '',
+                newContent: cell.newContent || '',
+                displaySummary: cell.displaySummary || `${cell.type} cell`
+              }))
+            : []
+        }
+      ]
+    };
+
+    this.messageHistory.push(diffApprovalMessage);
+
+    // Update the persistent storage with contexts
+    this.historyManager.updateCurrentThreadMessages(
+      this.messageHistory,
+      this.mentionContexts
+    );
+
+    // Render the diff immediately if diffCells are provided
+    if (diffCells && diffCells.length > 0 && renderImmediately) {
+      const diffCellsFormatted = diffCells.map(cell => ({
+        cellId: cell.cellId,
+        type: cell.type,
+        originalContent: cell.originalContent || '',
+        newContent: cell.newContent || '',
+        displaySummary: cell.displaySummary || `${cell.type} cell`,
+        notebookId: notebookPath,
+        metadata: cell.metadata || {}
+      }));
+      const historicalDialog = DiffApprovalDialog.createHistoricalDialog(
+        diffCellsFormatted,
+        notebookPath
+      );
+      this.container.appendChild(historicalDialog);
+      this.ensureWaitingReplyBoxIsLast();
+      this.handleScroll();
+    }
+
+    console.log(
+      '[ChatMessages] Diff approval dialog added to chat and history'
+    );
+  }
+
+  /**
+   * Add an error message to the chat history
+   *
+   * Error messages display failures (API errors, validation issues, etc.).
+   * They are NOT saved to message history - they're UI-only.
+   *
+   * Uses the React ErrorMessage component.
+   *
+   * @param message - The error message to display
+   */
+  addErrorMessage(message: string): void {
+    this.closeToolGroupIfOpen();
+
+    console.log('[ChatMessages] Adding error message (React):', message);
+
+    // Create container for the React component
+    const container = createContainer();
+
+    // Mount the React ErrorMessage component
+    mountComponent(container, React.createElement(ErrorMessage, { message }));
+
+    // Add to DOM
+    this.container.appendChild(container);
+
+    this.lastAddedMessageType = 'normal';
+
+    this.handleScroll();
+
+    console.log('[ChatMessages] Error message added (not saved to history)');
+    // Error messages are not saved to history
+  }
+
+  /**
+   * Close the current tool group if one is open
+   */
+  private closeToolGroupIfOpen(): void {
+    if (this.lastAddedMessageType === 'tool') {
+      this.lastAddedMessageType = null;
+    }
+  }
+
+  /**
+   * Render a single tool call
+   *
+   * Uses the React ToolCallDisplay component.
+   * Skips rendering for wait_user_reply tool (handled separately).
+   */
+  private renderToolCall(toolCall: IToolCall): void {
+    // Skip wait_user_reply - it's handled separately
+    if (toolCall.name === 'notebook-wait_user_reply') {
+      return;
+    }
+
+    console.log('[ChatMessages] Rendering tool call (React):', toolCall.name);
+
+    // Create container for the React component
+    const container = createContainer();
+
+    // Handler for cell click (scroll to cell)
+    const handleCellClick = (cellId: string) => {
+      void this.notebookTools.scrollToCellById(cellId);
+    };
+
+    // Mount the React ToolCallDisplay component
+    mountComponent(
+      container,
+      React.createElement(ToolCallDisplay, {
+        toolName: toolCall.name,
+        toolInput: toolCall.input,
+        isStreaming: false,
+        onCellClick: handleCellClick
+      })
+    );
+
+    // Add to DOM
+    this.container.appendChild(container);
+    this.ensureWaitingReplyBoxIsLast();
+
+    this.handleScroll();
+
+    this.lastAddedMessageType = 'tool';
+  }
+
+  /**
+   * Render a tool search tool from history with expandable UI
+   */
+  private renderToolSearchToolFromHistory(toolCall: IToolCall): void {
+    const container = document.createElement('div');
+    container.classList.add('sage-ai-tool-call-v1', 'sage-ai-mcp-tool');
+    container.setAttribute('sage-ai-tool-call-name', toolCall.name);
+    container.style.display = 'block';
+
+    // Create header with icon, text, and expand arrow
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'sage-ai-mcp-tool-header';
+    headerDiv.style.cssText =
+      'display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 8px; cursor: pointer;';
+
+    // Left side: icon and text
+    const leftContent = document.createElement('div');
+    leftContent.style.cssText =
+      'display: flex; align-items: center; gap: 10px;';
+
+    // Add the SVG icon only if tool has one
+    const iconHtml = getToolIcon(toolCall.name);
+    if (iconHtml) {
+      const iconElement = document.createElement('div');
+      iconElement.className = 'sage-ai-tool-call-icon';
+      iconElement.innerHTML = iconHtml;
+      leftContent.appendChild(iconElement);
+    }
+
+    // Add the text
+    const textElement = document.createElement('span');
+    textElement.innerHTML = getToolDisplayMessage(toolCall.name, toolCall.input);
+    leftContent.appendChild(textElement);
+
+    // Right side: expand arrow
+    const arrowIcon = document.createElement('div');
+    arrowIcon.className = 'sage-ai-mcp-expand-arrow';
+    arrowIcon.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+    arrowIcon.style.cssText =
+      'transition: transform 0.2s ease; color: var(--jp-ui-font-color2);';
+
+    headerDiv.appendChild(leftContent);
+    headerDiv.appendChild(arrowIcon);
+    container.appendChild(headerDiv);
+
+    // Create a wrapper for collapsible sections
+    const detailsWrapper = document.createElement('div');
+    detailsWrapper.className = 'sage-ai-mcp-details-wrapper';
+    detailsWrapper.style.cssText =
+      'margin: 8px 8px 4px 8px; display: none; flex-direction: column;';
+
+    // Add Input section
+    const inputSection = document.createElement('div');
+    inputSection.className = 'sage-ai-mcp-section';
+    inputSection.style.cssText =
+      'background: var(--jp-layout-color1); border-radius: 3px; padding: 8px;';
+
+    const inputLabel = document.createElement('div');
+    inputLabel.style.cssText =
+      'font-size: 10px; text-transform: uppercase; color: var(--jp-ui-font-color2); margin-bottom: 4px; font-weight: 600;';
+    inputLabel.textContent = 'Input';
+    inputSection.appendChild(inputLabel);
+
+    const inputContent = document.createElement('pre');
+    inputContent.style.cssText =
+      'margin: 0; font-family: var(--jp-code-font-family); font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; color: var(--jp-ui-font-color1);';
+    inputContent.textContent = JSON.stringify(toolCall.input, null, 2);
+    inputSection.appendChild(inputContent);
+
+    detailsWrapper.appendChild(inputSection);
+    container.appendChild(detailsWrapper);
+
+    // Toggle expand/collapse on click
+    headerDiv.addEventListener('click', () => {
+      const isExpanded = detailsWrapper.style.display === 'flex';
+      detailsWrapper.style.display = isExpanded ? 'none' : 'flex';
+      arrowIcon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+    });
+
+    this.container.appendChild(container);
+    this.ensureWaitingReplyBoxIsLast();
+    this.handleScroll();
+    this.lastAddedMessageType = 'tool';
+  }
+
+  /**
+   * Add tool calls to the chat history
+   */
+  addToolCalls(toolCalls: IToolCall[]): void {
+    if (!toolCalls || toolCalls.length === 0) {
+      console.log('[ChatMessages] No tool calls to add');
+      return;
+    }
+
+    console.log('[ChatMessages] Adding tool calls:', toolCalls.length);
+
+    // Add each tool call to history and render
+    toolCalls.forEach((toolCall, index) => {
+      console.log(
+        `[ChatMessages] Processing tool call #${index + 1}:`,
+        toolCall.name
+      );
+      this.renderToolCall(toolCall);
+
+      // Add to message history
+      const toolCallMessage = {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: toolCall.id,
+            name: toolCall.name,
+            input: toolCall.input
+          }
+        ]
+      };
+
+      this.messageHistory.push(toolCallMessage);
+
+      // Update the persistent storage with contexts
+      this.historyManager.updateCurrentThreadMessages(
+        this.messageHistory,
+        this.mentionContexts
+      );
+
+      console.log(`[ChatMessages] Tool call #${index + 1} added to history`);
+    });
+
+    console.log(
+      '[ChatMessages] All tool calls added, current history length:',
+      this.messageHistory.length
+    );
+    console.log(
+      '[ChatMessages] Last message in history:',
+      JSON.stringify(this.messageHistory[this.messageHistory.length - 1])
+    );
+  }
+
+  /**
+   * Add a streaming tool call container to the chat history
+   * @returns The container element to be updated with streaming tool call content
+   */
+  addStreamingToolCall(insertAfterElement?: HTMLElement | null): HTMLDivElement {
+    this.closeToolGroupIfOpen();
+
+    console.log('[ChatMessages] Adding streaming tool call container');
+
+    // Create a container for the streaming tool call
+    const toolCallContainer = document.createElement('div');
+    toolCallContainer.className =
+      'sage-ai-tool-call-v1 sage-ai-streaming-tool-call';
+    toolCallContainer.setAttribute('data-tool-call', '{}'); // Store single tool call
+
+    // Note: Removed placeholder message - tool calls now happen in background
+
+    // If an insertAfterElement is provided, insert the tool call right after it
+    // This preserves message ordering when tool calls arrive during text streaming
+    if (insertAfterElement && insertAfterElement.parentNode) {
+      insertAfterElement.parentNode.insertBefore(
+        toolCallContainer,
+        insertAfterElement.nextSibling
+      );
+    } else {
+      this.container.appendChild(toolCallContainer);
+    }
+    this.ensureWaitingReplyBoxIsLast();
+
+    this.handleScroll();
+
+    console.log(
+      '[ChatMessages] Streaming tool call container added (not yet in history)'
+    );
+
+    return toolCallContainer;
+  }
+
+  /**
+   * Update a streaming tool call with new tool call information
+   * @param toolCallContainer The tool call container to update
+   * @param toolUse The tool use information to add or update
+   */
+  updateStreamingToolCall(
+    toolCallContainer: HTMLDivElement,
+    toolUse: any
+  ): void {
+    console.log(
+      '[ChatMessages] Updating streaming tool call with:',
+      toolUse.name
+    );
+
+    const cursor = document.querySelector('.sage-ai-streaming-cursor');
+    cursor?.remove();
+
+    if (toolCallContainer) {
+      // Remove placeholder if it exists
+      const placeholder = toolCallContainer.querySelector(
+        '.sage-ai-streaming-tool-call-placeholder'
+      );
+      if (placeholder) {
+        placeholder.remove();
+      }
+
+      // Update the tool call data
+      toolCallContainer.setAttribute('data-tool-call', JSON.stringify(toolUse));
+      toolCallContainer.setAttribute('sage-ai-tool-call-name', toolUse.name);
+
+      // Only add icon if it doesn't exist yet and tool has an icon
+      let iconElement = toolCallContainer.querySelector(
+        '.sage-ai-tool-call-icon'
+      );
+      const iconHtml = getToolIcon(toolUse.name);
+      if (!iconElement && iconHtml) {
+        iconElement = document.createElement('div');
+        iconElement.className = 'sage-ai-tool-call-icon';
+        iconElement.innerHTML = iconHtml;
+        toolCallContainer.appendChild(iconElement);
+      }
+
+      // Update text element if it exists, or create it if it doesn't
+      let textElement = toolCallContainer.querySelector(
+        '.sage-ai-loading-text'
+      );
+      const newText = getToolDisplayMessage(toolUse.name, toolUse.input);
+
+      if (textElement) {
+        // Only update if text has changed
+        if (textElement.innerHTML !== newText) {
+          textElement.innerHTML = newText;
+        }
+      } else {
+        // Create text element if it doesn't exist
+        textElement = document.createElement('span');
+        textElement.innerHTML = newText;
+        textElement.className = 'sage-ai-loading-text';
+        toolCallContainer.appendChild(textElement);
+      }
+
+      this.upsertCellIdLabelInDOM(
+        toolCallContainer,
+        toolUse.name,
+        toolUse.input
+      );
+
+      this.handleScroll();
+
+      console.log('[ChatMessages] Streaming tool call updated');
+    } else {
+      console.warn(
+        '[ChatMessages] Warning: Tool call container not found in streaming message element'
+      );
+    }
+  }
+
+  /**
+   * Finalize a streaming tool call, saving it to history
+   * @param toolCallContainer The tool call container to finalize
+   * @param is_demo Whether this is a demo message (won't be saved to history)
+   */
+  finalizeStreamingToolCall(
+    toolCallContainer: HTMLDivElement,
+    is_demo = false,
+    streamingState?: IStreamingState
+  ): void {
+    console.log('[ChatMessages] Finalizing streaming tool call');
+
+    // Remove the streaming cursor first
+    const cursor = toolCallContainer.querySelector('.sage-ai-streaming-cursor');
+    if (cursor) {
+      cursor.remove();
+    }
+
+    const textLoadingElement = toolCallContainer.querySelector(
+      '.sage-ai-loading-text'
+    );
+    if (textLoadingElement) {
+      textLoadingElement.classList.remove('sage-ai-loading-text');
+    }
+
+    // Get the tool call data
+    const toolCallStr =
+      toolCallContainer.getAttribute('data-tool-call') || '{}';
+    let toolCall = JSON.parse(toolCallStr);
+
+    const streamingToolCall = streamingState?.streamingToolCalls?.get(
+      toolCall.id
+    );
+    if (streamingToolCall && streamingToolCall.toolCallData) {
+      toolCall = streamingToolCall.toolCallData;
+    }
+
+    console.log('[ChatMessages] Finalized tool call:', toolCall.name);
+
+    if (toolCall.name) {
+      // Check if this is a server_tool_use (tool search) - these have expandable UI
+      // that was set up during streaming by renderToolSearchResult, so we keep it
+      const isServerToolUse = streamingToolCall?.type === 'server_tool_use';
+
+      if (isServerToolUse) {
+        // For server tool use, keep the streaming container as-is
+        // Just remove the streaming class to finalize it
+        toolCallContainer.classList.remove('sage-ai-streaming-tool-call');
+        console.log(
+          '[ChatMessages] Keeping server_tool_use streaming element:',
+          toolCall.name
+        );
+      } else {
+        // Now that streaming is complete, render the definitive tool call properly
+        // Insert at the same position as the streaming element to preserve order
+        this.renderToolCall(toolCall, toolCallContainer);
+
+        // Remove the streaming tool call element
+        toolCallContainer.remove();
+      }
+
+      // Add to message history (skip if demo mode)
+      if (!is_demo) {
+        const toolCallMessage = {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: toolCall.id,
+              name: toolCall.name,
+              input: toolCall.input
+            }
+          ]
+        };
+        console.log(
+          '[ChatMessages] Adding tool call message to history:',
+          toolCallMessage
+        );
+        this.messageHistory.push(toolCallMessage);
+
+        // Update the persistent storage with contexts
+        this.historyManager.updateCurrentThreadMessages(
+          this.messageHistory,
+          this.mentionContexts
+        );
+      }
+
+      console.log('[ChatMessages] Finalized tool call added to history');
+      console.log(
+        '[ChatMessages] Current history length:',
+        this.messageHistory.length
+      );
+    } else {
+      console.warn(
+        '[ChatMessages] Warning: No tool call data found when finalizing streaming tool call'
+      );
+    }
+
+    console.log('[ChatMessages] Streaming tool call finalized');
+  }
+
+  /**
+   * Render a tool result
+   */
+  private renderToolResult(
+    toolName: string,
+    result: any,
+    toolCallData: any
+  ): void {
+    console.log('[ChatMessages] Rendering tool result:', result);
+    const toolCallLoading = this.container.querySelector(
+      '.sage-ai-loading-text'
+    );
+    if (toolCallLoading) {
+      toolCallLoading.classList.remove('sage-ai-loading-text');
+      const container = toolCallLoading.parentElement!;
+      const toolCall = container.getAttribute(
+        'sage-ai-tool-call-name'
+      ) as ToolCall;
+
+      const error = getResultError(result);
+      if (typeof error === 'string') {
+        container.classList.add('error-state');
+        container.title = error;
+      }
+
+      this.upsertCellIdLabelInDOM(container, toolCall, toolCallData, result);
+
+      if (toolCall === 'notebook-edit_plan') {
+        container.classList.add('clickable');
+
+        container.addEventListener('click', () => {
+          void this.notebookTools.scrollToPlanCell();
+        });
+      }
+
+      // Add collapsible terminal output display
+      if (toolCall === 'terminal-execute_command') {
+        this.addTerminalOutputDisplay(container, result);
+      }
+
+      // Add collapsible JSON display for MCP tools and tools with expandable details
+      if (shouldShowExpandableDetails(toolCall)) {
+        this.addMCPToolDisplay(container, toolCallData, result);
+      }
+
+      this.lastAddedMessageType = 'tool';
+    }
+
+    this.handleScroll();
+  }
+
+  /**
+   * Add a collapsible terminal output display to the tool result
+   */
+  private addTerminalOutputDisplay(container: HTMLElement, result: any): void {
+    try {
+      const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+      const stdout = parsed.stdout || '';
+      const stderr = parsed.stderr || '';
+
+      if (!stdout && !stderr) {
+        return;
+      }
+
+      // Change container to block layout and wrap existing content
+      container.style.display = 'block';
+      container.classList.add('clickable');
+      container.style.cursor = 'pointer';
+
+      // Wrap existing child elements in a flex container
+      const existingChildren = Array.from(container.childNodes);
+      const headerDiv = document.createElement('div');
+      headerDiv.style.cssText =
+        'display: flex; align-items: center; gap: 10px; padding: 0 8px;';
+      existingChildren.forEach(child => headerDiv.appendChild(child));
+      container.appendChild(headerDiv);
+
+      // Create content (collapsed by default)
+      const content = document.createElement('pre');
+      content.className = 'sage-ai-terminal-output-content';
+      content.style.cssText =
+        'display: none; margin: 4px 8px 0 8px; padding: 8px; background: var(--jp-layout-color1); border-radius: 3px; overflow-x: auto; max-height: 300px; overflow-y: auto; font-family: var(--jp-code-font-family); font-size: 11px; line-height: 1.4; border-left: 2px solid var(--jp-border-color2);';
+
+      if (stdout) {
+        const stdoutSpan = document.createElement('span');
+        stdoutSpan.style.cssText = 'color: var(--jp-ui-font-color1);';
+        stdoutSpan.textContent = stdout;
+        content.appendChild(stdoutSpan);
+      }
+
+      if (stderr) {
+        if (stdout) {
+          content.appendChild(document.createTextNode('\n'));
+        }
+        const stderrSpan = document.createElement('span');
+        stderrSpan.style.cssText = 'color: var(--jp-error-color0);';
+        stderrSpan.textContent = stderr;
+        content.appendChild(stderrSpan);
+      }
+
+      // Toggle functionality on the header div only
+      let isExpanded = false;
+      headerDiv.addEventListener('click', e => {
+        e.stopPropagation();
+        isExpanded = !isExpanded;
+        content.style.display = isExpanded ? 'block' : 'none';
+      });
+
+      container.appendChild(content);
+    } catch (e) {
+      console.error('[ChatMessages] Error parsing terminal output:', e);
+    }
+  }
+
+  /**
+   * Recursively parse JSON strings within objects and arrays
+   */
+  private recursiveJsonParse(data: any): any {
+    if (typeof data === 'string') {
+      try {
+        const parsed = JSON.parse(data);
+        // Recursively parse the result in case there are nested JSON strings
+        return this.recursiveJsonParse(parsed);
+      } catch {
+        // Not a JSON string, return as-is
+        return data;
+      }
+    } else if (Array.isArray(data)) {
+      return data.map(item => this.recursiveJsonParse(item));
+    } else if (data !== null && typeof data === 'object') {
+      const result: any = {};
+      for (const key in data) {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          result[key] = this.recursiveJsonParse(data[key]);
+        }
+      }
+      return result;
+    }
+    return data;
+  }
+
+  /**
+   * Clean up parsed data by extracting text fields and removing type fields
+   */
+  private cleanParsedData(data: any): any {
+    if (Array.isArray(data)) {
+      // If it's an array, check if items have type and text fields
+      const cleaned = data.map(item => {
+        if (
+          item &&
+          typeof item === 'object' &&
+          item.type === 'text' &&
+          item.text !== undefined
+        ) {
+          // Extract just the text field
+          return item.text;
+        }
+        return item;
+      });
+      return cleaned;
+    }
+    return data;
+  }
+
+  /**
+   * Format JSON with syntax highlighting using highlight.js
+   */
+  private formatJsonWithHighlight(json: string): string {
+    try {
+      // Parse and recursively parse any nested JSON strings
+      const obj = typeof json === 'string' ? JSON.parse(json) : json;
+      const fullyParsed = this.recursiveJsonParse(obj);
+
+      // Clean up by removing type fields and extracting text
+      const cleaned = this.cleanParsedData(fullyParsed);
+
+      const jsonString = JSON.stringify(cleaned, null, 2);
+
+      // Use highlight.js for syntax highlighting
+      const highlighted = hljs.highlight(jsonString, {
+        language: 'json',
+        ignoreIllegals: true
+      });
+
+      return highlighted.value;
+    } catch (e) {
+      // If parsing fails, still try to highlight as-is
+      try {
+        const highlighted = hljs.highlight(String(json), {
+          language: 'json',
+          ignoreIllegals: true
+        });
+        return highlighted.value;
+      } catch {
+        // If highlighting fails too, return escaped text
+        return String(json)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+    }
+  }
+
+  /**
+   * Add a collapsible JSON display for MCP tool input/output
+   */
+  private addMCPToolDisplay(
+    container: HTMLElement,
+    toolCallData: any,
+    result: any
+  ): void {
+    try {
+      // Change container to block layout and wrap existing content
+      container.style.display = 'block';
+      container.classList.add('sage-ai-mcp-tool');
+
+      // Wrap existing child elements in a flex container with expand arrow
+      const existingChildren = Array.from(container.childNodes);
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'sage-ai-mcp-tool-header';
+      headerDiv.style.cssText =
+        'display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 8px; cursor: pointer;';
+
+      // Left side: icon and text
+      const leftContent = document.createElement('div');
+      leftContent.style.cssText =
+        'display: flex; align-items: center; gap: 10px;';
+      existingChildren.forEach(child => leftContent.appendChild(child));
+
+      // Right side: expand arrow
+      const arrowIcon = document.createElement('div');
+      arrowIcon.className = 'sage-ai-mcp-expand-arrow';
+      arrowIcon.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      `;
+      arrowIcon.style.cssText =
+        'transition: transform 0.2s ease; color: var(--jp-ui-font-color2);';
+
+      headerDiv.appendChild(leftContent);
+      headerDiv.appendChild(arrowIcon);
+
+      container.innerHTML = '';
+      container.appendChild(headerDiv);
+
+      // Create a wrapper for collapsible sections
+      const detailsWrapper = document.createElement('div');
+      detailsWrapper.className = 'sage-ai-mcp-details-wrapper';
+      detailsWrapper.style.cssText =
+        'margin: 8px 8px 4px 8px; display: none; flex-direction: column;';
+
+      // Add Input section
+      const inputSection = document.createElement('div');
+      inputSection.className = 'sage-ai-mcp-section';
+      inputSection.style.cssText =
+        'background: var(--jp-layout-color1); border-radius: 3px 3px 0 0; padding: 8px;';
+
+      const inputLabel = document.createElement('div');
+      inputLabel.textContent = 'Input';
+      inputLabel.style.cssText =
+        'font-weight: 400; font-size: 11px; color: var(--jp-ui-font-color2); margin-bottom: 8px;';
+
+      const inputPre = document.createElement('pre');
+      inputPre.className = 'sage-ai-mcp-json';
+      inputPre.style.cssText =
+        'margin: 0; padding: 8px; background: var(--jp-layout-color2); border-radius: 0 0 3px 3px; overflow-x: auto; max-height: 300px; overflow-y: auto; font-family: var(--jp-code-font-family); font-size: 11px; line-height: 1.4; color: var(--jp-ui-font-color1);';
+
+      // Extract input from the nested structure if available
+      let inputData = toolCallData;
+      try {
+        if (toolCallData?.assistant?.content?.[0]?.input !== undefined) {
+          inputData = toolCallData.assistant.content[0].input;
+        } else if (typeof toolCallData === 'object' && toolCallData !== null) {
+          // If structure is different, use the whole object
+          inputData = toolCallData;
+        }
+      } catch (e) {
+        console.log(
+          '[ChatMessages] Could not extract nested input, using original:',
+          e
+        );
+      }
+
+      const inputJson =
+        typeof inputData === 'string'
+          ? inputData
+          : JSON.stringify(inputData, null, 2);
+      inputPre.innerHTML = this.formatJsonWithHighlight(inputJson);
+
+      inputSection.appendChild(inputLabel);
+      inputSection.appendChild(inputPre);
+
+      // Add Output section
+      const outputSection = document.createElement('div');
+      outputSection.className = 'sage-ai-mcp-section';
+      outputSection.style.cssText =
+        'background: var(--jp-layout-color1); border-radius: 0 0 3px 3px; padding: 8px;';
+
+      const outputLabel = document.createElement('div');
+      outputLabel.textContent = 'Output';
+      outputLabel.style.cssText =
+        'font-weight: 400; font-size: 11px; color: var(--jp-ui-font-color2); margin-bottom: 8px;';
+
+      const outputPre = document.createElement('pre');
+      outputPre.className = 'sage-ai-mcp-json';
+      outputPre.style.cssText =
+        'margin: 0; padding: 8px; background: var(--jp-layout-color2); border-radius: 3px; overflow-x: auto; max-height: 300px; overflow-y: auto; font-family: var(--jp-code-font-family); font-size: 11px; line-height: 1.4; color: var(--jp-ui-font-color1);';
+
+      // Extract output text from the nested structure if available
+      let outputData = result;
+      try {
+        // First, try to parse if it's a string
+        let parsedResult = result;
+        if (typeof result === 'string') {
+          try {
+            parsedResult = JSON.parse(result);
+          } catch {
+            // If parsing fails, keep as string
+            parsedResult = result;
+          }
+        }
+
+        // Now extract the appropriate field
+        if (parsedResult?.content?.text !== undefined) {
+          outputData = parsedResult.content.text;
+        } else if (Array.isArray(parsedResult?.content)) {
+          // Only use content[0].text if array length is exactly 1
+          if (
+            parsedResult.content.length === 1 &&
+            parsedResult.content[0]?.text !== undefined
+          ) {
+            outputData = parsedResult.content[0].text;
+          } else {
+            // Multiple elements or no text field, use the whole content array
+            outputData = parsedResult.content;
+          }
+        } else if (parsedResult?.content !== undefined) {
+          // Fallback to result.content if it exists but isn't an array
+          outputData = parsedResult.content;
+        } else if (typeof parsedResult === 'object' && parsedResult !== null) {
+          // If structure is different, use the whole object
+          outputData = parsedResult;
+        } else {
+          // Use the parsed/original result
+          outputData = parsedResult;
+        }
+      } catch (e) {
+        console.log(
+          '[ChatMessages] Could not extract nested output, using original:',
+          e
+        );
+      }
+
+      const outputJson =
+        typeof outputData === 'string'
+          ? outputData
+          : JSON.stringify(outputData, null, 2);
+      outputPre.innerHTML = this.formatJsonWithHighlight(outputJson);
+
+      outputSection.appendChild(outputLabel);
+      outputSection.appendChild(outputPre);
+
+      // Add both sections to wrapper
+      detailsWrapper.appendChild(inputSection);
+      detailsWrapper.appendChild(outputSection);
+
+      // Add wrapper to container
+      container.appendChild(detailsWrapper);
+
+      // Add click handler to toggle
+      let isExpanded = false;
+      headerDiv.addEventListener('click', e => {
+        e.stopPropagation();
+        isExpanded = !isExpanded;
+        detailsWrapper.style.display = isExpanded ? 'flex' : 'none';
+        arrowIcon.style.transform = isExpanded
+          ? 'rotate(180deg)'
+          : 'rotate(0deg)';
+      });
+    } catch (e) {
+      console.error('[ChatMessages] Error rendering MCP tool display:', e);
+    }
+  }
+
+  /**
+   * Render tool search result with expandable input/output display
+   * Used for server tools like tool_search_tool_regex
+   */
+  public renderToolSearchResult(
+    container: HTMLElement,
+    input: any,
+    result: any
+  ): void {
+    try {
+      // Remove loading animation from text
+      const loadingText = container.querySelector('.sage-ai-loading-text');
+      if (loadingText) {
+        loadingText.classList.remove('sage-ai-loading-text');
+      }
+
+      // Change container to block layout and wrap existing content
+      container.style.display = 'block';
+      container.classList.add('sage-ai-mcp-tool');
+
+      // Wrap existing child elements in a flex container with expand arrow
+      const existingChildren = Array.from(container.childNodes);
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'sage-ai-mcp-tool-header';
+      headerDiv.style.cssText =
+        'display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 8px; cursor: pointer;';
+
+      // Left side: icon and text
+      const leftContent = document.createElement('div');
+      leftContent.style.cssText =
+        'display: flex; align-items: center; gap: 10px;';
+      existingChildren.forEach(child => leftContent.appendChild(child));
+
+      // Right side: expand arrow
+      const arrowIcon = document.createElement('div');
+      arrowIcon.className = 'sage-ai-mcp-expand-arrow';
+      arrowIcon.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      `;
+      arrowIcon.style.cssText =
+        'transition: transform 0.2s ease; color: var(--jp-ui-font-color2);';
+
+      headerDiv.appendChild(leftContent);
+      headerDiv.appendChild(arrowIcon);
+
+      container.innerHTML = '';
+      container.appendChild(headerDiv);
+
+      // Create a wrapper for collapsible sections
+      const detailsWrapper = document.createElement('div');
+      detailsWrapper.className = 'sage-ai-mcp-details-wrapper';
+      detailsWrapper.style.cssText =
+        'margin: 8px 8px 4px 8px; display: none; flex-direction: column;';
+
+      // Add Input section
+      const inputSection = document.createElement('div');
+      inputSection.className = 'sage-ai-mcp-section';
+      inputSection.style.cssText =
+        'background: var(--jp-layout-color1); border-radius: 3px 3px 0 0; padding: 8px;';
+
+      const inputLabel = document.createElement('div');
+      inputLabel.textContent = 'Input';
+      inputLabel.style.cssText =
+        'font-weight: 400; font-size: 11px; color: var(--jp-ui-font-color2); margin-bottom: 8px;';
+
+      const inputPre = document.createElement('pre');
+      inputPre.className = 'sage-ai-mcp-json';
+      inputPre.style.cssText =
+        'margin: 0; padding: 8px; background: var(--jp-layout-color2); border-radius: 0 0 3px 3px; overflow-x: auto; max-height: 300px; overflow-y: auto; font-family: var(--jp-code-font-family); font-size: 11px; line-height: 1.4; color: var(--jp-ui-font-color1);';
+
+      const inputJson =
+        typeof input === 'string' ? input : JSON.stringify(input, null, 2);
+      inputPre.innerHTML = this.formatJsonWithHighlight(inputJson);
+
+      inputSection.appendChild(inputLabel);
+      inputSection.appendChild(inputPre);
+
+      // Add Output section - format the tool references
+      const outputSection = document.createElement('div');
+      outputSection.className = 'sage-ai-mcp-section';
+      outputSection.style.cssText =
+        'background: var(--jp-layout-color1); border-radius: 0 0 3px 3px; padding: 8px;';
+
+      const outputLabel = document.createElement('div');
+      outputLabel.textContent = 'Output';
+      outputLabel.style.cssText =
+        'font-weight: 400; font-size: 11px; color: var(--jp-ui-font-color2); margin-bottom: 8px;';
+
+      const outputPre = document.createElement('pre');
+      outputPre.className = 'sage-ai-mcp-json';
+      outputPre.style.cssText =
+        'margin: 0; padding: 8px; background: var(--jp-layout-color2); border-radius: 3px; overflow-x: auto; max-height: 300px; overflow-y: auto; font-family: var(--jp-code-font-family); font-size: 11px; line-height: 1.4; color: var(--jp-ui-font-color1);';
+
+      // Format the output - extract tool names if it's a tool search result
+      let outputData = result;
+      if (result?.tool_references && Array.isArray(result.tool_references)) {
+        outputData = result.tool_references.map(
+          (ref: any) => ref.tool_name || ref
+        );
+      } else if (
+        result?.type === 'tool_search_tool_search_result' &&
+        result?.tool_references
+      ) {
+        outputData = result.tool_references.map(
+          (ref: any) => ref.tool_name || ref
+        );
+      }
+
+      const outputJson =
+        typeof outputData === 'string'
+          ? outputData
+          : JSON.stringify(outputData, null, 2);
+      outputPre.innerHTML = this.formatJsonWithHighlight(outputJson);
+
+      outputSection.appendChild(outputLabel);
+      outputSection.appendChild(outputPre);
+
+      // Add both sections to wrapper
+      detailsWrapper.appendChild(inputSection);
+      detailsWrapper.appendChild(outputSection);
+
+      // Add wrapper to container
+      container.appendChild(detailsWrapper);
+
+      // Add click handler to toggle
+      let isExpanded = false;
+      headerDiv.addEventListener('click', e => {
+        e.stopPropagation();
+        isExpanded = !isExpanded;
+        detailsWrapper.style.display = isExpanded ? 'flex' : 'none';
+        arrowIcon.style.transform = isExpanded
+          ? 'rotate(180deg)'
+          : 'rotate(0deg)';
+      });
+    } catch (e) {
+      console.error('[ChatMessages] Error rendering tool search result:', e);
+    }
+  }
+
+  private upsertCellIdLabelInDOM(
+    container: HTMLElement,
+    toolCallName: string,
+    toolCallData: any,
+    result?: any
+  ) {
+    const oldLabel = container.querySelector('.sage-ai-tool-call-cell');
+    if (oldLabel) {
+      oldLabel.remove();
+    }
+
+    const shouldScrollToCellById = [
+      'notebook-add_cell',
+      'notebook-edit_cell',
+      'notebook-run_cell'
+    ].includes(toolCallName);
+    if (shouldScrollToCellById) {
+      let cellId: string = '';
+
+      if (typeof result === 'string' && /^cell_(\d+)$/.test(result)) {
+        cellId = result;
+      }
+
+      const toolCallCellId =
+        toolCallData?.assistant?.content[0]?.input?.cell_id;
+      if (
+        typeof toolCallCellId === 'string' &&
+        /^cell_(\d+)$/.test(toolCallCellId)
+      ) {
+        cellId = toolCallCellId;
+      }
+
+      if (
+        // ...existing code...
+        typeof toolCallData.cell_id === 'string' &&
+        /^cell_(\d+)$/.test(toolCallData.cell_id)
+      ) {
+        cellId = toolCallData.cell_id;
+      }
+
+      if (cellId && /^cell_(\d+)$/.test(cellId)) {
+        container.classList.add('clickable');
+
+        const cellIdLabel = document.createElement('div');
+        cellIdLabel.classList.add('sage-ai-tool-call-cell');
+        cellIdLabel.innerHTML = cellId;
+
+        container.appendChild(cellIdLabel);
+
+        container.addEventListener('click', () => {
+          void this.notebookTools.scrollToCellById(cellId);
+        });
+      }
+    }
+  }
+
+  /**
+   * Add a tool execution result to the chat history
+   * @param is_demo Whether this is a demo message (won't be saved to history)
+   */
+  addToolResult(
+    toolName: string,
+    toolUseId: string,
+    result: any,
+    toolCallData: any,
+    is_demo = false
+  ): void {
+    console.log('[ChatMessages] Adding tool result for:', toolName);
+    this.renderToolResult(toolName, result, toolCallData);
+
+    // Add to message history as user message (tool results are considered user messages)
+    // Skip if demo mode
+    if (!is_demo) {
+      const toolResultMessage = {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: result
+          }
+        ]
+      };
+
+      // Find the tool use message by toolUseId
+      const toolUseIndex = this.messageHistory.findIndex(msg => {
+        return (
+          msg.role === 'assistant' &&
+          Array.isArray(msg.content) &&
+          msg.content.some(
+            (content: any) =>
+              content.type === 'tool_use' && content.id === toolUseId
+          )
+        );
+      });
+
+      // Insert right after the tool use, or push to end if not found
+      if (toolUseIndex !== -1) {
+        this.messageHistory.splice(toolUseIndex + 1, 0, toolResultMessage);
+      } else {
+        this.messageHistory.push(toolResultMessage);
+      }
+
+      // Update the persistent storage with contexts
+      this.historyManager.updateCurrentThreadMessages(
+        this.messageHistory,
+        this.mentionContexts
+      );
+    }
+
+    console.log('[ChatMessages] Tool result added to history');
+    console.log(
+      '[ChatMessages] Current history length:',
+      this.messageHistory.length
+    );
+    console.log(
+      '[ChatMessages.addToolResult] Last message in history:',
+      JSON.stringify(this.messageHistory[this.messageHistory.length - 1])
+    );
+  }
+
+  /**
+   * Add a loading indicator to the chat history
+   *
+   * Displays an animated blob loader with customizable text.
+   * Returns the container element so callers can remove it when loading completes.
+   *
+   * Uses the React LoadingIndicator component.
+   *
+   * @param text - Loading text to display (default: "Generating...")
+   * @returns Container element that can be passed to removeElement()
+   */
+  addLoadingIndicator(text: string = 'Generating...'): HTMLDivElement {
+    this.closeToolGroupIfOpen();
+
+    console.log('[ChatMessages] Adding loading indicator (React):', text);
+
+    // Create container for the React component
+    const container = createContainer();
+
+    // Mount the React LoadingIndicator component
+    mountComponent(container, React.createElement(LoadingIndicator, { text }));
+
+    // Add to DOM
+    this.container.appendChild(container);
+    this.ensureWaitingReplyBoxIsLast();
+
+    this.handleScroll();
+
+    return container as HTMLDivElement;
+  }
+
+  /**
+   * Remove an element from the chat history
+   */
+  removeElement(element: HTMLElement): void {
+    console.log('[ChatMessages] Removing element from UI');
+    if (this.container.contains(element)) {
+      this.container.removeChild(element);
+    }
+  }
+
+  /**
+   * Get the message history
+   */
+  getMessageHistory(): Array<IChatMessage> {
+    console.log(
+      '[ChatMessages] Getting message history, length:',
+      this.messageHistory.length
+    );
+    return [...this.messageHistory];
+  }
+
+  /**
+   * Reorder the recent history entries to match the Claude response content order
+   * This fixes race conditions where async finalizations push to history out of order
+   * @param responseContent The content array from Claude's response
+   * @param historyLengthBefore The history length before this response's messages were added
+   */
+  reorderHistoryFromResponse(
+    responseContent: any[],
+    historyLengthBefore: number
+  ): void {
+    if (!responseContent || responseContent.length === 0) {
+      return;
+    }
+
+    // Get the messages that were added during this response
+    const newMessages = this.messageHistory.slice(historyLengthBefore);
+    if (newMessages.length <= 1) {
+      return; // No reordering needed for 0 or 1 message
+    }
+
+    console.log(
+      '[ChatMessages] Reordering history - new messages count:',
+      newMessages.length
+    );
+
+    // Build the expected order from response content
+    const orderedMessages: IChatMessage[] = [];
+
+    for (const block of responseContent) {
+      if (block.type === 'text') {
+        // Find matching text message in newMessages
+        const textMessage = newMessages.find(
+          msg =>
+            msg.role === 'assistant' &&
+            typeof msg.content === 'string' &&
+            !orderedMessages.includes(msg)
+        );
+        if (textMessage) {
+          orderedMessages.push(textMessage);
+        }
+      } else if (block.type === 'tool_use' || block.type === 'server_tool_use') {
+        // Find matching tool use message in newMessages
+        const toolMessage = newMessages.find(
+          msg =>
+            msg.role === 'assistant' &&
+            Array.isArray(msg.content) &&
+            msg.content.some(
+              (c: any) => c.type === 'tool_use' && c.id === block.id
+            ) &&
+            !orderedMessages.includes(msg)
+        );
+        if (toolMessage) {
+          orderedMessages.push(toolMessage);
+        }
+      }
+    }
+
+    // Add any messages that weren't matched (shouldn't happen, but safety)
+    for (const msg of newMessages) {
+      if (!orderedMessages.includes(msg)) {
+        orderedMessages.push(msg);
+      }
+    }
+
+    // Replace the unordered messages with ordered ones
+    this.messageHistory = [
+      ...this.messageHistory.slice(0, historyLengthBefore),
+      ...orderedMessages
+    ];
+
+    // Update persistent storage
+    this.historyManager.updateCurrentThreadMessages(
+      this.messageHistory,
+      this.mentionContexts
+    );
+
+    console.log('[ChatMessages] History reordered successfully');
+  }
+
+  /**
+   * Update a streaming message with new text
+   *
+   * Updates the Zustand store which triggers React component re-render.
+   *
+   * @param messageElement The message element (kept for API compatibility)
+   * @param text The text to append
+   */
+  async updateStreamingMessage(
+    messageElement: HTMLDivElement,
+    text: string
+  ): Promise<void> {
+    // Update the store - React component will re-render automatically
+    useChatMessagesStore.getState().appendStreamingText(text);
+
+    this.handleScroll();
+  }
+
+  /**
+   * Finalize a streaming message, saving it to history
+   *
+   * Gets accumulated text from store, renders final AssistantMessage,
+   * cleans up streaming state.
+   *
+   * @param messageElement The message element container to finalize
+   * @param is_demo Whether this is a demo message (won't be saved to history)
+   */
+  async finalizeStreamingMessage(
+    messageElement: HTMLDivElement,
+    is_demo = false
+  ): Promise<void> {
+    console.log('[ChatMessages] Finalizing streaming message (React)');
+
+    // Get the complete accumulated text from store
+    const store = useChatMessagesStore.getState();
+    const messageText = store.streaming.text;
+
+    console.log(
+      '[ChatMessages] Finalized message text length:',
+      messageText.length
+    );
+    console.log(
+      '[ChatMessages] First 100 chars of finalized message:',
+      messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
+    );
+
+    // Cancel streaming in store (clears text and sets isStreaming to false)
+    store.cancelStreaming();
+
+    // Remove the streaming container
+    messageElement.remove();
+
+    // Render the final assistant message (if there's content)
+    if (messageText) {
+      await this.renderAssistantMessage(messageText);
+
+      // Add to message history (skip if demo mode)
+      if (!is_demo) {
+        const aiMessage = {
+          role: 'assistant',
+          content: messageText
+        };
+        this.messageHistory.push(aiMessage);
+
+        // Update the persistent storage with contexts
+        this.historyManager.updateCurrentThreadMessages(
+          this.messageHistory,
+          this.mentionContexts
+        );
+      }
+
+      console.log('[ChatMessages] Finalized AI message added to history');
+      console.log(
+        '[ChatMessages] Current history length:',
+        this.messageHistory.length
+      );
+    }
+
+    this.handleScroll();
+    console.log('[ChatMessages] Streaming message finalized (React)');
+  }
+
+  public handleScroll(): void {
+    if (this.isFullyScrolledToBottom()) {
+      this.scrollToBottom();
+    } else {
+      this.onScrollDownButtonDisplay();
+    }
+  }
+
+  /**
+   * Scroll the chat container to the bottom
+   */
+  public scrollToBottom(): void {
+    if (this.container) {
+      this.container.scrollTop = this.container.scrollHeight + 50;
+    }
+
+    this.onScrollDownButtonDisplay();
+  }
+
+  /**
+   * Add a continue button that allows users to continue the conversation
+   * The button will be shown based on message content and thread state
+   *
+   * Uses React WaitingUserReplyBox component with Zustand store for state.
+   */
+  public addContinueButton(): void {
+    console.log('[ChatMessages] addContinueButton() called (React)');
+
+    // Remove existing continue button if it exists
+    this.removeContinueButton();
+
+    // Create container for React component
+    const container = createContainer();
+    this.waitingReplyBox = container;
+
+    // Handler for sending prompts - use chatWidget's sendPromptMessage for proper routing
+    const handlePromptClick = (prompt: string) => {
+      console.log('[ChatMessages] Prompt clicked:', prompt);
+      const chatWidget = AppStateService.getState().chatContainer?.chatWidget;
+      if (chatWidget) {
+        chatWidget.sendPromptMessage(prompt);
+      } else {
+        console.error('[ChatMessages] chatWidget not available for prompt click');
+      }
+    };
+
+    // Mount the React WaitingUserReplyBox component
+    mountComponent(
+      container,
+      React.createElement(WaitingUserReplyBox, {
+        onPromptClick: handlePromptClick,
+        onContinueClick: () => handlePromptClick('Continue')
+      })
+    );
+
+    // Set up keyboard handler for cmd+enter / ctrl+enter
+    this.setupKeyboardHandler();
+
+    // Add to the end of the container (bottom of chat history)
+    this.container.appendChild(container);
+    console.log('[ChatMessages] Waiting reply box added to container (React)');
+  }
+
+  /**
+   * Remove the continue button and waiting reply box
+   */
+  public removeContinueButton(): void {
+    console.log('[ChatMessages] removeContinueButton() called');
+    if (this.waitingReplyBox) {
+      this.waitingReplyBox.remove();
+      this.waitingReplyBox = null;
+      this.continueButton = null;
+      console.log('[ChatMessages] Continue button removed');
+    }
+    // Clean up keyboard handler
+    this.cleanupKeyboardHandler();
+  }
+
+  /**
+   * Show the waiting reply box (and potentially the continue button)
+   * This is called when the wait_user_reply tool is used
+   *
+   * Updates the Zustand store which triggers React component re-render.
+   *
+   * @param recommendedPrompts Optional list of recommended prompts to show instead of default ones
+   */
+  public showWaitingReplyBox(recommendedPrompts?: string[]): void {
+    console.log('[ChatMessages] showWaitingReplyBox() called (React)');
+
+    // Update store with prompts and show
+    const prompts = recommendedPrompts && recommendedPrompts.length > 0
+      ? recommendedPrompts
+      : ['Continue'];
+
+    useChatMessagesStore.getState().showWaitingReply(prompts);
+
+    // Ensure the waiting reply box is positioned as the last child
+    this.ensureWaitingReplyBoxIsLast();
+
+    // Scroll to bottom to show the waiting reply box
+    this.handleScroll();
+  }
+
+  private displayWaitingReplyBox(): void {
+    console.log('[ChatMessages] displayWaitingReplyBox() called (React)');
+    useChatMessagesStore.getState().showWaitingReply();
+  }
+
+  /**
+   * Hide the waiting reply box
+   *
+   * Updates the Zustand store which triggers React component to hide.
+   */
+  public hideWaitingReplyBox(): void {
+    console.log('[ChatMessages] hideWaitingReplyBox() called (React)');
+    useChatMessagesStore.getState().hideWaitingReply();
+  }
+
+  /**
+   * Set the callback function to be called when the continue button is clicked
+   */
+  public setContinueCallback(callback: () => void): void {
+    console.log('[ChatMessages] Setting continue callback');
+    this.onContinueCallback = callback;
+  }
+
+  /**
+   * Recalculate and update continue button visibility based on current message state
+   * This should be called after messages are added or the conversation state changes
+   */
+  public updateContinueButtonVisibility(): void {
+    console.log('[ChatMessages] updateContinueButtonVisibility() called');
+
+    if (!this.waitingReplyBox || !this.continueButton) {
+      console.log(
+        '[ChatMessages] No waiting reply box or continue button, creating...'
+      );
+      this.addContinueButton();
+      return;
+    }
+
+    // Ensure the waiting reply box is at the end of the container
+    this.ensureWaitingReplyBoxIsLast();
+
+    // Only check continue button visibility for startup case, don't auto-show waiting box
+    this.checkAndShowContinueButtonOnStartup();
+  }
+
+  /**
+   * Check if we should show the prompt buttons based on thread state and message history
+   * This version is only used when wait_user_reply tool is called
+   */
+  private checkAndShowPromptButtons(): void {
+    console.log('[ChatMessages] checkAndShowPromptButtons() called');
+
+    if (!useDiffStore.getState().getAllDiffsResolved(undefined)) {
+      console.warn(
+        '[ChatMessages] Diffs not resolved, skipping prompt buttons'
+      );
+      this.hideWaitingReplyBox();
+      return;
+    }
+
+    // Get the current thread from chat history manager
+    const currentThread = this.historyManager.getCurrentThread();
+    console.log('[ChatMessages] currentThread:', currentThread);
+    if (!currentThread || currentThread.messages.length <= 1) {
+      console.warn('[ChatMessages] No currentThread found');
+      return;
+    }
+
+    console.log(
+      '[ChatMessages] continueButtonShown status:',
+      currentThread.continueButtonShown
+    );
+    console.log(
+      '[ChatMessages] Message history length:',
+      this.messageHistory.length
+    );
+
+    // When called from wait_user_reply tool, always show the prompt buttons
+    console.log(
+      '[ChatMessages] wait_user_reply tool called, showing prompt buttons'
+    );
+    // Show via store (buttons are already set by showWaitingReplyBox)
+    useChatMessagesStore.getState().showWaitingReply();
+    this.hideContinueButton(); // Hide continue button when showing prompt buttons
+
+    // Make sure the waiting reply box is visible
+    if (this.waitingReplyBox) {
+      this.displayWaitingReplyBox();
+    }
+
+    // Mark that continue button has been shown for this thread
+    if (!currentThread.continueButtonShown) {
+      currentThread.continueButtonShown = true;
+      // Update the thread in storage
+      this.historyManager.updateCurrentThreadMessages(
+        currentThread.messages,
+        currentThread.contexts
+      );
+    }
+  }
+
+  /**
+   * Check if we should show the continue button on startup based on message history
+   * This is only used during initialization/startup scenarios
+   */
+  private checkAndShowContinueButtonOnStartup(): void {
+    console.log('[ChatMessages] checkAndShowContinueButtonOnStartup() called');
+
+    // Get the current thread from chat history manager
+    const currentThread = this.historyManager.getCurrentThread();
+    console.log('[ChatMessages] currentThread:', currentThread);
+    if (!currentThread) {
+      console.warn('[ChatMessages] No currentThread found');
+      return;
+    }
+
+    console.log(
+      '[ChatMessages] continueButtonShown status:',
+      currentThread.continueButtonShown
+    );
+    console.log(
+      '[ChatMessages] Message history length:',
+      this.messageHistory.length
+    );
+
+    // Check if this is an appropriate time to show the continue button based on heuristics
+    const shouldShow = this.shouldShowContinueButton();
+    console.log('[ChatMessages] shouldShowContinueButton result:', shouldShow);
+
+    if (shouldShow) {
+      console.log(
+        '[ChatMessages] Startup conditions met, showing continue button'
+      );
+      this.showContinueButton();
+
+      // Make sure the waiting reply box is visible
+      if (this.waitingReplyBox) {
+        this.displayWaitingReplyBox();
+      }
+
+      // Mark that continue button has been shown for this thread
+      if (!currentThread.continueButtonShown) {
+        currentThread.continueButtonShown = true;
+        // Update the thread in storage
+        this.historyManager.updateCurrentThreadMessages(
+          currentThread.messages,
+          currentThread.contexts
+        );
+      }
+    } else {
+      console.log('[ChatMessages] Startup continue button conditions not met');
+    }
+  }
+
+  /**
+   * Determine if the continue button should be shown based on message history
+   */
+  private shouldShowContinueButton(): boolean {
+    console.log('[ChatMessages] shouldShowContinueButton() called');
+
+    // Show continue button if there are messages and the conversation seems to be waiting for user input
+    if (this.messageHistory.length === 0) {
+      console.log(
+        '[ChatMessages] No messages in history, not showing continue button'
+      );
+      return false;
+    }
+
+    // Check for recent wait_user_reply tool calls
+    const recentMessages = this.messageHistory.slice(-3); // Check last 3 messages
+    const hasWaitUserReplyTool = recentMessages.some(msg => {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        return msg.content.some((content: any) => {
+          return (
+            content.type === 'tool_use' &&
+            content.name === 'notebook-wait_user_reply'
+          );
+        });
+      }
+      return false;
+    });
+
+    if (hasWaitUserReplyTool) {
+      console.log(
+        '[ChatMessages] Found wait_user_reply tool call, showing continue button'
+      );
+      return true;
+    }
+
+    // Find the last assistant message (excluding tool results and system messages)
+    const lastAssistantMessage = this.messageHistory
+      .slice()
+      .reverse()
+      .find(msg => {
+        if (msg.role !== 'assistant') {
+          return false;
+        }
+
+        // Skip tool calls and system messages
+        if (Array.isArray(msg.content)) {
+          return msg.content.some(
+            (content: any) =>
+              content.type === 'text' &&
+              content.text &&
+              content.text.trim().length > 0
+          );
+        }
+
+        return typeof msg.content === 'string' && msg.content.trim().length > 0;
+      });
+
+    if (!lastAssistantMessage) {
+      console.log(
+        '[ChatMessages] No valid assistant message found, not showing continue button'
+      );
+      return false;
+    }
+
+    // Extract text content from the message
+    let content = '';
+    if (typeof lastAssistantMessage.content === 'string') {
+      content = lastAssistantMessage.content;
+    } else if (Array.isArray(lastAssistantMessage.content)) {
+      const textContent = lastAssistantMessage.content.find(
+        (c: any) => c.type === 'text'
+      );
+      content = textContent?.text || '';
+    }
+
+    console.log(
+      '[ChatMessages] Analyzing last assistant message:',
+      content.substring(0, 200) + '...'
+    );
+
+    // Check if the assistant's last message suggests it's waiting for user input
+    const waitingIndicators = [
+      'waiting for',
+      'wait for',
+      'after you reply',
+      'when you reply',
+      'let me know',
+      'please',
+      'would you like',
+      'do you want',
+      'shall i',
+      'should i',
+      'feel free to',
+      'if you need',
+      'any questions',
+      'anything else',
+      'next steps',
+      'proceed with',
+      'continue with',
+      'go ahead',
+      'move forward'
+    ];
+
+    const hasWaitingIndicator = waitingIndicators.some(indicator =>
+      content.toLowerCase().includes(indicator.toLowerCase())
+    );
+
+    // Also check if the message ends with a question mark or asks for input
+    const endsWithQuestion = content.trim().endsWith('?');
+
+    // Check if it's a question or confirmation request
+    const questionWords = [
+      'what',
+      'how',
+      'when',
+      'where',
+      'why',
+      'which',
+      'who',
+      'should',
+      'would',
+      'could',
+      'can',
+      'do you',
+      'are you'
+    ];
+    const startsWithQuestion = questionWords.some(word =>
+      content.toLowerCase().trim().startsWith(word.toLowerCase())
+    );
+
+    const result =
+      hasWaitingIndicator || endsWithQuestion || startsWithQuestion;
+    console.log(
+      '[ChatMessages] Continue button analysis - waitingIndicator:',
+      hasWaitingIndicator,
+      'endsWithQuestion:',
+      endsWithQuestion,
+      'startsWithQuestion:',
+      startsWithQuestion,
+      'result:',
+      result
+    );
+
+    // Show continue button if there are waiting indicators, it's a question, or asks for confirmation
+    return result;
+  }
+
+  /**
+   * Show the continue button
+   */
+  private showContinueButton(): void {
+    console.log('[ChatMessages] showContinueButton() called');
+    if (this.continueButton) {
+      console.log('[ChatMessages] Removing hidden class from continue button');
+      this.continueButton.classList.remove('hidden');
+    } else {
+      console.warn(
+        '[ChatMessages] continueButton is null in showContinueButton()'
+      );
+    }
+  }
+
+  /**
+   * Hide the continue button
+   */
+  private hideContinueButton(): void {
+    console.log('[ChatMessages] hideContinueButton() called');
+    if (this.continueButton) {
+      console.log('[ChatMessages] Adding hidden class to continue button');
+      this.continueButton.classList.add('hidden');
+    } else {
+      console.warn(
+        '[ChatMessages] continueButton is null in hideContinueButton()'
+      );
+    }
+  }
+
+  /**
+   * Add a streaming AI message container to the chat history
+   *
+   * Uses React StreamingMessage component with Zustand store for reactive updates.
+   * The returned element is a container div that can be removed on finalization.
+   *
+   * @returns The container element to be updated with streaming content
+   */
+  addStreamingAIMessage(): HTMLDivElement {
+    this.closeToolGroupIfOpen();
+
+    console.log('[ChatMessages] Adding streaming AI message container (React)');
+
+    // Start streaming in the store
+    const messageId = useChatMessagesStore.getState().startStreaming();
+
+    // Determine if header should be shown (only after user messages)
+    const showHeader = this.lastAddedMessageType === 'user';
+
+    // Create container and mount React StreamingMessage component
+    const container = createContainer() as HTMLDivElement;
+
+    // Mount the component - it subscribes to the store for content updates
+    mountComponent(
+      container,
+      React.createElement(StreamingMessage, {
+        showHeader,
+        hidden: this.isWelcomeMessageHiddenMode
+      })
+    );
+
+    // Store reference for cleanup
+    container.setAttribute('data-streaming-message-id', messageId);
+
+    this.container.appendChild(container);
+    this.handleScroll();
+
+    console.log(
+      '[ChatMessages] Streaming message container added (React):',
+      messageId
+    );
+    return container;
+  }
+
+  /**
+   * Add a thinking indicator with SignalPilot AI nametag and animated dots
+   *
+   * This method uses the React ThinkingIndicator component, mounted into a
+   * container div. The container is returned so callers can remove it when
+   * streaming starts.
+   *
+   * @returns The container element that can be removed when streaming starts
+   */
+  addThinkingIndicator(): HTMLDivElement {
+    this.closeToolGroupIfOpen();
+
+    console.log('[ChatMessages] Adding thinking indicator (React)');
+
+    // Clean up any existing thinking indicator
+    if (this.thinkingIndicatorMounted) {
+      this.thinkingIndicatorMounted.unmount();
+      this.thinkingIndicatorMounted = null;
+    }
+    if (this.thinkingIndicatorContainer) {
+      this.thinkingIndicatorContainer.remove();
+      this.thinkingIndicatorContainer = null;
+    }
+
+    // Create container for the React component
+    // The container itself has no class - the React component handles all styling
+    const container = createContainer();
+
+    // Determine if we should show the header based on last message type
+    const showHeader = this.lastAddedMessageType === 'user';
+
+    // Mount the React ThinkingIndicator component
+    this.thinkingIndicatorMounted = mountComponent(
+      container,
+      React.createElement(ThinkingIndicator, { showHeader })
+    );
+
+    // Store reference to container for cleanup
+    this.thinkingIndicatorContainer = container;
+
+    // Add to DOM
+    this.container.appendChild(container);
+
+    this.handleScroll();
+
+    console.log('[ChatMessages] Thinking indicator added (React component)');
+    return container as HTMLDivElement;
+  }
+
+  /**
+   * Remove the thinking indicator from the chat
+   *
+   * This properly unmounts the React component before removing the DOM element
+   * to prevent memory leaks.
+   *
+   * @param thinkingElement The thinking indicator element to remove
+   */
+  removeThinkingIndicator(thinkingElement: HTMLDivElement | null): void {
+    console.log('[ChatMessages] Removing thinking indicator');
+
+    // If the passed element matches our tracked container, clean up React
+    if (
+      thinkingElement &&
+      thinkingElement === this.thinkingIndicatorContainer
+    ) {
+      // Unmount React component first
+      if (this.thinkingIndicatorMounted) {
+        this.thinkingIndicatorMounted.unmount();
+        this.thinkingIndicatorMounted = null;
+      }
+      this.thinkingIndicatorContainer = null;
+    }
+
+    // Remove from DOM
+    if (thinkingElement && thinkingElement.parentElement) {
+      thinkingElement.remove();
+    }
+  }
+
+  /**
+   * Render a diff approval message from history
+   * @param diffApprovalContent The diff approval content from history
+   */
+  private renderDiffApprovalFromHistory(diffApprovalContent: any): void {
+    if (
+      diffApprovalContent.diff_cells &&
+      diffApprovalContent.diff_cells.length > 0
+    ) {
+      // Convert stored diff cells to IPendingDiff format
+      const diffCells = diffApprovalContent.diff_cells.map((cell: any) => ({
+        cellId: cell.cellId,
+        type: cell.type,
+        originalContent: cell.originalContent || '',
+        newContent: cell.newContent || '',
+        displaySummary: cell.displaySummary || `${cell.type} cell`,
+        notebookId: diffApprovalContent.notebook_path,
+        metadata: {}
+      }));
+      // Use DiffApprovalDialog to render the historical dialog
+      const historicalDialog = DiffApprovalDialog.createHistoricalDialog(
+        diffCells,
+        diffApprovalContent.notebook_path
+      );
+      this.container.appendChild(historicalDialog);
+    }
+
+    this.ensureWaitingReplyBoxIsLast();
+    this.handleScroll();
+  }
+
+  /**
+   * Create a checkpoint for the current user message
+   */
+  private createCheckpoint(userMessageObj: IChatMessage): ICheckpoint {
+    try {
+      // Set the current notebook ID in checkpoint manager
+      const currentNotebookId = AppStateService.getCurrentNotebookId();
+      if (!currentNotebookId) {
+        throw new Error(
+          'No current notebook ID available for checkpoint creation'
+        );
+      }
+      this.checkpointManager.setCurrentNotebookId(currentNotebookId);
+
+      const threadId = this.historyManager.getCurrentThreadId();
+      if (!threadId) {
+        throw new Error(
+          'No current thread ID available for checkpoint creation'
+        );
+      }
+
+      const userMessageContent =
+        typeof userMessageObj.content === 'string'
+          ? userMessageObj.content
+          : JSON.stringify(userMessageObj.content);
+
+      const checkpoint = this.checkpointManager.createCheckpoint(
+        userMessageContent,
+        this.messageHistory,
+        this.mentionContexts,
+        threadId,
+        userMessageObj.id
+      );
+
+      return checkpoint;
+    } catch (error) {
+      console.error('[ChatMessages] Error creating checkpoint:', error);
+      throw error;
+    }
+  }
+
+  private cancelCheckpointRestoration(): void {
+    if (!this.checkpointToRestore) {
+      return;
+    }
+
+    const inputManager =
+      AppStateService.getState().chatContainer?.chatWidget.inputManager;
+    if (inputManager) {
+      inputManager.setInputValue('');
+      inputManager.setCheckpointToRestore(null);
+    }
+
+    // Redo all actions from the checkpoint chain
+    const conversationService =
+      AppStateService.getState().chatContainer?.chatWidget.conversationService;
+    if (conversationService && this.checkpointToRestore) {
+      void conversationService.redoActions(this.checkpointToRestore);
+    }
+
+    // Remove all opaque classes after the checkpoint element
+    let currentSibling = this.container.querySelector(
+      `[data-checkpoint-id="${this.checkpointToRestore.id}"]`
+    )?.nextSibling;
+    while (currentSibling) {
+      const next = currentSibling.nextSibling;
+      if (currentSibling instanceof HTMLElement) {
+        currentSibling.classList.remove('chat-history-item-opaque');
+      }
+      currentSibling = next;
+    }
+
+    AppStateService.getLlmStateDisplay()?.hide();
+
+    this.checkpointToRestore = null;
+  }
+
+  /**
+   * Perform checkpoint restoration
+   */
+  private async performCheckpointRestoration(
+    checkpoint: ICheckpoint
+  ): Promise<void> {
+    try {
+      // Set the input value to the checkpoint message for editing
+      const inputManager =
+        AppStateService.getState().chatContainer?.chatWidget.inputManager;
+      if (inputManager) {
+        inputManager.setInputValue(checkpoint.userMessage);
+        inputManager.setCheckpointToRestore(checkpoint);
+      }
+
+      AppStateService.getState().chatContainer?.chatWidget.cancelMessage();
+
+      AppStateService.getNotebookDiffManager().rejectAndRevertDiffsImmediately();
+      useDiffStore
+        .getState()
+        .clearDiffs(AppStateService.getCurrentNotebookId());
+
+      // Use ConversationService to handle the restoration (including ActionHistory)
+      const conversationService =
+        AppStateService.getState().chatContainer?.chatWidget
+          .conversationService;
+      if (conversationService) {
+        await conversationService.startCheckpointRestoration(checkpoint);
+      } else {
+        console.warn(
+          '[ChatMessages] No ConversationService available for checkpoint restoration'
+        );
+        return;
+      }
+
+      this.checkpointToRestore = checkpoint;
+
+      console.log('[ChatMessages] Checkpoint restoration completed');
+    } catch (error) {
+      console.error(
+        '[ChatMessages] Error during checkpoint restoration:',
+        error
+      );
+      this.addErrorMessage('Failed to restore checkpoint. Please try again.');
+    }
+  }
+
+  /**
+   * Restore to checkpoint (called by ConversationService)
+   */
+  public async restoreToCheckpoint(checkpoint: ICheckpoint): Promise<void> {
+    console.log('[ChatMessages] Restoring to checkpoint:', checkpoint.id);
+
+    // The filter removes the checkpoint message from history
+    const newMessageHistory = [
+      ...checkpoint.messageHistory.filter(
+        msg => msg.id !== checkpoint.userMessageId
+      )
+    ];
+
+    // Restore message history to checkpoint point
+    this.messageHistory = newMessageHistory;
+    this.userMessages = this.messageHistory.filter(msg => msg.role === 'user');
+
+    // Restore contexts
+    this.mentionContexts = new Map(checkpoint.contexts);
+    useContextStore.getState().setContextItems(this.mentionContexts);
+
+    // Restore notebook state
+    await NotebookCellStateService.cacheNotebookState(
+      checkpoint.notebookId,
+      checkpoint.notebookState
+    );
+
+    // Update persistent storage
+    this.historyManager.updateCurrentThreadMessages(
+      this.messageHistory,
+      this.mentionContexts
+    );
+
+    // Remove all elements after the checkpoint, including the checkpoint element itself
+    const checkpointElement = this.container.querySelector(
+      `[data-checkpoint-id="${checkpoint.id}"]`
+    );
+    if (checkpointElement) {
+      let current = checkpointElement.nextSibling;
+      while (current) {
+        const next = current.nextSibling;
+        if (
+          current instanceof HTMLElement &&
+          current.classList.contains('chat-history-item-opaque')
+        ) {
+          current.classList.remove('chat-history-item-opaque');
+          this.container.removeChild(current);
+        }
+        current = next;
+      }
+      this.container.removeChild(checkpointElement);
+    }
+
+    this.checkpointManager.clearCheckpointsAfter(checkpoint.id);
+
+    console.log('[ChatMessages] Message history and contexts restored');
+  }
+
+  /**
+   * Set whether streaming welcome messages should be hidden (for pre-loading)
+   */
+  public setWelcomeMessageHiddenMode(hidden: boolean): void {
+    this.isWelcomeMessageHiddenMode = hidden;
+    console.log(`[ChatMessages] Welcome message hidden mode set to: ${hidden}`);
+  }
+
+  /**
+   * Set up keyboard handler for cmd+enter / ctrl+enter
+   */
+  private setupKeyboardHandler(): void {
+    // Remove existing handler if any
+    this.cleanupKeyboardHandler();
+
+    // Create new keyboard handler
+    this.keyboardHandler = (event: KeyboardEvent) => {
+      // Check for Cmd+Enter (macOS) or Ctrl+Enter (Windows/Linux)
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        // Only proceed if waiting reply box is visible (check store)
+        const { waitingReply } = useChatMessagesStore.getState();
+        if (!waitingReply.isVisible) {
+          return;
+        }
+
+        // Find the first visible prompt button via DOM query (React renders these)
+        const promptButton = this.waitingReplyBox?.querySelector<HTMLButtonElement>(
+          '.sage-ai-prompt-button'
+        );
+
+        if (promptButton) {
+          console.log(
+            '[ChatMessages] Cmd+Enter pressed, clicking first visible prompt button'
+          );
+          event.preventDefault();
+          event.stopPropagation();
+          promptButton.click();
+        }
+      }
+    };
+
+    // Add keyboard event listener
+    document.addEventListener('keydown', this.keyboardHandler);
+    console.log(
+      '[ChatMessages] Keyboard handler set up for cmd+enter / ctrl+enter'
+    );
+  }
+
+  /**
+   * Clean up keyboard handler when no longer needed
+   */
+  private cleanupKeyboardHandler(): void {
+    if (this.keyboardHandler) {
+      document.removeEventListener('keydown', this.keyboardHandler);
+      this.keyboardHandler = null;
+      console.log('[ChatMessages] Keyboard handler removed');
+    }
+  }
+}
+
+/**
+ * Check if the tool result is a stringified array with at least 1 { error: true } object
+ * If so, returns a normalized string joining the errorText
+ * This is the result of a run_cell tool call
+ *
+ * Returns false otherwise
+ */
+function getResultError(result: unknown): false | string {
+  try {
+    console.log('[ChatMessages] getResultError() called with result:', result);
+    console.log(
+      '[ChatMessages] getResultError() called with result:',
+      typeof result
+    );
+    if (typeof result !== 'string') {
+      return false;
+    }
+
+    const obj = JSON.parse(result as string);
+
+    if (Array.isArray(obj)) {
+      const errors = obj.filter(item => item && item?.error === true);
+      if (!errors.length) {
+        return false;
+      }
+
+      return errors.map(item => item.errorText).join('\n');
+    } else if (obj && obj?.error === true) {
+      return obj.errorText;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}

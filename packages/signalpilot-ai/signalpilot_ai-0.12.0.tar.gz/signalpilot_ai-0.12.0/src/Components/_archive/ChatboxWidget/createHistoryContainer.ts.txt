@@ -1,0 +1,136 @@
+import { ChatMessages } from '../../Chat/ChatMessages';
+import { HistoryContainerElements, ScrollHandlingResult } from './types';
+
+/**
+ * Create the chat history container DOM elements
+ */
+export function createHistoryContainer(
+  onScrollDownClick: () => void
+): HistoryContainerElements {
+  // Create chat history container
+  const historyContainer = document.createElement('div');
+  historyContainer.className = 'sage-ai-history-container';
+
+  const chatHistory = document.createElement('div');
+  chatHistory.className = 'sage-ai-chat-history';
+  chatHistory.setAttribute('data-is-scrolled-to-bottom', 'true');
+  historyContainer.appendChild(chatHistory);
+
+  // Create loading overlay for chat history
+  // Start visible since we'll be loading chat history on initial load
+  const chatHistoryLoadingOverlay = document.createElement('div');
+  chatHistoryLoadingOverlay.className = 'sage-ai-chat-history-loading-overlay';
+  chatHistoryLoadingOverlay.innerHTML = `
+    <div class="sage-ai-loading-spinner"></div>
+    <div class="sage-ai-loading-text">Loading chat history...</div>
+  `;
+  historyContainer.appendChild(chatHistoryLoadingOverlay);
+
+  // Create scroll down button
+  const scrollDownButton = document.createElement('button');
+  scrollDownButton.className = 'sage-ai-scroll-down-button hidden';
+  scrollDownButton.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 10.25L12.5 5.75L13.25 6.5L8 11.75L2.75 6.5L3.5 5.75L8 10.25Z" fill="var(--jp-ui-font-color1" />
+    </svg>
+  `;
+  scrollDownButton.addEventListener('click', onScrollDownClick);
+  historyContainer.appendChild(scrollDownButton);
+
+  return {
+    historyContainer,
+    chatHistory,
+    chatHistoryLoadingOverlay,
+    scrollDownButton
+  };
+}
+
+/**
+ * Setup scroll handling for chat history
+ * Returns both the ResizeObserver and a cleanup function for event listeners
+ */
+export function setupScrollHandling(
+  chatHistory: HTMLDivElement,
+  scrollDownButton: HTMLButtonElement,
+  messageComponent: ChatMessages,
+  onResize: () => void
+): ScrollHandlingResult {
+  const chatHistoryResizeObserver = new ResizeObserver(onResize);
+  chatHistoryResizeObserver.observe(chatHistory);
+
+  let userScrolled = false;
+  let userScrollTimeout: NodeJS.Timeout | null = null;
+
+  // Create named handler so we can remove it later
+  const handleUserScroll = () => {
+    userScrolled = true;
+
+    if (userScrollTimeout) {
+      clearTimeout(userScrollTimeout);
+    }
+    userScrollTimeout = setTimeout(() => {
+      userScrolled = false;
+    }, 1000); // reset after 1s
+  };
+
+  // Store event types for cleanup
+  const scrollEventTypes: Array<'wheel' | 'touchstart' | 'keydown'> = [
+    'wheel',
+    'touchstart',
+    'keydown'
+  ];
+
+  // Add event listeners to window
+  scrollEventTypes.forEach(eventType => {
+    window.addEventListener(eventType, handleUserScroll);
+  });
+
+  // Create scroll handler for chatHistory
+  const handleChatHistoryScroll = () => {
+    // As the chat-history height change, we need to check if the user is scrolling
+    // or the chat-history is being resized
+    if (userScrolled) {
+      const scrollTop = chatHistory.scrollTop;
+      const scrollHeight = chatHistory.scrollHeight;
+      const isScrolledToBottom =
+        Math.ceil(scrollTop + chatHistory.clientHeight) >= scrollHeight;
+
+      chatHistory.setAttribute(
+        'data-is-scrolled-to-bottom',
+        isScrolledToBottom.toString()
+      );
+
+      if (isScrolledToBottom) {
+        scrollDownButton.classList.add('hidden');
+      } else {
+        scrollDownButton.classList.remove('hidden');
+      }
+    }
+  };
+
+  chatHistory.addEventListener('scroll', handleChatHistoryScroll);
+
+  // Return cleanup function along with observer
+  const cleanup = () => {
+    // Remove window event listeners
+    scrollEventTypes.forEach(eventType => {
+      window.removeEventListener(eventType, handleUserScroll);
+    });
+
+    // Remove chatHistory scroll listener
+    chatHistory.removeEventListener('scroll', handleChatHistoryScroll);
+
+    // Clear any pending timeout
+    if (userScrollTimeout) {
+      clearTimeout(userScrollTimeout);
+    }
+
+    // Disconnect the observer
+    chatHistoryResizeObserver.disconnect();
+  };
+
+  return {
+    resizeObserver: chatHistoryResizeObserver,
+    cleanup
+  };
+}
