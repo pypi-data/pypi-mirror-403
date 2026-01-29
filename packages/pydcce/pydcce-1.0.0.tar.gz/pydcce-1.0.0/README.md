@@ -1,0 +1,524 @@
+# pydcce
+
+**Dynamic Common Correlated Effects Estimation for Panel Data with Cross-Sectional Dependence**
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A comprehensive Python implementation of Jan Ditzen's Stata `xtdcce2` package for estimating heterogeneous coefficient panel data models with cross-sectional dependence.
+
+**Author:** Dr. Merwan Roudane  
+**Email:** merwanroudane920@gmail.com  
+**GitHub:** https://github.com/merwanroudane/pydecce2
+
+---
+
+## Table of Contents
+
+1. [Installation](#installation)
+2. [Features](#features)
+3. [Quick Start](#quick-start)
+4. [Estimators](#estimators)
+   - [Mean Group (MG)](#mean-group-mg)
+   - [Common Correlated Effects (CCE)](#common-correlated-effects-cce)
+   - [Dynamic CCE](#dynamic-cce)
+   - [Pooled CCE](#pooled-cce)
+   - [Error Correction Model (ECM/PMG)](#error-correction-model-ecmpmg)
+   - [CS-DL](#cs-dl)
+   - [CS-ARDL](#cs-ardl)
+   - [Regularized CCE (rCCE)](#regularized-cce-rcce)
+5. [Cross-Sectional Dependence Tests](#cross-sectional-dependence-tests)
+6. [Exponent Estimation](#exponent-estimation)
+7. [API Reference](#api-reference)
+8. [References](#references)
+
+---
+
+## Installation
+
+```bash
+pip install pydcce
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/merwanroudane/pydecce2.git
+cd pydecce2
+pip install -e .
+```
+
+### Dependencies
+
+- numpy >= 1.20.0
+- pandas >= 1.3.0
+- scipy >= 1.7.0
+- statsmodels >= 0.13.0
+- tabulate >= 0.9.0
+- matplotlib >= 3.5.0
+- seaborn >= 0.11.0
+
+---
+
+## Features
+
+### Estimators
+- **Mean Group (MG)** - Pesaran & Smith (1995)
+- **CCE** - Common Correlated Effects (Pesaran, 2006)
+- **Dynamic CCE** - Chudik & Pesaran (2015)
+- **Pooled CCE** - Homogeneous coefficients with CSD
+- **ECM/PMG** - Error Correction Model
+- **CS-DL** - Cross-Section Augmented Distributed Lag
+- **CS-ARDL** - Cross-Section Augmented ARDL
+- **rCCE** - Regularized CCE (Juodis, 2022)
+
+### Tests
+- **CD Test** - Pesaran (2015, 2021)
+- **CDw** - Weighted CD (Juodis & Reese, 2021)
+- **CDw+** - Power Enhanced CDw
+- **CD*** - Pesaran & Xie (2021)
+- **Alpha Estimation** - Bailey, Kapetanios, Pesaran (2016)
+
+### Output
+- Beautiful tables using `tabulate`
+- Stata-like output format
+- LaTeX and HTML export
+- Visualizations (heatplots, density plots)
+
+---
+
+## Quick Start
+
+```python
+import pandas as pd
+from pydcce import CCE, CDTest
+
+# Load panel data (long format)
+data = pd.read_csv('panel_data.csv')
+
+# Estimate CCE model
+cce = CCE(
+    data=data,
+    depvar='log_gdp',
+    indepvars=['log_capital', 'log_labor'],
+    unit_col='country',
+    time_col='year'
+)
+result = cce.fit()
+print(result)
+
+# Test for cross-sectional dependence
+cd = CDTest(data=data, var='residuals', unit_col='country', time_col='year')
+cd_result = cd.test()
+print(cd_result)
+```
+
+---
+
+## Estimators
+
+### Mean Group (MG)
+
+Pesaran & Smith (1995) Mean Group Estimator for heterogeneous panels without cross-sectional dependence.
+
+```python
+from pydcce import MeanGroup
+
+mg = MeanGroup(
+    data=panel_data,
+    depvar='y',
+    indepvars=['x1', 'x2'],
+    unit_col='id',
+    time_col='time',
+    constant=True
+)
+result = mg.fit()
+print(result)
+
+# Get individual coefficients
+individual_coefs = mg.get_individual_coefficients()
+print(individual_coefs)
+```
+
+**Output:**
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          Mean Group Estimation Results                        ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  Dependent Variable: y                                                        ║
+║  Estimator:          Mean Group                                               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  N (units):     50               T (periods):    30                           ║
+║  Observations:  1500             DF Residual:    49                           ║
+║  R-squared:     0.856432         Adj. R-squared: 0.845123                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╒══════════════╤═══════════════╤════════════╤══════════╤═════════╤═══════════════════════╕
+│ Variable     │   Coefficient │ Std. Error │   t-stat │   P>|t| │ 95% Conf. Int.        │
+╞══════════════╪═══════════════╪════════════╪══════════╪═════════╪═══════════════════════╡
+│ _cons        │      0.234567 │   0.012345 │  19.0012 │  0.0000 │ [0.2102, 0.2589]      │
+│ x1           │      0.456789 │   0.023456 │  19.4723 │  0.0000 │ [0.4108, 0.5028]      │
+│ x2           │      0.312456 │   0.034567 │   9.0398 │  0.0000 │ [0.2447, 0.3802]      │
+╘══════════════╧═══════════════╧════════════╧══════════╧═════════╧═══════════════════════╛
+```
+
+---
+
+### Common Correlated Effects (CCE)
+
+Pesaran (2006) CCE estimator accounting for cross-sectional dependence.
+
+```python
+from pydcce import CCE
+
+cce = CCE(
+    data=panel_data,
+    depvar='log_gdp',
+    indepvars=['log_capital', 'log_labor'],
+    unit_col='country',
+    time_col='year',
+    csa_vars=['log_gdp', 'log_capital', 'log_labor'],  # Variables for CSA
+    constant=True
+)
+result = cce.fit()
+print(result)
+```
+
+---
+
+### Dynamic CCE
+
+Chudik & Pesaran (2015) Dynamic CCE with lagged cross-sectional averages.
+
+```python
+from pydcce import DynamicCCE
+
+# Add lagged dependent variable
+data['L_log_gdp'] = data.groupby('country')['log_gdp'].shift(1)
+
+dcce = DynamicCCE(
+    data=data,
+    depvar='log_gdp',
+    indepvars=['L_log_gdp', 'log_capital', 'log_labor'],
+    unit_col='country',
+    time_col='year',
+    csa_lags=2,  # Number of CSA lags (p_T)
+    csa_vars=['log_gdp', 'log_capital', 'log_labor']
+)
+result = dcce.fit()
+print(result)
+```
+
+---
+
+### Pooled CCE
+
+CCE with homogeneous (pooled) coefficients.
+
+```python
+from pydcce import PooledCCE
+
+pcce = PooledCCE(
+    data=panel_data,
+    depvar='log_gdp',
+    indepvars=['log_capital', 'log_labor'],
+    unit_col='country',
+    time_col='year',
+    csa_lags=0
+)
+result = pcce.fit()
+print(result)
+```
+
+---
+
+### Error Correction Model (ECM/PMG)
+
+Shin et al. (1999) with long-run and short-run coefficients.
+
+```python
+from pydcce import ECM
+
+# Prepare differenced variables
+data['D_log_gdp'] = data.groupby('country')['log_gdp'].diff()
+data['D_log_capital'] = data.groupby('country')['log_capital'].diff()
+data['L_log_gdp'] = data.groupby('country')['log_gdp'].shift(1)
+
+ecm = ECM(
+    data=data,
+    depvar='D_log_gdp',
+    lr_vars=['L_log_gdp', 'log_capital'],  # Long-run variables
+    sr_vars=['D_log_capital'],             # Short-run variables
+    unit_col='country',
+    time_col='year'
+)
+result = ecm.fit()
+print(result)
+```
+
+---
+
+### CS-DL
+
+Cross-Section Augmented Distributed Lag (Chudik et al., 2016).
+
+```python
+from pydcce import CSDL
+
+csdl = CSDL(
+    data=panel_data,
+    depvar='log_gdp',
+    lr_vars=['log_capital', 'log_labor'],
+    px=2,  # Lags of differences
+    unit_col='country',
+    time_col='year',
+    csa_lags=2
+)
+result = csdl.fit()
+print(result)
+```
+
+---
+
+### CS-ARDL
+
+Cross-Section Augmented ARDL (Chudik et al., 2016).
+
+```python
+from pydcce import CSARDL
+
+csardl = CSARDL(
+    data=panel_data,
+    depvar='log_gdp',
+    indepvars=['log_capital', 'log_labor'],
+    py=1,  # Lags of dependent variable
+    px=1,  # Lags of independent variables
+    unit_col='country',
+    time_col='year',
+    csa_lags=2
+)
+result = csardl.fit()
+print(result)
+
+# Long-run coefficients are automatically computed
+# Look for LR_log_capital, LR_log_labor in output
+```
+
+---
+
+### Regularized CCE (rCCE)
+
+Juodis (2022) regularized CCE with automatic factor selection.
+
+```python
+from pydcce import RCCE
+
+rcce = RCCE(
+    data=panel_data,
+    depvar='log_gdp',
+    indepvars=['log_capital', 'log_labor'],
+    unit_col='country',
+    time_col='year',
+    n_factors='auto',  # Automatic ER criterion
+    bootstrap_reps=100  # Bootstrap SE
+)
+result = rcce.fit()
+print(result)
+```
+
+---
+
+## Cross-Sectional Dependence Tests
+
+Test for weak cross-sectional dependence in residuals.
+
+```python
+from pydcce import CDTest
+
+# Test residuals
+cd = CDTest(
+    data=residuals_data,
+    var='residuals',
+    unit_col='country',
+    time_col='year'
+)
+
+result = cd.test(
+    pesaran=True,   # Pesaran CD
+    cdw=True,       # Weighted CD
+    pea=True,       # Power enhanced
+    cdstar=True,    # CD*
+    cdw_reps=30,    # Replications for CDw
+    n_pca=4         # Factors for CD*
+)
+print(result)
+```
+
+**Output:**
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           Testing for Weak Cross-Sectional Dependence (CSD)                  ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  H0: Weak cross-sectional dependence                                         ║
+║  H1: Strong cross-sectional dependence                                        ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  N (units):     50               T (periods):    30                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╒═══════════════════════╤═════════════╤══════════╕
+│ Test                  │   Statistic │  P-value │
+╞═══════════════════════╪═════════════╪══════════╡
+│ CD (Pesaran)          │     12.3456 │   0.0000 │
+│ CDw (Juodis & Reese)  │      8.7654 │   0.0000 │
+│ CDw+ (Power Enhanced) │      9.1234 │   0.0000 │
+│ CD* (Pesaran & Xie)   │      6.5432 │   0.0000 │
+╘═══════════════════════╧═════════════╧══════════╛
+
+Mean ρ(i,j) = 0.2345
+```
+
+---
+
+## Exponent Estimation
+
+Estimate the exponent of cross-sectional dependence (α).
+
+```python
+from pydcce import ExponentEstimator
+
+exp_est = ExponentEstimator(
+    data=panel_data,
+    var='residuals',
+    unit_col='country',
+    time_col='year',
+    n_pca=4
+)
+
+result = exp_est.estimate(
+    size=0.1,
+    bootstrap_reps=100
+)
+print(result)
+```
+
+**Output:**
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║         Cross-Sectional Dependence Exponent Estimation                       ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  N (units):     50               T (periods):    30                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╒═══════════╤════════════╤════════════╤═════════════════════════╕
+│ Parameter │   Estimate │ Std. Error │ 95% Conf. Int.          │
+╞═══════════╪════════════╪════════════╪═════════════════════════╡
+│ Alpha     │   0.678234 │   0.045678 │ [0.5887, 0.7678]        │
+╘═══════════╧════════════╧════════════╧═════════════════════════╛
+
+Interpretation:
+  • alpha < 0.5   → Weak cross-sectional dependence
+  • alpha >= 0.5  → Strong cross-sectional dependence
+  
+  Current estimate: alpha = 0.6782
+  Status: STRONG dependence
+```
+
+---
+
+## API Reference
+
+### Panel Data
+
+```python
+from pydcce import PanelData
+
+panel = PanelData(
+    data=df,
+    unit_col='country',
+    time_col='year'
+)
+
+# Properties
+print(panel.N)           # Number of units
+print(panel.T)           # Time periods
+print(panel.is_balanced) # Balance status
+
+# Methods
+panel.add_lag('y', lags=2)
+panel.add_difference('y', order=1)
+panel.add_cross_sectional_mean(['y', 'x'], lags=2)
+print(panel.summary())
+```
+
+### All Estimators
+
+All estimators follow the same interface:
+
+```python
+estimator = CCE(data, depvar, indepvars, unit_col, time_col, **kwargs)
+result = estimator.fit()
+
+# Result attributes
+result.coefficients     # Dict of coefficients
+result.std_errors      # Dict of standard errors
+result.t_stats         # Dict of t-statistics
+result.p_values        # Dict of p-values
+result.conf_int        # Dict of confidence intervals
+result.individual_coefs # DataFrame of unit-specific coefs
+result.residuals       # Array of residuals
+result.r_squared       # R-squared
+result.N, result.T     # Panel dimensions
+
+# Methods
+print(result.summary_table())
+df = result.to_dataframe()
+```
+
+---
+
+## References
+
+1. **Pesaran, M.H.** (2006). Estimation and inference in large heterogeneous panels with a multifactor error structure. *Econometrica*, 74(4), 967-1012.
+
+2. **Chudik, A., & Pesaran, M.H.** (2015). Common correlated effects estimation of heterogeneous dynamic panel data models with weakly exogenous regressors. *Journal of Econometrics*, 188(2), 393-420.
+
+3. **Ditzen, J.** (2018). Estimating dynamic common-correlated effects in Stata. *The Stata Journal*, 18(3), 585-617.
+
+4. **Bailey, N., Kapetanios, G., & Pesaran, M.H.** (2016). Exponent of cross-sectional dependence: Estimation and inference. *Journal of Applied Econometrics*, 31(6), 929-960.
+
+5. **Juodis, A., & Reese, S.** (2021). The incidental parameters problem in testing for remaining cross-section correlation. *Econometric Reviews*.
+
+6. **Pesaran, M.H.** (2015). Testing weak cross-sectional dependence in large panels. *Econometric Reviews*, 34(6-10), 1089-1117.
+
+7. **Pesaran, M.H., & Xie, Y.** (2021). A bias-corrected CD test for error cross-sectional dependence in panel data models. *Empirical Economics*.
+
+---
+
+## License
+
+MIT License
+
+---
+
+## Citation
+
+If you use `pydcce` in your research, please cite:
+
+```bibtex
+@software{pydcce,
+  author = {Roudane, Merwan},
+  title = {pydcce: Dynamic Common Correlated Effects for Python},
+  year = {2024},
+  url = {https://github.com/merwanroudane/pydecce2}
+}
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please submit issues and pull requests on GitHub.
+
+---
+
+**Developed by Dr. Merwan Roudane**
