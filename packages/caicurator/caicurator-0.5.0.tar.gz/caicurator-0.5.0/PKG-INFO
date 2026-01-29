@@ -1,0 +1,184 @@
+Metadata-Version: 2.4
+Name: caicurator
+Version: 0.5.0
+Summary: Curate and display Character AI web browser history
+Project-URL: Homepage, https://github.com/eeriemyxi/caicurator
+Project-URL: Documentation, https://github.com/eeriemyxi/caicurator#readme
+Project-URL: Repository, https://github.com/eeriemyxi/caicurator
+Project-URL: Bug Tracker, https://github.com/eeriemyxi/caicurator/issues
+Author-email: eeriemyxi <myxi@duck.com>
+License: Copyright (c) 2026 myxi@duck.com
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Keywords: browser,cai,characterai,gui,history,python
+Requires-Python: >=3.10
+Requires-Dist: chameleon>=4.6.0
+Requires-Dist: click>=8.3.1
+Requires-Dist: curl-cffi>=0.14.0
+Requires-Dist: loguru>=0.7.3
+Requires-Dist: platformdirs>=4.5.1
+Description-Content-Type: text/markdown
+
+# Caicurator
+Caicurator finds all the Character AI indices from your web browser history and
+then displays every bot you had ever talked to in a convenient web menu.
+
+> [!IMPORTANT]
+> This project only works with [Chromium-based browsers](https://en.wikipedia.org/wiki/Chromium_(web_browser)) (like Chrome) and [Gecko-based browsers](https://en.wikipedia.org/wiki/Gecko_(software)) (like Firefox).
+
+# Screenshot
+![](assets/menu.png)
+
+https://github.com/user-attachments/assets/818ec3e3-1602-4237-97d2-4663e912adac
+
+
+# Usage
+Run `caicurator` to see this error message:
+
+```
+2026-01-24 20:40:00.067 | ERROR    | caicurator.cli:main:19 - Configuration not found. '/home/myxi/.config/caicurator/config.ini' doesn't exist.
+```
+
+Create a `config.ini` at the path the error wants. Please head over to [Configuration](#configuration) for more information.
+
+# Installation
+## From PyPi
+```
+pip install caicurator
+```
+> [!TIP]
+> You can also use [`uv`](https://docs.astral.sh/uv/getting-started/installation/) like so: 
+> ```
+> uv tool install caicurator
+> ```
+
+## From Source
+> [!IMPORTANT]
+> Installation of [Git](https://git-scm.com/) is required.
+
+```
+pip install git+https://github.com/eeriemyxi/caicurator.git
+```
+
+# Configuration
+Caicurator uses a `config.ini` file to store all the configurations.
+
+> [!TIP]
+> Read about [INI file](https://en.wikipedia.org/wiki/INI_file) to learn more about the format.
+
+```ini
+[common]
+LOG_PATH = <default>
+
+[auth]
+TOKEN = ...
+
+[browser]
+CHROMIUM_HISTORY_FILES = ["~/.config/vivaldi/Default/History"]
+GECKO_HISTORY_FILES = ["~/.zen/3g4fsk4q.Default (release)/places.sqlite"]
+
+[fetch]
+PATH = <default>
+BATCH_SIZE = 4
+SLEEP_RANGE = 1, 5
+HTML_GEN_INTERVAL = 2
+
+[html]
+PATH = <default>
+SORTING = newest
+```
+
+`<default>` means the default value will be used. Using this means the relevant content will be under the configuration directory, e.g., `.../chars/`, `.../index.html`, and `.../logs/`.
+***
+`common.LOG_PATH` is the path to the log file. A directory.
+***
+`auth.TOKEN` is the token that you get from [CharacterAI](https://character.ai/). You can find the token in the dev tools of your browser:
+![](assets/token-demo.png)
+Copy the `Authorization` request header's value _without_ `Token`.
+***
+> [!IMPORTANT]
+> Please see [Finding History File](#finding-history-file) for more information on how to find the history file for your browser.
+- `browser.CHROMIUM_HISTORY_FILES` is a list of paths to the `History` file of your Chromium-based browser profiles (e.g., [Vivaldi](https://vivaldi.com/), [Chrome](https://www.google.com/chrome/)).
+- `browser.GECKO_HISTORY_FILES` is a list of paths to the `places.sqlite` file of your Gecko-based browser profiles (e.g., [Firefox](https://www.mozilla.org/en-US/firefox/), [Zen](https://zen-browser.app/)).
+***
+- `fetch.PATH` is the path to the directory that contains all the character indices.
+- `fetch.BATCH_SIZE` is the number of async requests that will be sent to the server.
+- `fetch.SLEEP_RANGE` is the range of seconds that will be randomly chosen to sleep between each batch. 
+- `fetch.HTML_GEN_INTERVAL` is the interval of generating the HTML page; e.g., `2` means it generates every 2 batches.
+***
+- `html.PATH` is the path to the HTML file.
+- `html.SORTING` is the sorting method. It can be `newest` or `oldest`.
+
+# Finding History File
+## Gecko-based browsers (Firefox, LibreWolf, Zen, Waterfox, etc.)
+- Type `about:profiles` → see **"This is the profile in use"** section → full path shown.
+- Or `about:support` → **"Profile Folder"** row → **"Open Folder"** button.
+
+Under the profile folder you will find the `places.sqlite` file.
+
+## Chromium-based browsers (Chrome, Edge, Brave, Vivaldi, Opera, etc.)
+The default profile is almost always the folder named **`Default`** (not numbered). Additional profiles are `Profile 1`, `Profile 2`, etc.
+
+- Type `chrome://version` (or `edge://version`, `brave://version`, etc.) in the address bar.
+- Look for **"Profile Path"** line → shows full path to the **"current active profile"** (e.g. `...\User Data\Default` or `...\User Data\Profile 3`).
+- Click the path (or copy-paste into File Explorer / file manager) to open it directly.
+
+Under the profile folder you will find the `History` file.
+
+# Command-line Arguments
+```
+> caicurator
+Usage: caicurator [OPTIONS] COMMAND [ARGS]...
+
+  Curate and display Character AI web browser history
+
+Options:
+  -L, --log-level [trace|debug|info|success|warning|error|critical]
+  -v, -V, --version               Show the version and exit.
+  --help                          Show this message and exit.
+
+Commands:
+  chars  manage characters index (update)
+  html   manage the HTML page (open, update)
+  info   show helpful information
+
+  🔗 Homepage: https://github.com/eeriemyxi/caicurator
+```
+```
+> caicurator chars
+Usage: caicurator chars [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  update  update the characters index with latest information.
+```
+```
+> caicurator html
+Usage: caicurator html [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  open    open the HTML page on your default web browser.
+  update  update the HTML page with latest information.
+```
