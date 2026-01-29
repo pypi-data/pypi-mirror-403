@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - '*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-22.04
+            target: x86_64
+          - runner: windows-latest
+            target: AMD64
+          - runner: macos-14
+            target: arm64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.x
+      - name: Install LLVM and Clang
+        if: runner.os == 'macOS'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "17.0"
+      - name: Install SuiteSparse
+        if: runner.os == 'macOS'
+        run: brew install suite-sparse
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.3.0
+        env:
+          CIBW_ARCHS_LINUX: ${{ matrix.platform.target }}
+          CIBW_ARCHS_MACOS: ${{ matrix.platform.target }}
+          CIBW_ARCHS_WINDOWS: ${{ matrix.platform.target }}
+          SCCACHE_VERSION: 0.2.13
+          CIBW_BEFORE_ALL_LINUX: "curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y && yum install -y openssl-devel && source .github/workflows/maturin_linux_setup.sh"
+          CIBW_BUILD_VERBOSITY: "1"
+          CIBW_ENVIRONMENT_LINUX: 'PATH="$PATH:$HOME/.cargo/bin" MATURIN_PEP517_ARGS="--features diffsol-llvm17 --features suitesparse" RUSTFLAGS="-C linker-features=-lld"'
+          CIBW_ENVIRONMENT_MACOS: 'PATH="$PATH:$HOME/.cargo/bin" MACOSX_DEPLOYMENT_TARGET=14.0 MATURIN_PEP517_ARGS="--features diffsol-llvm17"'
+          CIBW_ENVIRONMENT_WINDOWS: 'PATH="$PATH:$HOME/.cargo/bin" MATURIN_PEP517_ARGS="--features diffsol-cranelift"'
+          CIBW_SKIP: "*-win32 *-musllinux_*"
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-${{ matrix.platform.runner }}-${{ matrix.platform.target }}
+          path: ./wheelhouse/*.whl
+      - name: pytest
+        shell: bash
+        env:
+          ACTIVATE: ${{ runner.os == 'Windows' && '.venv/Scripts/activate' || '.venv/bin/activate' }}
+          # FIXME restore to 'test examples/* bench/main_bench.py'. Temporarily disabled for work on config branch
+          PYTEST_DIRS: ${{ runner.os == 'macOS' && 'test' || 'test examples/*' }} # MacOS runner fails with LLVM and matplotlib
+        run: |
+          set -e
+          python3 -m venv .venv
+          source $ACTIVATE
+          pip install 'pydiffsol[dev, bench]' --find-links ./wheelhouse --force-reinstall
+          pytest -s -v $PYTEST_DIRS
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          args: --release --out dist --sdist --features diffsol-cranelift
+      - name: Remove wheels, just keep sdist
+        run: rm -rf dist/*.whl
+      - name: Upload sdist
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-sdist
+          path: dist
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    needs: [wheels, sdist]
+    permissions:
+      id-token: write # Use to sign the release artifacts
+      contents: write # Used to upload release artifacts
+      attestations: write # Used to generate artifact attestation
+    steps:
+      - uses: actions/download-artifact@v7
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: 'wheels-*/*'
+      - name: Publish to PyPI
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: PyO3/maturin-action@v1
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        with:
+          command: upload
+          args: --non-interactive --skip-existing wheels-*/*
