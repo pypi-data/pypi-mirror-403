@@ -1,0 +1,515 @@
+#!/usr/bin/env python
+"""
+Legulegu (乐咕乐股) data adapter.
+
+This module provides data fetching from Legulegu for PE/PB valuation data.
+https://legulegu.com/
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from hashlib import md5
+from typing import Any
+
+import pandas as pd
+import py_mini_racer
+import requests
+from bs4 import BeautifulSoup
+
+from finvista._fetchers.adapters.base import BaseAdapter
+
+logger = logging.getLogger(__name__)
+
+# JavaScript code for token generation (from akshare)
+_HASH_CODE = """
+function e(n) {
+    var e, t, r = "", o = -1, f;
+    if (n && n.length) {
+        f = n.length;
+        while ((o += 1) < f) {
+            e = n.charCodeAt(o);
+            t = o + 1 < f ? n.charCodeAt(o + 1) : 0;
+            if (55296 <= e && e <= 56319 && 56320 <= t && t <= 57343) {
+                e = 65536 + ((e & 1023) << 10) + (t & 1023);
+                o += 1
+            }
+            if (e <= 127) {
+                r += String.fromCharCode(e)
+            } else if (e <= 2047) {
+                r += String.fromCharCode(192 | e >>> 6 & 31, 128 | e & 63)
+            } else if (e <= 65535) {
+                r += String.fromCharCode(224 | e >>> 12 & 15, 128 | e >>> 6 & 63, 128 | e & 63)
+            } else if (e <= 2097151) {
+                r += String.fromCharCode(240 | e >>> 18 & 7, 128 | e >>> 12 & 63, 128 | e >>> 6 & 63, 128 | e & 63)
+            }
+        }
+    }
+    return r
+}
+
+function t(n) {
+    var e, t, r, o, f, i = [], h;
+    e = t = r = o = f = 0;
+    if (n && n.length) {
+        h = n.length;
+        n += "";
+        while (e < h) {
+            r = n.charCodeAt(e);
+            t += 1;
+            if (r < 128) {
+                i[t] = String.fromCharCode(r);
+                e += 1
+            } else if (r > 191 && r < 224) {
+                o = n.charCodeAt(e + 1);
+                i[t] = String.fromCharCode((r & 31) << 6 | o & 63);
+                e += 2
+            } else {
+                o = n.charCodeAt(e + 1);
+                f = n.charCodeAt(e + 2);
+                i[t] = String.fromCharCode(
+                    (r & 15) << 12 | (o & 63) << 6 | f & 63);
+                e += 3
+            }
+        }
+    }
+    return i.join("")
+}
+
+function r(n, e) {
+    var t = (n & 65535) + (e & 65535)
+        , r = (n >> 16) + (e >> 16) + (t >> 16);
+    return r << 16 | t & 65535
+}
+
+function o(n, e) {
+    return n << e | n >>> 32 - e
+}
+
+function f(n, e) {
+    var t = e ? "0123456789ABCDEF" : "0123456789abcdef", r = "", o, f = 0, i = n.length;
+    for (; f < i; f += 1) {
+        o = n.charCodeAt(f);
+        r += t.charAt(o >>> 4 & 15) + t.charAt(o & 15)
+    }
+    return r
+}
+
+function i(n) {
+    var e, t = n.length, r = "";
+    for (e = 0; e < t; e += 1) {
+        r += String.fromCharCode(n.charCodeAt(e) & 255, n.charCodeAt(e) >>> 8 & 255)
+    }
+    return r
+}
+
+function h(n) {
+    var e, t = n.length, r = "";
+    for (e = 0; e < t; e += 1) {
+        r += String.fromCharCode(n.charCodeAt(e) >>> 8 & 255, n.charCodeAt(e) & 255)
+    }
+    return r
+}
+
+function u(n) {
+    var e, t = n.length * 32, r = "";
+    for (e = 0; e < t; e += 8) {
+        r += String.fromCharCode(n[e >> 5] >>> 24 - e % 32 & 255)
+    }
+    return r
+}
+
+function a(n) {
+    var e, t = n.length * 32, r = "";
+    for (e = 0; e < t; e += 8) {
+        r += String.fromCharCode(n[e >> 5] >>> e % 32 & 255)
+    }
+    return r
+}
+
+function c(n) {
+    var e, t = n.length * 8, r = Array(n.length >> 2), o = r.length;
+    for (e = 0; e < o; e += 1) {
+        r[e] = 0
+    }
+    for (e = 0; e < t; e += 8) {
+        r[e >> 5] |= (n.charCodeAt(e / 8) & 255) << e % 32
+    }
+    return r
+}
+
+function l(n) {
+    var e, t = n.length * 8, r = Array(n.length >> 2), o = r.length;
+    for (e = 0; e < o; e += 1) {
+        r[e] = 0
+    }
+    for (e = 0; e < t; e += 8) {
+        r[e >> 5] |= (n.charCodeAt(e / 8) & 255) << 24 - e % 32
+    }
+    return r
+}
+
+function D(n, e) {
+    var t = e.length, r = Array(), o, f, i, h, u, a, c, l;
+    a = Array(Math.ceil(n.length / 2));
+    h = a.length;
+    for (o = 0; o < h; o += 1) {
+        a[o] = n.charCodeAt(o * 2) << 8 | n.charCodeAt(o * 2 + 1)
+    }
+    while (a.length > 0) {
+        u = Array();
+        i = 0;
+        for (o = 0; o < a.length; o += 1) {
+            i = (i << 16) + a[o];
+            f = Math.floor(i / t);
+            i -= f * t;
+            if (u.length > 0 || f > 0) {
+                u[u.length] = f
+            }
+        }
+        r[r.length] = i;
+        a = u
+    }
+    c = "";
+    for (o = r.length - 1; o >= 0; o--) {
+        c += e.charAt(r[o])
+    }
+    l = Math.ceil(n.length * 8 / (Math.log(e.length) / Math.log(2)));
+    for (o = c.length; o < l; o += 1) {
+        c = e[0] + c
+    }
+    return c
+}
+
+function B(n, e) {
+    var t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", r = "", o = n.length, f, i, h;
+    e = e || "=";
+    for (f = 0; f < o; f += 3) {
+        h = n.charCodeAt(f) << 16 | (f + 1 < o ? n.charCodeAt(f + 1) << 8 : 0) | (f + 2 < o ? n.charCodeAt(f + 2) : 0);
+        for (i = 0; i < 4; i += 1) {
+            if (f * 8 + i * 6 > n.length * 8) {
+                r += e
+            } else {
+                r += t.charAt(h >>> 6 * (3 - i) & 63)
+            }
+        }
+    }
+    return r
+}
+
+function hex(n) {
+    return f(u(n, h), t)
+}
+
+function u(n) {
+    n = h ? e(n) : n;
+    return a(C(c(n), n.length * 8))
+}
+
+function l(n, t) {
+    var r, o, f, i, u;
+    n = h ? e(n) : n;
+    t = h ? e(t) : t;
+    r = c(n);
+    if (r.length > 16) {
+        r = C(r, n.length * 8)
+    }
+    o = Array(16),
+        f = Array(16);
+    for (u = 0; u < 16; u += 1) {
+        o[u] = r[u] ^ 909522486;
+        f[u] = r[u] ^ 1549556828
+    }
+    i = C(o.concat(c(t)), 512 + t.length * 8);
+    return a(C(f.concat(i), 512 + 128))
+}
+
+function C(n, e) {
+    var t, o, f, i, h, u = 1732584193, a = -271733879, c = -1732584194, l = 271733878;
+    n[e >> 5] |= 128 << e % 32;
+    n[(e + 64 >>> 9 << 4) + 14] = e;
+    for (t = 0; t < n.length; t += 16) {
+        o = u;
+        f = a;
+        i = c;
+        h = l;
+        u = s(u, a, c, l, n[t + 0], 7, -680876936);
+        l = s(l, u, a, c, n[t + 1], 12, -389564586);
+        c = s(c, l, u, a, n[t + 2], 17, 606105819);
+        a = s(a, c, l, u, n[t + 3], 22, -1044525330);
+        u = s(u, a, c, l, n[t + 4], 7, -176418897);
+        l = s(l, u, a, c, n[t + 5], 12, 1200080426);
+        c = s(c, l, u, a, n[t + 6], 17, -1473231341);
+        a = s(a, c, l, u, n[t + 7], 22, -45705983);
+        u = s(u, a, c, l, n[t + 8], 7, 1770035416);
+        l = s(l, u, a, c, n[t + 9], 12, -1958414417);
+        c = s(c, l, u, a, n[t + 10], 17, -42063);
+        a = s(a, c, l, u, n[t + 11], 22, -1990404162);
+        u = s(u, a, c, l, n[t + 12], 7, 1804603682);
+        l = s(l, u, a, c, n[t + 13], 12, -40341101);
+        c = s(c, l, u, a, n[t + 14], 17, -1502002290);
+        a = s(a, c, l, u, n[t + 15], 22, 1236535329);
+        u = w(u, a, c, l, n[t + 1], 5, -165796510);
+        l = w(l, u, a, c, n[t + 6], 9, -1069501632);
+        c = w(c, l, u, a, n[t + 11], 14, 643717713);
+        a = w(a, c, l, u, n[t + 0], 20, -373897302);
+        u = w(u, a, c, l, n[t + 5], 5, -701558691);
+        l = w(l, u, a, c, n[t + 10], 9, 38016083);
+        c = w(c, l, u, a, n[t + 15], 14, -660478335);
+        a = w(a, c, l, u, n[t + 4], 20, -405537848);
+        u = w(u, a, c, l, n[t + 9], 5, 568446438);
+        l = w(l, u, a, c, n[t + 14], 9, -1019803690);
+        c = w(c, l, u, a, n[t + 3], 14, -187363961);
+        a = w(a, c, l, u, n[t + 8], 20, 1163531501);
+        u = w(u, a, c, l, n[t + 13], 5, -1444681467);
+        l = w(l, u, a, c, n[t + 2], 9, -51403784);
+        c = w(c, l, u, a, n[t + 7], 14, 1735328473);
+        a = w(a, c, l, u, n[t + 12], 20, -1926607734);
+        u = F(u, a, c, l, n[t + 5], 4, -378558);
+        l = F(l, u, a, c, n[t + 8], 11, -2022574463);
+        c = F(c, l, u, a, n[t + 11], 16, 1839030562);
+        a = F(a, c, l, u, n[t + 14], 23, -35309556);
+        u = F(u, a, c, l, n[t + 1], 4, -1530992060);
+        l = F(l, u, a, c, n[t + 4], 11, 1272893353);
+        c = F(c, l, u, a, n[t + 7], 16, -155497632);
+        a = F(a, c, l, u, n[t + 10], 23, -1094730640);
+        u = F(u, a, c, l, n[t + 13], 4, 681279174);
+        l = F(l, u, a, c, n[t + 0], 11, -358537222);
+        c = F(c, l, u, a, n[t + 3], 16, -722521979);
+        a = F(a, c, l, u, n[t + 6], 23, 76029189);
+        u = F(u, a, c, l, n[t + 9], 4, -640364487);
+        l = F(l, u, a, c, n[t + 12], 11, -421815835);
+        c = F(c, l, u, a, n[t + 15], 16, 530742520);
+        a = F(a, c, l, u, n[t + 2], 23, -995338651);
+        u = E(u, a, c, l, n[t + 0], 6, -198630844);
+        l = E(l, u, a, c, n[t + 7], 10, 1126891415);
+        c = E(c, l, u, a, n[t + 14], 15, -1416354905);
+        a = E(a, c, l, u, n[t + 5], 21, -57434055);
+        u = E(u, a, c, l, n[t + 12], 6, 1700485571);
+        l = E(l, u, a, c, n[t + 3], 10, -1894986606);
+        c = E(c, l, u, a, n[t + 10], 15, -1051523);
+        a = E(a, c, l, u, n[t + 1], 21, -2054922799);
+        u = E(u, a, c, l, n[t + 8], 6, 1873313359);
+        l = E(l, u, a, c, n[t + 15], 10, -30611744);
+        c = E(c, l, u, a, n[t + 6], 15, -1560198380);
+        a = E(a, c, l, u, n[t + 13], 21, 1309151649);
+        u = E(u, a, c, l, n[t + 4], 6, -145523070);
+        l = E(l, u, a, c, n[t + 11], 10, -1120210379);
+        c = E(c, l, u, a, n[t + 2], 15, 718787259);
+        a = E(a, c, l, u, n[t + 9], 21, -343485551);
+        u = r(u, o);
+        a = r(a, f);
+        c = r(c, i);
+        l = r(l, h)
+    }
+    return Array(u, a, c, l)
+}
+
+function A(n, e, t, f, i, h) {
+    return r(o(r(r(e, n), r(f, h)), i), t)
+}
+
+function s(n, e, t, r, o, f, i) {
+    return A(e & t | ~e & r, n, e, o, f, i)
+}
+
+function w(n, e, t, r, o, f, i) {
+    return A(e & r | t & ~r, n, e, o, f, i)
+}
+
+function F(n, e, t, r, o, f, i) {
+    return A(e ^ t ^ r, n, e, o, f, i)
+}
+
+function E(n, e, t, r, o, f, i) {
+    return A(t ^ (e | ~r), n, e, o, f, i)
+}
+"""
+
+# Default headers
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+}
+
+# Index symbol mapping for PE
+_INDEX_PE_SYMBOL_MAP = {
+    "上证50": "000016.SH",
+    "沪深300": "000300.SH",
+    "上证380": "000009.SH",
+    "创业板50": "399673.SZ",
+    "中证500": "000905.SH",
+    "上证180": "000010.SH",
+    "深证红利": "399324.SZ",
+    "深证100": "399330.SZ",
+    "中证1000": "000852.SH",
+    "上证红利": "000015.SH",
+    "中证100": "000903.SH",
+    "中证800": "000906.SH",
+}
+
+
+def _get_token_lg() -> str:
+    """Generate Legulegu token using MD5."""
+    current_date_str = datetime.now().date().isoformat()
+    obj = md5()
+    obj.update(current_date_str.encode("utf-8"))
+    return obj.hexdigest()
+
+
+def _get_token_js() -> str:
+    """Generate Legulegu token using JavaScript."""
+    js_ctx = py_mini_racer.MiniRacer()
+    js_ctx.eval(_HASH_CODE)
+    return str(js_ctx.call("hex", datetime.now().date().isoformat())).lower()
+
+
+def _get_cookie_csrf(url: str) -> dict[str, Any]:
+    """Get cookie and CSRF token from Legulegu page."""
+    session = requests.Session()
+    session.headers.update(_HEADERS)
+    r = session.get(url)
+    soup = BeautifulSoup(r.text, features="lxml")
+    csrf_tag = soup.find(name="meta", attrs={"name": "_csrf"})
+    csrf_token = str(csrf_tag.attrs["content"]) if csrf_tag else ""
+    local_headers: dict[str, str] = _HEADERS.copy()
+    local_headers.update({"X-CSRF-Token": csrf_token})
+    return {"cookies": r.cookies, "headers": local_headers}
+
+
+class LeguleguAdapter(BaseAdapter):
+    """
+    Adapter for Legulegu (乐咕乐股) data source.
+
+    Provides access to:
+    - Index PE/PB valuation data
+    - Market-wide valuation metrics
+    """
+
+    name = "legulegu"
+    base_url = "https://legulegu.com"
+
+    def is_available(self) -> bool:
+        """Check if Legulegu is available."""
+        try:
+            r = requests.get(
+                f"{self.base_url}/stockdata/shanghaiPE",
+                headers=_HEADERS,
+                timeout=10,
+            )
+            return bool(r.status_code == 200)
+        except Exception:
+            return False
+
+    def fetch_index_pe(self, symbol: str = "沪深300") -> pd.DataFrame:
+        """
+        Fetch index PE (Price-to-Earnings) data.
+
+        Args:
+            symbol: Index name in Chinese. Supported values:
+                - "上证50", "沪深300", "上证380", "创业板50"
+                - "中证500", "上证180", "深证红利", "深证100"
+                - "中证1000", "上证红利", "中证100", "中证800"
+
+        Returns:
+            DataFrame with columns:
+            - 日期: Date
+            - 指数: Index value
+            - 等权静态市盈率, 静态市盈率, 静态市盈率中位数
+            - 等权滚动市盈率, 滚动市盈率, 滚动市盈率中位数
+        """
+        if symbol not in _INDEX_PE_SYMBOL_MAP:
+            raise ValueError(f"Unsupported index: {symbol}")
+
+        token = _get_token_js()
+        url = f"{self.base_url}/api/stockdata/index-basic-pe"
+        params = {"token": token, "indexCode": _INDEX_PE_SYMBOL_MAP[symbol]}
+
+        r = requests.get(
+            url,
+            params=params,
+            **_get_cookie_csrf(url=f"{self.base_url}/stockdata/sz50-ttm-lyr"),
+        )
+        data_json = r.json()
+        temp_df = pd.DataFrame(data_json["data"])
+        temp_df["date"] = (
+            pd.to_datetime(temp_df["date"], unit="ms", utc=True)
+            .dt.tz_convert("Asia/Shanghai")
+            .dt.date
+        )
+        temp_df = temp_df[
+            ["date", "close", "lyrPe", "addLyrPe", "middleLyrPe",
+             "ttmPe", "addTtmPe", "middleTtmPe"]
+        ]
+        temp_df.columns = [
+            "日期", "指数", "等权静态市盈率", "静态市盈率", "静态市盈率中位数",
+            "等权滚动市盈率", "滚动市盈率", "滚动市盈率中位数",
+        ]
+        return temp_df
+
+    def fetch_index_pb(self, symbol: str = "上证50") -> pd.DataFrame:
+        """
+        Fetch index PB (Price-to-Book) data.
+
+        Args:
+            symbol: Index name in Chinese. Same options as fetch_index_pe.
+
+        Returns:
+            DataFrame with columns:
+            - 日期: Date
+            - 指数: Index value
+            - 市净率, 等权市净率, 市净率中位数
+        """
+        if symbol not in _INDEX_PE_SYMBOL_MAP:
+            raise ValueError(f"Unsupported index: {symbol}")
+
+        token = _get_token_js()
+        url = f"{self.base_url}/api/stockdata/index-basic-pb"
+        params = {"token": token, "indexCode": _INDEX_PE_SYMBOL_MAP[symbol]}
+
+        r = requests.get(
+            url,
+            params=params,
+            **_get_cookie_csrf(url=f"{self.base_url}/stockdata/zz500-ttm-lyr"),
+        )
+        data_json = r.json()
+        temp_df = pd.DataFrame(data_json["data"])
+        temp_df["date"] = (
+            pd.to_datetime(temp_df["date"], unit="ms", utc=True)
+            .dt.tz_convert("Asia/Shanghai")
+            .dt.date
+        )
+        temp_df = temp_df[["date", "close", "addPb", "pb", "middlePb"]]
+        temp_df.columns = ["日期", "指数", "市净率", "等权市净率", "市净率中位数"]
+        return temp_df
+
+    def fetch_all_a_pb(self) -> pd.DataFrame:
+        """
+        Fetch all A-share market PB data.
+
+        Returns:
+            DataFrame with equal-weighted and median PB for all A-shares.
+        """
+        url = f"{self.base_url}/api/stock-data/market-index-pb"
+        params = {"marketId": "ALL", "token": _get_token_lg()}
+
+        r = requests.get(
+            url,
+            params=params,
+            **_get_cookie_csrf(url=f"{self.base_url}/stockdata/all-pb"),
+        )
+        data_json = r.json()
+        temp_df = pd.DataFrame(data_json["data"])
+        temp_df["date"] = (
+            pd.to_datetime(temp_df["date"], unit="ms", utc=True)
+            .dt.tz_convert("Asia/Shanghai")
+            .dt.date
+        )
+        if "weightingAveragePB" in temp_df.columns:
+            del temp_df["weightingAveragePB"]
+        return temp_df
+
+
+# Module-level instance
+legulegu_adapter = LeguleguAdapter()
