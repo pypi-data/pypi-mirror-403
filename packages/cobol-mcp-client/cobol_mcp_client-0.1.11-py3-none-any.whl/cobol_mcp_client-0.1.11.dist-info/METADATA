@@ -1,0 +1,116 @@
+Metadata-Version: 2.4
+Name: cobol-mcp-client
+Version: 0.1.11
+Summary: COBOL MCP server with hybrid search and blind-spot detection
+Requires-Python: >=3.10
+Requires-Dist: httpx>=0.25
+Requires-Dist: mcp>=1.0
+Description-Content-Type: text/markdown
+
+# cobol-mcp-client
+
+An MCP (Model Context Protocol) server for COBOL development assistance. Provides static analysis with blind-spot detection and hybrid documentation search.
+
+## Quick Start
+
+```bash
+pipx run cobol-mcp-client setup YOUR_API_KEY
+```
+
+This launches an interactive wizard where you select which IDEs to configure:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Step 2: Select IDEs to configure
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. cursor
+   2. claude-desktop
+   3. vscode
+   4. windsurf
+   5. amp
+   6. zed
+   7. cline
+   8. continue
+   9. roo-code
+
+   a. All IDEs
+   q. Quit
+
+Enter numbers separated by spaces (e.g., 1 3 5) or 'a' for all:
+```
+
+### Direct Install (skip prompts)
+
+```bash
+pipx run cobol-mcp-client setup YOUR_API_KEY --ide cursor
+pipx run cobol-mcp-client setup YOUR_API_KEY --ide claude-desktop
+```
+
+### List Supported IDEs
+
+```bash
+pipx run cobol-mcp-client list-ides
+```
+
+## What It Does
+
+Three tools exposed via MCP:
+
+| Tool | Description |
+|------|-------------|
+| `check(file_path)` | Static analysis of COBOL source files. Runs 30+ rules covering FILE STATUS, uninitialized variables, missing STOP RUN, arithmetic overflow, and IMS DL/I issues. |
+| `search(query)` | Hybrid semantic + keyword search across GnuCOBOL, IBM Enterprise COBOL, CICS, and Visual COBOL documentation. |
+| `translate_reference(topic)` | COBOL-to-Java translation patterns for data types, control flow, file I/O, CICS, DB2, and more. |
+
+Resources available:
+- `cobol://context` — Dialect differences and search tips
+- `cobol://rules` — Full rule documentation  
+- `cobol://gnucobol` — GnuCOBOL compiler reference
+
+## Manual Configuration
+
+If you prefer to configure manually, add to your IDE's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "cobol": {
+      "command": "uvx",
+      "args": ["--from", "cobol-mcp-client", "cobol-mcp"],
+      "env": {
+        "COBOL_MCP_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Config file locations:**
+| IDE | Path |
+|-----|------|
+| Cursor | `~/.cursor/mcp.json` |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| VS Code | `~/.vscode/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Zed | `~/.config/zed/settings.json` |
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `COBOL_MCP_API_KEY` | Yes | API key for documentation search |
+| `COBOL_MCP_API_URL` | No | Backend API URL (defaults to production) |
+
+## Development
+
+```bash
+git clone https://github.com/haladir-ai/cobol-mcp-client
+cd cobol-mcp-client
+pip install -e .
+python -m pytest tests/ -v
+```
+
+## License
+
+Proprietary.
