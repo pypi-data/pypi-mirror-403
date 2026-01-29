@@ -1,0 +1,268 @@
+# Kox
+
+A simple and intuitive code management tool for version control, similar to Git but designed for easier use.
+
+## Installation
+
+Install Kox using pip:
+
+```bash
+pip install kox
+```
+
+## Quick Start
+
+### 1. Configure Kox
+
+First, configure your server connection:
+
+```bash
+# Set server host
+kox set-host localhost
+
+# Set username
+kox set-username your_username
+
+# Set password
+kox set-password your_password
+
+# Set port (optional, default is 8000)
+kox set-port 8000
+```
+
+### 2. View Configuration
+
+Check your current configuration:
+
+```bash
+kox show-config
+```
+
+### 3. Use Kox
+
+#### Command Line Interface
+
+```bash
+# List all projects
+kox show-projects
+
+# View project version history
+kox show-version -p my_project
+
+# Download latest version
+kox clone -p my_project
+
+# Download specific version
+kox clone -p my_project -v 1.23
+
+# Upload project (auto-increment version)
+kox upload -p my_project
+
+# Upload with specific version
+kox upload -p my_project -v 1.24
+```
+
+#### Python API
+
+```python
+from kox import Kox
+
+# Initialize with configuration from file
+kox = Kox()
+
+# Show all projects
+kox.show_projects()
+
+# Show version history
+kox.show_histories(project='my_project')
+
+# Download project
+kox.clone(project='my_project', version='1.23', path='./downloads')
+
+# Upload project
+kox.upload(project='my_project', path='./my_code')
+```
+
+## Features
+
+- **Simple Version Control**: Manage code versions with automatic version increment
+- **Easy Configuration**: Store connection settings in configuration file
+- **Multiple Interfaces**: Use via command line or Python API
+- **Progress Tracking**: Visual progress bars for upload/download operations
+- **Version History**: View complete version history for any project
+
+## Configuration
+
+Kox stores configuration in `~/.kox/config.json`. You can manage it using:
+
+```bash
+# Set configuration
+kox set-host <host>
+kox set-port <port>
+kox set-username <username>
+kox set-password <password>
+
+# View configuration
+kox show-config
+
+# Delete configuration
+kox del-username
+kox del-password
+```
+
+## Command Line Usage
+
+### Configuration Commands
+
+```bash
+kox set-host <host>              # Set server host
+kox set-port <port>              # Set server port
+kox set-username <username>      # Set username
+kox set-password <password>      # Set password
+kox show-config                  # Show current configuration
+kox del-username                # Delete username from config
+kox del-password                 # Delete password from config
+```
+
+### Project Commands
+
+```bash
+kox show-projects                # List all projects
+kox show-version -p <project>   # Show project version history
+kox clone -p <project>          # Download latest version
+kox clone -p <project> -v <version> -l <path>  # Download specific version
+kox upload -p <project>         # Upload with auto-increment
+kox upload -p <project> -v <version> -l <path> # Upload with specific version
+```
+
+### Global Options
+
+All project commands support these options to override configuration:
+
+```bash
+--host, -h       Server address
+--username, -u   Username
+--password, -P   Password
+```
+
+Example:
+
+```bash
+kox clone -p my_project --host example.com --username admin --password secret
+```
+
+## Python API
+
+### Initialization
+
+```python
+from kox import Kox
+
+# Use configuration from file
+kox = Kox()
+
+# Override specific parameters
+kox = Kox(host='custom.example.com')
+kox = Kox(host='example.com', port=9000)
+
+# Use all custom parameters
+kox = Kox(host='example.com', user='admin', password='secret', port=8080)
+```
+
+### Methods
+
+#### `show_projects()`
+
+Display all projects with their latest versions.
+
+```python
+kox.show_projects()
+```
+
+#### `show_histories(project: str)`
+
+Display version history for a specific project.
+
+```python
+kox.show_histories(project='my_project')
+```
+
+#### `clone(project: str, version: Optional[str] = None, path: str = './')`
+
+Download a project.
+
+- `project`: Project name (required)
+- `version`: Version number (optional, default: latest version)
+- `path`: Download path (optional, default: current directory)
+
+```python
+# Download latest version
+kox.clone(project='my_project')
+
+# Download specific version
+kox.clone(project='my_project', version='1.23')
+
+# Download to specific path
+kox.clone(project='my_project', version='1.23', path='./downloads')
+```
+
+#### `upload(project: str, version: Optional[str] = None, path: str = './')`
+
+Upload a project.
+
+- `project`: Project name (required)
+- `version`: Version number (optional, default: auto-increment)
+- `path`: Upload path (optional, default: current directory)
+
+```python
+# Upload with auto-increment version
+kox.upload(project='my_project', path='./my_code')
+
+# Upload with specific version
+kox.upload(project='my_project', version='1.24', path='./my_code')
+```
+
+## Examples
+
+See the `examples/` directory for complete usage examples:
+
+- `basic_usage.py` - Basic operations
+- `download_project.py` - Download examples
+- `upload_project.py` - Upload examples
+- `custom_configuration.py` - Configuration examples
+- `complete_workflow.py` - Complete workflow example
+
+## Version Management
+
+### Version Format
+
+- Versions use decimal format with up to 2 decimal places
+- Examples: `1.0`, `1.23`, `10.99`
+- Invalid: `1.234` (three decimal places)
+
+### Auto-increment
+
+When uploading without specifying a version, Kox automatically increments the version by 0.01:
+
+- Current version: `1.22` → Next upload: `1.23`
+- Current version: `1.0` → Next upload: `1.01`
+
+### Version Validation
+
+- New version must be greater than the current latest version
+- If current latest is `1.22`, new version must be at least `1.23`
+
+## Requirements
+
+- Python 3.7+
+- requests >= 2.31.0
+- tqdm >= 4.66.0
+- click >= 8.0.0
+
+## License
+
+MIT License
+
+## Support
+
+For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/decrule/kox).
