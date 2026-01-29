@@ -1,0 +1,49 @@
+# Table: {{ table_name }}
+
+**Schema:** {{ schema_name }}
+
+{% if table.categories %}
+**Categories:** {{ table.categories | join(', ') }}
+
+{% endif %}
+{% if table | get_table_note %}
+## Description
+
+{{ table | get_table_note }}
+
+{% endif %}
+{% if table.columns %}
+## Columns
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+{% for col in table.columns %}
+| {{ col.column_name }} | {{ col.column_type | format_column_type }} | {{ 'YES' if col.nullable else 'NO' }} | {{ col.default_value | default('', true) }} | {{ col | get_column_note | escape_pipe }} |
+{% endfor %}
+
+{% endif %}
+{% if table.primary_key %}
+## Primary Key
+
+- {{ table.primary_key | join(', ') }}
+
+{% endif %}
+{% if table.indexes %}
+## Indexes
+
+| Index Name | Columns | Unique |
+|------------|---------|--------|
+{% for idx in table.indexes %}
+| {{ idx.index_name | default('', true) }} | {{ idx.columns | join(', ') }} | {{ 'YES' if idx.unique else 'NO' }} |
+{% endfor %}
+
+{% endif %}
+{% if table.foreign_keys %}
+## Foreign Keys
+
+| Constraint | Column | References |
+|------------|--------|------------|
+{% for fk in table.foreign_keys %}
+| {{ fk.constraint_name | default('', true) }} | {{ fk.column_name | default('', true) }} | {{ fk.ref_table | default('', true) }}.{{ fk.ref_column | default('', true) }} |
+{% endfor %}
+{% endif %}
