@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+if [ -z "$PYTEST" ]; then
+    PYTEST=pytest
+fi
+
+if test -n "$GITALY_INSTALL_DIR"; then
+    # This is in CI only, and with the current configuration, it
+    # means that all internal tests have already passed with
+    # 100% coverage, what remains are just the comparison tests.
+    COV_PKG_OPTIONS="$COV_PKG_OPTIONS --cov functional_tests"
+    TARGET=functional_tests
+else
+    COV_PKG_OPTIONS="--cov hgext3rd.hgitaly --cov hgitaly"
+    TARGET=""
+fi
+
+set -u
+
+$PYTEST --doctest-modules \
+       $COV_PKG_OPTIONS \
+       --cov-config=.coveragerc \
+       --cov-fail-under 100 \
+       --ignore rust \
+       --log-level DEBUG \
+       --cov-report term-missing \
+       -v $TARGET $@
