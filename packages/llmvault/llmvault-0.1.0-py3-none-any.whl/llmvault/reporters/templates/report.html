@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLMVault Security Report - {{ result.model }}</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --text: #e0e0e0;
+  --text-dim: #a0a0a0;
+  --accent: #0f3460;
+  --green: #4caf50;
+  --yellow: #ff9800;
+  --red: #f44336;
+  --blue: #2196f3;
+  --border: #2a2a4a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  padding: 2rem;
+}
+.container { max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+h2 { font-size: 1.3rem; margin: 1.5rem 0 0.8rem; color: var(--blue); }
+.header { margin-bottom: 2rem; }
+.header p { color: var(--text-dim); font-size: 0.9rem; }
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.meta-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+.meta-card .label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; }
+.meta-card .value { font-size: 1.4rem; font-weight: 700; margin-top: 0.25rem; }
+.pass-rate-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+.pass-rate-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.color-green { color: var(--green); }
+.color-yellow { color: var(--yellow); }
+.color-red { color: var(--red); }
+.bg-green { background: var(--green); }
+.bg-yellow { background: var(--yellow); }
+.bg-red { background: var(--red); }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  background: var(--surface);
+  border-radius: 8px;
+  overflow: hidden;
+}
+th, td { padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--accent); font-size: 0.8rem; text-transform: uppercase; color: var(--text-dim); }
+tr:last-child td { border-bottom: none; }
+.severity-low { color: var(--blue); }
+.severity-medium { color: var(--yellow); }
+.severity-high { color: var(--red); }
+.severity-critical { color: var(--red); font-weight: 700; }
+.vuln-yes { color: var(--red); font-weight: 700; }
+.vuln-no { color: var(--green); }
+.response-excerpt {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.footer { margin-top: 2rem; color: var(--text-dim); font-size: 0.8rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>LLMVault Security Report</h1>
+    <p>Generated: {{ generated_at }}</p>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="label">Model</div>
+      <div class="value">{{ result.model }}</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Provider</div>
+      <div class="value">{{ result.provider }}</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Duration</div>
+      <div class="value">{{ "%.1f"|format(result.duration_seconds) }}s</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Total Attacks</div>
+      <div class="value">{{ result.total_attacks }}</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Pass Rate</div>
+      <div class="value {{ pass_rate_class }}">{{ "%.0f"|format(result.pass_rate * 100) }}%</div>
+      <div class="pass-rate-bar">
+        <div class="pass-rate-fill {{ pass_rate_bg }}" style="width: {{ "%.0f"|format(result.pass_rate * 100) }}%"></div>
+      </div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Vulnerable</div>
+      <div class="value {{ 'color-red' if result.vulnerable_count > 0 else 'color-green' }}">{{ result.vulnerable_count }}</div>
+    </div>
+  </div>
+
+  <h2>Category Breakdown</h2>
+  <table>
+    <thead><tr><th>Category</th><th>Total</th><th>Vulnerable</th><th>Pass Rate</th><th></th></tr></thead>
+    <tbody>
+    {% for cat in categories %}
+    <tr>
+      <td>{{ cat.category.value }}</td>
+      <td>{{ cat.total }}</td>
+      <td>{{ cat.vulnerable }}</td>
+      <td class="{{ rate_class(cat.pass_rate) }}">{{ "%.0f"|format(cat.pass_rate * 100) }}%</td>
+      <td><div class="pass-rate-bar" style="width:120px"><div class="pass-rate-fill {{ rate_bg(cat.pass_rate) }}" style="width:{{ "%.0f"|format(cat.pass_rate * 100) }}%"></div></div></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Severity Breakdown</h2>
+  <table>
+    <thead><tr><th>Severity</th><th>Total</th><th>Vulnerable</th><th>Pass Rate</th><th></th></tr></thead>
+    <tbody>
+    {% for sev in severities %}
+    <tr>
+      <td class="severity-{{ sev.severity.value }}">{{ sev.severity.value }}</td>
+      <td>{{ sev.total }}</td>
+      <td>{{ sev.vulnerable }}</td>
+      <td class="{{ rate_class(sev.pass_rate) }}">{{ "%.0f"|format(sev.pass_rate * 100) }}%</td>
+      <td><div class="pass-rate-bar" style="width:120px"><div class="pass-rate-fill {{ rate_bg(sev.pass_rate) }}" style="width:{{ "%.0f"|format(sev.pass_rate * 100) }}%"></div></div></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Detailed Results</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Category</th><th>Severity</th><th>Result</th><th>Confidence</th><th>Response</th></tr></thead>
+    <tbody>
+    {% for r in result.results %}
+    <tr>
+      <td>{{ r.attack.name }}</td>
+      <td>{{ r.attack.category.value }}</td>
+      <td class="severity-{{ r.attack.severity.value }}">{{ r.attack.severity.value }}</td>
+      <td class="{{ 'vuln-yes' if r.is_vulnerable else 'vuln-no' }}">{{ "VULNERABLE" if r.is_vulnerable else "PASS" }}</td>
+      <td>{{ "%.0f"|format(r.confidence * 100) }}%</td>
+      <td><div class="response-excerpt" title="{{ r.response[:300] | e }}">{{ r.response[:120] | e }}</div></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if result.errors %}
+  <h2>Errors</h2>
+  <table>
+    <thead><tr><th>Error</th></tr></thead>
+    <tbody>
+    {% for err in result.errors %}
+    <tr><td>{{ err | e }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="footer">
+    Generated by LLMVault v{{ version }}
+  </div>
+</div>
+</body>
+</html>
