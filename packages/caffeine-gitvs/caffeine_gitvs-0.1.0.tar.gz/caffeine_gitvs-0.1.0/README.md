@@ -1,0 +1,309 @@
+# ☕ Caffeine
+
+**Beautiful GitHub repository visualizer for your terminal.**
+
+Turn any GitHub repo URL into a stunning terminal dashboard with stats, visualizations, and insights.
+
+```bash
+caffeine python/cpython
+```
+
+![Caffeine Demo](https://via.placeholder.com/800x500?text=Caffeine+Demo)
+
+---
+
+## ✨ Features
+
+- 📊 **Repository Stats** - Stars, forks, watchers, size at a glance
+- 🎨 **Language Breakdown** - Visual progress bars showing code composition
+- 📈 **Commit Activity** - Sparkline visualization of the past year
+- 👥 **Top Contributors** - Leaderboard with contribution bars
+- 🎯 **Issues & PRs** - Stats with close/merge rates + recent open issues
+- 🏷️ **Recent Releases** - Timeline of latest releases
+- 🔥 **Trending Repos** - Discover what's hot on GitHub
+- 🔍 **Search** - Find repositories by keywords
+- 📖 **README Preview** - View README directly in terminal
+- 📁 **File Tree** - Explore repository structure
+- 🔑 **Token Support** - 5,000 API requests/hour with authentication
+
+---
+
+## 📦 Installation
+
+```bash
+pip install caffeine-gitvs
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/yourusername/caffeine-gitvs.git
+cd caffeine-gitvs
+pip install -e .
+```
+
+---
+
+## 🚀 Usage
+
+### Basic Repository Visualization
+
+```bash
+# Using owner/repo format
+caffeine python/cpython
+
+# Using full GitHub URL
+caffeine https://github.com/facebook/react
+
+# Quick mode (faster, fewer API calls)
+caffeine rust-lang/rust --quick
+caffeine rust-lang/rust -q
+
+# Hide the ASCII logo
+caffeine torvalds/linux --no-logo
+```
+
+### 📖 README Preview
+
+View a repository's README directly in your terminal:
+
+```bash
+caffeine python/cpython --readme
+caffeine facebook/react -r
+```
+
+### 📁 File Tree
+
+Explore the repository's file structure:
+
+```bash
+caffeine torvalds/linux --tree
+caffeine rust-lang/rust -t
+```
+
+### 🔥 Trending Repositories
+
+Discover what's trending on GitHub:
+
+```bash
+# Today's trending repos
+caffeine trending
+
+# Filter by language
+caffeine trending --lang python
+caffeine trending --lang rust
+caffeine trending --lang javascript
+
+# Different time periods
+caffeine trending --since daily      # Default
+caffeine trending --since weekly
+caffeine trending --since monthly
+
+# Show more results
+caffeine trending --limit 20
+
+# Combine options
+caffeine trending --lang go --since weekly --limit 15
+```
+
+### 🔍 Search Repositories
+
+Find repositories by keywords:
+
+```bash
+# Basic search
+caffeine search "machine learning"
+caffeine search "web framework"
+
+# Filter by language
+caffeine search cli --lang rust
+caffeine search api --lang python
+
+# Filter by minimum stars
+caffeine search database --stars 1000
+caffeine search "game engine" --stars 5000
+
+# Sort options: stars (default), forks, updated
+caffeine search react --sort stars
+caffeine search react --sort forks
+caffeine search react --sort updated
+
+# Combine options
+caffeine search "http client" --lang rust --stars 500 --limit 15
+```
+
+### ⚙️ Configuration
+
+Manage your GitHub token for higher rate limits:
+
+```bash
+# Show current configuration
+caffeine config show
+
+# Set your GitHub token (increases rate limit from 60 to 5,000/hour)
+caffeine config set-token ghp_xxxxxxxxxxxxxxxxxxxx
+
+# Remove saved token
+caffeine config remove-token
+```
+
+---
+
+## 🔑 GitHub Token Setup
+
+Without a token, GitHub allows **60 API requests per hour**. With a token, you get **5,000 requests per hour**.
+
+### How to Get a Token
+
+1. Go to [GitHub Settings → Developer Settings → Personal Access Tokens](https://github.com/settings/tokens)
+2. Click **"Generate new token (classic)"**
+3. Give it a name (e.g., "Caffeine CLI")
+4. **No scopes needed** for public repositories
+5. Click **Generate token**
+6. Copy the token and run:
+
+```bash
+caffeine config set-token ghp_your_token_here
+```
+
+### Alternative: Environment Variable
+
+You can also set the token via environment variable:
+
+```bash
+export GITHUB_TOKEN=ghp_your_token_here
+# or
+export GH_TOKEN=ghp_your_token_here
+```
+
+---
+
+## 📋 Command Reference
+
+| Command | Description |
+|---------|-------------|
+| `caffeine <repo>` | Visualize a repository |
+| `caffeine <repo> --quick` | Quick mode (essential info only) |
+| `caffeine <repo> --readme` | Show README preview |
+| `caffeine <repo> --tree` | Show file tree |
+| `caffeine trending` | Show trending repositories |
+| `caffeine search <query>` | Search for repositories |
+| `caffeine config show` | Show current configuration |
+| `caffeine config set-token <token>` | Save GitHub token |
+| `caffeine config remove-token` | Remove saved token |
+
+### Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--quick` | `-q` | Quick mode (fewer API calls) |
+| `--readme` | `-r` | Show README preview |
+| `--tree` | `-t` | Show file tree structure |
+| `--no-logo` | | Hide ASCII logo |
+| `--lang` | `-l` | Filter by language (trending/search) |
+| `--since` | `-s` | Time period: daily, weekly, monthly (trending) |
+| `--stars` | | Minimum stars (search) |
+| `--sort` | | Sort by: stars, forks, updated (search) |
+| `--limit` | `-n` | Number of results to show |
+| `--version` | `-v` | Show version |
+| `--help` | | Show help |
+
+---
+
+## 🎨 What You'll See
+
+### Repository Dashboard
+
+```
+╭──────────────────────── ☕ CAFFEINE  python/cpython ─────────────────────────╮
+│ The Python programming language                                              │
+│ 🌐 https://www.python.org  │  📜 PSF-2.0  │  Created: 8 years ago           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  ⭐ 65.2k     🍴 31.1k     👁️ 2.4k     📦 764 MB     🔀 main
+
+╭───────────────────────────────── Languages ──────────────────────────────────╮
+│   Python      ████████████████████░░░░░░░░░░   62.0%                         │
+│   C           ██████████░░░░░░░░░░░░░░░░░░░░   35.8%                         │
+│   Other       █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    2.2%                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭───────────────────────── Commit Activity (52 weeks) ─────────────────────────╮
+│   ▄▃▃▃▃▄▄▃▃▅▄▅▇█▂▆▄▂▂▃▂▂▃▂▃▁▃▂▂▁▄▃▅▁▂▃▃▂▃▄▅▃▃▂▄▅▂▂▃▃▂                        │
+│   Total: 5.9k  │  Avg: 114/week  │  Peak: 245 (Week 14)                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Issues Panel with Recent Issues
+
+```
+╭─────────────────────────── Issues & Pull Requests ───────────────────────────╮
+│   Issues        Open: 7.2k    Closed: 67.9k                                  │
+│                 ██████████████████░░ 90% closed                              │
+│                                                                              │
+│   Pull Requests Open: 2.1k    Merged: 56.5k                                  │
+│                 ████████████████░░░░ 83% merged                              │
+│                                                                              │
+│   ─── Recent Open Issues ───                                                 │
+│                                                                              │
+│   #144217 Add dicom to mimetypes  type-feature                               │
+│      @benediktjohannes • 4 hours ago                                         │
+│   #144212 Add `image/jxl` to `mimetypes`  type-feature   stdlib              │
+│      @FooIbar • 16 hours ago • 💬 1                                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Trending Repos
+
+```
+╭───────────────────────────── 🔥 Trending Today ──────────────────────────────╮
+│  #    Repository                           Language          ⭐     🍴       │
+│  1    torvalds/linux                       C             215.1k  60.1k       │
+│       Linux kernel source tree                                               │
+│  2    microsoft/vscode                     TypeScript    181.0k  37.6k       │
+│       Visual Studio Code                                                     │
+│  3    ollama/ollama                        Go            160.5k  14.3k       │
+│       Get up and running with LLMs                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+---
+
+## 🛠️ Tech Stack
+
+- **[Typer](https://typer.tiangolo.com/)** - Modern CLI framework
+- **[Rich](https://rich.readthedocs.io/)** - Beautiful terminal formatting
+- **[httpx](https://www.python-httpx.org/)** - Modern HTTP client
+
+---
+
+## 📝 Rate Limits
+
+| Mode | Requests/Hour | Repos/Hour (approx) |
+|------|---------------|---------------------|
+| Without token | 60 | ~7-8 |
+| With token | 5,000 | ~600+ |
+
+The remaining rate limit is shown in the footer of each visualization.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  Made with ☕ and Python
+</p>
