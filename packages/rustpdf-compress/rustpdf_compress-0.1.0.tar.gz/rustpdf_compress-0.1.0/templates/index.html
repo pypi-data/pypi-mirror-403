@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF 压缩工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 25px;
+        }
+
+        .upload-area:hover,
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .upload-area.has-file {
+            border-color: #4caf50;
+            background: #f1f8e9;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .upload-text strong {
+            color: #667eea;
+        }
+
+        .file-info {
+            display: none;
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+
+        .file-info.visible {
+            display: block;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #333;
+            word-break: break-all;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .compression-levels {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .level-option {
+            flex: 1;
+            padding: 15px 10px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .level-option:hover {
+            border-color: #667eea;
+        }
+
+        .level-option.selected {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+
+        .level-option .level-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .level-option .level-desc {
+            font-size: 0.8em;
+            opacity: 0.8;
+        }
+
+        .compress-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .compress-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .compress-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 25px;
+        }
+
+        .progress-container.visible {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+        }
+
+        .result {
+            display: none;
+            margin-top: 25px;
+            padding: 20px;
+            background: #e8f5e9;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .result.visible {
+            display: block;
+        }
+
+        .result.error {
+            background: #ffebee;
+        }
+
+        .result h3 {
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+
+        .result.error h3 {
+            color: #c62828;
+        }
+
+        .result .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 15px 0;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stat-label {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+        .download-btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #4caf50;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+
+        .download-btn:hover {
+            background: #43a047;
+        }
+
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF 压缩工具</h1>
+        <p class="subtitle">快速压缩 PDF 文件，保持最佳质量</p>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📄</div>
+            <p class="upload-text">
+                拖拽 PDF 文件到这里<br>
+                或 <strong>点击选择文件</strong>
+            </p>
+        </div>
+        <input type="file" id="fileInput" accept=".pdf,application/pdf">
+
+        <div class="file-info" id="fileInfo">
+            <div class="file-name" id="fileName"></div>
+            <div class="file-size" id="fileSize"></div>
+        </div>
+
+        <div class="compression-levels">
+            <div class="level-option" data-level="extreme">
+                <div class="level-name">极限压缩</div>
+                <div class="level-desc">最小文件</div>
+            </div>
+            <div class="level-option selected" data-level="recommended">
+                <div class="level-name">推荐压缩</div>
+                <div class="level-desc">平衡模式</div>
+            </div>
+            <div class="level-option" data-level="low">
+                <div class="level-name">低压缩</div>
+                <div class="level-desc">高质量</div>
+            </div>
+        </div>
+
+        <button class="compress-btn" id="compressBtn" disabled>选择 PDF 文件开始压缩</button>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">正在压缩...</div>
+        </div>
+
+        <div class="result" id="result">
+            <h3 id="resultTitle">压缩完成!</h3>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value" id="originalSize">0 MB</div>
+                    <div class="stat-label">原始大小</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="compressedSize">0 MB</div>
+                    <div class="stat-label">压缩后</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="reduction">0%</div>
+                    <div class="stat-label">缩减</div>
+                </div>
+            </div>
+            <a class="download-btn" id="downloadBtn" href="#" download>下载压缩后的 PDF</a>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const compressBtn = document.getElementById('compressBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const result = document.getElementById('result');
+        const resultTitle = document.getElementById('resultTitle');
+        const originalSizeEl = document.getElementById('originalSize');
+        const compressedSizeEl = document.getElementById('compressedSize');
+        const reductionEl = document.getElementById('reduction');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const levelOptions = document.querySelectorAll('.level-option');
+
+        let selectedFile = null;
+        let selectedLevel = 'recommended';
+
+        // Format file size
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // Handle file selection
+        function handleFile(file) {
+            if (!file || !file.type.includes('pdf')) {
+                alert('请选择 PDF 文件');
+                return;
+            }
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = formatSize(file.size);
+            fileInfo.classList.add('visible');
+            uploadArea.classList.add('has-file');
+            compressBtn.disabled = false;
+            compressBtn.textContent = '开始压缩';
+            result.classList.remove('visible');
+        }
+
+        // Upload area events
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            handleFile(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            handleFile(file);
+        });
+
+        // Level selection
+        levelOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                levelOptions.forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                selectedLevel = option.dataset.level;
+            });
+        });
+
+        // Compress button
+        compressBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            compressBtn.disabled = true;
+            compressBtn.textContent = '压缩中...';
+            progressContainer.classList.add('visible');
+            progressFill.style.width = '30%';
+            result.classList.remove('visible');
+            result.classList.remove('error');
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('level', selectedLevel);
+
+            try {
+                progressFill.style.width = '60%';
+                progressText.textContent = '正在压缩...';
+
+                const response = await fetch('/api/compress', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                progressFill.style.width = '90%';
+
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+
+                const originalSize = parseInt(response.headers.get('X-Original-Size') || selectedFile.size);
+                const compressedSize = parseInt(response.headers.get('X-Compressed-Size') || 0);
+                const blob = await response.blob();
+
+                progressFill.style.width = '100%';
+                progressText.textContent = '完成!';
+
+                // Show result
+                originalSizeEl.textContent = formatSize(originalSize);
+                compressedSizeEl.textContent = formatSize(compressedSize);
+                const reduction = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+                reductionEl.textContent = reduction + '%';
+
+                // Create download link
+                const url = URL.createObjectURL(blob);
+                downloadBtn.href = url;
+                const outputName = selectedFile.name.replace('.pdf', '_compressed.pdf');
+                downloadBtn.download = outputName;
+
+                resultTitle.textContent = '压缩完成!';
+                result.classList.add('visible');
+
+            } catch (error) {
+                resultTitle.textContent = '压缩失败: ' + error.message;
+                result.classList.add('visible');
+                result.classList.add('error');
+            } finally {
+                compressBtn.disabled = false;
+                compressBtn.textContent = '重新压缩';
+                setTimeout(() => {
+                    progressContainer.classList.remove('visible');
+                    progressFill.style.width = '0%';
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html>
