@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decyphr</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Loading Outfit to match Google Sans aesthetic -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+
+    <style>
+        {{ embedded_css | safe }}
+    </style>
+</head>
+
+<body>
+
+    <header class="app-header">
+        <div class="logo-text">
+            Decyphr
+        </div>
+
+        <div class="nav-scroll-wrapper">
+            <nav class="top-nav" id="top-nav-scroll">
+                <ul>
+                    {% for section_id, section_title in sections %}
+                    <li><a href="#" data-section-id="{{ section_id }}"
+                            class="nav-link {% if loop.first %}active{% endif %}">{{ section_title }}</a></li>
+                    {% endfor %}
+                </ul>
+            </nav>
+            <button class="nav-scroll-btn" id="nav-scroll-right" aria-label="Scroll Right">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="currentColor" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="header-right">
+            <!-- Space for future actions -->
+        </div>
+    </header>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const navContainer = document.getElementById('top-nav-scroll');
+            const scrollBtn = document.getElementById('nav-scroll-right');
+
+            if (navContainer && scrollBtn) {
+                // Scroll right on click
+                scrollBtn.addEventListener('click', function () {
+                    navContainer.scrollBy({
+                        left: 200,
+                        behavior: 'smooth'
+                    });
+                });
+
+                // Optional: Check if scroll is needed
+                function checkScroll() {
+                    if (navContainer.scrollWidth > navContainer.clientWidth) {
+                        scrollBtn.style.opacity = '1';
+                        scrollBtn.style.pointerEvents = 'auto';
+                    } else {
+                        scrollBtn.style.opacity = '0.3'; // Dim if not needed
+                        scrollBtn.style.pointerEvents = 'none';
+                    }
+                }
+
+                // Check initially and on resize
+                window.addEventListener('resize', checkScroll);
+                checkScroll();
+            }
+        });
+    </script>
+
+    <main class="main-content">
+        <div class="report-header">
+            <h2>Experience liftoff<br><span style="color: var(--text-secondary); opacity: 0.6;">with your data.</span>
+            </h2>
+            <p>Analysis for <strong>{{ dataset_name }}</strong> successfully generated.</p>
+        </div>
+
+        {% for section_id, section_content in sections_data.items() %}
+        <div class="content-panel {% if loop.first %}active{% endif %}" id="panel-{{ section_id }}"
+            style="display: {% if loop.first %}block{% else %}none{% endif %};">
+            <!-- Only show title if it's not Overview (Overview has its own internal structure) -->
+            {% if section_id != 'p01_overview' %}
+            <h3 class="section-title">{{ section_content.title }}</h3>
+            {% endif %}
+
+            {% if section_content.details_html %}
+            <div class="details-container">
+                {{ section_content.details_html | safe }}
+            </div>
+            {% endif %}
+
+            {% if section_content.visuals_count > 0 %}
+            <div class="content-grid">
+                {% for i in range(section_content.visuals_count) %}
+                <div class="analysis-card">
+                    <div class="plot-placeholder" id="plot-{{ section_id }}-{{ i }}"></div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </main>
+
+    <footer class="app-footer" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+        <p>Decyphr v{{ decyphr_version }} &middot; Designed in Bengaluru, Created by Ayush.</p>
+    </footer>
+
+    <script id="plot-data" type="application/json">
+        {{ all_plots_data_json | safe }}
+    </script>
+
+    <script>
+        {{ embedded_js | safe }}
+    </script>
+</body>
+
+</html>
