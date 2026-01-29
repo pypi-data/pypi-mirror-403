@@ -1,0 +1,81 @@
+from typing import Any
+
+import pytest
+from hypothesis import given
+from hypothesis.strategies import integers, lists
+
+from ..structures import divide_chunks, flatten
+
+
+def test_flatten() -> None:
+    nested = [(1, 2, 3), 3, [6, 7]]
+
+    flat = list(flatten(nested))
+
+    assert len(flat) == 6
+
+    nested = ([1, 2, 3], 3, [6, 7])
+
+    flat = list(flatten(nested))
+
+    assert len(flat) == 6
+
+    deep_nested = [[[[[[[[1]]]]]]]]
+    assert next(flatten(deep_nested)) == 1
+
+    x = list(flatten(deep_nested, max_depth=5))
+    assert isinstance(x, list)
+    assert len(x) == 1
+
+    deep_nested = [[[[[[[[1]]]]]]]]
+    assert list(flatten(deep_nested)) == [1]
+
+    deep_nested = [[[[[[[[1]]]]]]]]
+    _ = list(flatten(deep_nested, max_depth=5)) == [[[[1]]]]
+
+    deep_nested = [[[[[[[[1]]], [2]]]]]]
+    _ = list(flatten(deep_nested, max_depth=2)) == [[[[[[[1]]], [2]]]]]
+
+    recursive: list[Any] = [None]
+    recursive[0] = recursive
+
+    with pytest.raises(RecursionError):
+        next(flatten(recursive))
+
+    y = next(flatten(recursive, max_depth=100))
+
+    assert isinstance(y, list)
+    assert y == recursive
+    assert y == recursive[0]
+    assert y == recursive[0][0]
+
+
+@given(
+    lst=lists(integers(), min_size=1, max_size=100),
+)
+def test_divide_chunks(lst: list[Any]) -> None:
+    m = len(lst)
+
+    for N in range(1, m + 1):
+        chunked = list(divide_chunks(lst, N))
+
+        k = len(chunked)
+
+        if m % N == 0:
+            assert k == m // N
+        else:
+            assert k == m // N + 1
+
+
+def test_divide_chunks_errors() -> None:
+    with pytest.raises(TypeError):
+        divide_chunks([])  # pyright: ignore[reportCallIssue]
+
+    with pytest.raises(ValueError):
+        next(divide_chunks([1, 2, 3], 0))
+
+    with pytest.raises(ValueError):
+        next(divide_chunks([1, 2, 3], -5))
+
+    with pytest.raises(ValueError):
+        next(divide_chunks([], 2))  # pyright: ignore[reportUnknownArgumentType]
