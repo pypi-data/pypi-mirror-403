@@ -1,0 +1,83 @@
+from typing import Callable, Generic, Type, TypeVar
+from abc import ABC, abstractmethod
+
+_T = TypeVar("T")
+
+class InvalidVersionType:
+    """Class of InvalidVersion singleton (sentinel)."""
+
+    __slots__ = ()
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(InvalidVersionType, cls).__new__(cls)
+        return cls._instance
+
+    def __repr__(self):
+        return 'InvalidVersion'
+
+InvalidVersion: InvalidVersionType = InvalidVersionType()
+
+
+class PropertyMeta(Generic[_T], ABC):
+    """Base class for property metadata."""
+
+    @staticmethod
+    @abstractmethod
+    def serialize(
+        v: _T,
+        version: int,
+        ref_to_idx: dict[str, int]
+    ) -> bytes | InvalidVersionType:
+        """Serializes the value `v`.
+
+        Args:
+            v (T): Value to serialize
+            version (int): Version of the property
+            ref_to_idx (dict[str, int]): Index of a brick from its index
+
+        Returns:
+            bytes | InvalidVersionType: Result as bytes object or InvalidVersion sentinel
+            if the property does not support this version.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def deserialize(v: bytes, version: int) -> _T | InvalidVersionType:
+        """Deserializes the value `v` for the given `version`.
+
+        Args:
+            v (bytes): Value to deserialize
+            version (int): Version of the property
+
+        Returns:
+            T | InvalidVersionType: Result as deserialized value or InvalidVersion sentinel
+            if the property does not support this version.
+        """
+
+
+pmeta_registry: dict[str, Type[PropertyMeta]] = {}
+
+_Tpm = TypeVar('_Tpm', bound=Type[PropertyMeta])
+
+def register(
+    name: str,
+    registry: dict[str, Type[PropertyMeta]] | None = None
+) -> Callable[[_Tpm], _Tpm]:
+    """
+    Decorator to register a PropertyMeta subclasses.
+    If registry is none, will use BrickEdit's default registry pmeta_registry.
+    
+    Args:
+        name (str): Name of the property type.
+        registry (dict[str, Type[PropertyMeta]]), optional: Registry to use. Defaults to None.
+    """
+
+    if registry is None:
+        registry = pmeta_registry
+
+    def _decorator(class_: _Tpm) -> _Tpm:
+        registry[name] = class_
+        return class_
+    return _decorator

@@ -1,0 +1,28 @@
+from typing import Final
+
+BRICKEDIT_VERSION_MAJOR: Final[int] = 5
+BRICKEDIT_VERSION_MINOR: Final[int] = 0
+BRICKEDIT_VERSION_PATCH: Final[int] = 1
+BRICKEDIT_IS_DEV_VERSION: Final[bool] = False
+BRICKEDIT_VERSION_FULL: Final[str] = (
+    str(BRICKEDIT_VERSION_MAJOR) + '.' +
+    str(BRICKEDIT_VERSION_MINOR) + '.' +
+    str(BRICKEDIT_VERSION_PATCH) +
+    ("-dev" if BRICKEDIT_IS_DEV_VERSION else "")
+)
+
+FILE_DEV_VERSION: Final[int] = 17
+FILE_EXP_VERSION: Final[int] = 17
+FILE_MAIN_VERSION: Final[int] = 16
+FILE_LEGACY_VERSION: Final[int] = 6
+
+FILE_MAX_SUPPORTED_VERSION: Final[int] = 17
+FILE_MIN_SUPPORTED_VERSION: Final[int] = 16
+
+GROUPS_UPDATE: Final[int] = 17
+FILE_UNIT_UPDATE: Final[int] = 15
+
+VISIBILITY_PUBLIC: Final[int] = 0
+VISIBILITY_FRIENDS: Final[int] = 1
+VISIBILITY_PRIVATE: Final[int] = 2
+VISIBILITY_HIDDEN: Final[int] = 3

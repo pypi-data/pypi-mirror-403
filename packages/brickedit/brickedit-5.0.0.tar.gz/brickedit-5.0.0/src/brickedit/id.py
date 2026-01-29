@@ -1,0 +1,16 @@
+from typing import Optional
+
+class ID:
+
+    __slots__ = ('id', 'weld', 'editor')
+
+    def __init__(self, id_: str, weld: Optional[str] = None, editor: Optional[str] = None):
+        self.id: str = id_
+        self.weld: Optional[str] = weld
+        self.editor: Optional[str] = editor
+
+    def __repr__(self):
+        return f'ID({self.id!r}, {self.weld!r}, {self.editor!r})'
+
+    def __eq__(self, other):
+        return self.id == other.id and self.weld == other.weld and self.editor == other.editor
