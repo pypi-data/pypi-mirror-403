@@ -1,0 +1,162 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cycletls"
+version = "0.0.3"
+description = "Advanced TLS fingerprinting library with JA3, JA4, HTTP/2, HTTP/3, WebSocket, and SSE support - bypass anti-bot detection by impersonating real browsers"
+readme = "README.md"
+authors = [
+    {name = "Danny-Dasilva", email = "dannydasilva.solutions@gmail.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = [
+    # Core TLS fingerprinting
+    "tls", "tls-fingerprint", "fingerprinting", "ja3", "ja3-fingerprint", "ja4",
+    # Protocol support
+    "http2", "http2-fingerprint", "http3", "quic", "websocket", "sse",
+    # Use cases (high-value SEO terms)
+    "http-client", "web-scraping", "anti-bot", "bot-detection-bypass",
+    "browser-impersonation", "curl-impersonate",
+    # Ecosystem compatibility
+    "requests", "akamai-fingerprint", "cloudflare-bypass",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "cffi>=1.15.0",
+    "orjson>=3.9.0",
+    "ormsgpack>=1.5.0",  # Rust-based msgpack, 10-30% faster
+    "websockets>=10.0",
+    "pydantic>=2.0.0",
+    "websocket-client>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.18.0",
+    "pytest-xdist>=3.0.0",
+    "pytest-rerunfailures>=14.0",
+    "ruff>=0.8.0",
+    "pyright>=1.1.390",
+    "build>=1.0.0",
+]
+docs = [
+    "sphinx>=7.0.0,<9.0.0",  # Pin to 8.x to avoid 9.x issues
+    "sphinx-copybutton>=0.5.0",
+    "sphinx-autodoc-typehints>=1.23.0",
+    "myst-parser>=2.0.0",
+    "furo>=2023.0.0",
+    "requests>=2.31.0",  # Required by sphinx.builders.linkcheck
+]
+benchmark = [
+    # HTTP client libraries for testing
+    "requests>=2.31.0",
+    "httpx>=0.24.0",
+    "aiohttp>=3.8.0",
+    "curl-cffi>=0.5.0",
+    "niquests>=3.0.0",
+    "pycurl>=7.45.0",
+    "tls-client>=0.2.0",
+    "rnet>=0.0.1",
+    # TLS spoofing libraries
+    "primp>=0.6.0",
+    "hrequests>=0.7.0",
+    # Visualization and data processing
+    "matplotlib>=3.7.0",
+    "pandas>=2.0.0",
+    # Performance utilities
+    "uvloop>=0.17.0; sys_platform != 'win32'",
+]
+
+[project.urls]
+Homepage = "https://github.com/Danny-Dasilva/cycletls_python"
+Documentation = "https://github.com/Danny-Dasilva/cycletls_python#readme"
+Repository = "https://github.com/Danny-Dasilva/cycletls_python"
+"Bug Tracker" = "https://github.com/Danny-Dasilva/cycletls_python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cycletls"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"cycletls/dist" = "cycletls/dist"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = [
+    "__pycache__",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".vscode",
+    ".venv",
+    "dist",
+    "doc",
+    "golang",
+    "benchmarks",
+    "examples",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4"]
+ignore = [
+    "E501",   # Line length handled by formatter
+    "F405",   # Star imports used intentionally for re-exports in __init__.py
+    "B904",   # raise from - not always clearer
+]
+# Note: UP (pyupgrade) and SIM rules removed to avoid forcing style migrations
+
+[tool.ruff.lint.isort]
+known-first-party = ["cycletls"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+exclude = [
+    "build/",
+    "dist/",
+    "golang/",
+    "benchmarks/",
+    "tests/",
+    "examples/",
+    "scripts/",
+]
+reportMissingImports = true
+reportMissingTypeStubs = false
+# FFI bindings use dynamic attributes loaded from Go shared library at runtime
+reportAttributeAccessIssue = false
+reportOptionalCall = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "live: marks tests that run against live tlsfingerprint.com (deselect with '-m \"not live\"')",
+    "blocking: marks tests as CI-blocking - failures will fail the CI pipeline",
+]
+

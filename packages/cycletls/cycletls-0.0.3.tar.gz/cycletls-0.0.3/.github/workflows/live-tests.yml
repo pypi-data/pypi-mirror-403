@@ -1,0 +1,58 @@
+name: Live Tests
+
+concurrency:
+  group: live-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+env:
+  PYTHON_PATH: ./
+
+jobs:
+  live-tests:
+    name: Live Tests (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: |
+            go.sum
+            golang/go.sum
+
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build
+          key: go-build-${{ runner.os }}-${{ hashFiles('golang/**', 'go.sum') }}
+          restore-keys: |
+            go-build-${{ runner.os }}-
+
+      - name: Build CycleTLS shared library
+        run: |
+          chmod +x scripts/build_shared_lib.sh
+          ./scripts/build_shared_lib.sh
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run live tests
+        run: uv run pytest -v --color=yes --reruns=3 -m "live and not blocking" tests/
