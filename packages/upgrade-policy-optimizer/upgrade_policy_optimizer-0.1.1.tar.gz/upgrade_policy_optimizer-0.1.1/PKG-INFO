@@ -1,0 +1,465 @@
+Metadata-Version: 2.4
+Name: upgrade-policy-optimizer
+Version: 0.1.1
+Summary: A Python library for solving finite Markov Decision Processes using value iteration
+Author-email: Eduard <eonofrei1999@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/eonof/upgrade-policy-optimizer
+Project-URL: Repository, https://github.com/eonof/upgrade-policy-optimizer
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=1.24.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Dynamic: license-file
+
+# upgrade-policy-optimizer
+
+**upgrade-policy-optimizer** is a Python library for solving sequential decision-making problems under uncertainty.
+
+> Given states, actions, probabilities, and costs, compute the optimal policy that minimizes expected total cost to reach a goal.
+
+It models problems as finite **Markov Decision Processes (MDPs)** and solves them using the **Bellman optimality equation** (value iteration).
+
+## 🚀 **JSON-Based Solver - No Programming Required!**
+
+Define your problem in JSON and get the optimal strategy:
+
+```bash
+python3 -m upo.cli my_problem.json
+```
+
+See [`docs/JSON_GUIDE.md`](docs/JSON_GUIDE.md) for format details.
+
+Or from Python:
+
+```python
+from upo import solve_from_json
+result = solve_from_json("my_problem.json")  # General-purpose format
+```
+
+## 📖 **New to MDPs? Start Here!**
+
+**👉 [Practical Guide: When and How to Use This Tool](docs/PRACTICAL_GUIDE.md)**
+
+This guide explains:
+
+- ✅ How to know if this tool can solve your problem
+- ✅ What questions it answers (with real examples)
+- ✅ Simple explanations of deployment, manufacturing, and investment examples
+- ✅ How to recognize patterns in your own problems
+- ✅ Common misconceptions and key lessons
+
+**Perfect for**: Business users, product managers, engineers new to optimization
+
+## 📊 **Ideal for Data-Driven Teams**
+
+**Have metrics? This tool is perfect for you!**
+
+If you track success rates, costs, or failure rates → **you're ready to optimize!**
+
+- ✅ Use real data for accurate results
+- ✅ Quantify exact savings (dollars/hours)
+- ✅ Validate predictions against actual outcomes
+- ✅ Make data-backed decisions your team can trust
+
+---
+
+## 📚 **Documentation Map**
+
+**Choose your path based on your needs:**
+
+### 🎯 **"Will this solve my problem?"**
+
+→ [**Practical Guide**](docs/PRACTICAL_GUIDE.md) - Real examples, simple explanations, pattern recognition
+
+### 📋 **"I need to configure my problem"**
+
+→ [**JSON Configuration Guide**](docs/JSON_GUIDE.md) - Complete format reference
+
+### 💻 **"I want to use the Python API"**
+
+→ [**API Reference**](#api-reference) - Programmatic usage examples
+
+### 🎓 **"I want to understand the math"**
+
+→ [**Algorithm Walkthrough**](docs/WALKTHROUGH.md) - Value iteration explained
+
+### 🔧 **"How was this implemented?"**
+
+→ [**Implementation Notes**](docs/IMPLEMENTATION_NOTES.md) - Design decisions
+
+### ✅ **"How do I know it works?"**
+
+→ [**Verification Tests**](tests/VERIFICATION.md) - Algorithm verification
+
+---
+
+## Why This Exists
+
+A lot of real processes are not just "probability calculations".
+
+They are:
+
+- **Multi-step** processes
+- Have **random outcomes** (success/failure)
+- Impose **penalties on failure** (loss of progress)
+- Allow **paid risk-reduction options** (insurance / safety mechanisms / retries)
+
+This project answers:
+
+> **What should I do at each step to minimize long-run expected cost?**
+
+## What the Library Does
+
+### Given:
+
+- A set of discrete **states** $S$
+- A **target terminal state** $T$
+- Available **actions per state** $A(s)$
+- **Action costs**
+- **Transition probabilities** (or success/failure probabilities)
+- **Setback rules** (how failures move you backward)
+
+### The Library Computes:
+
+- **$V(s)$**: Expected minimum cost to reach the target from state $s$
+- **$\pi(s)$**: Optimal action/policy at each state
+- Comparative **"worth it?"** metrics across actions
+
+## Core Idea: Bellman Optimality
+
+The **Bellman optimality principle** is:
+
+> The optimal decision now is the one that minimizes  
+> **immediate cost + expected optimal future cost**.
+
+### Standard Form (MDP)
+
+$$V(s) = \min_{a} \left[ C(s,a) + \sum_{s'} P(s'|s,a) \, V(s') \right]$$
+
+**Where:**
+
+- $V(s)$ = best expected cost starting at state $s$
+- $C(s,a)$ = immediate cost for action $a$ at state $s$
+- $P(s'|s,a)$ = probability of transitioning to state $s'$
+
+### Simplified Form for Success/Failure Processes
+
+Many real systems (and our default templates) have only two outcomes:
+
+- **Success**
+- **Failure** (setback)
+
+So the equation becomes:
+
+$$Q(s,a) = C(s,a) + P(s,a) \cdot V(s_{\text{success}}) + (1 - P(s,a)) \cdot V(s_{\text{fail}})$$
+
+$$V(s) = \min_{a} Q(s,a)$$
+
+This compact equation is **powerful**: it naturally accounts for deep failure cascades (e.g. repeated failures pushing you far backward).
+
+## Outputs and Visualizations
+
+The library can generate:
+
+### 1) Optimal Policy per State
+
+Which action to take at each step.
+
+### 2) Expected Cost Curves _(Planned)_
+
+> **🚧 Work in Progress**: This feature is not yet implemented.
+
+Plots of:
+
+- Expected cost using each action
+- Optimal expected cost curve <!-- (the "best possible envelope") -->
+
+### 3) ROI / Savings Graphs _(Planned)_
+
+> **🚧 Work in Progress**: This feature is not yet implemented.
+
+Shows how much each risk-reduction option saves vs baseline.
+
+These visuals make it easy to explain **why** a particular action is optimal.
+
+## Installation
+
+**👉 For detailed installation and quick start instructions, see [QUICKSTART.md](QUICKSTART.md)**
+
+### Quick Install
+
+```bash
+# From source
+git clone https://github.com/eonof/upgrade-policy-optimizer
+cd upgrade-policy-optimizer
+pip install -e ".[dev]"  # With dev dependencies
+# or
+pip install -e .  # Basic install
+```
+
+---
+
+## Quick Start
+
+**👉 For complete installation instructions, examples, and tutorials, see [QUICKSTART.md](QUICKSTART.md)**
+
+Quick example:
+
+```python
+from upo import MDP, solve_mdp_value_iteration
+
+mdp = MDP.from_dict(
+    states=["start", "goal"],
+    terminal_states=["goal"],
+    transitions_dict={
+        "start": {"try": {"goal": 0.7, "start": 0.3}}
+    },
+    costs_dict={"start": {"try": 1.0}}
+)
+
+result = solve_mdp_value_iteration(mdp)
+print(f"Expected cost: {result.get_value('start'):.2f}")
+print(f"Optimal action: {result.get_policy('start')}")
+```
+
+Or use JSON configuration:
+
+```bash
+# If package is installed:
+python3 -m upo.cli examples/configs/manufacturing_process.json
+
+# If not installed, use PYTHONPATH:
+PYTHONPATH=src python3 -m upo.cli examples/configs/manufacturing_process.json
+```
+
+---
+
+## Configuration Model (Conceptual)
+
+A configuration defines:
+
+- **State range** / terminal state
+- **Actions** (including probability modifiers and/or setback modifiers)
+- **Per-state costs**
+- **Base success probabilities**
+
+Typical actions represent **"risk tools"**, such as:
+
+- Increasing success chance
+- Preventing setback on failure
+- Reducing penalty severity
+
+## Potential Applications
+
+This framework can model any multi-step process with probabilistic outcomes and setback penalties:
+
+### Software & DevOps
+
+- **CI/CD pipelines** with rollback costs on failed deployments
+- **Data migration** with partial completion and rollback penalties
+- **Distributed transaction retries** with backoff strategies
+
+### Manufacturing & Operations
+
+- **Quality control loops** where failed items require rework
+- **Multi-stage assembly** where defects force partial disassembly
+- **Equipment calibration** with precision levels and recalibration costs
+
+### Finance & Risk Management
+
+- **Investment strategies** with transaction costs and stop-loss triggers
+- **Insurance optimization** (when to buy coverage vs. accept risk)
+- **Resource allocation** under uncertainty with reallocation penalties
+
+Each is the same underlying math: an MDP solved via Bellman optimality.
+
+**👉 For detailed examples with real-world scenarios and explanations, see [PRACTICAL_GUIDE.md](docs/PRACTICAL_GUIDE.md)**
+
+## Project Origin
+
+This project was inspired by sequential decision-making problems where:
+
+- Each step has a **cost** and **success probability**
+- **Failures can set you back** (loss of progress, rework required)
+- Multiple strategies are available with different cost/risk trade-offs
+- The optimal decision is **not always obvious** - sometimes "cheap" steps need protection if failure risks expensive recovery
+
+The key insight is that local optimization (choosing the best option at each step) doesn't always yield the globally optimal strategy. You need to consider the full path to the goal, including the cost of recovery from failures.
+
+This library provides a general-purpose solver for any such stochastic sequential decision problem.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## API Reference
+
+### Core Classes
+
+#### `MDP`
+
+Represents a finite Markov Decision Process.
+
+**Creation Methods:**
+
+- `MDP(...)`: Direct construction with numpy arrays
+- `MDP.from_dict(...)`: Convenient dictionary-based construction with labels
+
+**Key Methods:**
+
+- `is_terminal(state)`: Check if a state is terminal
+- `get_actions(state)`: Get available actions for a state
+- `get_cost(state, action)`: Get immediate cost for an action
+- `get_transition_probs(state, action)`: Get transition probability distribution
+
+#### `MDPResult`
+
+Result from solving an MDP.
+
+**Attributes:**
+
+- `V`: Value function (expected cost-to-go from each state)
+- `policy`: Optimal action for each state
+- `Q`: Q-function (state-action values)
+- `iterations`: Number of iterations performed
+- `converged`: Whether the algorithm converged
+- `residual`: Final maximum value difference
+
+**Key Methods:**
+
+- `get_value(state)`: Get optimal value for a state (supports labels)
+- `get_policy(state)`: Get optimal action for a state (supports labels)
+- `get_q_value(state, action)`: Get Q-value for a state-action pair
+
+#### `solve_mdp_value_iteration`
+
+Solve an MDP using value iteration.
+
+```python
+solve_mdp_value_iteration(
+    mdp: MDP,
+    tol: float = 1e-9,
+    max_iter: int = 100000,
+    initial_v: Optional[np.ndarray] = None,
+    validate: bool = True
+) -> MDPResult
+```
+
+**Parameters:**
+
+- `mdp`: The MDP to solve
+- `tol`: Convergence tolerance (max absolute value change)
+- `max_iter`: Maximum iterations
+- `initial_v`: Optional initial value function
+- `validate`: Whether to validate MDP structure before solving
+
+**Returns:**
+
+- `MDPResult` with optimal value function, policy, and convergence info
+
+## Command-Line Interface
+
+The CLI provides a simple way to solve MDPs from JSON configuration files without writing Python code.
+
+### Basic Usage
+
+```bash
+# If package is installed:
+python3 -m upo.cli examples/configs/manufacturing_process.json
+
+# If not installed, use PYTHONPATH:
+PYTHONPATH=src python3 -m upo.cli examples/configs/manufacturing_process.json
+```
+
+### Command-Line Options
+
+- `--tol <float>`: Convergence tolerance (default: 1e-9)
+
+  ```bash
+  python3 -m upo.cli problem.json --tol 1e-12
+  ```
+
+- `--max-iter <int>`: Maximum iterations (default: 100000)
+
+  ```bash
+  python3 -m upo.cli problem.json --max-iter 50000
+  ```
+
+- `--no-validate`: Skip MDP validation (faster but potentially unsafe)
+
+  ```bash
+  python3 -m upo.cli problem.json --no-validate
+  ```
+
+- `--verbose` / `-v`: Show detailed output including Q-values
+
+  ```bash
+  python3 -m upo.cli problem.json --verbose
+  ```
+
+- `--version`: Show version information
+  ```bash
+  python3 -m upo.cli --version
+  ```
+
+### Output
+
+The CLI displays:
+
+- Optimal policy (action to take at each state)
+- Expected costs from each state
+- Convergence information (iterations, residual)
+- Q-values (with `--verbose` flag)
+
+## Project Structure
+
+```
+upgrade-policy-optimizer/
+├── src/upo/              # Core library
+│   ├── __init__.py      # Package exports
+│   ├── mdp.py           # MDP data structures
+│   ├── solver.py        # Value iteration solver
+│   ├── result.py        # Result container
+│   ├── validate.py      # Validation utilities
+│   ├── json_solver.py   # JSON-based solver
+│   └── cli.py           # Command-line interface
+├── tests/               # Test suite
+│   ├── test_mdp.py
+│   ├── test_solver.py
+│   ├── test_validate.py
+│   └── test_sanity_checks.py
+├── examples/            # Usage examples
+│   └── configs/         # Example MDP configurations
+├── docs/                # Documentation
+├── pyproject.toml       # Package configuration
+└── README.md            # This file
+```
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Quick checklist:
+
+- Add tests for new features
+- Run `pytest` to verify tests pass
+- Format code with `black`
+- Check types with `mypy`
+- Update documentation as needed
