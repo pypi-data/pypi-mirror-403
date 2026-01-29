@@ -1,0 +1,61 @@
+name: Run Pytest  # ワークフローの名前
+
+on:
+  push:
+    branches:
+      - main  # mainブランチへのpushで実行
+  pull_request:
+    branches:
+      - main  # mainブランチへのPRが対象
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest  # テストは最新のUbuntu環境で実行
+
+    env:  # すべてのステップで使える環境変数を定義
+      NOTION_SECRET: ${{ secrets.NOTION_SECRET }}
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4  # リポジトリのコードをチェックアウトする
+
+      - name: Set up Python
+        uses: actions/setup-python@v4  # Pythonのセットアップを行う
+        with:
+          python-version: 3.11  # Python 3.11を指定
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run ruff check
+        run: |
+          uv run ruff check
+
+      - name: Run ruff format (check only)
+        run: |
+          uv run ruff format --check
+
+      - name: Pytest
+        run: |
+          uv run pytest -m all -n auto --dist=loadfile --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=lotion test/ | tee pytest-coverage.txt
+
+      - name: Pytest coverage comment
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: ./pytest-coverage.txt
+          junitxml-path: ./pytest.xml
