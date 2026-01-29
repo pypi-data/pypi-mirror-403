@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Charni Road – PNG + SVG Overlay Demo</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #111;
+      font-family: Arial, sans-serif;
+    }
+
+    #viewer {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      cursor: grab;
+      overflow: hidden;
+    }
+
+    #content {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+    }
+
+    #map-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    #map-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: auto;
+    }
+
+    .amenity {
+      fill: #00bfff;
+      cursor: pointer;
+    }
+
+    .amenity-label {
+      fill: white;
+      font-size: 28px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    .path-line {
+      stroke: red;
+      stroke-width: 10;
+      fill: none;
+      vector-effect: non-scaling-stroke;
+      stroke-dasharray: 20 10;
+    }
+  </style>
+</head>
+<body>
+
+<div id="viewer">
+  <div id="content">
+
+    <!-- BACKGROUND PNG -->
+    <img
+      id="map-image"
+      src="charniroad.png"
+      width="3000"
+      height="2000"
+      alt="Charni Road Layout"
+    />
+
+    <!-- SVG OVERLAY -->
+    <svg
+      id="map-overlay"
+      width="3000"
+      height="2000"
+      viewBox="0 0 3000 2000"
+    >
+
+      <!-- PATH EXAMPLE (PF2 → Water Booth) -->
+      <path
+        id="path_pf2_water"
+        class="path-line"
+        d="M 1200 950 L 1450 950"
+      />
+
+      <!-- AMENITY: WATER (PF2) -->
+      <circle
+        id="amenity_water_pf2"
+        class="amenity"
+        cx="1450"
+        cy="950"
+        r="25"
+      />
+
+      <text
+        x="1485"
+        y="960"
+        class="amenity-label"
+      >
+        Water (PF2)
+      </text>
+
+    </svg>
+  </div>
+</div>
+
+<script>
+  const viewer = document.getElementById("viewer");
+  const content = document.getElementById("content");
+
+  let scale = 1;
+  let translateX = 0;
+  let translateY = 0;
+  let isDragging = false;
+  let startX, startY;
+
+  function updateTransform() {
+    content.style.transform =
+      `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+  }
+
+  // Zoom with mouse wheel
+  viewer.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const zoomFactor = 0.1;
+    scale += e.deltaY < 0 ? zoomFactor : -zoomFactor;
+    scale = Math.min(Math.max(scale, 0.4), 4);
+    updateTransform();
+  });
+
+  // Drag to pan
+  viewer.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    startX = e.clientX - translateX;
+    startY = e.clientY - translateY;
+    viewer.style.cursor = "grabbing";
+  });
+
+  viewer.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    translateX = e.clientX - startX;
+    translateY = e.clientY - startY;
+    updateTransform();
+  });
+
+  viewer.addEventListener("mouseup", () => {
+    isDragging = false;
+    viewer.style.cursor = "grab";
+  });
+
+  viewer.addEventListener("mouseleave", () => {
+    isDragging = false;
+    viewer.style.cursor = "grab";
+  });
+
+  // Amenity click demo
+  document
+    .getElementById("amenity_water_pf2")
+    .addEventListener("click", () => {
+      alert("Water Booth – Platform 2");
+    });
+</script>
+
+</body>
+</html>
