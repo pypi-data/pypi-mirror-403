@@ -1,0 +1,180 @@
+"""IAM Normalizer - Transform IAM data to canonical schema."""
+
+from __future__ import annotations
+
+import json
+import uuid
+from typing import Any
+
+from cyntrisec.core.schema import Asset, Finding, FindingSeverity, Relationship
+
+
+class IamNormalizer:
+    """Normalize IAM data to canonical assets and relationships."""
+
+    def __init__(self, snapshot_id: uuid.UUID):
+        self._snapshot_id = snapshot_id
+        self._role_assets: dict[str, Asset] = {}
+
+    def normalize(
+        self,
+        data: dict[str, Any],
+    ) -> tuple[list[Asset], list[Relationship], list[Finding]]:
+        """Normalize IAM data."""
+        assets: list[Asset] = []
+        relationships: list[Relationship] = []
+        findings: list[Finding] = []
+
+        # Normalize users
+        for user in data.get("users", []):
+            asset, user_findings = self._normalize_user(user)
+            assets.append(asset)
+            findings.extend(user_findings)
+
+        # Normalize roles
+        for role in data.get("roles", []):
+            asset, rels, role_findings = self._normalize_role(role)
+            assets.append(asset)
+            self._role_assets[role["RoleName"]] = asset
+            relationships.extend(rels)
+            findings.extend(role_findings)
+
+        # Normalize instance profiles
+        for profile in data.get("instance_profiles", []):
+            asset = self._normalize_instance_profile(profile)
+            assets.append(asset)
+
+        return assets, relationships, findings
+
+    def _normalize_user(
+        self,
+        user: dict[str, Any],
+    ) -> tuple[Asset, list[Finding]]:
+        """Normalize an IAM user."""
+        user_name = user["UserName"]
+        user_arn = user["Arn"]
+
+        asset = Asset(
+            snapshot_id=self._snapshot_id,
+            asset_type="iam:user",
+            aws_resource_id=user_arn,
+            arn=user_arn,
+            name=user_name,
+            properties={
+                "user_id": user.get("UserId"),
+                "created_date": str(user.get("CreateDate")),
+                "password_last_used": str(user.get("PasswordLastUsed"))
+                if user.get("PasswordLastUsed")
+                else None,
+            },
+        )
+
+        findings: list[Finding] = []
+
+        # Check for root user
+        if user_name == "root":
+            findings.append(
+                Finding(
+                    snapshot_id=self._snapshot_id,
+                    asset_id=asset.id,
+                    finding_type="iam-root-user",
+                    severity=FindingSeverity.info,
+                    title="Root user exists",
+                    description="The AWS root user should only be used for account management tasks",
+                )
+            )
+
+        return asset, findings
+
+    def _normalize_role(
+        self,
+        role: dict[str, Any],
+    ) -> tuple[Asset, list[Relationship], list[Finding]]:
+        """Normalize an IAM role with trust relationships."""
+        role_name = role["RoleName"]
+        role_arn = role["Arn"]
+
+        # Check if this is a sensitive/admin role
+        is_sensitive = any(
+            kw in role_name.lower() for kw in ["admin", "root", "power", "full-access"]
+        )
+
+        attached_policies = role.get("AttachedPolicies", []) or []
+        inline_policies = role.get("InlinePolicies", []) or []
+        policy_documents = [p.get("Document") for p in attached_policies if p.get("Document")] + [
+            p.get("Document") for p in inline_policies if p.get("Document")
+        ]
+
+        # Parse and store trust policy
+        trust_policy = role.get("AssumeRolePolicyDocument")
+        if trust_policy and isinstance(trust_policy, str):
+            trust_policy = json.loads(trust_policy)
+
+        asset = Asset(
+            snapshot_id=self._snapshot_id,
+            asset_type="iam:role",
+            aws_resource_id=role_arn,
+            arn=role_arn,
+            name=role_name,
+            properties={
+                "role_id": role.get("RoleId"),
+                "created_date": str(role.get("CreateDate")),
+                "max_session_duration": role.get("MaxSessionDuration"),
+                "description": role.get("Description"),
+                "attached_policies": attached_policies,
+                "inline_policies": inline_policies,
+                "policy_documents": policy_documents,
+                "trust_policy": trust_policy,
+            },
+            is_sensitive_target=is_sensitive,
+        )
+
+        relationships: list[Relationship] = []
+        findings: list[Finding] = []
+
+        # Check trust policy for security issues (already parsed above)
+        if trust_policy:
+            for statement in trust_policy.get("Statement", []):
+                if statement.get("Effect") != "Allow":
+                    continue
+
+                principal = statement.get("Principal", {})
+
+                # Check for overly permissive trust
+                if principal == "*" or principal.get("AWS") == "*":
+                    findings.append(
+                        Finding(
+                            snapshot_id=self._snapshot_id,
+                            asset_id=asset.id,
+                            finding_type="iam-role-trust-any-principal",
+                            severity=FindingSeverity.critical,
+                            title=f"IAM role {role_name} trusts any principal",
+                            description="Role trust policy allows any AWS principal to assume it",
+                            remediation="Restrict the Principal to specific AWS accounts or roles",
+                            evidence={"trust_policy": trust_policy},
+                        )
+                    )
+
+        return asset, relationships, findings
+
+    def _normalize_instance_profile(self, profile: dict[str, Any]) -> Asset:
+        """Normalize an IAM instance profile."""
+        profile_name = profile.get("InstanceProfileName")
+        profile_arn = profile.get("Arn")
+        roles = profile.get("Roles", [])
+        role_arns = [r.get("Arn") for r in roles if r.get("Arn")]
+        role_arn = role_arns[0] if role_arns else None
+
+        return Asset(
+            snapshot_id=self._snapshot_id,
+            asset_type="iam:instance-profile",
+            aws_resource_id=str(profile_arn or profile_name),
+            arn=profile_arn,
+            name=profile_name or profile_arn or "instance-profile",
+            properties={
+                "instance_profile_id": profile.get("InstanceProfileId"),
+                "created_date": str(profile.get("CreateDate")),
+                "role_arn": role_arn,
+                "role_arns": role_arns,
+            },
+        )
