@@ -1,0 +1,99 @@
+Metadata-Version: 2.4
+Name: vollsegzarr
+Version: 0.0.1
+Summary: Zarr-enabled segmentation tool for biological cells of irregular size and shape in 3D and 2D.
+Home-page: https://github.com/Kapoorlabs-CAPED/vollsegzarr
+Author: Varun Kapoor,Claudia Carabana Garcia,Mari Tolonen,Jakub Sedzinski
+Author-email: randomaccessiblekapoor@gmail.com
+License: BSD-3-Clause
+Project-URL: Bug Tracker, https://github.com/Kapoorlabs-CAPED/vollsegzarr/issues
+Project-URL: Documentation, https://github.com/Kapoorlabs-CAPED/vollsegzarr#README.md
+Project-URL: Source Code, https://github.com/Kapoorlabs-CAPED/vollsegzarr
+Project-URL: User Support, https://github.com/Kapoorlabs-CAPED/vollsegzarr/issues
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pandas
+Requires-Dist: scipy
+Requires-Dist: tifffile
+Requires-Dist: zarr
+Requires-Dist: matplotlib
+Requires-Dist: napari
+Requires-Dist: cellpose
+Requires-Dist: torch
+Requires-Dist: test_tube
+Requires-Dist: lightning
+Requires-Dist: pynvml
+Requires-Dist: poetry
+Requires-Dist: stardist
+Provides-Extra: testing
+Requires-Dist: tox; extra == "testing"
+Requires-Dist: pytest; extra == "testing"
+Requires-Dist: pytest-cov; extra == "testing"
+Dynamic: license-file
+
+# VollSegZarr
+
+**Zarr-enabled volume segmentation for extremely large microscopy images**
+
+VollSegZarr is a fork of [VollSeg](https://github.com/Kapoorlabs-CAPED/vollseg) that adds native support for **Zarr** format, enabling efficient processing of multi-terabyte microscopy volumes that don't fit in memory.
+
+## Features
+
+- **Zarr Format Support**: Native support for chunked, compressed Zarr arrays
+- **Memory Efficient**: Process images larger than available RAM
+- **100% Backward Compatible**: Works with all existing TIFF workflows
+- **Automatic Format Detection**: Transparently handles TIFF and Zarr
+- **Better Compression**: 60-80% smaller file sizes with Zstd
+- **Cloud Ready**: Efficient streaming from cloud storage
+- **All VollSeg Modes**: StarDist, UNET, Hybrid, CellPose, etc.
+
+## Installation
+
+```bash
+pip install vollsegzarr
+```
+
+## Quick Start
+
+```python
+from vollsegzarr import VollSeg, StarDist3D
+from vollsegzarr.zarr_io import imread, imwrite
+
+# Load model
+star_model = StarDist3D.local_from_pretrained("Carcinoma_cells")
+
+# Segment from Zarr (or TIFF - automatic detection)
+image = imread("data/volume.zarr")
+results = VollSeg(image, star_model=star_model, axes="ZYX", n_tiles=(4, 8, 8))
+
+# Save to Zarr
+imwrite("output/labels.zarr", results[1], compression='zstd')
+```
+
+See [README_ZARR.md](README_ZARR.md) for full documentation.
+
+## Why Zarr?
+
+For huge images like (201, 5, 7577, 7577) ≈ 114 GB:
+- TIFF: 114 GB file, 2-5 min load, 114 GB RAM required
+- Zarr: 20-40 GB file, < 1 sec load, on-demand memory
+
+## License
+
+BSD-3-Clause
+
+## Credits
+
+Original VollSeg by Varun Kapoor et al. Zarr integration for large-scale imaging.
