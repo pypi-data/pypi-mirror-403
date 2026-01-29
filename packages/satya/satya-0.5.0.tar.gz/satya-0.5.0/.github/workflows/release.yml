@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options: [patch, minor, major]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install tools
+        run: pip install bump2version
+
+      - name: Configure git
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+
+      - name: Bump version
+        id: version
+        run: |
+          CURRENT=$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)
+          bump2version --current-version $CURRENT ${{ inputs.version_bump }} pyproject.toml Cargo.toml --allow-dirty
+          NEW=$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)
+          echo "version=$NEW" >> $GITHUB_OUTPUT
+
+      - name: Commit and tag
+        run: |
+          git add pyproject.toml Cargo.toml
+          git commit -m "release: v${{ steps.version.outputs.version }}"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push && git push --tags
