@@ -1,0 +1,1161 @@
+"""
+Backend Detail Modal
+
+Displays comprehensive backend/FastAPI information including routes,
+middleware stack, system metrics, and configuration details in a tabbed interface.
+"""
+
+import flet as ft
+from app.components.frontend.controls import (
+    BodyText,
+    ExpandArrow,
+    H3Text,
+    LabelText,
+    PrimaryText,
+    SecondaryText,
+)
+from app.components.frontend.theme import AegisTheme as Theme
+from app.services.system.models import ComponentStatus
+
+from ..cards.card_utils import create_progress_indicator, get_status_detail
+from .base_detail_popup import BaseDetailPopup
+from .modal_sections import MetricCard
+
+
+def _get_metric_color(percent: float) -> str:
+    """Get color based on metric percentage."""
+    if percent >= 90:
+        return Theme.Colors.ERROR
+    elif percent >= 70:
+        return Theme.Colors.WARNING
+    else:
+        return Theme.Colors.SUCCESS
+
+
+# HTTP method colors for route badges
+METHOD_COLORS = {
+    "GET": ft.Colors.BLUE,
+    "POST": ft.Colors.GREEN,
+    "PUT": ft.Colors.ORANGE,
+    "PATCH": ft.Colors.PURPLE,
+    "DELETE": ft.Colors.RED,
+}
+
+# Keywords to detect auth dependencies
+AUTH_KEYWORDS = [
+    "auth",
+    "token",
+    "verify",
+    "current_user",
+    "permission",
+    "oauth2",
+    "bearer",
+]
+
+
+def _has_auth_dependencies(dependencies: list[str]) -> bool:
+    """Check if route has authentication dependencies."""
+    if not dependencies:
+        return False
+    return any(
+        any(keyword in dep.lower() for keyword in AUTH_KEYWORDS) for dep in dependencies
+    )
+
+
+class FlowConnector(ft.Container):
+    """Vertical connector with arrow between flow sections."""
+
+    def __init__(self) -> None:
+        """Initialize flow connector."""
+        super().__init__()
+        self.content = ft.Column(
+            [
+                # Vertical line (thicker)
+                ft.Container(
+                    width=3,
+                    height=30,
+                    bgcolor=Theme.Colors.BORDER_DEFAULT,
+                    border_radius=2,
+                ),
+                # Arrow icon
+                ft.Icon(
+                    ft.Icons.ARROW_DROP_DOWN,
+                    size=20,
+                    color=Theme.Colors.BORDER_DEFAULT,
+                ),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=0,
+        )
+        self.padding = ft.padding.symmetric(vertical=Theme.Spacing.XS)
+
+
+class LifecycleInspector(ft.Container):
+    """Right-side inspector panel showing selected card details."""
+
+    def __init__(self) -> None:
+        """Initialize lifecycle inspector panel."""
+        super().__init__()
+        self._selected_card: LifecycleCard | None = None
+        self._name_text = PrimaryText("")
+        self._subtitle_text = SecondaryText("")
+        self._badge_container = ft.Container(visible=False)
+        self._details_column: ft.Column = ft.Column([], spacing=8)
+        self._showing_empty_state = True
+
+        # Main column that will swap between empty state and content
+        self._main_column = ft.Column(
+            [
+                ft.Icon(
+                    ft.Icons.TOUCH_APP, size=48, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+                SecondaryText("Select a lifecycle hook"),
+                SecondaryText("to inspect configuration", size=12),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=8,
+        )
+
+        self.content = self._main_column
+        self.bgcolor = ft.Colors.SURFACE_CONTAINER_HIGHEST
+        self.border_radius = Theme.Components.CARD_RADIUS
+        self.border = ft.border.all(1, ft.Colors.OUTLINE)
+        self.padding = ft.padding.all(Theme.Spacing.MD)
+        self.width = 300
+
+    def select_card(self, card: "LifecycleCard") -> None:
+        """Select a card and update inspector."""
+        # Deselect previous
+        if self._selected_card:
+            self._selected_card.set_selected(False)
+        # Select new
+        self._selected_card = card
+        card.set_selected(True)
+        # Show details
+        self.show_details(
+            card.name,
+            card.subtitle,
+            card._details,
+            card._badge_text,
+            card._badge_color,
+            card.section,
+        )
+
+    def _create_code_block(self, text: str, copyable: bool = False) -> ft.Container:
+        """Create styled code block for values."""
+        content_items: list[ft.Control] = [
+            ft.Text(
+                text,
+                font_family="monospace",
+                size=12,
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                selectable=True,
+                expand=True,
+            ),
+        ]
+        if copyable:
+            content_items.append(
+                ft.IconButton(
+                    icon=ft.Icons.COPY,
+                    icon_size=14,
+                    tooltip="Copy",
+                    on_click=lambda e: self._copy_to_clipboard(text),
+                ),
+            )
+        return ft.Container(
+            content=ft.Row(content_items, spacing=4),
+            bgcolor=ft.Colors.SURFACE,
+            border_radius=6,
+            padding=ft.padding.symmetric(horizontal=8, vertical=4),
+        )
+
+    def _copy_to_clipboard(self, text: str) -> None:
+        """Copy text to clipboard with feedback."""
+        if self.page:
+            self.page.set_clipboard(text)
+            self.page.open(ft.SnackBar(content=ft.Text("Copied to clipboard")))
+
+    def show_details(
+        self,
+        name: str,
+        subtitle: str,
+        details: dict[str, object],
+        badge_text: str | None = None,
+        badge_color: str | None = None,
+        section: str = "",
+    ) -> None:
+        """
+        Update inspector with card data.
+
+        Args:
+            name: Card name to display
+            subtitle: Card subtitle to display
+            details: Dict of key-value pairs to show
+            badge_text: Optional badge text (e.g., "Security")
+            badge_color: Badge background color
+            section: Section name for context header
+        """
+        self._name_text.value = name
+        self._subtitle_text.value = subtitle
+
+        # Update badge
+        if badge_text:
+            self._badge_container.content = LabelText(
+                badge_text, color=Theme.Colors.BADGE_TEXT
+            )
+            self._badge_container.padding = ft.padding.symmetric(
+                horizontal=6, vertical=2
+            )
+            self._badge_container.bgcolor = badge_color or ft.Colors.AMBER
+            self._badge_container.border_radius = 4
+            self._badge_container.visible = True
+        else:
+            self._badge_container.visible = False
+
+        # Build details (skip Module - already shown as subtitle)
+        detail_rows: list[ft.Control] = []
+        for key, value in details.items():
+            if key == "Module":
+                continue
+
+            detail_rows.append(SecondaryText(f"{key}:"))
+
+            # Handle lists - join items with newlines in one block
+            if isinstance(value, list):
+                list_text = ",\n".join(str(item) for item in value)
+                detail_rows.append(self._create_code_block(list_text))
+            else:
+                detail_rows.append(self._create_code_block(str(value)))
+
+        self._details_column.controls = detail_rows
+
+        # Build content with optional section header
+        content_controls: list[ft.Control] = []
+
+        # Section context header (e.g., "Startup Hooks")
+        if section:
+            content_controls.append(SecondaryText(section))
+
+        # Card name + badge
+        content_controls.append(
+            ft.Row(
+                [self._name_text, self._badge_container],
+                spacing=Theme.Spacing.SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        )
+        content_controls.append(self._subtitle_text)
+        content_controls.append(ft.Divider())
+        content_controls.append(self._details_column)
+
+        # Swap to content view
+        self._main_column.controls = content_controls
+        self._main_column.horizontal_alignment = ft.CrossAxisAlignment.START
+        self._main_column.spacing = Theme.Spacing.SM
+        self._showing_empty_state = False
+        self.update()
+
+
+class LifecycleCard(ft.Container):
+    """Clickable card for lifecycle items (hooks or middleware)."""
+
+    def __init__(
+        self,
+        name: str,
+        subtitle: str,
+        section: str = "",
+        details: dict[str, object] | None = None,
+        badge: str | None = None,
+        badge_color: str | None = None,
+        inspector: LifecycleInspector | None = None,
+    ) -> None:
+        """
+        Initialize lifecycle card.
+
+        Args:
+            name: Function/class name (e.g., database_init, CORSMiddleware)
+            subtitle: Module path for inspector
+            section: Section name (e.g., "Startup Hooks") for inspector context
+            details: Optional dict of key-value pairs for inspector view
+            badge: Optional badge text (e.g., "Security")
+            badge_color: Badge background color
+            inspector: Shared inspector panel to update on click
+        """
+        super().__init__()
+        # Auto-format: snake_case -> Title Case, preserve CamelCase
+        if "_" in name:
+            display_name = name.replace("_", " ").title()
+        elif name.islower():
+            display_name = name.capitalize()
+        else:
+            display_name = name  # Preserve CamelCase
+        self.name = display_name
+        self.subtitle = subtitle
+        self.section = section
+        self._raw_name = name  # Keep original for code reference
+        self._details = details or {}
+        self._badge_text = badge
+        self._badge_color = badge_color or ft.Colors.AMBER
+        self._inspector = inspector
+        self._is_selected = False
+
+        # Build card header: Title + Badge on top, code name below
+        header_row_content: list[ft.Control] = [PrimaryText(display_name)]
+
+        # Add badge if provided
+        if self._badge_text:
+            header_row_content.append(
+                ft.Container(
+                    content=LabelText(self._badge_text, color=Theme.Colors.BADGE_TEXT),
+                    padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                    bgcolor=self._badge_color,
+                    border_radius=4,
+                    margin=ft.margin.only(left=Theme.Spacing.SM),
+                )
+            )
+
+        self.card_header = ft.Container(
+            content=ft.Row(
+                header_row_content,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=ft.padding.all(Theme.Spacing.SM),
+            on_hover=self._on_hover,
+        )
+
+        # Wrap header in gesture detector
+        self.header_gesture = ft.GestureDetector(
+            content=self.card_header,
+            on_tap=self._handle_click,
+            mouse_cursor=ft.MouseCursor.CLICK,
+        )
+
+        self.content = self.header_gesture
+        self.bgcolor = ft.Colors.SURFACE_CONTAINER_HIGHEST
+        self.border_radius = Theme.Components.CARD_RADIUS
+        self.border = ft.border.all(1, ft.Colors.OUTLINE)
+
+    def _on_hover(self, e: ft.ControlEvent) -> None:
+        """Handle hover state change."""
+        if self._is_selected:
+            return  # Don't change hover state when selected
+        if e.data == "true":
+            self.card_header.bgcolor = ft.Colors.with_opacity(
+                0.08, ft.Colors.ON_SURFACE
+            )
+        else:
+            self.card_header.bgcolor = None
+        if e.control.page:
+            self.card_header.update()
+
+    def _handle_click(self, e: ft.ControlEvent) -> None:
+        """Handle card click to update inspector."""
+        _ = e
+        if self._inspector:
+            self._inspector.select_card(self)
+
+    def set_selected(self, selected: bool) -> None:
+        """Update visual state for selection."""
+        self._is_selected = selected
+        if selected:
+            self.border = ft.border.all(2, Theme.Colors.ACCENT)
+            self.bgcolor = ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE)
+        else:
+            self.border = ft.border.all(1, ft.Colors.OUTLINE)
+            self.bgcolor = ft.Colors.SURFACE_CONTAINER_HIGHEST
+        self.update()
+
+
+class FlowSection(ft.Container):
+    """A section in the lifecycle flow with label and cards."""
+
+    def __init__(
+        self, title: str, cards: list[LifecycleCard], icon: str, step_number: int
+    ) -> None:
+        """
+        Initialize flow section.
+
+        Args:
+            title: Section title
+            cards: List of LifecycleCard components
+            icon: Icon name for the section header
+            step_number: Execution order number (1, 2, 3...)
+        """
+        super().__init__()
+        self.title = title
+        self.cards_list = cards
+
+        # Section header with step number and icon
+        section_header = ft.Container(
+            content=ft.Row(
+                [
+                    ft.Container(
+                        content=SecondaryText(f"{step_number:02d}", size=10),
+                        bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                        border_radius=4,
+                        padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                    ),
+                    ft.Icon(icon, size=18, color=Theme.Colors.TEXT_SECONDARY),
+                    H3Text(title),
+                    ft.Container(
+                        content=SecondaryText(f"({len(cards)})"),
+                        padding=ft.padding.only(left=Theme.Spacing.XS),
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=Theme.Spacing.SM,
+            ),
+            padding=ft.padding.only(bottom=Theme.Spacing.SM),
+        )
+
+        # Cards row (wraps if many items)
+        if cards:
+            cards_row = ft.Row(
+                cards,
+                wrap=True,
+                spacing=Theme.Spacing.MD,
+                run_spacing=Theme.Spacing.MD,
+                alignment=ft.MainAxisAlignment.CENTER,
+            )
+        else:
+            cards_row = ft.Container(
+                content=SecondaryText("None configured"),
+                padding=ft.padding.all(Theme.Spacing.MD),
+                alignment=ft.alignment.center,
+            )
+
+        self.content = ft.Column(
+            [section_header, cards_row],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=0,
+        )
+        self.padding = ft.padding.symmetric(vertical=Theme.Spacing.SM)
+
+
+def _create_method_badge(method: str) -> ft.Container:
+    """Create a colored badge for an HTTP method."""
+    return ft.Container(
+        content=LabelText(method, color=Theme.Colors.BADGE_TEXT),
+        padding=ft.padding.symmetric(horizontal=6, vertical=2),
+        bgcolor=METHOD_COLORS.get(method, ft.Colors.ON_SURFACE_VARIANT),
+        border_radius=4,
+    )
+
+
+class RouteTableRow(ft.Container):
+    """Expandable table row for a single route."""
+
+    def __init__(self, route_info: dict[str, object]) -> None:
+        """Initialize route table row."""
+        super().__init__()
+        self.route_info = route_info
+        self.is_expanded = False
+
+        # Extract route data
+        path = str(route_info.get("path", ""))
+        methods = list(route_info.get("methods", []))
+        name = str(route_info.get("name", ""))
+        summary = str(route_info.get("summary", ""))
+        description = str(route_info.get("description", ""))
+        deprecated = bool(route_info.get("deprecated", False))
+        path_params = list(route_info.get("path_params", []))
+        dependencies = list(route_info.get("dependencies", []))
+        response_model = str(route_info.get("response_model", ""))
+
+        has_auth = _has_auth_dependencies(dependencies)
+
+        # Truncate summary for display
+        summary_display = summary[:40] + "..." if len(summary) > 40 else summary
+
+        # Method badges (show first method prominently)
+        method_badges = [_create_method_badge(m) for m in methods]
+
+        # Arrow for expand indicator (reusable control)
+        self.expand_arrow = ExpandArrow(expanded=False)
+
+        # Build row header with hover effect
+        self.row_container = ft.Container(
+            content=ft.Row(
+                [
+                    # Expand arrow (24px)
+                    ft.Container(
+                        content=self.expand_arrow,
+                        width=24,
+                    ),
+                    # Method column (70px)
+                    ft.Container(
+                        content=ft.Row(method_badges, spacing=2),
+                        width=70,
+                    ),
+                    # Path column (flex)
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                PrimaryText(path),
+                                ft.Container(
+                                    content=SecondaryText(
+                                        "DEPRECATED",
+                                        size=9,
+                                        color=ft.Colors.ORANGE,
+                                    ),
+                                    visible=deprecated,
+                                    padding=ft.padding.only(left=8),
+                                ),
+                            ],
+                            spacing=0,
+                        ),
+                        expand=True,
+                    ),
+                    # Auth column (40px)
+                    ft.Container(
+                        content=ft.Icon(
+                            ft.Icons.LOCK,
+                            size=14,
+                            color=Theme.Colors.WARNING,
+                        )
+                        if has_auth
+                        else ft.Container(),
+                        width=40,
+                        alignment=ft.alignment.center,
+                    ),
+                    # Summary column (180px)
+                    ft.Container(
+                        content=SecondaryText(summary_display or "-"),
+                        width=180,
+                    ),
+                ],
+                spacing=Theme.Spacing.SM,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=ft.padding.symmetric(horizontal=Theme.Spacing.MD, vertical=10),
+            bgcolor=ft.Colors.SURFACE,
+            on_hover=self._on_hover,
+        )
+
+        # Build row header
+        self.row_header = ft.GestureDetector(
+            content=self.row_container,
+            on_tap=self._toggle_expand,
+            mouse_cursor=ft.MouseCursor.CLICK,
+        )
+
+        # Build expandable details section
+        detail_rows = []
+
+        if name:
+            detail_rows.append(
+                ft.Row(
+                    [SecondaryText("Endpoint:"), BodyText(name)],
+                    alignment=ft.MainAxisAlignment.START,
+                    spacing=8,
+                )
+            )
+
+        if summary:
+            detail_rows.append(
+                ft.Row(
+                    [SecondaryText("Summary:"), BodyText(summary)],
+                    alignment=ft.MainAxisAlignment.START,
+                    spacing=8,
+                )
+            )
+
+        if description:
+            detail_rows.append(
+                ft.Column(
+                    [SecondaryText("Description:"), BodyText(description)],
+                    spacing=4,
+                )
+            )
+
+        if path_params:
+            detail_rows.append(
+                ft.Row(
+                    [SecondaryText("Path Params:"), BodyText(", ".join(path_params))],
+                    alignment=ft.MainAxisAlignment.START,
+                    spacing=8,
+                )
+            )
+
+        if dependencies:
+            dep_badges = []
+            for dep in dependencies:
+                is_auth = any(kw in dep.lower() for kw in AUTH_KEYWORDS)
+                if is_auth:
+                    badge_content = ft.Row(
+                        [
+                            ft.Icon(ft.Icons.LOCK, size=12, color=Theme.Colors.WARNING),
+                            LabelText(dep, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ],
+                        spacing=4,
+                        tight=True,
+                    )
+                else:
+                    badge_content = LabelText(dep, color=ft.Colors.ON_SURFACE_VARIANT)
+
+                dep_badges.append(
+                    ft.Container(
+                        content=badge_content,
+                        padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                        border_radius=4,
+                    )
+                )
+
+            detail_rows.append(
+                ft.Column(
+                    [
+                        SecondaryText("Dependencies:"),
+                        ft.Row(dep_badges, spacing=4, wrap=True),
+                    ],
+                    spacing=4,
+                )
+            )
+
+        if response_model:
+            detail_rows.append(
+                ft.Row(
+                    [SecondaryText("Response:"), BodyText(response_model)],
+                    alignment=ft.MainAxisAlignment.START,
+                    spacing=8,
+                )
+            )
+
+        self.details = ft.Container(
+            content=ft.Column(detail_rows, spacing=Theme.Spacing.SM),
+            padding=ft.padding.only(
+                top=Theme.Spacing.SM,
+                left=Theme.Spacing.MD + 24,  # Match arrow column width
+                right=Theme.Spacing.MD,
+                bottom=Theme.Spacing.MD,
+            ),
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+            visible=False,
+        )
+
+        self.content = ft.Column([self.row_header, self.details], spacing=0)
+        self.border = ft.border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE))
+
+    def _on_hover(self, e: ft.ControlEvent) -> None:
+        """Handle hover state change."""
+        if e.data == "true":
+            self.row_container.bgcolor = ft.Colors.with_opacity(
+                0.08, ft.Colors.ON_SURFACE
+            )
+        else:
+            self.row_container.bgcolor = ft.Colors.SURFACE
+        if e.control.page:
+            self.row_container.update()
+
+    def _toggle_expand(self, e: ft.ControlEvent) -> None:
+        """Toggle expansion state."""
+        _ = e  # Unused but required by callback signature
+        self.is_expanded = not self.is_expanded
+        self.details.visible = self.is_expanded
+        self.expand_arrow.set_expanded(self.is_expanded)
+        self.update()
+
+
+class RouteGroupSection(ft.Container):
+    """Collapsible section containing routes for a single tag group."""
+
+    def __init__(
+        self, group_name: str, routes: list[dict[str, object]], start_expanded: bool
+    ) -> None:
+        """Initialize route group section."""
+        super().__init__()
+        self.group_name = group_name
+        self.routes = routes
+        self.is_expanded = start_expanded
+
+        # Sort routes by path
+        sorted_routes = sorted(routes, key=lambda r: str(r.get("path", "")))
+
+        # Build table header
+        table_header = ft.Container(
+            content=ft.Row(
+                [
+                    # Arrow column placeholder
+                    ft.Container(width=24),
+                    ft.Container(
+                        content=SecondaryText("Method", size=11),
+                        width=70,
+                    ),
+                    ft.Container(
+                        content=SecondaryText("Path", size=11),
+                        expand=True,
+                    ),
+                    ft.Container(
+                        content=SecondaryText("Auth", size=11),
+                        width=40,
+                        alignment=ft.alignment.center,
+                    ),
+                    ft.Container(
+                        content=SecondaryText("Summary", size=11),
+                        width=180,
+                    ),
+                ],
+                spacing=Theme.Spacing.SM,
+            ),
+            padding=ft.padding.symmetric(horizontal=8, vertical=4),
+            border=ft.border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
+        )
+
+        # Build route rows
+        route_rows = [RouteTableRow(route) for route in sorted_routes]
+
+        # Table container (matches ExpandableDataTable styling)
+        self.table_container = ft.Container(
+            content=ft.Column(
+                [table_header] + route_rows,
+                spacing=0,
+            ),
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+            border_radius=Theme.Components.CARD_RADIUS,
+            border=ft.border.all(1, ft.Colors.OUTLINE),
+            visible=start_expanded,
+        )
+
+        # Group header (clickable)
+        self.arrow_icon = ft.Icon(
+            ft.Icons.KEYBOARD_ARROW_DOWN
+            if start_expanded
+            else ft.Icons.KEYBOARD_ARROW_RIGHT,
+            size=20,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
+        group_header = ft.GestureDetector(
+            content=ft.Container(
+                content=ft.Row(
+                    [
+                        self.arrow_icon,
+                        PrimaryText(f"{group_name}"),
+                        SecondaryText(f"({len(routes)} routes)"),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                padding=ft.padding.symmetric(vertical=8),
+            ),
+            on_tap=self._toggle_expand,
+            mouse_cursor=ft.MouseCursor.CLICK,
+        )
+
+        self.content = ft.Column(
+            [group_header, self.table_container],
+            spacing=4,
+        )
+        self.padding = ft.padding.only(bottom=12)
+
+    def _toggle_expand(self, e: ft.ControlEvent) -> None:
+        """Toggle expansion state."""
+        _ = e  # Unused but required by callback signature
+        self.is_expanded = not self.is_expanded
+        self.table_container.visible = self.is_expanded
+        self.arrow_icon.name = (
+            ft.Icons.KEYBOARD_ARROW_DOWN
+            if self.is_expanded
+            else ft.Icons.KEYBOARD_ARROW_RIGHT
+        )
+        self.update()
+
+
+class OverviewTab(ft.Container):
+    """Overview tab combining metrics and system resources."""
+
+    def __init__(self, backend_component: ComponentStatus) -> None:
+        """
+        Initialize overview tab.
+
+        Args:
+            backend_component: ComponentStatus containing backend data
+        """
+        super().__init__()
+        metadata = backend_component.metadata or {}
+        sub_components = backend_component.sub_components or {}
+
+        # Extract metrics
+        total_routes = metadata.get("total_routes", 0)
+        total_endpoints = metadata.get("total_endpoints", 0)
+        total_middleware = metadata.get("total_middleware", 0)
+        security_count = metadata.get("security_count", 0)
+        deprecated_count = metadata.get("deprecated_count", 0)
+        method_counts = metadata.get("method_counts", {})
+
+        # Build metric cards
+        metric_cards = [
+            MetricCard(
+                value=str(total_routes),
+                label="Total Routes",
+                color=ft.Colors.BLUE,
+            ),
+            MetricCard(
+                value=str(total_endpoints),
+                label="Endpoints",
+                color=ft.Colors.GREEN,
+            ),
+            MetricCard(
+                value=str(total_middleware),
+                label="Middleware",
+                color=ft.Colors.PURPLE,
+            ),
+            MetricCard(
+                value=str(security_count),
+                label="Security Layers",
+                color=ft.Colors.AMBER,
+            ),
+        ]
+
+        # Add deprecated count if any
+        if deprecated_count > 0:
+            metric_cards.append(
+                MetricCard(
+                    value=str(deprecated_count),
+                    label="Deprecated",
+                    color=ft.Colors.ORANGE,
+                )
+            )
+
+        # Method distribution
+        method_text = ", ".join(
+            [f"{count} {method}" for method, count in method_counts.items()]
+        )
+
+        # Build system metrics
+        cpu_data = sub_components.get("cpu")
+        memory_data = sub_components.get("memory")
+        disk_data = sub_components.get("disk")
+
+        system_metrics = []
+
+        # CPU metric
+        if cpu_data and cpu_data.metadata:
+            cpu_percent = cpu_data.metadata.get("percent_used", 0.0)
+            cpu_cores = cpu_data.metadata.get("core_count", 0)
+            cpu_color = _get_metric_color(cpu_percent)
+            system_metrics.append(
+                create_progress_indicator(
+                    label=f"CPU Usage ({cpu_cores} cores)",
+                    value=cpu_percent,
+                    details=f"{cpu_percent:.1f}%",
+                    color=cpu_color,
+                )
+            )
+
+        # Memory metric
+        if memory_data and memory_data.metadata:
+            memory_percent = memory_data.metadata.get("percent_used", 0.0)
+            memory_total = memory_data.metadata.get("total_gb", 0.0)
+            memory_available = memory_data.metadata.get("available_gb", 0.0)
+            memory_used = memory_total - memory_available
+            memory_color = _get_metric_color(memory_percent)
+            system_metrics.append(
+                create_progress_indicator(
+                    label="Memory Usage",
+                    value=memory_percent,
+                    details=f"{memory_used:.1f} / {memory_total:.1f} GB",
+                    color=memory_color,
+                )
+            )
+
+        # Disk metric
+        if disk_data and disk_data.metadata:
+            disk_percent = disk_data.metadata.get("percent_used", 0.0)
+            disk_free = disk_data.metadata.get("free_gb", 0.0)
+            disk_total = disk_data.metadata.get("total_gb", 0.0)
+            disk_color = _get_metric_color(disk_percent)
+            system_metrics.append(
+                create_progress_indicator(
+                    label="Disk Usage",
+                    value=disk_percent,
+                    details=f"{disk_free:.1f} GB free / {disk_total:.1f} GB",
+                    color=disk_color,
+                )
+            )
+
+        self.content = ft.Column(
+            [
+                # API Metrics section
+                ft.Row(
+                    metric_cards,
+                    spacing=Theme.Spacing.MD,
+                ),
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            SecondaryText("HTTP Methods:"),
+                            BodyText(method_text or "None"),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ),
+                    padding=ft.padding.symmetric(
+                        horizontal=Theme.Spacing.MD, vertical=Theme.Spacing.SM
+                    ),
+                ),
+                # System Metrics section
+                ft.Container(height=Theme.Spacing.MD),  # Spacer
+                H3Text("System Metrics"),
+                ft.Container(
+                    content=ft.Column(
+                        system_metrics
+                        if system_metrics
+                        else [SecondaryText("No metrics available")],
+                        spacing=Theme.Spacing.MD,
+                    ),
+                    padding=ft.padding.symmetric(vertical=Theme.Spacing.SM),
+                ),
+            ],
+            spacing=Theme.Spacing.SM,
+            scroll=ft.ScrollMode.AUTO,
+        )
+        self.padding = ft.padding.all(Theme.Spacing.MD)
+
+
+class RoutesTab(ft.Container):
+    """Routes tab displaying all backend routes grouped by OpenAPI tags."""
+
+    def __init__(self, backend_component: ComponentStatus) -> None:
+        """
+        Initialize routes tab.
+
+        Args:
+            backend_component: ComponentStatus containing backend data
+        """
+        super().__init__()
+        metadata = backend_component.metadata or {}
+        routes = metadata.get("routes", [])
+
+        # Group routes by their first tag (or "Untagged" if no tags)
+        groups: dict[str, list[dict[str, object]]] = {}
+        for route in routes:
+            tags = route.get("tags", [])
+            # Use first tag, or "Untagged" if no tags
+            group_name = tags[0] if tags else "Untagged"
+            if group_name not in groups:
+                groups[group_name] = []
+            groups[group_name].append(route)
+
+        # Sort groups alphabetically, but put "Untagged" last
+        sorted_group_names = sorted([name for name in groups if name != "Untagged"])
+        if "Untagged" in groups:
+            sorted_group_names.append("Untagged")
+
+        # Smart collapse: expand all if <=5 groups, collapse all if >5
+        start_expanded = len(groups) <= 5
+
+        # Create group sections
+        group_sections = []
+        for group_name in sorted_group_names:
+            group_sections.append(
+                RouteGroupSection(
+                    group_name=group_name,
+                    routes=groups[group_name],
+                    start_expanded=start_expanded,
+                )
+            )
+
+        # Use ListView for virtualization - only renders visible items
+        self.content = ft.ListView(
+            controls=group_sections
+            if group_sections
+            else [SecondaryText("No routes found")],
+            spacing=0,
+            expand=True,
+        )
+        self.padding = ft.padding.all(Theme.Spacing.MD)
+
+
+class LifecycleTab(ft.Container):
+    """Lifecycle tab displaying startup → middleware → shutdown flow diagram."""
+
+    def __init__(self, backend_component: ComponentStatus) -> None:
+        """
+        Initialize lifecycle tab with flow diagram layout.
+
+        Args:
+            backend_component: ComponentStatus containing backend data
+        """
+        super().__init__()
+        metadata = backend_component.metadata or {}
+        lifecycle = metadata.get("lifecycle", {})
+
+        # Create shared inspector panel
+        self.inspector = LifecycleInspector()
+
+        # Get middleware stack and hooks
+        middleware_stack = metadata.get("middleware_stack", [])
+        startup_hooks = lifecycle.get("startup_hooks", [])
+        shutdown_hooks = lifecycle.get("shutdown_hooks", [])
+
+        # Build startup hook cards
+        startup_cards = []
+        for hook in startup_hooks:
+            name = str(hook.get("name", "unknown"))
+            module = str(hook.get("module", ""))
+            description = str(hook.get("description", ""))
+
+            # Build details with description if available
+            details: dict[str, object] = {}
+            if description:
+                details["Description"] = description
+            if module:
+                details["Module"] = module
+
+            startup_cards.append(
+                LifecycleCard(
+                    name=name,
+                    subtitle=module,
+                    section="Startup Hooks",
+                    details=details if details else None,
+                    inspector=self.inspector,
+                )
+            )
+
+        # Build middleware cards
+        middleware_cards = []
+        for mw in middleware_stack:
+            type_name = str(mw.get("type", "Unknown"))
+            module = str(mw.get("module", ""))
+            is_security = bool(mw.get("is_security", False))
+            config = mw.get("config", {})
+            mw_description = str(mw.get("description", "") or "")
+
+            # Build details dict - description first, then config
+            mw_details: dict[str, object] = {}
+            if mw_description:
+                mw_details["Description"] = mw_description
+            if module:
+                mw_details["Module"] = module
+            if isinstance(config, dict):
+                for key, value in config.items():
+                    mw_details[key] = value
+
+            middleware_cards.append(
+                LifecycleCard(
+                    name=type_name,
+                    subtitle=module,
+                    section="Middleware Stack",
+                    details=mw_details,
+                    badge="Security" if is_security else None,
+                    badge_color=ft.Colors.AMBER if is_security else None,
+                    inspector=self.inspector,
+                )
+            )
+
+        # Build shutdown hook cards
+        shutdown_cards = []
+        for hook in shutdown_hooks:
+            name = str(hook.get("name", "unknown"))
+            module = str(hook.get("module", ""))
+            description = str(hook.get("description", ""))
+
+            # Build details with description if available
+            hook_details: dict[str, object] = {}
+            if description:
+                hook_details["Description"] = description
+            if module:
+                hook_details["Module"] = module
+
+            shutdown_cards.append(
+                LifecycleCard(
+                    name=name,
+                    subtitle=module,
+                    section="Shutdown Hooks",
+                    details=hook_details if hook_details else None,
+                    inspector=self.inspector,
+                )
+            )
+
+        # Build flow sections with step numbers
+        startup_section = FlowSection(
+            title="Startup Hooks",
+            cards=startup_cards,
+            icon=ft.Icons.PLAY_ARROW,
+            step_number=1,
+        )
+
+        middleware_section = FlowSection(
+            title="Middleware Stack",
+            cards=middleware_cards,
+            icon=ft.Icons.BOLT,
+            step_number=2,
+        )
+
+        shutdown_section = FlowSection(
+            title="Shutdown Hooks",
+            cards=shutdown_cards,
+            icon=ft.Icons.STOP,
+            step_number=3,
+        )
+
+        # Assemble flow diagram with connectors
+        flow_diagram = ft.Column(
+            [
+                startup_section,
+                FlowConnector(),
+                middleware_section,
+                FlowConnector(),
+                shutdown_section,
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        # Master-detail layout: flowchart on left, inspector on right
+        self.content = ft.Row(
+            [
+                ft.Container(content=flow_diagram, expand=True),
+                self.inspector,
+            ],
+            spacing=Theme.Spacing.MD,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+        self.padding = ft.padding.all(Theme.Spacing.MD)
+        self.expand = True
+
+
+class BackendDetailDialog(BaseDetailPopup):
+    """
+    Comprehensive backend detail popup with tabbed interface.
+
+    Displays routes, middleware stack, system metrics, and configuration
+    details for the FastAPI backend component in separate tabs.
+    """
+
+    def __init__(self, backend_component: ComponentStatus, page: ft.Page) -> None:
+        """
+        Initialize backend detail popup.
+
+        Args:
+            backend_component: ComponentStatus containing backend data
+            page: Flet page instance
+        """
+        # Build tabs
+        tabs = ft.Tabs(
+            selected_index=0,
+            animation_duration=200,
+            tabs=[
+                ft.Tab(text="Overview", content=OverviewTab(backend_component)),
+                ft.Tab(text="Routes", content=RoutesTab(backend_component)),
+                ft.Tab(text="Lifecycle", content=LifecycleTab(backend_component)),
+            ],
+            expand=True,
+            label_color=ft.Colors.ON_SURFACE,
+            unselected_label_color=ft.Colors.ON_SURFACE_VARIANT,
+            indicator_color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
+        # Initialize base popup with tabs (non-scrollable - tabs handle their own scrolling)
+        super().__init__(
+            page=page,
+            component_data=backend_component,
+            title_text="Server",
+            sections=[tabs],
+            subtitle_text="FastAPI + Flet",
+            scrollable=False,
+            width=1100,
+            height=800,
+            status_detail=get_status_detail(backend_component),
+        )
