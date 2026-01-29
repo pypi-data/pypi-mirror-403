@@ -1,0 +1,52 @@
+# StreamWish 🌠
+
+**StreamWish** is a "Streaming Graph RAG" library designed for **Small Language Models (SLMs)** and high-velocity data streams. It solves the "Small Context Window" problem using a **Conveyor-Belt Graph** and a **Token Auctioneer**.
+
+## Features
+
+- **Conveyor-Belt Graph**: Manages a sliding window of knowledge nodes.
+- **Token Auctioneer**: Smartly allocates limited context slots to the most valuable information (Query, Summary, Neighborhood, Path).
+- **Context Distillation**: Automatically shrinks incoming data chunks using LLM summarization.
+- **Pluggable Backends**: Works with OpenAI, Gemini, or local models via `LLMBackend`.
+- **Generic Ingestion**: Supports `.txt`, `.pdf`, `.xlsx`, and Google Drive/GCP.
+
+## Why StreamWish? (VS The Big Players)
+
+**1. The "10-Slot" Philosophy**
+Most RAG libraries (LangChain, LlamaIndex, Graphiti) optimize for *finding the right answer* assuming you have a 128k+ context window to fit it all in.
+**StreamWish** is built for the **Edge / SLM** era. It assumes you can only "see" 10 items at a time. It uses a **Token Auctioneer** to ruthlessly prioritize what gets into that tiny window.
+
+**2. Streaming vs. Batch**
+"Graph RAG" (like Microsoft's implementation) usually requires processing *all* your documents at once to build community clusters. This is slow and expensive.
+**StreamWish** is **stateful and streaming**. It builds the graph node-by-node as data flows in (like a conveyor belt), making it perfect for real-time feeds, chat logs, or live sensor data.
+
+## Installation
+
+```bash
+pip install streamwish
+```
+
+## Quick Start
+
+```python
+from streamwish.manager import SlotManager
+from streamwish.llm_interface import OpenAIAdapter
+
+# 1. Initialize
+llm = OpenAIAdapter(api_key="your-key")
+manager = SlotManager(llm_client=llm)
+
+# 2. Ingest Data
+manager.ingest_stream([
+    "StreamWish optimizes context for small models.",
+    "It uses a graph traversal algorithm."
+])
+
+# 3. Query
+response = manager.process_query("How does StreamWish handle small context?")
+print(response)
+```
+
+## License
+
+MIT
