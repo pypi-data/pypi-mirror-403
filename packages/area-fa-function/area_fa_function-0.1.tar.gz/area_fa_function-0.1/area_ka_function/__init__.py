@@ -1,0 +1,1 @@
+from .areas import area_of_circle , area_of_triangle
