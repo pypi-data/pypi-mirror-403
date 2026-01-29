@@ -1,0 +1,232 @@
+Metadata-Version: 2.4
+Name: twshtd
+Version: 1.1.1
+Summary: Git repository synchronization tool
+Author-email: sysid <sysid@gmx.de>
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.15.1
+Requires-Dist: rich>=13.0.0
+Provides-Extra: rplc
+Requires-Dist: rplc; extra == "rplc"
+
+# twshtd
+
+Git repository synchronization tool for managing multiple repositories.
+
+## Installation
+
+```bash
+# Install with uv
+uv tool install twshtd
+
+# Or install from source
+uv tool install -e .
+```
+
+## Usage
+
+```bash
+twshtd [OPTIONS] COMMAND [ARGS]
+```
+
+### Commands
+
+| Command   | Description                                              |
+|-----------|----------------------------------------------------------|
+| `push`    | Commit and push all configured repositories              |
+| `pull`    | Commit local changes and pull from remotes               |
+| `info`    | Show configuration and repository status                 |
+| `edit`    | Open configuration file in $EDITOR                       |
+| `dirty`   | Show dirty/behind/ahead status for repos in directories  |
+
+### Options
+
+| Option           | Description                |
+|------------------|----------------------------|
+| `-v, --verbose`  | Enable debug logging       |
+| `-V, --version`  | Show version               |
+
+### Push Command
+
+```bash
+twshtd push [OPTIONS]
+```
+
+Commits all changes and pushes to remote for each configured repository.
+
+| Option              | Description                    |
+|---------------------|--------------------------------|
+| `-c, --config`      | Config file path               |
+| `-w, --workers`     | Parallel workers (number or 'auto') |
+| `-n, --dry-run`     | Show what would be done        |
+
+### Pull Command
+
+```bash
+twshtd pull [OPTIONS]
+```
+
+Commits local changes and pulls from remotes. Supports two modes per repository:
+- `pull`: Full git pull (default)
+- `fetch`: Only fetch, showing what changed
+
+| Option           | Description                         |
+|------------------|-------------------------------------|
+| `-c, --config`   | Config file path                    |
+| `-w, --workers`  | Parallel workers (number or 'auto') |
+| `-n, --dry-run`  | Show what would be done             |
+
+### Dirty Command
+
+```bash
+twshtd dirty [OPTIONS]
+```
+
+Scans configured directories for git repositories and shows their status.
+
+| Option           | Description                           |
+|------------------|---------------------------------------|
+| `-c, --config`   | Config file path                      |
+| `--no-fetch`     | Skip git fetch before checking status |
+
+## Configuration
+
+Config file location (in order of precedence):
+1. `TWSHTD_CONFIG` environment variable
+2. `~/.config/twshtd/repos.toml`
+
+### Example Configuration
+
+```toml
+[settings]
+workers = 1  # parallel workers (1 = sequential)
+
+# Global hooks - run before/after ALL repos
+pre_commands = [
+    "! pgrep -x anki",  # Block push if Anki is running
+]
+post_commands = []
+
+[[repos]]
+path = "~/dev/project1"
+pull_mode = "pull"                    # "pull" or "fetch"
+pre_commands = ["make clean"]         # run before push (all must pass)
+post_commands = ["make build"]        # run after pull (warn on failure)
+enabled = true
+
+[[repos]]
+path = "$PROJECTS/project2"
+pull_mode = "fetch"
+pre_commands = ["git stash list"]     # multiple commands supported
+post_commands = ["make test", "make lint"]
+
+[[repos]]
+path = "~/dev/disabled-repo"
+enabled = false
+
+# Directories to scan with 'dirty' command
+[[dirty]]
+path = "~/dev"
+enabled = true
+
+[[dirty]]
+path = "$WORK/repos"
+```
+
+### Path Resolution
+
+Paths support:
+- Home directory expansion (`~`)
+- Environment variables (`$VAR` or `${VAR}`)
+
+## Features
+
+### Hooks (Pre-Commands / Post-Commands)
+
+Hooks allow you to run shell commands at specific points in the workflow.
+
+#### Global Hooks
+
+Define in `[settings]` to run for ALL repos:
+
+```toml
+[settings]
+pre_commands = ["! pgrep -x anki"]  # Block if Anki running
+post_commands = ["echo 'All done'"]
+```
+
+- **pre_commands**: Run once before processing any repos. ALL must succeed (exit 0) or the entire operation stops.
+- **post_commands**: Run once after all repos are processed. Failures show warnings but don't fail the operation.
+
+#### Per-Repo Hooks
+
+Define per repository for repo-specific actions:
+
+```toml
+[[repos]]
+path = "~/dev/myproject"
+pre_commands = ["make clean", "npm ci"]  # before push
+post_commands = ["make build", "make test"]  # after pull
+```
+
+- **pre_commands**: Run before push. ALL must succeed or the repo is skipped (other repos continue).
+- **post_commands**: Run after pull. Failures show warnings but the repo is marked as successful.
+
+Commands run in the repository directory (per-repo) or current directory (global).
+
+#### Execution Order
+
+```
+PUSH:
+1. Global pre_commands (all must pass, or exit 1)
+2. For each repo:
+   a. Repo pre_commands (all must pass, or skip this repo)
+   b. Git commit + push
+3. Global post_commands (warn on failure)
+
+PULL:
+1. Global pre_commands (all must pass, or exit 1)
+2. For each repo:
+   a. Git pull/fetch
+   b. Repo post_commands (warn on failure)
+3. Global post_commands (warn on failure)
+```
+
+### Commit Message
+
+When committing changes, twshtd uses `git status --porcelain` output as the commit message,
+providing a clear record of what changed.
+
+### Example: Blocking Push if Anki Running
+
+To prevent pushing when Anki is running (e.g., to avoid sync conflicts with Anki repos), use a global pre_command:
+
+```toml
+[settings]
+pre_commands = ["! pgrep -x anki"]
+```
+
+This command exits 1 (failure) if Anki is running, blocking the push.
+
+### rplc Integration
+
+For repositories using [rplc](https://github.com/sysid/rplc), twshtd automatically swaps out
+files before committing. Use `--skip-rplc` to bypass.
+
+## Development
+
+```bash
+# Install dev dependencies
+uv sync
+
+# Run tests
+make test
+
+# Lint and format
+make static-analysis
+```
+
+## License
+
+MIT
