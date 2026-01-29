@@ -1,0 +1,86 @@
+diff --git a/src/kernels/resampling/bootstrap.rs b/src/kernels/resampling/bootstrap.rs
+index 0000000..0000000 100644
+--- a/src/kernels/resampling/bootstrap.rs
++++ b/src/kernels/resampling/bootstrap.rs
+@@ -1,1 +1,1 @@
+# NOTE: This patch is context-based. git will match the hunks by surrounding lines.
+# If it fails, run `git apply --reject --whitespace=nowarn resampling_determinism.patch`
+# and patch the .rej chunks manually.
+@@
+-        .map_init(
+-            || y.to_vec(),  // Thread-local copy of y
+-            |y_perm, p| {
++        .map_init(
++            || {
++                let orig = y.to_vec();
++                let work = orig.clone();
++                (orig, work)
++            },
++            |(orig, work), p| {
++                // Reset work to deterministic baseline before shuffling
++                work.copy_from_slice(&orig[..]);
+                 let seed = mix_seed(base_seed, p as u64);
+                 let mut rng = Pcg64::seed_from_u64(seed);
+                 
+                 // Fisher-Yates shuffle
+                 for i in (1..n).rev() {
+                     let j = rng.gen_range(0..=i);
+-                    y_perm.swap(i, j);
++                    work.swap(i, j);
+                 }
+ 
+                 // Compute permuted correlation
+                 let mut sy = 0.0; let mut sy2 = 0.0; let mut sxy = 0.0;
+                 for i in 0..n {
+-                    let yi = y_perm[i];
++                    let yi = work[i];
+                     sy += yi; sy2 += yi * yi; sxy += x[i] * yi;
+                 }
+@@
+-        .map_init(
+-            || {
+-                let mut pooled = Vec::with_capacity(nx + ny);
+-                pooled.extend_from_slice(x);
+-                pooled.extend_from_slice(y);
+-                pooled
+-            },
+-            |pooled, p| {
++        .map_init(
++            || {
++                let mut orig = Vec::with_capacity(nx + ny);
++                orig.extend_from_slice(x);
++                orig.extend_from_slice(y);
++                let work = orig.clone();
++                (orig, work)
++            },
++            |(orig, work), p| {
++                // Reset work to deterministic baseline before shuffling
++                work.copy_from_slice(&orig[..]);
+                 let seed = mix_seed(base_seed, p as u64);
+                 let mut rng = Pcg64::seed_from_u64(seed);
+                 
+                 // Fisher-Yates shuffle
+-                let n = pooled.len();
++                let n = work.len();
+                 for i in (1..n).rev() {
+                     let j = rng.gen_range(0..=i);
+-                    pooled.swap(i, j);
++                    work.swap(i, j);
+                 }
+                 
+                 // Compute mean difference
+-                let sx: f64 = pooled[0..nx].iter().copied().sum();
+-                let sy: f64 = pooled[nx..(nx + ny)].iter().copied().sum();
++                let sx: f64 = work[0..nx].iter().copied().sum();
++                let sy: f64 = work[nx..(nx + ny)].iter().copied().sum();
+                 let diff = sx / (nx as f64) - sy / (ny as f64);
+ 
+                 match alternative {
+                     "two-sided" => if diff.abs() >= obs.abs() { 1 } else { 0 },
+                     "greater" => if diff >= obs { 1 } else { 0 },
+                     "less" => if diff <= obs { 1 } else { 0 },
+                     _ => 0,
+                 }
+             }
+         )
+         .sum();
