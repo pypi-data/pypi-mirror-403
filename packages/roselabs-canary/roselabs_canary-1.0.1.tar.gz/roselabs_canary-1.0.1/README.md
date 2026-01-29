@@ -1,0 +1,144 @@
+# roselabs-canary
+
+Official Python SDK for [Canary](https://canary.roselabs.io) - Dependency vulnerability scanning by Rose Labs.
+
+## Installation
+
+```bash
+pip install roselabs-canary
+# or
+poetry add roselabs-canary
+# or
+uv add roselabs-canary
+```
+
+## Quick Start
+
+```python
+from roselabs_canary import Canary
+
+canary = Canary(
+    api_key="your-api-key",
+    app_id="your-app-id",
+)
+
+result = canary.submit_scan(
+    lockfiles=[
+        {"filename": "requirements.txt", "content": open("requirements.txt").read()},
+    ]
+)
+
+print(f"Found {result.vulnerabilities.total} vulnerabilities")
+print(f"View details: {result.scan_url}")
+```
+
+## API Reference
+
+### `Canary(api_key, app_id, api_url=None, timeout=30)`
+
+Create a new Canary client.
+
+```python
+canary = Canary(
+    api_key="your-api-key",     # Required
+    app_id="your-app-id",       # Required
+    api_url="https://...",      # Optional (defaults to canary.roselabs.io)
+    timeout=30,                 # Optional
+)
+```
+
+### `canary.submit_scan(lockfiles, commit_sha=None, branch=None)`
+
+Submit lockfiles for vulnerability scanning.
+
+```python
+from roselabs_canary import Canary, Lockfile
+
+# Using dict
+result = canary.submit_scan(
+    lockfiles=[
+        {"filename": "poetry.lock", "content": "..."},
+    ],
+    commit_sha="abc123",
+    branch="main",
+)
+
+# Using Lockfile dataclass
+result = canary.submit_scan(
+    lockfiles=[
+        Lockfile(filename="poetry.lock", content="...", path="backend/poetry.lock"),
+    ]
+)
+```
+
+Returns a `ScanResult`:
+
+```python
+@dataclass
+class ScanResult:
+    scan_id: str
+    app_id: str
+    status: str  # 'completed', 'pending', or 'failed'
+    vulnerabilities: VulnerabilityCounts
+    scan_url: str
+    details: list[Vulnerability] | None
+
+@dataclass
+class VulnerabilityCounts:
+    critical: int
+    high: int
+    medium: int
+    low: int
+    total: int
+```
+
+### `canary.get_scan(scan_id)`
+
+Retrieve details of a previous scan.
+
+```python
+result = canary.get_scan("scan-id-here")
+```
+
+## Supported Lockfiles
+
+| Package Manager | Lockfile            |
+| --------------- | ------------------- |
+| npm             | `package-lock.json` |
+| yarn            | `yarn.lock`         |
+| pnpm            | `pnpm-lock.yaml`    |
+| pip             | `requirements.txt`  |
+| pipenv          | `Pipfile.lock`      |
+| poetry          | `poetry.lock`       |
+| uv              | `uv.lock`           |
+| cargo           | `Cargo.lock`        |
+| go modules      | `go.sum`            |
+
+## Error Handling
+
+```python
+from roselabs_canary import Canary, CanaryError
+
+try:
+    result = canary.submit_scan(lockfiles=[...])
+except CanaryError as e:
+    print(f"Canary error: {e}")
+    print(f"Status code: {e.status_code}")
+```
+
+## Context Manager
+
+The client can be used as a context manager to ensure proper cleanup:
+
+```python
+with Canary(api_key="...", app_id="...") as canary:
+    result = canary.submit_scan(lockfiles=[...])
+```
+
+## CI/CD Integration
+
+For CI/CD pipelines, consider using the [Canary GitHub Action](https://github.com/roselabs/canary-action) instead for simpler setup.
+
+## License
+
+MIT
