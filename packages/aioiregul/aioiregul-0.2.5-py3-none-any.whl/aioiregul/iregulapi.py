@@ -1,0 +1,66 @@
+"""
+Docstring for aioiregul.iregulapi
+"""
+
+from datetime import datetime
+from typing import Protocol
+
+from .models import MappedFrame
+
+
+class IRegulApiInterface(Protocol):
+    """Interface for IRegul device operations.
+
+    Defines the contract for device client implementations (v1 and v2).
+    Both methods handle authentication and device communication internally.
+    """
+
+    @property
+    def last_message_timestamp(self) -> datetime | None:
+        """Get the timestamp of the last message received from device.
+
+        For v2 API: timestamp from the last NEW message.
+        For v1 API: current date of the request.
+
+        Returns:
+            datetime: Timestamp of the last message, or None if no message received.
+        """
+        ...
+
+    async def get_data(self) -> MappedFrame | None:
+        """Retrieve device data as a MappedFrame.
+
+        Returns:
+            MappedFrame with device data or None if refresh failed.
+
+        Raises:
+            CannotConnect: If unable to connect to the device.
+            InvalidAuth: If authentication fails.
+        """
+        ...
+
+    async def defrost(self) -> bool:
+        """Trigger defrost operation on the device.
+
+        Returns:
+            True if defrost was triggered successfully, False otherwise.
+
+        Raises:
+            CannotConnect: If unable to connect to the device.
+            InvalidAuth: If authentication fails.
+        """
+        ...
+
+    async def check_auth(self) -> bool:
+        """Check if credentials are valid.
+
+        Performs minimal authentication check to verify credentials.
+
+        Returns:
+            True if authentication is successful, False otherwise.
+
+        Raises:
+            CannotConnect: If unable to connect to the device.
+            InvalidAuth: If authentication fails.
+        """
+        ...
