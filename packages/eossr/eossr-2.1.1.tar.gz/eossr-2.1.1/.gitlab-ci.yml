@@ -1,0 +1,158 @@
+stages:
+  - install
+  - update_codemeta
+  - test
+  - deploy_pages
+  - test_codemeta
+  - build_containers
+  - zenodo
+  - pypi_publish
+
+include: ".gitlab-ci-update-codemeta.yml"
+
+.junit_template: &junit_definition
+  artifacts:
+    reports:
+      junit: "junit*.xml"
+
+install:
+  stage: install
+  image: python:slim
+  script:
+    - apt-get -y update && apt-get install git -y
+    - pip install --upgrade pip
+    - pip install .
+  only:
+    - branches
+
+test:
+  stage: test
+  image: python:3.9-slim
+  script:
+    - apt-get -y update && apt-get install git gcc -y
+    - pip install --upgrade setuptools pip wheel
+    - pip install -e ".[tests]"
+    # - eossr-codemeta2zenodo --input_codemeta_file ./codemeta.json; cat .zenodo.json;
+    - pytest eossr/
+      --junitxml=junit_py37.xml
+      --color=yes
+      --verbose
+      --cov=eossr
+      --cov-report=xml
+      --cov-report=term
+      --capture=no
+    - apt update --yes && apt install --yes pandoc
+    - pip install -U -r docs/doc_requirements.txt
+    - sphinx-build docs _public
+  # artifacts:
+  #   when: always
+  #   paths:
+  #     - junit_py37.xml
+  #   reports:
+  #     junit: junit_py37.xml
+
+test_ci_eossr:
+  stage: test
+  trigger: escape-ossr/test-eossr
+
+# Intended to be run when a user modifies codemeta.json but rules cause detached pipelines that cause other issues
+# Commenting for now, codemeta is tested after being modified by CI in master (see gitlab-ci-update-codemeta.yml)
+#test_codemeta_ingestion:
+#  stage: test_codemeta
+#  image: registry.gitlab.com/escape-ossr/eossr:dev
+#  script:
+#    - eossr-check-connection-zenodo --token $ZENODO_TOKEN -p $CI_PROJECT_DIR
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
+#      changes:
+#        - codemeta.json
+#      when: always
+
+build_docker:
+  stage: build_containers
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - >-
+      /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Docker/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG}"
+      --destination "${CI_REGISTRY_IMAGE}:latest"
+  rules:
+    - if: $CI_COMMIT_TAG
+
+build_docker_main:
+  stage: build_containers
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - >-
+      /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Docker/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}:dev"
+  only:
+    - master
+
+deploy_zenodo:
+  stage: zenodo
+  image: registry.gitlab.com/escape-ossr/eossr:v2.1.0
+  dependencies:
+    - build_docker
+  before_script:
+    - apt update && apt-get install git -y
+    - pip install .
+    - git clean -df -x
+    - python eossr/scripts/update_codemeta_eossr.py -c codemeta.json
+    - eossr-check-connection-zenodo --token $ZENODO_TOKEN_THOMAS -p $CI_PROJECT_DIR
+  script:
+    - eossr-upload-repository --add-escape2020 -t $ZENODO_TOKEN_THOMAS -i $CI_PROJECT_DIR --archive-name $CI_PROJECT_NAME.zip -id $ZENODO_RECORD_ID
+  only:
+    - tags
+
+pages:
+  stage: deploy_pages
+  image: python:3.9-slim
+  script:
+    - apt update --yes && apt install --yes pandoc pip git
+    - pip install --upgrade setuptools pip
+    - git fetch --all --tags
+    - git checkout $CI_COMMIT_REF_NAME
+    - pip install -U -r docs/doc_requirements.txt
+    - pip install -e .
+    - sphinx-multiversion docs public -D nbsphinx_allow_errors=1
+    - cd public
+    - cp -r $CI_COMMIT_REF_NAME/* .
+    - for t in `git tag`; do echo $t; sed -i -e "s~../$t/index.html~$t/index.html~" "index.html" ; done
+    - cd -
+  artifacts:
+    paths:
+      - public
+  only:
+    - master
+
+pypi_publish:
+  stage: pypi_publish
+  image: python:3.8
+  before_script:
+    - apt-get update -y; apt-get install git -y;
+    - pip install --upgrade pip; pip install twine;
+    - export LAST_RELEASE=`git ls-remote --tags --refs --sort="v:refname" $CI_PROJECT_URL.git | tail -n1 | sed 's/.*\///'`
+    - echo $LAST_RELEASE
+    # make sure to reset to LAST_RELEASE to avoid dev version number if changes were introduced in CI
+    - git reset --hard $LAST_RELEASE && git clean -fdx
+  script:
+    - pip wheel . --no-deps -w dist
+    - echo "upload to pypi registry"
+    - twine upload --repository-url https://upload.pypi.org/legacy/ dist/* -u __token__ -p ${PYPI_TOKEN}
+    - echo "upload to gitlab registry"
+    - python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi/ --verbose -u gitlab-ci-token -p ${CI_JOB_TOKEN} dist/*
+  only:
+    - tags

@@ -1,0 +1,108 @@
+![eossr_logo](docs/images/eossr_logo_200x100.png)
+
+# The ESCAPE OSSR library
+
+The eOSSR is the Python library to programmatically manage the ESCAPE OSSR.
+In particular, it includes:
+
+- an API to access the Zenodo and the OSSR, retrieve records and publish content
+- functions to map and convert metadata from CodeMeta to Zenodo metadata shema
+- functions to validate their `codemeta.json` file against OSSR requirements
+- functions to help developers automatically publish to Zenodo and contribute to the OSSR, in particular using their continuous integration (see also code snippets)
+
+![eossr schema](https://s3-eu-west-1.amazonaws.com/openreseurope/manuscripts/16954/8df35fb4-5da0-472b-b560-c410ecf56296_figure1.gif)
+
+Code: [https://gitlab.com/escape-ossr/eossr](https://gitlab.com/escape-ossr/eossr)
+
+Documentation: [https://escape-ossr.gitlab.io/eossr/](https://escape-ossr.gitlab.io/ossr-pages/)
+
+[![pipeline_badge](https://gitlab.com/escape-ossr/eossr/badges/master/pipeline.svg)](
+https://gitlab.com/escape-ossr/eossr/-/commits/master)
+[![coverage_badge](https://gitlab.com/escape-ossr/eossr/badges/master/coverage.svg)](
+https://gitlab.com/escape-ossr/eossr/-/commits/master)
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/5712/badge)](https://bestpractices.coreinfrastructure.org/projects/5712)
+[![SQAaaS badge shields.io](https://img.shields.io/badge/sqaaas%20software-silver-lightgrey)](https://api.eu.badgr.io/public/assertions/aiB2ndZOSL6IuVTOmljRCw "SQAaaS silver badge achieved")
+[![MIT_license_badge](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![zenodo_badge](https://zenodo.org/badge/DOI/10.5281/zenodo.5524912.svg)](https://doi.org/10.5281/zenodo.5524912)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/git/https%3A%2F%2Fgitlab.in2p3.fr%2Fescape2020%2Fwp3%2Feossr/HEAD?labpath=examples%2Fnotebooks%2Fossr_api-Explore_the_OSSR.ipynb)
+
+## Former stable versions
+
+- v1.0: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7544514.svg)](https://doi.org/10.5281/zenodo.7544514)
+- v0.6: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6475946.svg)](https://doi.org/10.5281/zenodo.6475946)
+- v0.5: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6352039.svg)](https://doi.org/10.5281/zenodo.6352039)
+- v0.4: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6326454.svg)](https://doi.org/10.5281/zenodo.6326454)
+- v0.3.3: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5592584.svg)](https://doi.org/10.5281/zenodo.5592584)
+- v0.2 : [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5524913.svg)](https://doi.org/10.5281/zenodo.5524913)
+
+## Install
+
+### For users
+
+```bash
+pip install eossr
+```
+
+You can also run it with docker:
+
+```bash
+docker run -it registry.gitlab.com/escape-ossr/eossr:latest
+```
+
+[Visit our registry](https://gitlab.com/escape-ossr/eossr/container_registry) to see the available docker containers.
+
+Note that `latest` tag always point to the latest stable released container. For reproducible results, use a tagged version.
+
+### For developers
+
+```bash
+git clone https://gitlab.com/escape-ossr/eossr.git
+cd eossr
+pip install -e .
+```
+
+#### Running tests
+
+To run tests locally, run:
+
+```bash
+pip install -e ".[tests]"
+
+pytest eossr
+```
+
+Some tests will be skiped if `SANDBOX_ZENODO_TOKEN` is not defined in your environment variables.
+If you want to run these tests, you will need to create a [sandbox zenodo token](https://sandbox.zenodo.org/account/settings/applications/tokens/new/) and add it to your env:
+
+```bash
+export SANDBOX_ZENODO_TOKEN="your_sandbox_token"
+```
+
+## Online CodeMeta validator for the OSSR
+
+The eOSSR powers an online validator for your CodeMeta metadata and to convert it to Zenodo metadata:
+
+[![badge](https://img.shields.io/badge/OSSR%20metadata%20tool-binder-579ACA.svg?logo=data:image/png;base64,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)](https://mybinder.org/v2/gl/escape-ossr%2Feossr/HEAD?urlpath=voila%2Frender%2Fdocs%2Fmetadata%2Fvalidate_codemeta.ipynb)
+
+## License
+
+See [LICENSE](LICENSE)
+
+## Cite
+
+To cite this library, please cite our ADASS proceedings:
+
+```latex
+@misc{https://doi.org/10.48550/arxiv.2212.00499,
+  doi = {10.48550/ARXIV.2212.00499},
+  url = {https://arxiv.org/abs/2212.00499},
+  author = {Vuillaume, Thomas and Garcia, Enrique and Tacke, Christian and Gal, Tamas},
+  keywords = {Instrumentation and Methods for Astrophysics (astro-ph.IM), FOS: Physical sciences, FOS: Physical sciences},
+  title = {The eOSSR library},
+  publisher = {arXiv},
+  year = {2022},
+  copyright = {arXiv.org perpetual, non-exclusive license}
+}
+```
+
+If you used the library in a workflow, please cite the version used as well, using the cite section in [the Zenodo page](https://zenodo.org/record/5592584#.YiALJRPMI-Q) (right column, below the `Versions` section).

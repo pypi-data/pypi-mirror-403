@@ -1,0 +1,51 @@
+# Set up this script
+#   1. Create a new personal access token (https://gitlab.com/-/profile/personal_access_tokens)
+#      with the following scopes:
+#        - read_repository
+#        - write_repository
+#   2. Inside Settings -> CI / CD -> Variables, create the following variables:
+#
+#   GITLAB_TOKEN          Personal access token previously created.
+#     (masked)
+#   GITLAB_USERNAME       Username associated with the personal access token.
+#   COMMIT_MESSAGE        Commit message                                        Automatic update of CodeMeta
+
+workflow:
+  rules:
+    - if: '$CI_MERGE_REQUEST_EVENT_TYPE != "detached"'
+
+update_codemeta_test:
+  stage: update_codemeta
+  image: registry.gitlab.com/escape-ossr/eossr:dev
+  script:
+    # We need to be on master with no local changes
+    # - git fetch && git checkout --force $CI_DEFAULT_BRANCH && git reset --hard origin/$CI_DEFAULT_BRANCH
+    - pip install .
+    - cat codemeta.json
+    - python eossr/scripts/update_codemeta_eossr.py -c codemeta.json --no-release
+    - cat codemeta.json
+    - eossr-metadata-validator codemeta.json
+    - eossr-check-connection-zenodo --token $ZENODO_TOKEN -p $CI_PROJECT_DIR
+  artifacts:
+    paths:
+      - codemeta.json
+    expire_in: 3 hours
+
+
+update_codemeta:
+  stage: update_codemeta
+  image: registry.gitlab.com/escape-ossr/eossr:dev
+  script:
+    # We need to be on master with no local changes
+    - git fetch && git checkout --force $CI_DEFAULT_BRANCH && git reset --hard origin/$CI_DEFAULT_BRANCH
+    - pip install .
+    - python eossr/scripts/update_codemeta_eossr.py -c codemeta.json
+    - cat codemeta.json
+    - eossr-metadata-validator codemeta.json
+    - eossr-check-connection-zenodo --token $ZENODO_TOKEN -p $CI_PROJECT_DIR
+  only:
+    - tags
+  artifacts:
+    paths:
+      - codemeta.json
+    expire_in: 3 hours
