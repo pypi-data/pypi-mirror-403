@@ -1,0 +1,9 @@
+#  -*- coding: utf-8 -*-
+"""
+Author: Rafael R. L. Benevides
+"""
+
+class Propagator:
+    def propagate_state(self, time: "DatetimeLike", state: "State", **kwargs) -> "StateVectorEphemeris": ...
+    def propagate(self, time: "DatetimeLike", state: "State|Iterator[State]", assume_sorted_states: bool = False, main_direction: str = 'forward', **kwargs) -> "StateVectorEphemeris": ...
+    def jacobian(self, eph: "StateVectorEphemeris") -> "ndarray[double]": ...
