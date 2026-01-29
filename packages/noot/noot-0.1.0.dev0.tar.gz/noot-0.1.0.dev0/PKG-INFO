@@ -1,0 +1,62 @@
+Metadata-Version: 2.3
+Name: noot
+Version: 0.1.0.dev0
+Summary: Noot library
+Requires-Dist: anthropic>=0.76.0
+Requires-Dist: mitmproxy
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+
+# noot
+
+noot allows you to test interactive CLIs.
+Think of it as a Stagehand for interactive CLIs.
+
+```python
+def test_create_web_project():
+    with Flow.spawn('python setup_wizard.py') as f:
+        f.expect('Welcome to Project Setup Wizard')
+
+        f.step("Enter project name 'mywebapp' and press enter")
+
+        # `expect` parses assertions from natural language
+        f.expect('Web Application project option is available')
+
+        f.step('Press enter to select Web Application')
+
+        # or specify assertions on screen state directly
+        assert "author name" in f.screen()
+
+        f.step("Enter author name 'Alice' and press enter")
+```
+
+Run your tests:
+```bash
+pytest tests/test_cli.py
+```
+
+The first run records LLM responses to the cassette file. Subsequent runs replay from the cassette, so no API calls are made.
+
+## Recording Modes
+
+Control recording behavior with the `RECORD_MODE` environment variable:
+
+| `RECORD_MODE` | Behavior |
+|---------------|----------|
+| `once` | **(Default)** Record if cassette is missing, replay if it exists. |
+| `none` | Replay only. Fails if a request isn't cached. Use this in CI. |
+| `all` | Always re-record, overwriting existing cassettes. |
+
+Example - force re-recording:
+```bash
+RECORD_MODE=all pytest tests/test_cli.py
+```
+
+Example - CI mode (fail if cassette is missing):
+```bash
+RECORD_MODE=none pytest tests/test_cli.py
+```
+
+Cassettes are stored in `<project_root>/.cassettes/`:
+- CLI cassettes (LLM responses): `.cassettes/cli/`
+- HTTP cassettes (API recordings): `.cassettes/http/`
