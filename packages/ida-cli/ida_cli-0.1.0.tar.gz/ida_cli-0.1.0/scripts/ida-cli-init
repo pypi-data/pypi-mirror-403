@@ -1,0 +1,296 @@
+#!/usr/bin/env python3
+"""
+ida-cli initialization script.
+
+This script automatically finds the IDA Pro installation and sets up
+the Python environment for ida-cli to work properly.
+
+Usage:
+    ida-cli-init [--ida-path /path/to/ida]
+
+The script will:
+1. Find the IDA Pro installation (or use --ida-path)
+2. Run the idalib activation script
+3. Install ida-domain if not present
+4. Verify the setup works
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def _is_valid_ida_dir(path: Path) -> bool:
+    """Check if a path is a valid IDA installation with idalib support."""
+    if not path.exists():
+        return False
+    return (path / "idalib").exists() and (path / "idapyswitch").exists()
+
+
+def _glob_ida_installations(base_dir: Path) -> list[Path]:
+    """Find IDA installations in a directory using glob patterns."""
+    patterns = ["ida-pro-*", "idapro-*", "ida-*", "IDA*"]
+    found = []
+    if not base_dir.exists():
+        return found
+    for pattern in patterns:
+        for path in base_dir.glob(pattern):
+            if path.is_dir() and _is_valid_ida_dir(path):
+                found.append(path)
+    found.sort(key=lambda p: p.name, reverse=True)
+    return found
+
+
+def find_ida_installation() -> Path | None:
+    """Find IDA Pro installation.
+
+    Search order: IDADIR, IDA_INSTALL_DIR, /opt glob, home glob, macOS, WSL.
+    """
+    # Check environment variables first
+    for env_var in ["IDADIR", "IDA_INSTALL_DIR"]:
+        env_value = os.environ.get(env_var)
+        if env_value:
+            path = Path(env_value)
+            if _is_valid_ida_dir(path):
+                return path
+
+    # Glob search in /opt
+    for path in _glob_ida_installations(Path("/opt")):
+        return path
+
+    # Glob search in home directory
+    for path in _glob_ida_installations(Path.home()):
+        return path
+
+    # macOS paths
+    for ver in ["9.3", "9.2", "9.1"]:
+        path = Path(f"/Applications/IDA Professional {ver}.app/Contents/MacOS")
+        if _is_valid_ida_dir(path):
+            return path
+
+    # WSL Windows paths
+    for ver in ["9.3", "9.2", "9.1"]:
+        path = Path(f"/mnt/c/Program Files/IDA Pro {ver}")
+        if _is_valid_ida_dir(path):
+            return path
+
+    return None
+
+
+def verify_ida_installation(ida_path: Path) -> bool:
+    """Verify that the IDA installation is valid."""
+    required_files = [
+        ida_path / "idalib" / "python" / "py-activate-idalib.py",
+        ida_path / "idalib" / "python" / "setup.py",
+    ]
+
+    for f in required_files:
+        if not f.exists():
+            print(f"Error: Required file not found: {f}")
+            return False
+
+    return True
+
+
+def run_activation_script(ida_path: Path) -> bool:
+    """Run the IDA idalib activation script."""
+    activation_script = ida_path / "idalib" / "python" / "py-activate-idalib.py"
+
+    print(f"Running idalib activation script...")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(activation_script), "-d", str(ida_path)],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            print(f"Error running activation script:")
+            print(result.stderr)
+            return False
+
+        print(result.stdout)
+        return True
+
+    except Exception as e:
+        print(f"Error running activation script: {e}")
+        return False
+
+
+def install_ida_domain() -> bool:
+    """Install ida-domain package if not present."""
+    print("Checking for ida-domain package...")
+
+    try:
+        import ida_domain  # noqa: F401
+        print("ida-domain is already installed.")
+        return True
+    except ImportError:
+        pass
+
+    print("Installing ida-domain...")
+    try:
+        # Try pip first
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "ida-domain"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            print("ida-domain installed successfully.")
+            return True
+
+        # Try uv if pip fails (externally managed environment)
+        if "externally-managed-environment" in result.stderr:
+            print("Trying uv pip install...")
+            result = subprocess.run(
+                ["uv", "pip", "install", "ida-domain"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                print("ida-domain installed successfully via uv.")
+                return True
+
+        print(f"Error installing ida-domain:")
+        print(result.stderr)
+        return False
+
+    except Exception as e:
+        print(f"Error installing ida-domain: {e}")
+        return False
+
+
+def verify_setup() -> bool:
+    """Verify that the setup works correctly."""
+    print("\nVerifying setup...")
+
+    test_script = """
+import sys
+try:
+    import idapro
+    print(f"idapro: OK (IDA {idapro.get_library_version()})")
+    print(f"IDA install dir: {idapro.get_ida_install_dir()}")
+except ImportError as e:
+    print(f"idapro: FAILED ({e})")
+    sys.exit(1)
+
+try:
+    from ida_domain import Database
+    print("ida_domain: OK")
+except ImportError as e:
+    print(f"ida_domain: FAILED ({e})")
+    sys.exit(1)
+
+print("\\nSetup verified successfully!")
+"""
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", test_script],
+            capture_output=True,
+            text=True,
+        )
+
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
+
+        return result.returncode == 0
+
+    except Exception as e:
+        print(f"Error verifying setup: {e}")
+        return False
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Initialize ida-cli environment",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    ida-cli-init                          # Auto-find IDA installation
+    ida-cli-init --ida-path /opt/ida-9.3  # Use specific IDA path
+
+Environment variables:
+    IDA_INSTALL_DIR  Path to IDA Pro installation
+    IDADIR           Alternative path to IDA Pro installation
+""",
+    )
+    parser.add_argument(
+        "--ida-path",
+        type=Path,
+        help="Path to IDA Pro installation directory",
+    )
+    parser.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="Skip verification step",
+    )
+
+    args = parser.parse_args()
+
+    print("=" * 60)
+    print("ida-cli Initialization Script")
+    print("=" * 60)
+    print()
+
+    # Find IDA installation
+    if args.ida_path:
+        ida_path = args.ida_path
+        print(f"Using specified IDA path: {ida_path}")
+    else:
+        print("Searching for IDA Pro installation...")
+        ida_path = find_ida_installation()
+
+        if ida_path is None:
+            print("\nError: Could not find IDA Pro installation.")
+            print("Please specify the path with --ida-path or set IDA_INSTALL_DIR")
+            return 1
+
+        print(f"Found IDA Pro at: {ida_path}")
+
+    print()
+
+    # Verify IDA installation
+    if not verify_ida_installation(ida_path):
+        return 1
+
+    print()
+
+    # Run activation script
+    if not run_activation_script(ida_path):
+        return 1
+
+    print()
+
+    # Install ida-domain
+    if not install_ida_domain():
+        return 1
+
+    # Verify setup
+    if not args.skip_verify:
+        if not verify_setup():
+            return 1
+
+    print()
+    print("=" * 60)
+    print("ida-cli initialization complete!")
+    print("=" * 60)
+    print()
+    print("You can now use ida-cli:")
+    print("    ida-cli -i /path/to/binary info")
+    print("    ida-cli -i /path/to/binary functions list")
+    print("    ida-cli -i /path/to/binary decompile main")
+    print()
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
