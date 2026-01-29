@@ -1,0 +1,87 @@
+# midiharmony
+## Fast, data‑driven harmony analysis for any MIDI file
+
+<img width="1024" height="1024" alt="midiharmony" src="https://github.com/user-attachments/assets/586cf022-ce06-4cea-bfdc-ffcf9b0365d1" />
+
+***
+
+## Abstract
+
+*midiharmony provides fast, stand‑alone harmony analysis for MIDI files by comparing their chord and note relationships against a high‑quality database of extracted chord quads. This approach enables reliable detection of strong harmonic structure, musically coherent progressions, and potential inconsistencies, making it a practical tool for music‑AI pipelines, composition analysis, and large‑scale MIDI processing.*
+
+***
+
+## Install
+
+```sh
+!pip install -U midiharmony
+```
+
+***
+
+## Basic use example
+*Using midiharmony is easy and requires just two lines of code :)*
+
+### Analyze a single MIDI
+
+```python
+import midiharmony
+
+midi_harmony_dict = midiharmony.analyze_midi('Come To My Window.mid')
+```
+
+### Analyze MIDI folder(s)
+
+```python
+import midiharmony
+
+midi_harmony_dicts_list = midiharmony.analyze_midi_folders(['./midi_folder_1', './midi_folder_2'])
+```
+
+***
+
+## midiharmony API reference list
+
+```midiharmony.find_quads_fast_cupy```  
+*Count matching 4‑chord rows between two arrays using a GPU‑accelerated FNV‑1a hash.*
+
+```midiharmony.find_quads_fast_numpy```  
+*Count matching 4‑chord rows between two arrays using NumPy on CPU.*
+
+```midiharmony.get_trg_array```  
+*Load and cache the target harmonic‑quad array in NumPy or CuPy form.*
+
+```midiharmony.process_midi```  
+*Extract chords, grouped chords, and unique 4‑chord quads from a MIDI file.*
+
+```midiharmony.analyze_processed_midi```  
+*Compare extracted quads against the target database and compute harmony metrics.*
+
+```midiharmony.analyze_midi```  
+*Run the full pipeline: process a MIDI file and evaluate its harmonic quality.*
+
+```midiharmony.analyze_midi_folders```  
+*Batch‑analyze all MIDI files in one or more folders and return harmony reports.*
+
+```midiharmony.helpers.get_package_data```  
+*Return a sorted list of packaged `.npz` data files with their resolved paths.*
+
+```midiharmony.helpers.get_normalized_midi_md5_hash```  
+*Compute original and normalized MD5 hashes for any MIDI file.*
+
+```midiharmony.helpers.normalize_midi_file```  
+*Normalize a MIDI file and write the normalized version to disk.*
+
+```midiharmony.helpers.is_installed```  
+*Check whether a Debian package is installed using `dpkg-query`.*
+
+```midiharmony.helpers._run_apt_get```  
+*Internal helper to run `apt-get` commands with consistent flags and timeout.*
+
+```midiharmony.helpers.install_apt_package```  
+*Idempotently install an apt package with retries, optional sudo, and optional python‑apt.*
+
+***
+
+### Project Los Angeles
+### Tegridy Code 2026
