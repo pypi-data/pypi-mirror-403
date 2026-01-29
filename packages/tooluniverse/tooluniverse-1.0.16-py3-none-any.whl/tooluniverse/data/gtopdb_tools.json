@@ -1,0 +1,1036 @@
+[
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_get_targets",
+    "description": "Search the IUPHAR/BPS Guide to Pharmacology (GtoPdb) for pharmacological targets including proteins, receptors, enzymes, and ion channels. Returns target details with associated ligands, approved drugs, mechanisms of action, and cross-references to UniProt, Ensembl, and HGNC. Use this for drug discovery, target validation, drug-receptor interaction studies, and finding drug repurposing opportunities.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "target_type": {
+          "type": "string",
+          "default": "protein",
+          "description": "Type of pharmacological target. Examples: 'protein', 'receptor', 'enzyme', 'ion_channel'. Leave default for general protein targets."
+        },
+        "limit": {
+          "type": "integer",
+          "default": 20,
+          "description": "Maximum number of targets to return (default: 20, max: 1000)"
+        }
+      }
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/targets",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "description": "ToolUniverse wrapper around Guide to Pharmacology (GtoPdb) API response.",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Execution status.",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Request URL used."
+        },
+        "count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Number of items returned (when data is a list)."
+        },
+        "data": {
+          "type": [
+            "array",
+            "object",
+            "null"
+          ],
+          "description": "Raw API response body (usually a list of targets).",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "targetId": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "targetType": {
+                "type": "string"
+              },
+              "species": {
+                "type": "string"
+              },
+              "uniprotId": {
+                "type": "string"
+              },
+              "ensemblGeneId": {
+                "type": "string"
+              },
+              "hgncId": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "family": {
+                "type": "string"
+              },
+              "subfamily": {
+                "type": "string"
+              },
+              "subunit": {
+                "type": "string"
+              },
+              "tissue": {
+                "type": "array"
+              },
+              "cellLine": {
+                "type": "array"
+              },
+              "diseases": {
+                "type": "array"
+              },
+              "drugs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "drugId": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "mechanism": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "ligands": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "ligandId": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "affinity": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Error summary if status=error."
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "HTTP status code if available."
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Additional error detail (truncated)."
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "target_type": "protein",
+        "limit": 5
+      },
+      {
+        "target_type": "receptor",
+        "limit": 10
+      }
+    ]
+  },
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_get_target",
+    "description": "Get detailed information about a specific pharmacological target by its GtoPdb target ID. Returns comprehensive target data including gene information, protein structure, tissue distribution, associated ligands and drugs, pathophysiology, mutations, and database cross-references. Use the target ID from GtoPdb_get_targets or search results.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "target_id": {
+          "type": "integer",
+          "description": "GtoPdb target identifier (e.g., 290 for adenosine A1 receptor). Find target IDs using GtoPdb_get_targets."
+        }
+      },
+      "required": [
+        "target_id"
+      ]
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/targets/{target_id}",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "description": "ToolUniverse wrapper around GtoPdb target response. Returns single target or batch results.",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Detailed target information.",
+          "additionalProperties": true,
+          "properties": {
+            "targetId": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "abbreviation": {
+              "type": "string"
+            },
+            "targetType": {
+              "type": "string"
+            },
+            "species": {
+              "type": "array"
+            },
+            "geneSymbol": {
+              "type": "string"
+            },
+            "uniprotId": {
+              "type": "string"
+            },
+            "ensemblGeneId": {
+              "type": "string"
+            },
+            "hgncId": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "target_id": 290
+      },
+      {
+        "target_id": 1
+      }
+    ]
+  },
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_list_ligands",
+    "description": "Search and list ligands from the Guide to Pharmacology including synthetic drugs, natural products, metabolites, peptides, and antibodies. Returns ligand details with molecular properties (LogP, molecular weight, SMILES), biological activity, associated targets, and database cross-references (ChEMBL, PubChem, DrugBank). Filter by ligand type (Approved, Metabolite, Peptide), name, or molecular properties.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "ligand_type": {
+          "type": "string",
+          "description": "Filter by ligand type. Options: 'Approved' (approved drugs), 'Synthetic organic', 'Metabolite', 'Natural product', 'Endogenous peptide', 'Peptide', 'Antibody', 'Withdrawn'. Leave empty for all ligands."
+        },
+        "name": {
+          "type": "string",
+          "description": "Search ligands by name (partial match). Example: 'aspirin', 'caffeine', 'insulin'."
+        },
+        "limit": {
+          "type": "integer",
+          "default": 20,
+          "description": "Maximum number of ligands to return (default: 20, max: 1000)."
+        }
+      }
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/ligands",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "ligandId": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "abbreviation": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "approved": {
+                "type": "boolean"
+              },
+              "withdrawn": {
+                "type": "boolean"
+              },
+              "iupacName": {
+                "type": "string"
+              },
+              "smiles": {
+                "type": "string"
+              },
+              "inchi": {
+                "type": "string"
+              },
+              "inchiKey": {
+                "type": "string"
+              },
+              "pubchemCid": {
+                "type": "integer"
+              },
+              "molecularWeight": {
+                "type": "number"
+              },
+              "logP": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "ligand_type": "Approved",
+        "limit": 10
+      },
+      {
+        "name": "aspirin",
+        "limit": 5
+      }
+    ]
+  },
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_get_ligand",
+    "description": "Get detailed information about a specific ligand by its GtoPdb ligand ID. Returns comprehensive data including chemical structure (SMILES, InChI), molecular properties, clinical data, associated targets with affinity values, database cross-references, and synonyms. Use ligand ID from GtoPdb_list_ligands or search results.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "ligand_id": {
+          "type": "integer",
+          "description": "GtoPdb ligand identifier (e.g., 1016 for tamoxifen). Find ligand IDs using GtoPdb_list_ligands."
+        }
+      },
+      "required": [
+        "ligand_id"
+      ]
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/ligands/{ligand_id}",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Detailed ligand information.",
+          "additionalProperties": true,
+          "properties": {
+            "ligandId": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "abbreviation": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "approved": {
+              "type": "boolean"
+            },
+            "approvalSource": {
+              "type": "string"
+            },
+            "withdrawn": {
+              "type": "boolean"
+            },
+            "iupacName": {
+              "type": "string"
+            },
+            "smiles": {
+              "type": "string"
+            },
+            "inchiKey": {
+              "type": "string"
+            },
+            "molecularWeight": {
+              "type": "number"
+            },
+            "logP": {
+              "type": "number"
+            },
+            "bioavailability": {
+              "type": "string"
+            },
+            "clinicalUse": {
+              "type": "array"
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "ligand_id": 1016
+      },
+      {
+        "ligand_id": 5239
+      }
+    ]
+  },
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_search_interactions",
+    "description": "Search pharmacological interactions between targets and ligands across the Guide to Pharmacology database. Returns interaction data with affinity measurements (pKi, pIC50, pEC50), action types (agonist, antagonist, inhibitor), species, and references. Filter by target type, ligand type, affinity threshold, approved drugs, or species. Essential for finding drug-target pairs and structure-activity relationships.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "target_type": {
+          "type": "string",
+          "description": "Filter by target class: 'GPCR', 'NHR', 'LGIC', 'VGIC', 'Enzyme', 'Transporter', etc."
+        },
+        "ligand_type": {
+          "type": "string",
+          "description": "Filter by ligand class: 'Synthetic organic', 'Metabolite', 'Peptide', 'Antibody', etc."
+        },
+        "action_type": {
+          "type": "string",
+          "description": "Filter by interaction type: 'Agonist', 'Antagonist', 'Inhibitor', 'Activator', 'Channel blocker', etc."
+        },
+        "affinity_parameter": {
+          "type": "string",
+          "description": "Affinity measurement type: 'pKi', 'pIC50', 'pEC50', 'pKd', 'pKB', 'pA2'."
+        },
+        "min_affinity": {
+          "type": "number",
+          "description": "Minimum affinity value (e.g., 7.0 for pKi >= 7). Higher values indicate stronger binding."
+        },
+        "approved_only": {
+          "type": "boolean",
+          "default": false,
+          "description": "Return only interactions with approved drugs (true/false)."
+        },
+        "limit": {
+          "type": "integer",
+          "default": 100,
+          "description": "Maximum number of interactions to return (default: 100, max: 5000)."
+        }
+      }
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/interactions",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "interactionId": {
+                "type": "integer"
+              },
+              "targetId": {
+                "type": "integer"
+              },
+              "targetName": {
+                "type": "string"
+              },
+              "targetType": {
+                "type": "string"
+              },
+              "ligandId": {
+                "type": "integer"
+              },
+              "ligandName": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "species": {
+                "type": "string"
+              },
+              "affinityParameters": {
+                "type": "array"
+              },
+              "primaryTarget": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "target_type": "GPCR",
+        "approved_only": true,
+        "limit": 20
+      },
+      {
+        "affinity_parameter": "pKi",
+        "min_affinity": 7.5,
+        "limit": 50
+      }
+    ]
+  },
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_get_target_interactions",
+    "description": "Get all ligand interactions for a specific target by its GtoPdb target ID. Returns detailed interaction data including affinity measurements, action types, endogenous ligands, and rank-order potency. Use this to find all known ligands for a target, compare binding affinities, or identify the most potent agonists/antagonists.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "target_id": {
+          "type": "integer",
+          "description": "GtoPdb target identifier (e.g., 221 for GPER). Find target IDs using GtoPdb_get_targets."
+        },
+        "action_type": {
+          "type": "string",
+          "description": "Filter by action: 'Agonist', 'Antagonist', 'Inhibitor', 'Activator', 'Channel blocker', etc. Leave empty for all."
+        },
+        "affinity_parameter": {
+          "type": "string",
+          "description": "Affinity type: 'pKi', 'pIC50', 'pEC50', 'pKd'. Leave empty for all affinity measurements."
+        },
+        "min_affinity": {
+          "type": "number",
+          "description": "Minimum affinity value (e.g., 7.0). Leave empty for all affinities."
+        }
+      },
+      "required": [
+        "target_id"
+      ]
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/targets/{target_id}/interactions",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "interactionId": {
+                "type": "integer"
+              },
+              "ligandId": {
+                "type": "integer"
+              },
+              "ligandName": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "endogenous": {
+                "type": "boolean"
+              },
+              "selectivity": {
+                "type": "string"
+              },
+              "affinityParameters": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "target_id": 221,
+        "action_type": "Agonist",
+        "min_affinity": 7
+      },
+      {
+        "target_id": 290
+      }
+    ]
+  },
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_list_diseases",
+    "description": "Search and list diseases from the Guide to Pharmacology with associated pharmacological targets and ligands. Returns disease information with cross-references to OMIM, Disease Ontology, and Orphanet databases. Use this to identify disease-relevant targets, find therapeutic interventions, or explore pharmacology of specific conditions.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Search diseases by name (partial match). Examples: 'diabetes', 'cancer', 'asthma', 'Alzheimer'."
+        },
+        "limit": {
+          "type": "integer",
+          "default": 20,
+          "description": "Maximum number of diseases to return (default: 20, max: 1000)."
+        }
+      }
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/diseases",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "diseaseId": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "omimId": {
+                "type": "string"
+              },
+              "doidId": {
+                "type": "string"
+              },
+              "orphanetId": {
+                "type": "string"
+              },
+              "synonyms": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "name": "diabetes",
+        "limit": 10
+      },
+      {
+        "name": "cancer",
+        "limit": 15
+      }
+    ]
+  },
+  {
+    "type": "GtoPdbRESTTool",
+    "name": "GtoPdb_get_disease",
+    "description": "Get detailed information about a specific disease by its GtoPdb disease ID. Returns disease description, associated pharmacological targets, therapeutic ligands (including approved drugs), and database cross-references. Use disease ID from GtoPdb_list_diseases. Essential for finding drug targets and treatments for specific conditions.",
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "disease_id": {
+          "type": "integer",
+          "description": "GtoPdb disease identifier. Find disease IDs using GtoPdb_list_diseases."
+        }
+      },
+      "required": [
+        "disease_id"
+      ]
+    },
+    "fields": {
+      "endpoint": "https://www.guidetopharmacology.org/services/diseases/{disease_id}",
+      "return_format": "JSON"
+    },
+    "return_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Detailed disease information with targets and ligands.",
+          "additionalProperties": true,
+          "properties": {
+            "diseaseId": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "omimId": {
+              "type": "string"
+            },
+            "doidId": {
+              "type": "string"
+            },
+            "targets": {
+              "type": "array"
+            },
+            "ligands": {
+              "type": "array"
+            }
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "test_examples": [
+      {
+        "disease_id": 1
+      },
+      {
+        "disease_id": 100
+      }
+    ]
+  }
+]
