@@ -1,0 +1,65 @@
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+before_script:
+  - python --version # For debugging
+
+test mypy:
+  image: python:3.9
+  script:
+    - apt update && apt install gcc
+    - pip install .[dev]
+    - mypy --install-types --non-interactive geopic_tag_reader/
+
+lint:
+  image: python:3.9
+  script:
+    - apt update && apt install gcc
+    - pip install .[dev]
+    - black --fast --check .
+
+tests-reader:
+  image: python:3.9
+  script:
+    - apt update && apt install gcc gettext
+    - pip install .[dev]
+    - make i18n-po2code
+    - pytest -s -vv --ignore=tests/test_writer.py --ignore=geopic_tag_reader/writer.py
+
+tests-writer:
+  image: python:3.9
+  script:
+    - apt update && apt install gcc gettext
+    - pip install .[dev,write-exif]
+    - make i18n-po2code
+    - pytest -s -vv
+
+# tests-deploy_pypi:
+#   stage: deploy
+#   image: python:3.9
+#   variables:
+#     FLIT_INDEX_URL: https://test.pypi.org/legacy/
+#     FLIT_USERNAME: $TEST_FLIT_USERNAME
+#     FLIT_PASSWORD: $TEST_FLIT_PASSWORD
+#   script:
+#     - apt update && apt install -y gcc git gettext
+#     - pip install .[build]
+#     - make i18n-po2code
+#     - flit publish
+#   only:
+#     - develop
+
+deploy_pypi:
+  stage: deploy
+  image: python:3.9
+  script:
+    - apt update && apt install -y gcc git gettext
+    - pip install .[build]
+    - make i18n-po2code
+    - flit publish # use [flit](https://flit.pypa.io/) and FLIT_USERNAME/FLIT_PASSWORD env var
+  only:
+    - tags
