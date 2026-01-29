@@ -1,0 +1,300 @@
+# 🎙️ Cast-Away
+Minimalist TUI Podcast Client for Hackers
+
+Cast-Away is a lightweight, keyboard-driven terminal application designed for developers who want to listen to podcasts without leaving their terminal environment. Built with Python and Textual, it provides a distraction-free experience with real-time audio visualization.
+
+✨ Features
+- **One-Click Popular Feeds**: Add 12+ popular podcasts with a single click from curated categories.
+- **RSS Integration**: Add any public podcast RSS feed or enter custom URLs.
+- **Smooth Playback**: Non-blocking audio streaming using Pygame.mixer.
+- **ASCII Visualizer**: Real-time audio Processbar in the terminal.
+- **Self-Contained**: No external dependencies required once compiled.
+
+🛠️ Requirements (TerminalCraft v2)
+- [x] Real Problem: Solves the "heavy GUI" problem of modern podcast apps.
+- [x] Unix Support: Tested on Linux, macOS, and WSL.
+- [x] Open Source: Licensed under MIT for the community.
+- [x] No Wrapper: Custom built RSS parser and audio manager (not just a wrapper).
+
+🚀 Quick Start
+
+1. **Installation**
+
+   Ensure you have Python 3.8+ installed. Clone the repo and install dependencies:
+
+   ```bash
+   git clone https://github.com/MadushankaRajapaksha/castAway.git
+   cd castAway
+   pip install -e .
+   ```
+   or via pip
+   ```
+   pip install castaway-cli
+   ```
+
+
+2. **Upgrade**: Ensure you have the latest version of Cast-Away by running:
+   ```
+   pip install --upgrade castaway-cli
+   ```
+3. **Run the App**
+
+   ```bash
+   castAway
+   ```
+
+   Or run directly with Python:
+
+   ```bash
+   python -m castAway
+   ```
+   
+📂 Project Structure
+```
+castAway/
+├── cli.py          # Main entry point and CLI interface
+├── core.py         # Core RSS parsing and podcast logic
+├── db.py           # Database management for subscriptions
+├── player.py       # Audio playback functionality
+├── screen.py       # TUI interface using Textual
+└── test.py         # Testing utilities
+```
+
+ 
+
+# 📖 User Guide: How to Get RSS Feeds
+
+This comprehensive guide will help you find and add RSS feeds to your Cast-Away podcast library.
+
+## 🎯 What is an RSS Feed?
+
+RSS (Really Simple Syndication) feeds are web feeds that allow you to receive updates from websites, including podcast episodes. For podcasts, RSS feeds contain information about episodes, audio files, and show metadata.
+
+## 🔍 Finding RSS Feeds for Your Favorite Podcasts
+
+### Method 1: Direct from Podcast Websites
+
+1. **Visit the podcast's official website**
+2. **Look for RSS feed links** - usually marked with:
+   - An RSS icon (📡 or 📻)
+   - "Subscribe" or "RSS" buttons
+   - Links ending in `.xml` or containing `/feed/`
+
+**Example Podcasts with Direct RSS Links:**
+
+- **Darknet Diaries**: `https://feeds.megaphone.fm/darknetdiaries`
+- **This American Life**: `https://www.thisamericanlife.org/podcast/rss.xml`
+- **NPR Podcasts**: Look for "RSS" links on individual show pages
+- **BBC Sounds**: Check the podcast's page for RSS subscription options
+
+### Method 2: Using Podcast Aggregators
+
+Popular podcast platforms often provide RSS feeds:
+
+1. **Apple Podcasts**:
+   - Search for your podcast
+   - Click the "Share" button
+   - Copy the RSS feed URL
+
+2. **Spotify**:
+   - Some podcasts show RSS links in their description
+   - Use third-party tools to extract RSS from Spotify
+
+3. **Google Podcasts**:
+   - Open the podcast page
+   - Look for RSS feed information
+
+### Method 3: Podcast Search Engines
+
+Use these websites to search for podcasts and get their RSS feeds:
+
+- **Podchaser** (https://www.podchaser.com)
+- **Podcast Addict Directory** (https://podcastaddict.com)
+- **Listen Notes** (https://www.listennotes.com)
+- **Podlink** (https://pod.link)
+
+### Method 4: Using RSS Feed Discovery Tools
+
+- **RSS.com Podcast Directory**: https://rss.com/podcasts/
+- **Podcast Republic**: Offers RSS feed discovery
+- **gPodder Directory**: Open-source podcast directory
+
+## 📝 Popular Podcast RSS Feed Examples
+
+Here are some popular podcasts with their RSS feeds to get you started:
+
+### Technology & Hacking
+- **Darknet Diaries**: `https://feeds.megaphone.fm/darknetdiaries`
+- **Security Now**: `https://feeds.twit.tv/sn.xml`
+- **Command Line Heroes**: `https://www.redhat.com/en/command-line-heroes/feed.xml`
+
+### News & Current Affairs
+- **NPR News Now**: `https://www.npr.org/rss/podcast.php?id=500005`
+- **BBC Global News**: `https://podcasts.files.bbci.co.uk/p02nq0gn.rss`
+- **The Daily (NYT)**: `https://feeds.simplecast.com/54nAGcIl`
+
+### Technology & Development
+- **Syntax.fm**: `https://feeds.simplecast.com/4qg_LgQw`
+- **Software Engineering Daily**: `https://softwareengineeringdaily.com/feed/podcast/`
+- **The Changelog**: `https://changelog.com/podcast/feed`
+
+### Storytelling & Entertainment
+- **This American Life**: `https://www.thisamericanlife.org/podcast/rss.xml`
+- **Radiolab**: `https://feeds.wnyc.org/radiolab`
+- **99% Invisible**: `https://feeds.99percentinvisible.org/99percentinvisible`
+
+## ➕ Adding RSS Feeds to Cast-Away
+
+Cast-Away offers two easy ways to add podcasts:
+
+### Method 1: One-Click Popular Feeds (Recommended for Beginners)
+
+1. **Launch Cast-Away**
+2. **Click "Add New Feed"** button
+3. **Browse curated categories** of popular podcasts:
+   - **Technology & Hacking**: Darknet Diaries, Security Now, Command Line Heroes
+   - **News & Current Affairs**: NPR News Now, BBC Global News, The Daily (NYT)
+   - **Technology & Development**: Syntax.fm, Software Engineering Daily, The Changelog
+   - **Storytelling & Entertainment**: This American Life, Radiolab, 99% Invisible
+4. **Click "Add"** next to any podcast to subscribe instantly
+5. **The app automatically fetches** episodes and adds them to your library
+
+### Method 2: Custom RSS Feeds
+
+If you want to add a podcast that's not in our curated list:
+
+1. **Launch Cast-Away**
+2. **Click "Add New Feed"** button
+3. **Scroll to "Or Add Custom Feed"** section
+4. **Paste the RSS feed URL** in the input field
+5. **Click "Add Feed"**
+6. **The app will fetch** and validate the feed automatically
+
+Both methods support the same RSS feed formats and will automatically detect podcast metadata like titles, descriptions, and episode information.
+
+## ✅ Verifying RSS Feeds
+
+Before adding an RSS feed to Cast-Away:
+
+1. **Test the feed URL** in a web browser - you should see XML content
+2. **Check feed validity** using tools like:
+   - RSS Validator (https://www.rssboard.org/rss-validator/)
+   - W3C Feed Validation Service (https://validator.w3.org/feed/)
+
+## 🔧 Troubleshooting RSS Feeds
+
+### Common Issues and Solutions:
+
+1. **"Invalid RSS Feed" Error**
+   - Verify the URL is correct
+   - Ensure the feed is still active
+   - Check if the feed requires authentication
+
+2. **"Feed Not Updating" Issue**
+   - Some feeds may have caching delays
+   - Check the feed's update frequency
+   - Verify the podcast is still producing episodes
+
+3. **"Cannot Parse Feed" Error**
+   - The feed format might be incompatible
+   - Try a different feed source for the same podcast
+   - Check if the feed uses non-standard elements
+
+ 
+
+## 📊 Understanding the Interface
+
+The Cast-Away interface consists of:
+
+1. **Podcast Library**: List of your subscribed podcasts
+2. **Episode List**: Episodes for the selected podcast
+3. **Audio Visualizer**: Real-time ASCII waveform display
+4. **Status Bar**: Current playback information
+
+## 🎯 Quick Start Checklist
+
+- [ ] Install Cast-Away
+- [ ] Launch the app and click "Add New Feed"
+- [ ] Browse popular podcasts and add 3+ with one click
+- [ ] Or add custom podcasts by pasting RSS URLs
+- [ ] Test audio playback on any episode
+- [ ] Explore keyboard shortcuts for navigation
+
+## 🆘 Getting Help
+
+If you encounter issues:
+
+1. **Check this guide** for RSS feed troubleshooting
+2. **Verify your RSS feed URLs** are correct
+3. **Ensure you have internet connectivity**
+4. **Check the application logs** for error messages
+5. **Report issues** on the GitHub repository
+
+## ❓ Frequently Asked Questions
+
+**Q: How do I add podcasts?**
+A: Click "Add New Feed" and choose from popular podcasts with one click, or paste a custom RSS URL.
+
+**Q: Can I import my podcast subscriptions from other apps?**
+A: Yes, you can export OPML files from most podcast apps and import them into Cast-Away.
+
+**Q: How do I update my podcast feeds?**
+A: Use the 'r' key to refresh all feeds or restart the application.
+
+**Q: Can I download episodes for offline listening?**
+A: Cast-Away streams episodes but may cache recently played content.
+
+**Q: What audio formats are supported?**
+A: Most common audio formats including MP3, AAC, and OGG.
+
+**Q: How do I backup my podcast subscriptions?**
+A: Your subscriptions are stored in a local database file in the application directory.
+
+🔧 Development & Contributing
+
+We welcome contributions! Here's how to set up your development environment:
+
+```bash
+# Clone the repository
+git clone https://github.com/MadushankaRajapaksha/castAway.git
+cd castAway
+
+# Install in development mode
+pip install -e .
+
+# Install development dependencies
+pip install pytest pytest-cov flake8 black isort mypy
+
+# Run tests
+pytest
+
+# Format code
+black castAway/
+isort castAway/
+```
+
+📦 Automated Releases
+
+This project uses GitHub Actions for CI/CD:
+
+- **CI Pipeline**: Runs on every push and PR with:
+  - Unit tests across Python 3.8-3.12
+  - Code linting (flake8, black, isort)
+  - Type checking (mypy)
+  - Code coverage reporting
+
+- **PyPI Release**: Automatically publishes to PyPI when you push a version tag:
+  ```bash
+  git tag v0.1.0
+  git push origin v0.1.0
+  ```
+
+👥 User Testing
+We are looking for at least 10 active users! If you find a bug or have a feature request, please [Open an Issue](https://github.com/MadushankaRajapaksha/castAway/issues).
+
+🌍 Open Source & License
+Distributed under the MIT License. See LICENSE for more information.
+
+---
+
+Happy podcast listening with Cast-Away! 🎙️
