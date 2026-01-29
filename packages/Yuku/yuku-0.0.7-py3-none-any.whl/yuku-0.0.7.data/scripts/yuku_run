@@ -1,0 +1,74 @@
+#!python
+from yuku.Yuku import Yuku
+from pymongo import MongoClient
+import argparse
+import faulthandler
+faulthandler.enable()
+
+parser = argparse.ArgumentParser(description='Yuku Scienti')
+parser.add_argument('--mongo_dburi', type=str,
+                    default='mongodb://localhost:27017/', help='uri for MongoDb database')
+parser.add_argument('--mongo_dbname', type=str,
+                    default="yuku", help='MongoDb name to save the data.')
+parser.add_argument('--socrata_endpoint', type=str,
+                    default="www.datos.gov.co", help='Endpoint for minciencias in socrata server: default www.datos.gov.co')
+parser.add_argument('--search', type=str,
+                    help='Method to search in the socrata in the endpoint "www.datos.gov.co" \
+                          using elastic search, return number of elements indicated in --search_limit, by default it is 5')
+parser.add_argument('--search_limit', type=int, default=5,
+                    help='Method to search in the socrata in the endpoint "www.datos.gov.co" \
+                          using elastic search, return number of elements indicated in --search_limit, by default it is 5')
+parser.add_argument('--drop_mongodb', action='store_true',
+                    help='delete the database, use it with careful, deletes everything!')
+parser.add_argument('--download_cvlac', type=str,
+                    help='Download cvlac data for given dataset id')
+parser.add_argument('--download_cvlac_profiles', action='store_true',
+                    help='Download cvlac profiles taking ids from gruplac_production_data collection and perform scrapping from public profiles in mincienias')
+parser.add_argument('--download_cvlac_profiles_use_raw', action="store_true",
+                    help='parse cvlac profiles taking html already downloaded')
+parser.add_argument('--download_cvlac_profiles_max_tries', type=int, default=2,
+                    help='max tries to download profiles in the scrapping process')
+parser.add_argument('--download_gruplac_production', type=str,
+                    help='Download gruplac production data for given dataset id')
+parser.add_argument('--download_gruplac_groups', type=str,
+                    help='Download gruplac groups data for given dataset id')
+parser.add_argument('--download', type=str,
+                    help='Download data for given dataset id')
+parser.add_argument('--download_collection', type=str,
+                    help='Collection name to --download')
+parser.add_argument('--delay', type=float, default=0.3,
+                    help='delay between requests, default 0.3 seconds')
+parser.add_argument('--download_publindex', action='store_true',
+                    help='Download Publindex dataset into MongoDB using existing download()')
+
+if __name__ == '__main__':
+    args = parser.parse_args()
+    yuku = Yuku(args.mongo_dbname, args.mongo_dburi,
+                args.socrata_endpoint, args.delay)
+    
+    if args.drop_mongodb:
+        MongoClient(args.mongo_dburi).drop_database(args.mongo_dbname)
+    if args.search is not None:
+        yuku.search(args.search, args.search_limit)
+
+    if args.download_cvlac is not None:
+        yuku.download_cvlac_data(args.download_cvlac)
+
+    if args.download_gruplac_production is not None:
+        yuku.download_gruplac_production(args.download_gruplac_production)
+
+    if args.download_gruplac_groups is not None:
+        yuku.download_gruplac_groups(args.download_gruplac_groups)
+
+    if args.download_cvlac_profiles:
+        yuku.download_cvlac_profile(args.download_cvlac_profiles_use_raw, args.download_cvlac_profiles_max_tries)
+
+    if args.download is not None:
+        if args.download_collection is None:
+            print("ERROR: for option --download  a collection name have to be provide using --download_collection")
+        else:
+            yuku.download(args.download,args.download_collection)
+
+    if args.download_publindex:
+        # Use generic download() to store dataset into MongoDB under 'publindex' collection
+        yuku.download('mwmn-inyg', 'publindex')
