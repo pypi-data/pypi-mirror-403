@@ -1,0 +1,126 @@
+# HaRC - Hallucinated Reference Checker
+
+Verify BibTeX citations against academic databases. Catches fake, misspelled, or incorrect references in your `.bib` files.
+
+**Supports:**
+- **Papers**: Semantic Scholar + DBLP (with DOI/arXiv ID lookup)
+- **Books**: Open Library (with ISBN lookup)
+- **URLs**: Reachability and title verification
+
+## Installation
+
+```bash
+# Using uv (recommended)
+uv add harcx
+
+# Using pip
+pip install harcx
+```
+
+## CLI Usage
+
+```bash
+# Check a .bib file
+harcx references.bib
+
+# Quiet mode (suppress progress output)
+harcx references.bib -q
+
+# Also check URL citations
+harcx references.bib --check-urls
+
+# Custom author match threshold (default: 0.6)
+harcx references.bib --threshold 0.7
+
+# With Semantic Scholar API key (for higher rate limits)
+harcx references.bib --api-key YOUR_API_KEY
+```
+
+### Example Output
+
+```
+Parsed 50 entries from references.bib
+[1/50] Checking (article): smith2023
+    Trying arXiv ID: 2301.12345
+  Found (author match: 1.00)
+[2/50] Checking (book): goodfellow2016deep
+    Trying Open Library title search
+  Found (author match: 0.75)
+[3/50] Checking (article): fake2023
+    Trying Semantic Scholar title search
+    Trying DBLP title search
+  ISSUE: Not found in Semantic Scholar or DBLP
+
+============================================================
+Found 1 entries requiring attention:
+============================================================
+
+[fake2023]
+  Title: This Paper Does Not Exist
+  Bib Authors: fake fakerson
+  Year: 2023
+  Issue: Not found in Semantic Scholar or DBLP
+```
+
+## Python API
+
+```python
+from reference_checker import check_citations, check_web_citations
+
+# Check citations - returns entries that weren't verified
+issues = check_citations("references.bib")
+
+for result in issues:
+    print(f"{result.entry.key}: {result.message}")
+
+# Check URL citations
+url_issues = check_web_citations("references.bib")
+
+for result in url_issues:
+    print(f"{result.entry.key}: {result.url} - {result.message}")
+```
+
+### API Reference
+
+```python
+def check_citations(
+    bib_file: str,
+    author_threshold: float = 0.6,
+    year_tolerance: int = 1,
+    api_key: str | None = None,
+    verbose: bool = False,
+) -> list[CheckResult]
+```
+
+```python
+def check_web_citations(
+    bib_file: str,
+    title_threshold: float = 0.6,
+    verbose: bool = False,
+) -> list[WebCheckResult]
+```
+
+## How It Works
+
+1. **Parse** - Reads `.bib` file and extracts entries
+2. **Lookup** - Tries DOI → arXiv ID → title search (papers) or ISBN → title search (books)
+3. **Match** - Compares authors using fuzzy matching
+4. **Report** - Returns entries that couldn't be verified
+
+A citation is verified when:
+- Found in a database (Semantic Scholar, DBLP, or Open Library)
+- Author match score ≥ threshold (default: 60%)
+- Year matches within tolerance (default: ±1 year)
+
+## Development
+
+```bash
+git clone https://github.com/YOUR_USERNAME/HaRC.git
+cd HaRC
+uv sync --all-extras
+uv run pytest tests/ -v
+```
+
+## License
+
+MIT
