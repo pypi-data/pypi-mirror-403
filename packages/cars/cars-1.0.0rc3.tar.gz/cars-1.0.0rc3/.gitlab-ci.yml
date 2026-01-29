@@ -1,0 +1,244 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_REF_NAME == "master"
+
+stages:
+  - init
+  - build
+  - test
+  - sonarqube
+  - sync
+
+
+variables: 
+    # Token used to push reports to SonarQube
+    SONAR_TOKEN: "${CARS_CI_SONARQUBE_TOKEN}"
+
+    # Git variables
+    # Limit git depth to speed up cloning
+    GIT_DEPTH: 1
+    
+    DOCKERFILE: "Dockerfile"
+
+    CARS_IMAGE_NAME: "${CARS_DOCKER_REGISTRY}/cnes/cars"
+    CARS_DOCKERFILE: "${CI_PROJECT_DIR}/${DOCKERFILE}"
+
+
+include:
+  # Sonarqube job
+  - component: $CI_SERVER_FQDN/dali/cars-park/cars-ci/cars-ci-docker@master
+    inputs:
+      init_stage: init
+      build_stage: build
+
+  - component: $CI_SERVER_FQDN/usinelogicielle/public/gitlab-ci-components/sonarqube-component/sonarqube@1.1.0 
+  # Variable defintion
+  - component: $CI_SERVER_FQDN/dali/cars-park/cars-ci/cars-ci-variables@master
+  # Jobs for gitlab-github synchronisation
+  - component: $CI_SERVER_FQDN/dali/cars-park/cars-ci/cars-ci-github@master
+  # Docker building and image selection
+  # First case: no need to update env, use latest version
+  - local: '/ci/cars-no-docker-build.yml'
+    rules:
+      # do not trigger this case if env has changed(see second case)
+      - changes:
+        - "ci/cars-deps-env/Dockerfile"
+        - "pyproject.toml"
+        when: never
+      # do not trigger this case on master (see third case)
+      - if: $CI_COMMIT_REF_NAME == "master"
+        when: never
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  # Second case: env should be generated on a dev branch, create a temporary
+  # image
+  - local: '/ci/cars-docker-build.yml'
+    inputs:
+      tag: ${CI_COMMIT_REF_NAME}
+    rules:
+      - changes:
+        - "ci/cars-deps-env/Dockerfile"
+        - "pyproject.toml"
+      # do not trigger this case on master (see third case)
+      - if: $CI_COMMIT_REF_NAME == "master"
+        when: never
+  # Third case: master branch pipeline: generate a "latest" image
+  - local: '/ci/cars-docker-build.yml'
+    inputs:
+      tag: "latest"
+    rules:
+      - if: $CI_COMMIT_REF_NAME == "master"
+
+# Common part for jobs using python: use env image and install cars
+.cars-python-job:
+  image: ${UL_ARTIFACTORY_HOST}/${CARS_ENV_IMAGE_NAME}:${CARS_ENV_IMAGE_TAG}
+  before_script:
+    - source /app/cars/venv/bin/activate
+    # All dependencies should already be installed in the docker env
+    - pip install --no-build-isolation --editable .[dev,docs,notebook]
+
+# job to test the build of cars Dockerfile
+docker-image-build:
+  extends:
+    - .podman-build
+  variables:
+    # docker generation
+    REGISTRY: "artifactory.cnes.fr/publicremotes-docker/"
+    ENV_IMAGE_NAME: ${CARS_IMAGE_NAME}
+    ENV_IMAGE_TAG: ${CI_COMMIT_REF_NAME}
+    ENV_DOCKERFILE: ${CARS_DOCKERFILE}
+
+    DOCKER_BUILD_OPTIONS: "--build-arg REGISTRY=${REGISTRY} --build-arg CREDS_USERNAME=${CARS_CI_DOCKER_RO_TOKEN_USERNAME} --build-arg CREDS_TOKEN=${CARS_CI_DOCKER_RO_TOKEN_PASSWORD} --build-arg USE_CERTS=true  --build-arg GIT_BRANCH=${CI_COMMIT_REF_NAME} --build-arg CARS_URL=${CARS_URL}"
+  # allow the docker build/test to fail because the docker build environment is instable independently of the job. In the future this job should not be allowed to fail
+  allow_failure: true
+
+# Quality step for docker image
+hadolint-cars-docker:
+  extends:
+    - .hadolint
+  needs:
+    - job : docker-image-build
+      artifacts: false
+  variables:
+    HADOLINT_CONFIG_FILE: ci/hadolint_RNC_A_B_C_D.yaml
+    ENV_DOCKERFILE: ${CARS_DOCKERFILE}
+  rules:
+    - changes:
+      - ${DOCKERFILE}
+
+
+# Small helper job that untar the data gizeh archive from the tutorial directory
+# and provide it to docker-image-test as artifacts
+prepare-docker-image-test:
+  stage: test 
+  # todo: maybe a lighter image, but this one has bzip2
+  image: ${UL_ARTIFACTORY_HOST}/${CARS_ENV_IMAGE_NAME}:${CARS_ENV_IMAGE_TAG}
+  script:
+    - tar -xjf tutorials/data_gizeh.tar.bz2
+  artifacts:
+    paths:
+      - ./data_gizeh
+    expire_in: 1 day
+
+# Job that test the image from cars Dockerfile on the Gizeh dataset
+# The job is written to be as close as possible to the docker tutorial in 
+# cars's README.md
+docker-image-test:
+  stage: test
+  needs:
+    - job: prepare-docker-image-test
+      artifacts: true
+    - job: docker-image-build
+      artifacts: false
+  image: 
+    name: ${UL_ARTIFACTORY_HOST}/${CARS_IMAGE_NAME}:${CI_COMMIT_REF_NAME}
+    entrypoint: [""]
+  script:
+    - cars data_gizeh/configfile.yaml
+  artifacts:
+    expose_as: "gizeh from docker image test"
+    paths:
+      - outresults/
+    expire_in: 1 day
+  variables:
+    # Set git strategy to none to prevent gitlab-ci from cloning cars source into
+    # the container
+    GIT_STRATEGY: none
+  # allow the docker build/test to fail because the docker build environment is instable independently of the job. In the future this job should not be allowed to fail
+  allow_failure: true
+
+# run unit tests before other tasks (lint, quality, end2end ...) to catch early
+# errors
+unit-test:
+  stage: test
+  needs:
+    # add an optional dependency to cars-dep-env-build, which might not exist in
+    # the pipeline
+    - job: cars-dep-env-build
+      optional: true
+  extends:
+    - .cars-python-job
+  script:
+    - CARS_VENV="/app/cars/venv" make test/ci
+  artifacts:
+    paths:
+      - ./pytest-report.xml
+      - ./coverage.xml
+      - tests/data/intermediate_data
+    when: always
+    expire_in: 1 day
+
+# test on full cars pipelines
+test-end2end:
+  stage: test
+  needs:
+    - unit-test
+  # Use dedicated runner for end2end tests
+  tags:
+    - ${TEST_RUNNER_TAG}
+  timeout: 120 minutes
+  extends:
+    - .cars-python-job
+  script:
+    - source /app/cars/venv/bin/activate
+    - pytest --log-cli-level=21 --log-cli-format="%(asctime)s - %(levelname)s - %(message)s" --color=yes -m "end2end_tests"
+  artifacts:
+    expose_as: "test end2end intermediate data"
+    paths:
+      - tests/data/intermediate_data/
+    when: always
+    expire_in: 1 day
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+       - "tests/test_end2end.py"
+       - "cars/**/*"
+       - "pyproject.toml"
+       - "tests/pipelines/**/*"
+
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+
+
+# All lint tasks are performed in the same job to save up on job initialization
+# time
+lint:
+  stage: test
+  needs:
+    - unit-test
+  extends:
+    - .cars-python-job
+  allow_failure: true
+  script:
+    - CARS_VENV="/app/cars/venv" make lint
+  artifacts:
+    paths:
+      - ./pylint-report.txt
+    expire_in: 1 day
+
+
+# Build cars documentation and push it as artifacts
+doc:
+  stage: test
+  needs:
+    - unit-test
+  extends:
+    - .cars-python-job
+  script:
+    - CARS_VENV="/app/cars/venv" make docs
+  artifacts:
+    # Export documentation in artifact, it can be opened directly from gitlab
+    expose_as: "documentation"
+    paths:
+      - ./docs/build/html/
+    expire_in: 1 day
+
+
+# Push git project from gitlab to github on master commits
+github-sync:
+  extends:
+    - .github-sync-base
+
+  variables:
+    BRANCH: "master"
+    GITHUB_URL: github.com/CNES/cars.git
+
