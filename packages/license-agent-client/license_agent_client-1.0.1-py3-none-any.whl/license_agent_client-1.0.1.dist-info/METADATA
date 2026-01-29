@@ -1,0 +1,213 @@
+Metadata-Version: 2.4
+Name: license-agent-client
+Version: 1.0.1
+Summary: Dependency-free Python client for a local license-agent, with optional FastAPI enforcement helpers.
+Project-URL: Homepage, https://example.invalid
+Project-URL: Repository, https://example.invalid
+Author: MeyiConnect
+License: MIT License
+        
+        Copyright (c) 2026 MeyiConnect
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Keywords: agent,fastapi,lease,license,licensing
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries
+Requires-Python: >=3.9
+Provides-Extra: fastapi
+Requires-Dist: fastapi>=0.100; extra == 'fastapi'
+Description-Content-Type: text/markdown
+
+# license-agent-client
+
+A lightweight Python client and FastAPI helpers for enforcing licensing via a
+local **license-agent** service.
+
+This package is designed for applications such as **Logzy**, **MeyiConnect**,
+or any product that uses a centralized licensing model:
+
+```
+Application → license-agent → license-platform
+```
+
+It eliminates duplicated license-handling code and provides a single,
+consistent way to:
+
+- Check license status
+- Activate licenses
+- Lookup license information
+- Enforce license rules at API level
+- Keep activation UI accessible while blocking product APIs
+
+
+## Install
+
+### Core client (no framework dependency)
+
+```bash
+pip install license-agent-client
+```
+
+### With FastAPI helpers (recommended)
+
+```bash
+pip install "license-agent-client[fastapi]"
+```
+
+---
+
+## Environment variables
+
+| Variable | Default | Description |
+|--------|--------|-------------|
+| LICENSE_AGENT_URL | `http://license-agent:8090` | Base URL of local license-agent |
+| LICENSE_CACHE_SECONDS | `30` | Cache TTL (seconds) |
+| LICENSE_TIMEOUT_SECONDS | `2` | HTTP timeout |
+| REQUIRE_LICENSE | `false` | Enable license enforcement |
+
+---
+
+## Core usage (plain Python)
+
+```python
+from license_agent_client import get_client, LicenseInactiveError
+
+client = get_client()
+
+try:
+    client.assert_active()
+except LicenseInactiveError as e:
+    print("License blocked:", e)
+    raise SystemExit(1)
+```
+
+---
+
+## FastAPI integration
+
+```python
+from fastapi import FastAPI
+from license_agent_client.router import get_license_router
+from license_agent_client.middleware import install_license_gate
+
+app = FastAPI()
+
+app.include_router(get_license_router(prefix="/v1/license"))
+install_license_gate(app)
+```
+
+---
+
+## License lifecycle behavior
+
+| Platform action | Agent behavior | App behavior |
+|---------------|---------------|--------------|
+| Install | pending | blocked |
+| Approved | activation allowed | unlocked |
+| Deactivated | check-in fails | blocked |
+| Rejected | new key allowed | reinstall |
+
+---
+
+## Block APIs when license is inactive (global gate)
+from fastapi import FastAPI
+from license_agent_client.middleware import install_license_gate
+
+app = FastAPI()
+
+install_license_gate(
+    app,
+    exempt_prefixes=(
+        "/ui",
+        "/health",
+        "/v1/license",
+    ),
+)
+
+## Typical FastAPI app layout
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from license_agent_client.router import get_license_router
+from license_agent_client.middleware import install_license_gate
+
+app = FastAPI()
+
+# Serve activation UI
+app.mount("/ui", StaticFiles(directory="/app/ui", html=True))
+
+# License APIs
+app.include_router(get_license_router(prefix="/v1/license"))
+
+# Global license enforcement
+install_license_gate(app)
+
+
+## Fetch license limits
+limits = get_client().limits()
+print(limits)
+
+## Activate a license (proxy to agent)
+from license_agent_client import get_client
+
+resp = get_client().activate(
+    license_key="XXXX-YYYY-ZZZZ",
+    product_code="logzy",
+    fingerprint="node-1",
+    version="1.2.3",
+    vm_meta={"hostname": "prod-node-1"},
+)
+
+print(resp)
+
+## License info lookup (proxy to agent → platform)
+info = get_client().license_info(license_key="XXXX-YYYY-ZZZZ")
+print(info)
+
+## How apps use it (default UI)
+from fastapi import FastAPI
+from license_agent_client.ui import mount_default_ui
+from license_agent_client.router import get_license_router
+from license_agent_client.middleware import install_license_gate
+
+app = FastAPI()
+
+mount_default_ui(app)  # ✅ mounts built-in /ui
+app.include_router(get_license_router(prefix="/v1/license"))
+install_license_gate(app, exempt_prefixes=("/ui", "/health", "/v1/license"))
+
+
+## How apps override it (custom UI)
+from fastapi.staticfiles import StaticFiles
+
+# override built-in UI
+app.mount("/ui", StaticFiles(directory="/app/my-ui", html=True), name="custom-ui")
+
+
+## License
+
+MIT
