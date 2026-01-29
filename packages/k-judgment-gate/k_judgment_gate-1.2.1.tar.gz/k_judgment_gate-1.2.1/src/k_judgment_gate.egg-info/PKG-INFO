@@ -1,0 +1,205 @@
+Metadata-Version: 2.4
+Name: k-judgment-gate
+Version: 1.2.1
+Summary: Governance-first judgment detection for Korean LLM systems. NOT a filter.
+Author: k-judgment-gate Contributors
+License: Apache-2.0
+Project-URL: Homepage, https://github.com/Nick-heo-eg/k-judgment-gate
+Project-URL: Documentation, https://github.com/Nick-heo-eg/k-judgment-gate#readme
+Project-URL: Repository, https://github.com/Nick-heo-eg/k-judgment-gate
+Project-URL: Issues, https://github.com/Nick-heo-eg/k-judgment-gate/issues
+Keywords: judgment,governance,korean,llm,oversight
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
+
+# k-judgment-gate
+
+**Governance-first judgment detection for Korean LLM systems.**
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+
+## NOT a Filter
+
+- **NOT a filter.** This does not block content.
+- **Does not decide.** This marks boundaries, not policies.
+- **Pre-execution responsibility boundary.** Detects judgment patterns BEFORE execution.
+- **Triggers human oversight.** Returns structured results for handoff, not automation.
+
+## Methodology
+
+This is a reference implementation of the stem matching + scope rules approach documented in [judgment-refinement-public](https://github.com/nick-heo123/judgment-refinement-public).
+
+**Key differences:**
+- **Refinement-public**: 7-role taxonomy research (methodology whitepaper)
+- **k-judgment-gate**: 3-role minimal implementation (governance-first reference)
+
+Built in 3 hours as proof-of-concept.
+
+## What It Does
+
+k-judgment-gate detects judgment patterns in text:
+
+- **Directives**: Commands, imperatives, direct instructions
+- **Recommendations**: Suggestions, advice, guidance
+- **Obligations**: Requirements, duties, must-do statements
+
+When judgment is detected, it returns `blocked: true` — meaning **"handoff required"**, NOT "policy block."
+
+## Installation
+
+```bash
+pip install k-judgment-gate
+```
+
+## Quick Start
+
+```python
+from k_judgment_gate import JudgmentGate, JudgmentRole
+from k_judgment_gate.scope import ScopeRule
+
+# Configure gate with role stems and optional scope rules
+gate = JudgmentGate(
+    role_stems={
+        JudgmentRole.DIRECTIVE.value: ["해야 합니다", "하십시오", "must"],
+        JudgmentRole.RECOMMENDATION.value: ["권장합니다", "should"],
+        JudgmentRole.OBLIGATION.value: ["의무입니다", "required"],
+    },
+    role_scopes={
+        JudgmentRole.DIRECTIVE.value: [
+            ScopeRule(
+                id="medical_only",
+                include=["의료", "medical"],
+                exclude=[]
+            )
+        ]
+    }
+)
+
+# Inspect text for judgment patterns
+result = gate.inspect("이 약을 복용해야 합니다")
+
+print(result.to_dict())
+```
+
+### Example Output
+
+```json
+{
+  "blocked": true,
+  "role": "directive",
+  "reason": "Judgment detected: directive pattern '해야 합니다' with scope rules ['medical_only']",
+  "confidence": 0.85,
+  "matched_stem": "해야 합니다",
+  "scope_applied": ["medical_only"]
+}
+```
+
+## Schema
+
+`GateResult` contains:
+
+- **blocked** (bool): True if judgment detected and handoff required
+- **role** (str | None): Detected role (directive/recommendation/obligation)
+- **reason** (str): Human-readable explanation
+- **confidence** (float): Informational score 0.0-1.0 (NOT for decision-making)
+- **matched_stem** (str | None): The pattern that matched
+- **scope_applied** (list[str]): List of scope rule IDs that applied
+
+## Hard Constraints
+
+1. **Sealed to 3 roles**: directive, recommendation, obligation (no extensions)
+2. **Max 2 scope rules per role**: Enforced by code (raises `ValueError` if exceeded)
+3. **Confidence is informational only**: MUST NOT be used for automated decisions
+4. **No policy logic**: This tool marks boundaries; humans make decisions
+
+## Telemetry
+
+Generate OpenTelemetry-style attributes:
+
+```python
+from k_judgment_gate.telemetry import gate_attributes
+
+attrs = gate_attributes(result)
+# {
+#   "judgment.gate.present": True,
+#   "judgment.gate.blocked": True,
+#   "judgment.gate.role": "directive",
+#   "judgment.gate.matched_stem": "해야 합니다",
+#   "judgment.gate.scope_applied": "medical_only",
+#   "judgment.gate.reason": "..."
+# }
+```
+
+No OTel dependency required. This is a pure dict generator for observability integration.
+
+## Testing
+
+```bash
+pytest
+```
+
+Tests verify:
+- Basic judgment detection (directives, recommendations, obligations)
+- Scope rule filtering (include/exclude)
+- Max 2 scope rules enforcement (raises `ValueError`)
+- Minimal stem matching (normalization, substring matching)
+
+## HuggingFace Demo
+
+See `hf_demo/` for a Gradio demo showing judgment detection in action.
+
+```bash
+cd hf_demo
+pip install -r requirements.txt
+python app.py
+```
+
+The demo includes a warning: **"This demo does not decide. It only marks the boundary where human oversight is required."**
+
+## Documentation
+
+- [PROOF_NOTE.md](docs/PROOF_NOTE.md): What it is, what it is NOT, positioning
+- [DM_TEMPLATE.md](docs/DM_TEMPLATE.md): Enterprise outreach template
+- [EU_AI_ACT_MAPPING.md](docs/EU_AI_ACT_MAPPING.md): **Article 13/14 ↔ Field Mapping** (Compliance Reference)
+
+## Korean AI Basic Act Context
+
+The Korean AI Basic Act (2024) establishes requirements for transparency, accountability, and human oversight. k-judgment-gate addresses the pre-execution responsibility boundary:
+
+- **Transparency**: Explicit judgment detection
+- **Accountability**: Clear handoff points
+- **Human Oversight**: Triggers before execution
+- **Audit Trail**: Structured telemetry for compliance
+
+This is execution governance, not compliance theater.
+
+## Not for Automation
+
+`blocked: true` does NOT mean "auto-reject." It means "route to human review."
+
+Confidence scores are informational only. Do NOT use them for automated decision-making.
+
+## License
+
+Apache-2.0
+
+## Contributing
+
+This is a proof-of-concept demonstrating the interface layer for execution governance. The runtime core (actual execution blocking) is closed.
+
+For questions or feedback, please open an issue.
+
+---
+
+**Not every request deserves execution. STOP is cheaper than scaling.**
