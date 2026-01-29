@@ -1,0 +1,123 @@
+[project]
+name = "uromyces"
+description = "uromyces implements parts of Beancount's plain text accounting functionality in Rust"
+dynamic = [
+    "version",  # from Cargo.toml by maturin
+]
+authors = [
+  {name = "Jakob Schnitzer", email = "mail@jakobschnitzer.de"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-2.0-only"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Information Technology",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+  "click>=7,<9",
+  "beancount>=3",
+]
+
+[project.optional-dependencies]
+fava = [
+  "fava>=1.30",
+]
+
+[project.scripts]
+uro = "uromyces._cli:cli"
+
+[project.urls]
+Source = "https://github.com/yagebu/uromyces/"
+Issues = "https://github.com/yagebu/uromyces/issues/"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+include = [
+  { path = "tree-sitter-beancount", format = "sdist" },
+]
+python-source = "python"
+features = ["pyo3/extension-module"]
+module-name = "uromyces._uromyces"
+use-base-python = true
+
+# [tool.uv.sources]
+# fava = { git = "https://github.com/beancount/fava" }
+
+[dependency-groups]
+# Extra dependencies that are used in tests or for linting.
+dev = [
+    "uromyces[fava]",
+    "maturin>=1.7",
+    "mypy>=1.11",
+    "pip>=24",
+    "pytest-cov>=6",
+    "pytest>=8",
+    "ty>=0.0.8",
+]
+
+[tool.black]
+line-length = 79
+
+[tool.coverage.run]
+branch = true
+
+[tool.mypy]
+strict = true
+
+[tool.ty.rules]
+# There's some mismatches betweeen mypy and ty still
+unused-ignore-comment = "ignore"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv]
+python-preference = "system"
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+extend-select = [
+    "ALL",
+]
+extend-ignore = [
+    "C901",        # Ignore over-zealous complexity warnings
+    "COM812",      # Handled by formatter
+    "ANN401",      # Allow typing.Any
+    "PLR2004",     # allow magic constants in comparisons
+    "TD",          # Allow TODOs
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true  # always move type-only imports to TYPE_CHECKING-if blocks
+
+[tool.ruff.lint.isort]
+force-single-line = true
+order-by-type = false
+known-first-party = ["uromyces"]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+
+[tool.ruff.lint.per-file-ignores]
+"contrib/scripts.py" = ["S101"]
+"uromyces/uromyces.pyi" = ["PYI034"]
+"tests/conftest.py" = ["S101"]
+"tests/test_*.py" = ["D", "S101"]
