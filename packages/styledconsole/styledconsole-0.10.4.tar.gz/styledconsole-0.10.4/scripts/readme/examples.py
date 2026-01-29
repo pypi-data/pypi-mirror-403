@@ -1,0 +1,1119 @@
+#!/usr/bin/env python3
+"""README example definitions - single source of truth.
+
+Each example contains:
+- code: The Python code to display in README
+- generator: Function that generates the corresponding image
+
+All images are rendered on a fixed 80x24 terminal to ensure consistent font size.
+
+Usage:
+  uv run python scripts/readme/examples.py  # Generate all images
+"""
+
+import os
+from pathlib import Path
+
+from styledconsole import Console, RenderPolicy, icons
+from styledconsole.export import get_image_theme
+from styledconsole.icons import set_icon_mode
+from styledconsole.utils.text import set_render_target
+
+# Output directory for generated images (docs/images for GitHub compatibility)
+# Allow override via env var for testing
+OUTPUT_DIR = Path(
+    os.getenv("STYLEDCONSOLE_DOCS_IMAGES", Path(__file__).parent.parent.parent / "docs" / "images")
+)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+IMAGE_EXPORT_POLICY = RenderPolicy.for_image_export()
+
+# Force emoji mode for image generation (not auto-detect from terminal)
+set_icon_mode("emoji")
+
+# Set render target to "image" for consistent emoji width calculations
+# This must be set BEFORE calling gradient_frame or other functions that use visual_width
+set_render_target("image")
+
+# Fixed terminal size for consistent font rendering across all images
+# 80x24 is the standard terminal size, ensuring examples look realistic
+TERMINAL_COLS = 80
+TERMINAL_ROWS = 24
+ImageTheme = get_image_theme()
+FIXED_TERMINAL_THEME = ImageTheme(terminal_size=(TERMINAL_COLS, TERMINAL_ROWS))
+
+# Debug: overlay a cell grid and disable auto-crop for easier alignment diagnosis.
+DEBUG_GRID = os.getenv("STYLEDCONSOLE_DEBUG_GRID", "0") == "1"
+DEBUG_TERMINAL_THEME = ImageTheme(
+    terminal_size=(TERMINAL_COLS, TERMINAL_ROWS),
+    debug_grid=DEBUG_GRID,
+    debug_grid_every=1,
+)
+
+
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# IMAGE GENERATION - VIRTUAL TERMINAL MODE
+# -----------------------------------------------------------------------------
+# The Virtual Terminal mode in TerminalManager + visual_width's render_target
+# context ensures consistent emoji widths (2 cells) for image exports.
+# No monkeypatching required!
+
+
+# =============================================================================
+# EXAMPLE DEFINITIONS
+# =============================================================================
+
+EXAMPLES = {}
+
+
+def example(name: str, code: str):
+    """Decorator to register an example with its code."""
+
+    def decorator(func):
+        EXAMPLES[name] = {
+            "code": code.strip(),
+            "generator": func,
+        }
+        return func
+
+    return decorator
+
+
+# -----------------------------------------------------------------------------
+# Quick Start / Basic Frame
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "basic_frame",
+    """
+from styledconsole import Console, icons, EffectSpec
+
+console = Console()
+
+console.frame(
+    f"{icons.CHECK_MARK_BUTTON} Build successful\\n"
+    f"{icons.ROCKET} Deployed to production",
+    title=f"{icons.SPARKLES} Status",
+    border="rounded",
+    effect=EffectSpec.gradient("green", "cyan"),
+)
+""",
+)
+def generate_basic_frame():
+    """Generate basic frame example - rich visual showcase."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console.frame(
+        [
+            f"{icons.CHECK_MARK_BUTTON} Build successful",
+            f"{icons.PACKAGE} Dependencies installed",
+            f"{icons.GEAR} Configuration loaded",
+            f"{icons.ROCKET} Deployed to production",
+        ],
+        title=f"{icons.SPARKLES} Deployment Status",
+        border="rounded",
+        effect=EffectSpec.gradient("green", "cyan"),
+    )
+    console.export_webp(
+        str(OUTPUT_DIR / "basic_frame.webp"),
+        theme=DEBUG_TERMINAL_THEME if DEBUG_GRID else FIXED_TERMINAL_THEME,
+        auto_crop=not DEBUG_GRID,
+    )
+    return "basic_frame.webp"
+
+
+# -----------------------------------------------------------------------------
+# Gradient Frame
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "gradient_frame",
+    """
+console.frame(
+    "Beautiful gradient borders",
+    title="Gradients",
+    border="rounded",
+    effect=EffectSpec.gradient("cyan", "magenta"),
+)
+""",
+)
+def generate_gradient_frame():
+    """Generate gradient border frame example - rainbow showcase."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console.frame(
+        [
+            f"{icons.RAINBOW} Rainbow gradients",
+            f"{icons.ARTIST_PALETTE} Custom color schemes",
+            f"{icons.FIRE} Hot to cool transitions",
+            f"{icons.SNOWFLAKE} Smooth interpolation",
+        ],
+        title=f"{icons.SPARKLES} Gradient Engine",
+        border="double",
+        effect=EffectSpec.gradient("magenta", "cyan"),
+    )
+    console.export_webp(
+        str(OUTPUT_DIR / "gradient_frame.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "gradient_frame.webp"
+
+
+# -----------------------------------------------------------------------------
+# Nested Frames
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "nested_frames",
+    """
+from styledconsole import Console
+
+console = Console()
+inner = console.render_frame("Core", border="double", width=20)
+console.frame(["Application Shell", inner], border="heavy", width=40)
+""",
+)
+def generate_nested_frames():
+    """Generate nested frames example."""
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    inner = console.render_frame("Core", border="double", width=20)
+    console.frame(["Application Shell", inner], border="heavy", width=40)
+    console.export_webp(
+        str(OUTPUT_DIR / "nested_frames.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "nested_frames.webp"
+
+
+# -----------------------------------------------------------------------------
+# Rainbow Banner
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "rainbow_banner",
+    """
+from styledconsole import Console, EFFECTS, EffectSpec
+
+console = Console()
+
+# Full ROYGBIV rainbow spectrum
+console.banner("RAINBOW", font="slant", effect="rainbow")
+
+# Two-color gradient
+console.banner("HELLO", font="big", effect=EffectSpec.gradient("cyan", "magenta"))
+""",
+)
+def generate_rainbow_banner():
+    """Generate rainbow banner example - shows both rainbow and gradient styles."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    # Full ROYGBIV rainbow spectrum
+    console.banner("Styled Console", font="slant", effect="rainbow")
+    console.newline()
+    # Two-color gradient
+    console.banner("Hello World!", font="big", effect=EffectSpec.gradient("cyan", "magenta"))
+    console.export_webp(
+        str(OUTPUT_DIR / "rainbow_banner.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "rainbow_banner.webp"
+
+
+# -----------------------------------------------------------------------------
+# Border Styles
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "border_styles",
+    """
+# 8 beautiful border styles available
+styles = ["solid", "double", "rounded", "heavy", "dots", "minimal", "thick", "ascii"]
+for style in styles:
+    console.frame(f"{style}", border=style, width=20)
+""",
+)
+def generate_border_styles():
+    """Generate border styles grid (2 columns x 4 rows)."""
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.table import Table
+
+    from styledconsole.export import get_image_exporter
+    from styledconsole.export.image_cropper import auto_crop
+
+    styles = ["solid", "double", "rounded", "heavy", "dots", "minimal", "thick", "ascii"]
+
+    rich_console = RichConsole(record=True, width=TERMINAL_COLS, force_terminal=True)
+
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column()
+    table.add_column()
+
+    # Create pairs for 2x4 grid
+    pairs = list(zip(styles[::2], styles[1::2], strict=True))
+
+    for left_style, right_style in pairs:
+        cells = []
+        for style in [left_style, right_style]:
+            buffer = StringIO()
+            temp = Console(file=buffer, detect_terminal=False, width=36, policy=IMAGE_EXPORT_POLICY)
+            temp.frame(style, border=style, width=34)
+            frame_text = buffer.getvalue().rstrip()
+            from rich.text import Text
+
+            cells.append(Text.from_ansi(frame_text))
+        table.add_row(*cells)
+
+    rich_console.print(table)
+
+    image_exporter_cls = get_image_exporter()
+    exporter = image_exporter_cls(rich_console, theme=FIXED_TERMINAL_THEME)
+    img = exporter._render_frame()
+    # Use directly imported auto_crop
+    img = auto_crop(img, FIXED_TERMINAL_THEME.background, margin=20)
+    img.save(str(OUTPUT_DIR / "border_styles.webp"), "WEBP", quality=90)
+    return "border_styles.webp"
+
+
+# -----------------------------------------------------------------------------
+# Status Messages
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "status_messages",
+    """
+console.text("Build completed successfully!", color="green")
+console.text("Warning: deprecated API", color="yellow")
+console.text("Error: connection failed", color="red")
+""",
+)
+def generate_status_messages():
+    """Generate status messages example - colorful status showcase."""
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console.text(f"{icons.CHECK_MARK_BUTTON} All tests passed (427/427)", color="green", bold=True)
+    console.text(f"{icons.CHART_INCREASING} Performance improved by 23%", color="bright_green")
+    console.text(f"{icons.WARNING} Cache hit ratio below target", color="yellow")
+    console.text(
+        f"{icons.HOURGLASS_NOT_DONE} Build taking longer than usual", color="bright_yellow"
+    )
+    console.text(f"{icons.CROSS_MARK} Connection to database failed", color="red", bold=True)
+    console.text(f"{icons.INFORMATION} Retrying in 5 seconds...", color="cyan")
+    console.export_webp(
+        str(OUTPUT_DIR / "status_messages.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "status_messages.webp"
+
+
+# -----------------------------------------------------------------------------
+# Icons Showcase
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "icons_showcase",
+    """
+from styledconsole import icons
+
+print(f"{icons.ROCKET} Deploying...")  # Auto-detects terminal
+print(f"{icons.CHECK_MARK_BUTTON} Done!")
+""",
+)
+def generate_icons_showcase():
+    """Generate icons showcase example - diverse icon categories."""
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console.text(f"{icons.ROCKET} Deploying to production...", color="cyan")
+    console.text(f"{icons.PACKAGE} Installing dependencies...", color="blue")
+    console.text(f"{icons.GEAR} Configuring environment...", color="magenta")
+    console.text(f"{icons.SHIELD} Security scan passed", color="green")
+    console.text(f"{icons.SPARKLES} Optimizations applied", color="yellow")
+    console.text(f"{icons.CHECK_MARK_BUTTON} All systems go!", color="bright_green", bold=True)
+    console.export_webp(
+        str(OUTPUT_DIR / "icons_showcase.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "icons_showcase.webp"
+
+
+# -----------------------------------------------------------------------------
+# Color Palette Showcase
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "text_styles",
+    """
+# Rich color support - named colors and RGB
+console.text("Red alert!", color="red")
+console.text("Green success", color="green")
+console.text("Blue info", color="blue")
+console.text("Custom RGB", color="#ff6b6b")
+""",
+)
+def generate_text_styles():
+    """Generate color palette showcase - color options available."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+
+    # Add empty line to prevent title clipping with auto_crop
+    console._rich_console.print()
+
+    # Color palette frame with emojis
+    console.frame(
+        [
+            f"{icons.ARTIST_PALETTE} Named: red, green, blue, cyan...",
+            f"{icons.RAINBOW} Bright: bright_red, bright_green...",
+            f"{icons.PAINTBRUSH} RGB: #ff6b6b, #4ecdc4, #ffe66d",
+            f"{icons.FIRE} ANSI: color0-color255",
+        ],
+        effect=EffectSpec.gradient("#ff6b6b", "#4ecdc4"),
+        border="rounded",
+        title=f"{icons.SPARKLES} Color Palette",
+    )
+
+    console.export_webp(
+        str(OUTPUT_DIR / "text_styles.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "text_styles.webp"
+
+
+# -----------------------------------------------------------------------------
+# Gradient Text
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "gradient_text",
+    """
+from styledconsole import Console, EffectSpec
+
+console = Console()
+
+# Apply gradient to multiline text
+console.frame(
+    ["Welcome to StyledConsole!", "Beautiful gradient text", "Across multiple lines"],
+    effect=EffectSpec.gradient("cyan", "magenta", target="content"),
+    border="rounded"
+)
+""",
+)
+def generate_gradient_text():
+    """Generate gradient text showcase - multiline gradient effect."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+
+    # Add empty line to prevent title clipping with auto_crop
+    console._rich_console.print()
+
+    # Gradient text in a frame with emojis
+    console.frame(
+        [
+            f"{icons.SPARKLES} Welcome to StyledConsole!",
+            f"{icons.RAINBOW} Beautiful gradient text",
+            f"{icons.ARTIST_PALETTE} Smooth color transitions",
+            f"{icons.FIRE} From cyan to magenta",
+        ],
+        effect=EffectSpec.gradient("cyan", "magenta"),
+        border="double",
+        title=f"{icons.PAINTBRUSH} Gradient Text",
+    )
+
+    console.export_webp(
+        str(OUTPUT_DIR / "gradient_text.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "gradient_text.webp"
+
+
+# -----------------------------------------------------------------------------
+# Font Styles Showcase
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "font_styles",
+    """
+from styledconsole import Console
+
+console = Console()
+
+# Text styling with bold, italic, underline, strikethrough
+console.text("Bold text for emphasis", bold=True)
+console.text("Italic text for style", italic=True)
+console.text("Underlined for importance", underline=True)
+console.text("Strikethrough for removed", strike=True)
+
+# Combined styles with colors
+console.text("Bold + Red + Underline", bold=True, color="red", underline=True)
+console.text("Italic + Cyan + Strike", italic=True, color="cyan", strike=True)
+""",
+)
+def generate_font_styles():
+    """Generate font styles showcase - bold, italic, underline, strike."""
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+
+    # Add empty line for spacing
+    console._rich_console.print()
+
+    # Basic styles - apply to entire lines
+    console._rich_console.print("[bold]Bold text for emphasis[/bold]")
+    console._rich_console.print("[italic]Italic text for style[/italic]")
+    console._rich_console.print("[underline]Underlined for importance[/underline]")
+    console._rich_console.print("[strike]Strikethrough for removed[/strike]")
+    console._rich_console.print("[dim]Dimmed text for secondary info[/dim]")
+    console._rich_console.print()
+
+    # Combined styles with colors
+    console._rich_console.print("[bold red underline]Bold + Red + Underline[/bold red underline]")
+    console._rich_console.print("[italic cyan strike]Italic + Cyan + Strike[/italic cyan strike]")
+    console._rich_console.print(
+        "[bold italic underline green]All styles combined![/bold italic underline green]"
+    )
+
+    console.export_webp(
+        str(OUTPUT_DIR / "font_styles.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "font_styles.webp"
+
+
+# -----------------------------------------------------------------------------
+# CI/CD Pipeline Dashboard
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "build_report",
+    """
+from styledconsole import Console, icons, EffectSpec
+
+console = Console()
+console.banner("BUILD", font="standard", effect=EffectSpec.gradient("blue", "purple"))
+
+console.frame([
+    f"{icons.CHECK_MARK_BUTTON} Lint checks passed",
+    f"{icons.CHECK_MARK_BUTTON} Unit tests: 427/427",
+    f"{icons.CHECK_MARK_BUTTON} Integration tests: 52/52",
+    f"{icons.WARNING} Coverage: 94% (target: 95%)",
+    f"{icons.ROCKET} Deploying to staging...",
+], title=f"{icons.BAR_CHART} Pipeline Status", border="heavy", border_color="green")
+""",
+)
+def generate_build_report():
+    """Generate CI/CD pipeline dashboard example."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console.banner("BUILD", font="standard", effect=EffectSpec.gradient("blue", "purple"))
+    console.frame(
+        [
+            f"{icons.CHECK_MARK_BUTTON} Lint checks passed",
+            f"{icons.CHECK_MARK_BUTTON} Unit tests: 427/427",
+            f"{icons.CHECK_MARK_BUTTON} Integration tests: 52/52",
+            f"{icons.WARNING} Coverage: 94% (target: 95%)",
+            f"{icons.ROCKET} Deploying to staging...",
+        ],
+        title=f"{icons.BAR_CHART} Pipeline Status",
+        border="heavy",
+        border_color="green",
+    )
+    console.export_webp(
+        str(OUTPUT_DIR / "build_report.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "build_report.webp"
+
+
+# -----------------------------------------------------------------------------
+# Error Reporting
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "error_report",
+    """
+console.frame(
+    f"{icons.CROSS_MARK} Connection refused\\n\\n"
+    f"   Host: database.example.com:5432\\n"
+    f"   Error: ETIMEDOUT after 30s\\n"
+    f"   Retry: 3/3 attempts failed\\n\\n"
+    f"{icons.LIGHT_BULB} Check firewall settings",
+    title=f"{icons.WARNING} Database Error",
+    border="heavy",
+    effect=EffectSpec.gradient("red", "darkred")
+)
+""",
+)
+def generate_error_report():
+    """Generate error reporting example."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console.frame(
+        f"{icons.CROSS_MARK} Connection refused\n\n"
+        f"   Host: database.example.com:5432\n"
+        f"   Error: ETIMEDOUT after 30s\n"
+        f"   Retry: 3/3 attempts failed\n\n"
+        f"{icons.LIGHT_BULB} Check firewall settings",
+        title=f"{icons.WARNING} Database Error",
+        border="heavy",
+        effect=EffectSpec.gradient("red", "darkred"),
+    )
+    console.export_webp(
+        str(OUTPUT_DIR / "error_report.webp"), theme=FIXED_TERMINAL_THEME, auto_crop=True
+    )
+    return "error_report.webp"
+
+
+# -----------------------------------------------------------------------------
+# Table Example
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "table_example",
+    """
+from rich.table import Table
+
+table = Table(title="Server Status", border_style="cyan")
+table.add_column("Service", style="cyan", no_wrap=True)
+table.add_column("Status", style="magenta")
+table.add_column("Uptime", justify="right", style="green")
+
+table.add_row("API Gateway", "🟢 Online", "99.9%")
+table.add_row("Database", "🟡 Maintenance", "98.5%")
+table.add_row("Cache Layer", "🟢 Online", "99.9%")
+table.add_row("Worker Pool", "🔴 Offline", "0.0%")
+
+console.print(table)
+""",
+)
+def generate_table_example():
+    """Generate table example."""
+    from rich.table import Table
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+
+    # Add empty line for spacing
+    console._rich_console.print()
+
+    table = Table(
+        title=f"{icons.GLOBE_WITH_MERIDIANS} Server Cluster Status",
+        border_style="cyan",
+        show_lines=True,
+    )
+
+    table.add_column("Service", style="cyan", no_wrap=True)
+    table.add_column("Region", style="blue")
+    table.add_column("Status", style="magenta")
+    table.add_column("Uptime", justify="right", style="green")
+
+    table.add_row(f"{icons.CLOUD} API Gateway", "us-east-1", "🟢 Online", "99.9%")
+    table.add_row(f"{icons.FILE_CABINET} Primary DB", "us-east-1", "🟡 Maintenance", "98.5%")
+    table.add_row(f"{icons.HIGH_VOLTAGE} Cache Layer", "us-west-2", "🟢 Online", "99.9%")
+    table.add_row(f"{icons.GEAR} Worker Pool", "eu-central-1", "🔴 Offline", "0.0%")
+
+    console.print(table)
+
+    console.export_webp(
+        str(OUTPUT_DIR / "table_example.webp"),
+        theme=DEBUG_TERMINAL_THEME,
+        auto_crop=not DEBUG_GRID,
+    )
+    return "table_example.webp"
+
+
+# -----------------------------------------------------------------------------
+# Declarative/JSON Examples
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "json_table",
+    """
+from styledconsole.presets.tables import create_table_from_config
+
+# Config-driven table creation (ideal for loading from JSON/YAML)
+table = create_table_from_config(
+    theme={
+        "border_style": "heavy",
+        "gradient": {"start": "cyan", "end": "blue"},
+        "title": "SERVER STATUS"
+    },
+    data={
+        "columns": [
+            {"header": "Region", "style": "bold white"},
+            {"header": "Status", "justify": "center"}
+        ],
+        "rows": [
+            ["US-East", {"text": "ONLINE", "color": "green", "icon": "CHECK_MARK_BUTTON"}],
+            ["EU-West", {"text": "MAINTENANCE", "color": "yellow", "icon": "GEAR"}]
+        ]
+    }
+)
+console.print(table)
+""",
+)
+def generate_json_table():
+    """Generate JSON table builder example."""
+    from styledconsole.presets.tables import create_table_from_config
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console._rich_console.print()  # Spacing
+
+    table = create_table_from_config(
+        theme={
+            "border_style": "heavy",
+            "gradient": {"start": "cyan", "end": "blue", "direction": "diagonal"},
+            "title": "SERVER STATUS",
+            "padding": (0, 2),
+        },
+        data={
+            "columns": [
+                {"header": "Region", "style": "bold white"},
+                {"header": "Cluster", "style": "cyan"},
+                {"header": "Status", "justify": "center"},
+            ],
+            "rows": [
+                [
+                    {"text": "US-East-1", "icon": "GLOBE_WITH_MERIDIANS"},
+                    "alpha-01",
+                    {"text": "ONLINE", "color": "green", "icon": "CHECK_MARK_BUTTON"},
+                ],
+                [
+                    {"text": "EU-West-2", "icon": "GLOBE_WITH_MERIDIANS"},
+                    "bravo-09",
+                    {"text": "MAINTENANCE", "color": "yellow", "icon": "GEAR"},
+                ],
+                [
+                    {"text": "AP-South-3", "icon": "GLOBE_WITH_MERIDIANS"},
+                    "delta-03",
+                    {"text": "OFFLINE", "color": "red", "icon": "CROSS_MARK"},
+                ],
+            ],
+        },
+    )
+    console.print(table)
+
+    console.export_webp(
+        str(OUTPUT_DIR / "json_table.webp"),
+        theme=DEBUG_TERMINAL_THEME,
+        auto_crop=not DEBUG_GRID,
+    )
+    return "json_table.webp"
+
+
+@example(
+    "declarative_layout",
+    """
+from styledconsole.presets.layouts import create_layout_from_config
+
+# Build entire dashboards from a single dictionary
+layout = create_layout_from_config({
+    "type": "panel",
+    "title": "MISSION CONTROL",
+    "title_rainbow": True,
+    "border": "heavy",
+    "border_style": "cyan",
+    "content": {
+        "type": "group",
+        "items": [
+            {"type": "text", "content": "Orbital Station Alpha", "align": "center"},
+            {"type": "rule", "style": "cyan dim"},
+            {"type": "vspacer"},
+            # Nested table component...
+            {"type": "table", "theme": {...}, "data": {...}}
+        ]
+    }
+})
+console.print(layout)
+""",
+)
+def generate_declarative_layout():
+    """Generate declarative layout engine example."""
+    from styledconsole.presets.layouts import create_layout_from_config
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+    console._rich_console.print()
+
+    layout = create_layout_from_config(
+        {
+            "type": "panel",
+            "title": "MISSION CONTROL",
+            "title_rainbow": True,
+            "border": "heavy",
+            "border_style": "cyan",
+            "padding": (0, 2),
+            "content": {
+                "type": "group",
+                "items": [
+                    {
+                        "type": "text",
+                        "content": "Orbital Station Alpha",
+                        "style": "bold cyan",
+                        "align": "center",
+                    },
+                    {"type": "rule", "style": "cyan dim"},
+                    {"type": "vspacer"},
+                    {
+                        "type": "table",
+                        "theme": {
+                            "border_style": "rounded",
+                            "gradient": {"start": "cyan", "end": "blue", "direction": "vertical"},
+                            "target": "border",
+                        },
+                        "data": {
+                            "columns": [{"header": "System"}, {"header": "Status"}],
+                            "rows": [
+                                [
+                                    {"text": "Life Support", "icon": "GEAR"},
+                                    {"text": "NOMINAL", "color": "green"},
+                                ],
+                                [
+                                    {"text": "Navigation", "icon": "SATELLITE_ANTENNA"},
+                                    {"text": "CALIBRATING", "color": "yellow"},
+                                ],
+                            ],
+                        },
+                    },
+                    {"type": "vspacer"},
+                    {
+                        "type": "panel",
+                        "title": "Alerts",
+                        "border": "rounded",
+                        "border_style": "red",
+                        "content": {
+                            "type": "text",
+                            "content": "⚠ Proximity Warning: Asteroid Field Detected",
+                            "style": "bold red blink",
+                        },
+                    },
+                ],
+            },
+        }
+    )
+    console.print(layout)
+
+    console.export_webp(
+        str(OUTPUT_DIR / "declarative_layout.webp"),
+        theme=DEBUG_TERMINAL_THEME,
+        auto_crop=not DEBUG_GRID,
+    )
+    return "declarative_layout.webp"
+
+
+# -----------------------------------------------------------------------------
+# Background Layer Effects (v0.10.2)
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "background_effects",
+    """
+from styledconsole import Console, EffectSpec
+
+console = Console()
+
+# Background gradient creates striking visual effect
+console.frame(
+    ["System Status Dashboard", "All services operational"],
+    title="Monitor",
+    effect=EffectSpec.gradient("purple", "blue", layer="background"),
+    border="heavy",
+)
+""",
+)
+def generate_background_effects():
+    """Generate background layer effects showcase - v0.10.2 feature."""
+    from styledconsole import EffectSpec
+
+    console = Console(record=True, width=TERMINAL_COLS, policy=IMAGE_EXPORT_POLICY)
+
+    # Add empty line for spacing
+    console._rich_console.print()
+
+    # Large frame with background gradient - visually striking
+    console.frame(
+        [
+            f"{icons.SPARKLES} Background Layer Effects",
+            "",
+            f"{icons.CHECK_MARK_BUTTON} API Gateway     Online",
+            f"{icons.CHECK_MARK_BUTTON} Database        Online",
+            f"{icons.CHECK_MARK_BUTTON} Cache Layer     Online",
+            f"{icons.WARNING} Worker Pool     Scaling",
+            "",
+            "Gradient applied to background, not text",
+        ],
+        title=f"{icons.GLOBE_WITH_MERIDIANS} System Monitor",
+        effect=EffectSpec.gradient("#6366f1", "#8b5cf6", layer="background"),
+        border="heavy",
+        width=50,
+    )
+
+    console.export_webp(
+        str(OUTPUT_DIR / "background_effects.webp"),
+        theme=FIXED_TERMINAL_THEME,
+        auto_crop=True,
+    )
+    return "background_effects.webp"
+
+
+# -----------------------------------------------------------------------------
+# Palette Showcase
+# -----------------------------------------------------------------------------
+
+
+@example(
+    "palette_showcase",
+    """
+from styledconsole import Console, EffectSpec
+
+console = Console()
+
+# 90 curated color palettes available
+palettes = ["ocean_depths", "sunset_glow", "forest_canopy"]
+for name in palettes:
+    console.frame(f"Palette: {name}", effect=EffectSpec.from_palette(name))
+""",
+)
+def generate_palette_showcase():
+    """Generate palette showcase - demonstrate curated color palettes."""
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.table import Table
+
+    from styledconsole import EffectSpec
+    from styledconsole.export import get_image_exporter
+    from styledconsole.export.image_cropper import auto_crop
+
+    # Selected palettes that look great together
+    palettes = [
+        ("ocean_depths", "Ocean"),
+        ("city_sunset", "Sunset"),
+        ("forest_green", "Forest"),
+        ("cyberpunk_neon", "Neon"),
+    ]
+
+    rich_console = RichConsole(record=True, width=TERMINAL_COLS, force_terminal=True)
+
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column()
+    table.add_column()
+
+    # Create pairs for 2x2 grid
+    pairs = [(palettes[0], palettes[1]), (palettes[2], palettes[3])]
+
+    for (left_name, left_label), (right_name, right_label) in pairs:
+        cells = []
+        for palette_name, label in [(left_name, left_label), (right_name, right_label)]:
+            buffer = StringIO()
+            temp = Console(file=buffer, detect_terminal=False, width=36, policy=IMAGE_EXPORT_POLICY)
+            temp.frame(
+                f"{icons.ARTIST_PALETTE} {label}",
+                title=palette_name,
+                effect=EffectSpec.from_palette(palette_name),
+                width=34,
+                border="rounded",
+            )
+            frame_text = buffer.getvalue().rstrip()
+            from rich.text import Text
+
+            cells.append(Text.from_ansi(frame_text))
+        table.add_row(*cells)
+
+    rich_console.print()
+    rich_console.print(table)
+
+    image_exporter_cls = get_image_exporter()
+    exporter = image_exporter_cls(rich_console, theme=FIXED_TERMINAL_THEME)
+    img = exporter._render_frame()
+    img = auto_crop(img, FIXED_TERMINAL_THEME.background, margin=20)
+    img.save(str(OUTPUT_DIR / "palette_showcase.webp"), "WEBP", quality=90)
+    return "palette_showcase.webp"
+
+
+def generate_progress_animation():
+    """Generate animated parallel progress bars WebP."""
+    from rich.console import Console as RichConsole
+
+    from styledconsole.export import get_image_exporter
+
+    frames = []
+
+    # Simulate 3 parallel tasks with different speeds
+    bar_width = 50
+    num_frames = 40  # 40 frames for smooth animation
+
+    for frame_idx in range(num_frames + 1):
+        rich_console = RichConsole(record=True, width=TERMINAL_COLS, force_terminal=True)
+
+        # Calculate progress for each task
+        t = frame_idx / num_frames  # 0.0 to 1.0
+
+        # Stagger the tasks slightly for visual interest
+        task1_progress = min(100, int(t * 100 * 1.0))
+        task2_progress = min(100, int(t * 100 * 0.85))
+        task3_progress = min(100, int(t * 100 * 0.7))
+
+        def make_bar(progress, label, color):
+            filled = int(bar_width * progress / 100)
+            empty = bar_width - filled
+            bar = f"{'━' * filled}{'─' * empty}"
+            return f"[{color}]{bar}[/{color}] [bold]{progress:3d}%[/bold] {label}"
+
+        rich_console.print("[bold]✨ Multiple Tasks:[/bold]")
+        rich_console.print(make_bar(task1_progress, "Fetching data", "green"))
+        rich_console.print(make_bar(task2_progress, "Processing", "cyan"))
+        rich_console.print(make_bar(task3_progress, "Saving results", "magenta"))
+
+        image_exporter_cls = get_image_exporter()
+        exporter = image_exporter_cls(rich_console, theme=FIXED_TERMINAL_THEME)
+        frame = exporter._render_frame()
+        frames.append(frame)
+
+    # Auto-crop all frames to common bounding box and save
+    if frames:
+        from styledconsole.export.image_cropper import auto_crop_frames
+
+        frames = auto_crop_frames(frames, FIXED_TERMINAL_THEME.background, margin=20)
+        frames[0].save(
+            str(OUTPUT_DIR / "progress_animation.webp"),
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=80,  # 80ms per frame
+            loop=0,
+            quality=85,
+        )
+    print(f"  {icons.CHECK_MARK_BUTTON} progress_animation.webp (animated)")
+    return "progress_animation.webp"
+
+
+def generate_gradient_animation():
+    """Generate animated gradient demo - the hero animation for README."""
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.text import Text
+
+    from styledconsole import cycle_phase
+    from styledconsole.effects import EffectSpec
+    from styledconsole.export import get_image_exporter
+
+    # Frame content
+    frame_width = 40
+    content = [
+        "✨ Animated Gradients ✨",
+        "",
+        "Powered by StyledConsole",
+        "Unified Gradient Engine",
+        "",
+        "Beautiful terminal output",
+    ]
+
+    frames = []
+
+    # Generate frames for one complete color cycle (loopable)
+    num_frames = 30
+    phase = 0.0
+    for _ in range(num_frames):
+        # Render frame with current phase using high-level API
+        buffer = StringIO()
+        temp_console = Console(file=buffer, record=True, detect_terminal=False, width=frame_width)
+
+        temp_console.frame(
+            content,
+            title="🚀 StyledConsole",
+            border="double",
+            width=frame_width,
+            align="center",
+            padding=1,
+            effect=EffectSpec.rainbow(phase=phase, direction="diagonal"),
+        )
+
+        # Convert to Rich Text for image export
+        ansi_text = buffer.getvalue()
+        styled_text = Text.from_ansi(ansi_text)
+
+        # Render to image using Rich console with fixed terminal size
+        null_file = StringIO()
+        rich_console = RichConsole(
+            record=True, width=TERMINAL_COLS, force_terminal=True, file=null_file
+        )
+        rich_console.print(styled_text)
+
+        image_exporter_cls = get_image_exporter()
+        exporter = image_exporter_cls(rich_console, theme=FIXED_TERMINAL_THEME)
+        frame = exporter._render_frame()
+        frames.append(frame)
+
+        # Advance phase for next frame
+        phase = cycle_phase(phase)
+
+    # Auto-crop all frames to common bounding box and save
+    if frames:
+        from styledconsole.export.image_cropper import auto_crop_frames
+
+        frames = auto_crop_frames(frames, FIXED_TERMINAL_THEME.background, margin=20)
+        frames[0].save(
+            str(OUTPUT_DIR / "gradient_animation.webp"),
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=66,  # 66ms per frame = ~15 FPS
+            loop=0,  # Infinite loop
+            quality=80,  # Lower quality for smaller file
+        )
+    print(f"  {icons.CHECK_MARK_BUTTON} gradient_animation.webp (animated)")
+    return "gradient_animation.webp"
+
+
+# =============================================================================
+# API FUNCTIONS
+# =============================================================================
+
+
+def get_example_code(name: str) -> str:
+    """Get the code for an example by name."""
+    if name not in EXAMPLES:
+        raise KeyError(f"Unknown example: {name}")
+    return EXAMPLES[name]["code"]
+
+
+def generate_example_image(name: str) -> str:
+    """Generate image for an example, returns filename."""
+    if name not in EXAMPLES:
+        raise KeyError(f"Unknown example: {name}")
+    return EXAMPLES[name]["generator"]()
+
+
+def generate_all_images():
+    """Generate all example images (static and animated)."""
+    print("Generating README images...")
+
+    print("\nStatic images:")
+    for name in EXAMPLES:
+        filename = generate_example_image(name)
+        print(f"  {icons.CHECK_MARK_BUTTON} {filename}")
+
+    print("\nAnimated images:")
+    generate_progress_animation()
+    generate_gradient_animation()
+
+    print(f"\n{icons.CHECK_MARK_BUTTON} All images generated in {OUTPUT_DIR}/")
+
+
+def list_examples() -> list[str]:
+    """List all available example names."""
+    return list(EXAMPLES.keys())
+
+
+if __name__ == "__main__":
+    generate_all_images()
