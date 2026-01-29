@@ -1,0 +1,462 @@
+# Loggy Python
+
+A simple, lightweight, and colorful logger for Python applications with remote logging, metrics, and distributed tracing.
+
+[![PyPI version](https://img.shields.io/pypi/v/loggy-py.svg)](https://pypi.org/project/loggy-py/)
+[![Python versions](https://img.shields.io/pypi/pyversions/loggy-py.svg)](https://pypi.org/project/loggy-py/)
+
+## Features
+
+- **Colorful output** with customizable colors
+- **Log levels** - debug, info, warn, error
+- **Timestamps** - optional timestamp prefixes
+- **Object inspection** - pretty-print dictionaries and objects
+- **Compact mode** - condensed output for JSON objects
+- **Identifiers** - tag logs with your app/service name
+- **Remote logging** - send logs to Loggy.dev for centralized viewing
+- **Performance metrics** - track RPM, response times, throughput
+- **Distributed tracing** - W3C Trace Context support
+- **Framework middleware** - Flask and FastAPI support
+
+## Installation
+
+```bash
+pip install loggydev-py
+
+# With color support
+pip install loggydev-py[color]
+
+# With Flask support
+pip install loggydev-py[flask]
+
+# With FastAPI support
+pip install loggydev-py[fastapi]
+
+# All extras
+pip install loggydev-py[all]
+```
+
+## Usage
+
+### Basic Logging
+
+```python
+from loggy import Loggy
+
+logger = Loggy(
+    identifier="my-app",  # identifier for your application
+    color=True,           # enable colored output (default: True)
+    compact=False,        # compact mode for objects (default: False)
+    timestamp=True,       # show timestamps (default: True)
+)
+
+logger.log("This is a debug message")
+logger.info("This is an info message")
+logger.warn("This is a warning message")
+logger.error("This is an error message")
+
+# Log with additional data
+logger.info("User logged in", metadata={"user_id": 123, "email": "user@example.com"})
+
+# Log with tags
+logger.info("Payment processed", metadata={"amount": 99.99}, tags=["payments", "success"])
+
+# Add blank lines
+logger.blank(2)
+```
+
+### Remote Logging (Loggy.dev)
+
+Send your logs to Loggy.dev for centralized viewing and searching:
+
+```python
+from loggy import Loggy
+
+logger = Loggy(
+    identifier="my-app",
+    remote={
+        "token": "your-project-token",     # Get this from loggy.dev dashboard
+        "endpoint": "https://loggy.dev/api/logs/ingest",  # Optional
+        "batch_size": 50,                  # Optional, logs to batch (default: 50)
+        "flush_interval": 5.0,             # Optional, seconds between flushes (default: 5.0)
+    }
+)
+
+logger.info("This log will appear locally AND on loggy.dev")
+
+# Manually flush logs (useful before process exit)
+logger.flush()
+
+# Clean up on shutdown (stops timer and flushes remaining logs)
+logger.destroy()
+
+# Or use as context manager
+with Loggy(identifier="my-app", remote={"token": "..."}) as logger:
+    logger.info("Auto-cleanup on exit")
+```
+
+### End-to-End Encryption
+
+For sensitive log data, enable end-to-end encryption:
+
+```python
+import requests
+from loggy import Loggy
+
+# Fetch the public key from Loggy.dev
+response = requests.get("https://loggy.dev/api/logs/public-key")
+public_key = response.json()["publicKey"]
+
+logger = Loggy(
+    identifier="my-secure-app",
+    remote={
+        "token": "your-project-token",
+        "public_key": public_key,  # Enable encryption
+    }
+)
+
+# All logs are now encrypted before leaving your system
+logger.info("Sensitive data", metadata={"ssn": "123-45-6789"})
+```
+
+## Performance Metrics (Pro/Team)
+
+Track request-per-minute (RPM) and throughput metrics:
+
+```python
+from loggy import Metrics
+
+metrics = Metrics(
+    token="your-project-token",
+    endpoint="https://loggy.dev/api/metrics/ingest",  # Optional
+    flush_interval=60.0,  # Optional, seconds between flushes (default: 60.0)
+)
+
+# Option 1: Manual tracking with start_request
+@app.route("/api/users")
+def get_users():
+    end = metrics.start_request()
+    
+    # ... handle request ...
+    
+    end(
+        status_code=200,
+        bytes_in=request.content_length,
+        bytes_out=len(response_body),
+        path="/api/users",
+        method="GET",
+    )
+    return response
+
+# Option 2: Record pre-measured requests
+metrics.record(
+    duration_ms=150,
+    status_code=200,
+    bytes_in=1024,
+    bytes_out=4096,
+)
+
+# Clean up on shutdown
+metrics.destroy()
+
+# Or use as context manager
+with Metrics(token="...") as metrics:
+    end = metrics.start_request()
+    # ...
+```
+
+### What Gets Tracked
+
+- **Requests per minute** - Total request count per minute bucket
+- **Response times** - Average, min, and max duration
+- **Throughput** - Bytes in/out
+- **Status codes** - Breakdown by 2xx, 3xx, 4xx, 5xx
+
+## Distributed Tracing (Pro/Team)
+
+Track requests as they flow through your microservices:
+
+### Basic Setup
+
+```python
+from loggy import Tracer, SpanKind
+
+tracer = Tracer(
+    service_name="api-gateway",
+    service_version="1.0.0",
+    environment="production",
+    remote={
+        "token": "your-project-token",
+        "endpoint": "https://loggy.dev/api/traces/ingest",  # Optional
+        "batch_size": 100,      # Optional (default: 100)
+        "flush_interval": 5.0,  # Optional (default: 5.0)
+    },
+)
+```
+
+### Manual Span Creation
+
+```python
+# Start a span for a database query
+span = tracer.start_span(
+    "db.query",
+    kind=SpanKind.CLIENT,
+    attributes={
+        "db.system": "postgresql",
+        "db.statement": "SELECT * FROM users WHERE id = $1",
+    },
+)
+
+try:
+    result = db.query("SELECT * FROM users WHERE id = $1", [user_id])
+    span.set_status(SpanStatus.OK)
+    return result
+except Exception as e:
+    span.set_status(SpanStatus.ERROR, str(e))
+    span.add_event("exception", {
+        "exception.type": type(e).__name__,
+        "exception.message": str(e),
+    })
+    raise
+finally:
+    span.end()
+```
+
+### Using Context Manager
+
+```python
+with tracer.start_span("db.query", kind=SpanKind.CLIENT) as span:
+    span.set_attribute("db.system", "postgresql")
+    result = db.query("SELECT * FROM users")
+    # Span automatically ends and sets status
+```
+
+### Using the with_span Helper
+
+```python
+from loggy import with_span
+
+result = with_span(
+    tracer,
+    "fetch_user_data",
+    lambda: db.query("SELECT * FROM users WHERE id = $1", [user_id]),
+    attributes={"user.id": user_id},
+)
+```
+
+### Context Propagation
+
+Pass trace context to downstream services using W3C Trace Context headers:
+
+```python
+import requests
+
+# Inject trace context into outgoing requests
+headers = tracer.inject({})
+response = requests.get("http://user-service/api/users/123", headers=headers)
+
+# Extract trace context from incoming requests
+parent_context = tracer.extract(dict(request.headers))
+span = tracer.start_span("handle-request", parent=parent_context)
+```
+
+### Log Correlation
+
+Link logs to traces for unified debugging:
+
+```python
+context = tracer.get_current_context()
+
+logger.info("Processing request", metadata={
+    "trace_id": context["trace_id"],
+    "span_id": context["span_id"],
+    "user_id": user.id,
+})
+```
+
+## Framework Middleware
+
+### Flask
+
+```python
+from flask import Flask
+from loggy import Loggy, Metrics, Tracer
+from loggy import flask_tracing_middleware, flask_metrics_middleware, flask_logging_middleware
+
+app = Flask(__name__)
+
+# Setup components
+logger = Loggy(identifier="my-flask-app", remote={"token": "..."})
+metrics = Metrics(token="...")
+tracer = Tracer(service_name="my-flask-app", remote={"token": "..."})
+
+# Add middleware
+flask_tracing_middleware(tracer, ignore_routes=["/health"])(app)
+flask_metrics_middleware(metrics)(app)
+flask_logging_middleware(logger)(app)
+
+@app.route("/")
+def hello():
+    return "Hello, World!"
+```
+
+### FastAPI
+
+```python
+from fastapi import FastAPI
+from loggy import Loggy, Metrics, Tracer
+from loggy import fastapi_tracing_middleware, fastapi_metrics_middleware, fastapi_logging_middleware
+
+app = FastAPI()
+
+# Setup components
+logger = Loggy(identifier="my-fastapi-app", remote={"token": "..."})
+metrics = Metrics(token="...")
+tracer = Tracer(service_name="my-fastapi-app", remote={"token": "..."})
+
+# Add middleware
+app.add_middleware(fastapi_tracing_middleware(tracer, ignore_routes=["/health"]))
+app.add_middleware(fastapi_metrics_middleware(metrics))
+app.add_middleware(fastapi_logging_middleware(logger))
+
+@app.get("/")
+async def hello():
+    return {"message": "Hello, World!"}
+```
+
+## Configuration Reference
+
+### Loggy Configuration
+
+| Option       | Type    | Default | Description                              |
+| :----------- | :------ | :------ | :--------------------------------------- |
+| `identifier` | str     | -       | Label for your app/service               |
+| `color`      | bool    | `True`  | Enable colored output                    |
+| `compact`    | bool    | `False` | Compact mode for object inspection       |
+| `timestamp`  | bool    | `True`  | Show timestamps in log output            |
+| `remote`     | dict    | -       | Remote logging configuration             |
+
+### Remote Configuration
+
+| Option          | Type   | Default                              | Description                        |
+| :-------------- | :----- | :----------------------------------- | :--------------------------------- |
+| `token`         | str    | -                                    | Project token from loggy.dev       |
+| `endpoint`      | str    | `https://loggy.dev/api/logs/ingest`  | API endpoint for log ingestion     |
+| `batch_size`    | int    | `50`                                 | Logs to batch before sending       |
+| `flush_interval`| float  | `5.0`                                | Seconds between auto-flushes       |
+| `public_key`    | str    | -                                    | RSA public key for encryption      |
+
+### Auto-Capture (Smart Defaults)
+
+Automatically capture all `print()` calls and uncaught exceptions without changing your existing code:
+
+```python
+from loggy import Loggy
+
+logger = Loggy(
+    identifier="my-app",
+    remote={"token": "your-project-token"},
+    capture_stdout=True,      # Capture all print() calls
+    capture_exceptions=True,  # Capture uncaught exceptions
+)
+
+# Now all print() calls are automatically sent to Loggy!
+print("This will appear in your Loggy dashboard")
+
+# You can still use logger methods directly for more control
+logger.info("Direct log with metadata", metadata={"user_id": 123})
+
+# Restore original stdout/stderr if needed
+logger.restore_stdout()
+
+# Re-enable capture
+logger.enable_stdout_capture()
+
+# Clean up on shutdown
+logger.destroy()
+```
+
+#### Capture Configuration
+
+| Option              | Type | Default | Description                              |
+| :------------------ | :--- | :------ | :--------------------------------------- |
+| `capture_stdout`    | bool | `False` | Capture print() calls (stdout/stderr)    |
+| `capture_exceptions`| bool | `False` | Capture uncaught exceptions              |
+
+### Metrics Configuration
+
+| Option          | Type    | Default                                | Description                        |
+| :-------------- | :------ | :------------------------------------- | :--------------------------------- |
+| `token`         | str     | -                                      | Project token from loggy.dev       |
+| `endpoint`      | str     | `https://loggy.dev/api/metrics/ingest` | API endpoint for metrics ingestion |
+| `flush_interval`| float   | `60.0`                                 | Seconds between auto-flushes       |
+| `disabled`      | bool    | `False`                                | Disable metrics collection         |
+
+### Tracer Configuration
+
+| Option           | Type   | Default                                | Description                        |
+| :--------------- | :----- | :------------------------------------- | :--------------------------------- |
+| `service_name`   | str    | -                                      | Name of your service (required)    |
+| `service_version`| str    | -                                      | Version of your service            |
+| `environment`    | str    | -                                      | Deployment environment             |
+| `remote.token`   | str    | -                                      | Project token from loggy.dev       |
+| `remote.endpoint`| str    | `https://loggy.dev/api/traces/ingest`  | API endpoint for trace ingestion   |
+| `remote.batch_size`| int  | `100`                                  | Spans to batch before sending      |
+| `remote.flush_interval`| float | `5.0`                             | Seconds between auto-flushes       |
+| `remote.public_key`| str  | -                                      | RSA public key for encryption      |
+
+## Span Kinds
+
+- `SpanKind.SERVER` - Incoming request handler
+- `SpanKind.CLIENT` - Outgoing request to another service
+- `SpanKind.PRODUCER` - Message queue producer
+- `SpanKind.CONSUMER` - Message queue consumer
+- `SpanKind.INTERNAL` - Internal operation (default)
+
+## Retention
+
+- **Pro tier**: 7 days metrics, 7 days traces (100k traces/month)
+- **Team tier**: 30 days metrics, 30 days traces (1M traces/month, service map)
+
+## Development
+
+### Prerequisites
+
+- Python 3.9+
+- pip or poetry
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/loggy-dev/loggy-py.git
+cd loggy-py
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Format code
+black loggy tests
+ruff check loggy tests
+
+# Type checking
+mypy loggy
+```
+
+## Publishing to PyPI
+
+```bash
+# Build the package
+python -m build
+
+# Upload to PyPI
+twine upload dist/*
+```
+
+## License
+
+ISC
+# loggy-py
