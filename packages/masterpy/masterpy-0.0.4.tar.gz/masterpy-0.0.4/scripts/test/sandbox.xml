@@ -1,0 +1,108 @@
+<beast version='2.0' namespace='master:master.model:master.steppers:master.conditions:master.postprocessors:master.outputs'>
+
+<run spec='InheritanceEnsemble'
+    verbosity='3'
+    nTraj='1'
+    nSamples='1000'
+    samplePopulationSizes='true'
+    simulationTime='10'
+    maxConditionRejects='1'>
+
+<model spec='Model'>
+
+    <!--
+        index: state
+        i,w: previous observed
+        j,x: current observed
+        k,y: previous hidden
+        l,z: current hidden
+    -->
+
+    <!-- I: infected compartments -->
+    <populationType spec='PopulationType' typeName='Infect' id='Infect' dim='1 2 1 1'/>
+
+    <!-- X: within-population birth rate -->
+    <populationType spec='PopulationType' typeName='X' id='X' dim='2'/>
+
+    <!-- Y: between-population migration rate -->
+    <populationType spec='PopulationType' typeName='Y' id='Y' dim='2 2'/>
+
+<function spec='Function' id="myFunc" params="a b">
+    1/abs(a-b)
+</function>
+
+<reactionGroup spec='ReactionGroup' reactionGroupName='Infect'>
+	<reaction spec='Reaction' reactionName='r_I_ijkl' rate='0.1'>
+        Infect[i,j,k,l]:1 + X[j] -> Infect[i,j,k,l]:1 + Infect[i,j,k,l]:1 + X[j]
+    </reaction>
+</reactionGroup>
+
+<reactionGroup spec='ReactionGroup' reactionGroupName='Migrate'>
+    <reaction spec='Reaction' reactionName='r_M_ijkl_wxyz' rate='0.1'>
+        <!-- I before Y -->
+        Infect[i,j,k,l]:1 + Y[j,x] -> Infect[w,x,y,z]:1 + Y[j,x]
+
+        <!-- Y before I -->
+        <!--
+        Y[j,x] + I[i,j,k,l]:1 -> Y[j,x] + I[w,x,y,z]:1
+        -->
+
+        <!-- autoindex current obs. state -->
+        <!--
+        I[0,i,0,0]:1 + Y[i,j] -> I[0,j,0,0]:1 + Y[i,j]
+        -->
+
+        <!-- enumerating current obs. state -->
+        <!--
+        I[0,0,0,0]:1 + Y[0,0] -> I[0,0,0,0]:1 + Y[0,0]
+        I[0,0,0,0]:1 + Y[0,1] -> I[0,1,0,0]:1 + Y[0,1]
+        I[0,1,0,0]:1 + Y[1,0] -> I[0,0,0,0]:1 + Y[1,0]
+        I[0,1,0,0]:1 + Y[1,1] -> I[0,1,0,0]:1 + Y[1,1]
+        -->
+
+    </reaction>
+</reactionGroup>
+
+</model>
+
+<initialState spec='InitState'>
+	<lineageSeedMultiple spec='MultipleIndividuals' copies='1'>
+		<population spec ='Population' type='@Infect' location='0 0 0 0'/>
+    </lineageSeedMultiple>
+    <!-- birth rate in 0 is 10x higher than 1 -->
+    <populationSize spec='PopulationSize' size='10'>
+		<population spec='Population' populationName='X' type='@X' location='0'/>
+    </populationSize>
+    <populationSize spec='PopulationSize' size='1'>
+		<population spec='Population' populationName='X' type='@X' location='1'/>
+    </populationSize>
+    <!-- migration rate 0->1 is 10x higher than 1->0 -->
+    <populationSize spec='PopulationSize' size='0'>
+		<population spec='Population' populationName='Y' type='@Y' location='0 0'/>
+    </populationSize>
+    <populationSize spec='PopulationSize' size='1'>
+		<population spec='Population' populationName='Y' type='@Y' location='0 1'/>
+    </populationSize>
+    <populationSize spec='PopulationSize' size='100'>
+		<population spec='Population' populationName='Y' type='@Y' location='1 0'/>
+    </populationSize>
+    <populationSize spec='PopulationSize' size='0'>
+		<population spec='Population' populationName='Y' type='@Y' location='1 1'/>
+    </populationSize>
+</initialState>
+
+
+<lineageEndCondition spec='LineageEndCondition' nLineages='500' alsoGreaterThan='true' isRejection='false'/>
+
+
+<!--
+    <inheritancePostProcessor spec='LineageFilter' populationName='S' reverseTime='false' discard='false' leavesOnly='true' noClean='true'/>
+-->
+
+
+<output spec='NewickOutput' collapseSingleChildNodes='true' fileName='sandbox.tre'/>
+<output spec='NexusOutput' fileName='sandbox.nex'/>
+<output spec='JsonOutput' fileName='sandbox.json' />
+
+</run>
+</beast>
