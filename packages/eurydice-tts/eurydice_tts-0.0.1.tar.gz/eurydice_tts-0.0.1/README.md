@@ -1,0 +1,307 @@
+# Eurydice 🎵
+
+> *Named after Orpheus's wife in Greek mythology. Like Orpheus who tried to bring Eurydice back from the underworld, this library brings text to life through speech.*
+
+[![PyPI version](https://badge.fury.io/py/eurydice-tts.svg)](https://badge.fury.io/py/eurydice-tts)
+[![Python Versions](https://img.shields.io/pypi/pyversions/eurydice-tts.svg)](https://pypi.org/project/eurydice-tts/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/mustafazidan/eurydice/actions/workflows/test.yml/badge.svg)](https://github.com/mustafazidan/eurydice/actions/workflows/test.yml)
+
+A Python library for text-to-speech using the Orpheus TTS model, featuring audio caching and provider abstraction.
+
+## Features
+
+- 🎤 **8 High-Quality Voices** - tara, leah, jess, leo, dan, mia, zac, zoe
+- ⚡ **Audio Caching** - Memory and filesystem caching to avoid regenerating audio
+- 🔌 **Provider Abstraction** - Support for LM Studio (Ollama and embedded coming soon)
+- 🔄 **Async-First** - Built for async/await with sync wrappers for convenience
+- 📦 **Type Hints** - Full type annotations throughout
+- 🧪 **Well Tested** - Comprehensive test suite
+
+## Installation
+
+```bash
+# Basic installation (requires external LM Studio server)
+uv add eurydice-tts
+
+# With audio decoding support (recommended)
+uv add eurydice-tts[audio]
+
+# For development
+uv add eurydice-tts[dev]
+
+# All extras
+uv add eurydice-tts[all]
+```
+
+## Quick Start
+
+### Prerequisites
+
+1. Install [LM Studio](https://lmstudio.ai/)
+2. Download and load the Orpheus TTS model (`orpheus-3b-0.1-ft`)
+3. Start the LM Studio server (default: `http://localhost:1234`)
+
+### Basic Usage
+
+```python
+from eurydice import Eurydice, Voice
+
+# Async usage (recommended)
+async with Eurydice() as tts:
+    audio = await tts.generate("Hello, world!", voice=Voice.LEO)
+    audio.save("hello.wav")
+    print(f"Generated {audio.duration:.2f}s of audio")
+
+# Sync usage
+tts = Eurydice()
+audio = tts.generate_sync("Hello, world!")
+audio.save("hello.wav")
+```
+
+### With Caching
+
+```python
+from eurydice import Eurydice, TTSConfig, FilesystemCache
+
+# Configure with filesystem cache for persistence
+config = TTSConfig(cache_enabled=True)
+cache = FilesystemCache("~/.eurydice/cache")
+
+async with Eurydice(config, cache=cache) as tts:
+    # First call generates audio
+    audio1 = await tts.generate("Hello!")
+    print(f"Cached: {audio1.cached}")  # False
+
+    # Second call returns cached audio instantly
+    audio2 = await tts.generate("Hello!")
+    print(f"Cached: {audio2.cached}")  # True
+```
+
+### Custom Configuration
+
+```python
+from eurydice import Eurydice, TTSConfig, GenerationParams, Voice
+
+config = TTSConfig(
+    provider="lmstudio",
+    server_url="http://localhost:1234/v1",
+    model="orpheus-3b-0.1-ft",
+    default_voice=Voice.TARA,
+    cache_enabled=True,
+    generation=GenerationParams(
+        temperature=0.7,
+        top_p=0.9,
+        repetition_penalty=1.1,
+    ),
+)
+
+async with Eurydice(config) as tts:
+    audio = await tts.generate("Custom configuration example!")
+    print(f"Duration: {audio.duration:.2f}s")
+```
+
+## Available Voices
+
+| Voice | ID     | Description          |
+|-------|--------|----------------------|
+| Tara  | `tara` | Female voice         |
+| Leah  | `leah` | Female voice         |
+| Jess  | `jess` | Female voice         |
+| Leo   | `leo`  | Male voice (default) |
+| Dan   | `dan`  | Male voice           |
+| Mia   | `mia`  | Female voice         |
+| Zac   | `zac`  | Male voice           |
+| Zoe   | `zoe`  | Female voice         |
+
+## API Reference
+
+### Eurydice
+
+Main client class for text-to-speech generation.
+
+```python
+class Eurydice:
+    def __init__(
+        self,
+        config: Optional[TTSConfig] = None,
+        provider: Optional[Provider] = None,
+        cache: Optional[Cache] = None,
+    ) -> None: ...
+
+    async def generate(
+        self,
+        text: str,
+        voice: Optional[Voice] = None,
+        params: Optional[GenerationParams] = None,
+        format: AudioFormat = AudioFormat.WAV,
+        use_cache: bool = True,
+    ) -> AudioResult: ...
+
+    def generate_sync(self, text: str, **kwargs) -> AudioResult: ...
+
+    async def generate_to_file(
+        self, text: str, path: str, **kwargs
+    ) -> AudioResult: ...
+
+    async def is_available(self) -> bool: ...
+
+    @staticmethod
+    def available_voices() -> list[Voice]: ...
+```
+
+### AudioResult
+
+Result object containing generated audio.
+
+```python
+@dataclass
+class AudioResult:
+    audio_data: bytes      # Raw audio bytes
+    duration: float        # Duration in seconds
+    format: AudioFormat    # WAV or RAW
+    sample_rate: int       # Sample rate (24000 Hz)
+    voice: Voice           # Voice used
+    cached: bool           # Whether result came from cache
+
+    def save(self, path: str) -> None: ...
+    def to_base64(self) -> str: ...
+```
+
+### TTSConfig
+
+Configuration for the TTS client.
+
+```python
+@dataclass
+class TTSConfig:
+    provider: str = "lmstudio"
+    server_url: Optional[str] = None
+    model: str = "orpheus-3b-0.1-ft"
+    default_voice: Voice = Voice.LEO
+    generation: GenerationParams = GenerationParams()
+    cache_enabled: bool = True
+    cache_ttl_seconds: Optional[int] = None
+    sample_rate: int = 24000
+    timeout: float = 120.0
+```
+
+## Caching
+
+Eurydice supports two caching backends:
+
+### MemoryCache
+
+In-memory LRU cache (default when caching is enabled):
+
+```python
+from eurydice import MemoryCache
+
+cache = MemoryCache(
+    max_size=100,              # Maximum items to store
+    default_ttl_seconds=3600,  # 1 hour TTL (optional)
+)
+```
+
+### FilesystemCache
+
+Persistent disk-based cache:
+
+```python
+from eurydice import FilesystemCache
+
+cache = FilesystemCache(
+    cache_dir="~/.eurydice/cache",
+    default_ttl_seconds=86400,  # 24 hour TTL (optional)
+)
+```
+
+### Cache Keys
+
+Cache keys are content-addressed using SHA256 of:
+- Input text
+- Voice selection
+- Generation parameters (temperature, top_p, etc.)
+- Model identifier
+
+This ensures that different configurations produce different cache entries.
+
+## Providers
+
+### LM Studio (Default)
+
+Uses the OpenAI-compatible API provided by LM Studio:
+
+```python
+from eurydice import LMStudioProvider
+
+provider = LMStudioProvider(
+    server_url="http://localhost:1234/v1",
+    model="orpheus-3b-0.1-ft",
+    timeout=120.0,
+)
+```
+
+### Coming Soon
+
+- **Ollama Provider** - For Ollama-hosted models
+- **Embedded Provider** - Run models locally without external servers
+
+## Examples
+
+See the [examples/](examples/) directory for more usage examples:
+
+- `basic_usage.py` - Simple text-to-speech generation
+- `with_caching.py` - Using the caching system
+- `batch_generation.py` - Generating audio for multiple texts
+- `sync_usage.py` - Synchronous API usage
+
+## Development
+
+### Setup
+
+```bash
+git clone https://github.com/mustafazidan/eurydice.git
+cd eurydice
+uv venv
+source .venv/bin/activate
+uv sync --all-extras
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# With coverage
+uv run pytest tests/ --cov=eurydice --cov-report=html
+
+# Run specific test
+uv run pytest tests/test_types.py -v
+```
+
+### Linting
+
+```bash
+uv run ruff check .
+uv run ruff format .
+```
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Orpheus TTS](https://github.com/canopyai/Orpheus-TTS) - The underlying TTS model
+- [SNAC](https://github.com/hubertsiuzdak/snac) - Neural audio codec
+- [LM Studio](https://lmstudio.ai/) - Local LLM inference server
+
+---
+
+Made with ❤️ by [Mustafa Abuelfadl](https://github.com/mustafazidan)
