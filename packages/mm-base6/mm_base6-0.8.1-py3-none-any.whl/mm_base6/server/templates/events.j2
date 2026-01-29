@@ -1,0 +1,57 @@
+{% extends "inc/base.j2" %}
+{% block content %}
+<div class="page-header">
+  <h2>events</h2>
+  <nav><button class="outline" onclick="openDialog('dialog-delete')">delete events</button></nav>
+  <form>
+    <select name="type">
+      <option value="">-- type --</option>
+      {% for event_type in type_stats %}
+      {{ option(event_type, form.type) }}
+      {% endfor %}
+    </select>
+    <input type="number" placeholder="limit" name="limit" value="{{ form.limit }}">
+    <button type="submit" class="outline">filter</button>
+  </form>
+</div>
+
+<dialog id="dialog-delete" label="delete events">
+  <article>
+    <table>
+      <tr>
+        <th>type</th>
+        <th>count</th>
+        <th>delete</th>
+      </tr>
+      {% for event_type, count in type_stats.items() %}
+      <tr>
+        <td>{{ event_type }}</td>
+        <td>{{ count }}</td>
+        <td><a href="/api-delete/system/events/type/{{ event_type }}" {{confirm}}>delete</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p>all events / {{ all_count }} / <a href="/api-delete/system/events" {{ confirm }}>delete all</a></p>
+  </article>
+</dialog>
+
+<table>
+  <tr>
+    <th>created_at</th>
+    <th>type</th>
+    <th>data</th>
+    <th>actions</th>
+  </tr>
+  {% for e in events %}
+  <tr>
+    <td>{{ e.created_at | dt }}</td>
+    <td>{{ e.type }}</td>
+    <td>{{ e.data | event_data_truncate }}</td>
+    <td>
+      <a href="/api-delete/system/events/{{ e.id }}">delete</a> ·
+      <a href="/api/system/events/{{ e.id }}">view</a>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
