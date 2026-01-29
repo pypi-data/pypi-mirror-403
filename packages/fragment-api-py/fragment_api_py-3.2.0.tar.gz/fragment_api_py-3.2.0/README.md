@@ -1,0 +1,505 @@
+# Fragment API Python
+
+Professional Python library for Fragment.com API with async and sync support. Send Telegram Stars, Premium, and TON with automatic wallet validation and multi-version wallet support.
+
+## Features
+
+- ✅ Async & Sync interfaces
+- ✅ 3 payment methods (Stars, Premium, TON)
+- ✅ Direct TON transfers to any address
+- ✅ Recipient lookup (get user info & avatar)
+- ✅ Automatic wallet balance validation
+- ✅ Multi-version wallet support (V3R1, V3R2, V4R2, V5R1/W5)
+- ✅ Comprehensive error handling
+- ✅ Type hints & logging
+
+## Installation
+
+```bash
+pip install fragment-api-py
+```
+
+## Quick Start
+
+### Synchronous
+
+```python
+from FragmentAPI import SyncFragmentAPI
+
+api = SyncFragmentAPI(
+    cookies="your_cookies",
+    hash_value="your_hash",
+    wallet_mnemonic="your mnemonic...",
+    wallet_api_key="your_api_key",
+    wallet_version="V4R2"  # Optional, defaults to V4R2
+)
+
+# Get recipient info with avatar
+recipient = api.get_recipient_stars('username')
+print(f"Name: {recipient.name}")
+print(f"Avatar: {recipient.avatar}")
+
+# Send stars
+result = api.buy_stars('username', 100)
+if result.success:
+    print(f"TX: {result.transaction_hash}")
+
+api.close()
+```
+
+### Asynchronous
+
+```python
+import asyncio
+from FragmentAPI import AsyncFragmentAPI
+
+async def main():
+    api = AsyncFragmentAPI(
+        cookies="your_cookies",
+        hash_value="your_hash",
+        wallet_mnemonic="your mnemonic...",
+        wallet_api_key="your_api_key",
+        wallet_version="W5"  # Using latest wallet version
+    )
+    
+    # Get recipient info with avatar
+    recipient = await api.get_recipient_stars('username')
+    print(f"Name: {recipient.name}")
+    print(f"Avatar: {recipient.avatar}")
+    
+    # Send stars
+    result = await api.buy_stars('username', 100)
+    if result.success:
+        print(f"TX: {result.transaction_hash}")
+    
+    await api.close()
+
+asyncio.run(main())
+```
+
+## Wallet Versions
+
+The library supports multiple TON wallet versions. Specify the version during initialization:
+
+| Version | Alias | Description |
+|---------|-------|-------------|
+| `V4R2` | - | Most common wallet version (default) |
+| `V5R1` | `W5` | Latest wallet version |
+| `V3R2` | - | Legacy wallet version |
+| `V3R1` | - | Legacy wallet version |
+
+### Usage Examples
+
+```python
+# Using default V4R2
+api = SyncFragmentAPI(
+    cookies="...",
+    hash_value="...",
+    wallet_mnemonic="...",
+    wallet_api_key="..."
+)
+
+# Using V5R1 (W5) - latest version
+api = SyncFragmentAPI(
+    cookies="...",
+    hash_value="...",
+    wallet_mnemonic="...",
+    wallet_api_key="...",
+    wallet_version="V5R1"  # or "W5"
+)
+
+# Using legacy V3R2
+api = SyncFragmentAPI(
+    cookies="...",
+    hash_value="...",
+    wallet_mnemonic="...",
+    wallet_api_key="...",
+    wallet_version="v3r2"  # case-insensitive
+)
+```
+
+### Invalid Version Handling
+
+```python
+from FragmentAPI import SyncFragmentAPI, InvalidWalletVersionError
+
+try:
+    api = SyncFragmentAPI(
+        cookies="...",
+        hash_value="...",
+        wallet_mnemonic="...",
+        wallet_api_key="...",
+        wallet_version="V6R1"  # Invalid version
+    )
+except InvalidWalletVersionError as e:
+    print(e)
+    # Output:
+    # Invalid wallet version: 'V6R1'
+    # Supported wallet versions:
+    #   - V4R2: WalletV4R2 - Most common wallet version
+    #   - V5R1: WalletV5R1 - Latest wallet version (also known as W5)
+    #   - W5: WalletV5R1 - Alias for V5R1
+    #   - V3R2: WalletV3R2 - Legacy wallet version
+    #   - V3R1: WalletV3R1 - Legacy wallet version
+```
+
+## Methods
+
+### Recipient Lookup
+
+#### get_recipient_stars(username)
+Get recipient info for Stars transfer
+- Returns: `UserInfo` with name, recipient address, avatar (URL or base64)
+
+#### get_recipient_premium(username)
+Get recipient info for Premium gift
+- Returns: `UserInfo` with name, recipient address, avatar
+
+#### get_recipient_ton(username)
+Get recipient info for Ads account top-up
+- Returns: `UserInfo` with name, recipient address, avatar
+
+### Payments
+
+#### buy_stars(username, quantity, show_sender=False)
+Send Telegram Stars to user
+- `username` (str): Target username
+- `quantity` (int): Number of stars (1-999999)
+- `show_sender` (bool): Show sender info to recipient
+
+#### gift_premium(username, months, show_sender=False)
+Gift Premium subscription (3, 6, or 12 months)
+- `username` (str): Target username
+- `months` (int): Duration in months (3, 6, or 12)
+- `show_sender` (bool): Show sender info to recipient
+
+#### topup_ton(username, amount, show_sender=False)
+Top up Telegram Ads account with TON
+- `username` (str): Target username
+- `amount` (int): Amount of TON (1-999999)
+- `show_sender` (bool): Show sender info to recipient
+
+#### transfer_ton(to_address, amount, memo=None)
+Direct TON transfer to any address or username
+- `to_address` (str): Destination address (TON address or username like `user.t.me`)
+- `amount` (float): Amount of TON to send
+- `memo` (str, optional): Comment/memo for the transaction
+- Returns: `TransferResult` with success status, transaction_hash, memo, and error (if any)
+
+### Wallet
+
+#### get_wallet_balance()
+Get current wallet balance, address, and version info
+- Returns: Dictionary with balance in TON/nanotons, address, and wallet_version
+
+## Recipient Info
+
+```python
+# Get user info before sending payment
+user = api.get_recipient_stars('john_doe')
+
+if user.found:
+    print(f"Name: {user.name}")
+    print(f"Address: {user.recipient}")
+    print(f"Avatar: {user.avatar}")  # URL or base64 encoded image
+```
+
+**UserInfo object:**
+- `name` - User's display name
+- `recipient` - Blockchain address
+- `found` - Boolean flag
+- `avatar` - Avatar URL (HTTP/HTTPS) or base64 encoded image
+
+## Direct TON Transfer
+
+Send TON directly to any address or Telegram username:
+
+### Asynchronous
+
+```python
+import asyncio
+from FragmentAPI import AsyncFragmentAPI
+
+async def main():
+    api = AsyncFragmentAPI(
+        cookies="your_cookies",
+        hash_value="your_hash",
+        wallet_mnemonic="your mnemonic...",
+        wallet_api_key="your_api_key",
+        wallet_version="V4R2"
+    )
+    
+    # Check balance first
+    balance = await api.get_wallet_balance()
+    print(f"Balance: {balance['balance_ton']} TON")
+    print(f"Address: {balance['address']}")
+    print(f"Wallet Version: {balance['wallet_version']}")
+    
+    # Transfer to username (t.me format)
+    result = await api.transfer_ton("username.t.me", 0.5, "Payment for services")
+    
+    # Or transfer to TON address
+    # result = await api.transfer_ton("EQDrjaLahLkMB-hMCmkzOyBuHJ139ZUYmPHu6RRBKnbRELWt", 0.5)
+    
+    if result.success:
+        print(f"Success! Hash: {result.transaction_hash}")
+        print(f"Memo: {result.memo}")
+    else:
+        print(f"Error: {result.error}")
+    
+    await api.close()
+
+asyncio.run(main())
+```
+
+### Synchronous
+
+```python
+from FragmentAPI import SyncFragmentAPI
+
+api = SyncFragmentAPI(
+    cookies="your_cookies",
+    hash_value="your_hash",
+    wallet_mnemonic="your mnemonic...",
+    wallet_api_key="your_api_key",
+    wallet_version="V4R2"
+)
+
+# Check balance
+balance = api.get_wallet_balance()
+print(f"Balance: {balance['balance_ton']} TON")
+print(f"Address: {balance['address']}")
+print(f"Wallet Version: {balance['wallet_version']}")
+
+# Transfer with memo
+result = api.transfer_ton("username.t.me", 0.01, "test payment")
+
+if result.success:
+    print(f"Success! Hash: {result.transaction_hash}")
+    print(f"Memo: {result.memo}")
+else:
+    print(f"Error: {result.error}")
+
+api.close()
+```
+
+### TransferResult Object
+
+The `transfer_ton` method returns a `TransferResult` object:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `success` | bool | Whether the transfer was successful |
+| `transaction_hash` | str \| None | Transaction hash on success |
+| `from_address` | str \| None | Sender's wallet address |
+| `to_address` | str \| None | Recipient's address |
+| `amount_ton` | float \| None | Amount transferred |
+| `balance_before` | float \| None | Balance before transfer |
+| `memo` | str \| None | The memo/comment included in transaction |
+| `error` | str \| None | Error message if transfer failed |
+
+### PurchaseResult Object
+
+The payment methods return a `PurchaseResult` object:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `success` | bool | Whether the purchase was successful |
+| `transaction_hash` | str \| None | Transaction hash on success |
+| `user` | UserInfo \| None | Recipient user info |
+| `balance_checked` | bool | Whether balance was validated |
+| `required_amount` | float \| None | Amount required for transaction |
+| `error` | str \| None | Error message if purchase failed |
+
+## Setup
+
+### 1. Get Fragment Cookies
+
+1. Open fragment.com in browser
+2. Press F12 → Application → Cookies
+3. Copy cookies: `stel_ssid`, `stel_token`, `stel_dt`, `stel_ton_token`
+4. Combine: `stel_ssid=value; stel_token=value; ...`
+
+### 2. Get Hash Value
+
+From DevTools Network tab → fragment.com/api requests → copy `hash` parameter
+
+### 3. Setup TON Wallet
+
+1. Get 24-word seed phrase from TON wallet (Tonkeeper, MyTonWallet, etc)
+2. Fund wallet with TON for transactions
+3. **Important**: Know your wallet version (V3R1, V3R2, V4R2, or V5R1/W5)
+
+### 4. Get API Key
+
+1. Go to https://tonconsole.com
+2. Create project
+3. Generate API key from Settings
+
+## Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| `AuthenticationError` | Invalid cookies/hash |
+| `UserNotFoundError` | User doesn't exist |
+| `InvalidAmountError` | Invalid quantity/amount |
+| `InsufficientBalanceError` | Low wallet balance |
+| `TransactionError` | TX execution failed |
+| `NetworkError` | Network request failed |
+| `WalletError` | Wallet operation failed |
+| `InvalidWalletVersionError` | Unsupported wallet version |
+| `PaymentInitiationError` | Fragment API error |
+
+## Error Handling
+
+```python
+from FragmentAPI import (
+    SyncFragmentAPI,
+    InsufficientBalanceError, 
+    UserNotFoundError, 
+    WalletError,
+    InvalidWalletVersionError
+)
+
+try:
+    api = SyncFragmentAPI(
+        cookies="...",
+        hash_value="...",
+        wallet_mnemonic="...",
+        wallet_api_key="...",
+        wallet_version="V4R2"
+    )
+    
+    # Get recipient info
+    user = api.get_recipient_stars('username')
+    
+    # Send payment
+    result = api.buy_stars('username', 100)
+    if not result.success:
+        print(f"Error: {result.error}")
+        
+    # Direct transfer
+    transfer = api.transfer_ton('address.t.me', 1.0, 'memo')
+    if not transfer.success:
+        print(f"Transfer error: {transfer.error}")
+
+except InvalidWalletVersionError as e:
+    print(f"Invalid wallet version: {e}")
+except InsufficientBalanceError as e:
+    print(f"Low balance: {e}")
+except UserNotFoundError as e:
+    print(f"User not found: {e}")
+except WalletError as e:
+    print(f"Wallet error: {e}")
+finally:
+    api.close()
+```
+
+## Context Manager Support
+
+Both async and sync clients support context managers for automatic cleanup:
+
+### Async Context Manager
+
+```python
+import asyncio
+from FragmentAPI import AsyncFragmentAPI
+
+async def main():
+    async with AsyncFragmentAPI(
+        cookies="...",
+        hash_value="...",
+        wallet_mnemonic="...",
+        wallet_api_key="...",
+        wallet_version="V4R2"
+    ) as api:
+        result = await api.buy_stars('username', 100)
+        print(f"Success: {result.success}")
+    # Automatically closed
+
+asyncio.run(main())
+```
+
+### Sync Context Manager
+
+```python
+from FragmentAPI import SyncFragmentAPI
+
+with SyncFragmentAPI(
+    cookies="...",
+    hash_value="...",
+    wallet_mnemonic="...",
+    wallet_api_key="...",
+    wallet_version="V4R2"
+) as api:
+    result = api.buy_stars('username', 100)
+    print(f"Success: {result.success}")
+# Automatically closed
+```
+
+## Security
+
+Store credentials in environment variables:
+
+```python
+import os
+
+api = SyncFragmentAPI(
+    cookies=os.getenv('FRAGMENT_COOKIES'),
+    hash_value=os.getenv('FRAGMENT_HASH'),
+    wallet_mnemonic=os.getenv('WALLET_MNEMONIC'),
+    wallet_api_key=os.getenv('WALLET_API_KEY'),
+    wallet_version=os.getenv('WALLET_VERSION', 'V4R2')
+)
+```
+
+### Environment Variables Example (.env)
+
+```env
+FRAGMENT_COOKIES=stel_ssid=xxx; stel_token=xxx; stel_dt=xxx
+FRAGMENT_HASH=your_hash_value
+WALLET_MNEMONIC=word1 word2 word3 ... word24
+WALLET_API_KEY=your_tonapi_key
+WALLET_VERSION=V4R2
+```
+
+## Requirements
+
+- Python 3.7+
+- requests >= 2.28.0
+- aiohttp >= 3.8.0
+- httpx >= 0.24.0
+- tonutils >= 0.3.0
+- pytoniq-core >= 0.1.0
+
+## Changelog
+
+### v3.2.0
+- Added multi-version wallet support (V3R1, V3R2, V4R2, V5R1/W5)
+- Added `InvalidWalletVersionError` exception with helpful error messages
+- Added `wallet_version` parameter to client initialization
+- Added `wallet_version` to balance response
+- Improved error handling and documentation
+
+### v3.1.0
+- Added direct TON transfer functionality
+- Added memo support for transfers
+- Improved balance checking
+
+### v3.0.0
+- Initial release with Stars, Premium, and TON support
+- Async and Sync interfaces
+- Automatic wallet validation
+
+## Documentation
+
+Full documentation: https://github.com/S1qwy/fragment-api-py
+
+## License
+
+MIT License
+
+## Support
+
+- GitHub: https://github.com/S1qwy/fragment-api-py
+- Issues: https://github.com/S1qwy/fragment-api-py/issues
