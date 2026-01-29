@@ -1,0 +1,311 @@
+from __future__ import annotations as __future_annotations__
+
+import logging
+
+from .. import envs
+from ..logging import debug_log_exception
+from .__types__ import (
+    Detector,
+    Device,
+    Devices,
+    ManufacturerEnum,
+    Topology,
+    backend_to_manufacturer,
+    manufacturer_to_backend,
+    reduce_devices_distances,
+)
+from .__utils__ import str_range_to_list
+from .amd import AMDDetector
+from .ascend import AscendDetector
+from .cambricon import CambriconDetector
+from .hygon import HygonDetector
+from .iluvatar import IluvatarDetector
+from .metax import MetaXDetector
+from .mthreads import MThreadsDetector
+from .nvidia import NVIDIADetector
+from .thead import THeadDetector
+
+logger = logging.getLogger(__package__)
+
+_DETECTORS: list[Detector] = [
+    AMDDetector(),
+    AscendDetector(),
+    CambriconDetector(),
+    HygonDetector(),
+    IluvatarDetector(),
+    MetaXDetector(),
+    MThreadsDetector(),
+    NVIDIADetector(),
+    THeadDetector(),
+]
+"""
+List of all detectors.
+"""
+
+_DETECTORS_MAP: dict[ManufacturerEnum, Detector] = {
+    det.manufacturer: det for det in _DETECTORS
+}
+"""
+Mapping from manufacturer to detector.
+"""
+
+
+def supported_list() -> list[Detector]:
+    """
+    Return supported detectors.
+
+    Returns:
+        A list of supported detectors.
+
+    """
+    return [det for det in _DETECTORS if det.is_supported()]
+
+
+def available_manufacturers() -> list[ManufacturerEnum]:
+    """
+    Get a list of available manufacturers,
+    regardless of whether they are supported or not.
+
+    Returns:
+        A list of available manufacturers.
+
+    """
+    return list(_DETECTORS_MAP.keys())
+
+
+def supported_manufacturers() -> list[ManufacturerEnum]:
+    """
+    Get a list of supported manufacturers,
+    must be supported in the current environment.
+
+    Returns:
+        A list of supported manufacturers.
+
+    """
+    return [det.manufacturer for det in _DETECTORS if det.is_supported()]
+
+
+def available_backends() -> list[str]:
+    """
+    Get a list of available backends,
+    regardless of whether they are supported or not.
+
+    Returns:
+        A list of available backends.
+
+    """
+    return [manufacturer_to_backend(manu) for manu in _DETECTORS_MAP]
+
+
+def detect_backend(
+    fast: bool = True,
+    manufacturer: ManufacturerEnum = None,
+) -> str | list[str]:
+    """
+    Detect all supported backend.
+
+    Args:
+        fast:
+            If True, return the first detected backend.
+            Otherwise, return a list of all detected backends.
+        manufacturer:
+            Manufacturer to filter the detection, implies `fast=True`.
+            If None, detect all available manufacturers.
+
+    Returns:
+        A string of the detected backend if `fast` is True and a backend is found.
+        A list of detected backends if `fast` is False.
+
+    """
+    if manufacturer:
+        det = _DETECTORS_MAP.get(manufacturer)
+        if det and det.is_supported():
+            return det.backend
+        return ""
+
+    backends: list[str] = []
+
+    for det in _DETECTORS:
+        if not det.is_supported():
+            continue
+
+        if fast:
+            return det.backend
+
+        backends.append(det.backend)
+
+    return backends
+
+
+def detect_devices(
+    fast: bool = True,
+    manufacturer: ManufacturerEnum = None,
+) -> Devices:
+    """
+    Detect all available devices.
+
+    Args:
+        fast:
+            If True, return devices from the first supported detector.
+            Otherwise, return devices from all supported detectors.
+        manufacturer:
+            Manufacturer to filter the detection, implies `fast=True`.
+            If None, detect all available manufacturers.
+
+    Returns:
+        A list of detected devices.
+        Empty list if no devices are found.
+
+    Raises:
+        If detection fails for the target detector specified by the `GPUSTACK_RUNTIME_DETECT` environment variable.
+
+    """
+    if manufacturer:
+        det = _DETECTORS_MAP.get(manufacturer)
+        if det and det.is_supported():
+            try:
+                return det.detect()
+            except Exception:
+                detect_target = envs.GPUSTACK_RUNTIME_DETECT.lower()
+                if detect_target == det.name:
+                    raise
+                debug_log_exception(logger, "Failed to detect devices for %s", det.name)
+        return []
+
+    devices: Devices = []
+
+    for det in _DETECTORS:
+        if not det.is_supported():
+            continue
+
+        try:
+            if devs := det.detect():
+                devices.extend(devs)
+            if fast and devices:
+                return devices
+        except Exception:
+            detect_target = envs.GPUSTACK_RUNTIME_DETECT.lower()
+            if detect_target == det.name:
+                raise
+            debug_log_exception(logger, "Failed to detect devices for %s", det.name)
+
+    return devices
+
+
+def get_devices_topologies(
+    devices: Devices | None = None,
+    fast: bool = True,
+    manufacturer: ManufacturerEnum = None,
+) -> list[Topology]:
+    """
+    Get the topology information of the given devices.
+
+    Args:
+        devices:
+            A list of devices to get the topology information from.
+            If None, detects devices automatically.
+        fast:
+            If True, return topologies from the first supported detector.
+            Otherwise, return topologies from all supported detectors.
+            Only works when `devices` is None.
+        manufacturer:
+            Manufacturer to filter the detection.
+            If None, detect all available manufacturers.
+
+    Returns:
+        A list of Topology objects for each manufacturer group.
+
+    """
+    group = False
+    if not devices:
+        devices = detect_devices(fast=fast, manufacturer=manufacturer)
+        if not devices:
+            return []
+        group = not fast
+
+    # Group devices by manufacturer.
+    if group:
+        group_devices = group_devices_by_manufacturer(devices)
+    else:
+        group_devices = {devices[0].manufacturer: devices}
+
+    # Get topology for each group.
+    topologies: list[Topology] = []
+
+    for manu, devs in group_devices.items():
+        det = _DETECTORS_MAP.get(manu)
+        if det is not None:
+            try:
+                topo = det.get_topology(devs)
+                if topo:
+                    topologies.append(topo)
+            except Exception:
+                detect_target = envs.GPUSTACK_RUNTIME_DETECT.lower()
+                if detect_target == det.name:
+                    raise
+                debug_log_exception(logger, "Failed to get topology for %s", det.name)
+
+    return topologies
+
+
+def group_devices_by_manufacturer(
+    devices: Devices | None,
+) -> dict[ManufacturerEnum, Devices]:
+    """
+    Group devices by their manufacturer.
+
+    Args:
+        devices:
+            A list of devices to be grouped.
+
+    Returns:
+        A dictionary mapping each manufacturer to its corresponding list of devices.
+
+    """
+    group_devices: dict[ManufacturerEnum, Devices] = {}
+    for dev in devices or []:
+        if dev.manufacturer not in group_devices:
+            group_devices[dev.manufacturer] = []
+        group_devices[dev.manufacturer].append(dev)
+    return group_devices
+
+
+def filter_devices_by_manufacturer(
+    devices: Devices | None,
+    manufacturer: ManufacturerEnum,
+) -> Devices:
+    """
+    Filter devices by their manufacturer.
+
+    Args:
+        devices:
+            A list of devices to be filtered.
+        manufacturer:
+            The manufacturer to filter by.
+
+    Returns:
+        A list of devices that match the specified manufacturer.
+
+    """
+    return [dev for dev in devices or [] if dev.manufacturer == manufacturer]
+
+
+__all__ = [
+    "Device",
+    "Devices",
+    "ManufacturerEnum",
+    "Topology",
+    "available_backends",
+    "available_manufacturers",
+    "backend_to_manufacturer",
+    "detect_backend",
+    "detect_devices",
+    "filter_devices_by_manufacturer",
+    "get_devices_topologies",
+    "group_devices_by_manufacturer",
+    "manufacturer_to_backend",
+    "reduce_devices_distances",
+    "str_range_to_list",
+    "supported_list",
+    "supported_manufacturers",
+]
