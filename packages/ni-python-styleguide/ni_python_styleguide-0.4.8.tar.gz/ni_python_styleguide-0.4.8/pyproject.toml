@@ -1,0 +1,79 @@
+[tool.poetry]
+name = "ni-python-styleguide"
+# The a.0 here denotes a source based version
+# This is removed when released through the Publish-Package.yml GitHub action
+# Official PyPI releases follow Major.Minor.Patch
+version = "0.4.8"
+description = "NI's internal and external Python linter rules and plugins"
+authors = ["NI <opensource@ni.com>"]
+readme = "README.md" # apply the repo readme to the package as well
+repository = "https://github.com/ni/python-styleguide"
+license = "MIT"
+include = ["ni_python_styleguide/config.toml"]
+
+
+[tool.poetry.dependencies]
+python = "^3.7"
+pathspec = ">=0.11.1"
+
+# Tools we aggregate
+flake8 = [
+    {version = "^5.0", python = ">=3.7,<3.12"},
+    {version = "^6.1", python = "^3.12"},
+]
+pycodestyle = [
+    {version = "^2.9", python = ">=3.7,<3.12"},
+    {version = "^2.11", python = "^3.12"},
+]
+black = ">=23.1,<26.0" # 26.0 introduces formatting changes, but drops support for Python < 3.10, so pin to version that has consistent formatting across 3.9-3.14
+
+# Additional support libraries
+# These dependencies were selected because they are already used by black.
+click = ">=7.1.2"
+toml = ">=0.10.1"
+isort = ">=5.10"
+
+# flake8 plugins should be listed here (in alphabetical order)
+flake8-black = ">=0.2.1"
+flake8-docstrings = ">=1.5.0"
+flake8-import-order = ">=0.18.1,<0.19.0" # we're not compatible with 0.19.0 yet due to #226
+pep8-naming = ">=0.11.1"
+
+# Rejected flake8 plugins should be listed here (in alphabetical order)
+# Also describe why it is rejected and/or add a link
+# flake8-commas: Already handled by flake8-black
+# flake8-isort: Already covered by flake8-import-order
+# hacking: Most rules are either covered by other plugins or would be turned off.
+
+# Tooling that we're locking so our tool can run
+importlib-metadata = {version= "<5.0", python="<3.8"}
+
+
+[tool.poetry.dev-dependencies]
+pytest = ">=6.0.1"
+pytest_click = ">=1.0.2"
+pytest-snapshot = ">=0.6.3"
+
+
+[tool.poetry.scripts]
+ni-python-styleguide = 'ni_python_styleguide._cli:main'
+nps = 'ni_python_styleguide._cli:main'
+
+
+[tool.black]
+line-length = 100
+
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules"
+norecursedirs = "*__snapshots"
+
+
+[tool.ni-python-styleguide]
+extend_exclude = "*__snapshots/*/*input.py"
+
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
+
