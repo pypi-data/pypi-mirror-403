@@ -1,0 +1,71 @@
+exclude: ".*/(data|docs/experimental)/.*"
+repos:
+# Relax this rule for now because it creates too many PRs conflicts.
+# A GH actions will checkout this weekly instead
+# -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
+#     rev: v0.7.0
+#     hooks:
+#     -   id: pre-commit-update
+#         args: [--keep, pre-commit-update]
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: mixed-line-ending
+    -   id: check-yaml
+    -   id: check-json
+    -   id: check-toml
+    -   id: check-added-large-files
+    -   id: check-case-conflict
+    -   id: check-merge-conflict
+    -   id: check-vcs-permalinks
+    -   id: detect-aws-credentials
+        args: [--allow-missing-credentials]
+    -   id: detect-private-key
+-   repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+    -   id: codespell
+        additional_dependencies:
+        -   tomli
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+    -   id: mypy
+        # Sync with project.optional-dependencies.typing
+        additional_dependencies:
+        -   pytest
+        -   types-setuptools
+        -   types-Pillow
+        -   pydicom
+        -   numpy
+        -   pyzstd
+        -   importlib_resources
+        args: ["fury"]
+        pass_filenames: false
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.5
+    hooks:
+      # Run the linter
+    -   id: ruff
+        args: [--fix]
+      # Run the formatter
+    -   id: ruff-format
+-   repo: https://github.com/numpy/numpydoc
+    rev: v1.9.0
+    hooks:
+    -   id: numpydoc-validation
+        exclude: |
+          (?x)(
+              /tests/|
+              docs/|
+              fury/conftest.py
+          )
+-   repo: local
+    hooks:
+    -   id: generate_requirements.py
+        name: generate_requirements.py
+        language: system
+        entry: python tools/generate_requirements.py
+        files: "pyproject.toml|requirements/.*\\.txt|tools/generate_requirements.py"
