@@ -1,0 +1,91 @@
+# ida-cli
+
+CLI tool for reverse engineering with IDA's idalib (ida-domain).
+
+## Features
+
+- Subcommand-based CLI for all common IDA operations
+- JSON output for easy automation and agent integration
+- Invisible daemon for fast repeated commands (no repeated IDB loading)
+- Auto-detection of existing IDB files
+
+## Installation
+
+Requires IDA Pro 9.1+ with idalib. ida-cli auto-detects IDA in `/opt/ida-pro-*`, `/Applications/IDA*.app`, or set `IDADIR`.
+
+```bash
+# No install needed - just run with uvx
+uvx ida-cli -i binary.exe info
+
+# Or install globally
+pip install ida-cli
+```
+
+## Usage
+
+```bash
+# Get binary info
+uvx ida-cli -i binary.exe info
+
+# List functions
+uvx ida-cli -i binary.exe functions list
+uvx ida-cli -i binary.exe functions list --filter "main|start"
+
+# Decompile a function
+uvx ida-cli -i binary.exe decompile main
+uvx ida-cli -i binary.exe decompile 0x401000
+
+# Disassemble
+uvx ida-cli -i binary.exe disassemble main
+
+# Cross-references
+uvx ida-cli -i binary.exe xrefs 0x401000 --direction to
+uvx ida-cli -i binary.exe callgraph main --depth 3
+
+# Search
+uvx ida-cli -i binary.exe strings --pattern "password|key"
+uvx ida-cli -i binary.exe search "48 8B 05" --type bytes
+
+# Mutation
+uvx ida-cli -i binary.exe rename sub_401000 my_function
+uvx ida-cli -i binary.exe comment 0x401000 "This is the entry point"
+uvx ida-cli -i binary.exe set-type my_function "int __fastcall my_function(int a, char *b)"
+
+# Daemon management
+uvx ida-cli --shutdown        # Stop daemon for current target
+uvx ida-cli --shutdown-all    # Stop all daemons
+```
+
+## Daemon Behavior
+
+The CLI automatically spawns a background daemon when first accessing an IDB. The daemon:
+
+- Keeps the IDB loaded in memory for fast subsequent commands
+- Auto-terminates after 15 minutes of inactivity (configurable via `--timeout`)
+- Uses Unix sockets for IPC (`/tmp/ida-cli-{hash}.sock`)
+- Logs to `~/.cache/ida-cli/daemon-{hash}.log`
+
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run type checking
+mypy src/
+
+# Run linting
+ruff check src/
+ruff format src/
+
+# Run tests
+pytest
+```
+
+## Agent Integration
+
+ida-cli includes skills for AI coding assistants like Claude Code, Codex, and others. To add reverse engineering capabilities to your agent, install the skill: `curl -sL https://raw.githubusercontent.com/irrigationreal/ida-cli/main/skills/ida-cli.md -o your/skills/directory/ida-cli.md`. The skill teaches agents how to use ida-cli for binary analysis: decompiling functions, tracing cross-references, searching strings, and annotating findings. All commands output JSON for easy parsing.
+
+## License
+
+MIT
