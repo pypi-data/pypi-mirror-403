@@ -1,0 +1,62 @@
+{%- macro get_route_config() -%}
+{%- set route_rules = [] -%}
+{%- set route_rule_sets = [] -%}
+
+{# Rule Sets #}
+{%- if sing_box_config_custom_internal_rules | length > 0 -%}
+    {%- set _ = route_rule_sets.append({
+        "tag": "custom-internal",
+        "type": "inline",
+        "format": "source",
+        "rules": sing_box_config_custom_internal_rules
+    }) -%}
+{%- endif -%}
+
+{%- if sing_box_config_custom_direct_rules | length > 0 -%}
+    {%- set _ = route_rule_sets.append({
+        "tag": "custom-direct",
+        "type": "inline",
+        "format": "source",
+        "rules": sing_box_config_custom_direct_rules
+    }) -%}
+{%- endif -%}
+
+{%- for item in sing_box_remote_rule_sets -%}
+    {%- set path = item.path -%}
+    {%- set _ext = path.split('.') | last -%}
+    {%- set _tag = path | replace('/', '-') | replace('.' ~ _ext, '') -%}
+    {%- set _format = 'binary' if _ext == 'srs' else 'source' -%}
+    {%- set _ = route_rule_sets.append({
+        "tag": _tag,
+        "type": "remote",
+        "format": _format,
+        "url": sing_box_github_proxy ~ sing_box_remote_rule_set_url_prefix ~ path,
+        "update_interval": "30d"
+    }) -%}
+{%- endfor -%}
+
+{# Rules #}
+{# Basic Rules #}
+{%- set _ = route_rules.extend(sing_box_basic_rules) -%}
+
+{# Custom Rules #}
+{%- if sing_box_config_custom_direct_rules | length > 0 -%}
+    {%- set _ = route_rules.append({"action": "route", "rule_set": ["custom-direct"], "outbound": "DIRECT"}) -%}
+{%- endif -%}
+
+{%- if sing_box_config_custom_internal_rules | length > 0 -%}
+    {%- set _ = route_rules.append({"action": "route", "rule_set": ["custom-internal"], "outbound": "DIRECT"}) -%}
+{%- endif -%}
+
+{# Filtering Rules #}
+{%- set _ = route_rules.extend(sing_box_filtering_rules) -%}
+
+{%- set route_config = {
+    "rules": route_rules,
+    "rule_set": route_rule_sets,
+    "final": "FINAL",
+    "auto_detect_interface": true,
+    "default_domain_resolver": "dns_direct"
+} -%}
+{{ route_config | ansible.builtin.to_json }}
+{%- endmacro -%}

@@ -1,0 +1,48 @@
+{%- macro get_outbounds_config() -%}
+{%- set outbounds_config = [] -%}
+
+{# Basic Outbounds #}
+{%- set _ = outbounds_config.extend([
+    {"tag": "DIRECT", "type": "direct"},
+    {"tag": "REJECT", "type": "block"}
+]) -%}
+
+{# Add Auto Groups to Config #}
+{%- for group in sing_box_auto_groups -%}
+    {%- set _ = outbounds_config.append({
+        "tag": group.tag,
+        "type": "urltest",
+        "outbounds": [],
+        "filter": [group.filter]
+    }) -%}
+{%- endfor -%}
+
+{# Add Selector Groups to Config #}
+{%- for group in sing_box_selector_groups -%}
+    {%- set _ = outbounds_config.append({
+        "tag": group.tag,
+        "type": "selector",
+        "outbounds": [],
+        "filter": [group.filter]
+    }) -%}
+{%- endfor -%}
+
+{# Add Proxy Groups to Config and populate their outbounds #}
+{%- for group in sing_box_proxy_groups -%}
+    {# Add auto and selector groups to the main proxy groups #}
+    {%- set _group_outbounds = group.outbounds -%}
+    {%- for auto_group in sing_box_auto_groups -%}
+        {%- set _ = _group_outbounds.append(auto_group.tag) -%}
+    {%- endfor -%}
+    {%- for selector_group in sing_box_selector_groups -%}
+        {%- set _ = _group_outbounds.append(selector_group.tag) -%}
+    {%- endfor -%}
+
+    {%- set _ = outbounds_config.append({
+        "tag": group.tag,
+        "type": group.type,
+        "outbounds": _group_outbounds
+    }) -%}
+{%- endfor -%}
+{{ outbounds_config | ansible.builtin.to_json }}
+{%- endmacro -%}
