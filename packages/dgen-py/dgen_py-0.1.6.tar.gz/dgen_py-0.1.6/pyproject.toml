@@ -1,0 +1,96 @@
+[project]
+name = "dgen-py"
+version = "0.1.6"
+description = "High-performance random data generation with NUMA optimization and zero-copy Python interface"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.21.0",
+    "zstandard>=0.25.0",
+]
+license = { text = "MIT OR Apache-2.0" }
+authors = [{ name = "Russ Fellows", email = "russ.fellows@gmail.com" }]
+keywords = ["data-generation", "benchmark", "numa", "performance", "zero-copy"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Benchmark",
+]
+
+[project.optional-dependencies]
+numpy = ["numpy>=2.0.0"]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-benchmark>=4.0.0",
+    "maturin>=1.0.0",
+]
+
+[build-system]
+requires = ["maturin>=1.0.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["python-bindings"]
+module-name = "dgen_py._dgen_rs"  # Put the .so inside the dgen_py package
+python-source = "python"
+python-packages = ["dgen_py"]
+
+# ==================================================================================
+# PERFORMANCE BENCHMARKS (v0.1.5 - Multi-Process NUMA)
+# ==================================================================================
+# Benchmark: 1024 GB total (incompressible), multi-process NUMA architecture
+# Method: One Python process per NUMA node, process affinity pinning, 64 MB chunks
+# Platform: Google Cloud Platform (GCP) Intel Emerald Rapid
+# Date: January 19, 2026
+#
+# PERFORMANCE GAINS vs v0.1.3:
+#   UMA systems: ~50% improvement (10.80 GB/s per core vs ~7 GB/s)
+#   NUMA systems: Significant improvements from bug fixes
+#   Note: v0.1.3 reported 3.60 GB/s per-thread, v0.1.5 reports per physical core
+#
+# SCALING RESULTS (compress_ratio=1.0, incompressible):
+#
+#   Instance   Cores  NUMA   Aggregate      Per-Core    Efficiency
+#   ---------  -----  -----  -------------  ----------  -----------
+#   GCP C4-8      4     1     36.26 GB/s     9.07 GB/s   Baseline
+#   GCP C4-16     8     1     86.41 GB/s    10.80 GB/s   119% (super-linear)
+#   GCP C4-32    16     1    162.78 GB/s    10.17 GB/s   112% (super-linear)
+#   GCP C4-96    48     2    248.53 GB/s     5.18 GB/s    51% (NUMA penalty)
+#
+# COMPRESSION IMPACT (compress_ratio=2.0 vs 1.0):
+#   C4-8:   53.95 GB/s  (1.49x speedup)
+#   C4-16: 125.88 GB/s  (1.46x speedup)
+#   C4-32: 222.28 GB/s  (1.37x speedup)
+#   C4-96: 324.72 GB/s  (1.31x speedup)
+#
+#   NOTE: Higher compress_ratio improves performance BUT makes data more compressible.
+#         Choose based on YOUR test requirements, not performance numbers.
+#
+# KEY FINDINGS:
+#   • Excellent UMA scaling: 112-119% efficiency on single-NUMA systems
+#   • Super-linear scaling due to larger L3 cache on bigger instances
+#   • NUMA penalty: 49% per-core reduction on multi-socket systems
+#   • Maximum throughput: 324.72 GB/s (compress=2.0, C4-96)
+#   • Deduplication ratio has ZERO performance impact (< 1% variance)
+#
+# NUMA ARCHITECTURE:
+#   • Multi-process: 1 Python process per NUMA node
+#   • Process pinning: os.sched_setaffinity() to local cores
+#   • Local allocation: Each process allocates buffer on LOCAL node
+#   • Synchronized start: multiprocessing.Barrier for accurate timing
+#   • True zero-copy: Python buffer protocol with direct memory access
+#
+# STORAGE BENCHMARKING GUIDANCE:
+#   Target < 80 GB/s:     Use C4-8 or C4-16 (8 cores sufficient)
+#   Target 80-160 GB/s:   Use C4-32 (16 cores, excellent efficiency)
+#   Target 160-320 GB/s:  Use C4-96 (48 cores, despite NUMA penalty)
+#
+# See docs/BENCHMARK_RESULTS_V0.1.5.md for complete analysis
+# ==================================================================================
