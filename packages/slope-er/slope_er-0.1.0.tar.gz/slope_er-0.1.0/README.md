@@ -1,0 +1,38 @@
+Slope Error Rate (SER)
+
+A Python implementation of Slope Error Rate (SER) a novel performance evaluation metric for binary classification, 
+designed to provide improved sensitivity and robustness under class imbalance, particularly for biometric authentication systems.
+
+Overview
+
+Slope Error Rate (SER) is a distance-based evaluation metric that quantifies the trade-off between False Acceptance Rate (FAR) 
+and False Rejection Rate (FRR) across decision thresholds. Unlike traditional metrics such as Equal Error Rate (EER), which rely 
+on a single operating point, SER captures error dynamics and provides a more informative assessment of classifier behavior.
+
+SER is especially useful in applications where:
+
+Data is highly imbalanced
+False positives and false negatives have asymmetric costs
+Threshold sensitivity matters
+
+A lower SER value indicates better overall performance.
+
+Key Features
+Designed for binary classification
+Robust under class imbalance
+Threshold-sensitive evaluation
+Based on FAR and FRR geometry
+Lightweight and easy to integrate
+Suitable for biometrics, spoof detection, anomaly detection, and security systems
+
+to install write
+
+pip install slope-error-rate
+
+to use write
+
+from slope_er import ser
+result = ser(0.3, 0.7)
+print(result)
+
+
