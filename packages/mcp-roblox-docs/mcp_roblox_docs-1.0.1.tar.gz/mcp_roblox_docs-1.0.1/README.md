@@ -1,0 +1,229 @@
+# MCP Roblox Docs
+
+[![PyPI version](https://badge.fury.io/py/mcp-roblox-docs.svg)](https://pypi.org/project/mcp-roblox-docs/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A comprehensive MCP (Model Context Protocol) server that provides always up-to-date Roblox Studio documentation. Query API references, search documentation, check deprecations, and search DevForum - all from your AI assistant.
+
+## Features
+
+- **Always Up-to-Date**: Automatically syncs from Roblox's official API dump
+- **Full-Text Search**: Search across 850+ classes, 35,000+ members, and 500+ enums
+- **Multi-Language**: Supports 15 languages including English, Indonesian, Japanese, Korean, Chinese
+- **DevForum Integration**: Search community discussions and solutions
+- **Zero Cost**: 100% free, no API keys required
+- **Optimized**: Lazy loading, in-memory caching, ~20MB cached data
+
+## Installation
+
+### Quick Start (Recommended)
+
+The easiest way to use this MCP server is via `uvx`:
+
+```bash
+uvx mcp-roblox-docs
+```
+
+No installation, no setup - it just works!
+
+### From Source
+
+```bash
+git clone https://github.com/user/mcp-roblox-docs
+cd mcp-roblox-docs
+uv sync
+uv run mcp-roblox-docs
+```
+
+## Configuration
+
+### Claude Desktop
+
+Add to your Claude Desktop config:
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "roblox-docs": {
+      "command": "uvx",
+      "args": ["mcp-roblox-docs"]
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to your Cursor MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "roblox-docs": {
+      "command": "uvx",
+      "args": ["mcp-roblox-docs"]
+    }
+  }
+}
+```
+
+### Other MCP Clients
+
+For any MCP-compatible client, use:
+
+```json
+{
+  "command": "uvx",
+  "args": ["mcp-roblox-docs"]
+}
+```
+
+Or if running from source:
+
+```json
+{
+  "command": "uv",
+  "args": ["--directory", "/path/to/mcp-roblox-docs", "run", "mcp-roblox-docs"]
+}
+```
+
+## Available Tools
+
+### Core Tools
+
+| Tool | Description |
+|------|-------------|
+| `roblox_search` | Full-text search across all Roblox API |
+| `roblox_get_class` | Get complete class information with members |
+| `roblox_get_member` | Get detailed member info (property/method/event) |
+| `roblox_get_enum` | Get enum with all values |
+| `roblox_check_deprecated` | Check if API is deprecated + get alternatives |
+
+### Extended Tools
+
+| Tool | Description |
+|------|-------------|
+| `roblox_list_services` | List all 290+ Roblox services |
+| `roblox_get_inheritance` | Get class hierarchy and subclasses |
+| `roblox_search_devforum` | Search DevForum threads |
+| `roblox_recent_changes` | Get API version info |
+| `roblox_list_enums` | List all 500+ available enums |
+
+### Utility Tools
+
+| Tool | Description |
+|------|-------------|
+| `roblox_sync` | Force sync data or change language |
+
+## Examples
+
+### Search for APIs
+```
+User: How do I animate something smoothly?
+AI: [uses roblox_search("tween animation")]
+→ TweenService, TweenBase, Tween, EasingStyle...
+```
+
+### Get Class Info
+```
+User: Tell me about TweenService
+AI: [uses roblox_get_class("TweenService")]
+→ Complete class info with Create(), GetValue(), SmoothDamp() methods
+```
+
+### Check Deprecation
+```
+User: Is BodyPosition deprecated?
+AI: [uses roblox_check_deprecated("BodyPosition")]
+→ Yes, deprecated. Use AlignPosition (constraint-based) instead.
+```
+
+### Get Enum Values
+```
+User: What materials are available?
+AI: [uses roblox_get_enum("Material")]
+→ Plastic, Wood, Metal, Glass, Neon, ... (45 values)
+```
+
+### Search DevForum
+```
+User: How do people optimize memory in Roblox?
+AI: [uses roblox_search_devforum("memory optimization")]
+→ Links to relevant community discussions
+```
+
+## Data Sources
+
+All data is fetched from free, public sources:
+
+| Source | Content |
+|--------|---------|
+| [Roblox-Client-Tracker](https://github.com/MaximumADHD/Roblox-Client-Tracker) | Classes, members, enums, types |
+| Roblox API Docs | Human-readable descriptions (15 languages) |
+| [DevForum](https://devforum.roblox.com) | Community discussions |
+
+## Supported Languages
+
+Switch documentation language with `roblox_sync(language="id-id")`:
+
+- `en-us` - English (default)
+- `id-id` - Indonesian
+- `ja-jp` - Japanese
+- `ko-kr` - Korean
+- `zh-cn` - Chinese (Simplified)
+- `zh-tw` - Chinese (Traditional)
+- `de-de` - German
+- `es-es` - Spanish
+- `fr-fr` - French
+- `it-it` - Italian
+- `pt-br` - Portuguese (Brazil)
+- `ru-ru` - Russian
+- `th-th` - Thai
+- `tr-tr` - Turkish
+- `vi-vn` - Vietnamese
+
+## Cache Location
+
+Data is cached in your system's standard cache directory:
+
+- **Windows:** `%LOCALAPPDATA%\mcp-roblox-docs\`
+- **macOS:** `~/Library/Caches/mcp-roblox-docs/`
+- **Linux:** `~/.cache/mcp-roblox-docs/`
+
+Cache is automatically updated when Roblox releases new API versions.
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/user/mcp-roblox-docs
+cd mcp-roblox-docs
+
+# Install dependencies
+uv sync
+
+# Run tests
+uv run python test_quick.py
+
+# Run the server locally
+uv run mcp-roblox-docs
+
+# Build for distribution
+uv build
+
+# Publish to PyPI
+uv publish
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Credits
+
+- [Roblox-Client-Tracker](https://github.com/MaximumADHD/Roblox-Client-Tracker) by MaximumADHD
+- [MCP Protocol](https://modelcontextprotocol.io/) by Anthropic
