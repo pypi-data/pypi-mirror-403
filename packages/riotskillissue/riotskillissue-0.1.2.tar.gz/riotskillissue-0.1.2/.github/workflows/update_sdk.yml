@@ -1,0 +1,58 @@
+name: Update SDK
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Daily
+  workflow_dispatch:
+
+jobs:
+  update-sdk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install deepdiff rich # Extra dev tools for manager
+
+      - name: Fetch Spec & Generate Code
+        run: |
+          python tools/manager.py
+          python tools/generator/core.py
+
+      - name: Check for changes
+        id: git-diff
+        run: |
+          git diff --exit-code || echo "changes=true" >> $GITHUB_OUTPUT
+
+      - name: Bump Version
+        if: steps.git-diff.outputs.changes == 'true'
+        run: python tools/bump_version.py
+
+      - name: Commit and Push Changes
+        if: steps.git-diff.outputs.changes == 'true'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Read version from file to tag
+          VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml)
+          
+          git add src/riotskillissue/api/models.py src/riotskillissue/api/endpoints pyproject.toml
+          git add -A # Catch incidental changes
+          git commit -m "feat: auto-update riot api spec to v$VERSION"
+          git push origin main
+          
+          echo "Tagging v$VERSION"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
