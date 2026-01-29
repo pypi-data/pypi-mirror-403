@@ -1,0 +1,132 @@
+# sosi-call
+
+[![PyPI](https://img.shields.io/pypi/v/sosi-call.svg)](https://pypi.org/project/sosi-call/)
+[![Python](https://img.shields.io/pypi/pyversions/sosi-call.svg)](https://pypi.org/project/sosi-call/)
+[![License](https://img.shields.io/pypi/l/sosi-call.svg)](https://pypi.org/project/sosi-call/)
+
+Generate a **pixel-art “call style”** avatar video reacting to audio: a circular avatar + a pulsing ring synced to voice amplitude.
+
+![How it works](docs/how-it-works.png)
+
+- ✅ Works with audio like `.wav`, `.mp3`, `.ogg`, etc. (whatever your environment can decode)
+- ✅ Output: square MP4 (default **1080×1080**), black background, pixel-art look
+- ✅ Includes both **Python API** and a **CLI**
+
+> Note: This package uses **MoviePy**, which relies on **FFmpeg** being available in your system `PATH`.
+
+## Demo video
+
+[![Demo video](docs/demo3.gif)](docs/demo3.mp4)
+
+Open: [`docs/demo3.mp4`](docs/demo3.mp4)
+
+---
+
+## Install
+
+```bash
+pip install sosi-call
+```
+
+### FFmpeg (required)
+
+If you don’t have `ffmpeg` installed:
+
+**Ubuntu/Debian**
+```bash
+sudo apt update && sudo apt install -y ffmpeg
+```
+
+**macOS (Homebrew)**
+```bash
+brew install ffmpeg
+```
+
+---
+
+## Quickstart (Python)
+
+```python
+from sosi_call import render_call_video, RenderConfig
+
+cfg = RenderConfig(
+    size=1080,  # output resolution (square)
+    low=240,    # internal pixel-art resolution (lower=faster+more chunky)
+    fps=30,
+    gain=3.2,   # sensitivity
+    gamma=0.45, # boosts quieter voice
+)
+
+render_call_video(
+    avatar_path="perfil.jpeg",
+    audio_path="demo.ogg",
+    out_path="sosi_call.mp4",
+    cfg=cfg,
+)
+```
+
+---
+
+## CLI usage
+
+```bash
+sosi-call --avatar perfil.jpeg --audio demo.ogg --out sosi_call.mp4
+```
+
+Common tweaks:
+
+```bash
+# More pixelated + faster
+sosi-call --avatar perfil.jpeg --audio demo.ogg --out out.mp4 --low 180
+
+# Less pixelated (smoother circle) but slower
+sosi-call --avatar perfil.jpeg --audio demo.ogg --out out.mp4 --low 320
+
+# More reactive ring
+sosi-call --avatar perfil.jpeg --audio demo.ogg --out out.mp4 --gain 4.0 --gamma 0.45
+```
+
+---
+
+## Output and how to use it in editing
+
+The generated video is a **square MP4** with a **pure black background**, ideal for compositing:
+
+- Put it as a layer above your screen recording
+- Remove the black background using:
+  - **Screen/Add** blend mode, or
+  - **Luma Key** (key out dark pixels)
+
+---
+
+## Configuration notes
+
+- `size`: final output (default 1080). Always square.
+- `low`: internal render resolution. Controls pixelation + speed.
+  - `180` = very chunky + fast
+  - `240` = balanced (default)
+  - `320` = less jagged, slower
+- `gain` / `gamma`: controls sensitivity to voice amplitude.
+  - Increase `gain` if it moves too little
+  - Lower `gamma` (< 1) to amplify quieter audio
+
+---
+
+## Development (uv)
+
+```bash
+uv sync
+uv run python -c "from sosi_call import render_call_video; print('ok')"
+```
+
+Editable install:
+
+```bash
+uv pip install -e .
+```
+
+---
+
+## License
+
+MIT
