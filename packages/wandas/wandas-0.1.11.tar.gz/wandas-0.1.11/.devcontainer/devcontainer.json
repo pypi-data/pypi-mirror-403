@@ -1,0 +1,57 @@
+{
+    "name": "Python 3",
+    "build": {
+        "context": "..",
+        "dockerfile": "Dockerfile",
+        "args": {
+            "UV_VERSION": "latest",
+            "DEBIAN_VERSION": "bookworm"
+        }
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+                "python.terminal.activateEnvironment": true,
+                "terminal.integrated.env.linux": {
+                    "UV_PROJECT_ENVIRONMENT": "${containerWorkspaceFolder}/.venv"
+                },
+                "ruff.configuration": "${containerWorkspaceFolder}/pyproject.toml"
+            },
+            "extensions": [
+                "DavidAnson.vscode-markdownlint",
+                "njpwerner.autodocstring",
+                "ms-python.python",
+                "usernamehw.errorlens",
+                "ms-python.vscode-pylance",
+                "spmeesseman.vscode-taskexplorer",
+                "charliermarsh.ruff",
+                "ms-toolsai.jupyter",
+                "github.vscode-github-actions",
+                "ms-python.mypy-type-checker",
+                "ms-azuretools.vscode-docker",
+                "bierner.markdown-mermaid"
+            ]
+        }
+    },
+    "containerEnv": {
+        "PYTHONUNBUFFERED": "True",
+        "UV_LINK_MODE": "copy",
+        "UV_PROJECT_ENVIRONMENT": "${containerWorkspaceFolder}/.venv",
+    },
+    "mounts": [
+        // For Linux/macOS
+        "source=${env:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached"
+        // For Windows (uncomment if needed)
+        // "source=${env:USERPROFILE}\\.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached"
+    ],
+    // worktreesディレクトリはgitがroot所有で作る場合があるため、作成時にvscode所有へ揃える
+    // ローカル開発では全グループをインストール (test, docs, dev)
+    "postCreateCommand": "sudo mkdir -p /workspaces/wandas.worktrees && sudo chown vscode:vscode /workspaces/wandas.worktrees && uv venv --allow-existing .venv && uv sync --frozen --all-groups",
+    "postStartCommand": "uv run pre-commit install",
+    "remoteUser": "vscode"
+}
