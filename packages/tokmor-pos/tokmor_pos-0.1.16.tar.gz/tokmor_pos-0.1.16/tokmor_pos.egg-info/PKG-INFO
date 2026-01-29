@@ -1,0 +1,152 @@
+Metadata-Version: 2.4
+Name: tokmor-pos
+Version: 0.1.16
+Summary: POS8 structural hints + optional Micro-CRF boundary smoothing for TokMor (separate package).
+Author-email: tokmor <tokmor@tokmor.com>
+License: MIT License
+        
+        Copyright (c) 2026 TokMor Contributors
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+        MIT License
+        
+        Copyright (c) 2026 TokMor Contributors
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+        
+Project-URL: Homepage, https://github.com/tokmorlab/tokmor
+Project-URL: Source, https://github.com/tokmorlab/tokmor
+Project-URL: Documentation, https://github.com/tokmorlab/tokmor#readme
+Project-URL: Issues, https://github.com/tokmorlab/tokmor/issues
+Keywords: nlp,preprocessing,multilingual,ner,tokenization,pos,heuristics
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Text Processing :: Linguistic
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: tokmor>=1.1.0
+Requires-Dist: sklearn-crfsuite>=0.3.6
+Dynamic: license-file
+
+### tokmor-pos (optional add-on)
+
+This is a **separate** package that provides:
+- **POS8 structural hints** (pattern-based, abstaining)
+- optional **Micro-CRF boundary smoothing** (BIO only; boundary cleanup, not POS)
+
+It is **not** a linguistic POS tagger.
+
+### Out-of-the-box quality (no setup)
+
+`tokmor-pos` ships with a **built-in full lexicon6 pack + transitions** inside the wheel.
+So POS tagging is usable immediately **without** configuring `TOKMORPOS_DATA_DIR`.
+
+- **Download size (pip)**: ~**33MB** (compressed)
+- **Unpacked lexicon6**: ~**250MB** on disk
+
+On the UD treebanks available in this repo (10 languages on disk), current POS8 accuracy is about:
+- **~80.9% token accuracy**, **UNK=0%**
+
+### Model-free POS hints: POS10-lite via deterministic morphology
+
+If you want **no external POS model at all**, you can still get a useful coarse hint layer by using
+TokMor's deterministic morphology/lexicon as evidence.
+
+```python
+from tokmor_pos.api import tag_pos10_lite
+
+pos10 = tag_pos10_lite(text, lang="en")  # returns per-token tags in {N,P,V,A,J,R,F,Q,T,S,O} or "UNK"
+```
+
+### Install
+
+```bash
+pip install tokmor tokmor-pos
+```
+
+### Runtime assets (optional)
+
+If you train Micro-CRF models, `tokmor-pos` can load them from:
+
+- `micro_crf/{lang}_bio.pkl`
+
+Point it via:
+
+- `TOKMORPOS_DATA_DIR=/path/to/tokmorpos_snapshot` (preferred)
+
+It will also look under `TOKMOR_DATA_DIR` if set.
+
+### CLI
+
+```bash
+tokmor-pos pos8 --lang en --text "Apple announced new products."
+```
+
+Fill UNK tokens using TokMor extended dictionaries (if you have a data pack):
+
+```bash
+export TOKMOR_DATA_DIR=/path/to/tokmor_data_pack
+tokmor-pos pos8 --lang es --extended-dict --text "muy bueno y muy malo en Madrid"
+```
+
+Reduce UNK (default) and optionally fill remaining UNK using lexicon6:
+
+```bash
+tokmor-pos pos8 --lang fr --lexicon6 --text "Nous avons visité Séoul le 2025-01-10."
+```
+
+If you want to preserve the original abstaining behavior (keep UNK), use:
+
+```bash
+tokmor-pos pos8 --lang fr --keep-unk --text "Nous avons visité Séoul le 2025-01-10."
+```
+
+Structure hint scores (deterministic, derived from POS8/Role4):
+
+```bash
+tokmor-pos hints --lang en --morph-fallback --text "Apple announced new products in Seoul."
+```
+
+
