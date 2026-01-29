@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+/* Immersive Video Feed Layout */
+body {
+  padding-bottom: 0 !important;
+  overscroll-behavior-y: none;
+  background-color: #000;
+}
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Main Container */
+#container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  background: #000;
+}
+
+/* Video Player */
+video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+video.active {
+  display: block;
+}
+
+/* Right Side Controls */
+.controls-sidebar {
+  position: absolute;
+  right: 16px;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  z-index: 20;
+  align-items: center;
+}
+
+.action-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  text-decoration: none;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), background 0.2s;
+  cursor: pointer;
+}
+.action-btn:active {
+  transform: scale(0.9);
+}
+.action-btn svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+}
+
+/* Speed Button Specifics */
+.speed-btn {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: system-ui, sans-serif;
+}
+
+/* Like Button Animation */
+@keyframes heart-burst {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+.action-btn.is-active .heart-filled {
+  display: block;
+  color: #fe2c55;
+  animation: heart-burst 0.3s forwards;
+}
+.action-btn.is-active .heart-outline {
+  display: none;
+}
+.heart-filled {
+  display: none;
+}
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="container">
+  
+  <!-- Video Feed Container -->
+  <div id="video-container">
+    <!-- Videos will be injected here -->
+  </div>
+
+  <!-- Right Sidebar Controls -->
+  <div class="controls-sidebar" id="controls">
+    <!-- Speed Control -->
+    <div class="action-btn speed-btn" id="speed-btn">1x</div>
+    
+    <!-- Favorite Control -->
+    <a href="#" class="action-btn" id="favorite-btn" data-value="">
+      <svg class="heart-outline" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+      <svg class="heart-filled" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+    </a>
+
+    <!-- Info/Detail Control -->
+    <a href="#" class="action-btn" id="info-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script src="{{url_for('static', filename='hammer.min.js')}}"></script>
+<script>
+  (async() => {
+    // Add immersive class to body
+    document.body.classList.add('immersive');
+
+    const videoContainer = document.getElementById('video-container');
+    const speedBtn = document.getElementById('speed-btn');
+    const favoriteBtn = document.getElementById('favorite-btn');
+    const infoBtn = document.getElementById('info-btn');
+
+    let videos = [];
+    let index = 0;
+    let loadingVideos = false;
+    const speedOptions = [0.75, 1, 1.25, 1.5, 2];
+    let currentSpeedIndex = 1;
+    let lastPlayPauseTime = 0; // 用于修复控制条冲突
+
+    async function loadVideos() {
+      if (loadingVideos) return;
+      loadingVideos = true;
+      try {
+        const res = await fetch('/api/videos');
+        const newVideos = await res.json();
+
+        // 内存管理：保留最近50个视频元素
+        if (videos.length > 50) {
+          const removeCount = 20;
+          const toRemove = videos.splice(0, removeCount);
+          toRemove.forEach(v => v.remove());
+          index = Math.max(0, index - removeCount);
+        }
+
+        newVideos.forEach(videoPath => {
+          const v = document.createElement('video');
+          v.muted = true;
+          v.loop = true;
+          v.controls = true;
+          v.playsInline = true;
+          v.dataset.name = videoPath;
+          v.dataset.src = `/media/${videoPath}`;
+          videoContainer.appendChild(v);
+        });
+        videos = Array.from(videoContainer.querySelectorAll('video'));
+      } finally {
+        loadingVideos = false;
+      }
+    }
+
+    function showVideo(i) {
+      if (!videos.length) return;
+      const prev = index;
+      index = (i + videos.length) % videos.length;
+
+      if (videos[prev]) {
+        videos[prev].classList.remove('active');
+        videos[prev].pause();
+        videos[prev].muted = true;  // 重新静音，防止意外恢复播放时有声音
+        videos[prev].style.display = 'none';
+      }
+
+      const currVid = videos[index];
+      if (currVid) {
+        currVid.style.display = 'block';
+        requestAnimationFrame(() => {
+          currVid.classList.add('active');
+          if (!currVid.src) {
+            currVid.src = currVid.dataset.src;
+            currVid.load();
+          }
+          currVid.muted = false;
+          currVid.playbackRate = speedOptions[currentSpeedIndex];
+          currVid.play().catch(e => console.log(e));
+          updateControls(currVid);
+
+          // 预加载下一个视频以减少切换卡顿
+          const nextIndex = (index + 1) % videos.length;
+          if (videos[nextIndex] && !videos[nextIndex].src) {
+            videos[nextIndex].src = videos[nextIndex].dataset.src;
+            videos[nextIndex].load();
+          }
+        });
+      }
+    }
+
+    function updateControls(video) {
+      const name = video.dataset.name;
+      infoBtn.href = `/detail/${encodeURIComponent(name)}`;
+      favoriteBtn.dataset.value = name;
+      fetch(`/api/favorite/${encodeURIComponent(name)}`)
+        .then(r => r.json())
+        .then(d => favoriteBtn.classList.toggle('is-active', d.favorite));
+    }
+
+    const hammer = new Hammer(videoContainer);
+    hammer.get('swipe').set({ direction: Hammer.DIRECTION_VERTICAL });
+    hammer.on('swipeup', () => {
+      if (index >= videos.length - 3) loadVideos();
+      showVideo(index + 1);
+    });
+    hammer.on('swipedown', () => showVideo(index - 1));
+    hammer.on('tap', () => {
+      const now = Date.now();
+      const v = videos[index];
+
+      // 如果刚刚通过原生控制条操作过，忽略此次tap
+      if (now - lastPlayPauseTime < 100) return;
+
+      if (v) {
+        v.paused ? v.play() : v.pause();
+        lastPlayPauseTime = now;
+      }
+    });
+
+    speedBtn.addEventListener('click', () => {
+      currentSpeedIndex = (currentSpeedIndex + 1) % speedOptions.length;
+      const rate = speedOptions[currentSpeedIndex];
+      speedBtn.textContent = rate + 'x';
+      if (videos[index]) videos[index].playbackRate = rate;
+    });
+
+    favoriteBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const val = favoriteBtn.dataset.value;
+      favoriteBtn.classList.toggle('is-active');
+      await fetch(`/api/favorite/${encodeURIComponent(val)}`, { method: 'POST' });
+    });
+
+    // 使用事件委托修复控制条冲突，避免事件监听器内存泄漏
+    videoContainer.addEventListener('play', (e) => {
+      if (e.target.tagName === 'VIDEO') {
+        lastPlayPauseTime = Date.now();
+      }
+    }, true);
+
+    videoContainer.addEventListener('pause', (e) => {
+      if (e.target.tagName === 'VIDEO') {
+        lastPlayPauseTime = Date.now();
+      }
+    }, true);
+
+    await loadVideos();
+    showVideo(0);
+  })();
+</script>
+{% endblock %}
