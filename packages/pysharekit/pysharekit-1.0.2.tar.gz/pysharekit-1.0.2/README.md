@@ -1,0 +1,571 @@
+# 📡 Sharer - Effortless Screen Sharing
+
+Cast your screen to phones, tablets, laptops, or Smart TVs — instantly — using just a browser and a QR code. No installations, no cables, no nonsense.
+
+[![PyPI version](https://badge.fury.io/py/sharer.svg)](https://badge.fury.io/py/sharer)
+[![Python Support](https://img.shields.io/pypi/pyversions/sharer.svg)](https://pypi.org/project/sharer/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## ✨ Features
+
+- ** Zero-install screen sharing** — Works via browser, no apps needed on viewer devices
+- ** Smartphone-friendly** — Scan QR code and view instantly
+- ** Smart TV-ready** — Works with any device with a browser
+- ** Touch-to-click** — Tap the screen on viewer device to click on host machine
+- ** Automatic resolution scaling** — Looks great on any screen size
+- ** Local network only** — Your screen stays secure on your network
+- ** Real-time streaming** — Low latency WebSocket-based streaming (~10 FPS)
+- ** Beautiful UI** — Modern, responsive interface for both host and viewers
+- ** QR & URL access** — Multiple ways to connect viewers
+
+## Installation
+
+```bash
+pip install sharer
+```
+
+### System Requirements
+
+- **Python**: 3.7 or higher
+- **Operating Systems**: Windows, macOS, Linux
+- **Network**: Local network connectivity
+
+### Platform-Specific Setup
+
+**macOS:**
+```bash
+# Grant Screen Recording permission
+# System Preferences → Security & Privacy → Privacy → Screen Recording
+# Add Terminal or your Python IDE
+
+# Grant Accessibility permission for mouse control
+# System Preferences → Security & Privacy → Privacy → Accessibility
+```
+
+**Linux:**
+```bash
+# Install X11 dependencies
+sudo apt-get update
+sudo apt-get install python3-xlib python3-dev scrot
+
+# For Wayland users
+sudo apt-get install xwayland
+```
+
+**Windows:**
+- No additional setup required
+- May need to allow Python through Windows Firewall when prompted
+
+## Quick Start
+
+### Basic Usage
+
+Simply run:
+
+```bash
+sharer
+```
+
+Or as a Python module:
+
+```bash
+python -m sharer
+```
+
+That's it! The app will:
+1.  Open a control panel in your browser automatically
+2.  Display a QR code for easy scanning
+3.  Show the viewer URL
+4.  Start streaming your screen in real-time
+
+### Viewing the Screen
+
+**Method 1: Scan QR Code (Easiest)**
+1. Open your phone's camera app
+2. Point it at the QR code on the host screen
+3. Tap the notification to open in browser
+4. Screen appears instantly!
+
+**Method 2: Enter URL Manually**
+1. On any device, open a web browser
+2. Navigate to the URL shown on the host screen
+3. Example: `http://192.168.1.100:5000/view`
+
+### Controlling the Host
+
+- **Click/Tap** anywhere on the viewer screen
+- The click will be executed on the host machine at the corresponding position
+- Perfect for presentations, demos, or remote support
+
+## 🎯 Use Cases
+
+### Presentations & Demos
+- Share slides to audience devices
+- Interactive product demonstrations
+- Conference presentations
+
+### Remote Support
+- Help family/friends with tech issues
+- IT support and troubleshooting
+- Remote tutoring
+
+### Multi-Device Workflows
+- Use tablet as second screen
+- Monitor dashboards on multiple devices
+- Cast to Smart TV browser
+
+### Collaboration
+- Share your screen in meetings
+- Code reviews and pair programming
+- Design feedback sessions
+
+### Entertainment
+- Stream gameplay to other devices
+- Watch content on bigger screens
+- Share photos/videos with friends
+
+### Education
+- Share teaching content to students
+- Interactive lessons
+- Student device monitoring
+
+## 📖 Detailed Usage
+
+### Starting the Server
+
+```bash
+# Default settings (port 5000)
+sharer
+
+# The server will:
+# - Bind to 0.0.0.0:5000 (accessible on local network)
+# - Auto-detect your local IP address
+# - Generate a unique QR code
+# - Open control panel in default browser
+```
+
+### Control Panel Features
+
+When you run `sharer`, the control panel shows:
+
+- **QR Code** - Large, scannable code for instant connection
+- **Viewer URL** - Direct link to share
+- **Active Viewers Count** - See who's connected in real-time
+- **Local IP Address** - Your machine's network address
+- **Instructions** - Quick how-to guide
+
+### Viewer Interface
+
+The viewer page provides:
+
+- **Full-screen display** - Your screen fills the viewer's browser
+- **Responsive scaling** - Automatically fits any screen size
+- **Touch/click support** - Tap to interact
+- **Connection status** - Live connection indicator
+- **Click feedback** - Visual pulse effect on clicks
+
+### Stopping the Server
+
+Press `Ctrl+C` in the terminal to stop sharing:
+
+```bash
+  Press Ctrl+C to stop
+
+^C
+ Sharer stopped. Thanks for using!
+```
+
+##  Advanced Configuration
+
+### Custom Port
+
+```python
+from sharer.server import ScreenSharer
+
+sharer = ScreenSharer()
+sharer.port = 8080  # Custom port instead of default 5000
+sharer.run()
+```
+
+### Programmatic Usage
+
+```python
+from sharer import start_server
+
+# Start with default settings
+start_server()
+```
+
+### Integration Example
+
+```python
+import threading
+from sharer import start_server
+
+def start_background_sharing():
+    """Start screen sharing in a background thread"""
+    thread = threading.Thread(target=start_server, daemon=True)
+    thread.start()
+    print("Screen sharing started in background")
+
+if __name__ == '__main__':
+    start_background_sharing()
+    # Your application continues running
+    # Screen sharing runs in parallel
+```
+
+### Custom Frame Rate
+
+Edit the capture loop in `server.py`:
+
+```python
+# In screen_capture_loop method
+time.sleep(0.1)  # 10 FPS (default)
+time.sleep(0.05) # 20 FPS (smoother, more bandwidth)
+time.sleep(0.2)  # 5 FPS (lower bandwidth)
+```
+
+### Adjust Image Quality
+
+Edit the capture method in `server.py`:
+
+```python
+# In capture_screen method
+img.save(buffer, format='JPEG', quality=70, optimize=True)  # Default
+img.save(buffer, format='JPEG', quality=50, optimize=True)  # Lower quality, faster
+img.save(buffer, format='JPEG', quality=90, optimize=True)  # Higher quality, slower
+```
+
+## 🏗️ Architecture
+
+```
+┌──────────────────┐                      ┌──────────────────┐
+│    Host PC       │                      │  Viewer Device   │
+│                  │                      │                  │
+│  ┌────────────┐  │                      │  ┌────────────┐  │
+│  │  Screen    │  │                      │  │  Browser   │  │
+│  │  Capture   │  │  WebSocket           │  │  Display   │  │
+│  │  (mss)     │──┼──────────────────────┼─►│            │  │
+│  └────────────┘  │  JPEG Frames         │  └────────────┘  │
+│                  │  (~10 FPS)           │        │         │
+│  ┌────────────┐  │                      │        │         │
+│  │  Mouse     │  │                      │  ┌─────▼──────┐  │
+│  │  Control   │◄─┼──────────────────────┼──│  Touch/    │  │
+│  │ (PyAutoGUI)│  │  Click Events        │  │  Click     │  │
+│  └────────────┘  │  {x, y coords}       │  └────────────┘  │
+│                  │                      │                  │
+│  Flask + SocketIO│                      │   JavaScript     │
+└──────────────────┘                      └──────────────────┘
+```
+
+### Technology Stack
+
+- **Backend**: Python 3.7+
+  - Flask (web framework)
+  - Flask-SocketIO (WebSocket communication)
+  - mss (fast screen capture)
+  - Pillow (image processing)
+  - PyAutoGUI (mouse control)
+  - qrcode (QR code generation)
+
+- **Frontend**: Vanilla JavaScript + HTML5
+  - Socket.IO client
+  - Canvas/Image rendering
+  - Touch event handling
+
+##  Security Considerations
+
+### Network Security
+
+- **Local Network Only**: Sharer binds to your local network by default
+- **No Internet Exposure**: Does not expose your screen to the internet
+- **Firewall**: Ensure port 5000 is accessible only on trusted networks
+
+### Access Control
+
+- **No Built-in Authentication**: Anyone on your network can view/control
+- **Trust-based**: Only use on trusted networks with trusted users
+- **Mouse Control**: Viewers can click on your screen - use responsibly
+
+### Best Practices
+
+1.  Only run on trusted private networks (home, office)
+2.  Stop the server when not in use
+3.  Be aware of sensitive information on screen
+4.  Don't use on public WiFi networks
+5.  Don't share viewer URLs publicly
+
+### Adding Authentication (Advanced)
+
+```python
+# Example: Token-based authentication
+from functools import wraps
+from flask import request, abort
+
+SECRET_TOKEN = "your-secret-token-here"
+
+def require_token(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.args.get('token')
+        if token != SECRET_TOKEN:
+            abort(401)
+        return f(*args, **kwargs)
+    return decorated
+
+# Apply to viewer route
+@app.route('/view')
+@require_token
+def view():
+    return render_template_string(VIEWER_HTML)
+```
+
+##  Troubleshooting
+
+### Connection Issues
+
+**Problem**: "Connection Failed" or "Cannot connect to server"
+
+**Solutions**:
+-  Ensure both devices are on the same WiFi network
+-  Check if firewall is blocking port 5000
+-  Try accessing via IP address instead of hostname
+-  Verify the server is running (check terminal output)
+-  Disable VPN temporarily
+
+**Windows Firewall**:
+```bash
+# Allow Python through firewall when prompted
+# Or manually add exception in Windows Defender Firewall settings
+```
+
+### Screen Capture Issues
+
+**Problem**: "No screen capture" or blank screen
+
+**macOS**:
+```bash
+# Grant Screen Recording permission
+# System Preferences → Security & Privacy → Privacy → Screen Recording
+# Add Terminal, iTerm, or your Python IDE
+# Restart the application
+```
+
+**Linux**:
+```bash
+# Install required packages
+sudo apt-get install python3-xlib scrot
+
+# For Wayland
+export QT_QPA_PLATFORM=wayland
+# Or use XWayland
+```
+
+**Windows**:
+- Usually works out of the box
+- Check if another screen capture app is running
+
+### Click/Mouse Control Issues
+
+**Problem**: Clicks not registering on host
+
+**macOS**:
+```bash
+# Grant Accessibility permission
+# System Preferences → Security & Privacy → Privacy → Accessibility
+# Add Terminal or Python IDE
+# Restart the application
+```
+
+**Linux**:
+```bash
+# May need to run with sudo (not recommended for security)
+# Or configure proper permissions for input devices
+sudo usermod -a -G input $USER
+# Log out and back in
+```
+
+**Windows**:
+- PyAutoGUI should work without additional setup
+- Ensure no other automation tools are interfering
+
+### Performance Issues
+
+**Problem**: Lag, stuttering, or slow frame rate
+
+**Solutions**:
+-  Reduce JPEG quality (edit `server.py`, set quality to 50-60)
+-  Lower frame rate (increase sleep time to 0.2 for 5 FPS)
+-  Close unnecessary applications on host
+-  Use wired Ethernet connection for host if possible
+-  Ensure strong WiFi signal for viewers
+-  Reduce screen resolution on host machine
+
+### Port Already in Use
+
+**Problem**: "Address already in use" error
+
+**Solution**:
+```bash
+# Find process using port 5000
+# Linux/macOS:
+lsof -i :5000
+kill -9 <PID>
+
+# Windows:
+netstat -ano | findstr :5000
+taskkill /PID <PID> /F
+
+# Or use a different port in your code
+```
+
+### Dependencies Installation Fails
+
+**Problem**: pip install fails for dependencies
+
+**Solutions**:
+```bash
+# Upgrade pip
+python -m pip install --upgrade pip
+
+# Install wheel
+pip install wheel
+
+# macOS: Install Xcode Command Line Tools
+xcode-select --install
+
+# Linux: Install build dependencies
+sudo apt-get install python3-dev build-essential
+```
+
+##  Performance Metrics
+
+Typical performance on standard hardware:
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Frame Rate | 8-12 FPS | Adjustable |
+| Latency | 100-300ms | Depends on network |
+| Bandwidth | 1-5 Mbps | Per viewer |
+| CPU Usage | 5-15% | Host machine |
+| Resolution | 1:1 | Scales automatically |
+
+
+##  Dependencies
+
+```
+Flask>=2.0.0           # Web framework
+flask-socketio>=5.0.0  # WebSocket support
+python-socketio>=5.0.0 # SocketIO protocol
+mss>=6.0.0             # Fast cross-platform screen capture
+Pillow>=9.0.0          # Image processing
+qrcode[pil]>=7.0.0     # QR code generation
+pyautogui>=0.9.53      # Mouse/keyboard control
+```
+
+##  Contributing
+
+Contributions are welcome! We'd love your help making Sharer better.
+
+### How to Contribute
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/AmazingFeature`)
+3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** to the branch (`git push origin feature/AmazingFeature`)
+5. **Open** a Pull Request
+
+### Development Setup
+
+```bash
+# Clone your fork
+git clone https://github.com/niterousnebula/sharer.git
+cd sharer
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in development mode
+pip install -e .
+
+# Install development dependencies
+pip install pytest black flake8
+
+# Run tests
+pytest
+
+# Format code
+black sharer/
+
+# Lint
+flake8 sharer/
+```
+
+### Areas for Contribution
+
+-  Bug fixes
+-  New features
+-  Documentation improvements
+-  Test coverage
+-  Internationalization
+-  UI/UX enhancements
+
+##  License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+```
+MIT License
+
+Copyright (c) 2024 Sharer Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction...
+```
+
+##  Acknowledgments
+
+- Built with Python, Flask, and WebSockets
+- Inspired by the need for simple, cable-free screen sharing
+- Thanks to the open-source community
+- Special thanks to all contributors and users!
+
+
+### Getting Help
+
+1. Check this README first
+2. Search existing GitHub issues
+3. Create a new issue with details:
+   - Your OS and Python version
+   - Complete error message
+   - Steps to reproduce
+
+##  Changelog
+
+### v1.0.0 (2024-01-24)
+-  Initial release
+-  Zero-install browser-based sharing
+-  QR code generation
+-  Touch-to-click functionality
+-  Auto-scaling for all devices
+-  WebSocket real-time streaming
+
+##  Star History
+
+If you find Sharer useful, please consider giving it a star ⭐ on GitHub!
+
+[![Star History Chart](https://api.star-history.com/svg?repos=niterousnebula/sharer&type=Date)](https://star-history.com/#niterousnebula/sharer&Date)
+
+## 💖 Sponsors
+
+Become a sponsor to support ongoing development!
+
+---
+
+**Made with ❤️ for effortless screen sharing**
+
+**Star  this repo if you find it useful!**
+
+[⬆ Back to top](#-sharer---effortless-screen-sharing)
