@@ -1,0 +1,759 @@
+# Comp Manager
+
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-GPLv3%2B-green.svg)](LICENSE)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+
+**Comp Manager** is a Flask-based REST API framework for managing and tracking long-running mathematical computations with MongoDB persistence. It provides caching, computation lifecycle management, and comprehensive JSON serialization support for complex mathematical objects including SageMath types.
+
+## Features
+
+### Core Functionality
+- **Computation Management**: Track computation lifecycle (started, paused, finished, failed)
+- **MongoDB Caching**: Persistent caching for expensive computations
+- **RESTful API**: OpenAPI/Swagger-compatible REST API via Connexion
+- **Flexible Serialization**: JSON serialization for complex Python and SageMath objects
+
+### Mathematical Computing
+- **SageMath Integration**: Support for Sage mathematical objects, including:
+  - Integer, Real, Complex, Rational, and Number Fields
+  - Matrices and Vectors
+- **Serialization**: JSON encoding/decoding for mathematical structures
+- **Type Safety**: TypedDict-based type system for mathematical objects
+
+### Developer Experience
+- **Decorator-Based Caching**: Simple `@mongo_cache` decorator for function results
+- **Computation Tracking**: `@register_computation` decorator for lifecycle management
+- **Type Hints**: Full type hint coverage with mypy support
+- **Comprehensive Tests**: >90% test coverage with pytest
+
+---
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Usage](#usage)
+  - [Basic API Usage](#basic-api-usage)
+  - [Caching Computations](#caching-computations)
+  - [Tracking Computations](#tracking-computations)
+  - [SageMath Integration](#sagemath-integration)
+- [API Reference](#api-reference)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python 3.11 or higher
+- MongoDB 4.0 or higher (running locally or accessible remotely)
+- (Optional) SageMath 9.0+ for mathematical computing features
+
+### Standard Installation
+
+```bash
+pip install comp-manager
+```
+
+### Development Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/fredstro/comp-manager.git
+cd comp-manager
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install with development dependencies
+pip install -e ".[dev]"
+```
+
+### Optional Dependencies
+
+```bash
+# For Jupyter notebook support
+pip install comp-manager[notebook]
+
+# For SageMath integration
+pip install comp-manager[sage]
+
+# For all optional dependencies
+pip install comp-manager[dev,notebook,sage]
+```
+
+---
+
+## Quick Start
+
+### 1. Start MongoDB
+
+```bash
+# Using Docker
+docker run -d -p 27017:27017 --name mongodb mongo:latest
+
+# Or use your local MongoDB installation
+mongod --dbpath /path/to/data
+```
+
+### 2. Configure Connection
+
+Set the MongoDB connection URI via environment variable:
+
+```bash
+export MONGO_URI="mongodb://localhost:27017/comp_manager"
+```
+
+### 3. Run the Application
+
+#### Option A: Using the CLI (Recommended)
+
+The simplest way to run the application is using the built-in command-line interface:
+
+```bash
+# Run with default settings (localhost:5000)
+comp-manager
+
+# Run with custom host and port
+comp-manager --host 0.0.0.0 --port 8080
+
+# Run in debug mode
+comp-manager --debug
+
+# Run with custom OpenAPI spec
+comp-manager --spec-path /path/to/api.yaml
+
+# View all options
+comp-manager --help
+```
+
+Alternatively, you can use Python's module syntax:
+
+```bash
+python -m comp_manager --debug --port 8080
+```
+
+#### Option B: Programmatically
+
+Create and run the Flask app directly in Python:
+
+```python
+from comp_manager import create_app
+
+# Create Flask app with OpenAPI spec
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
+```
+
+### 4. Test the API
+
+```bash
+# Check health
+curl http://localhost:5000/api/v1/health
+
+# Access Swagger UI
+open http://localhost:5000/api/v1/ui
+```
+
+---
+
+## Architecture
+
+### Project Structure
+
+```
+comp-manager/
+ src/comp_manager/
+    __init__.py              # App factory and connection management
+    config.py                # Configuration management
+    extensions.py            # MongoEngine extensions
+
+    api/                     # REST API resources
+       __init__.py
+       resource.py          # Base MongoDB resource classes
+
+    common/                  # Shared models and utilities
+       __init__.py
+       models.py            # Hashable document base classes
+
+    core/                    # Core computation management
+       __init__.py
+       caching.py           # Cache storage implementations
+       decorators.py        # Caching and tracking decorators
+       models.py            # Computation and cache models
+       queryset.py          # Custom querysets
+       storage.py           # Storage abstractions
+
+    utils/                   # Utility modules
+        __init__.py
+        api.py               # API helper functions
+        db_helpers.py        # Database utilities
+        json_encoder.py      # Base JSON encoder/decoder
+        json_encoder_sage.py # SageMath JSON support
+        mongoengine.py       # MongoEngine extensions
+        serialization.py     # Serialization utilities
+        types_sage.py        # SageMath type definitions
+
+ tests/                      # Test suite
+ CODE_OF_CONDUCT.md          # Code of conduct
+ CONTRIBUTING.md             # For contributors
+ Dockerfile                  # Dockerfile
+ LICENSE                     # Project license
+ Makefile                    # Convenience commands
+ MANIFEST.in                 # Specify files to include / exclude
+ pyproject.toml              # Project metadata and dependencies
+ pytest.ini                  # Pytest configuration
+ README.md                   # This file
+ tox.ini                     # Tox configuration
+```
+
+### Key Components
+
+#### 1. **API Layer** (`src/comp_manager/api/`)
+- RESTful resources with MongoDB backend
+- OpenAPI/Swagger specification support
+- Automatic pagination and filtering
+
+#### 2. **Core Layer** (`src/comp_manager/core/`)
+- Computation lifecycle management
+- Caching infrastructure
+- Decorator-based interfaces
+
+#### 3. **Utilities** (`src/comp_manager/utils/`)
+- JSON serialization for complex types
+- Database helpers
+- SageMath type support
+
+#### 4. **Data Models**
+- `BaseDocument` (`common/models.py`): Base class with timestamps and serialization
+- `HashableDocument` (`common/models.py`): Adds content-based hashing
+- `Computation` (`core/models.py`): Tracks computation lifecycle and status
+- `MongoCacheDB` (`core/models.py`): Persistent cache storage
+
+---
+
+## Usage
+
+### Basic API Usage
+
+#### Defining a Resource
+
+```python
+from comp_manager.api.resource import MongoDBResource
+from comp_manager.common.models import BaseDocument
+from comp_manager.extensions import me
+
+class MyDocument(BaseDocument):
+    """Custom document with name and value fields."""
+
+    value = me.IntField()
+
+    def to_dict(self):
+        result = super().to_dict()
+        result['value'] = self.value
+        return result
+
+# Create API resource
+my_resource = MongoDBResource(MyDocument)
+```
+
+> **Note**: `BaseDocument` provides `name`, `created_at`, `updated_at` fields and a base `to_dict()` method automatically.
+
+#### Using the Resource
+
+```python
+# GET /api/v1/mydocuments
+response = my_resource.get()  # Returns paginated list
+
+# GET /api/v1/mydocuments/{id}
+response = my_resource.get_by_id(id='507f1f77bcf86cd799439011')
+
+# POST /api/v1/mydocuments
+response = my_resource.post(body={'name': 'example', 'value': 42})
+
+# PUT /api/v1/mydocuments/{id}
+response = my_resource.put(id='507f1f77bcf86cd799439011', body={'value': 100})
+
+# DELETE /api/v1/mydocuments/{id}
+response = my_resource.delete(id='507f1f77bcf86cd799439011')
+```
+
+### Caching Computations
+
+Use the `@mongo_cache` decorator to cache expensive function results:
+
+```python
+from comp_manager.core.decorators import mongo_cache
+
+@mongo_cache
+def expensive_computation(n: int) -> int:
+    """
+    This function's results will be cached in MongoDB.
+    """
+    result = 0
+    for i in range(n):
+        result += i ** 2
+    return result
+
+# First call: computes and caches
+result1 = expensive_computation(1000000)  # Takes time
+
+# Second call: retrieved from cache
+result2 = expensive_computation(1000000)  # Instant!
+```
+
+**Cache Features:**
+- Automatic cache key generation from function arguments
+- Support for both JSON-serializable and custom objects
+- Configurable cache expiration (future feature)
+- Cache statistics and monitoring
+
+### Tracking Computations
+
+Track long-running computations with lifecycle management:
+
+```python
+from comp_manager.core.decorators import register_computation
+
+@register_computation
+def long_computation(data: list[int]) -> dict:
+    """
+    This computation will be tracked in the database.
+    Status updates: started -> finished/failed
+    """
+    # Perform computation
+    result = {'sum': sum(data), 'count': len(data)}
+    return result
+
+# The computation status can be monitored via API
+result = long_computation([1, 2, 3, 4, 5])
+```
+
+**Computation States:**
+- `started`: Computation is running
+- `paused`: Computation was paused (can be resumed)
+- `finished`: Computation completed successfully
+- `failed`: Computation encountered an error
+
+**Querying Computations:**
+
+```python
+from comp_manager.core.models import Computation
+
+# Find all running computations
+running = Computation.objects(status='started')
+
+# Find computations by function name
+my_comps = Computation.objects(function_name='long_computation')
+
+# Get computation statistics
+for comp in running:
+    print(f"{comp.name}: {comp.running_time}")
+```
+
+### SageMath Integration
+
+#### Serializing Sage Objects
+
+```python
+from sage.all import ZZ, QQ, matrix, NumberField, x
+from comp_manager.utils.json_encoder_sage import SageJSONEncoder, SageJSONDecoder
+import json
+
+# Serialize a matrix
+m = matrix(ZZ, [[1, 2], [3, 4]])
+json_str = json.dumps(m, cls=SageJSONEncoder)
+
+# Deserialize back to Sage object
+m_restored = json.loads(json_str, cls=SageJSONDecoder)
+assert m == m_restored
+
+# Works with number fields too
+F = NumberField(x^2 + 1, 'i')
+i = F.gen()
+json_str = json.dumps(i, cls=SageJSONEncoder)
+i_restored = json.loads(json_str, cls=SageJSONDecoder)
+assert i == i_restored
+```
+
+#### Supported Sage Types
+
+- **Rings**: `ZZ`, `QQ`, `RealField`, `ComplexField`, `NumberField`
+- **Elements**: Integers, Rationals, Reals, Complex numbers, Number field elements
+- **Structures**: Matrices, Vectors
+- **Collections**: Dictionaries with Sage keys, Tuples of Sage objects
+
+#### Storing Sage Objects in MongoDB
+
+```python
+from comp_manager.utils.mongoengine import JSONField
+from comp_manager.extensions import me
+
+class SageComputation(me.Document):
+    name = me.StringField()
+    matrix_data = JSONField()  # Can store Sage matrices
+    result = JSONField()       # Can store any Sage object
+
+    def to_dict(self):
+        return {
+            'name': self.name,
+            'matrix_data': self.matrix_data,
+            'result': self.result
+        }
+
+# Save Sage object
+comp = SageComputation(
+    name='my_computation',
+    matrix_data=matrix(ZZ, [[1, 2], [3, 4]]),
+    result={'eigenvalues': [1, 4]}
+)
+comp.save()
+
+# Retrieve and use
+comp_loaded = SageComputation.objects(name='my_computation').first()
+m = comp_loaded.matrix_data  # Automatically deserialized as Sage matrix
+```
+
+---
+
+## API Reference
+
+### Endpoints
+
+#### Health Check
+```
+GET /api/v1/health
+```
+
+Returns server health status.
+
+#### Resource Endpoints
+
+For each MongoDB resource, the following endpoints are available:
+
+```
+GET    /api/v1/{resource}           # List all (paginated)
+GET    /api/v1/{resource}/{id}      # Get by ID
+POST   /api/v1/{resource}           # Create new
+PUT    /api/v1/{resource}/{id}      # Update existing
+DELETE /api/v1/{resource}/{id}      # Delete
+```
+
+#### Query Parameters
+
+**Pagination:**
+- `page`: Page number (default: 1)
+- `per_page`: Items per page (default: 20, max: 100)
+
+**Filtering:**
+- Field-based filters: `?name=value`
+- Date filters: `?created_at__gte=2024-01-01`
+- Array filters: `?tags__in=tag1,tag2`
+
+**Example:**
+```bash
+GET /api/v1/computations?status=finished&per_page=50&page=2
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MONGO_URI` | MongoDB connection URI | `mongodb://localhost:27017/comp_manager` |
+| `SECRET_KEY` | Flask secret key (for sessions) | `None` (generated) |
+| `FLASK_ENV` | Flask environment | `production` |
+| `LOG_LEVEL` | Logging level | `INFO` |
+
+### MongoDB Configuration
+
+```python
+from comp_manager.config import Config
+
+config = Config()
+# Access MongoDB settings
+settings = config.MONGODB_SETTINGS
+```
+
+### Custom Configuration
+
+```python
+from comp_manager import create_app
+
+# Create app with custom config
+app = create_app(spec_path='/path/to/openapi.yaml')
+
+# Or override config
+app.config['CUSTOM_SETTING'] = 'value'
+```
+
+---
+
+## Development
+
+### Setting Up Development Environment
+
+```bash
+# Clone and enter directory
+git clone https://github.com/fredstro/comp-manager.git
+cd comp-manager
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Install pre-commit hooks (optional)
+pip install pre-commit
+pre-commit install
+```
+
+### Code Quality Tools
+
+The project uses [Ruff](https://github.com/astral-sh/ruff) for linting and formatting:
+
+```bash
+# Format code
+ruff format .
+
+# Lint code
+ruff check .
+
+# Fix linting issues
+ruff check --fix .
+```
+
+### Project Settings
+
+- **Line length**: 100 characters
+- **Target Python**: 3.12
+- **Complexity limit**: 11
+- **Type checking**: mypy (recommended)
+
+---
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=comp_manager --cov-report=html
+
+# Run specific test file
+pytest tests/test_models.py
+
+# Run with specific marker
+pytest -m "not slow"
+```
+
+### Test Structure
+
+```
+tests/
+   fixtures/                   # Test fixtures and models
+   test_api.py                 # API endpoint tests
+   test_cache.py               # Caching tests
+   test_computation.py         # Computation tracking tests
+   test_fields.py              # Custom field tests
+   test_json_encoder.py        # Base JSON encoder tests
+   test_json_encoder_sage.py   # Sage serialization tests
+   test_main.py                # CLI entry point tests
+   test_models.py              # Database model tests
+   test_serialize.py           # Serialization tests
+   test_version.py             # Version tests
+```
+
+### Writing Tests
+
+```python
+import pytest
+from comp_manager import create_app
+
+@pytest.fixture
+def app():
+    """Create application for testing."""
+    app = create_app()
+    app.config['TESTING'] = True
+    return app
+
+@pytest.fixture
+def client(app):
+    """Create test client."""
+    return app.test_client()
+
+def test_api_endpoint(client):
+    """Test API endpoint."""
+    response = client.get('/api/v1/health')
+    assert response.status_code == 200
+```
+
+### Test Coverage Goals
+
+- **Unit tests**: >90% coverage
+- **Integration tests**: Critical user flows
+- **Sage tests**: All serialization round-trips
+
+---
+
+## Contributing
+
+We welcome contributions! This project follows the **Git Flow** branching model. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for complete guidelines.
+
+### Quick Contribution Guide
+
+1. **Fork the repository**
+2. **Create a feature branch from `develop`**: `git checkout -b feature/my-feature develop`
+3. **Make your changes** with tests and documentation
+4. **Run tests**: `pytest`
+5. **Format code**: `ruff format .`
+6. **Commit**: `git commit -m "feat: add my feature"`
+7. **Push**: `git push origin feature/my-feature`
+8. **Open a Pull Request** targeting the `develop` branch
+
+### Git Flow Branches
+
+- **`main`** - Production-ready releases only
+- **`develop`** - Integration branch (create PRs here!)
+- **`feature/*`** - New features (your work here)
+- **`release/*`** - Release preparation (maintainers)
+- **`hotfix/*`** - Urgent fixes (maintainers)
+
+### Commit Message Convention
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/). Commit messages are validated by a pre-commit hook.
+
+**Format:** `<type>(<scope>): <subject>`
+
+**Valid types:**
+
+| Type | Description |
+|------|-------------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `docs` | Documentation changes |
+| `style` | Code style (formatting, missing semicolons, etc.) |
+| `refactor` | Code refactoring (no functional change) |
+| `perf` | Performance improvement |
+| `test` | Test additions or changes |
+| `chore` | Maintenance tasks |
+| `ci` | CI/CD configuration changes |
+| `revert` | Reverting a previous commit |
+| `build` | Build system or dependencies |
+
+**Examples:**
+```
+feat(api): add user authentication endpoint
+fix(cache): resolve key collision for similar arguments
+docs(readme): update installation instructions
+refactor(models): extract validation logic to separate module
+```
+
+---
+
+## Roadmap
+
+See [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for detailed future improvements including:
+
+- Enhanced API documentation
+- Performance optimizations
+- Horizontal scaling support
+- � CLI tool for running the application
+- Python client library for remote management
+- Advanced monitoring and observability
+
+---
+
+## FAQ
+
+### Q: How do I run the Flask application?
+
+**A:** Use the built-in CLI command `comp-manager` after installation:
+```bash
+comp-manager --debug --port 8080
+```
+All Flask configuration options are available as command-line arguments. See `comp-manager --help` for details.
+
+### Q: Can I use this without SageMath?
+
+**A:** Yes! SageMath support is optional. The core computation management and caching features work without Sage.
+
+### Q: What's the maximum cache size?
+
+**A:** Individual cached objects must be <16MB (MongoDB document limit). Total cache size can be configured in `MongoCacheDB.meta`.
+
+### Q: How do I clear the cache?
+
+**A:** Use MongoDB directly or create an API endpoint:
+```python
+from comp_manager.core.models import MongoCacheDB
+MongoCacheDB.objects.delete()  # Clear all cache
+```
+
+### Q: Can I use PostgreSQL instead of MongoDB?
+
+**A:** Not currently. The project is built specifically for MongoDB's document model. PostgreSQL support would require significant additional work.
+
+### Q: Is this production-ready?
+
+**A:** The project is in beta (Development Status 4). It's suitable for research and internal use. Production deployment should include additional security hardening and monitoring.
+
+### Q: Is this used somewhere?
+
+**A:** The comp-manager project is currently used in two private projects related to research in number theory and in particular
+to computation of Maass wave forms in different settings:
+https://github.com/fredstro/hilbert-maass and https://github.com/fredstro/knot-maass
+(Both of these projects will go public soon.)
+---
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 or later (GPLv3+). See [LICENSE](LICENSE) for details.
+
+---
+
+## Credits
+
+**Author**: Fredrik Stromberg (fredrik314@gmail.com)
+
+
+---
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/fredstro/comp-manager/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/fredstro/comp-manager/discussions)
+- **Documentation**: [Wiki](https://github.com/fredstro/comp-manager/wiki)
+
+---
+
+## Acknowledgments
+
+Built with:
+- [Flask](https://flask.palletsprojects.com/) - Web framework
+- [MongoEngine](http://mongoengine.org/) - MongoDB ODM
+- [Connexion](https://connexion.readthedocs.io/) - OpenAPI framework
+- [SageMath](https://www.sagemath.org/) - Mathematical computing system
+- [pytest](https://pytest.org/) - Testing framework
+
+AI tools:
+- [Claude Code](https://code.claude.com) (Claude Sonnet 4.5 / Opus 4.5): Generating commit messages, documentation and tests.
+---

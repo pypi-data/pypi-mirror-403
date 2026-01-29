@@ -1,0 +1,128 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  # General pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Prevent large files from being committed
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+      # Check for files that would conflict in case-insensitive filesystems
+      - id: check-case-conflict
+
+      # Ensure files end with a newline
+      - id: end-of-file-fixer
+        exclude: '\.sobj$'
+
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+      # Check YAML files for parseable syntax
+      - id: check-yaml
+        args: ['--unsafe']
+
+      # Check TOML files for parseable syntax
+      - id: check-toml
+
+      # Check JSON files for parseable syntax
+      - id: check-json
+
+      # Check for merge conflicts
+      - id: check-merge-conflict
+
+      # Prevent committing to protected branches
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+
+      # Check for files that would conflict with Python module names
+      - id: check-ast
+
+      # Check for debugger imports
+      - id: debug-statements
+
+      # Detect private keys
+      - id: detect-private-key
+
+      # Mixed line endings
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Ruff - Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.11
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix]
+        types_or: [python, pyi]
+
+      # Run the formatter
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # MyPy - Static type checking (optional but recommended)
+  # Note: Disabled by default. Run manually with: pre-commit run mypy --all-files
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --no-strict-optional, --check-untyped-defs]
+        additional_dependencies:
+          - types-flask
+          - types-pyyaml
+          - mongoengine-stubs
+        files: ^src/
+        exclude: ^tests/
+        stages: [manual]  # Only run when explicitly called
+
+  # Check for common security issues
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.9
+    hooks:
+      - id: bandit
+        args: ['-c', 'pyproject.toml']
+        additional_dependencies: ['bandit[toml]']
+        exclude: ^tests/
+
+  # Validate pyproject.toml
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.24.1
+    hooks:
+      - id: validate-pyproject
+
+  # Conventional commit message validation
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - style
+          - refactor
+          - perf
+          - test
+          - chore
+          - ci
+          - revert
+          - build
+
+# Configuration for pre-commit.ci (optional - for automated PR checks)
+ci:
+  autofix_commit_msg: |
+    style: auto-fixes from pre-commit hooks
+
+    [pre-commit.ci] auto fixes from pre-commit.com hooks
+  autofix_prs: true
+  autoupdate_branch: develop
+  autoupdate_commit_msg: 'chore: update pre-commit hooks'
+  autoupdate_schedule: monthly
+  skip: []
+  submodules: false

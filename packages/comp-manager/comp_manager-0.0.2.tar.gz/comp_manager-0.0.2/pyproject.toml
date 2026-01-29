@@ -1,0 +1,187 @@
+[build-system]
+requires = [
+    "setuptools>=70",
+    "setuptools_scm>=8",
+    "build>=1.2"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comp_manager"
+dynamic = ["version"]
+description = "Api for managing computations with a MongoDB backend"
+authors = [
+    {name = "Fredrik Stromberg", email = "fredrik314@gmail.com"}
+]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+keywords = ["api", "computations"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: C",
+    "Programming Language :: Cython",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+requires-python = ">= 3.11"
+dependencies = [
+    "flask>=3",
+    "flask-mongoengine-3",
+    "prance>=0.2.0",
+    "openapi-spec-validator>=0.5.6",
+    "connexion[flask,swagger-ui,uvicorn]",
+    "pendulum",
+]
+[project.optional-dependencies]
+dev = [
+    "build",
+    "tox",
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "mongomock",
+    "freezegun",
+    "mongoengine",
+    "ruff",
+    "pre-commit",
+    "mypy",
+    "bandit[toml]",
+    # Type stubs for mypy
+    "types-Flask",
+    "types-requests",
+]
+notebook = [
+    "jupyter"
+]
+sage = [
+    "passagemath-standard"
+]
+
+[project.urls]
+repository = "https://github.com/fredstro/comp-manager"
+homepage = "https://github.com/fredstro/comp-manager"
+"bug tracker" = "https://github.com/fredstro/comp-manager/issues"
+
+[project.scripts]
+comp-manager = "comp_manager.__main__:main"
+
+
+[tool.setuptools_scm]
+write_to = "src/comp_manager/version.py"
+git_describe_command = "git describe --tags --long --match *.*"
+local_scheme = "no-local-version"
+
+[tool.setuptools.package-data]
+comp_manager = ["api/openapi/*.yaml", "api/openapi/*.yml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+fix = true
+unsafe-fixes = false
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "N",    # pep8-naming
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "C",    # mccabe complexity
+    "T",    # flake8-print
+    "Q",    # flake8-quotes
+    "RUF",  # ruff-specific rules
+    "D",    # pydocstyle - docstring checking
+]
+# Ignore the rules for shadowing builtins since we follow mongoengine naming conventions
+# and use 'id' for the unique id.
+ignore = [
+    "A001",    # builtin-variable-shadowing
+    "A002",    # builtin-argument-shadowing
+    "D100",    # undocumented-public-module
+    "D104",    # undocumented-public-package
+    "D105",    # undocumented-magic-method (__str__, __repr__, etc.)
+    "D107",    # undocumented-public-init (mongoengine models don't need __init__ docs)
+    "D200",    # one-line-docstring-should-fit-on-one-line (allow multi-line for Sage style)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"  # Use numpy style as it's closest to Sage style
+[tool.ruff.lint.per-file-ignores]
+"all.py" = [
+  "F401", # Unused import - these files are by definition collections of imports.
+]
+"tests/test_json_encoder_sage.py" = [
+  "E402", # Module level import not at top - needed after pytest.importorskip
+]
+"tests/*.py" = [
+  "D",    # No docstring requirements for tests
+]
+"tests/**/*.py" = [
+  "D",    # No docstring requirements for test fixtures
+]
+"scripts/*.py" = [
+  "T201", # Print statements are expected in CLI scripts
+  "N802", # AST visitor methods use CamelCase by convention
+  "N815", # AST visitor attributes use mixedCase by convention
+  "C901", # Complex functions acceptable in scripts
+  "D401", # Imperative mood not critical for scripts
+]
+"examples/*.py" = [
+  "T201",   # Print statements are expected in example/demo scripts
+  "D",      # No docstring requirements for examples
+  "RUF005", # List concatenation is clearer in examples
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "build", "dist"]
+# B101: assert_used (common in tests)
+# B301: pickle usage is intentional and protected with HMAC digest
+# B403: pickle/dumps imports are intentional for secure serialization
+skips = ["B101", "B301", "B403"]
+
+[tool.bandit.assert_used]
+skips = ["*/test_*.py", "*/*_test.py"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["build", "dist", "venv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/comp_manager"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/version.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
