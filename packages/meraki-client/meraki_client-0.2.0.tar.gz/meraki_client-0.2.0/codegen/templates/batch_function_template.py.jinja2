@@ -1,0 +1,57 @@
+    def {{ function_name }}(self{% if function_definition|length > 0 %}{{ function_definition }}{% endif %}) -> CreateOrganizationActionBatchActionsItem:
+        """{{ description }}
+
+        [API documentation: {{ operation_id }}]({{ doc_url }})
+        {% if descriptions|length > 0 %}
+
+        Args:
+        {% for d in descriptions %}
+            {{ d }}
+        {% endfor %}
+        {% endif %}
+
+        """
+        {% if assert_blocks|length > 0 %}
+        {% for param, values in assert_blocks %}
+        if {{ param }} is not None:
+            options = {{ values }}
+            assert {{ param }} in options, f'"{{ param }}" cannot be "{{ '{' + param + '}' }}", & must be set to one of: {options}'
+        {% endfor %}
+
+        {% endif %}
+        {% for param in path_params %}
+        {{ param }} = urllib.parse.quote(str({{ param }}), safe='')
+        {% endfor %}
+        path = f'{{ resource }}'
+
+        {% if query_params|length > 0 %}
+        params = {}
+        {% for snake, orig in query_params %}
+        if {{ snake }} is not None:
+            params['{{ orig }}'] = {{ snake }}
+        {% endfor %}
+
+        {% endif %}
+        {% if body_params|length > 0 %}
+        payload = {}
+        {% for snake, orig, is_schema, is_list, is_dict in body_params %}
+        if {{ snake }} is not None:
+            {% if is_schema and is_list %}
+            payload['{{ orig }}'] = [item.model_dump(by_alias=True, exclude_none=True) for item in {{ snake }}]
+            {% elif is_schema and is_dict %}
+            payload['{{ orig }}'] = {k: v.model_dump(by_alias=True, exclude_none=True) for k, v in {{ snake }}.items()}
+            {% elif is_schema %}
+            payload['{{ orig }}'] = {{ snake }}.model_dump(by_alias=True, exclude_none=True)
+            {% else %}
+            payload['{{ orig }}'] = {{ snake }}
+            {% endif %}
+        {% endfor %}
+
+        {% endif %}
+        return CreateOrganizationActionBatchActionsItem(
+            resource=path,
+            operation="{{ batch_operation }}",
+            {% if body_params|length > 0 %}
+            body=payload,
+            {% endif %}
+        )
