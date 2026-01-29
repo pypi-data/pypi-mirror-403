@@ -1,0 +1,1268 @@
+import sys
+from .errors import RTError
+from .runtime import SymbolTable, Context, RTResult
+from .constants import GL_IDENTIFIER
+from .lexer import Token
+from .nodes import *
+
+
+class Value:
+    def __init__(self):
+        self.set_pos()
+        self.set_context()
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def added_to(self, other):
+        return None, self.illegal_operation(other)
+
+    def subbed_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def multed_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def dived_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def modded_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def floordived_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def powed_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def get_comparison_eq(self, other):
+        return None, self.illegal_operation(other)
+
+    def get_comparison_ne(self, other):
+        if not isinstance(other, List):
+            return None, Value.illegal_operation(self, other)
+
+        result, error = self.get_comparison_eq(other)
+        if error:
+            return None, error
+
+        if result.is_true():
+            return Number(0).set_context(self.context), None
+        else:
+            return Number(1).set_context(self.context), None
+
+    def get_comparison_lt(self, other):
+        return None, self.illegal_operation(other)
+
+    def get_comparison_gt(self, other):
+        return None, self.illegal_operation(other)
+
+    def get_comparison_lte(self, other):
+        return None, self.illegal_operation(other)
+
+    def get_comparison_gte(self, other):
+        return None, self.illegal_operation(other)
+
+    def get_comparison_is(self, other):
+        return Number(1 if self is other else 0).set_context(self.context), None
+
+    def anded_by(self, other):
+        is_true = self.is_true() and other.is_true()
+        return Number(1 if is_true else 0).set_context(self.context), None
+
+    def ored_by(self, other):
+        is_true = self.is_true() or other.is_true()
+        return Number(1 if is_true else 0).set_context(self.context), None
+
+    def notted(self):
+        return None, self.illegal_operation()
+
+    def execute(self, args, interpreter=None):
+        return RTResult().failure(self.illegal_operation())
+
+    def get_attr(self, name_tok):
+        return None, self.illegal_operation()
+
+    def set_attr(self, name_tok, value, context=None, visibility=None):
+        return None, self.illegal_operation()
+
+    def get_element_at(self, index):
+        return None, self.illegal_operation()
+
+    def set_element_at(self, index, value):
+        return None, self.illegal_operation()
+
+    def is_true(self):
+        return True
+
+    def copy(self):
+        raise Exception("No copy method defined")
+
+    def bitted_and_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def bitted_or_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def bitted_xor_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def lshifted_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def rshifted_by(self, other):
+        return None, self.illegal_operation(other)
+
+    def bitted_not(self):
+        return None, self.illegal_operation()
+
+    def illegal_operation(self, other=None):
+        if not other:
+            other = self
+        return RTError(self.pos_start, other.pos_end, "Illegal operation", self.context)
+
+
+class Number(Value):
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+    def added_to(self, other):
+        if isinstance(other, Number):
+            return Number(self.value + other.value).set_context(self.context), None
+        elif isinstance(other, String):
+            return String(str(self.value) + other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def subbed_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value - other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def multed_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value * other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def dived_by(self, other):
+        if isinstance(other, Number):
+            if other.value == 0:
+                return None, RTError(
+                    other.pos_start, other.pos_end, "Division by zero", self.context
+                )
+            return Number(self.value / other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def modded_by(self, other):
+        if isinstance(other, Number):
+            if other.value == 0:
+                return None, RTError(
+                    other.pos_start, other.pos_end, "Division by zero", self.context
+                )
+            return Number(self.value % other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def floordived_by(self, other):
+        if isinstance(other, Number):
+            if other.value == 0:
+                return None, RTError(
+                    other.pos_start, other.pos_end, "Division by zero", self.context
+                )
+            return Number(self.value // other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_is(self, other):
+        return Number(1 if self is other else 0).set_context(self.context), None
+
+    def powed_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value**other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_eq(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value == other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_ne(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value != other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_lt(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value < other.value)).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_gt(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value > other.value)).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_lte(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value <= other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_gte(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value >= other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def anded_by(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value and other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def ored_by(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value or other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def notted(self):
+        return Number(1 if self.value == 0 else 0).set_context(self.context), None
+
+    def bitted_and_by(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value) & int(other.value)).set_context(self.context),
+                None,
+            )
+        return None, Value.illegal_operation(self, other)
+
+    def bitted_or_by(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value) | int(other.value)).set_context(self.context),
+                None,
+            )
+        return None, Value.illegal_operation(self, other)
+
+    def bitted_xor_by(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value) ^ int(other.value)).set_context(self.context),
+                None,
+            )
+        return None, Value.illegal_operation(self, other)
+
+    def lshifted_by(self, other):
+        if isinstance(other, Number):
+            try:
+                result = int(self.value) << int(other.value)
+                return Number(result).set_context(self.context), None
+            except ValueError:
+                return None, RTError(
+                    other.pos_start, other.pos_end, "Negative shift count", self.context
+                )
+        return None, Value.illegal_operation(self, other)
+
+    def rshifted_by(self, other):
+        if isinstance(other, Number):
+            return (
+                Number(int(self.value) >> int(other.value)).set_context(self.context),
+                None,
+            )
+        return None, Value.illegal_operation(self, other)
+
+    def bitted_not(self):
+        return Number(~int(self.value)).set_context(self.context), None
+
+    def is_true(self):
+        return self.value != 0
+
+    def copy(self):
+        copy = Number(self.value)
+        copy.set_pos(self.pos_start, self.pos_end)
+        copy.set_context(self.context)
+        return copy
+
+    def __repr__(self):
+        return str(self.value)
+
+
+Number.false = Number(0)
+Number.true = Number(1)
+Number.null = Number(0)
+
+
+class String(Value):
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+    def added_to(self, other):
+        if isinstance(other, String):
+            return String(self.value + other.value).set_context(self.context), None
+        elif isinstance(other, Number):
+            return String(self.value + str(other.value)).set_context(self.context), None
+        else:
+            return None, self.illegal_operation(other)
+
+    def get_comparison_eq(self, other):
+        if isinstance(other, String):
+            return (
+                Number(int(self.value == other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_ne(self, other):
+        if isinstance(other, String):
+            return (
+                Number(int(self.value != other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_lt(self, other):
+        if isinstance(other, String):
+            return Number(int(self.value < other.value)).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_gt(self, other):
+        if isinstance(other, String):
+            return Number(int(self.value > other.value)).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_lte(self, other):
+        if isinstance(other, String):
+            return (
+                Number(int(self.value <= other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_comparison_gte(self, other):
+        if isinstance(other, String):
+            return (
+                Number(int(self.value >= other.value)).set_context(self.context),
+                None,
+            )
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def get_element_at(self, index):
+        if not isinstance(index, Number):
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                "String index must be a Number",
+                self.context,
+            )
+
+        try:
+            val = self.value[int(index.value)]
+            return String(val).set_context(self.context), None
+        except IndexError:
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                f"String index {index.value} out of bounds",
+                self.context,
+            )
+
+    def is_true(self):
+        return len(self.value) > 0
+
+    def copy(self):
+        copy = String(self.value)
+        copy.set_pos(self.pos_start, self.pos_end)
+        copy.set_context(self.context)
+        return copy
+
+    def __repr__(self):
+        return self.value
+
+
+class List(Value):
+    def __init__(self, elements):
+        super().__init__()
+        self.elements = elements
+
+    def is_true(self):
+        return len(self.elements) > 0
+
+    def added_to(self, other):
+        if isinstance(other, List):
+            new_list = List(self.elements + other.elements)
+            new_list.set_context(self.context)
+            return new_list, None
+        else:
+            return None, self.illegal_operation(other)
+
+    def get_element_at(self, index):
+        if not isinstance(index, Number):
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                "List index must be a Number",
+                self.context,
+            )
+
+        try:
+            element = self.elements[int(index.value)]
+            return element, None
+        except IndexError:
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                f"List index {index.value} out of bounds",
+                self.context,
+            )
+
+    def set_element_at(self, index, value):
+        if not isinstance(index, Number):
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                "List index must be a Number",
+                self.context,
+            )
+
+        try:
+            self.elements[int(index.value)] = value
+            return value, None
+        except IndexError:
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                f"List index {index.value} out of bounds",
+                self.context,
+            )
+
+    def get_comparison_eq(self, other):
+        if not isinstance(other, List):
+            return None, Value.illegal_operation(self, other)
+
+        if len(self.elements) != len(other.elements):
+            return Number(0).set_context(self.context), None
+
+        for i in range(len(self.elements)):
+            result, error = self.elements[i].get_comparison_eq(other.elements[i])
+            if error:
+                return None, error
+            if not result.is_true():
+                return Number(0).set_context(self.context), None
+
+        return Number(1).set_context(self.context), None
+
+    def get_comparison_ne(self, other):
+        if not isinstance(other, List):
+            return None, Value.illegal_operation(self, other)
+
+        result, error = self.get_comparison_eq(other)
+        if error:
+            return None, error
+
+        if result.is_true():
+            return Number(0).set_context(self.context), None
+        else:
+            return Number(1).set_context(self.context), None
+
+    def copy(self):
+        copy = List(self.elements[:])
+        copy.set_pos(self.pos_start, self.pos_end)
+        copy.set_context(self.context)
+        return copy
+
+    def __repr__(self):
+        return self.to_string([])
+
+    def to_string(self, visited):
+        if self in visited:
+            return "[...]"
+        visited.append(self)
+        s = f'[{", ".join([x.to_string(visited) if isinstance(x, (List, Dict)) else repr(x) for x in self.elements])}]'
+        visited.pop()
+        return s
+
+
+class Dict(Value):
+    def __init__(self, elements):
+        super().__init__()
+        self.elements = elements
+
+    def is_true(self):
+        return len(self.elements) > 0
+
+    def copy(self):
+        copy = Dict(self.elements.copy())
+        copy.set_pos(self.pos_start, self.pos_end)
+        copy.set_context(self.context)
+        return copy
+
+    def get_element_at(self, key):
+        if not isinstance(key, (Number, String)):
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                "Key must be a Number or String",
+                self.context,
+            )
+
+        val = self.elements.get(key.value)
+        if val is None:
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                f"Key '{key.value}' not found",
+                self.context,
+            )
+        return val, None
+
+    def set_element_at(self, key, value):
+        if not isinstance(key, (Number, String)):
+            return None, RTError(
+                self.pos_start,
+                self.pos_end,
+                "Key must be a Number or String",
+                self.context,
+            )
+
+        self.elements[key.value] = value
+        return value, None
+
+    def get_comparison_eq(self, other):
+        if not isinstance(other, Dict):
+            return None, Value.illegal_operation(self, other)
+
+        if len(self.elements) != len(other.elements):
+            return Number(0).set_context(self.context), None
+
+        for key, value in self.elements.items():
+            if key not in other.elements:
+                return Number(0).set_context(self.context), None
+
+            other_val = other.elements[key]
+            result, error = value.get_comparison_eq(other_val)
+            if error:
+                return None, error
+
+            if not result.is_true():
+                return Number(0).set_context(self.context), None
+
+        return Number(1).set_context(self.context), None
+
+    def get_comparison_ne(self, other):
+        if not isinstance(other, Dict):
+            return None, Value.illegal_operation(self, other)
+
+        result, error = self.get_comparison_eq(other)
+        if error:
+            return None, error
+
+        if result.is_true():
+            return Number(0).set_context(self.context), None
+        else:
+            return Number(1).set_context(self.context), None
+
+    def __repr__(self):
+        return self.to_string([])
+
+    def to_string(self, visited):
+        if self in visited:
+            return "{...}"
+        visited.append(self)
+        kv_strings = []
+        for key, value in self.elements.items():
+            val_str = (
+                value.to_string(visited)
+                if isinstance(value, (List, Dict))
+                else repr(value)
+            )
+            kv_strings.append(f"{repr(key)}: {val_str}")
+        s = f"{{{', '.join(kv_strings)}}}"
+        visited.pop()
+        return s
+
+
+class BaseFunction(Value):
+    def __init__(self, name):
+        super().__init__()
+        self.name = name or "<anonymous>"
+
+    def generate_new_context(self):
+        new_context = Context(self.name, self.context, self.pos_start)
+        new_context.symbol_table = SymbolTable(self.context.symbol_table)
+        return new_context
+
+    def check_args(self, arg_names, args):
+        res = RTResult()
+        if len(args) != len(arg_names):
+            return res.failure(
+                RTError(
+                    self.pos_start,
+                    self.pos_end,
+                    f"Incorrect argument count for '{self.name}'. Expected {len(arg_names)}, got {len(args)}",
+                    self.context,
+                )
+            )
+        return res.success(None)
+
+    def populate_args(self, arg_names, args, new_context):
+        for i in range(len(args)):
+            arg_name = arg_names[i]
+            arg_value = args[i]
+
+            if isinstance(arg_value, BaseFunction):
+                pass
+            else:
+                pass
+
+            new_context.symbol_table.set(arg_name, arg_value)
+
+    def check_and_populate_args(self, arg_names, args, new_context):
+        res = RTResult()
+        res.register(self.check_args(arg_names, args))
+        if res.error:
+            return res
+        self.populate_args(arg_names, args, new_context)
+        return res.success(None)
+
+    def execute(self, args, interpreter):
+        return RTResult().failure(
+            RTError(
+                self.pos_start,
+                self.pos_end,
+                "BaseFunction cannot be executed",
+                self.context,
+            )
+        )
+
+    def copy(self):
+        raise Exception("Cannot copy a BaseFunction")
+
+    def __repr__(self):
+        return f"<function {self.name}>"
+
+
+class Function(BaseFunction):
+    def __init__(
+        self,
+        name,
+        body_node,
+        arg_name_toks,
+        parent_context,
+        visibility="PUBLIC",
+        defining_class=None,
+        is_static=False,
+    ):
+        super().__init__(name)
+        self.body_node = body_node
+        self.arg_name_toks = arg_name_toks
+        self.arg_names = [tok.value for tok in arg_name_toks]
+        self.context = parent_context
+        self.visibility = visibility
+        self.defining_class = defining_class
+        self.is_static = is_static
+
+    def execute(self, args, interpreter):
+        res = RTResult()
+
+        new_context = self.generate_new_context()
+
+        new_context.active_class = self.defining_class
+
+        if new_context.depth > 250:
+            return res.failure(
+                RTError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Recursion limit exceeded",
+                    self.context,
+                )
+            )
+
+        res.register(self.check_and_populate_args(self.arg_names, args, new_context))
+        if res.error:
+            return res
+
+        value_result = interpreter.visit(self.body_node, new_context)
+
+        if value_result.error:
+            return value_result
+
+        if value_result.should_return:
+            return res.success(value_result.return_value)
+
+        return res.success(value_result.value or Number.null)
+
+    def copy(self):
+        copy = Function(
+            self.name,
+            self.body_node,
+            self.arg_name_toks,
+            self.context,
+            self.visibility,
+            self.defining_class,
+            self.is_static,
+        )
+
+        copy.set_pos(self.pos_start, self.pos_end)
+        copy.set_context(self.context)
+        return copy
+
+
+class Class(BaseFunction):
+    def __init__(self, name, superclass, methods, static_symbol_table=None):
+        super().__init__(name)
+        self.superclass = superclass
+        self.methods = methods
+        self.static_symbol_table = (
+            static_symbol_table if static_symbol_table else SymbolTable()
+        )
+
+    def instantiate(self, args, context=None, interpreter=None):
+        res = RTResult()
+        instance = Instance(self)
+
+        fake_init_tok = Token(GL_IDENTIFIER, "init", self.pos_start, self.pos_end)
+        init_method, error = self.get_attr(fake_init_tok, context, allow_instance=True)
+
+        if error:
+            if "has no member 'init'" in error.details:
+                if len(args) > 0:
+                    return res.failure(
+                        RTError(
+                            self.pos_start,
+                            self.pos_end,
+                            f"'{self.name}' does not have an 'init' constructor that accepts arguments",
+                            self.context,
+                        )
+                    )
+                return res.success(instance)
+
+            return res.failure(error)
+
+        bound_init = init_method.copy().bind_to_instance(instance)
+        res.register(bound_init.execute(args, interpreter))
+        if res.error:
+            return res
+
+        return res.success(instance)
+
+    def execute(self, args, interpreter=None):
+        return RTResult().failure(
+            RTError(
+                self.pos_start,
+                self.pos_end,
+                f"Class '{self.name}' must be instantiated using 'NEW'",
+                self.context,
+            )
+        )
+
+    def set_attr(self, name_tok, value, context=None, visibility=None):
+        name = name_tok.value
+
+        if visibility == "FINAL":
+            if name in self.static_symbol_table.finals:
+                return None, RTError(
+                    name_tok.pos_start,
+                    name_tok.pos_end,
+                    f"Cannot reassign constant '{name}'",
+                    context,
+                )
+            self.static_symbol_table.set(
+                name, value, visibility="PUBLIC", as_final=True
+            )
+            return value, None
+
+        if self.static_symbol_table.get(name):
+            err = self.static_symbol_table.update(name, value)
+            if err:
+                return None, RTError(name_tok.pos_start, name_tok.pos_end, err, context)
+            return value, None
+
+        return None, RTError(
+            name_tok.pos_start,
+            name_tok.pos_end,
+            f"Class '{self.name}' has no static field '{name}'",
+            self.context,
+        )
+
+    def get_attr(self, name_tok, context=None, allow_instance=False):
+        method_name = name_tok.value
+
+        val = self.static_symbol_table.get(method_name)
+        if val:
+            visibility = self.static_symbol_table.get_visibility(method_name)
+            defining_class = self
+
+            if visibility == "PRIVATE":
+                if not context or context.active_class != defining_class:
+                    return None, RTError(
+                        name_tok.pos_start,
+                        name_tok.pos_end,
+                        f"Cannot access private static field '{method_name}'",
+                        context,
+                    )
+
+            if visibility == "PROTECTED":
+                allowed = False
+                if context and context.active_class:
+                    curr = context.active_class
+                    while curr:
+                        if curr == defining_class:
+                            allowed = True
+                            break
+                        curr = curr.superclass
+                if not allowed:
+                    return None, RTError(
+                        name_tok.pos_start,
+                        name_tok.pos_end,
+                        f"Cannot access protected static field '{method_name}'",
+                        context,
+                    )
+
+            return val, None
+
+        method = self.methods.get(method_name)
+
+        if method:
+            visibility = method.visibility
+            defining_class = method.defining_class
+
+            if visibility == "PRIVATE":
+                if not context or context.active_class != defining_class:
+                    return None, RTError(
+                        name_tok.pos_start,
+                        name_tok.pos_end,
+                        f"Cannot access private method '{method_name}' via Class",
+                        context,
+                    )
+
+            if visibility == "PROTECTED":
+                allowed = False
+                if context and context.active_class:
+                    curr = context.active_class
+                    while curr:
+                        if curr == defining_class:
+                            allowed = True
+                            break
+                        curr = curr.superclass
+                if not allowed:
+                    return None, RTError(
+                        name_tok.pos_start,
+                        name_tok.pos_end,
+                        f"Cannot access protected method '{method_name}' via Class",
+                        context,
+                    )
+
+            if method.is_static:
+                return (
+                    method.copy()
+                    .set_context(self.context)
+                    .set_pos(name_tok.pos_start, name_tok.pos_end),
+                    None,
+                )
+
+            return method, None
+
+        if self.superclass:
+            return self.superclass.get_attr(name_tok, context, allow_instance)
+
+        return None, RTError(
+            name_tok.pos_start,
+            name_tok.pos_end,
+            f"Class '{self.name}' has no member '{method_name}'",
+            self.context,
+        )
+
+    def copy(self):
+        copy = Class(self.name, self.superclass, self.methods, self.static_symbol_table)
+        copy.set_context(self.context)
+        copy.set_pos(self.pos_start, self.pos_end)
+        return copy
+
+    def __repr__(self):
+        return f"<class {self.name}>"
+
+
+class Instance(Value):
+    def __init__(self, class_ref):
+        super().__init__()
+        self.class_ref = class_ref
+        self.symbol_table = SymbolTable()
+
+    def check_access(self, name_tok, visibility, defining_class, context):
+        if visibility == "PUBLIC":
+            return None
+
+        if visibility == "PRIVATE":
+            if not context or context.active_class != defining_class:
+                return RTError(
+                    name_tok.pos_start,
+                    name_tok.pos_end,
+                    f"Cannot access private member '{name_tok.value}'",
+                    context,
+                )
+
+        if visibility == "PROTECTED":
+            allowed = False
+            if context and context.active_class:
+                curr = context.active_class
+                while curr:
+                    if curr == defining_class:
+                        allowed = True
+                        break
+                    curr = curr.superclass
+            if not allowed:
+                return RTError(
+                    name_tok.pos_start,
+                    name_tok.pos_end,
+                    f"Cannot access protected member '{name_tok.value}'",
+                    context,
+                )
+        return None
+
+    def get_attr(self, name_tok, context=None):
+        name = name_tok.value
+
+        if context and context.active_class:
+            mangled_name = f"_{context.active_class.name}__{name}"
+            val = self.symbol_table.get(mangled_name)
+            if val:
+                return val, None
+
+        value = self.symbol_table.get(name)
+        if value:
+            visibility = self.symbol_table.get_visibility(name)
+            error = self.check_access(name_tok, visibility, self.class_ref, context)
+            if error:
+                return None, error
+            return value, None
+
+        method, error = self.class_ref.get_attr(name_tok, context, allow_instance=True)
+        if error:
+            return None, error
+
+        if isinstance(method, Function) and method.is_static:
+            return method, None
+
+        error = self.check_access(
+            name_tok, method.visibility, method.defining_class, context
+        )
+
+        if error:
+            return None, error
+
+        bound_method = method.copy().bind_to_instance(self)
+        return bound_method, None
+
+    def set_attr(self, name_tok, value, context=None, visibility=None):
+        name = name_tok.value
+
+        if visibility == "FINAL":
+            if name in self.symbol_table.finals:
+                return None, RTError(
+                    name_tok.pos_start,
+                    name_tok.pos_end,
+                    f"Cannot reassign constant '{name}'",
+                    context,
+                )
+            self.symbol_table.set(name, value, visibility="PUBLIC", as_final=True)
+            return value, None
+
+        if visibility == "PRIVATE" and context and context.active_class:
+            mangled_name = f"_{context.active_class.name}__{name}"
+            self.symbol_table.set(mangled_name, value, visibility="PRIVATE")
+
+            if self.symbol_table.get(name):
+                if name in self.symbol_table.finals:
+                    return None, RTError(
+                        name_tok.pos_start,
+                        name_tok.pos_end,
+                        f"Cannot shadow constant '{name}' with a private variable",
+                        context,
+                    )
+                self.symbol_table.remove(name)
+
+            return value, None
+
+        if context and context.active_class:
+            mangled_name = f"_{context.active_class.name}__{name}"
+            if self.symbol_table.get(mangled_name):
+                self.symbol_table.set(mangled_name, value, visibility="PRIVATE")
+                return value, None
+
+        if self.symbol_table.get(name):
+            current_vis = self.symbol_table.get_visibility(name)
+            error = self.check_access(name_tok, current_vis, self.class_ref, context)
+            if error:
+                return None, error
+
+        if visibility is None:
+            visibility = self.symbol_table.get_visibility(name)
+
+        self.symbol_table.set(name, value, visibility=visibility)
+        return value, None
+
+    def copy(self):
+        copy = Instance(self.class_ref)
+        copy.symbol_table = self.symbol_table
+        copy.set_context(self.context)
+        copy.set_pos(self.pos_start, self.pos_end)
+        return copy
+
+    def __repr__(self):
+        return f"<{self.class_ref.name} instance>"
+
+
+class BoundMethod(BaseFunction):
+    def __init__(self, name, function_to_bind, instance):
+        super().__init__(name)
+        self.function_to_bind = function_to_bind
+        self.instance = instance
+        self.context = function_to_bind.context
+        self.set_pos(function_to_bind.pos_start, function_to_bind.pos_end)
+
+    def execute(self, args, interpreter):
+        res = RTResult()
+
+        new_context = self.function_to_bind.generate_new_context()
+
+        new_context.active_class = self.function_to_bind.defining_class
+
+        original_arg_names = self.function_to_bind.arg_names
+
+        if len(original_arg_names) > 0 and original_arg_names[0] == "SELF":
+            new_context.symbol_table.set("SELF", self.instance)
+
+        if len(original_arg_names) == 0 or original_arg_names[0] != "SELF":
+            return res.failure(
+                RTError(
+                    self.function_to_bind.pos_start,
+                    self.function_to_bind.pos_end,
+                    f"Method '{self.name}' must have 'SELF' as its first argument",
+                    self.context,
+                )
+            )
+
+        expected_arg_names = original_arg_names[1:]
+
+        res.register(
+            self.function_to_bind.check_and_populate_args(
+                expected_arg_names, args, new_context
+            )
+        )
+
+        if res.error:
+            return res
+
+        value_result = interpreter.visit(self.function_to_bind.body_node, new_context)
+
+        if value_result.error:
+            return value_result
+
+        if value_result.should_return:
+            return res.success(value_result.return_value)
+
+        return res.success(value_result.value or Number.null)
+
+    def copy(self):
+        return (
+            BoundMethod(self.name, self.function_to_bind.copy(), self.instance)
+            .set_context(self.context)
+            .set_pos(self.pos_start, self.pos_end)
+        )
+
+
+class BuiltInFunction(BaseFunction):
+    def __init__(self, name):
+        super().__init__(name)
+
+    def execute(self, args, interpreter):
+        res = RTResult()
+
+        if self.name == "INPUT":
+            if len(args) > 1:
+                return res.failure(
+                    RTError(
+                        self.pos_start,
+                        self.pos_end,
+                        "INPUT takes at most 1 argument",
+                        self.context,
+                    )
+                )
+
+            prompt = ""
+            if len(args) == 1:
+                prompt = str(args[0].value)
+
+            if prompt:
+                sys.stdout.write(prompt)
+                sys.stdout.flush()
+
+            text = sys.stdin.readline(4096)
+
+            if text:
+                text = text.rstrip("\n")
+
+            return res.success(String(text))
+
+        elif self.name == "STR":
+            res.register(self.check_args(["value"], args))
+            if res.error:
+                return res
+
+            val = args[0]
+            if isinstance(val, String):
+                return res.success(String(val.value))
+            else:
+                return res.success(String(str(val)))
+
+        elif self.name == "INT":
+            res.register(self.check_args(["value"], args))
+            if res.error:
+                return res
+            arg = args[0]
+
+            if not isinstance(arg, (Number, String)):
+                return res.failure(
+                    RTError(
+                        self.pos_start,
+                        self.pos_end,
+                        f"Argument for INT must be a Number or String, got {type(arg).__name__}",
+                        self.context,
+                    )
+                )
+
+            try:
+                val = int(float(arg.value))
+                return res.success(Number(val))
+            except ValueError:
+                return res.failure(
+                    RTError(
+                        self.pos_start,
+                        self.pos_end,
+                        f"Cannot convert '{arg.value}' to INT",
+                        self.context,
+                    )
+                )
+
+        elif self.name == "FLOAT":
+            res.register(self.check_args(["value"], args))
+            if res.error:
+                return res
+            arg = args[0]
+
+            if not isinstance(arg, (Number, String)):
+                return res.failure(
+                    RTError(
+                        self.pos_start,
+                        self.pos_end,
+                        f"Argument for FLOAT must be a Number or String, got {type(arg).__name__}",
+                        self.context,
+                    )
+                )
+
+            try:
+                val = float(arg.value)
+                return res.success(Number(val))
+            except ValueError:
+                return res.failure(
+                    RTError(
+                        self.pos_start,
+                        self.pos_end,
+                        f"Cannot convert '{arg.value}' to FLOAT",
+                        self.context,
+                    )
+                )
+
+        elif self.name == "BOOL":
+            res.register(self.check_args(["value"], args))
+            if res.error:
+                return res
+
+            is_true = args[0].is_true()
+            return res.success(Number.true if is_true else Number.false)
+
+        elif self.name == "LEN":
+            res.register(self.check_args(["value"], args))
+            if res.error:
+                return res
+
+            arg = args[0]
+
+            if isinstance(arg, String):
+                return res.success(Number(len(arg.value)))
+            elif isinstance(arg, List):
+                return res.success(Number(len(arg.elements)))
+            elif isinstance(arg, Dict):
+                return res.success(Number(len(arg.elements)))
+            elif isinstance(arg, Number):
+                return res.success(Number(len(str(arg.value))))
+            elif isinstance(arg, (Function, BuiltInFunction, Class)):
+                return res.success(Number(1))
+
+            return res.success(Number(0))
+
+        return res.failure(
+            RTError(
+                self.pos_start,
+                self.pos_end,
+                f"Built-in function '{self.name}' is not defined.",
+                self.context,
+            )
+        )
+
+    def copy(self):
+        copy = BuiltInFunction(self.name)
+        copy.set_context(self.context)
+        copy.set_pos(self.pos_start, self.pos_end)
+        return copy
+
+    def __repr__(self):
+        return f"<built-in function {self.name}>"
+
+
+def bind_to_instance(self, instance):
+    return BoundMethod(self.name, self, instance)
+
+
+Function.bind_to_instance = bind_to_instance

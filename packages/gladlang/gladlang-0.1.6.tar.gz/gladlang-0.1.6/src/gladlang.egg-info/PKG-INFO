@@ -1,0 +1,788 @@
+Metadata-Version: 2.4
+Name: gladlang
+Version: 0.1.6
+Summary: The GladLang Interpreter
+Author: Glad432
+License: Copyright (c) 2025 - present GLAD432
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+Project-URL: homepage, https://github.com/gladw-in/gladlang
+Project-URL: documentation, https://gladlang.pages.dev/
+Project-URL: source, https://github.com/gladw-in/gladlang
+Keywords: interpreter,language,compiler,educational
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.14
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
+
+# GladLang
+
+**GladLang is a dynamic, interpreted, object-oriented programming language.** This is a full interpreter built from scratch in Python, complete with a lexer, parser, and runtime environment. It supports modern programming features like closures, classes, inheritance, and robust error handling.
+
+GladLang source files use the `.glad` file extension.
+
+![Lines of code](https://sloc.xyz/github/gladw-in/gladlang)
+
+This is the full overview of the GladLang language, its features, and how to run the interpreter.
+
+## Table of Contents
+
+- [About The Language](#about-the-language)
+- [Key Features](#key-features)
+- [Getting Started](#getting-started)
+    - [1. Installation](#1-installation)
+    - [2. Usage](#2-usage)
+    - [3. Running Without Installation (Source)](#3-running-without-installation-source)
+    - [4. Building the Executable](#4-building-the-executable)
+- [Language Tour (Syntax Reference)](#language-tour-syntax-reference)
+    - [1. Comments](#1-comments)
+    - [2. Variables and Data Types](#2-variables-and-data-types)
+        - [Variables](#variables)
+        - [Numbers](#numbers)
+        - [Strings](#strings)
+        - [Lists](#lists)
+        - [Dictionaries](#dictionaries)
+        - [Booleans](#booleans)
+        - [Null](#null)
+    - [3. Operators](#3-operators)
+        - [Math Operations](#math-operations)
+        - [Compound Assignments](#compound-assignments)
+        - [Bitwise Operators](#bitwise-operators)
+        - [Comparisons & Logic](#comparisons--logic)
+        - [Increment / Decrement](#increment--decrement)
+    - [4. Control Flow](#4-control-flow)
+        - [IF Statements](#if-statements)
+        - [Switch Statements](#switch-statements)
+        - [WHILE Loops](#while-loops)
+        - [FOR Loops](#for-loops)
+    - [5. Functions](#5-functions)
+        - [Named Functions](#named-functions)
+        - [Anonymous Functions](#anonymous-functions)
+        - [Closures](#closures)
+        - [Recursion](#recursion)
+    - [6. Object-Oriented Programming (OOP)](#6-object-oriented-programming-oop)
+        - [Classes and Instantiation](#classes-and-instantiation)
+        - [The `SELF` Keyword](#the-self-keyword)
+        - [Inheritance](#inheritance)
+        - [Polymorphism](#polymorphism)
+        - [Access Modifiers](#access-modifiers)
+        - [Static Members](#static-members)
+    - [7. Built-in Functions](#7-built-in-functions)
+- [Error Handling](#error-handling)
+- [Running Tests](#running-tests)
+- [License](#license)
+
+-----
+
+## About The Language
+
+GladLang is an interpreter for a custom scripting language. It was built as a complete system, demonstrating the core components of a programming language:
+
+  * **Lexer:** A tokenizer that scans source code and converts it into a stream of tokens (e.g., `NUMBER`, `STRING`, `IDENTIFIER`, `KEYWORD`, `PLUS`).
+  * **Parser:** A parser that takes the token stream and builds an Abstract Syntax Tree (AST), representing the code's structure.
+  * **AST Nodes:** A comprehensive set of nodes that define every syntactic structure in the language (e.g., `BinOpNode`, `IfNode`, `FunDefNode`, `ClassNode`).
+  * **Runtime:** Defines the `Context` and `SymbolTable` for managing variable scope, context (for tracebacks), and closures.
+  * **Values:** Defines the language's internal data types (`Number`, `String`, `List`, `Dict`, `Function`, `Class`, `Instance`).
+  * **Interpreter:** The core engine that walks the AST. It uses a "Zero-Copy" architecture with Dependency Injection for high-performance execution and low memory overhead.
+  * **Entry Point:** The main file that ties everything together. It handles command-line arguments, runs files, and starts the interactive shell.
+
+-----
+
+## Key Features
+
+GladLang supports a rich, modern feature set:
+
+  * **Data Types:** Numbers (int/float), Strings, Lists, Dictionaries, Booleans, and Null.
+  * **Variables:** Dynamic variable assignment with `LET`.
+  * **Advanced Assignments:**
+      * **Destructuring:** Unpack lists directly (`LET [x, y] = [1, 2]`).
+      * **Slicing:** Access sub-lists or substrings easily (`list[0:3]`).
+  * **String Manipulation:**
+      * **Interpolation:** JavaScript-style template strings (`` `Hello ${name}` ``).
+      * **Multi-line Strings:** Triple-quoted strings (`"""..."""`) for large text blocks.
+  * **List Comprehensions:** Pythonic one-line list creation (`[x * 2 FOR x IN list]`).
+  * **Dictionaries:** Key-value data structures (`{'key': 'value'}`).
+  * **Control Flow:** Full support for `IF` / `ELSE IF`, `SWITCH` / `CASE`, `WHILE` loops, and `FOR` loops with `BREAK` / `CONTINUE`
+  * **Functions:** First-class citizens, Closures, Recursion, Named/Anonymous support.
+  * **Object-Oriented:** Full OOP support with `CLASS`, `INHERITS`, and Access Modifiers (`PUBLIC`, `PRIVATE`, `PROTECTED`).
+  * **Static Members:** Java-style `STATIC` fields, methods, and constants (`STATIC FINAL`).
+  * **OOP Safety:** Runtime checks for circular inheritance, LSP violations, and secure encapsulation.
+  * **Error Management:** Gracefully handle errors with `TRY`, `CATCH`, and `FINALLY`.
+  * **Constants:** Declare immutable values using `FINAL`, fully protected from shadowing..
+  * **Built-ins:** `PRINT`, `INPUT`, `STR`, `INT`, `FLOAT`, `BOOL`, `LEN`.
+  * **Error Handling:** Robust, user-friendly runtime error reporting with full tracebacks.
+  * **Advanced Math:** Compound assignments (`+=`, `*=`), Power (`**`), Modulo (`%`), and automatic float division.
+  * **Rich Comparisons:** Chained comparisons (`1 < x < 10`) and Identity checks (`is`).
+  * **Flexible Logic:** Support for `and` / `or` (case-insensitive).
+-----
+
+## Getting Started
+
+There are several ways to install and run GladLang.
+
+### 1. Installation
+
+#### Option A: Install via Pip (Recommended)
+If you just want to use the language, install it via pip:
+
+```bash
+pip install gladlang
+
+```
+
+#### Option B: Install from Source (For Developers)
+
+If you want to modify the codebase, clone the repository and install it in **editable mode**:
+
+```bash
+git clone --depth 1 https://github.com/gladw-in/gladlang.git
+cd gladlang
+pip install -e .
+
+```
+
+---
+
+### 2. Usage
+
+Once installed, you can use the global `gladlang` command.
+
+#### Interactive Shell (REPL)
+
+Run the interpreter without arguments to start the shell:
+
+```bash
+gladlang
+
+```
+
+#### Running a Script
+
+Pass a file path to execute a script:
+
+```bash
+gladlang "tests/test.glad"
+
+```
+
+---
+
+### 3. Running Without Installation (Source)
+
+You can run the interpreter directly from the source code without installing it via pip:
+
+```bash
+python run.py "tests/test.glad"
+```
+
+---
+
+### 4. Building the Executable
+
+You can build a **standalone executable** (no Python required) using **PyInstaller**:
+
+```bash
+pip install pyinstaller
+pyinstaller run.py --paths src -F --name gladlang --icon=favicon.ico
+
+```
+
+This will create a single-file executable at `dist/gladlang` (or `gladlang.exe` on Windows).
+
+**Adding to PATH (Optional):**
+To run the standalone executable from anywhere:
+
+* **Windows:** Move it to a folder and add that folder to your System PATH variables.
+* **Mac/Linux:** Move it to `/usr/local/bin`: `sudo mv dist/gladlang /usr/local/bin/`
+
+-----
+
+## Language Tour (Syntax Reference)
+
+Here is a guide to the GladLang syntax, with examples from the `tests/` directory.
+
+### 1\. Comments
+
+Comments start with `#` and last for the entire line.
+
+```glad
+# This is a comment.
+LET a = 10 # This is an inline comment
+```
+
+### 2\. Variables and Data Types
+
+#### Variables
+
+Variables are assigned using the `LET` keyword. You can also unpack lists directly into variables using **Destructuring**.
+
+```glad
+# Immutable Constants
+FINAL PI = 3.14159
+
+# Variable Assignment
+LET a = 10
+LET b = "Hello"
+LET my_list = [a, b, 123]
+
+# Destructuring Assignment
+LET point = [10, 20]
+LET [x, y] = point
+
+PRINT x # 10
+PRINT y # 20
+```
+
+#### Numbers
+
+Numbers can be integers or floats. All standard arithmetic operations are supported.
+
+```glad
+LET math_result = (1 + 2) * 3 # 9
+LET float_result = 10 / 4     # 2.5
+```
+
+#### Strings
+
+Strings can be defined in three ways:
+1.  **Double Quotes:** Standard strings.
+2.  **Triple Quotes:** Multi-line strings that preserve formatting.
+3.  **Backticks:** Template strings supporting interpolation.
+
+```glad
+# Standard
+LET s = "Hello\nWorld"
+
+# Multi-line
+LET menu = """
+1. Start
+2. Settings
+3. Exit
+"""
+
+# Indexing
+LET char = "GladLang"[0]  # "G"
+PRINT "Hello"[1]          # "e"
+
+# Escapes (work in "..." and `...`)
+PRINT "Line 1\nLine 2"
+PRINT `Column 1\tColumn 2`
+
+# Interpolation (Template Strings)
+LET name = "Glad"
+PRINT `Welcome back, ${name}!`
+PRINT `5 + 10 = ${5 + 10}`
+```
+
+#### Lists, Slicing & Comprehensions
+
+Lists are ordered collections. You can access elements, slice them, or create new lists dynamically using comprehensions.
+
+```glad
+LET nums = [0, 1, 2, 3, 4, 5]
+
+# Indexing & Assignment
+PRINT nums[1]        # 1
+LET nums[1] = 100
+
+# Slicing [start:end]
+PRINT nums[0:3]      # [0, 1, 2]
+PRINT nums[3:]       # [3, 4, 5]
+
+# List Comprehension
+LET squares = [n ** 2 FOR n IN nums]
+PRINT squares        # [0, 1, 4, 9, 16, 25]
+```
+
+#### Dictionaries
+
+Dictionaries are key-value pairs enclosed in `{}`. Keys must be Strings or Numbers.
+
+```glad
+LET person = {
+  "name": "Glad",
+  "age": 25,
+  "is_admin": TRUE
+}
+
+PRINT person["name"]       # Access: "Glad"
+LET person["age"] = 26     # Modify
+LET person["city"] = "NYC" # Add new key
+```
+
+#### Booleans
+
+Booleans are `TRUE` and `FALSE`. They are the result of comparisons and logical operations.
+
+```glad
+LET t = TRUE
+LET f = FALSE
+PRINT t AND f # 0 (False)
+PRINT t OR f  # 1 (True)
+PRINT NOT t   # 0 (False)
+```
+
+**Truthiness:** `0`, `0.0`, `""`, `NULL`, and `FALSE` are "falsy." All other values (including non-empty strings, non-zero numbers, lists, functions, and classes) are "truthy."
+
+#### Null
+
+The `NULL` keyword represents a null or "nothing" value. It is falsy and prints as `0`. Functions with no `RETURN` statement implicitly return `NULL`.
+
+-----
+
+### 3\. Operators
+
+#### Math Operations
+
+GladLang supports standard arithmetic plus advanced operators like Modulo, Floor Division, and Power.
+
+```glad
+LET sum = 10 + 5    # 15
+LET diff = 20 - 8   # 12
+LET prod = 5 * 4    # 20
+LET quot = 100 / 2  # 50.0 (Always Float)
+
+PRINT 2 ** 3      # Power: 8
+PRINT 10 // 3     # Floor Division: 3
+PRINT 10 % 3      # Modulo: 1
+
+# Standard precedence rules apply
+PRINT 2 + 3 * 4   # 14
+PRINT 1 + 2 * 3   # 7
+PRINT (1 + 2) * 3 # 9
+```
+
+#### Compound Assignments
+
+GladLang supports syntactic sugar for updating variables in place.
+
+```glad
+LET score = 10
+
+score += 5   # score is now 15
+score -= 2   # score is now 13
+score *= 2   # score is now 26
+score /= 2   # score is now 13.0
+score %= 5   # score is now 3.0
+
+```
+
+#### Bitwise Operators
+
+Perform binary manipulation on integers.
+
+```glad
+LET a = 5  # Binary 101
+LET b = 3  # Binary 011
+
+PRINT a & b   # 1 (AND)
+PRINT a | b   # 7 (OR)
+PRINT a ^ b   # 6 (XOR)
+PRINT ~a      # -6 (NOT)
+PRINT 1 << 2  # 4 (Left Shift)
+PRINT 8 >> 2  # 2 (Right Shift)
+
+# Compound Assignment
+LET x = 1
+x <<= 2       # x is now 4
+```
+
+#### Comparisons & Logic
+
+You can compare values, chain comparisons for ranges, and check object identity.
+
+```glad
+# Equality & Inequality
+PRINT 1 == 1      # True
+PRINT 1 != 2      # True
+
+# Chained Comparisons (Ranges)
+LET age = 25
+IF 18 <= age < 30 THEN
+  PRINT "Young Adult"
+ENDIF
+
+PRINT (10 < 20) AND (10 != 5) # 1 (True)
+
+# Identity ('is' checks if variables refer to the same object)
+LET a = [1, 2]
+LET b = a
+PRINT b is a      # True
+PRINT b == [1, 2] # True (Values match)
+
+# Boolean Operators (case-insensitive)
+IF a and b THEN
+  PRINT "Both exist"
+ENDIF
+```
+
+#### Increment / Decrement
+
+Supports C-style pre- and post-increment/decrement operators on variables and list elements.
+
+```glad
+LET i = 5
+PRINT i++ # 5
+PRINT i   # 6
+PRINT ++i # 7
+PRINT i   # 7
+
+LET my_list = [10, 20]
+PRINT my_list[1]++ # 20
+PRINT my_list[1]   # 21
+```
+
+-----
+
+### 4\. Control Flow
+
+#### IF Statements
+
+Uses `IF...THEN...ENDIF` syntax.
+
+```glad
+IF x > 10 THEN
+    PRINT "Large"
+ELSE IF x > 5 THEN
+    PRINT "Medium"
+ELSE
+    PRINT "Small"
+ENDIF
+```
+
+#### Switch Statements
+
+Use `SWITCH` to match a value against multiple possibilities. It supports single values, comma-separated lists for multiple matches, and expressions.
+
+```glad
+LET status = 200
+
+SWITCH status
+    CASE 200:
+        PRINT "OK"
+    CASE 404, 500:
+        PRINT "Error"
+    DEFAULT:
+        PRINT "Unknown Status"
+ENDSWITCH
+
+```
+
+#### WHILE Loops
+
+Loops while a condition is `TRUE`.
+
+```glad
+LET i = 3
+WHILE i > 0
+  PRINT "i = " + i
+  LET i = i - 1
+ENDWHILE
+
+# Prints:
+# i = 3
+# i = 2
+# i = 1
+```
+
+#### FOR Loops
+
+Iterates over the elements of a list.
+
+```glad
+LET my_list = ["apple", "banana", "cherry"]
+FOR item IN my_list
+  PRINT "Item: " + item
+ENDFOR
+```
+
+**`BREAK` and `CONTINUE`** are supported in both `WHILE` and `FOR` loops.
+
+-----
+
+### 5\. Functions
+
+#### Named Functions
+
+Defined with `DEF...ENDDEF`. Arguments are passed by value. `RETURN` sends a value back.
+
+```glad
+DEF add(a, b)
+  RETURN a + b
+ENDDEF
+
+LET sum = add(10, 5)
+PRINT sum # 15
+```
+
+#### Anonymous Functions
+
+Functions can be defined without a name, perfect for assigning to variables.
+
+```glad
+LET double = DEF(x)
+  RETURN x * 2
+ENDDEF
+
+PRINT double(5) # 10
+```
+
+#### Closures
+
+Functions capture variables from their parent scope.
+
+```glad
+DEF create_greeter(greeting)
+  DEF greeter_func(name)
+    # 'greeting' is "closed over" from the parent
+    RETURN greeting + ", " + name + "!"
+  ENDDEF
+  RETURN greeter_func
+ENDDEF
+
+LET say_hello = create_greeter("Hello")
+PRINT say_hello("Alex") # "Hello, Alex!"
+```
+
+#### Recursion
+
+Functions can call themselves.
+
+```glad
+DEF fib(n)
+  IF n <= 1 THEN
+    RETURN n
+  ENDIF
+  RETURN fib(n - 1) + fib(n - 2)
+ENDDEF
+
+PRINT fib(7) # 13
+```
+
+-----
+
+### 6\. Object-Oriented Programming (OOP)
+
+#### Classes and Instantiation
+
+Use `CLASS...ENDCLASS` to define classes and `NEW` to create instances. The constructor is `init`.
+
+```glad
+CLASS Counter
+  DEF init(SELF)
+    SELF.count = 0 # 'SELF' is the instance
+  ENDDEF
+  
+  DEF increment(SELF)
+    SELF.count = SELF.count + 1
+  ENDDEF
+  
+  DEF get_count(SELF)
+    RETURN SELF.count
+  ENDDEF
+ENDCLASS
+```
+
+#### The `SELF` Keyword
+
+`SELF` is the mandatory first argument for all methods and is used to access instance attributes and methods.
+
+```glad
+LET c = NEW Counter()
+c.increment()
+PRINT c.get_count() # 1
+```
+
+#### Inheritance
+
+Use the `INHERITS` keyword. Methods can be overridden, but GladLang enforces strict visibility rules (LSP) and prevents circular inheritance loops.
+
+```glad
+CLASS Pet
+  DEF init(SELF, name)
+    SELF.name = name
+  ENDDEF
+  
+  DEF speak(SELF)
+    PRINT SELF.name + " makes a generic pet sound."
+  ENDDEF
+ENDCLASS
+
+CLASS Dog INHERITS Pet
+  # Override the 'speak' method
+  DEF speak(SELF)
+    PRINT SELF.name + " says: Woof!"
+  ENDDEF
+ENDCLASS
+
+LET my_dog = NEW Dog("Buddy")
+my_dog.speak() # "Buddy says: Woof!"
+```
+
+#### Polymorphism
+
+When a base class method calls another method on `SELF`, it will correctly use the **child's overridden version**.
+
+```glad
+CLASS Pet
+  DEF introduce(SELF)
+    PRINT "I am a pet and I say:"
+    SELF.speak() # This will call the child's 'speak'
+  ENDDEF
+  
+  DEF speak(SELF)
+    PRINT "(Generic pet sound)"
+  ENDDEF
+ENDCLASS
+
+CLASS Cat INHERITS Pet
+  DEF speak(SELF)
+    PRINT "Meow!"
+  ENDDEF
+ENDCLASS
+
+LET my_cat = NEW Cat("Whiskers")
+my_cat.introduce()
+# Prints:
+# I am a pet and I say:
+# Meow!
+```
+
+#### Access Modifiers
+
+You can control the visibility of methods and attributes using `PUBLIC`, `PRIVATE`, and `PROTECTED`.
+
+* **Encapsulation:** Private attributes are name-mangled to prevent collisions.
+* **Singleton Support:** Constructors (`init`) can be private to force factory usage.
+
+```glad
+CLASS SecureData
+  DEF init(SELF, data)
+    PRIVATE SELF.data = data
+  ENDDEF
+
+  PUBLIC DEF get_data(SELF)
+    RETURN SELF.data
+  ENDDEF
+ENDCLASS
+
+# External access to 'data' will raise a Runtime Error.
+```
+
+#### Static Members
+
+GladLang supports Java-style static fields and methods. These belong to the class itself rather than instances.
+
+* **Static Fields:** Shared across all instances.
+* **Static Constants:** `STATIC FINAL` creates class-level constants.
+* **Static Privacy:** `STATIC PRIVATE` fields are only visible within the class.
+
+```glad
+CLASS Config
+  # A constant shared by everyone
+  STATIC FINAL MAX_USERS = 100
+
+  # A private static variable
+  STATIC PRIVATE LET internal_count = 0
+
+  STATIC PUBLIC DEF increment()
+    Config.internal_count = Config.internal_count + 1
+    RETURN Config.internal_count
+  ENDDEF
+ENDCLASS
+
+# Access directly via the Class name
+PRINT Config.MAX_USERS      # 100
+PRINT Config.increment()    # 1
+```
+
+-----
+
+### 7\. Built-in Functions
+
+  * `PRINT(value)`: Prints a value to the console.
+  * `INPUT()`: Reads a line of text from the user as a String.
+  * `STR(value)`: Casts a value to a String.
+  * `INT(value)`: Casts a String or Float to an Integer.
+  * `FLOAT(value)`: Casts a String or Integer to a Float.
+  * `BOOL(value)`: Casts a value to its Boolean representation (`TRUE` or `FALSE`).
+  * `LEN(value)`: Returns the length of a String, List, Dict, or Number. Alias: `LENGTH()`.
+
+-----
+
+## Error Handling
+
+You can handle runtime errors gracefully or throw your own exceptions.
+
+```glad
+TRY
+    # Attempt dangerous code
+    LET result = 10 / 0
+    PRINT result
+CATCH error
+    # Handle the error
+    PRINT "Caught an error: " + error
+FINALLY
+    # Always runs
+    PRINT "Cleanup complete."
+ENDTRY
+
+# Manually throwing errors
+IF age < 0 THEN
+    THROW "Age cannot be negative!"
+ENDIF
+```
+
+GladLang features detailed error handling and prints full tracebacks for runtime errors, making debugging easy.
+
+**Example: Name Error** (`test_name_error.glad`)
+
+```
+Traceback (most recent call last):
+  File test_name_error.glad, line 6, in <program>
+Runtime Error: 'b' is not defined
+```
+
+**Example: Type Error** (`test_type_error.glad` with input "5")
+
+```
+Traceback (most recent call last):
+  File test_type_error.glad, line 6, in <program>
+Runtime Error: Illegal operation
+```
+
+**Example: Argument Error** (`test_arg_error.glad`)
+
+```
+Traceback (most recent call last):
+  File test_arg_error.glad, line 7, in <program>
+  File test_arg_error.glad, line 4, in add
+Runtime Error: Incorrect argument count for 'add'. Expected 2, got 3
+```
+
+-----
+
+## Running Tests
+
+The `tests/` directory contains a comprehensive suite of `.glad` files to test every feature of the language. You can run any test by executing it with the interpreter:
+
+```bash
+gladlang "test_closures.glad"
+gladlang "test_lists.glad"
+gladlang "test_polymorphism.glad"
+```
+
+## License
+
+You can use this under the MIT License. See [LICENSE](LICENSE) for more details.
