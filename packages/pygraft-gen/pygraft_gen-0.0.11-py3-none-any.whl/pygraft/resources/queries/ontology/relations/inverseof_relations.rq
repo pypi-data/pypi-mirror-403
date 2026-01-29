@@ -1,0 +1,73 @@
+#  Software Name: PyGraft-gen
+#  SPDX-FileCopyrightText: Copyright (c) Orange SA
+#  SPDX-License-Identifier: MIT
+#
+#  This software is distributed under the MIT license, the text of which is available at https://opensource.org/license/MIT/ or see the "LICENSE" file for more details.
+#
+#  Authors: See CONTRIBUTORS.txt
+#  Software description: A RDF Knowledge Graph stochastic generation solution.
+#
+# --------------------------------------------------------------------------------------------------
+# FILE      : inverseof_relations.rq
+# AUTHOR    : Ovidiu PASCAL - Orange INNOV
+# DATE      : 2025-12-12
+# PURPOSE   : Retrieve explicit owl:inverseOf links between ontology-local object-style
+#             properties as pairs (?prop_uri -> ?inverse_uri).
+#
+# INTENT    :
+#   Capture only owl:inverseOf axioms explicitly present in the ontology graph.
+#   Symmetry is NOT assumed at query time: only the direction explicitly asserted
+#   in the ontology is returned.
+#
+#   The source property (?prop_uri) is restricted to the ontology-local relations
+#   universe defined in relations_seed.rq and injected via {{RELATIONS_SEED}}.
+#
+# OUTPUT    :
+#   - ?prop_uri    : IRI of the source property (ontology-local, object-style)
+#   - ?inverse_uri : IRI of its explicitly declared inverse property
+#
+# NOTES     :
+#   - Explicit-only extraction: no UNION is used to add the reverse direction.
+#   - At this stage, the inverse property (?inverse_uri) is NOT required to be
+#     validated against the relations universe.
+#   - A universe check for ?inverse_uri exists conceptually but is intentionally
+#     disabled for now (see commented block below). This avoids prematurely
+#     constraining extraction and keeps behavior aligned with "explicit-first"
+#     ontology snapshots.
+#   - Pure SPARQL 1.1; no OWL reasoning.
+# --------------------------------------------------------------------------------------------------
+
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+
+SELECT DISTINCT
+  ?prop_uri
+  ?inverse_uri
+WHERE {
+  # @RELATIONS_SEED
+
+  ### Explicit inverseOf direction only
+  ?prop_uri owl:inverseOf ?inverse_uri .
+  FILTER(isIRI(?inverse_uri))
+
+  ##########################################################################
+  # NOTE (INTENTIONALLY DISABLED):
+  #
+  # The following block would enforce that the inverse property also belongs
+  # to the same ontology-local object-property universe. This is currently
+  # ignored by design and left commented out for future refinement.
+  #
+  # {
+  #   SELECT DISTINCT ?inverse_uri
+  #   WHERE {
+  #     # @RELATIONS_SEED
+  #     BIND(?prop_uri AS ?inverse_uri)
+  #   }
+  # }
+  ##########################################################################
+}
+ORDER BY
+  STR(?prop_uri)
+  STR(?inverse_uri)
