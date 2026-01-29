@@ -1,0 +1,266 @@
+# lite-code
+
+⚡ **Fast, Cost-Effective AI Code Assistant** - The lightweight alternative to Claude Code for developers, small teams, and freelancers.
+
+## Why lite-code?
+
+**Claude Code is powerful but expensive.** lite-code gives you the essential AI-powered code refactoring capabilities at a fraction of the cost.
+
+| Feature | Claude Code | lite-code |
+|---------|-------------|-----------|
+| **Cost** | $20/month | Pay-per-use (Cerebras) |
+| **Speed** | Fast | ⚡ Faster (batch processing) |
+| **Context** | 200K tokens | 130K tokens |
+| **Best For** | Enterprise | Developers, Freelancers, Small Teams |
+| **Setup** | Complex | Simple (pip install) |
+
+## Features
+
+- ⚡ **Lightning Fast**: Batch processing reads multiple files in one request
+- 💰 **Cost Effective**: Pay only for what you use with Cerebras API
+- 🎯 **Focused**: Essential refactoring features without bloat
+- 🐍 **Python Support**: Type hints, logging conversion, async patterns
+- 📜 **JavaScript/TypeScript Support**: Modern JS patterns, type annotations
+- 💬 **Interactive CLI**: Simple, intuitive interface
+- 📁 **Context Management**: Reference files and folders with `@` and `/`
+- 🔒 **Safe Refactoring**: In-place editing with optional backup mode
+- 💾 **Persistent Configuration**: Saves your settings between sessions
+- 🎨 **Beautiful Output**: Rich console with colored diffs
+- ⌨️ **Tab Completion**: Auto-complete file and folder references
+- ❓ **Ask Mode**: Ask questions about code and generate diagrams
+
+## Installation
+
+### Install from PyPI
+
+```bash
+pip install lite-code
+```
+
+### Install from Source
+
+```bash
+git clone https://github.com/kumarsahil01/lite-code.git
+cd lite-code
+pip install -e .
+```
+
+## Quick Start
+
+```bash
+# Launch the interactive CLI
+lite-code
+
+# First-time setup will prompt for:
+# 1. Cerebras API key
+# 2. Model name (default: zai-glm-4.7)
+```
+
+## Usage
+
+### Interactive Mode
+
+```bash
+lite-code
+```
+
+### Commands
+
+- `@filename` - Reference a file (e.g., `@utils.py`) - supports tab completion
+- `/folder` - Reference a folder (e.g., `/src`) - supports tab completion
+- `ask <question>` - Ask questions about code (e.g., `ask explain main()`)
+- `?` - Show help
+- `!` - Change settings
+- `clear` - Clear context
+- `exit`/`quit` - Save and exit
+
+### Example Session
+
+```bash
+$ lite-code
+
+🚀 Welcome to lite-code!
+AI-powered code refactoring assistant
+
+No API key found.
+Enter your Cerebras API key: sk-xxxxxxxx
+✓ API key saved
+
+lite-code > @utils.py
+✓ Added utils.py (python) to context
+
+lite-code > /src
+✓ Added folder /src to context (5 files)
+
+lite-code > Add type hints to all functions
+✓ Analyzing 5 file(s)...
+
+File 1/5: src/utils.py
+--- original
++++ modified
+-def greet(name):
++def greet(name: str) -> str:
+     print("Hello, " + name)
+
+Apply changes? [y/N]: y
+✓ Applied changes
+
+File 2/5: src/api.py
+--- original
++++ modified
+-def fetch_data(url):
++def fetch_data(url: str) -> dict:
+
+Apply changes? [y/N]: y
+✓ Applied changes
+
+✓ Completed: 5 files modified
+
+lite-code > !
+Settings:
+  1. Change API key
+  2. Change model (current: zai-glm-4.7)
+  3. Toggle backup mode (current: disabled)
+  4. Back
+
+Select option: 3
+✓ Backup mode enabled
+
+lite-code > exit
+✓ Configuration saved
+Goodbye! 👋
+```
+
+## Configuration
+
+Configuration is stored in `~/.lite-code/config.json`:
+
+```json
+{
+  "api_key": "your-api-key",
+  "model": "zai-glm-4.7",
+  "context": ["utils.py", "src/"],
+  "backup_mode": false
+}
+```
+
+## Settings
+
+Access settings by typing `!` in the interactive CLI:
+
+1. **Change API key** - Update your Cerebras API key
+2. **Change model** - Switch between different models
+3. **Toggle backup mode** - Enable/disable automatic backups
+4. **Back** - Return to main interface
+
+## Supported Refactoring Types
+
+### Python
+
+- Type hinting
+- Print → logging conversion
+- Async conversion
+- Dead code removal
+- Best practices (f-strings, context managers)
+
+### JavaScript/TypeScript
+
+- var → const/let conversion
+- Arrow functions
+- Template literals
+- JSDoc comments
+- TypeScript type annotations
+
+## Requirements
+
+- Python 3.10+
+- Cerebras API key
+- Internet connection (for API calls)
+
+## Dependencies
+
+- `cerebras-cloud-sdk` - Cerebras API client
+- `rich` - Beautiful terminal output
+- `prompt-toolkit` - Interactive input with history
+
+## Getting Your API Key
+
+Get your Cerebras API key from [Cerebras Cloud](https://cloud.cerebras.ai/)
+
+## Troubleshooting
+
+### API Key Not Found
+
+```
+No API key found.
+Enter your Cerebras API key:
+```
+
+Solution: Enter your API key when prompted, or set it via settings (`!` command).
+
+### Model Not Found
+
+If you see an error about the model not existing, check the model name in settings (`!` command).
+
+### Context Issues
+
+If files aren't being found, ensure you're in the correct directory and use relative paths.
+
+## Development
+
+### Setup Development Environment
+
+```bash
+git clone https://github.com/kumarsahil01/lite-code.git
+cd lite-code
+pip install -e ".[dev]"
+```
+
+### Run Tests
+
+```bash
+pytest
+```
+
+### Build Package
+
+```bash
+python -m build
+```
+
+### Publish to PyPI
+
+```bash
+twine upload dist/*
+```
+
+## Credits
+
+**Built by**: Sahil Kumar
+
+**Special Thanks**: Cerebras for providing the zai-glm-4.7 model and API support
+
+**GitHub**: https://github.com/kumarsahil01/lite-code
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Acknowledgments
+
+- Built with [Cerebras Cloud SDK](https://cloud.cerebras.ai/)
+- Inspired by [Claude Code](https://claude.ai/code)
+- Uses [Rich](https://rich.readthedocs.io/) for beautiful terminal output
+- Uses [prompt_toolkit](https://python-prompt-toolkit.readthedocs.io/) for interactive input
+
+## Support
+
+For issues and questions, please open an issue on [GitHub](https://github.com/kumarsahil01/lite-code/issues).
+
+---
+
+Made with ❤️ by the  Sahil Kumar
