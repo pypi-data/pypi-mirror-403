@@ -1,0 +1,1351 @@
+#!/usr/bin/python
+ 
+#    fchart draws beautiful deepsky charts in vector formats
+#    fchart3 CLI enhancements: horizontal coordinate input parsing
+#    Copyright (C) 2005-2025 fchart authors
+#
+#    This program is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+import gettext
+import os
+
+import math
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Optional, Any
+import gzip
+import urllib.request
+import uuid
+
+uilanguage=os.environ.get('fchart3lang')
+try:
+    lang = gettext.translation( 'messages', localedir='locale', languages=[uilanguage])
+    lang.install()
+    _ = lang.gettext
+except:                  
+    _ = gettext.gettext
+
+import argparse
+import textwrap
+from time import time
+import sys
+import numpy as np
+
+import fchart3
+
+from fchart3.config_loader import ConfigurationLoader, CoordSystem
+from fchart3.skymap_engine import SkymapEngine
+from fchart3.used_catalogs import UsedCatalogs
+from fchart3.configuration import EngineConfiguration
+from fchart3.graphics.graphics_cairo import CairoDrawing
+from fchart3.graphics.graphics_tikz import TikZDrawing
+from fchart3.graphics.graphics_interface import FontStyle
+from fchart3.horizon_landscape import load_stellarium_landscape
+
+from fchart3.cli.search_object_utils import (
+    resolve_star, resolve_solar_system, resolve_planet_moon, resolve_comet, resolve_minor_planet
+)
+from fchart3.cli.solar_system import get_solsys_bodies, get_planet_moons
+
+from fchart3.projections.projection import ProjectionType
+from datetime import datetime, timezone, date
+from skyfield.api import load
+
+skyfield_ts = load.timescale()
+
+#################################################################
+VERSION ="0.11.0"
+def print_version():
+    print(_(f"""fchart3 version 0.11.0 (c) fchart3 authors 2005-2025\n
+fchart3 comes with ABSOLUTELY NO WARRANTY. It is distributed under the
+GNU General Public License (GPL) version 2. For details see the LICENSE
+file distributed with the software. This is free software, and you are
+welcome to redistribute it under certain conditions as specified in the
+LICENSE file."""))
+
+
+class ParsedCoordType(str, Enum):
+    """Coordinate type of a parsed CLI position."""
+    EQUATORIAL = "equatorial"   # RA/Dec
+    HORIZONTAL = "horizontal"   # Az/Alt
+
+
+@dataclass(frozen=True)
+class ParsedPosition:
+    """Parsed position in radians; meaning depends on coord_type."""
+    coord_type: ParsedCoordType
+    c1_rad: float  # RA or Az
+    c2_rad: float  # Dec or Alt
+
+
+def _parse_sexagesimal(value: str, *, is_hours: bool) -> float:
+    """
+    Parse sexagesimal or decimal string into radians.
+    - is_hours=True: interpret as hours (RA-like), convert via *15 deg.
+    - is_hours=False: interpret as degrees (Dec/Az/Alt-like).
+    Accepts:
+      "12", "12.5", "12:30", "12:30:15.5"
+      With sign for degrees: "+12:30", "-12.5"
+    """
+    s = value.strip()
+    if not s:
+        raise ValueError("Empty coordinate component")
+
+    sign = 1.0
+    if s[0] in "+-":
+        if s[0] == "-":
+            sign = -1.0
+        s = s[1:].strip()
+
+    parts = s.split(":")
+    try:
+        nums = [float(p) for p in parts if p != ""]
+    except ValueError as e:
+        raise ValueError(f"Invalid coordinate component '{value}'") from e
+
+    if len(nums) == 0:
+        raise ValueError(f"Invalid coordinate component '{value}'")
+    deg_or_hours = nums[0]
+    if len(nums) >= 2:
+        deg_or_hours += nums[1] / 60.0
+    if len(nums) >= 3:
+        deg_or_hours += nums[2] / 3600.0
+
+    deg_or_hours *= sign
+    if is_hours:
+        # hours -> degrees -> radians
+        return math.radians(deg_or_hours * 15.0)
+    return math.radians(deg_or_hours)
+
+
+def _strip_coord_prefix(c1: str):
+    """
+    Detect coordinate prefix on first component.
+    Default is equatorial if no prefix is present.
+    Supported:
+      h:, hor:, altaz:  => horizontal (Az/Alt in degrees)
+      e:, eq:, radec:   => equatorial (RA in hours, Dec in degrees)
+    Returns: (coord_type, c1_without_prefix)
+    """
+    s = c1.strip()
+    low = s.lower()
+    for p in ("h:", "hor:", "altaz:", "azalt:", "hz:"):
+        if low.startswith(p):
+            return ParsedCoordType.HORIZONTAL, s[len(p):].strip()
+    for p in ("e:", "eq:", "radec:"):
+        if low.startswith(p):
+            return ParsedCoordType.EQUATORIAL, s[len(p):].strip()
+    return ParsedCoordType.EQUATORIAL, s
+
+
+def _parse_coord_pair(c1_raw: str, c2_raw: str) -> ParsedPosition:
+    """
+    Parse a coordinate pair from CLI.
+    - Default: equatorial (RA/Dec)
+    - Horizontal requires prefix on the first component (h:/hor:/altaz:)
+    Returns radians.
+    """
+    coord_type, c1 = _strip_coord_prefix(c1_raw)
+    c2 = c2_raw.strip()
+    if coord_type == ParsedCoordType.EQUATORIAL:
+        ra_rad = _parse_sexagesimal(c1, is_hours=True)
+        dec_rad = _parse_sexagesimal(c2, is_hours=False)
+        return ParsedPosition(coord_type, ra_rad, dec_rad)
+    else:
+        az_rad = _parse_sexagesimal(c1, is_hours=False)
+        alt_rad = _parse_sexagesimal(c2, is_hours=False)
+        # Normalize azimuth to [0, 2*pi)
+        az_rad = az_rad % (2.0 * math.pi)
+        return ParsedPosition(coord_type, az_rad, alt_rad)
+
+
+def _try_parse_source_position(source: str):
+    """
+    Try to parse a source string in the form:
+      "<c1>,<c2>[,<caption>[,<...>]]"
+    c1/c2 are either RA/Dec (default) or Az/Alt when prefixed with h:.
+    Returns: (ParsedPosition, caption_str)
+    Raises ValueError if it doesn't look like a position spec.
+    """
+    if "," not in source:
+        raise ValueError("No comma => not a position spec")
+    parts = [p.strip() for p in source.split(",")]
+    if len(parts) < 2:
+        raise ValueError("Not enough components for a position spec")
+    pos = _parse_coord_pair(parts[0], parts[1])
+    caption = ",".join(parts[2:]).strip() if len(parts) > 2 else ""
+    return pos, caption
+
+
+def _parse_cross_mark(mark: str):
+    """
+    Parse -x argument:
+      "<c1>,<c2>[,<label>[,<labelpos>]]"
+    Supports same prefixes as source positions (h:/hor:/altaz:).
+    Returns: (ParsedPosition, label, labelpos)
+    """
+    parts = [p.strip() for p in mark.split(",")]
+    if len(parts) < 2:
+        raise ValueError("option -x needs at least two coordinates: -x \"c1,c2[,label[,pos]]\"")
+    pos = _parse_coord_pair(parts[0], parts[1])
+    label = parts[2].strip() if len(parts) >= 3 else ""
+    labelpos = parts[3].strip() if len(parts) >= 4 and parts[3].strip() else "r"
+    return pos, label, labelpos
+
+
+def _get_lst_rad(dt_utc: datetime, lon_deg: float) -> float:
+    """
+    Compute apparent Local Sidereal Time (radians) using Skyfield.
+    Longitude is in degrees, east positive (same convention as your CLI).
+    """
+    if dt_utc is None:
+        dt_utc = datetime.now(timezone.utc)
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+    else:
+        dt_utc = dt_utc.astimezone(timezone.utc)
+
+    t = skyfield_ts.from_datetime(dt_utc)
+
+    lst_hours = (t.gast + (lon_deg / 15.0)) % 24.0
+    return lst_hours * (2.0 * math.pi / 24.0)
+
+
+def _radec_to_altaz(ra_rad: float, dec_rad: float, dt_utc: datetime, lat_deg: float, lon_deg: float):
+    """Use your fchart3.astrocalc.radec_to_horizontal(). Returns (alt, az)."""
+    lst = _get_lst_rad(dt_utc, lon_deg)
+    lat_rad = math.radians(lat_deg)
+    sincos_lat = (math.sin(lat_rad), math.cos(lat_rad))
+    return fchart3.astrocalc.radec_to_horizontal(lst, sincos_lat, ra_rad, dec_rad)  # (alt, az)
+
+
+def _fieldcentre_for_engine(ra_rad: float, dec_rad: float, config: EngineConfiguration, dt_utc: datetime):
+    """
+    Returns (phi, theta, dt_utc) for engine.set_field().
+    Equatorial: (ra, dec)
+    Horizontal: (az, alt) converted from (ra, dec)
+    """
+    if config.coord_system == CoordSystem.EQUATORIAL:
+        return ra_rad, dec_rad, dt_utc
+
+    if config.observer_lat_deg is None or config.observer_lon_deg is None:
+        raise RuntimeError("Horizontal mode needs observer_lat_deg/observer_lon_deg (CLI or config).")
+
+    if dt_utc is None:
+        dt_utc = datetime.now(timezone.utc)
+
+    alt, az = _radec_to_altaz(ra_rad, dec_rad, dt_utc, config.observer_lat_deg, config.observer_lon_deg)
+    return az, alt, dt_utc  # IMPORTANT ORDER
+
+
+def _fieldcentre_for_engine_from_position(pos: ParsedPosition, config: EngineConfiguration, dt_utc: datetime):
+    """
+    Returns (phi, theta, dt_utc) for engine.set_field() from a parsed position.
+    - If pos is equatorial: behaves like current RA/Dec logic (convert if horizontal engine)
+    - If pos is horizontal: allowed only when engine is horizontal; used directly as (az, alt)
+    """
+    if pos.coord_type == ParsedCoordType.EQUATORIAL:
+        return _fieldcentre_for_engine(pos.c1_rad, pos.c2_rad, config, dt_utc)
+
+    # Horizontal position input
+    if config.coord_system != CoordSystem.HORIZONTAL:
+        raise RuntimeError("Horizontal (h:) position can be used only with --coord-system horizontal.")
+    if config.observer_lat_deg is None or config.observer_lon_deg is None:
+        raise RuntimeError("Horizontal mode needs observer_lat_deg/observer_lon_deg (CLI or config).")
+    if dt_utc is None:
+        dt_utc = datetime.now(timezone.utc)
+    # azimuth is counted reversed, internally.
+    return (2.*math.pi - pos.c1_rad), pos.c2_rad, dt_utc
+
+
+def _convert_extra_positions(extra_positions, config: EngineConfiguration, dt_utc: datetime):
+    """Convert extra positions to engine coords. Keeps h: directly in horizontal mode."""
+    if not extra_positions:
+        return extra_positions
+    if config.coord_system == CoordSystem.EQUATORIAL:
+        # In equatorial mode, only equatorial marks are supported (no alt/az -> ra/dec inversion here).
+        for item in extra_positions:
+            pos = item[0]
+            if isinstance(pos, ParsedPosition) and pos.coord_type == ParsedCoordType.HORIZONTAL:
+                raise RuntimeError("Horizontal (h:) -x marks require --coord-system horizontal.")
+        # Convert to old format [ra, dec, label, labelpos] for engine
+        out_eq = []
+        for pos, label, labelpos in extra_positions:
+            out_eq.append([pos.c1_rad, pos.c2_rad, label, labelpos])
+        return out_eq
+    out = []
+    for pos, label, labelpos in extra_positions:
+        if pos.coord_type == ParsedCoordType.HORIZONTAL:
+            phi, theta, dt_utc = _fieldcentre_for_engine_from_position(pos, config, dt_utc)
+        else:
+            phi, theta, dt_utc = _fieldcentre_for_engine(pos.c1_rad, pos.c2_rad, config, dt_utc)
+        out.append([phi, theta, label, labelpos])
+    return out
+
+
+def _parse_time_arg(value: str) -> datetime:
+    s = value.strip()
+    if s.lower() in ("now",):
+        return datetime.now(timezone.utc)
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            f"Invalid --time value '{value}'. Expected ISO-8601, e.g. "
+            f"2026-01-02T21:15:00Z or 2026-01-02T21:15:00+01:00, or 'now'."
+        ) from e
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _parse_time_or_date_arg(value: str) -> datetime:
+    """
+    Parse ISO-8601 datetime or date into UTC datetime.
+    Accepts:
+      - 2026-01-02T21:15:00Z
+      - 2026-01-02T21:15:00+01:00
+      - 2026-01-02  (interpreted as 00:00:00Z)
+    """
+    s = value.strip()
+    if not s:
+        raise argparse.ArgumentTypeError("Empty datetime/date value")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+
+    # Try datetime first
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        pass
+
+    # Try date-only
+    try:
+        d = date.fromisoformat(s)
+        return datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            f"Invalid value '{value}'. Expected ISO-8601 datetime or date."
+        ) from e
+
+
+def _ensure_comet_els_file(path: str, *, force: bool = False) -> Optional[str]:
+    """
+    Ensure local MPC comet elements file exists at `path`.
+    If missing (or force=True), download it once and store it as plain ASCII.
+
+    IMPORTANT: The source file sometimes contains commas, which break parsing.
+    We apply a compatibility fix by replacing ',' with ' '.
+    """
+    comet_path = Path(path).expanduser().resolve()
+    if not force and comet_path.is_file() and comet_path.stat().st_size > 0:
+        return str(comet_path)
+
+    url = "https://astro.vanbuitenen.nl/cometelements?format=mpc"
+    try:
+        with load.open(url, reload=True) as f:
+            lines = f.readlines()
+
+        out_lines = [
+            line.decode("ascii", errors="ignore").replace(",", " ")
+            for line in lines
+        ]
+
+        tmp_path = comet_path.with_suffix(comet_path.suffix + ".tmp")
+        with tmp_path.open("w", encoding="ascii", newline="\n") as out_f:
+            out_f.write("".join(out_lines))
+
+        tmp_path.replace(comet_path)
+        print(f"Comet elements saved: {comet_path}")
+        return str(comet_path)
+    except Exception as e:
+        print(f"Failed to download comet elements file: {e}")
+        return None
+
+
+def _ensure_mpc_minor_planets_file(path: str, *, force: bool = False) -> Optional[str]:
+    """
+    Ensure local MPCORB subset file exists at `path`.
+    Default workflow: download MPCORB.DAT.gz and extract first numbered asteroids (like czsky).
+    Output is plain text MPCORB.9999.DAT compatible with Skyfield mpc.load_mpcorb_dataframe().
+    """
+    mp_path = Path(path).expanduser().resolve()
+    if not force and mp_path.is_file() and mp_path.stat().st_size > 0:
+        return str(mp_path)
+
+    url = "https://minorplanetcenter.net/iau/MPCORB/MPCORB.DAT.gz"
+    tmp_gz = mp_path.with_suffix(mp_path.suffix + f".{uuid.uuid4().hex}.gz")
+    tmp_out = mp_path.with_suffix(mp_path.suffix + ".tmp")
+
+    try:
+        # Download
+        urllib.request.urlretrieve(url, tmp_gz)
+
+        # Extract subset like czsky: skip header, take first ~9999 objects.
+        # czsky uses: start row 44, stop row 10042 (1-based). We'll mimic that.
+        start_line = 44        # 1-based
+        stop_line = 10042      # 1-based inclusive-ish cap
+        cur_line = 0
+
+        with gzip.open(tmp_gz, "rt", encoding="latin-1", errors="ignore") as gz_in, \
+             tmp_out.open("w", encoding="latin-1", newline="\n") as out_f:
+            for line in gz_in:
+                cur_line += 1
+                if cur_line < start_line:
+                    continue
+                if cur_line > stop_line:
+                    break
+                out_f.write(line)
+
+        tmp_out.replace(mp_path)
+        try:
+            tmp_gz.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        print(f"Minor planets MPCORB subset saved: {mp_path}")
+        return str(mp_path)
+    except Exception as e:
+        print(f"Failed to download MPCORB.DAT.gz: {e}")
+        try:
+            tmp_out.unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            tmp_gz.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return None
+
+
+def _search_sky_object(source, settings):
+    parsed_pos = None
+    filename = None
+    trajectory = None
+
+    # Use explicit time if provided, otherwise "now" (UTC) for moving targets.
+    dt_utc = settings.parser.dt
+    if dt_utc is None:
+        dt_utc = datetime.now(timezone.utc)
+
+    dso, cat, name = used_catalogs.lookup_dso(source)
+    if dso:
+        # DSO catalogue positions are always RA/Dec
+        parsed_pos = ParsedPosition(ParsedCoordType.EQUATORIAL, dso.ra, dso.dec)
+        filename = cfg.output_dir + os.sep + source
+
+    # --- Stars (via star_catalog + bsc_hip_map, inspired by StarsRenderer) ---
+    if parsed_pos is None:
+        # We intentionally use direct field access (no getattr) as requested.
+        star_catalog = used_catalogs.star_catalog
+        bsc_hip_map = used_catalogs.bsc_hip_map
+        if star_catalog is not None and bsc_hip_map is not None:
+            resolved = resolve_star(source, star_catalog, bsc_hip_map, search_cache)
+            if resolved is not None:
+                cat = "STAR"
+                name = resolved.name
+                parsed_pos = ParsedPosition(ParsedCoordType.EQUATORIAL, resolved.ra_rad, resolved.dec_rad)
+
+    # --- Solar system bodies (Sun/Moon/planets) ---
+    if parsed_pos is None:
+        resolved = resolve_solar_system(
+            source,
+            dt_utc=dt_utc,
+            observer_lat_deg=cfg.observer_lat_deg,
+            observer_lon_deg=cfg.observer_lon_deg,
+        )
+        if resolved is not None:
+            cat = "SOL"
+            name = resolved.name
+            parsed_pos = ParsedPosition(ParsedCoordType.EQUATORIAL, resolved.ra_rad, resolved.dec_rad)
+
+    # --- Planet moons (Io/Europa/...) ---
+    if parsed_pos is None:
+        resolved = resolve_planet_moon(
+            source,
+            dt_utc=dt_utc,
+            maglim=cfg.limit_stars,
+        )
+        if resolved is not None:
+            cat = "PLMOON"
+            name = resolved.name
+            parsed_pos = ParsedPosition(ParsedCoordType.EQUATORIAL, resolved.ra_rad, resolved.dec_rad)
+
+    traj_from = settings.parser.trajectory_from
+    traj_to = settings.parser.trajectory_to
+
+    if traj_from is not None and traj_to is not None and settings.parser.dt is None:
+        print(_("Comet target requires -t (observation time)."))
+        sys.exit(-1)
+
+    # --- Comet (MPC; needs -t and trajectory window) ---
+    if parsed_pos is None and traj_from and traj_to:
+        # Ensure CometEls.txt exists locally (download once if needed).
+        comet_file = _ensure_comet_els_file(
+            settings.parser.mpc_comets_file,
+            force=bool(getattr(settings.parser, "update_comets", False)),
+        )
+        if comet_file is None:
+            print(_("Comet elements file is missing and could not be downloaded."))
+            sys.exit(-1)
+
+        comet_res = resolve_comet(source, dt_utc=dt_utc, traj_from=traj_from, traj_to=traj_to, mpc_comets_file=comet_file)
+        if comet_res is not None:
+            comet_name, ra_rad, dec_rad, trajectory = comet_res
+            cat = "COMET"
+            name = comet_name
+            parsed_pos = ParsedPosition(ParsedCoordType.EQUATORIAL, ra_rad, dec_rad)
+
+    if parsed_pos is None and traj_from and traj_to:
+        mp_file = _ensure_mpc_minor_planets_file(
+            settings.parser.mpc_minor_planets_file,
+            force=bool(getattr(settings.parser, "update_minor_planets", False)),
+        )
+        if mp_file is None:
+            print(_("Minor planet MPCORB file is missing and could not be downloaded."))
+            sys.exit(-1)
+
+        mp_res = resolve_minor_planet(source, dt_utc=dt_utc, traj_from=traj_from, traj_to=traj_to, mpc_minor_planets_file=mp_file)
+        if mp_res is not None:
+            mp_name, ra_rad, dec_rad, trajectory = mp_res
+            cat = "AST"
+            name = mp_name
+            parsed_pos = ParsedPosition(ParsedCoordType.EQUATORIAL, ra_rad, dec_rad)
+
+    if parsed_pos is not None and filename is None:
+        filename = settings.output_dir + os.sep + name.replace(' ', '-').replace('/', '-').replace(',', '')
+
+    return dso, cat, name, parsed_pos, filename, trajectory
+
+
+class RuntimeSettings:
+    def __init__(self):
+        self.extra_positions_list = []
+        self.output_dir = './'
+        self.parse_commandline()
+
+    def parse_commandline(self):
+        argumentparser = argparse.ArgumentParser(
+              description='fchart3',
+              formatter_class=argparse.RawTextHelpFormatter,
+              add_help=True,
+              epilog=textwrap.dedent('''\
+                    Sourcenames:
+                       Valid sourcenames are for example:
+                       - NGC891, NgC891, n891 or 891 for NGC objects
+                       - IC1396, i1396, iC1396, I1396 for IC objects
+                       - m110, M3 for Messier objects
+                       - \"9:35:00.8,-34:15:33,SomeCaption\" for other positions (RA,Dec)
+                       - \"h:180:00:00,45:00:00,SomeCaption\" for horizontal positions (Az,Alt; degrees)
+                         (also accepts decimal degrees: \"h:180.5,45.25,SomeCaption\")
+
+                       There is one special sourcename, which is \"allmessier\". When this name
+                       is encountered, fchart3 dumps maps of all messier objects to the output
+                       directory.
+                    ''')
+              )
+
+        argumentparser.add_argument('-o', '--output-dir', dest='output_dir', nargs='?', action='store', #default='./',
+                                    help='Specify the output directory (default: current directory)')
+
+        argumentparser.add_argument('-f', '--output-file', dest='output_file', nargs='?', action='store',
+                                    help='Specify the output file name. (default: name of DSO object). ' +\
+                                         'The image format is defined by the file extension. ' +\
+                                         'Supported formats/extensions are pdf, png, and svg.')
+
+        argumentparser.add_argument('-c', '--config-file', dest='config_file', nargs='?', action='store',
+                                    help='Specify name of the configuration file distributed with fchart3 or path to custom config file. (default=default)')
+
+        argumentparser.add_argument('-E', '--extra-data-dir', dest='extra_data_dir', nargs='?', action='store',
+                                    help='Path to extra data directory containing Stellarium star catalogues.')
+
+        argumentparser.add_argument('-ld', '--limit-dso', dest='limit_deepsky', nargs='?', action='store', type=float,
+                                    help='Limiting magnitude for deep sky objects (default: 12.0)')
+        argumentparser.add_argument('-ls', '--limit-star', dest='limit_stars', nargs='?', action='store', type=float,
+                                    help='Limiting magnitude for stars. (Default: 12.0)')
+        argumentparser.add_argument('-W', '--width', dest='width', nargs='?', action='store', default=180.0, type=float,
+                                    help='Width of the drawing area in millimeters.')
+        argumentparser.add_argument('-H', '--height', dest='height', nargs='?', action='store', default=270.0, type=float,
+                                    help='Height of the drawing area in millimeters.')
+        argumentparser.add_argument('-landscape', '--landscape-paper', dest='landscape_paper', action='store_true',
+                                    help='Paper orientation landscape (Use with wider width).')
+        argumentparser.add_argument("--projection", dest="projection", default="stereographic", choices=["stereographic", "orthographic", "equidistant"],
+                                    help="Projection type (default: stereographic).")
+        argumentparser.add_argument('-fov', '--fieldsize',
+                                    dest='fieldsize', nargs='?', action='store', type=float,
+                                    help='Diameter of the field of view in degrees (default: 7.0)')
+
+        argumentparser.add_argument('-fmessier', '--force-messier', dest='force_messier', action='store_true',
+                                    help='Select all Messier objects, regardless of the limiting magnitude for deep sky objects.')
+        argumentparser.add_argument('-fasterism', '--force-asterisms', dest='force_asterisms', action='store_true',
+                                    help='Force plotting of asterisms on the map. By default, only "Messier" asterisms are plotted,' + \
+                                         ' while all others are ignored. The default setting helps clean up maps, especially in the Virgo cluster region.')
+        argumentparser.add_argument('-funknown', '--force-unknown', dest='force_unknown', action='store_true',
+                                    help='By default, objects in external galaxies are plotted only if their magnitude is known and is lower than ' + \
+                                         'the limiting magnitude for deep sky objects. If this option is given, objects in external galaxies ' + \
+                                         'of which the magnitude is unknown will also be plotted. This option may clutter some galaxies like M 101 ' + \
+                                         'and NGC 4559.')
+
+        argumentparser.add_argument('-l', '--language', dest='language', nargs='?', action='store', default='en',
+                                    help='Specify the language for the maps, options: \'en\', \'nl\', \'es\' (default: en)')
+
+        argumentparser.add_argument('-sc', '--show-catalogs', dest='show_catalogs', nargs='?', action='store',
+                                    help='Comma separated list of additional catalogs to be show on the map. (e.g. LBN).')
+
+        argumentparser.add_argument('-x', '--add-cross', dest='cross_marks', nargs='?', action='append',
+                                    help='Add a cross to the map at a specified position. The format of the argument for this option is: ' + \
+                                         '\"c1,c2,label,labelposition\" where c1/c2 are RA,Dec by default; use prefix h: for Az,Alt. ' + \
+                                         'Example (equatorial): -x\"20:35:25.4,+60:07:17.7,SN,t\". Example (horizontal): -x\"h:180,45,SN,t\". ' + \
+                                         'the supernova sn2004et in NGC 6946. The label position can be \'t\' for top, \'b\' for bottom, \'l\' for ' + \
+                                         'left, or \'r\' for right. The label and label position may be omitted.')
+
+        argumentparser.add_argument('-p', '--caption', dest='caption', nargs='?', action='store', default=None,
+                                    help='Force a specific caption for the maps. All maps will have the same caption.')
+
+        argumentparser.add_argument('--hide-star-labels', dest='show_star_labels', action='store_false', default=None,
+                                    help='Hide star labels.')
+
+        argumentparser.add_argument('--hide-flamsteed', dest='show_flamsteed', action='store_false', default=None,
+                                    help='Hide Flamsteed designations.')
+
+        argumentparser.add_argument('--show-mag-scale-legend', dest='show_mag_scale_legend', action='store_true', default=None,
+                                    help='Show magnitude scale legend.')
+
+        argumentparser.add_argument('--show-map-scale-legend', dest='show_map_scale_legend', action='store_true', default=None,
+                                    help='Show map scale legend.')
+
+        argumentparser.add_argument('--show-map-orientation-legend', dest='show_orientation_legend', action='store_true', default=None,
+                                    help='Show orientation legend.')
+
+        argumentparser.add_argument('--show-dso-legend', dest='show_dso_legend', action='store_true', default=None,
+                                    help='Show deep sky object legend.')
+
+        argumentparser.add_argument('--show-coords-legend', dest='show_coords_legend', action='store_true', default=None,
+                                    help='Show coordinates legend.')
+
+        argumentparser.add_argument('--hide-field-border', dest='show_field_border', action='store_false', default=None,
+                                    help='Hide the field border.')
+
+        argumentparser.add_argument('--show-equatorial-grid', dest='show_equatorial_grid', action='store_true', default=None,
+                                    help='Show equatorial grid.')
+
+        argumentparser.add_argument('--show-horizontal-grid', dest='show_horizontal_grid', action='store_true', default=None,
+                                    help='Show horizontal grid.')
+
+        argumentparser.add_argument('--hide-constellation-shapes', dest='show_constellation_shapes', action='store_false', default=None,
+                                    help='Hide constellation shapes.')
+
+        argumentparser.add_argument('--hide-constellation-borders', dest='show_constellation_borders', action='store_false', default=None,
+                                    help='Hide constellation borders.')
+
+        argumentparser.add_argument('--show-simple-milky-way', dest='show_simple_milky_way', action='store_true', default=None,
+                                    help='Show a simplified representation of the Milky Way with outlines.')
+
+        argumentparser.add_argument('--show-enhanced-milky-way', dest='show_enhanced_milky_way', action='store_true', default=None,
+                                    help='Display a realistic representation of the Milky Way with shading and details.')
+
+        argumentparser.add_argument('--show-solar-system', dest='show_solar_system', action='store_true', default=None,
+                                    help='Show Solar System bodies (planets, Sun, Moon) on the map.')
+
+        argumentparser.add_argument('--hide-deepsky', dest='show_deepsky', action='store_false', default=None,
+                                    help='Hide deep sky objects.')
+
+        argumentparser.add_argument('--hide-nebula-outlines', dest='show_nebula_outlines', action='store_false', default=None,
+                                    help='Show nebula outlines.')
+
+        argumentparser.add_argument('--show-dso-mag', dest='show_dso_mag', action='store_true', default=None,
+                                    help='Display magnitudes of deep sky objects.')
+
+        argumentparser.add_argument('--show-star-mag', dest='show_star_mag', action='store_true', default=None,
+                                    help='Display magnitudes of stars.')
+
+        argumentparser.add_argument('-ft', '--fov-telrad', dest='fov_telrad', action='store_true', default=None,
+                                    help='Show telrad circles at the field of view.')
+
+        argumentparser.add_argument('-mx', '--mirror-x', dest='mirror_x', action='store_true', default=None,
+                                    help='Mirror in the x-axis.')
+        argumentparser.add_argument('-my', '--mirror-y', dest='mirror_y', action='store_true', default=None,
+                                    help='Mirror in the y-axis.')
+
+        argumentparser.add_argument('--star-colors', dest='star_colors', action='store_true', default=None, help='Color stars according to spectral type.')
+        argumentparser.add_argument('--color-background', dest='background_color', action='store', default=None, help='Background color. (default: white)')
+        argumentparser.add_argument('--color-draw', dest='draw_color', action='store', default=None, help='Drawing color for stars. (default: black)')
+        argumentparser.add_argument('--color-label', dest='label_color', action='store', default=None, help='Label color. (default: black)')
+        argumentparser.add_argument('--color-constellation-lines', dest='constellation_lines_color', action='store', default=None, help='Constellation lines color.')
+        argumentparser.add_argument('--color-constellation-border', dest='constellation_border_color', action='store', default=None, help='Constellation border color.')
+        argumentparser.add_argument('--color-deepsky', dest='dso_color', action='store', default=None, help='Unclassified deep sky object color.')
+        argumentparser.add_argument('--color-nebula', dest='nebula_color', action='store', default=None, help='Nebula color.')
+        argumentparser.add_argument('--color-galaxy', dest='galaxy_color', action='store', default=None, help='Galaxy color.')
+        argumentparser.add_argument('--color-star-cluster', dest='star_cluster_color', action='store', default=None, help='Star cluster color.')
+        argumentparser.add_argument('--color-galaxy-cluster', dest='galaxy_cluster_color', action='store', default=None, help='Galaxy cluster color.')
+        argumentparser.add_argument('--color-milky-way', dest='milky_way_color', action='store', default=None, help='Milky Way color.')
+        argumentparser.add_argument('--color-grid', dest='grid_color', action='store', default=None, help='Grid color.')
+        argumentparser.add_argument('--color-telrad', dest='telrad_color', action='store', default=None, help='telrad color.')
+
+        argumentparser.add_argument('--linewidth-constellation', dest='constellation_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Constellation line width (default: 0.5)')
+        argumentparser.add_argument('--linewidth-constellation-border', dest='constellation_border_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Constellation border line width (default: 0.5)')
+        argumentparser.add_argument('--linewidth-nebula', dest='nebula_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Line width of nebulae (default: 0.3)')
+        argumentparser.add_argument('--linewidth-open-cluster', dest='open_cluster_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Line width of open clusters (default: 0.3)')
+        argumentparser.add_argument('--linewidth-galaxy-cluster', dest='galaxy_cluster_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Line width of galaxy clusters (default: 0.2)')
+        argumentparser.add_argument('--linewidth-deepsky', dest='dso_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Line width of deep sky objects (default: 0.2)')
+        argumentparser.add_argument('--linewidth-milky-way', dest='milky_way_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Line width of the Milky Way (default: 0.2)')
+        argumentparser.add_argument('--linewidth-legend', dest='legend_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Line width of the legend (default: 0.2)')
+        argumentparser.add_argument('--linewidth-grid', dest='grid_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Line width of the equatorial/horizontal grid (default: 0.1)')
+        argumentparser.add_argument('--linewidth-telrad', dest='telrad_linewidth', nargs='?', action='store', type=float, default=None,
+                                    help='Telrad line width (default: 0.3)')
+
+        argumentparser.add_argument('--constellation-line-space', dest='constellation_linespace', nargs='?', action='store', type=float, default=None,
+                                    help='Space between star and constellation shape line. (Default: 1.5)')
+
+        argumentparser.add_argument('--no-margin', dest='no_margin', action='store_true', default=False,
+                                    help='Do not draw the chart margin line.')
+
+        argumentparser.add_argument('--font', dest='font', action='store', default='Arial', help='Font (Arial)')
+
+        argumentparser.add_argument('--font-size', dest='font_size', type=float, default=3.0, help='Font size')
+
+        argumentparser.add_argument('--bayer-font-scale', dest='bayer_label_font_scale', nargs='?', action='store', type=float, default=None,
+                                    help='Bayer designation font scale. (Default: 1.2)')
+        argumentparser.add_argument('--font-style-bayer', dest='font_style_bayer', default=None, help='Bayer designation font style. [italic, bold]')
+        argumentparser.add_argument('--flamsteed-font-scale', dest='flamsteed_label_font_scale', nargs='?', action='store', default=None, type=float,
+                                    help='Flamsteed designation font scale. (Default: 0.9)')
+        argumentparser.add_argument('--font-style-flamsteed', dest='font_style_flamsteed', default=None, help='Flamsteed designation font style. [italic, bold]')
+        argumentparser.add_argument('--flamsteed-numbers-only', dest='flamsteed_numbers_only', action='store_true', default=None,
+                                    help='Show Flamsteed designations without constellation prefix.')
+        argumentparser.add_argument('--font-style-dso', dest='font_style_dso', default=None, help='DSO labels font style. [italic, bold]')
+
+        argumentparser.add_argument('--legend-font-scale', dest='legend_font_scale', type=float, default=None,
+                                    help='Scale of the font used in the legend relative to the chart font size.')
+        argumentparser.add_argument('--grid-font-scale', dest='grid_font_scale', type=float, default=None,
+                                    help='Scale of the font used for grid labels relative to the chart font size.')
+
+        argumentparser.add_argument('--star_mag_shift', dest='star_mag_shift', type=float, default=None,
+                                    help='Enlarge star symbols by given magnitude.')
+
+        argumentparser.add_argument('-L', '--obs-longitude', dest='obs_longitude', type=float, default=None,
+                                    help='Observer longitude in degrees (east positive).')
+        argumentparser.add_argument('-A', '--obs-latitude', dest='obs_latitude', type=float, default=None,
+                                    help='Observer latitude in degrees.')
+        argumentparser.add_argument('-cs', '--coord-system', dest='coord_system',
+                                    choices=['equatorial', 'horizontal'],
+                                    default='equatorial',
+                                    help='Coordinate system to use: equatorial or horizontal (alt/az).')
+
+        argumentparser.add_argument('--stellarium-skyculture-json', dest='stellarium_skyculture_json', nargs='?', action='store', default=None,
+                                    help='Path to Stellarium skyculture index.json (new JSON constellation format). '
+                                         'Example: /usr/share/stellarium/skycultures/egyptian_dendera/index.json. '
+                                         'When set, it overrides the legacy *.fab constellation lines file.')
+
+        argumentparser.add_argument('--stellarium-landscape', dest='stellarium_landscape_dir', nargs='?', action='store', default=None,
+                                    help='Path to Stellarium landscape directory (contains landscape.ini). '
+                                         'Used to load polygonal horizon and pass it to the renderer.')
+
+        argumentparser.add_argument("--show-horizon", dest="show_horizon", action="store_true", default=None,
+                                    help="Show horizon on the map (requires --coord-system horizontal and observer location). "
+                                         "If --stellarium-landscape is provided, the landscape horizon polygon is used when available.")
+
+        argumentparser.add_argument("--clip-to-horizon", dest="clip_to_horizon", action="store_true", default=None,
+                                    help="Clip rendering to the horizon circle (hide objects below horizon). "
+                                         "Works with --show-horizon-circle; intended for all-sky fisheye charts.")
+
+        argumentparser.add_argument('-t', dest='dt', type=_parse_time_arg, default=None,
+                                    help='Observation time (UTC) in ISO-8601. '
+                                         'Examples: 2026-01-02T21:15:00Z, 2026-01-02T21:15:00+01:00, or "now".')
+
+        argumentparser.add_argument('--trajectory-from', dest='trajectory_from', type=_parse_time_or_date_arg, default=None,
+                                    help='Comet/Minor planet trajectory start time/date (UTC). '
+                                         'Examples: 2026-01-02T00:00:00Z or 2026-01-02')
+        argumentparser.add_argument('--trajectory-to', dest='trajectory_to', type=_parse_time_or_date_arg, default=None,
+                                    help='Comet/Minor planet trajectory end time/date (UTC). '
+                                         'Examples: 2026-01-09T00:00:00Z or 2026-01-09')
+
+        argumentparser.add_argument('--mpc-comets-file', dest='mpc_comets_file', default='CometEls.txt',
+                                    help='Local MPC comets file. Default: ./CometEls.txt. '
+                                         'If missing, it will be downloaded once.')
+        argumentparser.add_argument('--update-comets', dest='update_comets', action='store_true', default=False,
+                                    help='Force re-download of ./CometEls.txt (comet elements).')
+
+        argumentparser.add_argument('--mpc-minor-planets-file', dest='mpc_minor_planets_file', default='MPCORB.9999.DAT',
+                                    help='Local MPCORB minor planets file (recommended subset). Default: ./MPCORB.9999.DAT. '
+                                         'If missing, it will be downloaded once.')
+        argumentparser.add_argument('--update-minor-planets', dest='update_minor_planets', action='store_true', default=False,
+                                    help='Force re-download of ./MPCORB.9999.DAT (MPCORB subset).')
+
+        argumentparser.add_argument("--all-sky", dest="all_sky", action="store_true", default=False,
+                                    help="Convenience mode for full-sky (visible hemisphere) fisheye chart: "
+                                         "forces --coord-system horizontal, --projection equidistant and (if -fov not set) -fov 180. "
+                                         "If -t is not set, uses 'now'. Requires -L/-A observer location.")
+
+        argumentparser.add_argument('-v', '--version', action='store_true', default=None, help='Display version information and exit.')
+
+        argumentparser.add_argument('sourcelist', nargs='*')
+
+        self.parser = argumentparser.parse_args()
+
+        if self.parser.version:
+            print_version()
+            sys.exit(0)
+
+        if self.parser.all_sky:
+            self.parser.coord_system = "horizontal"
+            self.parser.projection = "equidistant"
+            self.parser.show_field_border = False
+            if self.parser.fieldsize is None:
+                self.parser.fieldsize = 180.0
+            if self.parser.dt is None:
+                self.parser.dt = datetime.now(timezone.utc)
+            if self.parser.obs_longitude is None or self.parser.obs_latitude is None:
+                print(_("Option --all-sky requires observer location: -L/--obs-longitude and -A/--obs-latitude."))
+                sys.exit(-1)
+            if self.parser.show_horizon is None:
+                self.parser.show_horizon = True
+            if self.parser.clip_to_horizon is None:
+                self.parser.clip_to_horizon = True
+
+        if (self.parser.trajectory_from is None) ^ (self.parser.trajectory_to is None):
+            print(_("Both --trajectory-from and --trajectory-to must be provided together."))
+            sys.exit(-1)
+        if self.parser.trajectory_from is not None and self.parser.dt is None:
+            print(_("Comet target requires -t (observation time) when using trajectory parameters."))
+            sys.exit(-1)
+
+        if self.parser.show_horizon:
+            if self.parser.coord_system != "horizontal":
+                print(_("Option --show-horizon requires --coord-system horizontal."))
+                sys.exit(-1)
+            if self.parser.obs_longitude is None or self.parser.obs_latitude is None:
+                print(_("Option --show-horizon requires observer location: -L/--obs-longitude and -A/--obs-latitude."))
+                sys.exit(-1)
+
+        if len(self.parser.sourcelist) == 0:
+            if self.parser.all_sky:
+                self.parser.sourcelist = ["h:0,90,Zenith"]
+            else:
+                argumentparser.print_help()
+                sys.exit(1)
+
+        if self.parser.cross_marks:
+            for mark in self.parser.cross_marks:
+                try:
+                    pos, label_str, label_pos = _parse_cross_mark(mark)
+                    # Store as (ParsedPosition, label, labelpos); later converted to engine coordinates.
+                    self.extra_positions_list.append([pos, label_str, label_pos])
+                except Exception as e:
+                    print(_('option -x parsing error: {}'.format(e)))
+                    sys.exit(-1)
+
+#############################################################
+#                                                           #
+#                      MAIN  PROGRAM                        #
+#                                                           #
+#############################################################
+
+def _convert_color(color):
+    if color.startswith('#'):
+        color = color[1:]
+    try:
+        r, g, b = [int(color[i:i+2], 16) / 255.0 for i in range(0, len(color), 2)]
+    except ValueError:
+        print( _('Invalid color format {}'.format(color)))
+        sys.exit()
+    return r, g, b
+
+
+def _convert_font_style(font_style):
+    if font_style == 'italic':
+        return FontStyle.ITALIC
+    if font_style == 'bold':
+        return FontStyle.BOLD
+    return FontStyle.NORMAL
+
+
+def _parse_projection(value: str) -> ProjectionType:
+    """
+    English comment: Convert CLI string to ProjectionType enum.
+    """
+    v = (value or "").strip().lower()
+
+    if v == "stereographic":
+        return ProjectionType.STEREOGRAPHIC
+    if v == "orthographic":
+        return ProjectionType.ORTHOGRAPHIC
+    if v in ("equidistant", "fisheye", "fisheye_equidistant"):
+        return ProjectionType.EQUIDISTANT  # your code uses EQUIDISTANT for fisheye-equidistant
+
+    raise ValueError(f"Unknown projection: {value!r}")
+
+
+def _create_engine_configuration(config_file=None):
+    cfg = EngineConfiguration()
+
+    # 1. sets defaults
+    cfg.light_mode = True
+    cfg.show_star_labels = True
+    cfg.show_flamsteed = True
+    cfg.show_mag_scale_legend = False
+    cfg.show_map_scale_legend = False
+    cfg.show_orientation_legend = False
+    cfg.show_dso_legend = False
+    cfg.show_coords_legend = False
+    cfg.show_field_border = False
+    cfg.show_equatorial_grid = False
+    cfg.show_horizontal_grid = False
+    cfg.show_constellation_shapes = True
+    cfg.show_constellation_borders = True
+    cfg.show_deepsky = True
+    cfg.show_dso_mag = False
+    cfg.show_star_mag = False
+    cfg.show_simple_milky_way = False
+    cfg.show_enhanced_milky_way_30k = False
+    cfg.show_nebula_outlines = True
+    cfg.show_solar_system = False
+    cfg.flamsteed_numbers_only = False
+
+    # 2. load default cfg
+    default_config_loader = ConfigurationLoader(fchart3.get_data('default.conf'))
+    default_config_loader.load_config(cfg)
+
+    # 2. load custom cfg
+    if config_file:
+        config_loader = ConfigurationLoader(config_file)
+        config_loader.load_config(cfg)
+
+    # 3. override from command line
+
+    # This is a bit awkward: we cross-load also an own property into the engine settings. But I don't see another path ATM
+    if settings.parser.fieldsize is not None:
+        cfg.fieldsize = settings.parser.fieldsize
+
+    if settings.parser.limit_stars is not None:
+        cfg.limit_stars = settings.parser.limit_stars
+
+    if settings.parser.limit_deepsky is not None:
+        cfg.limit_deepsky = settings.parser.limit_deepsky
+
+    if settings.parser.output_dir is not None:
+        cfg.output_dir = settings.parser.output_dir
+
+    if settings.parser.show_star_labels is not None:
+        cfg.show_star_labels = settings.parser.show_star_labels
+    if settings.parser.show_flamsteed is not None:
+        cfg.show_flamsteed = settings.parser.show_flamsteed
+    if settings.parser.show_mag_scale_legend is not None:
+        cfg.show_mag_scale_legend = settings.parser.show_mag_scale_legend
+    if settings.parser.show_map_scale_legend is not None:
+        cfg.show_map_scale_legend = settings.parser.show_map_scale_legend
+    if settings.parser.show_orientation_legend is not None:
+        cfg.show_orientation_legend = settings.parser.show_orientation_legend
+    if settings.parser.show_dso_legend is not None:
+        cfg.show_dso_legend = settings.parser.show_dso_legend
+    if settings.parser.show_coords_legend is not None:
+        cfg.show_coords_legend = settings.parser.show_coords_legend
+    if settings.parser.show_field_border is not None:
+        cfg.show_field_border = settings.parser.show_field_border
+    if settings.parser.show_equatorial_grid is not None:
+        cfg.show_equatorial_grid = settings.parser.show_equatorial_grid
+    if settings.parser.show_horizontal_grid is not None:
+        cfg.show_horizontal_grid = settings.parser.show_horizontal_grid
+    if settings.parser.show_constellation_shapes is not None:
+        cfg.show_constellation_shapes = settings.parser.show_constellation_shapes
+    if settings.parser.show_constellation_borders is not None:
+        cfg.show_constellation_borders = settings.parser.show_constellation_borders
+    if settings.parser.show_simple_milky_way is not None:
+        cfg.show_simple_milky_way = settings.parser.show_simple_milky_way
+    if settings.parser.show_enhanced_milky_way is not None:
+        cfg.show_enhanced_milky_way_30k = settings.parser.show_enhanced_milky_way
+    if settings.parser.show_deepsky is not None:
+        cfg.show_deepsky = settings.parser.show_deepsky
+    if settings.parser.show_dso_mag is not None:
+        cfg.show_dso_mag = settings.parser.show_dso_mag
+    if settings.parser.show_star_mag is not None:
+        cfg.show_star_mag = settings.parser.show_star_mag
+    if settings.parser.show_nebula_outlines is not None:
+        cfg.show_nebula_outlines = settings.parser.show_nebula_outlines
+    if settings.parser.show_solar_system is not None:
+        cfg.show_solar_system = settings.parser.show_solar_system
+
+    if settings.parser.fov_telrad is not None:
+        cfg.fov_telrad = settings.parser.fov_telrad
+
+    if settings.parser.star_colors is not None:
+        cfg.star_colors = settings.parser.star_colors
+
+    if settings.parser.background_color is not None:
+        cfg.background_color = _convert_color(settings.parser.background_color)
+    if settings.parser.draw_color is not None:
+        cfg.draw_color = _convert_color(settings.parser.draw_color)
+    if settings.parser.label_color is not None:
+        cfg.label_color = _convert_color(settings.parser.label_color)
+    if settings.parser.constellation_lines_color is not None:
+        cfg.constellation_lines_color = _convert_color(settings.parser.constellation_lines_color)
+    if settings.parser.constellation_border_color is not None:
+        cfg.constellation_border_color = _convert_color(settings.parser.constellation_border_color)
+    if settings.parser.dso_color is not None:
+        cfg.dso_color = _convert_color(settings.parser.dso_color)
+    if settings.parser.nebula_color is not None:
+        cfg.nebula_color = _convert_color(settings.parser.nebula_color)
+    if settings.parser.galaxy_color is not None:
+        cfg.galaxy_color = _convert_color(settings.parser.galaxy_color)
+    if settings.parser.star_cluster_color is not None:
+        cfg.star_cluster_color = _convert_color(settings.parser.star_cluster_color)
+    if settings.parser.galaxy_cluster_color is not None:
+        cfg.galaxy_cluster_color = _convert_color(settings.parser.galaxy_cluster_color)
+    if settings.parser.milky_way_color is not None:
+        cfg.milky_way_color = _convert_color(settings.parser.milky_way_color)
+    if settings.parser.grid_color is not None:
+        cfg.grid_color = _convert_color(settings.parser.grid_color)
+    if settings.parser.telrad_color is not None:
+        cfg.telrad_color = _convert_color(settings.parser.telrad_color)
+    if settings.parser.constellation_linewidth is not None:
+        cfg.constellation_linewidth = settings.parser.constellation_linewidth
+    if settings.parser.constellation_linespace is not None:
+        cfg.constellation_linespace = settings.parser.constellation_linespace
+    if settings.parser.constellation_border_linewidth is not None:
+        cfg.constellation_border_linewidth = settings.parser.constellation_border_linewidth
+    if settings.parser.nebula_linewidth is not None:
+        cfg.nebula_linewidth = settings.parser.nebula_linewidth
+    if settings.parser.open_cluster_linewidth is not None:
+        cfg.open_cluster_linewidth = settings.parser.open_cluster_linewidth
+    if settings.parser.galaxy_cluster_linewidth is not None:
+        cfg.galaxy_cluster_linewidth = settings.parser.galaxy_cluster_linewidth
+    if settings.parser.dso_linewidth is not None:
+        cfg.dso_linewidth = settings.parser.dso_linewidth
+    if settings.parser.milky_way_linewidth is not None:
+        cfg.milky_way_linewidth = settings.parser.milky_way_linewidth
+    if settings.parser.legend_linewidth is not None:
+        cfg.legend_linewidth = settings.parser.legend_linewidth
+    if settings.parser.grid_linewidth is not None:
+        cfg.grid_linewidth = settings.parser.grid_linewidth
+    if settings.parser.telrad_linewidth is not None:
+        cfg.telrad_linewidth = settings.parser.telrad_linewidth
+    if settings.parser.no_margin is not None:
+        cfg.no_margin = settings.parser.no_margin
+    if settings.parser.font is not None:
+        cfg.font = settings.parser.font
+    if settings.parser.font_size is not None:
+        cfg.font_size = settings.parser.font_size
+    if settings.parser.legend_font_scale is not None:
+        cfg.legend_font_scale = settings.parser.legend_font_scale
+    if settings.parser.grid_font_scale is not None:
+        cfg.grid_font_scale = settings.parser.grid_font_scale
+    if settings.parser.star_mag_shift is not None:
+        cfg.star_mag_shift = settings.parser.star_mag_shift
+    if settings.parser.bayer_label_font_scale is not None:
+        cfg.bayer_label_font_scale = settings.parser.bayer_label_font_scale
+    if settings.parser.font_style_bayer is not None:
+        cfg.bayer_label_font_style = _convert_font_style(settings.parser.font_style_bayer)
+    if settings.parser.flamsteed_label_font_scale is not None:
+        cfg.flamsteed_label_font_scale = settings.parser.flamsteed_label_font_scale
+    if settings.parser.font_style_flamsteed is not None:
+        cfg.flamsteed_label_font_style = _convert_font_style(settings.parser.font_style_flamsteed)
+    if settings.parser.font_style_dso is not None:
+        cfg.dso_label_font_style = _convert_font_style(settings.parser.font_style_dso)
+    if settings.parser.flamsteed_numbers_only is not None:
+        cfg.flamsteed_numbers_only = settings.parser.flamsteed_numbers_only
+    if settings.parser.stellarium_skyculture_json is not None:
+        cfg.stellarium_skyculture_json = settings.parser.stellarium_skyculture_json
+    if settings.parser.show_horizon is not None:
+        cfg.show_horizon = settings.parser.show_horizon
+    if settings.parser.clip_to_horizon is not None:
+        cfg.clip_to_horizon = settings.parser.clip_to_horizon
+    if settings.parser.stellarium_landscape_dir:
+        cfg.stellarium_landscape_dir = settings.parser.stellarium_landscape_dir
+        # If a Stellarium horizon was requested, provide long/lat. Can still be overridden by the following CLI args
+        ls=load_stellarium_landscape(cfg.stellarium_landscape_dir)
+        if ls.loc_longitude is not None:
+            print(f"Setting long={ls.loc_longitude}/lat={ls.loc_latitude} from Stellarium landscape {settings.parser.stellarium_landscape_dir}")
+            cfg.observer_lon_deg = ls.loc_longitude
+            cfg.observer_lat_deg = ls.loc_latitude
+
+    if settings.parser.obs_longitude is not None and settings.parser.obs_latitude is not None:
+        try:
+            cfg.observer_lon_deg = float(settings.parser.obs_longitude)
+            cfg.observer_lat_deg = float(settings.parser.obs_latitude)
+        except Exception:
+            pass
+    if settings.parser.coord_system:
+        try:
+            cfg.coord_system = CoordSystem(settings.parser.coord_system)
+        except Exception:
+            pass
+    if settings.parser.projection:
+        try:
+            cfg.projection = _parse_projection(settings.parser.projection)
+        except ValueError:
+            pass
+
+    if cfg.show_enhanced_milky_way_30k:
+        mw_scale_fac = 3.0
+
+        bg_r, bg_g, bg_b = 1.0, 1.0, 1.0
+
+        cfg.enhanced_milky_way_fade = (bg_r, (cfg.milky_way_color[0] - bg_r) * mw_scale_fac,
+                                          bg_g, (cfg.milky_way_color[1] - bg_g) * mw_scale_fac,
+                                          bg_b, (cfg.milky_way_color[2] - bg_b) * mw_scale_fac)
+
+        cfg.milky_way_color = (bg_r + (cfg.milky_way_color[0]-bg_r),
+                                  bg_g + (cfg.milky_way_color[1]-bg_g),
+                                  bg_b + (cfg.milky_way_color[2]-bg_b))
+
+    return cfg
+
+
+if __name__ == '__main__':
+    tm = time()
+
+    data_dir = os.path.join(fchart3.get_catalogs_dir())
+
+    # Create default settings and parse commandline
+    settings = RuntimeSettings()
+
+    try:
+        uilanguage  = settings.parser.language.lower()
+        os.environ['fchart3lang'] = uilanguage
+        lang = gettext.translation( 'messages',localedir='locale', languages=[uilanguage])
+        lang.install()
+        _ = lang.gettext
+    except:                  
+        _ = gettext.gettext
+    finally:
+        pass
+    
+    print_version()
+
+    show_catalogs = settings.parser.show_catalogs.split(',') if settings.parser.show_catalogs else None
+
+    config_file = None
+    if settings.parser.config_file:
+        installed_config_file = fchart3.get_data(settings.parser.config_file)
+        if not installed_config_file.endswith('.conf'):
+            installed_config_file += '.conf'
+        if os.path.isfile(installed_config_file):
+            config_file = installed_config_file
+        elif os.path.isfile(settings.parser.config_file):
+            config_file = settings.parser.config_file
+
+        if config_file is None:
+            print( _('Config file {} not found!\n'.format(settings.parser.config_file)))
+            exit(-1)
+
+    # We must parse the config file here to set fieldsize from config file
+    cfg = _create_engine_configuration(config_file)
+
+    used_catalogs = UsedCatalogs(data_dir,
+                                 extra_star_data_dir=settings.parser.extra_data_dir,
+                                 limit_magnitude_deepsky=cfg.limit_deepsky,
+                                 force_messier=settings.parser.force_messier,
+                                 force_asterisms=settings.parser.force_asterisms,
+                                 force_unknown=settings.parser.force_unknown,
+                                 show_catalogs=show_catalogs,
+                                 stellarium_skyculture_json=settings.parser.stellarium_skyculture_json,
+                                 )
+
+    # Final report before mapmaking
+    nb_reduced_deeplist= len(used_catalogs.reduced_deeplist)
+    nb_used_catalogs   = len(used_catalogs.deeplist)
+    print(' {0}/{1} deepsky objects after magnitude/messier selection.'.format(nb_reduced_deeplist,nb_used_catalogs))
+
+    # Create output space if necessary
+    if not os.path.exists(cfg.output_dir):
+        print('Creating directory {}'.format(cfg.output_dir))
+        os.mkdir(cfg.output_dir)
+
+
+    # Cache for search indices (e.g. star label -> HIP) so we don't rebuild per source.
+    search_cache = {}
+
+    print('Making maps with: ')
+    if config_file:
+        print( _('   Config file    : {}'.format(config_file)))
+    print(_('   Output dir     : {}'.format(cfg.output_dir)))
+    print(_('   Deep sky limit : {}'.format(cfg.limit_deepsky)))
+    print(_('   Stellar limit  : {}'.format(cfg.limit_stars)))
+    print(_('   Fieldsize      : {}  degrees'.format(cfg.fieldsize)))
+    print(_('   Paper width    : {}  mm'.format(settings.parser.width)))
+    print(_('   Paper height   : {}  mm'.format(settings.parser.height)))
+    print(_('   Force Messier  : {}'.format(settings.parser.force_messier)))
+    print(_('   Force asterisms: {}'.format(settings.parser.force_asterisms)))
+    print(_('   Force pg       : {}'.format(settings.parser.force_unknown)))
+    print(_('   Extra points   : {}'.format(len(settings.extra_positions_list))))
+    print(_('   Show dso legend: {}'.format(cfg.show_dso_legend)))
+    print(_('   Coord system   : {}'.format(cfg.coord_system.value)))
+    print(_('   Obs longitude  : {}'.format(cfg.observer_lon_deg)))
+    print(_('   Obs latitude   : {}'.format(cfg.observer_lat_deg)))
+    print(_('   Time (UTC)     : {}'.format(settings.parser.dt)))
+
+    if settings.parser.extra_data_dir:
+        print(_('   Extra data directory: {}'.format(settings.parser.extra_data_dir)))
+    if cfg.stellarium_skyculture_json:
+        print(_('   Sky culture    : {}'.format(cfg.stellarium_skyculture_json)))
+
+    for object in settings.extra_positions_list:
+        pos, label, labelpos = object
+        #print(label,':', rad2hms(rax), rad2dms(decx))
+        print(_('{0}: ({1}) c1={2} rad, c2={3} rad'.format(label, pos.coord_type, pos.c1_rad, pos.c2_rad)))
+
+    landscape = None
+
+    if cfg.stellarium_landscape_dir:
+        try:
+            landscape = load_stellarium_landscape(cfg.stellarium_landscape_dir)
+        except Exception as e:
+            print(_('Failed to load Stellarium landscape from {}: {}'
+                    .format(settings.parser.stellarium_landscape_dir, e)))
+
+    # For all sources...
+    for source in settings.parser.sourcelist:
+        filename = ''
+        # Parse sourcename
+        if source.upper().strip() == 'ALLMESSIER':
+            print(_('alles'))
+            for object in used_catalogs.messierlist:
+                print('')
+                print(_('M{}'.format(object.messier)))
+                ra  = object.ra
+                dec = object.dec
+                filename = cfg.output_dir + os.sep + 'm' + str(object.messier).rjust(3).replace(' ','0')
+                filename += '.pdf'
+                graphics = CairoDrawing(filename, settings.parser.width, settings.parser.height, format='pdf',
+                                        landscape=settings.parser.landscape_paper)
+                engine = SkymapEngine(graphics, language=fchart3.LABELi18N, lm_stars=cfg.limit_stars)
+                engine.set_configuration(cfg)
+
+                dt_utc = settings.parser.dt
+                # Messier objects are always RA/Dec
+                phi, theta, dt_utc = _fieldcentre_for_engine(ra, dec, cfg, dt_utc)
+
+                engine.set_field(phi, theta, np.deg2rad(cfg.fieldsize) / 2.0, "",
+                                 mirror_x=settings.parser.mirror_x, mirror_y=settings.parser.mirror_y)
+                engine.set_caption('M '+str(object.messier))
+                extra_pos = _convert_extra_positions(settings.extra_positions_list, cfg, dt_utc)
+
+                if settings.parser.dt and cfg.show_solar_system:
+                    solsys = get_solsys_bodies(dt_utc, observer_lat=cfg.observer_lat_deg, observer_lon=cfg.observer_lon_deg,
+                                               observer_elevation=landscape.loc_altitude if landscape is not None and landscape.loc_altitude is not None else 0.0)
+                    moons = get_planet_moons(dt_utc, maglim=cfg.limit_tars)
+                else:
+                    solsys = None
+                    moons = None
+
+                engine.make_map(used_catalogs, dt_utc, solsys_bodies=solsys, planet_moons=moons, extra_positions=extra_pos, landscape=landscape)
+        else:
+            dso = None
+            parsed_pos = None
+            cat = ''
+            name = ''
+            trajectories = []
+            try:
+                parsed_pos, caption = _try_parse_source_position(source)
+                # For compatibility with old behavior: if caption is empty, use a generic filename stem.
+                name = caption if caption else "position"
+                filename = cfg.output_dir + os.sep + name.replace(' ', '-').replace('/', '-').replace(',', '')
+            except Exception:
+                dso, cat, name, parsed_pos, filename, trajectories = _search_sky_object(source, settings)
+
+            if parsed_pos is not None:
+                print('')
+                print(cat, name)
+
+                graphics = None
+                if settings.parser.output_file:
+                    filename = cfg.output_dir + os.sep + settings.parser.output_file
+                else:
+                    if filename == '':
+                        filename = cfg.output_dir + os.sep + source
+                    filename += '.pdf'
+                if filename.endswith('.png'):
+                    output_format = 'png'
+                elif filename.endswith('.svg'):
+                    output_format = 'svg'
+                elif filename.endswith('.tikz'):
+                    output_format = 'tikz'
+                else:
+                    output_format = 'pdf'
+                if output_format == 'tikz':
+                    graphics = TikZDrawing(filename,
+                                           settings.parser.width,
+                                           settings.parser.height,
+                                           output_format,
+                                           landscape=settings.parser.landscape_paper)
+                else:
+                    graphics = CairoDrawing(filename,
+                                            settings.parser.width,
+                                            settings.parser.height,
+                                            output_format,
+                                            landscape=settings.parser.landscape_paper)
+                engine = SkymapEngine(graphics,
+                                      language=fchart3.LABELi18N,
+                                      lm_stars=cfg.limit_stars,
+                                      lm_deepsky=cfg.limit_deepsky)
+
+                engine.set_configuration(cfg)
+
+                dt_utc = settings.parser.dt
+
+                phi, theta, dt_utc = _fieldcentre_for_engine_from_position(parsed_pos, cfg, dt_utc)
+
+                engine.set_field(phi, theta, np.deg2rad(cfg.fieldsize) / 2.0)
+
+                caption = cat + ' ' + name
+
+                if settings.parser.caption is not None:
+                    caption = settings.parser.caption
+                if caption:
+                    engine.set_caption(caption)
+                # Build a description string for location and time.
+                # Note that a Stellarium landscape usually provides long/lat, but we may have overridden it.
+                if dt_utc is not None:
+                    if landscape is not None:
+                        engine.set_description(f"{landscape.name}: L:{cfg.observer_lon_deg} φ:{cfg.observer_lat_deg} {dt_utc}")
+                    else:
+                        engine.set_description(f"Location: L:{cfg.observer_lon_deg} φ:{cfg.observer_lat_deg} {dt_utc}")
+
+                # Add a minimal recognition
+                engine.set_created("Created with fchart3")
+
+                showing_dsos = None
+                if dso is not None:
+                    showing_dsos = [dso.master_object or dso]
+
+                tmp = time()-tm
+                print(_("Started in : {} ms".format(tmp)))
+
+                extra_pos = _convert_extra_positions(settings.extra_positions_list, cfg, dt_utc)
+                if settings.parser.dt is not None and cfg.show_solar_system:
+                    solsys = get_solsys_bodies(dt_utc, observer_lat=cfg.observer_lat_deg, observer_lon=cfg.observer_lon_deg, observer_elevation=0.0)
+                    moons = get_planet_moons(dt_utc, maglim=cfg.limit_stars)
+                else:
+                    solsys = None
+                    moons = None
+                engine.make_map(used_catalogs, dt_utc, solsys_bodies=solsys, planet_moons=moons, showing_dsos=showing_dsos, extra_positions=extra_pos, landscape=landscape, trajectories=trajectories)
+            else:
+                print(_("object not found, try appending an A or a B"))
+    tmp = time()-tm
+    print(_("Chart generated in : {} ms ".format(tmp)))
