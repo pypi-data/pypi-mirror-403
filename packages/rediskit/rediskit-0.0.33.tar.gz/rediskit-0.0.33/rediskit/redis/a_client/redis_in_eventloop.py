@@ -1,0 +1,130 @@
+import asyncio
+import logging
+import threading
+import weakref
+from collections.abc import Awaitable
+from dataclasses import dataclass
+from typing import Optional, cast
+
+import redis.asyncio as redis_async
+from redis.asyncio import BlockingConnectionPool
+
+from rediskit import config
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class _LoopSlot:
+    lock: asyncio.Lock  # created on the loop
+    client: Optional[redis_async.Redis] = None
+
+
+# One registry entry per *event loop*
+_registry: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopSlot]" = weakref.WeakKeyDictionary()
+_registry_lock = threading.Lock()  # protects _registry mutations only
+
+
+def _make_client(
+    host: str = config.REDIS_HOST,
+    port: int = config.REDIS_PORT,
+    password: str = config.REDIS_PASSWORD,
+    retry_on_timeout: bool = True,
+    decode_responses: bool = True,
+    socket_timeout: int = 10,
+    socket_connect_timeout: int = 5,
+    socket_keepalive: bool = True,
+    health_check_interval: int = 30,
+    max_connections: int = 15,
+    timeout: int = 5,
+) -> redis_async.Redis:
+    loop = asyncio.get_running_loop()
+    log.info("Creating new Redis pool redis for event loop id=%s", id(loop))
+    pool = BlockingConnectionPool(
+        host=host,
+        port=port,
+        password=password,
+        retry_on_timeout=retry_on_timeout,
+        decode_responses=decode_responses,
+        socket_timeout=socket_timeout,
+        socket_connect_timeout=socket_connect_timeout,
+        socket_keepalive=socket_keepalive,
+        health_check_interval=health_check_interval,
+        max_connections=max_connections,
+        timeout=timeout,
+    )
+    return redis_async.Redis(connection_pool=pool, client_name="rediskit")
+
+
+def _get_or_create_slot_for(loop: asyncio.AbstractEventLoop) -> _LoopSlot:
+    with _registry_lock:
+        slot = _registry.get(loop)
+        if slot is None:
+            slot = _LoopSlot(lock=asyncio.Lock())
+            _registry[loop] = slot
+        return slot
+
+
+async def get_async_redis_connection_in_eventloop(
+    host: str = config.REDIS_HOST,
+    port: int = config.REDIS_PORT,
+    password: str = config.REDIS_PASSWORD,
+    retry_on_timeout: bool = True,
+    decode_responses: bool = True,
+    socket_timeout: int = 10,
+    socket_connect_timeout: int = 5,
+    socket_keepalive: bool = True,
+    health_check_interval: int = 30,
+    max_connections: int = 10,
+    timeout: int = 5,
+) -> redis_async.Redis:
+    loop = asyncio.get_running_loop()
+    slot = _get_or_create_slot_for(loop)
+
+    if slot.client is not None:
+        return slot.client
+
+    async with slot.lock:
+        if slot.client is None:
+            client = _make_client(
+                host=host,
+                port=port,
+                password=password,
+                retry_on_timeout=retry_on_timeout,
+                decode_responses=decode_responses,
+                socket_timeout=socket_timeout,
+                socket_connect_timeout=socket_connect_timeout,
+                socket_keepalive=socket_keepalive,
+                health_check_interval=health_check_interval,
+                max_connections=max_connections,
+                timeout=timeout,
+            )
+            await cast(Awaitable[bool], client.ping())
+            slot.client = client
+    return slot.client
+
+
+def get_async_client_for_current_loop() -> redis_async.Redis:
+    loop = asyncio.get_running_loop()
+    slot = _get_or_create_slot_for(loop)
+
+    if slot.client is None:
+        raise Exception("Async Redis connection pool is not initialized!")
+
+    return slot.client
+
+
+async def close_loop_redis():
+    """
+    Close the Redis redis associated with the current loop.
+    Useful for graceful shutdown in tests or workers.
+    """
+    loop = asyncio.get_running_loop()
+    slot = _registry.get(loop)
+    if slot and slot.client:
+        try:
+            await slot.client.aclose()
+            await slot.client.connection_pool.disconnect(inuse_connections=True)
+        finally:
+            slot.client = None
+            log.info("Closed Redis connection for loop id=%s", id(loop))
