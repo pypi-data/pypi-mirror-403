@@ -1,0 +1,185 @@
+# c1v-id
+
+**Identity resolution for AI applications**
+
+[![PyPI version](https://badge.fury.io/py/c1v-id.svg)](https://badge.fury.io/py/c1v-id)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+AI agents that interact with customers, CRMs, or any system of record face a critical decision point: *is this person already in our system, or should we create a new record?* Because both input and existing data are often messy, agents can confuse customer records, pollute data with duplicates, or deliver poor customer experiences.
+
+**c1v-id** is an open-source identity resolution library that sits between the agent and the system of record, answering identity queries in milliseconds. It uses probabilistic record linkage with blocking strategies (~O(n) vs naive O(n²)), weighted multi-field scoring, and transitive clustering. Designed as a drop-in for LangChain agents, n8n workflows, and RAG pipelines. Zero ML dependencies. Configurable survivorship rules.
+
+## Installation
+
+```bash
+pip install c1v-id
+```
+
+## Quick Start
+
+Resolve duplicates in 10 lines of Python:
+
+```python
+from c1v_id import IdentityResolver
+
+resolver = IdentityResolver()
+
+records = [
+    {"email": "john@gmail.com", "name": "John Doe", "phone": "555-1234"},
+    {"email": "john@gmail.com", "name": "J. Doe", "phone": "555-1234"},
+    {"email": "jane@gmail.com", "name": "Jane Smith"},
+]
+
+golden = resolver.resolve(records)
+print(f"Input: {len(records)} records → Output: {len(golden)} golden records")
+# Input: 3 records → Output: 2 golden records
+```
+
+### Match Two Records
+
+```python
+result = resolver.match(
+    {"email": "john@gmail.com", "name": "John"},
+    {"email": "john@gmail.com", "name": "Johnny"}
+)
+
+print(result.score)       # 0.97
+print(result.decision)    # 'auto_merge'
+print(result.matched_on)  # ['email', 'name']
+```
+
+### Find Matches in Existing Data
+
+```python
+incoming = {"email": "john@gmail.com", "name": "John"}
+existing = [
+    {"id": "1", "email": "john@gmail.com", "name": "John Doe"},
+    {"id": "2", "email": "jane@gmail.com", "name": "Jane Doe"},
+]
+
+matches = resolver.find_matches(incoming, existing)
+# Returns best matches sorted by score
+```
+
+### Custom Configuration
+
+```python
+from c1v_id import IdentityResolver, ResolverConfig, Thresholds, Weights
+
+config = ResolverConfig(
+    thresholds=Thresholds(auto_merge=0.95, needs_review=0.8),
+    weights=Weights(email=0.6, phone=0.3, name=0.1, address=0.0),
+)
+
+resolver = IdentityResolver(config=config)
+```
+
+## Why c1v-id?
+
+### vs. Splink
+
+| | c1v-id | Splink |
+|---|--------|--------|
+| **Hello World** | 10 lines | 50+ lines |
+| **Target** | AI builders | Data analysts |
+| **Setup** | `pip install` | Spark/DuckDB config |
+| **ML Required** | No | Optional |
+| **Use Case** | Real-time matching | Batch analytics |
+
+Splink is powerful for large-scale data linkage projects with dedicated analysts. c1v-id is for developers who need identity resolution as a feature, not a project.
+
+### vs. dedupe
+
+| | c1v-id | dedupe |
+|---|--------|--------|
+| **Maintenance** | Active | Stale (2+ years) |
+| **Dependencies** | 3 (pandas, rapidfuzz, pyyaml) | 10+ |
+| **Learning Curve** | Minimal | Requires training data |
+| **API Style** | `resolve(records)` | Iterative labeling |
+
+dedupe requires interactive labeling to train a model. c1v-id works out of the box with sensible defaults.
+
+### vs. Enterprise CDPs (Segment, mParticle)
+
+| | c1v-id | Enterprise CDP |
+|---|--------|----------------|
+| **Cost** | Free | $100K+/year |
+| **Data Location** | Your infrastructure | Their cloud |
+| **Customization** | Full control | Limited |
+| **Integration** | Any Python app | Vendor lock-in |
+
+Enterprise CDPs solve identity as part of a larger platform. c1v-id gives you just the identity resolution piece to embed anywhere.
+
+## Core Concepts
+
+| Concept | What It Does | Why It Matters |
+|---------|--------------|----------------|
+| **Normalization** | Cleans emails, phones, names | `John.Doe+tag@Gmail.com` → `johndoe@gmail.com` |
+| **Blocking** | Groups likely matches | Reduces O(n²) to ~O(n) |
+| **Scoring** | Calculates similarity | Weighted fuzzy matching across fields |
+| **Clustering** | Groups transitive matches | If A≈B and B≈C, then A∈C |
+| **Golden Records** | Merges duplicates | Best value wins per survivorship rules |
+
+## Low-Level API
+
+For custom pipelines, use the building blocks directly:
+
+### Normalization
+
+```python
+from c1v_id import norm_email, norm_phone, norm_name
+
+norm_email("John.Doe+tag@Gmail.com")  # 'johndoe@gmail.com'
+norm_phone("(555) 123-4567")          # '5551234567'
+norm_name("  JOHN   DOE  ")           # 'john doe'
+```
+
+### Blocking
+
+```python
+from c1v_id import email_domain_last4, phone_last7, make_blocks
+
+email_domain_last4("john@gmail.com")  # 'gmail.com|john'
+phone_last7("555-123-4567")           # '1234567'
+
+blocks = make_blocks(df, ["email_domain_last4", "phone_last7"])
+```
+
+### Clustering
+
+```python
+from c1v_id import UnionFind
+
+uf = UnionFind([1, 2, 3, 4, 5])
+uf.union(1, 2)
+uf.union(2, 3)
+uf.find(1) == uf.find(3)  # True (transitive)
+uf.get_clusters()         # {1: [1, 2, 3], 4: [4], 5: [5]}
+```
+
+### Golden Records
+
+```python
+from c1v_id import build_golden_records, SurvivorshipRule
+
+rules = {
+    "email": SurvivorshipRule.MOST_RECENT,
+    "address": SurvivorshipRule.LONGEST,
+    "first": SurvivorshipRule.FIRST_NON_NULL,
+}
+
+golden = build_golden_records(df, clusters, rules, source_priority=["crm", "web"])
+```
+
+## Use Cases
+
+- **AI Agents**: Check if a customer exists before creating a new record
+- **CRM Deduplication**: Merge duplicate contacts from multiple sources
+- **Lead Routing**: Match incoming leads to existing opportunities
+- **Customer Support**: Find customer context across fragmented records
+- **Data Migration**: Deduplicate when merging systems
+
+## License
+
+MIT
