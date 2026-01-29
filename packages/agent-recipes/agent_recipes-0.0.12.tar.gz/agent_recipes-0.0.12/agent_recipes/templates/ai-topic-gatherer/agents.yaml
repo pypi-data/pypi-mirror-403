@@ -1,0 +1,182 @@
+framework: praisonai
+topic: "{{topic}}"
+
+# =============================================================================
+# AI TOPIC GATHERER - Modular Recipe (2-Agent Approach)
+# =============================================================================
+# 
+# This is a REUSABLE recipe that finds topics using 2 agents:
+#   Agent 1: keyword_generator - Searches once, reads info, generates keywords
+#   Agent 2: topic_searcher - Searches all keywords, collects all information
+#
+# Variables (passed from parent recipe or defaults):
+#   - topic: The topic to search for (e.g., "AI news", "AI tools")
+#   - today: Current date
+#
+# Output format:
+#   JSON array of 5-10 topics with URLs and content
+# =============================================================================
+
+variables:
+  topic: "AI news"  # Default, can be overridden by parent recipe
+  today: "{{today}}"
+
+roles:
+  keyword_generator:
+    role: Keyword Research Specialist
+    goal: Generate comprehensive search keywords for topic discovery
+    backstory: |
+      You perform initial research to understand what's trending, 
+      then generate targeted keywords for deeper searches.
+    tools:
+      - tavily_search
+    tasks:
+      generate_keywords:
+        description: |
+          Current date: {{today}}
+          TOPIC TO RESEARCH: {{topic}}
+          
+          1. FIRST, search for the topic above to get an overview
+          2. READ the full content from the search results carefully
+          3. Based on what you find, generate EXACTLY 3 specific search keywords
+          
+          Keywords should target:
+          - Specific company announcements
+          - Product launches and updates
+          - New releases and versions
+          - Technical details and features
+          - Research and developments
+          
+          Generate keywords that will find SPECIFIC, CONCRETE information.
+        expected_output: >
+          A JSON object with a keywords array containing 3-5 specific search keywords
+
+  topic_searcher:
+    role: Topic Collector
+    goal: Search all keywords and collect comprehensive topics
+    backstory: |
+      You search exhaustively using provided keywords and compile 
+      a complete list of topics with full details.
+    tools:
+      - tavily_search
+    tasks:
+      search_all_topics:
+        description: |
+          KEYWORDS TO SEARCH:
+          {{previous_output}}
+          
+          For EACH keyword in the list above:
+          1. Call tavily_search with the keyword
+          2. Read the FULL content from each result
+          3. Extract specific topics with details
+          
+          REQUIRED for each topic:
+          - Specific company/product name
+          - Version numbers or dates when available
+          - Concrete details (features, benchmarks, pricing)
+          - Source URL
+          - Content summary (what the topic is about, key details)
+          
+          Return 5-10 UNIQUE topics (no duplicates).
+          
+          GOOD topics:
+          - "OpenAI Releases GPT-5 with 10x Context Window"
+          - "Google DeepMind's AlphaFold 3 Predicts Drug Interactions"
+          
+          BAD topics (TOO GENERIC - NEVER USE):
+          - "AI in Manufacturing" 
+          - "The Future of AI Agents"
+        expected_output: >
+          A JSON array of 5-10 unique topics, each with title, url, and content fields
+
+steps:
+  - name: generate_keywords
+    agent: keyword_generator
+    action: |
+      Current date: {{today}}
+      TOPIC TO RESEARCH: {{topic}}
+      
+      1. FIRST, search for the topic above to get an overview
+      2. READ the full content from the search results carefully
+      3. Based on what you find, generate EXACTLY 3 specific search keywords
+      
+      Keywords should target:
+      - Specific company announcements
+      - Product launches and updates
+      - New releases and versions
+      - Technical details and features
+      - Research and developments
+      
+      Generate keywords that will find SPECIFIC, CONCRETE information.
+    output_variable: search_keywords
+    output_json:
+      type: object
+      properties:
+        keywords:
+          type: array
+          items:
+            type: string
+          description: List of 3-5 specific search keywords
+
+  - name: search_topics
+    agent: topic_searcher
+    action: |
+      KEYWORDS TO SEARCH:
+      {{previous_output}}
+      
+      LIMIT: Perform EXACTLY 1 search (one per keyword).
+      
+      For each search:
+      1. Call tavily_search with the keyword
+      2. Read the FULL content from each result
+      3. Extract specific topics with details
+      
+      REQUIRED for each topic:
+      - Specific company/product name
+      - Version numbers or dates when available
+      - Concrete details (features, benchmarks, pricing)
+      - Source URL
+      - Content summary (what the topic is about, key details)
+      
+      CRITICAL DEDUPLICATION RULES:
+      - ONE topic per product/release (e.g., only ONE "Claude Code v2.0" topic)
+      - If multiple articles cover the same announcement, pick the BEST one
+      - Merge information from multiple sources into a single comprehensive topic
+      - Different products/versions = different topics (OK: Claude v2.0 AND Cursor v2.1)
+      - Same product from different sources = DUPLICATE (BAD: 3 articles about Claude v2.0)
+      
+      Return up to 10 UNIQUE topics (no duplicates).
+      
+      GOOD topics:
+      - "OpenAI Releases GPT-5 with 10x Context Window"
+      - "Google DeepMind's AlphaFold 3 Predicts Drug Interactions"
+      
+      BAD topics (TOO GENERIC - NEVER USE):
+      - "AI in Manufacturing" 
+      - "The Future of AI Agents"
+    output_json:
+      type: array
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+            description: Specific topic title with company and product names
+          url:
+            type: string
+            description: Source URL
+          content:
+            type: string
+            description: Detailed description of the topic
+
+# Enable smart context management with LLM summarization
+context:
+  enabled: true
+  auto_compact: true
+  compact_threshold: 0.7
+  strategy: smart
+  llm_summarize: true
+  smart_tool_summarize: true
+  max_tool_output_tokens: 5000
+  tool_summarize_limits:
+    tavily_search: 2000
