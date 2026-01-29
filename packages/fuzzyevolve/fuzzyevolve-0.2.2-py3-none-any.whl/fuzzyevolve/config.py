@@ -1,0 +1,309 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Literal
+
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - fallback for <3.11
+    import tomli as tomllib
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class RunConfig(BaseModel):
+    iterations: int = Field(10, ge=1)
+    log_interval: int = Field(1, ge=0)
+    checkpoint_interval: int = Field(
+        1,
+        ge=0,
+        description=(
+            "Save a checkpoint every N iterations (0 disables periodic checkpoints; "
+            "latest is still written)."
+        ),
+    )
+    random_seed: int | None = None
+
+
+class PopulationConfig(BaseModel):
+    size: int = Field(256, ge=1, description="Fixed population size.")
+    pruning: Literal["closest_pair", "knn_local_competition"] = Field(
+        "closest_pair",
+        description=(
+            "Population pruning strategy. 'closest_pair' repeatedly removes the weaker "
+            "of the closest pair in embedding space. 'knn_local_competition' uses kNN "
+            "local competition on insertion (default)."
+        ),
+    )
+    knn_k: int = Field(
+        4,
+        ge=1,
+        description="k for 'knn_local_competition' pruning (number of nearest neighbors).",
+    )
+
+
+class MetricsConfig(BaseModel):
+    names: list[str] = Field(default_factory=lambda: ["atmosphere", "creativity"])
+    descriptions: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_names(self) -> "MetricsConfig":
+        names = [name.strip() for name in self.names if name.strip()]
+        if not names:
+            raise ValueError("metrics.names must contain at least one metric name.")
+        self.names = names
+        return self
+
+
+class RatingConfig(BaseModel):
+    mu: float = 25.0
+    sigma: float = Field(25.0 / 3.0, gt=0.0)
+    beta: float = Field(25.0 / 3.0, gt=0.0)
+    tau: float = Field(25.0 / 3.0 / 50.0, ge=0.0)
+    draw_probability: float = Field(0.2, ge=0.0, le=1.0)
+
+    score_lcb_c: float = Field(2.0, ge=0.0)
+    child_prior_tau: float = Field(4.0, ge=0.0)
+
+
+class EmbeddingsConfig(BaseModel):
+    model: str = Field(
+        "sentence-transformers/all-MiniLM-L6-v2",
+        description=(
+            "Embedding model name (a sentence-transformers model name)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_model(self) -> "EmbeddingsConfig":
+        model = (self.model or "").strip()
+        if not model:
+            raise ValueError("embeddings.model must be a non-empty model name.")
+        if model.lower() == "hash":
+            raise ValueError(
+                "embeddings.model='hash' is no longer supported; use a sentence-transformers model name."
+            )
+        self.model = model
+        return self
+
+
+class SelectionConfig(BaseModel):
+    uniform_probability: float = Field(
+        0.65,
+        ge=0.0,
+        le=1.0,
+        description="Probability of uniform parent selection from the pool.",
+    )
+    tournament_size: int = Field(
+        6, ge=1, description="Tournament size for optimistic parent selection."
+    )
+    optimistic_beta: float = Field(
+        0.7,
+        ge=0.0,
+        description="Optimism coefficient for selection: mu + beta*sigma.",
+    )
+
+
+class TaskConfig(BaseModel):
+    goal: str = "Write me a riveting short story."
+
+
+class PromptConfig(BaseModel):
+    show_metric_stats: bool = True
+
+
+class CriticConfig(BaseModel):
+    enabled: bool = True
+    routes: int = Field(
+        8,
+        ge=1,
+        description="How many distinct rewrite routes to generate per critique.",
+    )
+    instructions: str = (
+        "You are a critique agent helping an evolutionary text system.\n"
+        "Analyze the PARENT text and propose actionable guidance.\n"
+        "Prefer concrete, specific feedback over generic advice.\n"
+        "Do not quote any exact phrases from the parent text.\n"
+        "Avoid using specific character names, proper nouns, or unique props from the parent.\n"
+        "Write routes as abstract, reusable directives (voice/structure/genre constraints) that still make sense\n"
+        "even if the parent text is not shown.\n"
+    )
+
+
+class ModelSpec(BaseModel):
+    model: str
+    weight: float = Field(..., gt=0.0)
+    temperature: float = 0.7
+
+
+class MutationOperatorConfig(BaseModel):
+    name: str
+    role: Literal["exploit", "explore"] = "exploit"
+    enabled: bool = True
+    min_jobs: int = Field(0, ge=0)
+    weight: float = Field(1.0, gt=0.0)
+    uncertainty_scale: float = Field(
+        1.0,
+        ge=0.0,
+        description="Multiplier on rating.child_prior_tau for children from this operator.",
+    )
+    temperature: float | None = Field(
+        None,
+        description=(
+            "Optional temperature override for this operator (otherwise uses model "
+            "spec temperature)."
+        ),
+    )
+    instructions: str = ""
+    ensemble: list[ModelSpec] | None = None
+
+    @model_validator(mode="after")
+    def _validate_operator(self) -> "MutationOperatorConfig":
+        self.name = self.name.strip()
+        if not self.name:
+            raise ValueError("mutation.operators.name must be non-empty.")
+        if self.temperature is not None and self.temperature < 0:
+            raise ValueError("mutation.operators.temperature must be >= 0.")
+        return self
+
+
+class MutationConfig(BaseModel):
+    jobs_per_iteration: int = Field(4, ge=1)
+    max_workers: int = Field(8, ge=1)
+    max_children: int = Field(4, ge=1)
+    operators: list[MutationOperatorConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_mutation(self) -> "MutationConfig":
+        if not self.operators:
+            self.operators = [
+                MutationOperatorConfig(
+                    name="exploit",
+                    role="exploit",
+                    min_jobs=2,
+                    weight=1.0,
+                    uncertainty_scale=0.7,
+                    temperature=0.7,
+                    instructions=(
+                        "Rewrite the PARENT to improve quality and maximize the metrics.\n"
+                        "Keep the core premise and intent, but you may restructure as needed.\n"
+                        "Use the critique issues as a to-do list when provided.\n"
+                        "Do not mention evaluation metrics.\n"
+                    ),
+                ),
+                MutationOperatorConfig(
+                    name="explore",
+                    role="explore",
+                    min_jobs=2,
+                    weight=1.0,
+                    uncertainty_scale=2.5,
+                    temperature=1.2,
+                    instructions=(
+                        "Rewrite freely from scratch for exploration.\n"
+                        "You may change everything: plot, voice, POV, style, genre, structure.\n"
+                        "Use a provided rewrite route as the main creative constraint.\n"
+                        "Do not copy phrases from the parent.\n"
+                        "Do not mention evaluation metrics.\n"
+                    ),
+                ),
+            ]
+
+        enabled = [op for op in self.operators if op.enabled]
+        if not enabled:
+            raise ValueError(
+                "mutation.operators must contain at least one enabled operator."
+            )
+
+        names = [op.name for op in enabled]
+        if len(set(names)) != len(names):
+            raise ValueError("mutation.operators names must be unique.")
+
+        min_sum = sum(op.min_jobs for op in enabled)
+        if min_sum > self.jobs_per_iteration:
+            raise ValueError(
+                "sum(mutation.operators.min_jobs) must be <= mutation.jobs_per_iteration."
+            )
+        return self
+
+
+class OpponentConfig(BaseModel):
+    kind: Literal["none", "random", "farthest_from_parent", "far_but_close"] = (
+        "far_but_close"
+    )
+    probability: float = Field(0.5, ge=0.0, le=1.0)
+    farthest_k: int = Field(
+        32,
+        ge=1,
+        description=(
+            "For 'far_but_close': consider the top-k farthest candidates in embedding "
+            "space, then pick the one closest in TrueSkill (highest match quality)."
+        ),
+    )
+
+
+class JudgingConfig(BaseModel):
+    max_attempts: int = Field(2, ge=1)
+    repair_enabled: bool = True
+    opponent: OpponentConfig = Field(default_factory=OpponentConfig)
+
+
+class AnchorsConfig(BaseModel):
+    injection_probability: float = Field(0.15, ge=0.0, le=1.0)
+    max_per_battle: int = Field(2, ge=0)
+    seed_mu: float = 25.0
+    seed_sigma: float = Field(2.0, gt=0.0)
+    ghost_interval: int = Field(10, ge=0)
+
+
+class LLMConfig(BaseModel):
+    ensemble: list[ModelSpec] = Field(
+        default_factory=lambda: [
+            ModelSpec(
+                model="google-gla:gemini-3-flash-preview",
+                weight=0.85,
+                temperature=1.0,
+            ),
+            ModelSpec(
+                model="google-gla:gemini-3-pro-preview",
+                weight=0.15,
+                temperature=1.0,
+            ),
+        ]
+    )
+    judge_model: str = "google-gla:gemini-3-pro-preview"
+    critic_model: str | None = None
+    critic_temperature: float = Field(0.2, ge=0.0)
+
+    @model_validator(mode="after")
+    def _validate_ensemble(self) -> "LLMConfig":
+        if not self.ensemble:
+            raise ValueError("llm.ensemble must contain at least one model spec.")
+        return self
+
+
+class Config(BaseModel):
+    run: RunConfig = Field(default_factory=RunConfig)
+    population: PopulationConfig = Field(default_factory=PopulationConfig)
+    task: TaskConfig = Field(default_factory=TaskConfig)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    prompts: PromptConfig = Field(default_factory=PromptConfig)
+    critic: CriticConfig = Field(default_factory=CriticConfig)
+    rating: RatingConfig = Field(default_factory=RatingConfig)
+    embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
+    selection: SelectionConfig = Field(default_factory=SelectionConfig)
+    mutation: MutationConfig = Field(default_factory=MutationConfig)
+    judging: JudgingConfig = Field(default_factory=JudgingConfig)
+    anchors: AnchorsConfig = Field(default_factory=AnchorsConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+
+
+def load_config(path: str | None) -> Config:
+    if not path:
+        return Config()
+    data = Path(path).read_text()
+    try:
+        cfg_dict = json.loads(data)
+    except json.JSONDecodeError:
+        cfg_dict = tomllib.loads(data)
+    return Config.model_validate(cfg_dict)
