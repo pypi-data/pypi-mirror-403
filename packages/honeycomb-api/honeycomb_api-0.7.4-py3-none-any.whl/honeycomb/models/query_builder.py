@@ -1,0 +1,980 @@
+"""Query builder and shared query components for Honeycomb queries.
+
+This module provides:
+- Enums for query operations (CalcOp, FilterOp, OrderDirection, FilterCombination)
+- Typed Pydantic models (Calculation, Filter, Order, Having)
+- A fluent QueryBuilder for constructing queries
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing_extensions import Self
+
+# Import generated enums
+from honeycomb._generated_models import (
+    FilterOp,
+    QueryFilterCombination,
+    QueryOp,
+    QueryOrderOrder,
+)
+
+if TYPE_CHECKING:
+    from honeycomb.models.queries import QuerySpec
+
+# Valid time offset values for compare queries (in seconds)
+# 30min, 1hr, 2hr, 8hr, 24hr, 7d, 28d, 6mo
+VALID_COMPARE_OFFSETS: frozenset[int] = frozenset(
+    {1800, 3600, 7200, 28800, 86400, 604800, 2419200, 15724800}
+)
+
+# Operations that do NOT require a column (all others require one)
+OPS_WITHOUT_COLUMN: frozenset[str] = frozenset({"COUNT", "CONCURRENCY"})
+
+# Filter operations that do NOT take a value (existence checks)
+FILTER_OPS_WITHOUT_VALUE: frozenset[str] = frozenset({"exists", "does-not-exist"})
+
+
+# =============================================================================
+# Re-export generated enums with backward-compatible names
+# =============================================================================
+
+# CalcOp is now QueryOp from generated models
+CalcOp = QueryOp
+
+# OrderDirection is now QueryOrderOrder from generated models (lowercase values)
+OrderDirection = QueryOrderOrder
+
+# FilterCombination is now QueryFilterCombination from generated models
+FilterCombination = QueryFilterCombination
+
+# FilterOp is re-exported as-is (now has proper UPPERCASE names from x-enum-varnames)
+
+__all__ = [
+    "CalcOp",
+    "FilterOp",
+    "OrderDirection",
+    "FilterCombination",
+    "Calculation",
+    "Filter",
+    "Order",
+    "Having",
+    "QueryBuilder",
+]
+
+
+# =============================================================================
+# Typed Models
+# =============================================================================
+
+
+class Calculation(BaseModel):
+    """A calculation in a query.
+
+    Examples:
+        >>> Calculation(op=CalcOp.COUNT)
+        >>> Calculation(op=CalcOp.P99, column="duration_ms")
+        >>> Calculation(op="AVG", column="response_time")
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: CalcOp = Field(description="Calculation operation (COUNT, AVG, P99, etc.)")
+    column: str | None = Field(default=None, description="Column to calculate on")
+
+    @model_validator(mode="after")
+    def validate_column_requirement(self) -> Self:
+        """Validate that column is provided when required by the operation."""
+        op_value = self.op.value if isinstance(self.op, CalcOp) else self.op
+        if op_value not in OPS_WITHOUT_COLUMN and self.column is None:
+            raise ValueError(
+                f"column required for op '{op_value}'.\n"
+                f"Operations like {op_value} must specify which column to aggregate.\n"
+                f"Only COUNT and CONCURRENCY can be used without a column."
+            )
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to API dict format."""
+        result: dict[str, Any] = {"op": self.op.value}
+        if self.column is not None:
+            result["column"] = self.column
+        return result
+
+
+class Filter(BaseModel):
+    """A filter in a query.
+
+    Examples:
+        >>> Filter(column="status", op=FilterOp.EQUALS, value=200)
+        >>> Filter(column="error", op=FilterOp.EXISTS)  # No value needed
+        >>> Filter(column="service", op="in", value=["api", "web"])
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: str = Field(description="Column to filter on")
+    op: FilterOp = Field(description="Filter operator (=, !=, >, <, contains, etc.)")
+    value: Any = Field(
+        default=None,
+        description="Filter value. Not used for 'exists' and 'does-not-exist' operations.",
+    )
+
+    @model_validator(mode="after")
+    def validate_value_requirement(self) -> Self:
+        """Validate value is not provided for existence check operations."""
+        op_value = self.op.value if isinstance(self.op, FilterOp) else self.op
+        if op_value in FILTER_OPS_WITHOUT_VALUE and self.value is not None:
+            # Silently set to None instead of raising error for better UX
+            # The API will reject it anyway, and this allows us to clean it up automatically
+            self.value = None
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to API dict format."""
+        result: dict[str, Any] = {"column": self.column, "op": self.op.value}
+        # Only include value for operations that use it
+        op_value = self.op.value if isinstance(self.op, FilterOp) else self.op
+        if op_value not in FILTER_OPS_WITHOUT_VALUE:
+            result["value"] = self.value
+        return result
+
+
+class Order(BaseModel):
+    """An ordering specification for query results.
+
+    Examples:
+        >>> Order(op=CalcOp.COUNT, order=OrderDirection.descending)
+        >>> Order(op=CalcOp.AVG, column="duration_ms", order=OrderDirection.ascending)
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: CalcOp = Field(description="Calculation to order by")
+    column: str | None = Field(default=None, description="Column for the calculation")
+    order: OrderDirection = Field(default=OrderDirection.descending, description="Sort direction")
+
+    @model_validator(mode="after")
+    def validate_column_requirement(self) -> Self:
+        """Validate that column is provided when required by the operation."""
+        op_value = self.op.value if isinstance(self.op, CalcOp) else self.op
+        if op_value not in OPS_WITHOUT_COLUMN and self.column is None:
+            raise ValueError(
+                f"column required for op '{op_value}'.\n"
+                f"When ordering by {op_value}, you must specify which column to order by.\n"
+                f"Only COUNT and CONCURRENCY can be used without a column."
+            )
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to API dict format."""
+        result: dict[str, Any] = {"op": self.op.value, "order": self.order.value}
+        if self.column is not None:
+            result["column"] = self.column
+        return result
+
+
+class Having(BaseModel):
+    """A having clause for post-aggregation filtering.
+
+    Examples:
+        >>> Having(calculate_op=CalcOp.COUNT, op=FilterOp.GREATER_THAN, value=100)
+        >>> Having(calculate_op=CalcOp.AVG, column="duration_ms", op=">", value=500.0)
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    calculate_op: CalcOp = Field(description="Calculation to filter on")
+    column: str | None = Field(default=None, description="Column for the calculation")
+    op: FilterOp = Field(description="Comparison operator")
+    value: float = Field(description="Threshold value")
+
+    @model_validator(mode="after")
+    def validate_column_requirement(self) -> Self:
+        """Validate that column is provided when required by the operation."""
+        op_value = (
+            self.calculate_op.value if isinstance(self.calculate_op, CalcOp) else self.calculate_op
+        )
+        if op_value not in OPS_WITHOUT_COLUMN and self.column is None:
+            raise ValueError(
+                f"column required for calculate_op '{op_value}'.\n"
+                f"When filtering by {op_value}, you must specify which column.\n"
+                f"Only COUNT and CONCURRENCY can be used without a column."
+            )
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to API dict format."""
+        result: dict[str, Any] = {
+            "calculate_op": self.calculate_op.value,
+            "op": self.op.value,
+            "value": self.value,
+        }
+        if self.column is not None:
+            result["column"] = self.column
+        return result
+
+
+# =============================================================================
+# QueryBuilder
+# =============================================================================
+
+
+class QueryBuilder:
+    """Fluent builder for constructing QuerySpec objects.
+
+    The builder provides a chainable API for constructing queries. Each method
+    returns self, allowing method chaining. Call build() to get the final QuerySpec,
+    or build_for_trigger() to get a TriggerQuery with validation.
+
+    Examples:
+        >>> # Simple count query
+        >>> spec = QueryBuilder().last_1_hour().count().build()
+
+        >>> # Complex query with multiple calculations
+        >>> spec = (
+        ...     QueryBuilder()
+        ...     .last_24_hours()
+        ...     .count()
+        ...     .p99("duration_ms")
+        ...     .avg("duration_ms")
+        ...     .where("status", FilterOp.GREATER_THAN_OR_EQUAL, 500)
+        ...     .breakdown("service", "endpoint")
+        ...     .order_by_count()
+        ...     .build()
+        ... )
+
+        >>> # Trigger query (validates time_range <= 3600)
+        >>> trigger_query = (
+        ...     QueryBuilder()
+        ...     .last_30_minutes()
+        ...     .p99("duration_ms")
+        ...     .build_for_trigger()
+        ... )
+    """
+
+    def __init__(self, name: str | None = None) -> None:
+        """Initialize a query builder.
+
+        Args:
+            name: Optional query name (required for board integration)
+
+        Examples:
+            >>> QueryBuilder()  # No name (for standalone queries)
+            >>> QueryBuilder("Request Count")  # With name (for board queries)
+        """
+        self._time_range: int | None = None
+        self._start_time: int | None = None
+        self._end_time: int | None = None
+        self._granularity: int | None = None
+        self._calculations: list[Calculation] = []
+        self._filters: list[Filter] = []
+        self._breakdowns: list[str] = []
+        self._filter_combination: FilterCombination | None = None
+        self._orders: list[Order] = []
+        self._limit: int | None = None
+        self._havings: list[Having] = []
+        self._calculated_fields: list[dict[str, str]] = []
+        self._compare_time_offset_seconds: int | None = None
+        # Query metadata (for board integration)
+        self._dataset: str | None = None
+        self._query_name: str | None = name
+        self._query_description: str | None = None
+
+    # -------------------------------------------------------------------------
+    # Time Methods - Custom
+    # -------------------------------------------------------------------------
+
+    def time_range(self, seconds: int) -> QueryBuilder:
+        """Set the query time range in seconds (relative time).
+
+        Note: Mutually exclusive with start_time()/end_time(). Setting this
+        clears any absolute time range.
+
+        Args:
+            seconds: Time range in seconds (e.g., 3600 for 1 hour)
+
+        Returns:
+            self for chaining
+        """
+        self._time_range = seconds
+        self._start_time = None  # Clear absolute time
+        self._end_time = None
+        return self
+
+    def start_time(self, timestamp: int) -> QueryBuilder:
+        """Set absolute start time as Unix timestamp.
+
+        Note: Mutually exclusive with time_range(). Setting this clears any
+        relative time range. Must be used with end_time().
+
+        Args:
+            timestamp: Start time as Unix timestamp (seconds since epoch)
+
+        Returns:
+            self for chaining
+        """
+        self._start_time = timestamp
+        self._time_range = None  # Clear relative time
+        return self
+
+    def end_time(self, timestamp: int) -> QueryBuilder:
+        """Set absolute end time as Unix timestamp.
+
+        Note: Mutually exclusive with time_range(). Setting this clears any
+        relative time range. Must be used with start_time().
+
+        Args:
+            timestamp: End time as Unix timestamp (seconds since epoch)
+
+        Returns:
+            self for chaining
+        """
+        self._end_time = timestamp
+        self._time_range = None  # Clear relative time
+        return self
+
+    def absolute_time(self, start: int, end: int) -> QueryBuilder:
+        """Set absolute start and end times as Unix timestamps.
+
+        Convenience method equivalent to calling start_time(start).end_time(end).
+
+        Note: Mutually exclusive with time_range(). Setting this clears any
+        relative time range.
+
+        Args:
+            start: Start time as Unix timestamp
+            end: End time as Unix timestamp
+
+        Returns:
+            self for chaining
+        """
+        self._start_time = start
+        self._end_time = end
+        self._time_range = None  # Clear relative time range
+        return self
+
+    def granularity(self, seconds: int) -> QueryBuilder:
+        """Set the time granularity for bucketing results.
+
+        Args:
+            seconds: Granularity in seconds (e.g., 60 for 1-minute buckets)
+
+        Returns:
+            self for chaining
+        """
+        self._granularity = seconds
+        return self
+
+    # -------------------------------------------------------------------------
+    # Time Methods - Presets (matching Honeycomb UI)
+    # -------------------------------------------------------------------------
+
+    def last_10_minutes(self) -> QueryBuilder:
+        """Set time range to last 10 minutes (600 seconds)."""
+        return self.time_range(600)
+
+    def last_30_minutes(self) -> QueryBuilder:
+        """Set time range to last 30 minutes (1800 seconds)."""
+        return self.time_range(1800)
+
+    def last_1_hour(self) -> QueryBuilder:
+        """Set time range to last 1 hour (3600 seconds)."""
+        return self.time_range(3600)
+
+    def last_2_hours(self) -> QueryBuilder:
+        """Set time range to last 2 hours (7200 seconds)."""
+        return self.time_range(7200)
+
+    def last_8_hours(self) -> QueryBuilder:
+        """Set time range to last 8 hours (28800 seconds)."""
+        return self.time_range(28800)
+
+    def last_24_hours(self) -> QueryBuilder:
+        """Set time range to last 24 hours (86400 seconds)."""
+        return self.time_range(86400)
+
+    def last_1_day(self) -> QueryBuilder:
+        """Set time range to last 1 day (86400 seconds). Alias for last_24_hours()."""
+        return self.time_range(86400)
+
+    def last_7_days(self) -> QueryBuilder:
+        """Set time range to last 7 days (604800 seconds)."""
+        return self.time_range(604800)
+
+    def last_14_days(self) -> QueryBuilder:
+        """Set time range to last 14 days (1209600 seconds)."""
+        return self.time_range(1209600)
+
+    def last_28_days(self) -> QueryBuilder:
+        """Set time range to last 28 days (2419200 seconds)."""
+        return self.time_range(2419200)
+
+    # -------------------------------------------------------------------------
+    # Calculation Methods (additive - each call adds to the list)
+    # -------------------------------------------------------------------------
+
+    def calculate(self, op: CalcOp | str, column: str | None = None) -> QueryBuilder:
+        """Add a calculation to the query.
+
+        Args:
+            op: Calculation operation (e.g., CalcOp.COUNT, "AVG")
+            column: Column to calculate on (optional for COUNT)
+
+        Returns:
+            self for chaining
+        """
+        self._calculations.append(Calculation(op=op, column=column))
+        return self
+
+    def count(self) -> QueryBuilder:
+        """Add a COUNT calculation."""
+        return self.calculate(CalcOp.COUNT)
+
+    def sum(self, column: str) -> QueryBuilder:
+        """Add a SUM calculation on a column."""
+        return self.calculate(CalcOp.SUM, column=column)
+
+    def avg(self, column: str) -> QueryBuilder:
+        """Add an AVG calculation on a column."""
+        return self.calculate(CalcOp.AVG, column=column)
+
+    def min(self, column: str) -> QueryBuilder:
+        """Add a MIN calculation on a column."""
+        return self.calculate(CalcOp.MIN, column=column)
+
+    def max(self, column: str) -> QueryBuilder:
+        """Add a MAX calculation on a column."""
+        return self.calculate(CalcOp.MAX, column=column)
+
+    def count_distinct(self, column: str) -> QueryBuilder:
+        """Add a COUNT_DISTINCT calculation on a column."""
+        return self.calculate(CalcOp.COUNT_DISTINCT, column=column)
+
+    def p50(self, column: str) -> QueryBuilder:
+        """Add a P50 (median) calculation on a column."""
+        return self.calculate(CalcOp.P50, column=column)
+
+    def p90(self, column: str) -> QueryBuilder:
+        """Add a P90 calculation on a column."""
+        return self.calculate(CalcOp.P90, column=column)
+
+    def p95(self, column: str) -> QueryBuilder:
+        """Add a P95 calculation on a column."""
+        return self.calculate(CalcOp.P95, column=column)
+
+    def p99(self, column: str) -> QueryBuilder:
+        """Add a P99 calculation on a column."""
+        return self.calculate(CalcOp.P99, column=column)
+
+    def heatmap(self, column: str) -> QueryBuilder:
+        """Add a HEATMAP calculation on a column."""
+        return self.calculate(CalcOp.HEATMAP, column=column)
+
+    def concurrency(self) -> QueryBuilder:
+        """Add a CONCURRENCY calculation."""
+        return self.calculate(CalcOp.CONCURRENCY)
+
+    # -------------------------------------------------------------------------
+    # Filter Methods
+    # -------------------------------------------------------------------------
+
+    def filter(self, column: str, op: FilterOp | str, value: Any) -> QueryBuilder:
+        """Add a filter to the query.
+
+        Args:
+            column: Column to filter on
+            op: Filter operator (e.g., FilterOp.EQUALS, ">=")
+            value: Filter value
+
+        Returns:
+            self for chaining
+        """
+        self._filters.append(Filter(column=column, op=op, value=value))
+        return self
+
+    def where(self, column: str, op: FilterOp | str, value: Any) -> QueryBuilder:
+        """Add a filter to the query. Alias for filter().
+
+        Args:
+            column: Column to filter on
+            op: Filter operator (e.g., FilterOp.EQUALS, ">=")
+            value: Filter value
+
+        Returns:
+            self for chaining
+        """
+        return self.filter(column, op, value)
+
+    def where_equals(self, column: str, value: Any) -> QueryBuilder:
+        """Add an equality filter.
+
+        Args:
+            column: Column to filter on
+            value: Value to match
+
+        Returns:
+            self for chaining
+        """
+        return self.filter(column, FilterOp.EQUALS, value)
+
+    def where_exists(self, column: str) -> QueryBuilder:
+        """Add a filter for column existence.
+
+        Args:
+            column: Column that must exist
+
+        Returns:
+            self for chaining
+        """
+        return self.filter(column, FilterOp.EXISTS, None)
+
+    # -------------------------------------------------------------------------
+    # Filter Shortcuts (one method per operator)
+    # -------------------------------------------------------------------------
+
+    def eq(self, column: str, value: Any) -> QueryBuilder:
+        """Filter where column equals value. Shortcut for where(column, FilterOp.EQUALS, value)."""
+        return self.filter(column, FilterOp.EQUALS, value)
+
+    def ne(self, column: str, value: Any) -> QueryBuilder:
+        """Filter where column does not equal value. Shortcut for where(column, FilterOp.NOT_EQUALS, value)."""
+        return self.filter(column, FilterOp.NOT_EQUALS, value)
+
+    def gt(self, column: str, value: Any) -> QueryBuilder:
+        """Filter where column > value. Shortcut for where(column, FilterOp.GREATER_THAN, value)."""
+        return self.filter(column, FilterOp.GREATER_THAN, value)
+
+    def gte(self, column: str, value: Any) -> QueryBuilder:
+        """Filter where column >= value. Shortcut for where(column, FilterOp.GREATER_THAN_OR_EQUAL, value)."""
+        return self.filter(column, FilterOp.GREATER_THAN_OR_EQUAL, value)
+
+    def lt(self, column: str, value: Any) -> QueryBuilder:
+        """Filter where column < value. Shortcut for where(column, FilterOp.LESS_THAN, value)."""
+        return self.filter(column, FilterOp.LESS_THAN, value)
+
+    def lte(self, column: str, value: Any) -> QueryBuilder:
+        """Filter where column <= value. Shortcut for where(column, FilterOp.LESS_THAN_OR_EQUAL, value)."""
+        return self.filter(column, FilterOp.LESS_THAN_OR_EQUAL, value)
+
+    def starts_with(self, column: str, value: str) -> QueryBuilder:
+        """Filter where column starts with value."""
+        return self.filter(column, FilterOp.STARTS_WITH, value)
+
+    def does_not_start_with(self, column: str, value: str) -> QueryBuilder:
+        """Filter where column does not start with value."""
+        return self.filter(column, FilterOp.DOES_NOT_START_WITH, value)
+
+    def contains(self, column: str, value: str) -> QueryBuilder:
+        """Filter where column contains value."""
+        return self.filter(column, FilterOp.CONTAINS, value)
+
+    def does_not_contain(self, column: str, value: str) -> QueryBuilder:
+        """Filter where column does not contain value."""
+        return self.filter(column, FilterOp.DOES_NOT_CONTAIN, value)
+
+    def exists(self, column: str) -> QueryBuilder:
+        """Filter where column exists."""
+        return self.filter(column, FilterOp.EXISTS, None)
+
+    def does_not_exist(self, column: str) -> QueryBuilder:
+        """Filter where column does not exist."""
+        return self.filter(column, FilterOp.DOES_NOT_EXIST, None)
+
+    def is_in(self, column: str, values: list[Any]) -> QueryBuilder:
+        """Filter where column is in a list of values."""
+        return self.filter(column, FilterOp.IN, values)
+
+    def not_in(self, column: str, values: list[Any]) -> QueryBuilder:
+        """Filter where column is not in a list of values."""
+        return self.filter(column, FilterOp.NOT_IN, values)
+
+    def filter_with(self, combination: FilterCombination | str) -> QueryBuilder:
+        """Set how multiple filters are combined.
+
+        Args:
+            combination: FilterCombination.AND or FilterCombination.OR
+
+        Returns:
+            self for chaining
+        """
+        if isinstance(combination, FilterCombination):
+            self._filter_combination = combination
+        else:
+            self._filter_combination = FilterCombination(combination)
+        return self
+
+    # -------------------------------------------------------------------------
+    # Grouping Methods
+    # -------------------------------------------------------------------------
+
+    def breakdown(self, *columns: str) -> QueryBuilder:
+        """Add columns to group results by.
+
+        Args:
+            *columns: Column names to group by
+
+        Returns:
+            self for chaining
+        """
+        self._breakdowns.extend(columns)
+        return self
+
+    def group_by(self, *columns: str) -> QueryBuilder:
+        """Add columns to group results by. Alias for breakdown().
+
+        Args:
+            *columns: Column names to group by
+
+        Returns:
+            self for chaining
+        """
+        return self.breakdown(*columns)
+
+    # -------------------------------------------------------------------------
+    # Ordering Methods
+    # -------------------------------------------------------------------------
+
+    def order_by(
+        self,
+        op: CalcOp | str,
+        direction: OrderDirection | str = OrderDirection.descending,
+        column: str | None = None,
+    ) -> QueryBuilder:
+        """Add an ordering specification.
+
+        Args:
+            op: Calculation to order by
+            direction: Sort direction (default: descending)
+            column: Column for the calculation (if applicable)
+
+        Returns:
+            self for chaining
+        """
+        self._orders.append(Order(op=op, column=column, order=direction))
+        return self
+
+    def order_by_count(
+        self, direction: OrderDirection | str = OrderDirection.descending
+    ) -> QueryBuilder:
+        """Order results by COUNT.
+
+        Args:
+            direction: Sort direction (default: descending)
+
+        Returns:
+            self for chaining
+        """
+        return self.order_by(CalcOp.COUNT, direction)
+
+    # -------------------------------------------------------------------------
+    # Result Limiting
+    # -------------------------------------------------------------------------
+
+    def limit(self, n: int) -> QueryBuilder:
+        """Set the maximum number of results.
+
+        Args:
+            n: Maximum number of results (max 1000 for saved queries)
+
+        Returns:
+            self for chaining
+        """
+        self._limit = n
+        return self
+
+    # -------------------------------------------------------------------------
+    # Having Methods
+    # -------------------------------------------------------------------------
+
+    def having(
+        self,
+        calculate_op: CalcOp | str,
+        op: FilterOp | str,
+        value: float,
+        column: str | None = None,
+    ) -> QueryBuilder:
+        """Add a having clause for post-aggregation filtering.
+
+        Args:
+            calculate_op: Calculation to filter on
+            op: Comparison operator
+            value: Threshold value
+            column: Column for the calculation (if applicable)
+
+        Returns:
+            self for chaining
+        """
+        self._havings.append(Having(calculate_op=calculate_op, column=column, op=op, value=value))
+        return self
+
+    # -------------------------------------------------------------------------
+    # Calculated Fields (Inline Derived Columns)
+    # -------------------------------------------------------------------------
+
+    def calculated_field(self, name: str, expression: str) -> QueryBuilder:
+        """Add an inline calculated field (derived column) for this query only.
+
+        Creates a computed column available within this query. For reusable
+        derived columns, use the Derived Columns API instead.
+
+        Args:
+            name: Field name/alias to reference in calculations and breakdowns
+            expression: Formula using $column_name syntax
+                       See https://docs.honeycomb.io/reference/derived-column-formula/
+
+        Returns:
+            self for chaining
+
+        Example:
+            >>> (QueryBuilder()
+            ...     .calculated_field("latency_bucket",
+            ...         "IF(LTE($duration_ms, 100), 'fast', 'slow')")
+            ...     .group_by("latency_bucket")
+            ...     .count())
+        """
+        self._calculated_fields.append({"name": name, "expression": expression})
+        return self
+
+    # -------------------------------------------------------------------------
+    # Compare Time Offset (Historical Comparison)
+    # -------------------------------------------------------------------------
+
+    def compare_time_offset(self, seconds: int) -> QueryBuilder:
+        """Compare against historical data offset by N seconds.
+
+        When set, the query results will include comparison data from
+        the specified time in the past.
+
+        Args:
+            seconds: Offset in seconds. Must be one of:
+                     1800 (30min), 3600 (1hr), 7200 (2hr), 28800 (8hr),
+                     86400 (24hr), 604800 (7d), 2419200 (28d), 15724800 (6mo)
+
+        Returns:
+            self for chaining
+
+        Example:
+            >>> QueryBuilder().last_1_hour().count().compare_time_offset(86400)  # Compare to 24h ago
+        """
+        if seconds not in VALID_COMPARE_OFFSETS:
+            raise ValueError(
+                f"Invalid compare_time_offset: {seconds}. Must be one of: {sorted(VALID_COMPARE_OFFSETS)}"
+            )
+        self._compare_time_offset_seconds = seconds
+        return self
+
+    # -------------------------------------------------------------------------
+    # Dataset Scoping
+    # -------------------------------------------------------------------------
+
+    def dataset(self, dataset_slug: str) -> QueryBuilder:
+        """Set dataset scope for this query.
+
+        Args:
+            dataset_slug: Dataset slug to query against
+
+        Returns:
+            self for chaining
+
+        Example:
+            >>> QueryBuilder().dataset("api-logs").last_1_hour().count()
+        """
+        self._dataset = dataset_slug
+        return self
+
+    def environment_wide(self) -> QueryBuilder:
+        """Mark query as environment-wide (all datasets).
+
+        Returns:
+            self for chaining
+
+        Example:
+            >>> QueryBuilder().environment_wide().last_1_hour().count()
+        """
+        self._dataset = "__all__"
+        return self
+
+    def get_dataset(self) -> str:
+        """Get dataset scope (defaults to \"__all__\" if not set).
+
+        Returns:
+            Dataset slug or \"__all__\" for environment-wide
+        """
+        return self._dataset if self._dataset else "__all__"
+
+    # -------------------------------------------------------------------------
+    # Query Metadata (for board integration)
+    # -------------------------------------------------------------------------
+
+    def description(self, desc: str) -> QueryBuilder:
+        """Set query description (optional).
+
+        For boards: This becomes the query annotation description.
+
+        Args:
+            desc: Query description (max 1023 chars)
+
+        Returns:
+            self for chaining
+
+        Example:
+            >>> (QueryBuilder("Request Count")
+            ...     .dataset("api-logs")
+            ...     .last_1_hour()
+            ...     .count()
+            ...     .description("Total requests over 24 hours"))
+        """
+        self._query_description = desc
+        return self
+
+    def has_name(self) -> bool:
+        """Check if query has name set.
+
+        Returns:
+            True if name is set
+        """
+        return self._query_name is not None
+
+    def get_name(self) -> str | None:
+        """Get query name.
+
+        Returns:
+            Query name or None
+        """
+        return self._query_name
+
+    def get_description(self) -> str | None:
+        """Get query description.
+
+        Returns:
+            Query description or None
+        """
+        return self._query_description
+
+    # -------------------------------------------------------------------------
+    # Build Methods
+    # -------------------------------------------------------------------------
+
+    def build(self) -> QuerySpec:
+        """Build a QuerySpec from the builder state.
+
+        Converts builder component types (Calculation, Filter, Order, Having)
+        to generated API types (QueryCalculation, QueryFilter, etc.).
+
+        Returns:
+            A QuerySpec configured with the builder's settings
+
+        Raises:
+            ValueError: If only one of start_time/end_time is set (must use both)
+        """
+        # Import here to avoid circular imports
+        from honeycomb._generated_models import (
+            QueryCalculation,
+            QueryFilter,
+            QueryHaving,
+            QueryOrder,
+        )
+        from honeycomb.models.queries import QuerySpec
+
+        # Validate absolute time: if either is set, both must be set
+        has_start = self._start_time is not None
+        has_end = self._end_time is not None
+        if has_start != has_end:
+            raise ValueError(
+                "Both start_time and end_time must be set together. "
+                "Use time_range() for relative time queries."
+            )
+
+        # Convert builder component types to generated API types
+        from honeycomb._generated_models import HavingCalculateOp, HavingOp
+
+        calculations = (
+            [QueryCalculation(op=c.op, column=c.column) for c in self._calculations]
+            if self._calculations
+            else None
+        )
+
+        filters = (
+            [QueryFilter(op=f.op, column=f.column, value=f.value) for f in self._filters]
+            if self._filters
+            else None
+        )
+
+        orders = (
+            [QueryOrder(op=o.op, column=o.column, order=o.order) for o in self._orders]
+            if self._orders
+            else None
+        )
+
+        havings = (
+            [
+                QueryHaving(
+                    calculate_op=HavingCalculateOp(h.calculate_op.value),
+                    column=h.column,
+                    op=HavingOp(h.op.value),
+                    value=h.value,
+                )
+                for h in self._havings
+            ]
+            if self._havings
+            else None
+        )
+
+        return QuerySpec(
+            time_range=self._time_range,
+            start_time=self._start_time,
+            end_time=self._end_time,
+            granularity=self._granularity,
+            calculations=calculations,
+            filters=filters,
+            breakdowns=self._breakdowns if self._breakdowns else None,
+            filter_combination=self._filter_combination,
+            orders=orders,
+            limit=self._limit,
+            havings=havings,
+            calculated_fields=self._calculated_fields if self._calculated_fields else None,
+            compare_time_offset_seconds=self._compare_time_offset_seconds,
+        )
+
+    def build_for_trigger(self) -> dict[str, Any]:
+        """Build a trigger query dict from the builder state.
+
+        Trigger queries have additional constraints:
+        - time_range must be <= 3600 seconds (1 hour)
+        - No absolute time support
+        - No orders, havings, or limit
+
+        Returns:
+            A dict representing the inline query for triggers
+
+        Raises:
+            ValueError: If time_range > 3600 or absolute time is set
+        """
+        if self._start_time is not None or self._end_time is not None:
+            raise ValueError("Trigger queries do not support absolute time ranges")
+
+        time_range = self._time_range if self._time_range is not None else 3600
+        if time_range > 3600:
+            raise ValueError(
+                f"Trigger query time_range must be <= 3600 seconds (1 hour), got {time_range}"
+            )
+
+        # Build query as dict (converted from builder types)
+        query_dict: dict[str, Any] = {"time_range": time_range}
+        if self._granularity is not None:
+            query_dict["granularity"] = self._granularity
+        if self._calculations:
+            query_dict["calculations"] = [c.to_dict() for c in self._calculations]
+        if self._filters:
+            query_dict["filters"] = [f.to_dict() for f in self._filters]
+        if self._breakdowns:
+            query_dict["breakdowns"] = self._breakdowns
+        if self._filter_combination:
+            # Convert enum to value if needed
+            fc = self._filter_combination
+            query_dict["filter_combination"] = fc.value if hasattr(fc, "value") else fc
+
+        return query_dict
