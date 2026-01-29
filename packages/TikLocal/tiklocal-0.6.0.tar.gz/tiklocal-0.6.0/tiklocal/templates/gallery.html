@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  /* Immersive Discovery Feed */
+  body {
+    background-color: #000;
+  }
+  
+  #image-grid {
+    column-count: 2;
+    column-gap: 8px;
+    padding: 8px;
+  }
+  @media (min-width: 640px) { #image-grid { column-count: 3; } }
+  @media (min-width: 1024px) { #image-grid { column-count: 4; } }
+  @media (min-width: 1536px) { #image-grid { column-count: 5; } }
+
+  .grid-item {
+    break-inside: avoid;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    background: #1a1a1a;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+  .grid-item:active {
+    transform: scale(0.98);
+  }
+  .grid-item img {
+    width: 100%;
+    height: auto;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .grid-item img.loaded {
+    opacity: 1;
+  }
+
+  #img-loading {
+    text-align: center;
+    color: #666;
+    padding: 40px;
+    font-size: 14px;
+  }
+
+  /* Modal Overlay */
+  #modal {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0,0,0,0.95);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+  }
+  #modal.active {
+    display: flex;
+  }
+  #modal img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    transition: opacity 0.2s ease;
+  }
+  .modal-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: white;
+    background: rgba(255,255,255,0.1);
+    border-radius: 50%;
+    padding: 10px;
+    cursor: pointer;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto">
+    <!-- Discover Grid -->
+    <div id="image-grid"></div>
+    <div id="img-loading">正在探索新内容...</div>
+</div>
+
+<!-- Simple Lightbox Modal -->
+<div id="modal">
+    <div class="modal-close" id="modal-close">
+        <i data-feather="x"></i>
+    </div>
+    <img id="modal-img" src="" alt="">
+    <a id="modal-info" href="#" class="fixed top-5 left-5 text-white bg-white/10 p-3 rounded-full">
+        <i data-feather="info"></i>
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script src="{{ url_for('static', filename='hammer.min.js') }}"></script>
+<script>
+  (() => {
+    const grid = document.getElementById('image-grid');
+    const loading = document.getElementById('img-loading');
+    const modal = document.getElementById('modal');
+    const modalImg = document.getElementById('modal-img');
+    const modalClose = document.getElementById('modal-close');
+    const modalInfo = document.getElementById('modal-info');
+
+    let page = 1;
+    let seed = null;
+    let hasMore = true;
+    let isLoading = false;
+    let allImages = [];      // 存储所有已加载的图片URI
+    let currentIndex = -1;   // Modal中当前图片索引
+
+    async function loadImages() {
+      if (isLoading || !hasMore) return;
+      isLoading = true;
+      loading.style.display = 'block';
+
+      try {
+        const url = `/api/random-images?page=${page}&size=30${seed ? '&seed=' + seed : ''}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!seed) seed = data.seed;
+        hasMore = data.has_more;
+
+        data.images.forEach(uri => {
+          allImages.push(uri);  // 追加到全局数组
+          const div = document.createElement('div');
+          div.className = 'grid-item';
+          div.innerHTML = `
+            <img src="/media?uri=${encodeURIComponent(uri)}" loading="lazy"
+                 onload="this.classList.add('loaded')"
+                 onclick="openModal('${encodeURIComponent(uri)}')">
+          `;
+          grid.appendChild(div);
+        });
+
+        page++;
+      } catch (err) {
+        console.error('Failed to load images:', err);
+      } finally {
+        isLoading = false;
+        loading.style.display = hasMore ? 'block' : 'none';
+      }
+    }
+
+    window.openModal = (uri) => {
+        const decodedUri = decodeURIComponent(uri);
+        currentIndex = allImages.indexOf(decodedUri);  // 查找当前索引
+        if (currentIndex === -1) {
+            // 如果URI不在列表中（不应该发生），降级到原有行为
+            currentIndex = allImages.length;
+            allImages.push(decodedUri);
+        }
+        showImage(currentIndex);  // 使用新函数
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    };
+
+    // 核心切换函数
+    const showImage = (newIndex) => {
+        if (newIndex < 0 || newIndex >= allImages.length) return;
+        currentIndex = newIndex;
+        const uri = encodeURIComponent(allImages[currentIndex]);
+        modalImg.src = `/media?uri=${uri}`;
+        modalInfo.href = `/image?uri=${uri}`;
+
+        // 预加载相邻图片
+        preloadImage(currentIndex - 1);
+        preloadImage(currentIndex + 1);
+
+        // 接近末尾时自动加载更多
+        if (currentIndex >= allImages.length - 5 && hasMore && !isLoading) {
+            loadImages();
+        }
+    };
+
+    // 预加载函数
+    const preloadImage = (idx) => {
+        if (idx < 0 || idx >= allImages.length) return;
+        const img = new Image();
+        img.src = `/media?uri=${encodeURIComponent(allImages[idx])}`;
+    };
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalImg.src = '';
+        document.body.style.overflow = '';
+    };
+
+    modalClose.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if(e.target === modal) closeModal(); });
+
+    // 添加Hammer手势支持（水平滑动）
+    const modalHammer = new Hammer(modal);
+    modalHammer.get('swipe').set({ direction: Hammer.DIRECTION_HORIZONTAL });
+    modalHammer.on('swipeleft', () => showImage(currentIndex + 1));
+    modalHammer.on('swiperight', () => showImage(currentIndex - 1));
+
+    window.addEventListener('scroll', () => {
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 800) {
+        loadImages();
+      }
+    });
+
+    // 增强键盘支持
+    document.addEventListener('keydown', (e) => {
+        if (!modal.classList.contains('active')) return;
+        if (e.key === 'Escape') closeModal();
+        if (e.key === 'ArrowLeft') showImage(currentIndex - 1);
+        if (e.key === 'ArrowRight') showImage(currentIndex + 1);
+    });
+
+    // Init
+    loadImages();
+  })();
+</script>
+{% endblock %}
