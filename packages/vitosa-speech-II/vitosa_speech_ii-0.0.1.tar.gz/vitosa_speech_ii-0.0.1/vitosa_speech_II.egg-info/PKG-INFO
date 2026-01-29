@@ -1,0 +1,146 @@
+Metadata-Version: 2.4
+Name: vitosa-speech-II
+Version: 0.0.1
+Summary: A library for Robust Vietnamese Audio-Based Toxic Span Detection and Censoring
+Author: Vy Le-Phuong Huynh, Huy Ba Do and Luan Thanh Nguyen
+Author-email: luannt@uit.edu.vn
+Project-URL: Model (Hugging Face), https://huggingface.co/UIT-ViToSA/PhoWhisper-BiLSTM-CRF
+Keywords: audio-processing,toxic-span-detection,vietnamese,asr,speech-recognition,censoring,phowhisper
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Multimedia :: Sound/Audio :: Speech
+Classifier: Natural Language :: Vietnamese
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Requires-Dist: torch>=1.13.0
+Requires-Dist: transformers>=4.28.0
+Requires-Dist: librosa
+Requires-Dist: pydub
+Requires-Dist: huggingface_hub
+Requires-Dist: pytorch-crf
+Requires-Dist: numpy
+Requires-Dist: tqdm
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: keywords
+Dynamic: project-url
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# ViToSA 2.0: A MULTI-TASK APPROACH TOWARDS ROBUST VIETNAMESE AUDIO-BASED TOXIC SPAN DETECTION | ICASSP 2026
+
+**Official implementation** of the paper:  
+**“A Multi-Task Approach Towards Robust Vietnamese Audio-Based Toxic Span Detection”** (ICASSP 2026).
+
+This package provides an end-to-end pipeline for **Vietnamese speech-based toxic span detection**, combining **ASR and toxic span detection** in a unified model. It also supports **automatic audio censoring**, replacing toxic spans with beep sounds in the output waveform.
+
+---
+
+## Key Features
+
+* **Automated Audio Censoring**: Takes an input audio file containing toxic language and outputs a **clean `.wav` file** where profanity is masked with a beep.
+* **Unified Multi-Task Architecture**: Integrates ASR and Toxic Span Detection (TSD) into a single model for high speed.
+* **SOTA Performance**: Achieves **F1-macro 0.9212** on the ViToSA-v2 dataset using **PhoWhisper + BiLSTM-CRF + Knowledge Distillation**.
+* **High Efficiency**: Reduces inference latency by over **56%** compared to traditional pipelines.
+
+## Installation
+
+```bash
+pip install vitosa-speech
+```
+
+### System requirements
+
+This package relies on `pydub` for audio processing, which requires **ffmpeg** to be installed.
+
+- **Ubuntu / Debian**
+  ```bash
+  sudo apt-get install ffmpeg
+  ```
+
+- **macOS (Homebrew)**
+  ```bash
+  brew install ffmpeg
+  ```
+
+- **Windows**
+  Download ffmpeg from https://ffmpeg.org and add it to your system `PATH`.
+
+---
+
+
+## Quick Start
+This library allows you to input a raw audio file and get a censored audio file as the output.
+
+### 1. Load the Model
+```python
+The model is pre-trained on the ViToSA-v2 dataset
+
+import torch
+from vitosa-speech-II import load_my_model
+# Automatically detect device (CUDA/CPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Load the pre-trained model
+model, processor = load_my_model(device)
+```
+
+### 2. Run Inference (Detect & Censor)
+```python
+from vitosa-speech-II import return_labels, censor_audio_with_beep
+from IPython.display import Audio, display # Optional: to play in notebook
+
+# Path to your input file
+input_audio = "samples/toxic_speech.wav"
+
+# Step 1: Detect toxic spans
+words_with_labels = return_labels(input_audio, model, processor, device)
+
+# Step 2: Generate Censored Audio
+# This function creates a new audio file with beeps over toxic words
+output_audio_path = censor_audio_with_beep(
+    audio_path=input_audio, 
+    model=model, 
+    processor=processor, 
+    words_with_labels=words_with_labels, 
+    device=device
+)
+
+# Result
+print(f"✅ Censored audio saved to: {output_audio_path}")
+
+# Optional: Play the result (if in Jupyter/Colab)
+# display(Audio(output_audio_path))
+``` 
+
+## Methodology
+Our system works in two steps:
+
+1. Detection: The multi-task model (PhoWhisper + BiLSTM-CRF) processes the audio to identify the exact start and end timestamps of toxic words.
+2. Censoring: We reconstruct the audio by keeping safe segments and generating a sine wave (beep) to overlay exactly where the toxic tokens occur, ensuring the rest of the sentence remains intelligible.
+
+<!-- ## Citation
+If you use this tool or our findings, please cite:
+```bibtex
+@inproceedings{huynh2026multitask,
+  title={A Multi-Task Approach Towards Robust Vietnamese Audio-Based Toxic Span Detection},
+  author={Huynh, Vy Le-Phuong and Do, Huy Ba and Nguyen, Luan Thanh},
+  booktitle={Proceedings of the IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  year={2026}
+}
+``` -->
+
+## Contact
+For more information: luannt@uit.edu.vn
+
