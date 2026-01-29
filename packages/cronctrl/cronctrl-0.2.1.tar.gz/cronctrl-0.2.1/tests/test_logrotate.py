@@ -1,0 +1,42 @@
+from cronctrl import logrotate
+
+
+def _base_cfg():
+    return {
+        "log_dir": "/var/log/cronctrl",
+        "state_dir": "/var/lib/cronctrl",
+        "jobs": {},
+    }
+
+
+def test_render_logrotate_includes_jobs_and_global():
+    cfg = _base_cfg()
+    cfg["jobs"] = {
+        "a": {"schedule": "* * * * *", "exec": "/bin/echo a", "retention_days": 3},
+        "b": {"schedule": "* * * * *", "exec": "/bin/echo b", "retention_days": 10},
+    }
+
+    output = logrotate.render(cfg)
+    assert "/var/log/cronctrl/a.log" in output
+    assert "rotate 3" in output
+    assert "/var/log/cronctrl/b.log" in output
+    assert "rotate 10" in output
+    assert "/var/log/cronctrl/all.log" in output
+    assert "rotate 10" in output
+
+
+def test_render_logrotate_skips_disabled():
+    cfg = _base_cfg()
+    cfg["jobs"] = {
+        "enabled": {"schedule": "* * * * *", "exec": "/bin/echo ok", "retention_days": 2},
+        "disabled": {
+            "schedule": "* * * * *",
+            "exec": "/bin/echo nope",
+            "retention_days": 5,
+            "disabled": True,
+        },
+    }
+
+    output = logrotate.render(cfg)
+    assert "enabled.log" in output
+    assert "disabled.log" not in output
