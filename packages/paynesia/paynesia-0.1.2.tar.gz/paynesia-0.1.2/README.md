@@ -1,0 +1,78 @@
+# Paynesia
+
+A framework-agnostic Python library for integrating multiple Indonesian payment gateways.
+
+## Supported Gateways & Documentation
+
+| Gateway | English Tutorial | Tutorial Bahasa Indonesia |
+| :--- | :---: | :---: |
+| **Midtrans** | [Read](docs/en/midtrans.md) | [Baca](docs/id/midtrans.md) |
+| **Xendit** | [Read](docs/en/xendit.md) | [Baca](docs/id/xendit.md) |
+| **Doku** | [Read](docs/en/doku.md) | [Baca](docs/id/doku.md) |
+| **Duitku** | [Read](docs/en/duitku.md) | [Baca](docs/id/duitku.md) |
+| **AyoConnect** | [Read](docs/en/ayoconnect.md) | [Baca](docs/id/ayoconnect.md) |
+| **Fonnte** | [Read](docs/en/fonnte.md) | [Baca](docs/id/fonnte.md) |
+
+## Security Notes
+
+> [!IMPORTANT]
+> **Signature Verification**: Always verify webhook signatures to prevent fraud. This library provides built-in signature verification in `handle_webhook` for all supported gateways.
+>
+> **Doku Gateway**: You **MUST** pass the `request_path` argument (e.g., `/api/callbacks/doku`) to `handle_webhook` for strict signature verification.
+> 
+> **Ayoconnect Gateway**: Signature verification requires either `client_secret` (for HMAC) or `public_key` (for RSA). If using RSA, ensure the `cryptography` library is installed.
+>
+> **Xendit Gateway**: Please configure `webhook_secret` to enable HMAC signature verification. Legacy `callback_token` usage is deprecated.
+>
+> **Environment Variables**: Never hardcode your keys. Use environment variables and pass them to the configuration.
+
+
+## Installation
+
+```bash
+pip install paynesia
+```
+
+## Usage
+
+```python
+import os
+from paynesia.manager import PaymentManager
+
+# Optional: if using python-dotenv to load .env file
+# from dotenv import load_dotenv
+# load_dotenv()
+
+config = {
+    'default': 'midtrans',
+    'gateways': {
+        'midtrans': {
+            'server_key': os.getenv('MIDTRANS_SERVER_KEY'),
+            'is_production': os.getenv('MIDTRANS_IS_PRODUCTION', 'False') == 'True'
+        }
+    }
+}
+
+manager = PaymentManager(config)
+payment = manager.driver('midtrans').create_payment({
+    'order_id': 'ORDER-123',
+    'amount': 10000,
+    'customer': {'email': 'user@example.com'}
+})
+
+print(payment)
+```
+
+## Contributing
+
+We welcome contributions! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
