@@ -1,0 +1,33 @@
+name: Changelog
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  create-changelog-entry:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Create changelog entry
+        run: |
+          FILE="changelog/${{ github.event.pull_request.number }}.bumped.md"
+          if [ -f "$FILE" ]; then
+            echo "$FILE already exists. Skipping."
+          else
+            echo "${{ github.event.pull_request.title }}" > "$FILE"
+          fi
+
+      - name: Commit and push changelog entry
+        uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
+        with:
+          commit_message: "docs(changelog): Add entry for dependency update [dependabot skip]"
+          file_pattern: "changelog/*.md"
