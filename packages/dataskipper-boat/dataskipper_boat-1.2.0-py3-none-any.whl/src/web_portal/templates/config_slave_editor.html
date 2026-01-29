@@ -1,0 +1,2371 @@
+{% extends "base.html" %}
+
+{% block title %}Slave Config Editor - RTU Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+    .editor-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    /* Connection Cards */
+    .connections-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .connection-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .connection-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .connection-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .connection-icon {
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        background: var(--bg-card);
+        border-radius: 10px;
+    }
+
+    .connection-title h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .connection-meta {
+        display: flex;
+        gap: 12px;
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .connection-meta span {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .connection-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    /* Device Cards Grid */
+    .devices-container {
+        padding: 20px;
+    }
+
+    .devices-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+    }
+
+    .device-card {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 16px;
+        transition: all 0.2s;
+    }
+
+    .device-card:hover {
+        border-color: var(--accent);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .device-card.device-disabled {
+        opacity: 0.6;
+        border-color: #ff9800;
+        background: rgba(255, 152, 0, 0.05);
+    }
+
+    .device-badges {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .device-disabled-badge {
+        background: #ff9800;
+        color: white;
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+
+    .device-tcp-badge {
+        background: #2196f3;
+        color: white;
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+
+    .btn-warning {
+        background: rgba(255, 152, 0, 0.1);
+        border-color: #ff9800;
+        color: #ff9800;
+    }
+
+    .btn-warning:hover {
+        background: rgba(255, 152, 0, 0.2);
+    }
+
+    .btn-success {
+        background: rgba(76, 175, 80, 0.1);
+        border-color: #4caf50;
+        color: #4caf50;
+    }
+
+    .btn-success:hover {
+        background: rgba(76, 175, 80, 0.2);
+    }
+
+    .device-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+    }
+
+    .device-name {
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .device-type {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(29, 155, 240, 0.15);
+        color: var(--accent);
+    }
+
+    .device-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        font-size: 12px;
+    }
+
+    .device-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .device-detail label {
+        color: var(--text-muted);
+        font-size: 10px;
+        text-transform: uppercase;
+    }
+
+    .device-detail span {
+        font-weight: 500;
+    }
+
+    .device-protocols {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .protocol-badge {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: var(--bg-secondary);
+    }
+
+    .protocol-badge.enabled {
+        background: rgba(0, 186, 124, 0.15);
+        color: var(--success);
+    }
+
+    .protocol-badge.disabled {
+        background: var(--bg-secondary);
+        color: var(--text-muted);
+        text-decoration: line-through;
+    }
+
+    .device-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    /* Add Device Card */
+    .add-device-card {
+        border: 2px dashed var(--border-color);
+        background: transparent;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 180px;
+        cursor: pointer;
+        color: var(--text-muted);
+        transition: all 0.2s;
+    }
+
+    .add-device-card:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(29, 155, 240, 0.05);
+    }
+
+    .add-device-card .icon {
+        font-size: 32px;
+        margin-bottom: 8px;
+    }
+
+    /* Buttons */
+    .btn {
+        padding: 8px 14px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-card);
+        color: var(--text-primary);
+    }
+
+    .btn:hover {
+        background: var(--bg-secondary);
+    }
+
+    .btn-primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #1a8cd8;
+    }
+
+    .btn-danger {
+        color: var(--error);
+        border-color: var(--error);
+    }
+
+    .btn-danger:hover {
+        background: rgba(244, 67, 54, 0.1);
+    }
+
+    .btn-sm {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.6);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal {
+        background: var(--bg-card);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 24px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-header h3 {
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    .modal-close {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        font-size: 18px;
+        cursor: pointer;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+
+    .modal-close:hover {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+    }
+
+    .modal-body {
+        padding: 24px;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 16px 24px;
+        border-top: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+    }
+
+    /* Form styles */
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--text-primary);
+    }
+
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 14px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.1);
+    }
+
+    .form-group input::placeholder {
+        color: var(--text-muted);
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .form-row .form-group {
+        margin-bottom: 0;
+    }
+
+    .form-section {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .form-section h4 {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 16px;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .form-section h4::before {
+        content: '';
+        width: 4px;
+        height: 16px;
+        background: var(--accent);
+        border-radius: 2px;
+    }
+
+    /* Protocol toggle row */
+    .protocol-row {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 16px;
+        align-items: center;
+        padding: 12px 0;
+    }
+
+    .protocol-row + .protocol-row {
+        border-top: 1px solid var(--border-color);
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 140px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent);
+        cursor: pointer;
+    }
+
+    .checkbox-group label {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .interval-input {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .interval-input input {
+        width: 80px;
+        text-align: center;
+    }
+
+    .interval-input span {
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+
+    /* Empty state */
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-muted);
+    }
+
+    .empty-state .icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+    }
+
+    /* Top actions bar */
+    .actions-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .actions-bar h2 {
+        font-size: 18px;
+    }
+
+    .save-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+
+    .save-indicator.unsaved {
+        color: var(--warning);
+    }
+
+    /* Test mode indicator */
+    .test-mode-indicator {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .test-mode-indicator.required {
+        background: rgba(244, 67, 54, 0.15);
+        color: #f44336;
+        border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+
+    .test-mode-indicator.active {
+        background: rgba(255, 152, 0, 0.15);
+        color: #ff9800;
+        border: 1px solid rgba(255, 152, 0, 0.3);
+    }
+
+    /* Workflow info panel */
+    .workflow-info {
+        background: rgba(29, 155, 240, 0.08);
+        border: 1px solid rgba(29, 155, 240, 0.2);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .workflow-info h4 {
+        margin: 0 0 12px 0;
+        color: var(--accent);
+        font-size: 14px;
+    }
+
+    .workflow-info ol {
+        margin: 0;
+        padding-left: 20px;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .workflow-info li {
+        margin-bottom: 6px;
+    }
+
+    .workflow-info .current-step {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    /* Verify button */
+    .btn-verify {
+        background: rgba(76, 175, 80, 0.1);
+        border-color: #4caf50;
+        color: #4caf50;
+    }
+
+    .btn-verify:hover {
+        background: rgba(76, 175, 80, 0.2);
+    }
+
+    .btn-verify:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Publish button */
+    .btn-publish {
+        background: rgba(156, 39, 176, 0.1);
+        border-color: #9c27b0;
+        color: #9c27b0;
+    }
+
+    .btn-publish:hover {
+        background: rgba(156, 39, 176, 0.2);
+    }
+
+    .btn-publish:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Publish response styles */
+    .publish-response {
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+    }
+
+    .publish-response.success {
+        background: rgba(76, 175, 80, 0.1);
+        border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+
+    .publish-response.error {
+        background: rgba(244, 67, 54, 0.1);
+        border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+
+    .publish-response h4 {
+        margin: 0 0 12px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .publish-response.success h4 {
+        color: #4caf50;
+    }
+
+    .publish-response.error h4 {
+        color: #f44336;
+    }
+
+    .publish-detail {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 13px;
+    }
+
+    .publish-detail:last-child {
+        border-bottom: none;
+    }
+
+    .publish-detail label {
+        color: var(--text-muted);
+    }
+
+    .publish-detail span {
+        font-weight: 500;
+        font-family: monospace;
+    }
+
+    .error-list {
+        list-style: none;
+        padding: 0;
+        margin: 8px 0 0 0;
+    }
+
+    .error-list li {
+        padding: 8px 12px;
+        background: rgba(244, 67, 54, 0.1);
+        border-radius: 4px;
+        margin-bottom: 4px;
+        font-size: 13px;
+        color: #f44336;
+    }
+
+    .warning-list li {
+        background: rgba(255, 152, 0, 0.1);
+        color: #ff9800;
+    }
+
+    /* Verify status indicator */
+    .verify-status {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .verify-status.pending {
+        background: rgba(255, 152, 0, 0.15);
+        color: #ff9800;
+    }
+
+    .verify-status.success {
+        background: rgba(76, 175, 80, 0.15);
+        color: #4caf50;
+    }
+
+    .verify-status.failed {
+        background: rgba(244, 67, 54, 0.15);
+        color: #f44336;
+    }
+
+    /* Verification results */
+    .verify-summary {
+        background: var(--bg-secondary);
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .verify-summary h4 {
+        margin: 0 0 12px 0;
+        font-size: 16px;
+    }
+
+    .verify-summary .stats {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    .verify-summary .stat {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .verify-summary .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    .verify-summary .stat-label {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .verify-summary .stat-value.success {
+        color: #4caf50;
+    }
+
+    .verify-summary .stat-value.failed {
+        color: #f44336;
+    }
+
+    .connection-result {
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin-bottom: 12px;
+        overflow: hidden;
+    }
+
+    .connection-result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: var(--bg-secondary);
+    }
+
+    .connection-result-header .conn-name {
+        font-weight: 600;
+    }
+
+    .connection-result-header .conn-status {
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .connection-result-header .conn-status.ok {
+        background: rgba(76, 175, 80, 0.15);
+        color: #4caf50;
+    }
+
+    .connection-result-header .conn-status.failed {
+        background: rgba(244, 67, 54, 0.15);
+        color: #f44336;
+    }
+
+    .device-results {
+        padding: 12px 16px;
+    }
+
+    .device-result {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .device-result:last-child {
+        border-bottom: none;
+    }
+
+    .device-result .device-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .device-result .device-name {
+        font-weight: 500;
+    }
+
+    .device-result .unit-id {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .device-result .status-icon {
+        font-size: 18px;
+    }
+
+    .device-result .error-msg {
+        font-size: 12px;
+        color: #f44336;
+        max-width: 300px;
+    }
+
+    /* Required field indicator */
+    .required::after {
+        content: ' *';
+        color: #f44336;
+    }
+
+    .form-group input.invalid,
+    .form-group select.invalid {
+        border-color: #f44336;
+        box-shadow: 0 0 0 3px rgba(244, 67, 54, 0.1);
+    }
+
+    .field-error {
+        color: #f44336;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+
+    /* Disabled state for UI lock during verification */
+    .ui-locked .btn:not(.modal-close),
+    .ui-locked .device-card,
+    .ui-locked .connection-card {
+        pointer-events: none;
+        opacity: 0.6;
+    }
+
+    .ui-locked .add-device-card {
+        opacity: 0.3;
+    }
+
+    .verification-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+    }
+
+    .verification-overlay.active {
+        display: flex;
+    }
+
+    .verification-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid var(--bg-secondary);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .verification-overlay p {
+        margin-top: 16px;
+        color: white;
+        font-size: 16px;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title-group">
+        <h1>Slave Configuration Editor</h1>
+        <p class="page-subtitle">{{ config_file }} - Visual device configuration</p>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+        <span id="test-mode-indicator" class="test-mode-indicator" style="display: none;">
+            ⚠️ Test Mode Required
+        </span>
+        <a href="/config?file={{ config_file }}&dir={{ config_dir }}" class="btn">
+            📝 Edit Raw YAML
+        </a>
+        <button class="btn btn-verify" onclick="verifyConfig()" id="verify-btn" disabled>
+            🔍 Verify Config
+        </button>
+        <button class="btn btn-primary" onclick="saveConfig()" id="save-btn" disabled title="Verify config first">
+            💾 Save to Test Config
+        </button>
+        <button class="btn btn-publish" onclick="openPublishModal()" id="publish-btn" disabled title="Verify config first">
+            🚀 Publish Config
+        </button>
+    </div>
+</div>
+
+<!-- Verification Results Modal -->
+<div class="modal-overlay" id="verify-modal">
+    <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 id="verify-modal-title">Configuration Verification</h3>
+            <button class="modal-close" onclick="closeModal('verify-modal')">×</button>
+        </div>
+        <div class="modal-body" id="verify-results">
+            <!-- Results will be populated here -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('verify-modal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Publish Config Modal -->
+<div class="modal-overlay" id="publish-modal">
+    <div class="modal" style="max-width: 550px;">
+        <div class="modal-header">
+            <h3 id="publish-modal-title">Publish Configuration</h3>
+            <button class="modal-close" onclick="closeModal('publish-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="publish-form-container">
+                <p style="margin-bottom: 20px; color: var(--text-secondary);">
+                    This will save the configuration to the test directory and submit it to the backend server for version control.
+                </p>
+
+                <div class="form-group">
+                    <label>Backend API URL</label>
+                    <input type="text" id="publish-backend-url" value="https://backend-server.taild386a.ts.net/iot-backend/api/v1/config/submit/" placeholder="https://backend-server.taild386a.ts.net/iot-backend/api/v1/config/submit/">
+                </div>
+
+                <div class="form-group">
+                    <label>Config Type</label>
+                    <select id="publish-config-type">
+                        <option value="slave_config">Slave Config</option>
+                        <option value="communication">Communication Config</option>
+                    </select>
+                </div>
+
+                <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; margin-top: 16px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Will be submitted with headers:</div>
+                    <code style="font-size: 11px; display: block; white-space: pre-wrap;">
+X-Device-ID: (auto-detected)
+X-Config-Type: <span id="preview-config-type">slave_config</span>
+X-Submitted-By: (current user)
+Content-Type: text/plain</code>
+                </div>
+            </div>
+
+            <div id="publish-result-container" style="display: none;">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+        <div class="modal-footer" id="publish-modal-footer">
+            <button class="btn" onclick="closeModal('publish-modal')">Cancel</button>
+            <button class="btn btn-publish" onclick="publishConfig()" id="publish-submit-btn">
+                🚀 Publish to Backend
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="editor-container">
+    <!-- Workflow guidance panel - shown when test mode not active -->
+    <div class="workflow-info" id="workflow-info" style="display: none;">
+        <h4>📋 Configuration Workflow</h4>
+        <ol>
+            <li id="step-1" class="current-step">Enable Test Mode from Testing page or global banner</li>
+            <li id="step-2">Edit configuration using this visual editor</li>
+            <li id="step-3">Click "Verify Config" to test all connections and devices</li>
+            <li id="step-4">If verification passes, save changes to test_config</li>
+            <li id="step-5">Apply test config to production via Config page</li>
+            <li id="step-6">Restart service to load new configuration</li>
+        </ol>
+    </div>
+
+    <div class="actions-bar">
+        <div class="save-indicator" id="save-indicator">
+            <span>●</span> All changes saved
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <span id="verify-status" class="verify-status" style="display: none;"></span>
+            <button class="btn" onclick="openAddConnectionModal()">
+                ➕ Add Connection
+            </button>
+        </div>
+    </div>
+
+    <div class="connections-grid" id="connections-container">
+        <!-- Connections will be rendered here -->
+    </div>
+</div>
+
+<!-- Verification Overlay -->
+<div class="verification-overlay" id="verification-overlay">
+    <div class="verification-spinner"></div>
+    <p id="verification-status-text">Verifying configuration...</p>
+</div>
+
+<!-- Edit Device Modal -->
+<div class="modal-overlay" id="device-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modal-title">Edit Device</h3>
+            <button class="modal-close" onclick="closeModal('device-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="edit-connection-id">
+            <input type="hidden" id="edit-device-index">
+
+            <div class="form-group">
+                <label class="required">Device ID</label>
+                <input type="text" id="edit-device-id" placeholder="e.g., ess-3a-mfm-1" required>
+                <div class="field-error" id="error-device-id" style="display: none;"></div>
+            </div>
+
+            <div class="form-row" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label class="required">Unit ID (Modbus Address)</label>
+                    <input type="number" id="edit-unit-id" min="1" max="247" value="1" required>
+                    <div class="field-error" id="error-unit-id" style="display: none;"></div>
+                </div>
+                <div class="form-group">
+                    <label class="required">Device Type</label>
+                    <select id="edit-device-type" required>
+                        <option value="electrical">Electrical</option>
+                        <option value="water">Water</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label class="required">Meter Model</label>
+                    <select id="edit-meter-model" required>
+                        <option value="">-- Select Meter --</option>
+                    </select>
+                    <div class="field-error" id="error-meter-model" style="display: none;"></div>
+                </div>
+                <div class="form-group">
+                    <label class="required">Profile</label>
+                    <select id="edit-profile" required>
+                        <option value="">-- Select Profile --</option>
+                    </select>
+                    <div class="field-error" id="error-profile" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Target Table</label>
+                <select id="edit-target-table">
+                    <option value="distribution">Distribution</option>
+                    <option value="substation">Substation</option>
+                    <option value="water">Water</option>
+                </select>
+            </div>
+
+            <div class="form-section">
+                <h4>Protocol Settings</h4>
+
+                <div class="protocol-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="edit-http-enabled" checked>
+                        <label for="edit-http-enabled">HTTP API</label>
+                    </div>
+                    <div class="interval-input">
+                        <span>Publish every</span>
+                        <input type="number" id="edit-http-interval" min="1" value="60">
+                        <span>seconds</span>
+                    </div>
+                </div>
+
+                <div class="protocol-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="edit-mqtt-enabled" checked>
+                        <label for="edit-mqtt-enabled">MQTT</label>
+                    </div>
+                    <div class="interval-input">
+                        <span>Publish every</span>
+                        <input type="number" id="edit-mqtt-interval" min="1" value="10">
+                        <span>seconds</span>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Custom MQTT Topic (optional)</label>
+                    <input type="text" id="edit-mqtt-topic" placeholder="Leave empty to use default topic">
+                </div>
+
+                <div class="form-group" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <label style="font-size: 13px; color: var(--text-secondary);">TCP Gateway Options</label>
+                    <div class="checkbox-row" style="margin-top: 8px;">
+                        <input type="checkbox" id="edit-expose-tcp">
+                        <label for="edit-expose-tcp">Expose via TCP Gateway</label>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                        Enable to make this device's registers available via Modbus TCP on port 4196
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('device-modal')">Cancel</button>
+            <button class="btn btn-primary" onclick="saveDevice()">Save Device</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Connection Modal -->
+<div class="modal-overlay" id="connection-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="connection-modal-title">Add Connection</h3>
+            <button class="modal-close" onclick="closeModal('connection-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="edit-conn-index" value="-1">
+
+            <div class="form-row" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label class="required">Connection ID</label>
+                    <input type="text" id="new-conn-id" placeholder="e.g., rs485-main" required>
+                    <div class="field-error" id="error-conn-id" style="display: none;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Label</label>
+                    <input type="text" id="new-conn-label" placeholder="e.g., Main RS485 Bus">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="required">Connection Type</label>
+                <select id="new-conn-type" onchange="toggleConnectionFields()" required>
+                    <option value="serial">Serial (RS485/RS232)</option>
+                    <option value="tcp">TCP/IP (Modbus TCP)</option>
+                </select>
+            </div>
+
+            <div id="serial-fields" class="form-section" style="margin-top: 20px;">
+                <h4>Serial Settings</h4>
+                <div class="form-row" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label class="required">Serial Port</label>
+                        <input type="text" id="new-serial-port" value="/dev/ttyS0" placeholder="/dev/ttyS0" required>
+                        <div class="field-error" id="error-serial-port" style="display: none;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="required">Baud Rate</label>
+                        <select id="new-baud-rate" required>
+                            <option value="9600" selected>9600</option>
+                            <option value="19200">19200</option>
+                            <option value="38400">38400</option>
+                            <option value="115200">115200</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Parity</label>
+                        <select id="new-parity">
+                            <option value="N" selected>None</option>
+                            <option value="E">Even</option>
+                            <option value="O">Odd</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Stop Bits</label>
+                        <select id="new-stop-bits">
+                            <option value="1" selected>1</option>
+                            <option value="2">2</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tcp-fields" class="form-section" style="display: none; margin-top: 20px;">
+                <h4>TCP/IP Settings</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required">Host / IP Address</label>
+                        <input type="text" id="new-tcp-host" placeholder="192.168.1.100" required>
+                        <div class="field-error" id="error-tcp-host" style="display: none;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="required">Port</label>
+                        <input type="number" id="new-tcp-port" value="502" placeholder="502" required>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section" style="margin-top: 20px;">
+                <h4>Connection Options</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Timeout (seconds)</label>
+                        <input type="number" id="new-timeout" value="3" min="1" max="30">
+                    </div>
+                    <div class="form-group">
+                        <label>Retries</label>
+                        <input type="number" id="new-retries" value="3" min="0" max="10">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('connection-modal')">Cancel</button>
+            <button class="btn btn-primary" onclick="saveConnection()">Save Connection</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let configData = null;
+    let hasChanges = false;
+    let verificationRun = false;  // Track if verification was run (publish allowed even if some devices fail)
+    const configFile = "{{ config_file }}";
+    const configDir = "{{ config_dir }}";
+
+    // Load config on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadConfig();
+        await loadMeters();
+        updateTestModeIndicator();
+        updateButtonStates();
+    });
+
+    // Listen for global test mode changes
+    window.addEventListener('testModeChanged', function(e) {
+        updateTestModeIndicator();
+        updateButtonStates();
+    });
+
+    function updateButtonStates() {
+        const verifyBtn = document.getElementById('verify-btn');
+        const saveBtn = document.getElementById('save-btn');
+        const publishBtn = document.getElementById('publish-btn');
+
+        // Verify button: enabled when test mode active and has changes
+        verifyBtn.disabled = !window.testModeActive || !hasChanges;
+
+        // Save button: enabled only when verification was run AND has changes AND test mode active
+        saveBtn.disabled = !verificationRun || !hasChanges || !window.testModeActive;
+
+        // Publish button: enabled only when verification was run AND test mode active
+        publishBtn.disabled = !verificationRun || !window.testModeActive;
+
+        if (!verificationRun && hasChanges) {
+            saveBtn.title = 'Run verification first before saving';
+            publishBtn.title = 'Run verification first before publishing';
+        } else if (!window.testModeActive) {
+            saveBtn.title = 'Enable Test Mode to save';
+            publishBtn.title = 'Enable Test Mode to publish';
+        } else {
+            saveBtn.title = '';
+            publishBtn.title = 'Save and publish config to backend';
+        }
+    }
+
+    function updateTestModeIndicator() {
+        const indicator = document.getElementById('test-mode-indicator');
+        const workflowInfo = document.getElementById('workflow-info');
+
+        if (window.testModeActive) {
+            indicator.textContent = '✓ Test Mode Active';
+            indicator.className = 'test-mode-indicator active';
+            indicator.style.display = 'inline-block';
+            workflowInfo.style.display = 'none';
+
+            // Update step highlighting
+            document.getElementById('step-1').classList.remove('current-step');
+            document.getElementById('step-2').classList.add('current-step');
+        } else {
+            indicator.textContent = '⚠️ Test Mode Required';
+            indicator.className = 'test-mode-indicator required';
+            indicator.style.display = 'inline-block';
+            workflowInfo.style.display = 'block';
+
+            // Reset step highlighting
+            document.getElementById('step-1').classList.add('current-step');
+            document.getElementById('step-2').classList.remove('current-step');
+        }
+    }
+
+    // ==================== Config Verification ====================
+
+    // Lock/unlock UI during verification
+    function lockUI(message) {
+        document.body.classList.add('ui-locked');
+        const overlay = document.getElementById('verification-overlay');
+        const statusText = document.getElementById('verification-status-text');
+        if (statusText) statusText.textContent = message || 'Verifying configuration...';
+        overlay.classList.add('active');
+    }
+
+    function unlockUI() {
+        document.body.classList.remove('ui-locked');
+        document.getElementById('verification-overlay').classList.remove('active');
+    }
+
+    async function verifyConfig() {
+        if (!window.testModeActive) {
+            alert('Test Mode is required to verify configuration.');
+            return;
+        }
+
+        const verifyBtn = document.getElementById('verify-btn');
+        const verifyStatus = document.getElementById('verify-status');
+        const resultsContainer = document.getElementById('verify-results');
+
+        // Lock UI during verification
+        lockUI('Verifying connections and devices...');
+
+        // Show loading state
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = '⏳ Verifying...';
+        verifyStatus.textContent = 'Verifying connections...';
+        verifyStatus.className = 'verify-status pending';
+        verifyStatus.style.display = 'inline-flex';
+
+        try {
+            const yamlContent = buildYamlContent();
+
+            const response = await fetch('/api/test-mode/verify-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: yamlContent })
+            });
+
+            const data = await response.json();
+
+            // Build results HTML
+            let html = '';
+
+            if (data.error && !data.connections) {
+                html = `<div class="verify-summary" style="border-left: 4px solid #f44336;">
+                    <h4 style="color: #f44336;">Verification Failed</h4>
+                    <p>${data.error}</p>
+                </div>`;
+            } else {
+                const s = data.summary || {};
+                const allSuccess = s.failed_connections === 0 && s.failed_devices === 0;
+
+                html = `<div class="verify-summary" style="border-left: 4px solid ${allSuccess ? '#4caf50' : '#f44336'};">
+                    <h4>${allSuccess ? '✓ All Checks Passed' : '✗ Some Checks Failed'}</h4>
+                    <div class="stats">
+                        <div class="stat">
+                            <span class="stat-value ${s.successful_connections > 0 ? 'success' : ''}">${s.successful_connections || 0}</span>
+                            <span class="stat-label">Connections OK</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value ${s.failed_connections > 0 ? 'failed' : ''}">${s.failed_connections || 0}</span>
+                            <span class="stat-label">Connections Failed</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value ${s.successful_devices > 0 ? 'success' : ''}">${s.successful_devices || 0}</span>
+                            <span class="stat-label">Devices OK</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value ${s.failed_devices > 0 ? 'failed' : ''}">${s.failed_devices || 0}</span>
+                            <span class="stat-label">Devices Failed</span>
+                        </div>
+                    </div>
+                </div>`;
+
+                // Connection results
+                for (const conn of (data.connections || [])) {
+                    html += `<div class="connection-result">
+                        <div class="connection-result-header">
+                            <span class="conn-name">${conn.id} (${conn.type})</span>
+                            <span class="conn-status ${conn.connection_ok ? 'ok' : 'failed'}">
+                                ${conn.connection_ok ? '✓ Connected' : '✗ ' + (conn.error || 'Failed')}
+                            </span>
+                        </div>`;
+
+                    if (conn.devices && conn.devices.length > 0) {
+                        html += '<div class="device-results">';
+                        for (const dev of conn.devices) {
+                            const regTotal = dev.registers_total || 1;
+                            const regPassed = dev.registers_passed || 0;
+                            const regFailed = dev.registers_failed || 0;
+                            const hasProfile = dev.meter_model && dev.profile;
+
+                            html += `<div class="device-result" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                                <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                                    <div class="device-info">
+                                        <span class="status-icon">${dev.success ? '✓' : '✗'}</span>
+                                        <span class="device-name">${dev.id}</span>
+                                        <span class="unit-id">Unit ${dev.unit_id}</span>
+                                        ${hasProfile ? `<span class="unit-id" style="color: var(--accent);">${dev.meter_model} / ${dev.profile}</span>` : ''}
+                                    </div>
+                                    <div style="text-align: right;">
+                                        ${dev.success
+                                            ? `<span style="color: #4caf50; font-weight: 600;">${regPassed}/${regTotal} registers OK</span>`
+                                            : `<span style="color: #f44336; font-weight: 600;">${regFailed}/${regTotal} failed</span>`
+                                        }
+                                    </div>
+                                </div>`;
+
+                            // Show failed registers if any
+                            if (dev.failed_registers && dev.failed_registers.length > 0) {
+                                html += `<div style="background: rgba(244, 67, 54, 0.1); padding: 8px 12px; border-radius: 4px; width: 100%; box-sizing: border-box;">
+                                    <div style="font-size: 11px; color: #f44336; margin-bottom: 4px;">Failed registers:</div>`;
+                                for (const freg of dev.failed_registers.slice(0, 5)) {
+                                    html += `<div style="font-size: 12px; color: var(--text-muted);">
+                                        • ${freg.name} (addr ${freg.address}): ${freg.error || 'Read failed'}
+                                    </div>`;
+                                }
+                                if (dev.failed_registers.length > 5) {
+                                    html += `<div style="font-size: 11px; color: var(--text-muted);">... and ${dev.failed_registers.length - 5} more</div>`;
+                                }
+                                html += '</div>';
+                            }
+
+                            // Show sample values if successful
+                            if (dev.success && dev.sample_values && Object.keys(dev.sample_values).length > 0) {
+                                html += `<div style="background: rgba(76, 175, 80, 0.1); padding: 8px 12px; border-radius: 4px; width: 100%; box-sizing: border-box;">
+                                    <div style="font-size: 11px; color: #4caf50; margin-bottom: 4px;">Sample values:</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 12px;">`;
+                                for (const [name, val] of Object.entries(dev.sample_values)) {
+                                    html += `<span style="font-size: 12px;">${name}: <strong>${val}</strong></span>`;
+                                }
+                                html += '</div></div>';
+                            }
+
+                            html += '</div>';
+                        }
+                        html += '</div>';
+                    }
+
+                    html += '</div>';
+                }
+
+                // Update verification state - verification was run, allow publish regardless of result
+                verificationRun = true;
+                if (allSuccess) {
+                    verifyStatus.textContent = '✓ Verified';
+                    verifyStatus.className = 'verify-status success';
+                    RTUPortal.showNotification('Config verified successfully! You can now save and publish.', 'success');
+                } else {
+                    verifyStatus.textContent = '⚠ Partial';
+                    verifyStatus.className = 'verify-status warning';
+                    RTUPortal.showNotification('Verification completed with issues. You can still publish (some devices may be offline).', 'warning');
+                }
+            }
+
+            resultsContainer.innerHTML = html;
+            openModal('verify-modal');
+
+        } catch (error) {
+            console.error('Verification error:', error);
+            verifyStatus.textContent = '✗ Error';
+            verifyStatus.className = 'verify-status failed';
+            RTUPortal.showNotification('Error verifying config: ' + error.message, 'error');
+        } finally {
+            // Unlock UI
+            unlockUI();
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = '🔍 Verify Config';
+            updateButtonStates();
+        }
+    }
+
+    async function loadConfig() {
+        try {
+            const response = await fetch(`/api/config${configDir}/${encodeURIComponent(configFile)}?parsed=true`);
+            const data = await response.json();
+            configData = data.parsed;
+            renderConnections();
+        } catch (error) {
+            RTUPortal.showNotification('Error loading config: ' + error.message, 'error');
+        }
+    }
+
+    async function loadMeters() {
+        try {
+            const response = await fetch('/api/wizard/meters');
+            const data = await response.json();
+            const select = document.getElementById('edit-meter-model');
+            select.innerHTML = '<option value="">-- Select Meter --</option>';
+            data.meters.forEach(meter => {
+                const opt = document.createElement('option');
+                opt.value = meter.id;
+                opt.textContent = `${meter.manufacturer} ${meter.model}`;
+                select.appendChild(opt);
+            });
+        } catch (error) {
+            console.error('Error loading meters:', error);
+        }
+    }
+
+    async function loadProfiles(meterId) {
+        try {
+            const url = meterId ? `/api/wizard/profiles?meter_id=${meterId}` : '/api/wizard/profiles';
+            const response = await fetch(url);
+            const data = await response.json();
+            const select = document.getElementById('edit-profile');
+            select.innerHTML = '<option value="">-- Select Profile --</option>';
+            data.profiles.forEach(profile => {
+                if (profile.compatible || !meterId) {
+                    const opt = document.createElement('option');
+                    opt.value = profile.id;
+                    opt.textContent = profile.id.replace(/_/g, ' ');
+                    select.appendChild(opt);
+                }
+            });
+        } catch (error) {
+            console.error('Error loading profiles:', error);
+        }
+    }
+
+    // Render connections
+    function renderConnections() {
+        const container = document.getElementById('connections-container');
+
+        if (!configData || !configData.connections || configData.connections.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">📡</div>
+                    <h3>No Connections Configured</h3>
+                    <p>Add a connection to start configuring devices</p>
+                    <button class="btn btn-primary" style="margin-top: 16px;" onclick="openAddConnectionModal()">
+                        ➕ Add Connection
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = configData.connections.map((conn, connIndex) => `
+            <div class="connection-card" data-connection-id="${conn.id}">
+                <div class="connection-header">
+                    <div class="connection-info">
+                        <div class="connection-icon">${conn.connection_type === 'tcp' ? '🌐' : '📡'}</div>
+                        <div class="connection-title">
+                            <h3>${conn.label || conn.id}</h3>
+                            <div class="connection-meta">
+                                <span>ID: ${conn.id}</span>
+                                ${conn.connection_type === 'serial' ?
+                                    `<span>📟 ${conn.port || conn.serial_port} @ ${conn.baud_rate}</span>` :
+                                    `<span>🔌 ${conn.host}:${conn.port}</span>`
+                                }
+                                <span>⏱ Timeout: ${conn.timeout}s</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="connection-actions">
+                        <button class="btn btn-sm" onclick="editConnection(${connIndex})">✏️ Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteConnection(${connIndex})">🗑️</button>
+                    </div>
+                </div>
+                <div class="devices-container">
+                    <div class="devices-grid">
+                        ${(conn.clients || []).map((device, devIndex) => renderDeviceCard(device, connIndex, devIndex)).join('')}
+                        <div class="device-card add-device-card" onclick="openAddDeviceModal(${connIndex})">
+                            <div class="icon">➕</div>
+                            <span>Add Device</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderDeviceCard(device, connIndex, devIndex) {
+        const httpEnabled = device.http_enabled !== false;
+        const mqttEnabled = device.mqtt_enabled !== false;
+        const httpInterval = device.http_interval || device.polling_interval || 60;
+        const mqttInterval = device.mqtt_interval || device.polling_interval || 60;
+        const isDisabled = device.disabled === true;
+        const exposeTcp = device.expose_via_tcp === true;
+
+        return `
+            <div class="device-card ${isDisabled ? 'device-disabled' : ''}">
+                <div class="device-header">
+                    <span class="device-name">${device.id}</span>
+                    <div class="device-badges">
+                        ${isDisabled ? '<span class="device-disabled-badge">DISABLED</span>' : ''}
+                        ${exposeTcp ? '<span class="device-tcp-badge">TCP</span>' : ''}
+                        <span class="device-type">${device.type || 'electrical'}</span>
+                    </div>
+                </div>
+                <div class="device-details">
+                    <div class="device-detail">
+                        <label>Unit ID</label>
+                        <span>${device.unit_id}</span>
+                    </div>
+                    <div class="device-detail">
+                        <label>Meter</label>
+                        <span>${device.meter_model || '-'}</span>
+                    </div>
+                    <div class="device-detail">
+                        <label>Profile</label>
+                        <span>${device.profile || '-'}</span>
+                    </div>
+                    <div class="device-detail">
+                        <label>Target</label>
+                        <span>${device.target_table || 'distribution'}</span>
+                    </div>
+                </div>
+                <div class="device-protocols">
+                    <span class="protocol-badge ${httpEnabled ? 'enabled' : 'disabled'}">
+                        HTTP ${httpEnabled ? httpInterval + 's' : 'off'}
+                    </span>
+                    <span class="protocol-badge ${mqttEnabled ? 'enabled' : 'disabled'}">
+                        MQTT ${mqttEnabled ? mqttInterval + 's' : 'off'}
+                    </span>
+                </div>
+                <div class="device-actions">
+                    <button class="btn btn-sm ${isDisabled ? 'btn-success' : 'btn-warning'}" onclick="toggleDeviceDisabled(${connIndex}, ${devIndex})" title="${isDisabled ? 'Enable device' : 'Disable device'}">
+                        ${isDisabled ? '✓ Enable' : '⏸ Disable'}
+                    </button>
+                    <button class="btn btn-sm" onclick="editDevice(${connIndex}, ${devIndex})">✏️ Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteDevice(${connIndex}, ${devIndex})">🗑️</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Modal functions
+    function openModal(modalId) {
+        document.getElementById(modalId).classList.add('active');
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+    }
+
+    function openAddDeviceModal(connIndex) {
+        document.getElementById('modal-title').textContent = 'Add Device';
+        document.getElementById('edit-connection-id').value = connIndex;
+        document.getElementById('edit-device-index').value = -1;
+
+        // Reset form
+        document.getElementById('edit-device-id').value = '';
+        document.getElementById('edit-unit-id').value = '1';
+        document.getElementById('edit-device-type').value = 'electrical';
+        document.getElementById('edit-meter-model').value = '';
+        document.getElementById('edit-profile').value = '';
+        document.getElementById('edit-target-table').value = 'distribution';
+        document.getElementById('edit-http-enabled').checked = true;
+        document.getElementById('edit-http-interval').value = '60';
+        document.getElementById('edit-mqtt-enabled').checked = true;
+        document.getElementById('edit-mqtt-interval').value = '10';
+        document.getElementById('edit-mqtt-topic').value = '';
+        document.getElementById('edit-expose-tcp').checked = false;
+
+        loadProfiles(null);
+        openModal('device-modal');
+    }
+
+    function editDevice(connIndex, devIndex) {
+        const device = configData.connections[connIndex].clients[devIndex];
+
+        document.getElementById('modal-title').textContent = 'Edit Device';
+        document.getElementById('edit-connection-id').value = connIndex;
+        document.getElementById('edit-device-index').value = devIndex;
+
+        document.getElementById('edit-device-id').value = device.id || '';
+        document.getElementById('edit-unit-id').value = device.unit_id || 1;
+        document.getElementById('edit-device-type').value = device.type || 'electrical';
+        document.getElementById('edit-meter-model').value = device.meter_model || '';
+        document.getElementById('edit-target-table').value = device.target_table || 'distribution';
+        document.getElementById('edit-http-enabled').checked = device.http_enabled !== false;
+        document.getElementById('edit-http-interval').value = device.http_interval || device.polling_interval || 60;
+        document.getElementById('edit-mqtt-enabled').checked = device.mqtt_enabled !== false;
+        document.getElementById('edit-mqtt-interval').value = device.mqtt_interval || device.polling_interval || 60;
+        document.getElementById('edit-mqtt-topic').value = device.mqtt_topic || '';
+        document.getElementById('edit-expose-tcp').checked = device.expose_via_tcp === true;
+
+        loadProfiles(device.meter_model).then(() => {
+            document.getElementById('edit-profile').value = device.profile || '';
+        });
+
+        openModal('device-modal');
+    }
+
+    // Auto-load profiles when meter changes
+    document.getElementById('edit-meter-model').addEventListener('change', function() {
+        loadProfiles(this.value);
+    });
+
+    // Validation helper functions
+    function clearFieldErrors() {
+        document.querySelectorAll('.field-error').forEach(el => {
+            el.style.display = 'none';
+            el.textContent = '';
+        });
+        document.querySelectorAll('.invalid').forEach(el => {
+            el.classList.remove('invalid');
+        });
+    }
+
+    function showFieldError(fieldId, errorId, message) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(errorId);
+        if (field) field.classList.add('invalid');
+        if (error) {
+            error.textContent = message;
+            error.style.display = 'block';
+        }
+    }
+
+    function saveDevice() {
+        clearFieldErrors();
+
+        const connIndex = parseInt(document.getElementById('edit-connection-id').value);
+        const devIndex = parseInt(document.getElementById('edit-device-index').value);
+
+        // Get values
+        const deviceId = document.getElementById('edit-device-id').value.trim();
+        const unitId = document.getElementById('edit-unit-id').value;
+        const meterModel = document.getElementById('edit-meter-model').value;
+        const profile = document.getElementById('edit-profile').value;
+
+        // Validate mandatory fields
+        let hasErrors = false;
+
+        if (!deviceId) {
+            showFieldError('edit-device-id', 'error-device-id', 'Device ID is required');
+            hasErrors = true;
+        }
+
+        if (!unitId || unitId < 1 || unitId > 247) {
+            showFieldError('edit-unit-id', 'error-unit-id', 'Unit ID must be between 1 and 247');
+            hasErrors = true;
+        }
+
+        if (!meterModel) {
+            showFieldError('edit-meter-model', 'error-meter-model', 'Meter model is required');
+            hasErrors = true;
+        }
+
+        if (!profile) {
+            showFieldError('edit-profile', 'error-profile', 'Profile is required');
+            hasErrors = true;
+        }
+
+        if (hasErrors) {
+            RTUPortal.showNotification('Please fill in all required fields', 'error');
+            return;
+        }
+
+        const device = {
+            id: deviceId,
+            unit_id: parseInt(unitId),
+            type: document.getElementById('edit-device-type').value,
+            meter_model: meterModel,
+            profile: profile,
+            target_table: document.getElementById('edit-target-table').value,
+            http_enabled: document.getElementById('edit-http-enabled').checked,
+            http_interval: parseInt(document.getElementById('edit-http-interval').value),
+            mqtt_enabled: document.getElementById('edit-mqtt-enabled').checked,
+            mqtt_interval: parseInt(document.getElementById('edit-mqtt-interval').value),
+            mqtt_topic: document.getElementById('edit-mqtt-topic').value || undefined,
+            polling_interval: Math.max(
+                parseInt(document.getElementById('edit-http-interval').value),
+                parseInt(document.getElementById('edit-mqtt-interval').value)
+            ),
+            expose_via_tcp: document.getElementById('edit-expose-tcp').checked || undefined
+        };
+
+        if (devIndex === -1) {
+            // Add new device
+            if (!configData.connections[connIndex].clients) {
+                configData.connections[connIndex].clients = [];
+            }
+            configData.connections[connIndex].clients.push(device);
+        } else {
+            // Update existing device
+            configData.connections[connIndex].clients[devIndex] = device;
+        }
+
+        markUnsaved();
+        renderConnections();
+        closeModal('device-modal');
+        RTUPortal.showNotification('Device updated. Click "Verify Config" first, then save.', 'info');
+    }
+
+    function deleteDevice(connIndex, devIndex) {
+        if (!confirm('Delete this device?')) return;
+        configData.connections[connIndex].clients.splice(devIndex, 1);
+        markUnsaved();
+        renderConnections();
+    }
+
+    function toggleDeviceDisabled(connIndex, devIndex) {
+        const device = configData.connections[connIndex].clients[devIndex];
+        device.disabled = !device.disabled;
+        markUnsaved();
+        renderConnections();
+
+        const status = device.disabled ? 'disabled' : 'enabled';
+        RTUPortal.showNotification(`Device ${device.id} ${status}`, device.disabled ? 'warning' : 'success');
+    }
+
+    // Connection functions
+    function openAddConnectionModal() {
+        document.getElementById('connection-modal-title').textContent = 'Add Connection';
+        document.getElementById('edit-conn-index').value = '-1';
+        document.getElementById('new-conn-id').value = '';
+        document.getElementById('new-conn-label').value = '';
+        document.getElementById('new-conn-type').value = 'serial';
+        document.getElementById('new-serial-port').value = '/dev/ttyS0';
+        document.getElementById('new-baud-rate').value = '9600';
+        document.getElementById('new-parity').value = 'N';
+        document.getElementById('new-stop-bits').value = '1';
+        document.getElementById('new-tcp-host').value = '';
+        document.getElementById('new-tcp-port').value = '502';
+        document.getElementById('new-timeout').value = '3';
+        document.getElementById('new-retries').value = '3';
+        toggleConnectionFields();
+        openModal('connection-modal');
+    }
+
+    function editConnection(connIndex) {
+        const conn = configData.connections[connIndex];
+
+        document.getElementById('connection-modal-title').textContent = 'Edit Connection';
+        document.getElementById('edit-conn-index').value = connIndex;
+        document.getElementById('new-conn-id').value = conn.id || '';
+        document.getElementById('new-conn-label').value = conn.label || '';
+        document.getElementById('new-conn-type').value = conn.connection_type || 'serial';
+        document.getElementById('new-timeout').value = conn.timeout || 3;
+        document.getElementById('new-retries').value = conn.retries || 3;
+
+        if (conn.connection_type === 'serial') {
+            document.getElementById('new-serial-port').value = conn.port || conn.serial_port || '/dev/ttyS0';
+            document.getElementById('new-baud-rate').value = conn.baud_rate || 9600;
+            document.getElementById('new-parity').value = conn.parity || 'N';
+            document.getElementById('new-stop-bits').value = conn.stop_bits || 1;
+        } else {
+            document.getElementById('new-tcp-host').value = conn.host || '';
+            document.getElementById('new-tcp-port').value = conn.port || 502;
+        }
+
+        toggleConnectionFields();
+        openModal('connection-modal');
+    }
+
+    function toggleConnectionFields() {
+        const type = document.getElementById('new-conn-type').value;
+        document.getElementById('serial-fields').style.display = type === 'serial' ? 'block' : 'none';
+        document.getElementById('tcp-fields').style.display = type === 'tcp' ? 'block' : 'none';
+    }
+
+    function saveConnection() {
+        clearFieldErrors();
+
+        const connIndex = parseInt(document.getElementById('edit-conn-index').value);
+        const connType = document.getElementById('new-conn-type').value;
+        const isEdit = connIndex >= 0;
+
+        // Get values
+        const connId = document.getElementById('new-conn-id').value.trim();
+        const serialPort = document.getElementById('new-serial-port').value.trim();
+        const tcpHost = document.getElementById('new-tcp-host').value.trim();
+        const tcpPort = document.getElementById('new-tcp-port').value;
+
+        // Validate mandatory fields
+        let hasErrors = false;
+
+        if (!connId) {
+            showFieldError('new-conn-id', 'error-conn-id', 'Connection ID is required');
+            hasErrors = true;
+        }
+
+        if (connType === 'serial') {
+            if (!serialPort) {
+                showFieldError('new-serial-port', 'error-serial-port', 'Serial port is required');
+                hasErrors = true;
+            }
+        } else {
+            // TCP
+            if (!tcpHost) {
+                showFieldError('new-tcp-host', 'error-tcp-host', 'Host/IP address is required');
+                hasErrors = true;
+            }
+        }
+
+        if (hasErrors) {
+            RTUPortal.showNotification('Please fill in all required fields', 'error');
+            return;
+        }
+
+        const connData = {
+            id: connId,
+            label: document.getElementById('new-conn-label').value,
+            connection_type: connType,
+            timeout: parseInt(document.getElementById('new-timeout').value) || 3,
+            retries: parseInt(document.getElementById('new-retries').value) || 3,
+            reconnect_delay: 0.1
+        };
+
+        if (connType === 'serial') {
+            connData.port = serialPort;
+            connData.baud_rate = parseInt(document.getElementById('new-baud-rate').value);
+            connData.parity = document.getElementById('new-parity').value;
+            connData.stop_bits = parseInt(document.getElementById('new-stop-bits').value);
+            connData.bytesize = 8;
+            connData.framer = 'rtu';
+        } else {
+            connData.host = tcpHost;
+            connData.port = parseInt(tcpPort) || 502;
+            connData.framer = 'socket';
+        }
+
+        if (isEdit) {
+            // Preserve existing clients when editing
+            connData.clients = configData.connections[connIndex].clients || [];
+            configData.connections[connIndex] = connData;
+            RTUPortal.showNotification('Connection updated', 'success');
+        } else {
+            connData.clients = [];
+            if (!configData.connections) {
+                configData.connections = [];
+            }
+            configData.connections.push(connData);
+            RTUPortal.showNotification('Connection added', 'success');
+        }
+
+        markUnsaved();
+        renderConnections();
+        closeModal('connection-modal');
+    }
+
+    function deleteConnection(connIndex) {
+        const conn = configData.connections[connIndex];
+        if (!confirm(`Delete connection "${conn.label || conn.id}" and all its devices?`)) return;
+        configData.connections.splice(connIndex, 1);
+        markUnsaved();
+        renderConnections();
+    }
+
+    // Save functions
+    function markUnsaved() {
+        hasChanges = true;
+        verificationRun = false;  // Reset verification when config changes
+
+        // Update status indicators
+        document.getElementById('save-indicator').className = 'save-indicator unsaved';
+        document.getElementById('save-indicator').innerHTML = '<span>●</span> Unsaved changes';
+
+        // Hide verify status or show needs verification
+        const verifyStatus = document.getElementById('verify-status');
+        verifyStatus.textContent = '⚠️ Needs verification';
+        verifyStatus.className = 'verify-status pending';
+        verifyStatus.style.display = 'inline-flex';
+
+        updateButtonStates();
+    }
+
+    async function saveConfig() {
+        if (!hasChanges) return;
+
+        // Check if test mode is active - required for saving
+        if (!window.testModeActive) {
+            alert('Test Mode is required to save configuration changes.\n\nPlease enable Test Mode first to safely edit and save configurations.');
+            return;
+        }
+
+        // Check if verification was run
+        if (!verificationRun) {
+            alert('Please run verification first before saving.\n\nClick "Verify Config" to test all connections and devices.\n\nNote: You can save even if some devices fail verification (e.g., offline devices).');
+            return;
+        }
+
+        try {
+            // Build the YAML content
+            const yamlContent = buildYamlContent();
+            console.log('Saving YAML content to test_config:', yamlContent);
+
+            // Save to test_config via test-mode API (not to production)
+            const response = await fetch('/api/test-mode/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filename: configFile,
+                    directory: configDir,
+                    content: yamlContent
+                })
+            });
+
+            // Check response status first
+            if (!response.ok) {
+                // Try to parse error as JSON, fallback to status text
+                let errorMessage;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.detail || `Server error: ${response.status}`;
+                } catch {
+                    const text = await response.text();
+                    errorMessage = text || `Server error: ${response.status}`;
+                }
+                throw new Error(errorMessage);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                hasChanges = false;
+                document.getElementById('save-btn').disabled = true;
+                document.getElementById('save-indicator').className = 'save-indicator';
+                document.getElementById('save-indicator').innerHTML = '<span>●</span> Saved to test_config';
+                RTUPortal.showNotification('Configuration saved to test_config. Use Config page to apply to production.', 'success');
+
+                // Show workflow guidance
+                alert('Configuration saved to test_config/\n\n' +
+                      'Next steps:\n' +
+                      '1. Validate your changes in test mode\n' +
+                      '2. Go to Config page → Apply Test Config to Production\n' +
+                      '3. Restart the service to load the new configuration\n\n' +
+                      'Your production config remains unchanged until you apply.');
+            } else {
+                throw new Error(result.detail || 'Save failed');
+            }
+        } catch (error) {
+            console.error('Save error:', error);
+            RTUPortal.showNotification('Error saving: ' + error.message, 'error');
+        }
+    }
+
+    function buildYamlContent() {
+        // Build a clean YAML structure
+        const lines = ['# Slave Configuration - Generated by Visual Editor', ''];
+        lines.push('connections:');
+
+        for (const conn of configData.connections) {
+            lines.push(`  - id: "${conn.id}"`);
+            if (conn.label) lines.push(`    label: "${conn.label}"`);
+            lines.push(`    connection_type: ${conn.connection_type}`);
+
+            if (conn.connection_type === 'serial') {
+                // Serial connection: use serial_port or port field
+                const serialPort = conn.serial_port || conn.port || '/dev/ttyS0';
+                lines.push(`    port: "${serialPort}"`);
+                lines.push(`    baud_rate: ${conn.baud_rate || 9600}`);
+                lines.push(`    parity: "${conn.parity || 'N'}"`);
+                lines.push(`    stop_bits: ${conn.stop_bits || 1}`);
+                lines.push(`    bytesize: ${conn.bytesize || 8}`);
+                lines.push(`    framer: ${conn.framer || 'rtu'}`);
+            } else {
+                // TCP connection
+                lines.push(`    host: "${conn.host || ''}"`);
+                lines.push(`    port: ${conn.port || 502}`);
+                lines.push(`    framer: ${conn.framer || 'socket'}`);
+            }
+
+            lines.push(`    timeout: ${conn.timeout || 3}`);
+            lines.push(`    retries: ${conn.retries || 3}`);
+            lines.push(`    reconnect_delay: ${conn.reconnect_delay || 0.1}`);
+
+            // Virtual unit ID offset for multi-connection setups
+            if (conn.virtual_unit_id_offset) {
+                lines.push(`    virtual_unit_id_offset: ${conn.virtual_unit_id_offset}`);
+            }
+
+            if (conn.clients && conn.clients.length > 0) {
+                lines.push('    clients:');
+                for (const client of conn.clients) {
+                    lines.push(`      - id: "${client.id}"`);
+                    if (client.label) lines.push(`        label: "${client.label}"`);
+                    lines.push(`        type: ${client.type || 'electrical'}`);
+                    lines.push(`        unit_id: ${client.unit_id}`);
+                    if (client.endianness) lines.push(`        endianness: ${client.endianness}`);
+                    if (client.meter_model) lines.push(`        meter_model: "${client.meter_model}"`);
+                    if (client.profile) lines.push(`        profile: "${client.profile}"`);
+                    if (client.target_table) lines.push(`        target_table: "${client.target_table}"`);
+                    lines.push(`        polling_interval: ${client.polling_interval || 60}`);
+                    lines.push(`        http_enabled: ${client.http_enabled !== false}`);
+                    lines.push(`        http_interval: ${client.http_interval || 60}`);
+                    lines.push(`        mqtt_enabled: ${client.mqtt_enabled !== false}`);
+                    lines.push(`        mqtt_interval: ${client.mqtt_interval || 10}`);
+                    if (client.mqtt_topic) lines.push(`        mqtt_topic: "${client.mqtt_topic}"`);
+
+                    // TCP gateway options
+                    if (client.expose_via_tcp) lines.push(`        expose_via_tcp: true`);
+                    if (client.use_cache === false) lines.push(`        use_cache: false`);
+
+                    // Disabled flag
+                    if (client.disabled) lines.push(`        disabled: true`);
+                }
+            }
+            lines.push('');
+        }
+
+        return lines.join('\n');
+    }
+
+    async function restartService() {
+        try {
+            RTUPortal.showNotification('Restarting service...', 'info');
+            const response = await fetch('/api/service/restart', { method: 'POST' });
+            if (response.ok) {
+                RTUPortal.showNotification('Service restart initiated', 'success');
+            }
+        } catch (error) {
+            RTUPortal.showNotification('Restart failed: ' + error.message, 'error');
+        }
+    }
+
+    // Warn before leaving with unsaved changes
+    window.addEventListener('beforeunload', (e) => {
+        if (hasChanges) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    // ==================== Publish Config Functions ====================
+
+    // Update config type preview when selection changes
+    document.addEventListener('DOMContentLoaded', function() {
+        const configTypeSelect = document.getElementById('publish-config-type');
+        if (configTypeSelect) {
+            configTypeSelect.addEventListener('change', function() {
+                document.getElementById('preview-config-type').textContent = this.value;
+            });
+        }
+    });
+
+    function openPublishModal() {
+        if (!verificationRun) {
+            alert('Please run verification first before publishing.\n\nClick "Verify Config" to test all connections and devices.\n\nNote: You can publish even if some devices fail verification (e.g., offline devices).');
+            return;
+        }
+
+        if (!window.testModeActive) {
+            alert('Test Mode is required to publish configuration.\n\nPlease enable Test Mode first.');
+            return;
+        }
+
+        // Reset modal state completely (including footer which may have been modified after failed publish)
+        document.getElementById('publish-form-container').style.display = 'block';
+        document.getElementById('publish-result-container').style.display = 'none';
+        document.getElementById('publish-result-container').innerHTML = '';
+        document.getElementById('publish-modal-title').textContent = 'Publish Configuration';
+
+        // Restore footer to original state (important: footer may have been replaced after failed publish)
+        document.getElementById('publish-modal-footer').innerHTML = `
+            <button class="btn" onclick="closeModal('publish-modal')">Cancel</button>
+            <button class="btn btn-publish" onclick="publishConfig()" id="publish-submit-btn">
+                🚀 Publish to Backend
+            </button>
+        `;
+
+        // Auto-detect config type based on filename
+        const configTypeSelect = document.getElementById('publish-config-type');
+        const previewSpan = document.getElementById('preview-config-type');
+        if (configFile && configFile.toLowerCase().includes('communication')) {
+            configTypeSelect.value = 'communication';
+            previewSpan.textContent = 'communication';
+        } else {
+            configTypeSelect.value = 'slave_config';
+            previewSpan.textContent = 'slave_config';
+        }
+
+        openModal('publish-modal');
+    }
+
+    async function publishConfig() {
+        const backendUrl = document.getElementById('publish-backend-url').value.trim();
+        const configType = document.getElementById('publish-config-type').value;
+        const submitBtn = document.getElementById('publish-submit-btn');
+        const resultContainer = document.getElementById('publish-result-container');
+
+        if (!backendUrl) {
+            alert('Please enter the backend API URL');
+            return;
+        }
+
+        // Show loading state
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '⏳ Publishing...';
+
+        try {
+            const yamlContent = buildYamlContent();
+
+            const response = await fetch('/api/test-mode/publish-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: yamlContent,
+                    filename: configFile,
+                    directory: configDir,
+                    config_type: configType,
+                    backend_url: backendUrl
+                })
+            });
+
+            const data = await response.json();
+
+            // Hide form, show results
+            document.getElementById('publish-form-container').style.display = 'none';
+            resultContainer.style.display = 'block';
+            submitBtn.style.display = 'none';
+
+            if (data.success) {
+                // Success response
+                const backendData = data.backend_response || {};
+                resultContainer.innerHTML = `
+                    <div class="publish-response success">
+                        <h4>✓ Published Successfully</h4>
+                        <div class="publish-detail">
+                            <label>Status</label>
+                            <span>${backendData.status || 'success'}</span>
+                        </div>
+                        ${backendData.message ? `
+                        <div class="publish-detail">
+                            <label>Message</label>
+                            <span>${backendData.message}</span>
+                        </div>` : ''}
+                        ${backendData.commit_sha ? `
+                        <div class="publish-detail">
+                            <label>Commit SHA</label>
+                            <span>${backendData.commit_sha}</span>
+                        </div>` : ''}
+                        ${backendData.device_id ? `
+                        <div class="publish-detail">
+                            <label>Device ID</label>
+                            <span>${backendData.device_id}</span>
+                        </div>` : ''}
+                        ${backendData.config_type ? `
+                        <div class="publish-detail">
+                            <label>Config Type</label>
+                            <span>${backendData.config_type}</span>
+                        </div>` : ''}
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 13px;">
+                        Configuration has been saved to test_config and submitted to the backend for version control.
+                    </p>
+                `;
+
+                document.getElementById('publish-modal-title').textContent = 'Config Published';
+                hasChanges = false;
+                document.getElementById('save-indicator').className = 'save-indicator';
+                document.getElementById('save-indicator').innerHTML = '<span>●</span> Published';
+                RTUPortal.showNotification('Config published successfully!', 'success');
+
+            } else {
+                // Error response
+                const backendData = data.backend_response || {};
+                let errorHtml = `
+                    <div class="publish-response error">
+                        <h4>✗ Publication Failed</h4>
+                        <div class="publish-detail">
+                            <label>Error</label>
+                            <span>${data.error || 'Unknown error'}</span>
+                        </div>
+                `;
+
+                // Show validation errors if any
+                if (backendData.errors && backendData.errors.length > 0) {
+                    errorHtml += `
+                        <div style="margin-top: 12px;">
+                            <label style="font-size: 12px; color: var(--text-muted);">Validation Errors:</label>
+                            <ul class="error-list">
+                                ${backendData.errors.map(e => `<li>${e}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                // Show warnings if any
+                if (backendData.warnings && backendData.warnings.length > 0) {
+                    errorHtml += `
+                        <div style="margin-top: 12px;">
+                            <label style="font-size: 12px; color: var(--text-muted);">Warnings:</label>
+                            <ul class="error-list warning-list">
+                                ${backendData.warnings.map(w => `<li>${w}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                errorHtml += '</div>';
+
+                // Add hint about test config
+                if (data.test_config_saved) {
+                    errorHtml += `
+                        <p style="color: var(--warning); font-size: 13px; margin-top: 12px;">
+                            ⚠️ Config was saved to test_config but backend submission failed.
+                            You can fix the issues and try publishing again.
+                        </p>
+                    `;
+                }
+
+                resultContainer.innerHTML = errorHtml;
+                document.getElementById('publish-modal-title').textContent = 'Publication Failed';
+
+                // Show retry button
+                document.getElementById('publish-modal-footer').innerHTML = `
+                    <button class="btn" onclick="closeModal('publish-modal')">Close</button>
+                    <button class="btn btn-primary" onclick="retryPublish()">🔄 Edit & Retry</button>
+                `;
+            }
+
+        } catch (error) {
+            console.error('Publish error:', error);
+            resultContainer.innerHTML = `
+                <div class="publish-response error">
+                    <h4>✗ Connection Error</h4>
+                    <p>Failed to communicate with the server: ${error.message}</p>
+                </div>
+            `;
+            resultContainer.style.display = 'block';
+            document.getElementById('publish-form-container').style.display = 'none';
+            submitBtn.style.display = 'none';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '🚀 Publish to Backend';
+        }
+    }
+
+    function retryPublish() {
+        // Reset modal to form state
+        document.getElementById('publish-form-container').style.display = 'block';
+        document.getElementById('publish-result-container').style.display = 'none';
+        document.getElementById('publish-result-container').innerHTML = '';
+        document.getElementById('publish-modal-title').textContent = 'Publish Configuration';
+
+        // Restore footer buttons
+        document.getElementById('publish-modal-footer').innerHTML = `
+            <button class="btn" onclick="closeModal('publish-modal')">Cancel</button>
+            <button class="btn btn-publish" onclick="publishConfig()" id="publish-submit-btn">
+                🚀 Publish to Backend
+            </button>
+        `;
+
+        // Close and reopen to allow editing
+        closeModal('publish-modal');
+    }
+</script>
+{% endblock %}

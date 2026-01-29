@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Dataskipper Boat</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .login-logo {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .login-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .login-header p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.15);
+        }
+
+        .form-group input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px 20px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn-login:hover {
+            background: #1a8cd8;
+        }
+
+        .btn-login:active {
+            transform: scale(0.98);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            color: #f44336;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+
+        .lockout-warning {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            color: #ff9800;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .lockout-warning.visible {
+            display: block;
+        }
+
+        .device-info {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+        }
+
+        .device-info span {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .device-info .device-id {
+            display: block;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn-login.loading .spinner {
+            display: inline-block;
+        }
+
+        .btn-login.loading .btn-text {
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-logo">&#9889;</div>
+                <h1>Dataskipper Boat</h1>
+                <p>Enter your credentials to access the portal</p>
+            </div>
+
+            <div id="error-message" class="error-message"></div>
+            <div id="lockout-warning" class="lockout-warning"></div>
+
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" placeholder="Enter username" required autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter password" required autocomplete="current-password">
+                </div>
+
+                <button type="submit" class="btn-login" id="login-btn">
+                    <span class="spinner"></span>
+                    <span class="btn-text">Sign In</span>
+                </button>
+            </form>
+
+            <div class="device-info">
+                <span>Device</span>
+                <span class="device-id" id="device-id">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load device info
+        fetch('/api/auth/device-info')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('device-id').textContent = data.device_id || 'Unknown';
+            })
+            .catch(() => {
+                document.getElementById('device-id').textContent = 'RTU Device';
+            });
+
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const btn = document.getElementById('login-btn');
+            const errorDiv = document.getElementById('error-message');
+            const lockoutDiv = document.getElementById('lockout-warning');
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            // Clear previous messages
+            errorDiv.classList.remove('visible');
+            lockoutDiv.classList.remove('visible');
+
+            // Show loading state
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    // Redirect to dashboard
+                    window.location.href = data.redirect || '/';
+                } else {
+                    // Show error
+                    errorDiv.textContent = data.message || 'Login failed';
+                    errorDiv.classList.add('visible');
+
+                    // Show lockout warning if applicable
+                    if (data.attempts_remaining !== undefined && data.attempts_remaining <= 2) {
+                        lockoutDiv.innerHTML = `<strong>Warning:</strong> ${data.attempts_remaining} attempt(s) remaining before temporary lockout.`;
+                        lockoutDiv.classList.add('visible');
+                    }
+
+                    if (data.locked_until) {
+                        const lockTime = Math.ceil(data.locked_until);
+                        lockoutDiv.innerHTML = `<strong>Account temporarily locked.</strong> Please try again in ${lockTime} seconds.`;
+                        lockoutDiv.classList.add('visible');
+                    }
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Connection error. Please try again.';
+                errorDiv.classList.add('visible');
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        }
+
+        // Focus username field on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('username').focus();
+        });
+    </script>
+</body>
+</html>
