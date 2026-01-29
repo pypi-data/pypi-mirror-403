@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ resume.contact.name }} - Resume</title>
+    <style>{{ css }}</style>
+</head>
+<body>
+    <header>
+        <h1>{{ resume.contact.name }}</h1>
+        <div class="contact-info">
+            {% if resume.contact.email %}
+            <span class="contact-item">{{ resume.contact.email }}</span>
+            {% endif %}
+            {% if resume.contact.phone %}
+            <span class="contact-item">{{ resume.contact.phone }}</span>
+            {% endif %}
+            {% if resume.contact.location %}
+            <span class="contact-item">{{ resume.contact.location }}</span>
+            {% endif %}
+        </div>
+        {% if resume.contact.linkedin or resume.contact.github or resume.contact.website %}
+        <div class="links">
+            {% if resume.contact.linkedin %}
+            <a href="{{ resume.contact.linkedin }}">LinkedIn</a>
+            {% endif %}
+            {% if resume.contact.github %}
+            <a href="{{ resume.contact.github }}">GitHub</a>
+            {% endif %}
+            {% if resume.contact.website %}
+            <a href="{{ resume.contact.website }}">Portfolio</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </header>
+
+    {% if resume.summary %}
+    <section class="summary">
+        <h2>Summary</h2>
+        <p>{{ resume.summary }}</p>
+    </section>
+    {% endif %}
+
+    {% for section in resume.sections %}
+    <section class="experience">
+        <h2>{{ section.title }}</h2>
+        {# Story 8.1: Employer-grouped rendering for Experience section #}
+        {% if section.title == "Experience" and employer_groups %}
+        {% for group in employer_groups %}
+        {% if group.is_multi_position %}
+        {# Multi-position employer: nested layout with employer header #}
+        <div class="employer-group">
+            <div class="employer-header">
+                <div class="employer-name-location">
+                    <h3 class="employer-name">{{ group.employer }}</h3>
+                    {% if group.location %}
+                    <span class="location">{{ group.location }}</span>
+                    {% endif %}
+                </div>
+                <span class="tenure">{{ group.tenure_display }}</span>
+            </div>
+            {% for item in group.positions %}
+            <article class="position-entry nested">
+                <div class="position-header">
+                    <h4 class="position-title">{{ item.title }}</h4>
+                    {% if item.start_date %}
+                    <span class="dates">{{ item.start_date }} - {{ item.end_date or 'Present' }}</span>
+                    {% endif %}
+                </div>
+                {% if item.scope_line %}
+                <div class="scope-line">{{ item.scope_line }}</div>
+                {% endif %}
+                {% if item.bullets %}
+                <ul class="achievements">
+                    {% for bullet in item.bullets %}
+                    <li>
+                        {{ bullet.text }}
+                        {% if bullet.metrics %}
+                        <span class="metrics">({{ bullet.metrics }})</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        {# Single-position employer: standard layout #}
+        {% set item = group.positions[0] %}
+        <article class="job">
+            <div class="job-header">
+                <div class="job-title-company">
+                    <h3>{{ item.title }}</h3>
+                    {% if item.organization %}
+                    <span class="company">{{ item.organization }}</span>
+                    {% endif %}
+                </div>
+                <div class="job-meta">
+                    {% if item.location %}
+                    <span class="location">{{ item.location }}</span>
+                    {% endif %}
+                    {% if item.start_date %}
+                    <span class="dates">{{ item.start_date }} - {{ item.end_date or 'Present' }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if item.scope_line %}
+            <div class="scope-line">{{ item.scope_line }}</div>
+            {% endif %}
+            {% if item.bullets %}
+            <ul class="achievements">
+                {% for bullet in item.bullets %}
+                <li>
+                    {{ bullet.text }}
+                    {% if bullet.metrics %}
+                    <span class="metrics">({{ bullet.metrics }})</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </article>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        {# Fallback: original rendering when employer_groups not available #}
+        {% for item in section.items %}
+        <article class="job">
+            <div class="job-header">
+                <div class="job-title-company">
+                    <h3>{{ item.title }}</h3>
+                    {% if item.organization %}
+                    <span class="company">{{ item.organization }}</span>
+                    {% endif %}
+                </div>
+                <div class="job-meta">
+                    {% if item.location %}
+                    <span class="location">{{ item.location }}</span>
+                    {% endif %}
+                    {% if item.start_date %}
+                    <span class="dates">{{ item.start_date }} - {{ item.end_date or 'Present' }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if item.scope_line %}
+            <div class="scope-line">{{ item.scope_line }}</div>
+            {% endif %}
+            {% if item.bullets %}
+            <ul class="achievements">
+                {% for bullet in item.bullets %}
+                <li>
+                    {{ bullet.text }}
+                    {% if bullet.metrics %}
+                    <span class="metrics">({{ bullet.metrics }})</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </article>
+        {% endfor %}
+        {% endif %}
+    </section>
+    {% endfor %}
+
+    {% if resume.education %}
+    <section class="education">
+        <h2>Education</h2>
+        {% for edu in resume.education %}
+        {% if edu.display is not defined or edu.display %}
+        <div class="edu-entry">
+            <p>
+                <strong>{{ edu.degree }}</strong>, {{ edu.institution }}
+                {%- if edu.graduation_year %}, {{ edu.graduation_year }}{% endif %}
+                {%- if edu.honors %} - {{ edu.honors }}{% endif %}
+                {%- if edu.gpa and not edu.honors %} (GPA: {{ edu.gpa }}){% endif %}
+            </p>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if resume.get_active_certifications() %}
+    <section class="certifications">
+        <h2>Certifications</h2>
+        <ul class="cert-list">
+            {% for cert in resume.get_active_certifications() %}
+            <li>
+                <strong>{{ cert.name }}</strong>
+                {% if cert.issuer %}, {{ cert.issuer }}{% endif %}
+                {% if cert.date %}, {{ cert.date[:4] }}{% endif %}
+                {% if cert.expires %} (expires {{ cert.expires[:4] }}){% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if resume.skills %}
+    <section class="skills">
+        <h2>Skills</h2>
+        <p>{{ resume.skills | join(', ') }}</p>
+    </section>
+    {% endif %}
+
+    {% if resume.tailored_notice_text %}
+    <footer class="tailored-notice">
+        <p>{{ resume.tailored_notice_text }}</p>
+    </footer>
+    {% endif %}
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ resume.contact.name }} - Executive Resume</title>
+    <style>{{ css }}</style>
+</head>
+<body>
+    {# Running header for page 2+ #}
+    <div class="running-header">{{ resume.contact.name }}</div>
+
+    <header class="resume-header">
+        <h1 class="name">{{ resume.contact.name }}</h1>
+        {% if resume.contact.title %}
+        <p class="professional-title">{{ resume.contact.title }}</p>
+        {% endif %}
+        <div class="contact-line">
+            {% set contact_parts = [] %}
+            {% if resume.contact.location %}{% set _ = contact_parts.append(resume.contact.location) %}{% endif %}
+            {% if resume.contact.email %}{% set _ = contact_parts.append(resume.contact.email) %}{% endif %}
+            {% if resume.contact.phone %}{% set _ = contact_parts.append(resume.contact.phone) %}{% endif %}
+            {{ contact_parts | join(' | ') }}
+            {% if resume.contact.linkedin %}
+            | <a href="{{ resume.contact.linkedin }}">LinkedIn</a>
+            {% endif %}
+            {% if resume.contact.github %}
+            | <a href="{{ resume.contact.github }}">GitHub</a>
+            {% endif %}
+            {% if resume.contact.website %}
+            | <a href="{{ resume.contact.website }}">Portfolio</a>
+            {% endif %}
+        </div>
+    </header>
+
+    <section class="executive-summary">
+        <h2>Executive Summary</h2>
+        {% if resume.summary %}
+        <p>{{ resume.summary }}</p>
+        {% else %}
+        <p class="placeholder">[Executive summary not configured. Add 'summary' to your profile configuration to highlight your value proposition.]</p>
+        {% endif %}
+    </section>
+
+    {% block career_highlights %}
+    {% if resume.career_highlights %}
+    <section class="career-highlights">
+        <h2>Career Highlights</h2>
+        <ul class="highlights-list">
+            {% for highlight in resume.career_highlights %}
+            <li>{{ highlight }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+    {% endblock %}
+
+    {% if resume.skills %}
+    <section class="core-competencies">
+        <h2>Core Competencies</h2>
+        <div class="skills-grid">
+            {% for skill in resume.skills %}
+            <span class="skill">{{ skill }}</span>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% for section in resume.sections %}
+    <section class="experience">
+        <h2>{{ section.title }}</h2>
+        {# Story 8.1: Employer-grouped rendering for Experience section #}
+        {% if section.title == "Experience" and employer_groups %}
+        {% for group in employer_groups %}
+        {% if group.is_multi_position %}
+        {# Multi-position employer: company header + nested role entries #}
+        <div class="employer-group">
+            <div class="employer-header">
+                <h3 class="company">{{ group.employer }}</h3>
+                <span class="total-tenure">{{ group.tenure_display }}</span>
+            </div>
+            {% if group.location %}
+            <p class="employer-location">{{ group.location }}</p>
+            {% endif %}
+            {% for item in group.positions %}
+            <article class="position nested">
+                <div class="nested-position-header">
+                    <span class="role-title">{{ item.title }}</span>
+                    <span class="dates">{{ item.start_date or '' }}{% if item.start_date %} - {% endif %}{{ item.end_date or 'Present' }}</span>
+                </div>
+
+                {# Scope indicators at role level (AC #4) #}
+                {% if item.scope_line %}
+                <p class="scope-line">{{ item.scope_line }}</p>
+                {% elif item.scope_budget or item.scope_team_size or item.scope_revenue %}
+                <p class="scope-line">
+                    {% set scope_parts = [] %}
+                    {% if item.scope_team_size %}{% set _ = scope_parts.append('Led team of ' ~ item.scope_team_size) %}{% endif %}
+                    {% if item.scope_budget %}{% set _ = scope_parts.append(item.scope_budget ~ ' budget') %}{% endif %}
+                    {% if item.scope_revenue %}{% set _ = scope_parts.append(item.scope_revenue ~ ' revenue impact') %}{% endif %}
+                    {{ scope_parts | join(' | ') }}
+                </p>
+                {% endif %}
+
+                {% block achievements scoped %}
+                {% if item.bullets %}
+                <ul class="achievements">
+                    {% for bullet in item.bullets %}
+                    <li>{{ bullet.text }}{% if bullet.metrics %} — <em class="metrics">{{ bullet.metrics }}</em>{% endif %}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% endblock %}
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        {# Single-position employer: standard layout #}
+        {% set item = group.positions[0] %}
+        <article class="position">
+            <div class="position-header">
+                <h3 class="company">{{ item.organization or item.title }}</h3>
+                <span class="dates">{{ item.start_date or '' }}{% if item.start_date %} - {% endif %}{{ item.end_date or 'Present' }}</span>
+            </div>
+            <p class="role">{{ item.title }}{% if item.organization and item.location %}, {{ item.location }}{% elif item.location %} | {{ item.location }}{% endif %}</p>
+
+            {% if item.scope_line %}
+            <p class="scope-line">{{ item.scope_line }}</p>
+            {% elif item.scope_budget or item.scope_team_size or item.scope_revenue %}
+            <p class="scope-line">
+                {% set scope_parts = [] %}
+                {% if item.scope_team_size %}{% set _ = scope_parts.append('Led team of ' ~ item.scope_team_size) %}{% endif %}
+                {% if item.scope_budget %}{% set _ = scope_parts.append(item.scope_budget ~ ' budget') %}{% endif %}
+                {% if item.scope_revenue %}{% set _ = scope_parts.append(item.scope_revenue ~ ' revenue impact') %}{% endif %}
+                {{ scope_parts | join(' | ') }}
+            </p>
+            {% endif %}
+
+            {% if item.bullets %}
+            <ul class="achievements">
+                {% for bullet in item.bullets %}
+                <li>{{ bullet.text }}{% if bullet.metrics %} — <em class="metrics">{{ bullet.metrics }}</em>{% endif %}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </article>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        {# Fallback: original rendering when employer_groups not available #}
+        {% for item in section.items %}
+        <article class="position">
+            <div class="position-header">
+                <h3 class="company">{{ item.organization or item.title }}</h3>
+                <span class="dates">{{ item.start_date or '' }}{% if item.start_date %} - {% endif %}{{ item.end_date or 'Present' }}</span>
+            </div>
+            <p class="role">{{ item.title }}{% if item.organization and item.location %}, {{ item.location }}{% elif item.location %} | {{ item.location }}{% endif %}</p>
+
+            {# Scope indicators line: preferring pre-formatted scope_line from position #}
+            {% if item.scope_line %}
+            <p class="scope-line">{{ item.scope_line }}</p>
+            {% elif item.scope_budget or item.scope_team_size or item.scope_revenue %}
+            {# Legacy fallback for work unit scope data #}
+            <p class="scope-line">
+                {% set scope_parts = [] %}
+                {% if item.scope_team_size %}{% set _ = scope_parts.append('Led team of ' ~ item.scope_team_size) %}{% endif %}
+                {% if item.scope_budget %}{% set _ = scope_parts.append(item.scope_budget ~ ' budget') %}{% endif %}
+                {% if item.scope_revenue %}{% set _ = scope_parts.append(item.scope_revenue ~ ' revenue impact') %}{% endif %}
+                {{ scope_parts | join(' | ') }}
+            </p>
+            {% endif %}
+
+            {% if item.bullets %}
+            <ul class="achievements">
+                {% for bullet in item.bullets %}
+                <li>{{ bullet.text }}{% if bullet.metrics %} — <em class="metrics">{{ bullet.metrics }}</em>{% endif %}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </article>
+        {% endfor %}
+        {% endif %}
+    </section>
+    {% endfor %}
+
+    {% if resume.get_active_certifications() %}
+    <section class="certifications">
+        <h2>Certifications</h2>
+        <ul class="cert-list">
+            {% for cert in resume.get_active_certifications() %}
+            <li>
+                <strong>{{ cert.name }}</strong>{% if cert.issuer %}, {{ cert.issuer }}{% endif %}{% if cert.date %}, {{ cert.date[:4] }}{% endif %}{% if cert.expires %} (expires {{ cert.expires[:4] }}){% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% block board_roles %}
+    {% if resume.get_sorted_board_roles() %}
+    <section class="board-roles">
+        <h2>Board & Advisory Roles</h2>
+        {% for role in resume.get_sorted_board_roles() %}
+        <div class="board-entry">
+            <div class="board-header">
+                <strong>{{ role.organization }}</strong>
+                <span class="dates">{{ role.format_date_range() }}</span>
+            </div>
+            <p class="role-title">{{ role.role }}</p>
+            {% if role.focus %}
+            <p class="focus">{{ role.focus }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+    {% endblock %}
+
+    {% block publications %}
+    {% if resume.get_sorted_publications() %}
+    <section class="publications">
+        <h2>Publications & Speaking</h2>
+        {% for pub in resume.get_sorted_publications() %}
+        <div class="pub-entry">
+            {% if pub.is_speaking %}
+            {# Speaking format: "Venue (Year) - Title" #}
+            {{ pub.venue }} ({{ pub.year }}) - {% if pub.url %}<a href="{{ pub.url }}">{{ pub.title }}</a>{% else %}{{ pub.title }}{% endif %}
+            {% else %}
+            {# Written format: "Title, Venue (Year)" #}
+            {% if pub.url %}<a href="{{ pub.url }}">{{ pub.title }}</a>{% else %}{{ pub.title }}{% endif %}, {{ pub.venue }} ({{ pub.year }})
+            {% endif %}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+    {% endblock %}
+
+    {% if resume.education %}
+    <section class="education">
+        <h2>Education</h2>
+        {% for edu in resume.education %}
+        {% if edu.display is not defined or edu.display %}
+        <p class="edu-entry">
+            <strong>{{ edu.degree }}</strong><br>
+            {{ edu.institution }}{% if edu.graduation_year %}, {{ edu.graduation_year }}{% endif %}
+            {% if edu.honors %}<span class="honors">{{ edu.honors }}</span>{% endif %}
+        </p>
+        {% endif %}
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if resume.tailored_notice_text %}
+    <footer class="tailored-notice">
+        <p>{{ resume.tailored_notice_text }}</p>
+    </footer>
+    {% endif %}
+</body>
+</html>

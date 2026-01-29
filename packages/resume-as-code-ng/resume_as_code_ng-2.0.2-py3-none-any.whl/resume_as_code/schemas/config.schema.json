@@ -1,0 +1,1250 @@
+{
+  "$defs": {
+    "BoardRole": {
+      "description": "Board or advisory role record.\n\nStores board and advisory role information for resume rendering\nwith support for role type classification and display control.",
+      "properties": {
+        "organization": {
+          "title": "Organization",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "type": {
+          "default": "advisory",
+          "enum": [
+            "director",
+            "advisory",
+            "committee"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Date in YYYY-MM format",
+          "pattern": "^\\d{4}-\\d{2}$",
+          "title": "Start Date",
+          "type": "string"
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "description": "Date in YYYY-MM format",
+              "pattern": "^\\d{4}-\\d{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Date"
+        },
+        "focus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Focus"
+        },
+        "display": {
+          "default": true,
+          "title": "Display",
+          "type": "boolean"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "normal",
+                "low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Curation priority: 'always' forces inclusion regardless of JD relevance",
+          "title": "Priority"
+        }
+      },
+      "required": [
+        "organization",
+        "role",
+        "start_date"
+      ],
+      "title": "BoardRole",
+      "type": "object"
+    },
+    "BulletsPerPositionConfig": {
+      "description": "Bullet limits based on position age.\n\nResearch-backed limits (2024-2025 resume studies):\n- Recent positions (0-3 years): 4-6 bullets\n- Mid positions (3-7 years): 3-4 bullets\n- Older positions (7+ years): 2-3 bullets",
+      "properties": {
+        "recent_years": {
+          "default": 3,
+          "description": "Years considered 'recent'",
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Recent Years",
+          "type": "integer"
+        },
+        "recent_max": {
+          "default": 6,
+          "description": "Max bullets for recent positions",
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Recent Max",
+          "type": "integer"
+        },
+        "mid_years": {
+          "default": 7,
+          "description": "Years considered 'mid-career'",
+          "maximum": 15,
+          "minimum": 3,
+          "title": "Mid Years",
+          "type": "integer"
+        },
+        "mid_max": {
+          "default": 4,
+          "description": "Max bullets for mid positions",
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Mid Max",
+          "type": "integer"
+        },
+        "older_max": {
+          "default": 3,
+          "description": "Max bullets for older positions",
+          "maximum": 6,
+          "minimum": 1,
+          "title": "Older Max",
+          "type": "integer"
+        }
+      },
+      "title": "BulletsPerPositionConfig",
+      "type": "object"
+    },
+    "Certification": {
+      "description": "Professional certification record.\n\nStores certification information for resume rendering with support\nfor expiration tracking and display control.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "issuer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issuer"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "description": "Date in YYYY-MM format",
+              "pattern": "^\\d{4}-\\d{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date"
+        },
+        "expires": {
+          "anyOf": [
+            {
+              "description": "Date in YYYY-MM format",
+              "pattern": "^\\d{4}-\\d{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires"
+        },
+        "credential_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credential Id"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "display": {
+          "default": true,
+          "title": "Display",
+          "type": "boolean"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "normal",
+                "low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Curation priority: 'always' forces inclusion regardless of JD relevance",
+          "title": "Priority"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Certification",
+      "type": "object"
+    },
+    "CurationConfig": {
+      "description": "Configuration for content curation.\n\nResearch-backed defaults (2024-2025 resume studies):\n- Career highlights: 3-5 optimal\n- Certifications: 3-5 most relevant\n- Board roles: 2-3 unless executive\n- Skills: 6-10 optimal (median 8-9)",
+      "properties": {
+        "career_highlights_max": {
+          "default": 4,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Career Highlights Max",
+          "type": "integer"
+        },
+        "certifications_max": {
+          "default": 5,
+          "maximum": 15,
+          "minimum": 1,
+          "title": "Certifications Max",
+          "type": "integer"
+        },
+        "board_roles_max": {
+          "default": 3,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Board Roles Max",
+          "type": "integer"
+        },
+        "board_roles_executive_max": {
+          "default": 5,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Board Roles Executive Max",
+          "type": "integer"
+        },
+        "publications_max": {
+          "default": 3,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Publications Max",
+          "type": "integer"
+        },
+        "skills_max": {
+          "default": 10,
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Skills Max",
+          "type": "integer"
+        },
+        "bullets_per_position": {
+          "$ref": "#/$defs/BulletsPerPositionConfig"
+        },
+        "min_relevance_score": {
+          "default": 0.2,
+          "description": "Minimum score for inclusion (below this, item is excluded)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Min Relevance Score",
+          "type": "number"
+        },
+        "action_scoring_enabled": {
+          "default": true,
+          "description": "Score individual action bullets against JD relevance.",
+          "title": "Action Scoring Enabled",
+          "type": "boolean"
+        },
+        "min_action_relevance_score": {
+          "default": 0.25,
+          "description": "Minimum score for action bullet inclusion.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Min Action Relevance Score",
+          "type": "number"
+        }
+      },
+      "title": "CurationConfig",
+      "type": "object"
+    },
+    "DataPaths": {
+      "description": "Custom paths for separated data files (Story 9.2 + 11.2).\n\nAllows users to customize the location of data files instead of using\nthe default locations in the project root.\n\nStory 11.2 adds directory mode options (*_dir fields) for sharded storage\nwhere each item is stored as a separate YAML file in a directory.",
+      "properties": {
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to profile.yaml",
+          "title": "Profile"
+        },
+        "certifications": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to certifications.yaml",
+          "title": "Certifications"
+        },
+        "education": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to education.yaml",
+          "title": "Education"
+        },
+        "highlights": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to highlights.yaml",
+          "title": "Highlights"
+        },
+        "publications": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to publications.yaml",
+          "title": "Publications"
+        },
+        "board_roles": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to board-roles.yaml",
+          "title": "Board Roles"
+        },
+        "certifications_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to certifications directory (sharded mode)",
+          "title": "Certifications Dir"
+        },
+        "education_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to education directory (sharded mode)",
+          "title": "Education Dir"
+        },
+        "highlights_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to highlights directory (sharded mode)",
+          "title": "Highlights Dir"
+        },
+        "publications_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to publications directory (sharded mode)",
+          "title": "Publications Dir"
+        },
+        "board_roles_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to board-roles directory (sharded mode)",
+          "title": "Board Roles Dir"
+        }
+      },
+      "title": "DataPaths",
+      "type": "object"
+    },
+    "DocxConfig": {
+      "description": "DOCX-specific configuration (Story 13.1).\n\nAllows specifying a different template for DOCX output than PDF.",
+      "properties": {
+        "template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DOCX template name (without .docx extension).",
+          "title": "Template"
+        }
+      },
+      "title": "DocxConfig",
+      "type": "object"
+    },
+    "Education": {
+      "additionalProperties": false,
+      "description": "Educational credential record.\n\nStores education information for resume rendering with support\nfor honors, GPA, and display control.",
+      "properties": {
+        "degree": {
+          "title": "Degree",
+          "type": "string"
+        },
+        "institution": {
+          "title": "Institution",
+          "type": "string"
+        },
+        "graduation_year": {
+          "anyOf": [
+            {
+              "description": "Year in YYYY format",
+              "pattern": "^\\d{4}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Graduation Year"
+        },
+        "honors": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Honors"
+        },
+        "gpa": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gpa"
+        },
+        "display": {
+          "default": true,
+          "title": "Display",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "degree",
+        "institution"
+      ],
+      "title": "Education",
+      "type": "object"
+    },
+    "ONetConfig": {
+      "additionalProperties": false,
+      "description": "O*NET API v2.0 configuration.\n\nAPI key can be set via config file or ONET_API_KEY environment variable.\nRegister at https://services.onetcenter.org/developer/signup\n\nAttributes:\n    enabled: Enable O*NET API integration.\n    api_key: O*NET API key (or set ONET_API_KEY env var).\n    cache_ttl: Cache TTL in seconds (minimum 1 hour).\n    timeout: API request timeout in seconds.\n    retry_delay_ms: Minimum delay between retries in milliseconds.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Enable O*NET API integration",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "O*NET API key (or set ONET_API_KEY env var)",
+          "title": "Api Key"
+        },
+        "cache_ttl": {
+          "default": 86400,
+          "description": "Cache TTL in seconds",
+          "minimum": 3600,
+          "title": "Cache Ttl",
+          "type": "integer"
+        },
+        "timeout": {
+          "default": 10.0,
+          "description": "API request timeout in seconds",
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "title": "Timeout",
+          "type": "number"
+        },
+        "retry_delay_ms": {
+          "default": 200,
+          "description": "Minimum delay between retries in milliseconds",
+          "minimum": 200,
+          "title": "Retry Delay Ms",
+          "type": "integer"
+        }
+      },
+      "title": "ONetConfig",
+      "type": "object"
+    },
+    "ProfileConfig": {
+      "description": "User profile information for resume header.\n\nAll fields are optional to support incremental configuration.\nURL fields use HttpUrl for validation.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Email"
+        },
+        "phone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phone"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        },
+        "linkedin": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Linkedin"
+        },
+        "github": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Github"
+        },
+        "website": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Website"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "title": "ProfileConfig",
+      "type": "object"
+    },
+    "Publication": {
+      "description": "Publication or speaking engagement record.\n\nStores publication and speaking engagement information for resume\nrendering with support for type classification and display control.\nSupports JD-relevant curation via topics and abstract fields.",
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "conference",
+            "article",
+            "whitepaper",
+            "book",
+            "podcast",
+            "webinar"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "venue": {
+          "title": "Venue",
+          "type": "string"
+        },
+        "date": {
+          "description": "Date in YYYY-MM format",
+          "pattern": "^\\d{4}-\\d{2}$",
+          "title": "Date",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "display": {
+          "default": true,
+          "title": "Display",
+          "type": "boolean"
+        },
+        "topics": {
+          "description": "Topic tags for matching (normalized via SkillRegistry)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Topics",
+          "type": "array"
+        },
+        "abstract": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Brief description for semantic matching (max 500 chars)",
+          "title": "Abstract"
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "venue",
+        "date"
+      ],
+      "title": "Publication",
+      "type": "object"
+    },
+    "ScoringWeights": {
+      "description": "Weights for ranking algorithm.\n\nBM25 vs Semantic weights control the balance in RRF fusion.\nHigher bm25_weight emphasizes keyword matching.\nHigher semantic_weight emphasizes meaning/context matching.\n\nRecency decay (Story 7.9) uses exponential decay to weight recent\nexperience higher than older experience:\n\n    recency_score = e^(-\u03bb \u00d7 years_ago)\n\nWhere:\n    \u03bb = ln(2) / recency_half_life  (decay constant)\n    years_ago = (today - time_ended).days / 365.25\n\nExample with 5-year half-life:\n    Current position \u2192 100% weight\n    1 year ago \u2192 ~87% weight\n    5 years ago \u2192 50% weight\n    10 years ago \u2192 25% weight\n\nFinal score blends relevance and recency:\n    final = (1 - recency_blend) \u00d7 relevance + recency_blend \u00d7 recency\n\nSection-level semantic matching (Story 7.11):\n    When use_sectioned_semantic is True, matches work unit sections\n    against JD sections with configurable weights:\n    - Outcome \u2194 JD Requirements: 40% (most predictive of job fit)\n    - Actions \u2194 JD Requirements: 30% (what candidate did)\n    - Skills \u2194 JD Skills: 20% (technical alignment)\n    - Title \u2194 JD Full: 10% (role alignment)",
+      "properties": {
+        "bm25_weight": {
+          "default": 1.0,
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Bm25 Weight",
+          "type": "number"
+        },
+        "semantic_weight": {
+          "default": 1.0,
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Semantic Weight",
+          "type": "number"
+        },
+        "title_weight": {
+          "default": 2.0,
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "title": "Title Weight",
+          "type": "number"
+        },
+        "skills_weight": {
+          "default": 1.5,
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "title": "Skills Weight",
+          "type": "number"
+        },
+        "experience_weight": {
+          "default": 1.0,
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "title": "Experience Weight",
+          "type": "number"
+        },
+        "recency_half_life": {
+          "anyOf": [
+            {
+              "maximum": 20.0,
+              "minimum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 5.0,
+          "description": "Years for experience to decay to 50% weight. None disables decay.",
+          "title": "Recency Half Life"
+        },
+        "recency_blend": {
+          "default": 0.2,
+          "description": "Weight of recency in final score (0.2 = 20%).",
+          "maximum": 0.5,
+          "minimum": 0.0,
+          "title": "Recency Blend",
+          "type": "number"
+        },
+        "use_sectioned_semantic": {
+          "default": false,
+          "description": "Enable section-level semantic matching (more precise but slower).",
+          "title": "Use Sectioned Semantic",
+          "type": "boolean"
+        },
+        "section_outcome_weight": {
+          "default": 0.4,
+          "description": "Weight for outcome section in semantic scoring.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Section Outcome Weight",
+          "type": "number"
+        },
+        "section_actions_weight": {
+          "default": 0.3,
+          "description": "Weight for actions section in semantic scoring.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Section Actions Weight",
+          "type": "number"
+        },
+        "section_skills_weight": {
+          "default": 0.2,
+          "description": "Weight for skills section in semantic scoring.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Section Skills Weight",
+          "type": "number"
+        },
+        "section_title_weight": {
+          "default": 0.1,
+          "description": "Weight for title section in semantic scoring.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Section Title Weight",
+          "type": "number"
+        },
+        "use_seniority_matching": {
+          "default": true,
+          "description": "Enable seniority level matching against JD.",
+          "title": "Use Seniority Matching",
+          "type": "boolean"
+        },
+        "seniority_blend": {
+          "default": 0.1,
+          "description": "How much seniority alignment affects final score (0.1 = 10%).",
+          "maximum": 0.3,
+          "minimum": 0.0,
+          "title": "Seniority Blend",
+          "type": "number"
+        },
+        "use_impact_matching": {
+          "default": true,
+          "description": "Enable impact category matching against role type.",
+          "title": "Use Impact Matching",
+          "type": "boolean"
+        },
+        "impact_blend": {
+          "default": 0.1,
+          "description": "How much impact alignment affects final score (0.1 = 10%).",
+          "maximum": 0.3,
+          "minimum": 0.0,
+          "title": "Impact Blend",
+          "type": "number"
+        },
+        "quantified_boost": {
+          "default": 1.25,
+          "description": "Multiplier for work units with quantified outcomes (1.25 = 25% boost).",
+          "maximum": 2.0,
+          "minimum": 1.0,
+          "title": "Quantified Boost",
+          "type": "number"
+        }
+      },
+      "title": "ScoringWeights",
+      "type": "object"
+    },
+    "SkillsConfig": {
+      "description": "Configuration for skills curation.\n\nControls how skills are deduplicated, filtered, and prioritized\nfor resume display.",
+      "properties": {
+        "max_display": {
+          "default": 15,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Display",
+          "type": "integer"
+        },
+        "exclude": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude",
+          "type": "array"
+        },
+        "prioritize": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Prioritize",
+          "type": "array"
+        }
+      },
+      "title": "SkillsConfig",
+      "type": "object"
+    },
+    "TemplateOptions": {
+      "description": "Template rendering options (Story 8.1).\n\nControls how resume templates render experience sections.",
+      "properties": {
+        "group_employer_positions": {
+          "default": true,
+          "description": "Group multiple positions at the same employer under one heading",
+          "title": "Group Employer Positions",
+          "type": "boolean"
+        }
+      },
+      "title": "TemplateOptions",
+      "type": "object"
+    }
+  },
+  "description": "Complete configuration for Resume as Code.",
+  "properties": {
+    "schema_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Schema version for tracking migrations (e.g., '2.0.0')",
+      "title": "Schema Version"
+    },
+    "output_dir": {
+      "default": "dist",
+      "format": "path",
+      "title": "Output Dir",
+      "type": "string"
+    },
+    "default_format": {
+      "default": "both",
+      "enum": [
+        "pdf",
+        "docx",
+        "both"
+      ],
+      "title": "Default Format",
+      "type": "string"
+    },
+    "default_template": {
+      "default": "modern",
+      "title": "Default Template",
+      "type": "string"
+    },
+    "work_units_dir": {
+      "default": "work-units",
+      "format": "path",
+      "title": "Work Units Dir",
+      "type": "string"
+    },
+    "positions_path": {
+      "default": "positions.yaml",
+      "format": "path",
+      "title": "Positions Path",
+      "type": "string"
+    },
+    "scoring_weights": {
+      "$ref": "#/$defs/ScoringWeights"
+    },
+    "default_top_k": {
+      "default": 8,
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Default Top K",
+      "type": "integer"
+    },
+    "editor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Editor"
+    },
+    "profile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProfileConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Profile data (use data_loader for access, supports external file)"
+    },
+    "certifications": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/Certification"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Certifications (use data_loader for access, supports external file)",
+      "title": "Certifications"
+    },
+    "education": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/Education"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Education (use data_loader for access, supports external file)",
+      "title": "Education"
+    },
+    "skills": {
+      "$ref": "#/$defs/SkillsConfig"
+    },
+    "career_highlights": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Career highlights (use data_loader for access, supports external file)",
+      "title": "Career Highlights"
+    },
+    "board_roles": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/BoardRole"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Board roles (use data_loader for access, supports external file)",
+      "title": "Board Roles"
+    },
+    "publications": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/Publication"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Publications (use data_loader for access, supports external file)",
+      "title": "Publications"
+    },
+    "tailored_notice": {
+      "default": false,
+      "description": "Show footer notice that resume is tailored for the role",
+      "title": "Tailored Notice",
+      "type": "boolean"
+    },
+    "tailored_notice_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Custom tailored notice text (overrides default)",
+      "title": "Tailored Notice Text"
+    },
+    "employment_continuity": {
+      "default": "minimum_bullet",
+      "description": "minimum_bullet: always include 1 work unit per position; allow_gaps: pure relevance filtering with gap warnings",
+      "enum": [
+        "minimum_bullet",
+        "allow_gaps"
+      ],
+      "title": "Employment Continuity",
+      "type": "string"
+    },
+    "history_years": {
+      "anyOf": [
+        {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Limit work history to last N years (None = unlimited)",
+      "title": "History Years"
+    },
+    "onet": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ONetConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "curation": {
+      "$ref": "#/$defs/CurationConfig"
+    },
+    "template_options": {
+      "$ref": "#/$defs/TemplateOptions"
+    },
+    "data_paths": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DataPaths"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Custom paths for separated data files"
+    },
+    "templates_dir": {
+      "anyOf": [
+        {
+          "format": "path",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Path to custom templates directory (supplements built-in templates)",
+      "title": "Templates Dir"
+    },
+    "docx": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DocxConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "DOCX-specific settings (template override)"
+    }
+  },
+  "title": "ResumeConfig",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resume-as-code.dev/schemas/config.schema.json"
+}
