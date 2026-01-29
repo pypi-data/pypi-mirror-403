@@ -1,0 +1,281 @@
+Metadata-Version: 2.4
+Name: gym-wm
+Version: 0.1.0
+Summary: A toolbox for generating offline datasets from Gymnasium environments for world-model research
+Author-email: Unknown <unknown@example.com>
+License-Expression: MIT
+Project-URL: Repository, https://github.com/unknown/gym_wm_dataset_generator
+Project-URL: Documentation, https://github.com/unknown/gym_wm_dataset_generator#readme
+Keywords: reinforcement-learning,offline-rl,gymnasium,minari,world-models,robotics,datasets
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: gymnasium>=1.0.0
+Requires-Dist: gymnasium-robotics>=1.3.0
+Requires-Dist: minari>=0.5.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: typer>=0.12.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: loguru>=0.7.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: imageio>=2.31.0
+Requires-Dist: imageio-ffmpeg>=0.4.9
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.12.0; extra == "dev"
+Requires-Dist: ruff>=0.8.0; extra == "dev"
+Requires-Dist: mypy>=1.8.0; extra == "dev"
+Requires-Dist: pre-commit>=3.6.0; extra == "dev"
+Provides-Extra: test
+Requires-Dist: pytest>=7.4.0; extra == "test"
+Requires-Dist: pytest-cov>=4.1.0; extra == "test"
+Requires-Dist: pytest-mock>=3.12.0; extra == "test"
+Requires-Dist: hypothesis>=6.100.0; extra == "test"
+Dynamic: license-file
+
+# gym_wm - World Model Dataset Generator
+
+A Python toolbox for generating offline datasets from Gymnasium environments for world-model research using Minari.
+
+## Features
+
+- 🎮 **Multi-environment support**: Gymnasium MuJoCo, Gymnasium-Robotics (Fetch, Maze, Hand), and classic control
+- 📸 **RGB observations**: Automatic capture of visual observations alongside proprioceptive state
+- 🗄️ **Minari integration**: Store datasets in Minari format for easy sharing and loading
+- 🎯 **Multiple policies**: Random sampling or PD controller for goal-conditioned environments
+- 📊 **Visualization tools**: Episode frames, trajectory plots, and dataset summaries
+- 🎬 **Video export**: Create MP4 videos from collected episodes
+- 💻 **CLI & Python API**: Use from command line or import as a package
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/unknown/gym_wm_dataset_generator.git
+cd gym_wm_dataset_generator
+
+# Create environment (using micromamba)
+mm create -n gym_wm python=3.11
+mm activate gym_wm
+
+# Install with uv (recommended)
+uv pip install -e ".[dev]"
+
+# Or install dependencies only
+uv pip install -e .
+```
+
+### Dependencies
+
+Core dependencies:
+- `gymnasium>=1.0.0`
+- `gymnasium-robotics>=1.3.0`
+- `minari>=0.5.0`
+- `numpy>=1.24.0`
+- `typer>=0.12.0`
+- `rich>=13.0.0`
+- `loguru>=0.7.0`
+- `matplotlib>=3.7.0`
+- `imageio>=2.31.0`
+
+## Quick Start
+
+### Command Line Interface
+
+```bash
+# List supported environments
+gym-wm list-envs
+
+# Collect a dataset
+gym-wm collect PointMaze_UMaze-v3 --episodes 100
+
+# Collect with custom options
+gym-wm collect FetchReach-v4 -n 50 --policy pd --img-size 128 --seed 42
+
+# List collected datasets
+gym-wm list-datasets
+
+# Inspect a dataset
+gym-wm inspect pointmaze-umaze-v3/random-v0
+
+# Visualize a dataset
+gym-wm visualize pointmaze-umaze-v3/random-v0 --episode 0
+
+# Generate dataset summary
+gym-wm visualize pointmaze-umaze-v3/random-v0 --summary
+
+# Create video from episode
+gym-wm visualize pointmaze-umaze-v3/random-v0 --save-video
+
+# Compare multiple datasets
+gym-wm compare dataset1 dataset2
+```
+
+### Python API
+
+```python
+import gym_wm
+
+# List available environments
+envs = gym_wm.list_environments()
+print(envs.keys())  # ['mujoco', 'fetch', 'maze', 'hand', 'classic_control']
+
+# Collect a dataset with random policy
+dataset = gym_wm.collect_dataset(
+    env_id="PointMaze_UMaze-v3",
+    num_episodes=100,
+    dataset_name="pointmaze/my-dataset-v0",
+    img_height=84,
+    img_width=84,
+)
+print(f"Collected {dataset.total_episodes} episodes, {dataset.total_steps} steps")
+
+# Collect with PD controller policy (for goal-conditioned envs)
+policy = gym_wm.create_pd_policy(kp=2.0, kd=0.2)
+dataset = gym_wm.collect_dataset(
+    env_id="FetchReach-v4",
+    num_episodes=50,
+    policy=policy,
+)
+
+# Load an existing dataset
+dataset = gym_wm.load_dataset("pointmaze/my-dataset-v0")
+
+# Visualize dataset
+gym_wm.visualize_dataset(dataset, episode_idx=0)
+
+# Plot specific visualizations
+fig = gym_wm.plot_episode_frames(dataset, episode_idx=0)
+fig = gym_wm.plot_episode_trajectory(dataset, episode_idx=0)
+fig = gym_wm.plot_dataset_summary(dataset)
+
+# Create video
+video_path = gym_wm.create_episode_video(dataset, episode_idx=0, fps=30)
+
+# Inspect dataset
+info = gym_wm.inspect_dataset("pointmaze/my-dataset-v0")
+print(f"Has images: {info['has_images']}")
+print(f"Image shape: {info.get('image_shape')}")
+```
+
+### Using DatasetConfig
+
+```python
+from gym_wm import DatasetConfig, collect_dataset_from_config
+
+config = DatasetConfig(
+    env_id="Ant-v5",
+    num_episodes=100,
+    dataset_name="ant/random-v0",
+    img_height=128,
+    img_width=128,
+    author="Your Name",
+    author_email="your@email.com",
+    seed=42,
+)
+
+dataset = collect_dataset_from_config(config)
+```
+
+## Supported Environments
+
+### MuJoCo
+- Reacher-v5, Ant-v5, HalfCheetah-v5, Hopper-v5
+- Walker2d-v5, Humanoid-v5, Swimmer-v5, Pusher-v5
+- InvertedPendulum-v5, InvertedDoublePendulum-v5
+
+### Fetch (Gymnasium-Robotics)
+- FetchReach-v4, FetchPush-v3, FetchSlide-v3, FetchPickAndPlace-v3
+
+### Maze (Gymnasium-Robotics)
+- PointMaze_UMaze-v3, PointMaze_Medium-v3, PointMaze_Large-v3
+- AntMaze_UMaze-v5, AntMaze_Medium-v5, AntMaze_Large-v5
+
+### Hand (Gymnasium-Robotics)
+- AdroitHandDoor-v1, AdroitHandHammer-v1
+- AdroitHandPen-v1, AdroitHandRelocate-v1
+
+### Classic Control
+- CartPole-v1, Pendulum-v1, Acrobot-v1
+- MountainCar-v0, MountainCarContinuous-v0
+
+## CLI Reference
+
+| Command | Description |
+|---------|-------------|
+| `gym-wm collect <env_id>` | Collect a new dataset |
+| `gym-wm visualize <dataset>` | Visualize a dataset |
+| `gym-wm list-envs` | List supported environments |
+| `gym-wm list-datasets` | List local datasets |
+| `gym-wm inspect <dataset>` | Show dataset details |
+| `gym-wm compare <ds1> <ds2>` | Compare datasets |
+| `gym-wm version` | Show version info |
+
+### Common Options
+
+```
+--episodes, -n    Number of episodes to collect (default: 100)
+--name            Custom dataset name
+--img-size        Image size in pixels (default: 84)
+--output, -o      Output directory
+--seed            Random seed for reproducibility
+--policy          Policy type: random, pd (default: random)
+--verbose, -v     Enable verbose logging
+```
+
+## Development
+
+```bash
+# Install development dependencies
+uv pip install -e ".[dev,test]"
+
+# Run tests
+pytest
+
+# Run linter
+ruff check src/
+
+# Format code
+ruff format src/
+
+# Type checking
+mypy src/gym_wm
+```
+
+## Project Structure
+
+```
+gym_wm_dataset_generator/
+├── src/
+│   └── gym_wm/
+│       ├── __init__.py       # Public API exports
+│       ├── cli.py            # Typer CLI application
+│       ├── core/
+│       │   ├── config.py     # DatasetConfig dataclass
+│       │   ├── environments.py # Environment utilities
+│       │   ├── generator.py  # Dataset collection
+│       │   ├── policies.py   # Policy implementations
+│       │   └── visualize.py  # Visualization tools
+│       └── utils/
+│           └── inspect.py    # Dataset inspection
+├── tests/
+├── pyproject.toml
+└── README.md
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## References
+
+- [Gymnasium Documentation](https://gymnasium.farama.org/)
+- [Gymnasium-Robotics Documentation](https://robotics.farama.org/)
+- [Minari Documentation](https://minari.farama.org/)
