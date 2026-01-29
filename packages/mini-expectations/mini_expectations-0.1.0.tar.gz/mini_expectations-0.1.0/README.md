@@ -1,0 +1,107 @@
+## mini_expectations
+
+A tiny, code-first data quality library for pandas DataFrames.
+
+It aims to provide a small, readable alternative to Great Expectations with:
+
+- **Pandas-only** focus
+- **Code-first API** (no YAML, no configs)
+- **Fail-fast** behavior via a single `ExpectationFailed` exception
+- **Simple chaining** from DataFrame → column → expectation
+
+### Installation
+
+Install from your local checkout:
+
+```bash
+pip install -e .
+```
+
+You will also need `pandas` in your environment.
+
+### Basic usage
+
+```python
+import pandas as pd
+from mini_expectations import expect, ExpectationFailed
+
+df = pd.DataFrame(
+    {
+        "id": [1, 2, 3],
+        "amount": [10.0, 20.5, 0.1],
+        "email": ["a@example.com", "b@example.com", "c@example.com"],
+        "status": ["active", "active", "inactive"],
+    }
+)
+
+# DataFrame-level checks
+expect(df).to_have_columns(["id", "amount", "email"])
+expect(df).to_have_no_nulls()
+expect(df).to_have_unique_column("id")
+
+# Column-level checks
+expect(df).column("amount").to_be_positive()
+expect(df).column("amount").to_be_between(0, 100)
+expect(df).column("email").to_match_regex(r".+@.+")
+expect(df).column("status").to_be_in_set(["active", "inactive"])
+expect(df).column("id").to_have_no_nulls()
+
+# Row count checks
+expect(df).row_count().to_be_between(1, 1_000_000)
+```
+
+All expectations return `self` so you can chain them:
+
+```python
+expect(df) \
+    .to_have_columns(["id", "amount", "email"]) \
+    .to_have_no_nulls() \
+    .to_have_unique_column("id")
+```
+
+When an expectation fails, `ExpectationFailed` is raised with a human-readable message that
+describes what was expected and what was actually observed.
+
+### API overview
+
+All entry points live under a single function:
+
+- **`expect(df)`** → returns a `DataFrameExpectations` object.
+
+DataFrame-level expectations:
+
+- **`to_have_columns(columns)`**: assert that all listed columns exist.
+- **`to_have_no_nulls(subset=None)`**: assert that there are no nulls in the DataFrame (or in a subset of columns).
+- **`to_have_unique_column(column)`**: assert that a column exists, has no nulls, and contains only unique values.
+- **`row_count()`**: returns a `RowCountExpectation` wrapper for the number of rows.
+
+Column navigation and expectations:
+
+- **`column(name)`**: navigate to a `ColumnExpectations` object.
+- **`to_be_positive(strictly=True)`**: assert that numeric values are > 0 (or >= 0 when `strictly=False`).
+- **`to_match_regex(pattern)`**: assert that all non-null stringified values match a regex pattern.
+- **`to_be_unique()`**: assert that non-null values are unique.
+- **`to_be_between(min_value, max_value, inclusive=True)`**: assert that non-null numeric values lie in a given range.
+- **`to_be_in_set(allowed_values)`**: assert that non-null values come from a fixed set.
+- **`to_have_no_nulls()`**: assert that a column has no null values.
+
+Row count expectations:
+
+- **`RowCountExpectation.to_be_between(min_value, max_value)`**: assert that the number of rows lies between two bounds (inclusive).
+
+### Error handling
+
+All failed expectations raise:
+
+- **`ExpectationFailed`**: a subclass of `AssertionError` with clear, descriptive messages.
+
+You can choose to let expectations fail fast, or catch the exception to aggregate or log errors:
+
+```python
+try:
+    expect(df).column("amount").to_be_positive()
+except ExpectationFailed as exc:
+    print("Data quality issue:", exc)
+```
+
+
