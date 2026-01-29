@@ -1,0 +1,14 @@
+from .hamming_space import HammingSpace
+from .motif_space import MotifSpace
+from .motif_space import _return_motif_categories, _motif_categories
+from .motif_hyphen_space import MotifHyphenSpace, make_hyphen_dct
+from .motif_breakage_space import MotifBreakageSpace
+from .time_space import TimeSpace
+from .time_space import isinstance_timespace, are_compatible_timespaces
+from .trajectory_space import TrajectorySpace
+
+from .extentive_motif_breakage_space import makeExtentiveMotifBreakageSpace
+
+from .motif_production_space import MotifProductionSpace
+from .motif_production_space import make_motif_production_dct, _production_channel_id
+from .motif_production_space import _return_motif_production_categories
