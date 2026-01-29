@@ -1,0 +1,284 @@
+<!-- Entry Detail Panel -->
+<div class="space-y-6">
+    
+    <!-- Entry Header -->
+    <div class="flex items-start gap-4">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center 
+            {% if entry.type == 'request' %}bg-cyan-500/10 text-cyan-400
+            {% elif entry.type == 'query' %}bg-emerald-500/10 text-emerald-400
+            {% elif entry.type == 'log' %}bg-slate-500/10 text-slate-400
+            {% elif entry.type == 'exception' %}bg-rose-500/10 text-rose-400
+            {% elif entry.type == 'job' %}bg-amber-500/10 text-amber-400
+            {% elif entry.type == 'command' %}bg-violet-500/10 text-violet-400
+            {% elif entry.type == 'cache' %}bg-orange-500/10 text-orange-400
+            {% elif entry.type == 'model' %}bg-blue-500/10 text-blue-400
+            {% elif entry.type == 'http_client' %}bg-pink-500/10 text-pink-400
+            {% elif entry.type == 'dump' %}bg-lime-500/10 text-lime-400
+            {% elif entry.type == 'mail' %}bg-fuchsia-500/10 text-fuchsia-400
+            {% elif entry.type == 'signal' %}bg-yellow-500/10 text-yellow-400
+            {% elif entry.type == 'redis' %}bg-red-500/10 text-red-400
+            {% elif entry.type == 'gate' %}bg-indigo-500/10 text-indigo-400
+            {% endif %}">
+            {% if entry.type == 'request' %}
+            <i data-lucide="globe" class="w-6 h-6"></i>
+            {% elif entry.type == 'query' %}
+            <i data-lucide="database" class="w-6 h-6"></i>
+            {% elif entry.type == 'log' %}
+            <i data-lucide="file-text" class="w-6 h-6"></i>
+            {% elif entry.type == 'exception' %}
+            <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+            {% elif entry.type == 'job' %}
+            <i data-lucide="clock" class="w-6 h-6"></i>
+            {% elif entry.type == 'command' %}
+            <i data-lucide="terminal" class="w-6 h-6"></i>
+            {% elif entry.type == 'cache' %}
+            <i data-lucide="hard-drive" class="w-6 h-6"></i>
+            {% elif entry.type == 'model' %}
+            <i data-lucide="box" class="w-6 h-6"></i>
+            {% elif entry.type == 'http_client' %}
+            <i data-lucide="send" class="w-6 h-6"></i>
+            {% elif entry.type == 'dump' %}
+            <i data-lucide="bug" class="w-6 h-6"></i>
+            {% elif entry.type == 'mail' %}
+            <i data-lucide="mail" class="w-6 h-6"></i>
+            {% elif entry.type == 'signal' %}
+            <i data-lucide="zap" class="w-6 h-6"></i>
+            {% elif entry.type == 'redis' %}
+            <i data-lucide="server" class="w-6 h-6"></i>
+            {% elif entry.type == 'gate' %}
+            <i data-lucide="shield" class="w-6 h-6"></i>
+            {% endif %}
+        </div>
+        <div class="flex-1 min-w-0">
+            <h3 class="text-lg font-medium text-orbit-text-primary capitalize">{{ entry.type }}</h3>
+            <p class="text-sm text-orbit-text-muted font-mono">{{ entry.id }}</p>
+        </div>
+        <a href="{% url 'orbit:export' entry.id %}" 
+           class="p-2 hover:bg-orbit-bg-tertiary rounded-lg transition-colors text-orbit-text-secondary hover:text-orbit-text-primary group" 
+           title="Export JSON">
+            <i data-lucide="download" class="w-5 h-5 group-hover:text-orbit-accent-cyan"></i>
+        </a>
+    </div>
+    
+    <!-- Quick Stats -->
+    <div class="grid grid-cols-3 gap-3">
+        <div class="bg-orbit-bg-tertiary/50 rounded-lg p-3 text-center">
+            <p class="text-xs text-orbit-text-muted mb-1">Duration</p>
+            <p class="text-lg font-mono 
+                {% if entry.duration_ms > 500 %}text-rose-400
+                {% elif entry.duration_ms > 100 %}text-amber-400
+                {% else %}text-orbit-text-primary
+                {% endif %}">
+                {% if entry.duration_ms %}{{ entry.duration_ms|floatformat:1 }}ms{% else %}-{% endif %}
+            </p>
+        </div>
+        <div class="bg-orbit-bg-tertiary/50 rounded-lg p-3 text-center">
+            <p class="text-xs text-orbit-text-muted mb-1">Time</p>
+            <p class="text-lg font-mono text-orbit-text-primary">{{ entry.created_at|time:"H:i:s" }}</p>
+        </div>
+        <div class="bg-orbit-bg-tertiary/50 rounded-lg p-3 text-center">
+            <p class="text-xs text-orbit-text-muted mb-1">Family</p>
+            <p class="text-sm font-mono text-orbit-text-secondary truncate" title="{{ entry.family_hash }}">
+                {% if entry.family_hash %}
+                {{ entry.family_hash|truncatechars:8 }}
+                {% else %}
+                -
+                {% endif %}
+            </p>
+        </div>
+    </div>
+    
+    <!-- Request-specific details -->
+    {% if entry.type == 'request' %}
+    <div class="space-y-3">
+        <div class="flex items-center gap-3 bg-orbit-bg-tertiary/50 rounded-lg p-3">
+            <span class="text-xs font-mono px-2 py-0.5 rounded 
+                {% if entry.payload.status_code >= 500 %}bg-rose-500/20 text-rose-400
+                {% elif entry.payload.status_code >= 400 %}bg-amber-500/20 text-amber-400
+                {% else %}bg-emerald-500/20 text-emerald-400
+                {% endif %}">{{ entry.payload.status_code }}</span>
+            <span class="text-sm font-medium text-orbit-accent-cyan">{{ entry.payload.method }}</span>
+            <span class="text-sm text-orbit-text-primary font-mono truncate">{{ entry.payload.full_path }}</span>
+        </div>
+        
+        {% if entry.payload.client_ip %}
+        <div class="flex items-center gap-2 text-sm">
+            <i data-lucide="user" class="w-4 h-4 text-orbit-text-muted"></i>
+            <span class="text-orbit-text-secondary">{{ entry.payload.client_ip }}</span>
+            {% if entry.payload.user_str %}
+            <span class="text-orbit-text-muted">•</span>
+            <span class="text-orbit-text-secondary">{{ entry.payload.user_str }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if entry.payload.query_count %}
+        <div class="flex items-center gap-2 text-sm">
+            <i data-lucide="database" class="w-4 h-4 text-orbit-text-muted"></i>
+            <span class="text-orbit-text-secondary">{{ entry.payload.query_count }} queries</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Exception-specific details -->
+    {% if entry.type == 'exception' %}
+    <div class="bg-rose-500/10 border border-rose-500/20 rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="text-sm font-medium text-rose-400">{{ entry.payload.exception_type }}</span>
+        </div>
+        <p class="text-sm text-orbit-text-primary">{{ entry.payload.message }}</p>
+    </div>
+    
+    {% if entry.payload.traceback %}
+    <div class="space-y-2">
+        <h4 class="text-sm font-medium text-orbit-text-secondary flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+            Stack Trace
+        </h4>
+        <div class="bg-orbit-bg-tertiary rounded-lg p-3 overflow-x-auto">
+            <div class="space-y-1">
+                {% for frame in entry.payload.traceback %}
+                <div class="text-xs font-mono">
+                    <span class="text-orbit-text-muted">{{ frame.filename }}:{{ frame.lineno }}</span>
+                    <span class="text-cyan-400">{{ frame.name }}</span>
+                    {% if frame.line %}
+                    <div class="pl-4 text-orbit-text-secondary">{{ frame.line }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+    
+    <!-- Query-specific details -->
+    {% if entry.type == 'query' %}
+    <div class="space-y-3">
+        {% if entry.payload.is_slow or entry.payload.is_duplicate %}
+        <div class="flex items-center gap-2">
+            {% if entry.payload.is_slow %}
+            <span class="text-xs font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">SLOW QUERY</span>
+            {% endif %}
+            {% if entry.payload.is_duplicate %}
+            <span class="text-xs font-mono px-2 py-0.5 rounded bg-violet-500/20 text-violet-400">DUPLICATE (×{{ entry.payload.duplicate_count }})</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if entry.payload.caller.filename %}
+        <div class="flex items-center gap-2 text-sm">
+            <i data-lucide="file-code" class="w-4 h-4 text-orbit-text-muted"></i>
+            <span class="text-orbit-text-secondary font-mono">
+                {{ entry.payload.caller.filename }}:{{ entry.payload.caller.lineno }}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Full Payload JSON -->
+    <div class="space-y-2">
+        <h4 class="text-sm font-medium text-orbit-text-secondary flex items-center gap-2">
+            <i data-lucide="code" class="w-4 h-4"></i>
+            Full Payload
+        </h4>
+        <div class="bg-orbit-bg-tertiary rounded-lg p-4 overflow-x-auto">
+            <pre class="text-xs font-mono leading-relaxed" id="json-payload">{{ payload_json }}</pre>
+        </div>
+    </div>
+    
+    <!-- Related Entries -->
+    {% if related_entries %}
+    <div class="space-y-2">
+        <h4 class="text-sm font-medium text-orbit-text-secondary flex items-center gap-2">
+            <i data-lucide="link" class="w-4 h-4"></i>
+            Related Entries ({{ related_entries|length }})
+        </h4>
+        <div class="space-y-1">
+            {% for related in related_entries %}
+            <div 
+                data-entry-id="{{ related.id }}"
+                class="flex items-center gap-3 p-2 rounded-lg bg-orbit-bg-tertiary/50 hover:bg-orbit-bg-tertiary cursor-pointer transition-colors">
+                <div class="w-6 h-6 rounded flex items-center justify-center 
+                    {% if related.type == 'request' %}bg-cyan-500/10 text-cyan-400
+                    {% elif related.type == 'query' %}bg-emerald-500/10 text-emerald-400
+                    {% elif related.type == 'log' %}bg-slate-500/10 text-slate-400
+                    {% elif related.type == 'exception' %}bg-rose-500/10 text-rose-400
+                    {% elif related.type == 'job' %}bg-amber-500/10 text-amber-400
+                    {% elif related.type == 'command' %}bg-violet-500/10 text-violet-400
+                    {% elif related.type == 'cache' %}bg-orange-500/10 text-orange-400
+                    {% elif related.type == 'model' %}bg-blue-500/10 text-blue-400
+                    {% elif related.type == 'http_client' %}bg-pink-500/10 text-pink-400
+                    {% elif related.type == 'dump' %}bg-lime-500/10 text-lime-400
+                    {% endif %}">
+                    {% if related.type == 'request' %}
+                    <i data-lucide="globe" class="w-3 h-3"></i>
+                    {% elif related.type == 'query' %}
+                    <i data-lucide="database" class="w-3 h-3"></i>
+                    {% elif related.type == 'log' %}
+                    <i data-lucide="file-text" class="w-3 h-3"></i>
+                    {% elif related.type == 'exception' %}
+                    <i data-lucide="alert-triangle" class="w-3 h-3"></i>
+                    {% elif related.type == 'job' %}
+                    <i data-lucide="clock" class="w-3 h-3"></i>
+                    {% elif related.type == 'command' %}
+                    <i data-lucide="terminal" class="w-3 h-3"></i>
+                    {% elif related.type == 'cache' %}
+                    <i data-lucide="hard-drive" class="w-3 h-3"></i>
+                    {% elif related.type == 'model' %}
+                    <i data-lucide="box" class="w-3 h-3"></i>
+                    {% elif related.type == 'http_client' %}
+                    <i data-lucide="send" class="w-3 h-3"></i>
+                    {% elif related.type == 'dump' %}
+                    <i data-lucide="bug" class="w-3 h-3"></i>
+                    {% endif %}
+                </div>
+                <span class="text-xs font-mono text-orbit-text-secondary truncate flex-1">{{ related.summary }}</span>
+                <span class="text-xs text-orbit-text-muted">{{ related.created_at|time:"H:i:s" }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Duplicate Queries (N+1 Debug) -->
+    {% if duplicate_entries %}
+    <div class="mt-6">
+        <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="copy" class="w-4 h-4 text-amber-400"></i>
+            <h4 class="text-sm font-medium text-amber-400">Duplicate Queries (N+1 Detected)</h4>
+            <span class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">{{ duplicate_entries|length }} similar</span>
+        </div>
+        <p class="text-xs text-orbit-text-muted mb-3">
+            These queries have the same SQL. Consider using <code class="text-amber-300">select_related()</code> or <code class="text-amber-300">prefetch_related()</code> to optimize.
+        </p>
+        <div class="space-y-1 max-h-40 overflow-y-auto bg-orbit-bg-tertiary/30 rounded-lg p-2">
+            {% for dup in duplicate_entries %}
+            <div class="flex items-center gap-2 p-2 rounded hover:bg-orbit-bg-tertiary/50 cursor-pointer transition-colors"
+                 onclick="document.dispatchEvent(new CustomEvent('orbit:open-detail', {detail: {entryId: '{{ dup.id }}'}}))">
+                <div class="w-5 h-5 rounded flex items-center justify-center bg-emerald-500/10 text-emerald-400 flex-shrink-0">
+                    <i data-lucide="database" class="w-3 h-3"></i>
+                </div>
+                <span class="text-xs font-mono text-orbit-text-secondary truncate flex-1">
+                    {{ dup.duration_ms|floatformat:1 }}ms
+                </span>
+                <span class="text-xs text-orbit-text-muted">{{ dup.created_at|time:"H:i:s.u" }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+</div>
+
+<script>
+    // Apply syntax highlighting to JSON
+    (function() {
+        const el = document.getElementById('json-payload');
+        if (el) {
+            el.innerHTML = syntaxHighlight(el.textContent);
+        }
+    })();
+</script>
