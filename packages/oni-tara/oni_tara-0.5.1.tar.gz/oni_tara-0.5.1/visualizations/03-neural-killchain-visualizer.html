@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Kill Chain Visualizer | ONI Framework</title>
+    <style>
+        :root {
+            --oni-dark: #0a0e17;
+            --oni-darker: #060912;
+            --oni-blue: #00d4ff;
+            --oni-purple: #8b5cf6;
+            --oni-pink: #ec4899;
+            --oni-green: #10b981;
+            --oni-yellow: #f59e0b;
+            --oni-red: #ef4444;
+            --oni-orange: #f97316;
+            --oni-gray: #1e293b;
+            --oni-light: #e2e8f0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--oni-dark);
+            color: var(--oni-light);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            padding: 1.5rem 2rem;
+            background: var(--oni-darker);
+            border-bottom: 1px solid var(--oni-gray);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--oni-red), var(--oni-orange));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.25rem;
+        }
+
+        .header p {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 320px 1fr 320px;
+            height: calc(100vh - 90px);
+        }
+
+        /* Attack Selection Panel */
+        .attack-panel {
+            background: var(--oni-darker);
+            border-right: 1px solid var(--oni-gray);
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            margin-bottom: 1rem;
+        }
+
+        .attack-card {
+            background: var(--oni-gray);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .attack-card:hover {
+            border-color: var(--oni-red);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .attack-card.active {
+            border-color: var(--oni-red);
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        .attack-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .attack-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--oni-red), var(--oni-orange));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .attack-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .attack-type {
+            font-size: 0.75rem;
+            color: var(--oni-red);
+        }
+
+        .attack-desc {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            line-height: 1.4;
+        }
+
+        .attack-layers {
+            display: flex;
+            gap: 0.25rem;
+            margin-top: 0.75rem;
+        }
+
+        .attack-layer-badge {
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .badge-osi { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+        .badge-interface { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+        .badge-cognitive { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
+
+        /* Visualization Panel */
+        .viz-panel {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .viz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .viz-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .control-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--oni-gray);
+            background: transparent;
+            color: var(--oni-light);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: var(--oni-gray);
+        }
+
+        .control-btn.primary {
+            background: var(--oni-red);
+            border-color: var(--oni-red);
+        }
+
+        .control-btn.primary:hover {
+            background: #dc2626;
+        }
+
+        /* Kill Chain Visualization */
+        .killchain-viz {
+            flex: 1;
+            background: var(--oni-darker);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .layer-stack-viz {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            gap: 4px;
+        }
+
+        .layer-row {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            background: var(--oni-gray);
+            border-radius: 8px;
+            padding: 0 1rem;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .layer-row.compromised {
+            background: rgba(239, 68, 68, 0.3);
+            border: 1px solid var(--oni-red);
+        }
+
+        .layer-row.defended {
+            background: rgba(16, 185, 129, 0.3);
+            border: 1px solid var(--oni-green);
+        }
+
+        .layer-row.active {
+            background: rgba(245, 158, 11, 0.3);
+            border: 1px solid var(--oni-yellow);
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+        }
+
+        .layer-label {
+            width: 120px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+
+        .layer-name-viz {
+            flex: 1;
+            font-size: 0.875rem;
+        }
+
+        .layer-status {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+        }
+
+        .status-secure { background: rgba(16, 185, 129, 0.2); color: var(--oni-green); }
+        .status-under-attack { background: rgba(245, 158, 11, 0.2); color: var(--oni-yellow); }
+        .status-compromised { background: rgba(239, 68, 68, 0.2); color: var(--oni-red); }
+        .status-defended { background: rgba(16, 185, 129, 0.3); color: var(--oni-green); }
+
+        /* Attack Packet Animation */
+        .attack-packet {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: var(--oni-red);
+            border-radius: 50%;
+            box-shadow: 0 0 20px var(--oni-red);
+            z-index: 10;
+            transition: all 0.5s ease-in-out;
+        }
+
+        .attack-packet::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: var(--oni-red);
+            border-radius: 50%;
+            animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes ping {
+            75%, 100% { transform: scale(2); opacity: 0; }
+        }
+
+        /* Defense Shield */
+        .defense-shield {
+            position: absolute;
+            right: 150px;
+            width: 4px;
+            background: var(--oni-green);
+            border-radius: 2px;
+            box-shadow: 0 0 10px var(--oni-green);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .defense-shield.active {
+            opacity: 1;
+        }
+
+        /* Timeline Panel */
+        .timeline-panel {
+            background: var(--oni-darker);
+            border-left: 1px solid var(--oni-gray);
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+
+        .timeline-event {
+            position: relative;
+            padding-left: 2rem;
+            padding-bottom: 1.5rem;
+            border-left: 2px solid var(--oni-gray);
+            margin-left: 0.5rem;
+        }
+
+        .timeline-event:last-child {
+            border-left-color: transparent;
+        }
+
+        .timeline-event.attack { border-left-color: var(--oni-red); }
+        .timeline-event.defense { border-left-color: var(--oni-green); }
+        .timeline-event.active { border-left-color: var(--oni-yellow); }
+
+        .timeline-dot {
+            position: absolute;
+            left: -7px;
+            top: 0;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--oni-gray);
+        }
+
+        .timeline-event.attack .timeline-dot { background: var(--oni-red); }
+        .timeline-event.defense .timeline-dot { background: var(--oni-green); }
+        .timeline-event.active .timeline-dot {
+            background: var(--oni-yellow);
+            animation: pulse-dot 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+        }
+
+        .timeline-time {
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-bottom: 0.25rem;
+        }
+
+        .timeline-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .timeline-desc {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            line-height: 1.4;
+        }
+
+        /* Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            background: var(--oni-gray);
+            border-radius: 8px;
+            padding: 4px;
+            margin-bottom: 1rem;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 0.5rem;
+            border: none;
+            background: transparent;
+            color: #94a3b8;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--oni-red);
+            color: white;
+        }
+
+        .mode-btn.defender.active {
+            background: var(--oni-green);
+        }
+
+        /* Progress Bar */
+        .progress-bar {
+            height: 4px;
+            background: var(--oni-gray);
+            border-radius: 2px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--oni-red), var(--oni-orange));
+            border-radius: 2px;
+            transition: width 0.5s;
+        }
+
+        /* Speed Control */
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+
+        .speed-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 4px;
+            background: var(--oni-gray);
+            border-radius: 2px;
+        }
+
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--oni-blue);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Neural Kill Chain Visualizer</h1>
+        <p>Watch attacks propagate through the ONI stack — and see where defenses intercept</p>
+    </header>
+
+    <main class="main-container">
+        <!-- Attack Selection -->
+        <aside class="attack-panel">
+            <div class="panel-title">Select Attack Vector</div>
+
+            <div class="attack-card active" data-attack="bluetooth">
+                <div class="attack-card-header">
+                    <div class="attack-icon">&#128225;</div>
+                    <div>
+                        <div class="attack-name">BlueBorne Exploit</div>
+                        <div class="attack-type">Remote Code Execution</div>
+                    </div>
+                </div>
+                <div class="attack-desc">Bluetooth vulnerability allowing remote code execution without pairing. Targets L1-L2 to gain initial access.</div>
+                <div class="attack-layers">
+                    <span class="attack-layer-badge badge-osi">L1-L2</span>
+                    <span class="attack-layer-badge badge-osi">L7</span>
+                </div>
+            </div>
+
+            <div class="attack-card" data-attack="signal-injection">
+                <div class="attack-card-header">
+                    <div class="attack-icon">&#9889;</div>
+                    <div>
+                        <div class="attack-name">Signal Injection</div>
+                        <div class="attack-type">Neural Manipulation</div>
+                    </div>
+                </div>
+                <div class="attack-desc">Malicious stimulation patterns injected at electrode level to manipulate neural activity.</div>
+                <div class="attack-layers">
+                    <span class="attack-layer-badge badge-interface">L8</span>
+                    <span class="attack-layer-badge badge-interface">L9-L10</span>
+                    <span class="attack-layer-badge badge-cognitive">L11</span>
+                </div>
+            </div>
+
+            <div class="attack-card" data-attack="replay">
+                <div class="attack-card-header">
+                    <div class="attack-icon">&#128257;</div>
+                    <div>
+                        <div class="attack-name">Replay Attack</div>
+                        <div class="attack-type">Authentication Bypass</div>
+                    </div>
+                </div>
+                <div class="attack-desc">Captured legitimate neural commands replayed to bypass authentication and execute unauthorized actions.</div>
+                <div class="attack-layers">
+                    <span class="attack-layer-badge badge-osi">L3-L4</span>
+                    <span class="attack-layer-badge badge-osi">L7</span>
+                </div>
+            </div>
+
+            <div class="attack-card" data-attack="cognitive-dos">
+                <div class="attack-card-header">
+                    <div class="attack-icon">&#129504;</div>
+                    <div>
+                        <div class="attack-name">Cognitive DoS</div>
+                        <div class="attack-type">Resource Exhaustion</div>
+                    </div>
+                </div>
+                <div class="attack-desc">Overwhelm working memory capacity to disrupt cognitive function. Neural equivalent of DDoS.</div>
+                <div class="attack-layers">
+                    <span class="attack-layer-badge badge-interface">L10</span>
+                    <span class="attack-layer-badge badge-cognitive">L11</span>
+                    <span class="attack-layer-badge badge-cognitive">L12</span>
+                </div>
+            </div>
+
+            <div class="attack-card" data-attack="identity">
+                <div class="attack-card-header">
+                    <div class="attack-icon">&#128123;</div>
+                    <div>
+                        <div class="attack-name">Identity Drift</div>
+                        <div class="attack-type">Persistent Threat</div>
+                    </div>
+                </div>
+                <div class="attack-desc">Gradual manipulation of self-model through subtle, long-term stimulation patterns. Most sophisticated attack class.</div>
+                <div class="attack-layers">
+                    <span class="attack-layer-badge badge-cognitive">L11-L14</span>
+                </div>
+            </div>
+
+            <div class="mode-toggle">
+                <button class="mode-btn active">Attacker View</button>
+                <button class="mode-btn defender">Defender View</button>
+            </div>
+        </aside>
+
+        <!-- Visualization -->
+        <section class="viz-panel">
+            <div class="viz-header">
+                <div>
+                    <span style="color: #64748b; font-size: 0.875rem;">Currently viewing:</span>
+                    <strong id="currentAttack">BlueBorne Exploit</strong>
+                </div>
+                <div class="viz-controls">
+                    <button class="control-btn" id="resetBtn">
+                        <span>&#8635;</span> Reset
+                    </button>
+                    <button class="control-btn" id="stepBtn">
+                        <span>&#9654;</span> Step
+                    </button>
+                    <button class="control-btn primary" id="playBtn">
+                        <span>&#9654;&#9654;</span> Play Attack
+                    </button>
+                </div>
+            </div>
+
+            <div class="killchain-viz" id="killchainViz">
+                <div class="layer-stack-viz">
+                    <!-- Cognitive Layers -->
+                    <div class="layer-row" data-layer="14">
+                        <span class="layer-label">COGNITIVE</span>
+                        <span class="layer-name-viz">L14: Identity</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="13">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L13: Executive Function</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="12">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L12: Attention</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="11">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L11: Working Memory</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+
+                    <!-- Interface Layers -->
+                    <div class="layer-row" data-layer="10">
+                        <span class="layer-label">INTERFACE</span>
+                        <span class="layer-name-viz">L10: Oscillatory</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="9">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L9: Local Field Potential</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="8">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L8: Electrode</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+
+                    <!-- Traditional OSI -->
+                    <div class="layer-row" data-layer="7">
+                        <span class="layer-label">OSI</span>
+                        <span class="layer-name-viz">L7: Application</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="6">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L6: Presentation</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="5">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L5: Session</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="4">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L4: Transport</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="3">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L3: Network</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="2">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L2: Data Link</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                    <div class="layer-row" data-layer="1">
+                        <span class="layer-label"></span>
+                        <span class="layer-name-viz">L1: Physical</span>
+                        <span class="layer-status status-secure">Secure</span>
+                    </div>
+                </div>
+
+                <!-- Attack packet (animated element) -->
+                <div class="attack-packet" id="attackPacket" style="display: none;"></div>
+            </div>
+
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+            </div>
+
+            <div class="speed-control">
+                <span>Speed:</span>
+                <input type="range" class="speed-slider" min="0.5" max="2" step="0.1" value="1" id="speedSlider">
+                <span id="speedValue">1x</span>
+            </div>
+        </section>
+
+        <!-- Timeline -->
+        <aside class="timeline-panel">
+            <div class="panel-title">Attack Timeline</div>
+
+            <div id="timeline">
+                <div class="timeline-event" data-step="0">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-time">T+0.00s</div>
+                    <div class="timeline-title">Waiting...</div>
+                    <div class="timeline-desc">Click "Play Attack" to begin simulation</div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        // Attack definitions
+        const attacks = {
+            bluetooth: {
+                name: "BlueBorne Exploit",
+                steps: [
+                    { layer: 1, action: "attack", title: "RF Probe", desc: "Attacker scans for Bluetooth-enabled BCIs within range", time: 0 },
+                    { layer: 1, action: "compromise", title: "L1 Compromised", desc: "Physical layer access gained via BLE vulnerability", time: 1.2 },
+                    { layer: 2, action: "attack", title: "MAC Spoofing", desc: "Attacker spoofs device MAC address to bypass whitelist", time: 2.5 },
+                    { layer: 2, action: "compromise", title: "L2 Compromised", desc: "Data link authentication bypassed", time: 3.8 },
+                    { layer: 7, action: "attack", title: "Payload Delivery", desc: "Malicious firmware update pushed to BCI application", time: 5.0 },
+                    { layer: 7, action: "defense", title: "DEFENSE: Code Signing", desc: "Firmware signature validation blocks unsigned payload", time: 6.2, defended: true },
+                ]
+            },
+            "signal-injection": {
+                name: "Signal Injection",
+                steps: [
+                    { layer: 8, action: "attack", title: "Electrode Access", desc: "Attacker gains write access to stimulation channels", time: 0 },
+                    { layer: 8, action: "compromise", title: "L8 Compromised", desc: "Direct electrode control achieved", time: 1.5 },
+                    { layer: 9, action: "attack", title: "LFP Manipulation", desc: "Injecting patterns to local field potentials", time: 2.8 },
+                    { layer: 9, action: "defense", title: "DEFENSE: Coherence Check", desc: "Phase variance (σ²φ) exceeds threshold - signal rejected", time: 4.0, defended: true },
+                ]
+            },
+            replay: {
+                name: "Replay Attack",
+                steps: [
+                    { layer: 3, action: "attack", title: "Packet Capture", desc: "Attacker captures legitimate neural command packets", time: 0 },
+                    { layer: 3, action: "compromise", title: "L3 Compromised", desc: "Network layer packets intercepted", time: 1.5 },
+                    { layer: 4, action: "attack", title: "Session Hijack", desc: "Replaying captured session tokens", time: 2.8 },
+                    { layer: 4, action: "defense", title: "DEFENSE: Nonce Validation", desc: "Replay detected - timestamp/nonce already used", time: 4.0, defended: true },
+                ]
+            },
+            "cognitive-dos": {
+                name: "Cognitive DoS",
+                steps: [
+                    { layer: 10, action: "attack", title: "Theta Flood", desc: "Overwhelming theta band with high-frequency noise", time: 0 },
+                    { layer: 10, action: "compromise", title: "L10 Compromised", desc: "Oscillatory patterns disrupted", time: 1.5 },
+                    { layer: 11, action: "attack", title: "Memory Overflow", desc: "Flooding working memory encoding windows", time: 2.8 },
+                    { layer: 11, action: "defense", title: "DEFENSE: Rate Limiting", desc: "Stimulation rate limiter engaged - excessive patterns blocked", time: 4.0, defended: true },
+                ]
+            },
+            identity: {
+                name: "Identity Drift",
+                steps: [
+                    { layer: 11, action: "attack", title: "Subtle Encoding", desc: "Micro-stimulation during memory consolidation", time: 0 },
+                    { layer: 11, action: "compromise", title: "L11 Compromised", desc: "Working memory patterns subtly altered", time: 2.0 },
+                    { layer: 12, action: "attack", title: "Attention Bias", desc: "Gradually shifting attention preferences", time: 4.0 },
+                    { layer: 12, action: "compromise", title: "L12 Compromised", desc: "Attention circuits showing drift", time: 6.0 },
+                    { layer: 13, action: "attack", title: "Decision Influence", desc: "Executive function patterns being modified", time: 8.0 },
+                    { layer: 13, action: "defense", title: "DEFENSE: Baseline Deviation", desc: "Long-term identity signature shows >15% drift - alert triggered", time: 10.0, defended: true },
+                ]
+            }
+        };
+
+        let currentAttack = 'bluetooth';
+        let currentStep = 0;
+        let isPlaying = false;
+        let speed = 1;
+
+        const attackCards = document.querySelectorAll('.attack-card');
+        const layerRows = document.querySelectorAll('.layer-row');
+        const timeline = document.getElementById('timeline');
+        const progressFill = document.getElementById('progressFill');
+        const attackPacket = document.getElementById('attackPacket');
+
+        // Select attack
+        attackCards.forEach(card => {
+            card.addEventListener('click', () => {
+                attackCards.forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                currentAttack = card.dataset.attack;
+                document.getElementById('currentAttack').textContent = attacks[currentAttack].name;
+                resetVisualization();
+            });
+        });
+
+        // Reset
+        function resetVisualization() {
+            currentStep = 0;
+            isPlaying = false;
+            layerRows.forEach(row => {
+                row.classList.remove('compromised', 'defended', 'active');
+                row.querySelector('.layer-status').className = 'layer-status status-secure';
+                row.querySelector('.layer-status').textContent = 'Secure';
+            });
+            progressFill.style.width = '0%';
+            attackPacket.style.display = 'none';
+            timeline.innerHTML = `
+                <div class="timeline-event" data-step="0">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-time">T+0.00s</div>
+                    <div class="timeline-title">Ready</div>
+                    <div class="timeline-desc">Click "Play Attack" to begin ${attacks[currentAttack].name} simulation</div>
+                </div>
+            `;
+        }
+
+        // Execute step
+        function executeStep(step) {
+            const attack = attacks[currentAttack];
+            const stepData = attack.steps[step];
+            const row = document.querySelector(`[data-layer="${stepData.layer}"]`);
+            const status = row.querySelector('.layer-status');
+
+            // Remove active from previous
+            layerRows.forEach(r => r.classList.remove('active'));
+
+            if (stepData.defended) {
+                row.classList.add('defended');
+                row.classList.remove('compromised');
+                status.className = 'layer-status status-defended';
+                status.textContent = 'Defended';
+            } else if (stepData.action === 'compromise') {
+                row.classList.add('compromised');
+                status.className = 'layer-status status-compromised';
+                status.textContent = 'Compromised';
+            } else {
+                row.classList.add('active');
+                status.className = 'layer-status status-under-attack';
+                status.textContent = 'Under Attack';
+            }
+
+            // Update timeline
+            const eventClass = stepData.defended ? 'defense' : stepData.action === 'attack' ? 'attack active' : 'attack';
+            timeline.innerHTML += `
+                <div class="timeline-event ${eventClass}">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-time">T+${stepData.time.toFixed(2)}s</div>
+                    <div class="timeline-title">${stepData.title}</div>
+                    <div class="timeline-desc">${stepData.desc}</div>
+                </div>
+            `;
+            timeline.scrollTop = timeline.scrollHeight;
+
+            // Update progress
+            progressFill.style.width = `${((step + 1) / attack.steps.length) * 100}%`;
+        }
+
+        // Play button
+        document.getElementById('playBtn').addEventListener('click', () => {
+            if (isPlaying) return;
+            isPlaying = true;
+            resetVisualization();
+
+            const attack = attacks[currentAttack];
+            let step = 0;
+
+            function playNext() {
+                if (step >= attack.steps.length) {
+                    isPlaying = false;
+                    return;
+                }
+                executeStep(step);
+                step++;
+                currentStep = step;
+                setTimeout(playNext, 1500 / speed);
+            }
+
+            playNext();
+        });
+
+        // Step button
+        document.getElementById('stepBtn').addEventListener('click', () => {
+            const attack = attacks[currentAttack];
+            if (currentStep >= attack.steps.length) {
+                resetVisualization();
+                return;
+            }
+            executeStep(currentStep);
+            currentStep++;
+        });
+
+        // Reset button
+        document.getElementById('resetBtn').addEventListener('click', resetVisualization);
+
+        // Speed control
+        document.getElementById('speedSlider').addEventListener('input', (e) => {
+            speed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = speed + 'x';
+        });
+
+        // Mode toggle
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

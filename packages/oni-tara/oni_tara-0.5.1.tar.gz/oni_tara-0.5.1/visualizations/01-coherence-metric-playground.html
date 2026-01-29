@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coherence Metric Playground | ONI Framework</title>
+    <style>
+        :root {
+            --oni-dark: #0a0e17;
+            --oni-darker: #060912;
+            --oni-blue: #00d4ff;
+            --oni-purple: #8b5cf6;
+            --oni-pink: #ec4899;
+            --oni-green: #10b981;
+            --oni-yellow: #f59e0b;
+            --oni-red: #ef4444;
+            --oni-gray: #1e293b;
+            --oni-light: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--oni-dark);
+            color: var(--oni-light);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--oni-gray);
+            background: linear-gradient(180deg, var(--oni-darker) 0%, var(--oni-dark) 100%);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--oni-blue), var(--oni-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: #94a3b8;
+            font-size: 1.1rem;
+        }
+
+        /* Main Layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Panel Styles */
+        .panel {
+            background: var(--oni-gray);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .panel-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-title .icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+        }
+
+        /* Slider Controls */
+        .control-group {
+            margin-bottom: 2rem;
+        }
+
+        .control-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .control-name {
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-name .symbol {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            font-size: 1.1rem;
+        }
+
+        .control-value {
+            font-family: 'SF Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--oni-blue);
+            background: rgba(0, 212, 255, 0.1);
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+        }
+
+        .control-description {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Custom Slider */
+        .slider-container {
+            position: relative;
+            height: 8px;
+            background: var(--oni-darker);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .slider-track {
+            position: absolute;
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.1s ease;
+        }
+
+        .slider-thumb {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: transform 0.1s ease;
+        }
+
+        .slider-thumb:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
+        .slider-thumb:active {
+            cursor: grabbing;
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+
+        /* Phase Slider */
+        .phase .slider-track { background: linear-gradient(90deg, var(--oni-blue), var(--oni-purple)); }
+        .phase .slider-thumb { background: var(--oni-blue); border: 3px solid white; }
+
+        /* Transport Slider */
+        .transport .slider-track { background: linear-gradient(90deg, var(--oni-green), var(--oni-yellow)); }
+        .transport .slider-thumb { background: var(--oni-green); border: 3px solid white; }
+
+        /* Gain Slider */
+        .gain .slider-track { background: linear-gradient(90deg, var(--oni-pink), var(--oni-red)); }
+        .gain .slider-thumb { background: var(--oni-pink); border: 3px solid white; }
+
+        /* Trust Gauge */
+        .gauge-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .gauge {
+            position: relative;
+            width: 280px;
+            height: 160px;
+            margin-bottom: 1.5rem;
+        }
+
+        .gauge-bg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        .gauge-fill {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transition: all 0.3s ease;
+        }
+
+        .gauge-value {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 3.5rem;
+            font-weight: 700;
+            font-family: 'SF Mono', monospace;
+        }
+
+        .gauge-label {
+            font-size: 1rem;
+            color: #94a3b8;
+            margin-top: 0.5rem;
+        }
+
+        .trust-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+
+        .trust-status.trusted {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--oni-green);
+            border: 2px solid var(--oni-green);
+        }
+
+        .trust-status.suspicious {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--oni-yellow);
+            border: 2px solid var(--oni-yellow);
+        }
+
+        .trust-status.rejected {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--oni-red);
+            border: 2px solid var(--oni-red);
+        }
+
+        /* Waveform Visualization */
+        .waveform-container {
+            background: var(--oni-darker);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .waveform-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .waveform-title {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .waveform-legend {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.healthy { background: var(--oni-green); }
+        .legend-dot.current { background: var(--oni-blue); }
+
+        #waveformCanvas {
+            width: 100%;
+            height: 150px;
+            border-radius: 8px;
+        }
+
+        /* Equation Display */
+        .equation-panel {
+            background: var(--oni-darker);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+
+        .equation {
+            font-family: 'Times New Roman', serif;
+            font-size: 1.5rem;
+            color: var(--oni-light);
+            margin-bottom: 1rem;
+        }
+
+        .equation-breakdown {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .equation-term {
+            background: rgba(255,255,255,0.05);
+            padding: 0.75rem;
+            border-radius: 8px;
+        }
+
+        .equation-term .symbol {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            font-size: 1.1rem;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+
+        .equation-term .value {
+            font-family: 'SF Mono', monospace;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        /* Presets */
+        .presets {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+        }
+
+        .preset-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: transparent;
+            color: var(--oni-light);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .preset-btn:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: var(--oni-blue);
+        }
+
+        .preset-btn.attack {
+            border-color: var(--oni-red);
+            color: var(--oni-red);
+        }
+
+        .preset-btn.attack:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .footer a {
+            color: var(--oni-blue);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Coherence Metric Playground</h1>
+        <p>Explore how the ONI Framework validates neural signal trustworthiness</p>
+    </header>
+
+    <main class="container">
+        <!-- Left Panel: Controls -->
+        <div class="controls-panel">
+            <div class="panel">
+                <h2 class="panel-title">
+                    <span class="icon" style="background: var(--oni-purple);">&#9881;</span>
+                    Signal Parameters
+                </h2>
+
+                <!-- Phase Variance -->
+                <div class="control-group phase">
+                    <div class="control-label">
+                        <span class="control-name">
+                            <span class="symbol">&#963;&#178;&#966;</span>
+                            Phase Variance
+                        </span>
+                        <span class="control-value" id="phaseValue">0.10</span>
+                    </div>
+                    <p class="control-description">Timing jitter - detects out-of-sync signal injections</p>
+                    <div class="slider-container" id="phaseSlider">
+                        <div class="slider-track" style="width: 10%;"></div>
+                        <div class="slider-thumb" style="left: 10%;"></div>
+                    </div>
+                </div>
+
+                <!-- Transport Variance -->
+                <div class="control-group transport">
+                    <div class="control-label">
+                        <span class="control-name">
+                            <span class="symbol">&#963;&#178;&#964;</span>
+                            Transport Variance
+                        </span>
+                        <span class="control-value" id="transportValue">0.10</span>
+                    </div>
+                    <p class="control-description">Pathway reliability - flags signals bypassing biological routes</p>
+                    <div class="slider-container" id="transportSlider">
+                        <div class="slider-track" style="width: 10%;"></div>
+                        <div class="slider-thumb" style="left: 10%;"></div>
+                    </div>
+                </div>
+
+                <!-- Gain Variance -->
+                <div class="control-group gain">
+                    <div class="control-label">
+                        <span class="control-name">
+                            <span class="symbol">&#963;&#178;&#947;</span>
+                            Gain Variance
+                        </span>
+                        <span class="control-value" id="gainValue">0.10</span>
+                    </div>
+                    <p class="control-description">Amplitude stability - catches over/under-powered attacks</p>
+                    <div class="slider-container" id="gainSlider">
+                        <div class="slider-track" style="width: 10%;"></div>
+                        <div class="slider-thumb" style="left: 10%;"></div>
+                    </div>
+                </div>
+
+                <!-- Presets -->
+                <div class="presets">
+                    <button class="preset-btn" onclick="setPreset(0.05, 0.05, 0.05)">Healthy Signal</button>
+                    <button class="preset-btn" onclick="setPreset(0.15, 0.10, 0.10)">Minor Jitter</button>
+                    <button class="preset-btn attack" onclick="setPreset(0.50, 0.20, 0.15)">Phase Attack</button>
+                    <button class="preset-btn attack" onclick="setPreset(0.10, 0.60, 0.10)">Bypass Attack</button>
+                    <button class="preset-btn attack" onclick="setPreset(0.15, 0.15, 0.70)">Power Spike</button>
+                </div>
+
+                <!-- Equation Panel -->
+                <div class="equation-panel">
+                    <div class="equation">C<sub>s</sub> = e<sup>-(&#963;&#178;&#966; + &#963;&#178;&#964; + &#963;&#178;&#947;)</sup></div>
+                    <div class="equation-breakdown">
+                        <div class="equation-term" style="border-left: 3px solid var(--oni-blue);">
+                            <span class="symbol">&#963;&#178;&#966;</span>
+                            <span class="value" id="phaseEq">0.10</span>
+                        </div>
+                        <div class="equation-term" style="border-left: 3px solid var(--oni-green);">
+                            <span class="symbol">&#963;&#178;&#964;</span>
+                            <span class="value" id="transportEq">0.10</span>
+                        </div>
+                        <div class="equation-term" style="border-left: 3px solid var(--oni-pink);">
+                            <span class="symbol">&#963;&#178;&#947;</span>
+                            <span class="value" id="gainEq">0.10</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Visualization -->
+        <div class="visualization-panel">
+            <div class="panel">
+                <h2 class="panel-title">
+                    <span class="icon" style="background: var(--oni-green);">&#9632;</span>
+                    Trust Score
+                </h2>
+
+                <div class="gauge-container">
+                    <div class="gauge">
+                        <svg class="gauge-bg" viewBox="0 0 280 160">
+                            <defs>
+                                <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style="stop-color:#ef4444"/>
+                                    <stop offset="50%" style="stop-color:#f59e0b"/>
+                                    <stop offset="100%" style="stop-color:#10b981"/>
+                                </linearGradient>
+                            </defs>
+                            <!-- Background arc -->
+                            <path d="M 20 140 A 120 120 0 0 1 260 140"
+                                  fill="none"
+                                  stroke="#1e293b"
+                                  stroke-width="20"
+                                  stroke-linecap="round"/>
+                            <!-- Foreground arc -->
+                            <path id="gaugeFill"
+                                  d="M 20 140 A 120 120 0 0 1 260 140"
+                                  fill="none"
+                                  stroke="url(#gaugeGradient)"
+                                  stroke-width="20"
+                                  stroke-linecap="round"
+                                  stroke-dasharray="377"
+                                  stroke-dashoffset="0"/>
+                            <!-- Needle -->
+                            <g id="gaugeNeedle" transform="rotate(0, 140, 140)">
+                                <line x1="140" y1="140" x2="140" y2="40"
+                                      stroke="#e2e8f0" stroke-width="3" stroke-linecap="round"/>
+                                <circle cx="140" cy="140" r="8" fill="#e2e8f0"/>
+                            </g>
+                        </svg>
+                        <div class="gauge-value" id="gaugeValue">0.74</div>
+                    </div>
+                    <span class="gauge-label">Coherence Score (C<sub>s</sub>)</span>
+                    <div class="trust-status trusted" id="trustStatus">
+                        <span id="trustIcon">&#10004;</span>
+                        <span id="trustText">TRUSTED</span>
+                    </div>
+                </div>
+
+                <!-- Waveform -->
+                <div class="waveform-container">
+                    <div class="waveform-header">
+                        <span class="waveform-title">Signal Waveform Comparison</span>
+                        <div class="waveform-legend">
+                            <span class="legend-item">
+                                <span class="legend-dot healthy"></span>
+                                Healthy Baseline
+                            </span>
+                            <span class="legend-item">
+                                <span class="legend-dot current"></span>
+                                Current Signal
+                            </span>
+                        </div>
+                    </div>
+                    <canvas id="waveformCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>Part of the <a href="#">ONI Framework</a> | Neural Interface Security Research</p>
+    </footer>
+
+    <script>
+        // State
+        let phase = 0.10;
+        let transport = 0.10;
+        let gain = 0.10;
+
+        // DOM Elements
+        const phaseSlider = document.getElementById('phaseSlider');
+        const transportSlider = document.getElementById('transportSlider');
+        const gainSlider = document.getElementById('gainSlider');
+        const canvas = document.getElementById('waveformCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Initialize canvas
+        function initCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * 2;
+            canvas.height = rect.height * 2;
+            ctx.scale(2, 2);
+        }
+
+        // Calculate coherence score
+        function calculateCoherence(p, t, g) {
+            return Math.exp(-(p + t + g));
+        }
+
+        // Update UI
+        function updateUI() {
+            const score = calculateCoherence(phase, transport, gain);
+
+            // Update values
+            document.getElementById('phaseValue').textContent = phase.toFixed(2);
+            document.getElementById('transportValue').textContent = transport.toFixed(2);
+            document.getElementById('gainValue').textContent = gain.toFixed(2);
+            document.getElementById('phaseEq').textContent = phase.toFixed(2);
+            document.getElementById('transportEq').textContent = transport.toFixed(2);
+            document.getElementById('gainEq').textContent = gain.toFixed(2);
+            document.getElementById('gaugeValue').textContent = score.toFixed(2);
+
+            // Update gauge needle (maps 0-1 to -90 to 90 degrees)
+            const angle = -90 + (score * 180);
+            document.getElementById('gaugeNeedle').setAttribute('transform', `rotate(${angle}, 140, 140)`);
+
+            // Update trust status
+            const trustStatus = document.getElementById('trustStatus');
+            const trustIcon = document.getElementById('trustIcon');
+            const trustText = document.getElementById('trustText');
+
+            if (score >= 0.7) {
+                trustStatus.className = 'trust-status trusted';
+                trustIcon.innerHTML = '&#10004;';
+                trustText.textContent = 'TRUSTED';
+            } else if (score >= 0.4) {
+                trustStatus.className = 'trust-status suspicious';
+                trustIcon.innerHTML = '&#9888;';
+                trustText.textContent = 'SUSPICIOUS';
+            } else {
+                trustStatus.className = 'trust-status rejected';
+                trustIcon.innerHTML = '&#10006;';
+                trustText.textContent = 'REJECTED';
+            }
+
+            // Update sliders visually
+            updateSliderVisual(phaseSlider, phase);
+            updateSliderVisual(transportSlider, transport);
+            updateSliderVisual(gainSlider, gain);
+
+            // Draw waveform
+            drawWaveform();
+        }
+
+        function updateSliderVisual(slider, value) {
+            const percent = (value / 1.0) * 100;
+            slider.querySelector('.slider-track').style.width = percent + '%';
+            slider.querySelector('.slider-thumb').style.left = percent + '%';
+        }
+
+        // Draw waveform visualization
+        function drawWaveform() {
+            const width = canvas.width / 2;
+            const height = canvas.height / 2;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Grid
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < height; i += 20) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(width, i);
+                ctx.stroke();
+            }
+
+            const centerY = height / 2;
+            const amplitude = 40;
+            const frequency = 0.05;
+
+            // Healthy baseline (green)
+            ctx.beginPath();
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2;
+            for (let x = 0; x < width; x++) {
+                const y = centerY + Math.sin(x * frequency) * amplitude;
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Current signal (blue, with variance applied)
+            ctx.beginPath();
+            ctx.strokeStyle = '#00d4ff';
+            ctx.lineWidth = 2;
+
+            const phaseJitter = phase * 10;
+            const gainMod = 1 + (gain * 2 - 0.2);
+            const transportNoise = transport * 30;
+
+            for (let x = 0; x < width; x++) {
+                const phaseOffset = Math.sin(x * 0.1) * phaseJitter;
+                const noise = (Math.random() - 0.5) * transportNoise;
+                const y = centerY + Math.sin((x + phaseOffset) * frequency) * amplitude * gainMod + noise;
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // Slider interaction
+        function setupSlider(slider, callback) {
+            let isDragging = false;
+
+            function updateFromEvent(e) {
+                const rect = slider.getBoundingClientRect();
+                const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                const percent = Math.max(0, Math.min(1, x / rect.width));
+                callback(percent);
+            }
+
+            slider.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                updateFromEvent(e);
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) updateFromEvent(e);
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            // Touch support
+            slider.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                updateFromEvent(e);
+            });
+
+            slider.addEventListener('touchmove', (e) => {
+                if (isDragging) updateFromEvent(e);
+            });
+
+            slider.addEventListener('touchend', () => {
+                isDragging = false;
+            });
+        }
+
+        // Presets
+        function setPreset(p, t, g) {
+            phase = p;
+            transport = t;
+            gain = g;
+            updateUI();
+        }
+
+        // Initialize
+        initCanvas();
+        window.addEventListener('resize', () => {
+            initCanvas();
+            updateUI();
+        });
+
+        setupSlider(phaseSlider, (v) => { phase = v; updateUI(); });
+        setupSlider(transportSlider, (v) => { transport = v; updateUI(); });
+        setupSlider(gainSlider, (v) => { gain = v; updateUI(); });
+
+        updateUI();
+
+        // Animate waveform
+        setInterval(drawWaveform, 100);
+    </script>
+</body>
+</html>

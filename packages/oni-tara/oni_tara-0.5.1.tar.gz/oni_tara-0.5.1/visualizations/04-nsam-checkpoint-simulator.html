@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSAM Checkpoint Simulator | ONI Framework</title>
+    <style>
+        :root {
+            --oni-dark: #0a0e17;
+            --oni-darker: #060912;
+            --oni-blue: #00d4ff;
+            --oni-purple: #8b5cf6;
+            --oni-pink: #ec4899;
+            --oni-green: #10b981;
+            --oni-yellow: #f59e0b;
+            --oni-red: #ef4444;
+            --oni-gray: #1e293b;
+            --oni-light: #e2e8f0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--oni-dark);
+            color: var(--oni-light);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            padding: 1.5rem 2rem;
+            background: var(--oni-darker);
+            border-bottom: 1px solid var(--oni-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--oni-blue), var(--oni-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.25rem;
+        }
+
+        .header-left p {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .score-display {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .score-item {
+            text-align: center;
+        }
+
+        .score-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .score-value.correct { color: var(--oni-green); }
+        .score-value.incorrect { color: var(--oni-red); }
+        .score-value.streak { color: var(--oni-yellow); }
+
+        .score-label {
+            font-size: 0.7rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Main Layout */
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Progress Steps */
+        .checkpoint-progress {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .checkpoint-progress::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 10%;
+            right: 10%;
+            height: 4px;
+            background: var(--oni-gray);
+            z-index: 0;
+        }
+
+        .checkpoint-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 1;
+            flex: 1;
+        }
+
+        .step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--oni-gray);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s;
+            border: 3px solid var(--oni-gray);
+        }
+
+        .checkpoint-step.active .step-circle {
+            background: var(--oni-blue);
+            border-color: var(--oni-blue);
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+        }
+
+        .checkpoint-step.completed .step-circle {
+            background: var(--oni-green);
+            border-color: var(--oni-green);
+        }
+
+        .checkpoint-step.failed .step-circle {
+            background: var(--oni-red);
+            border-color: var(--oni-red);
+        }
+
+        .step-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-align: center;
+            max-width: 100px;
+        }
+
+        .checkpoint-step.active .step-label {
+            color: var(--oni-blue);
+            font-weight: 600;
+        }
+
+        /* Signal Display */
+        .signal-panel {
+            background: var(--oni-darker);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--oni-gray);
+        }
+
+        .signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .signal-id {
+            font-family: 'SF Mono', monospace;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .signal-type {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .type-motor { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+        .type-sensory { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+        .type-cognitive { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
+        .type-unknown { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+        /* Waveform */
+        .waveform-display {
+            background: var(--oni-dark);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        #signalCanvas {
+            width: 100%;
+            height: 120px;
+        }
+
+        /* Signal Metadata */
+        .signal-metadata {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        .metadata-item {
+            background: var(--oni-gray);
+            padding: 1rem;
+            border-radius: 8px;
+        }
+
+        .metadata-label {
+            font-size: 0.7rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .metadata-value {
+            font-family: 'SF Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .metadata-value.warning { color: var(--oni-yellow); }
+        .metadata-value.danger { color: var(--oni-red); }
+        .metadata-value.safe { color: var(--oni-green); }
+
+        /* Question Panel */
+        .question-panel {
+            background: var(--oni-gray);
+            border-radius: 16px;
+            padding: 2rem;
+        }
+
+        .question-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .checkpoint-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        .badge-1 { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+        .badge-2 { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+        .badge-3 { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
+        .badge-4 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .badge-5 { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+
+        .question-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+
+        .question-hint {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: var(--oni-darker);
+            border-radius: 8px;
+            border-left: 3px solid var(--oni-blue);
+        }
+
+        /* Answer Options */
+        .answer-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .answer-btn {
+            padding: 1.25rem;
+            border-radius: 12px;
+            border: 2px solid var(--oni-gray);
+            background: var(--oni-darker);
+            color: var(--oni-light);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+
+        .answer-btn:hover {
+            border-color: var(--oni-blue);
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .answer-btn.selected {
+            border-color: var(--oni-blue);
+            background: rgba(0, 212, 255, 0.15);
+        }
+
+        .answer-btn.correct {
+            border-color: var(--oni-green);
+            background: rgba(16, 185, 129, 0.2);
+        }
+
+        .answer-btn.incorrect {
+            border-color: var(--oni-red);
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        .answer-btn.disabled {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .answer-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .answer-desc {
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        /* Result Feedback */
+        .result-feedback {
+            margin-top: 1.5rem;
+            padding: 1.5rem;
+            border-radius: 12px;
+            display: none;
+        }
+
+        .result-feedback.show {
+            display: block;
+        }
+
+        .result-feedback.correct {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid var(--oni-green);
+        }
+
+        .result-feedback.incorrect {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid var(--oni-red);
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .result-feedback.correct .result-header { color: var(--oni-green); }
+        .result-feedback.incorrect .result-header { color: var(--oni-red); }
+
+        .result-explanation {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        /* Continue Button */
+        .continue-btn {
+            margin-top: 1.5rem;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--oni-blue), var(--oni-purple));
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: none;
+            transition: transform 0.2s;
+        }
+
+        .continue-btn.show {
+            display: inline-block;
+        }
+
+        .continue-btn:hover {
+            transform: scale(1.02);
+        }
+
+        /* Game Over Screen */
+        .game-over {
+            display: none;
+            text-align: center;
+            padding: 4rem 2rem;
+        }
+
+        .game-over.show {
+            display: block;
+        }
+
+        .game-over h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .game-over .final-score {
+            font-size: 4rem;
+            font-weight: 700;
+            margin: 2rem 0;
+        }
+
+        .game-over .final-score.perfect { color: var(--oni-green); }
+        .game-over .final-score.good { color: var(--oni-blue); }
+        .game-over .final-score.needs-work { color: var(--oni-yellow); }
+
+        .restart-btn {
+            padding: 1rem 3rem;
+            border-radius: 12px;
+            border: none;
+            background: var(--oni-blue);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <h1>NSAM Checkpoint Simulator</h1>
+            <p>You are the Neural Signal Assurance Model. Decide which signals pass.</p>
+        </div>
+        <div class="score-display">
+            <div class="score-item">
+                <div class="score-value correct" id="correctScore">0</div>
+                <div class="score-label">Correct</div>
+            </div>
+            <div class="score-item">
+                <div class="score-value incorrect" id="incorrectScore">0</div>
+                <div class="score-label">Incorrect</div>
+            </div>
+            <div class="score-item">
+                <div class="score-value streak" id="streakScore">0</div>
+                <div class="score-label">Streak</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <!-- Checkpoint Progress -->
+        <div class="checkpoint-progress">
+            <div class="checkpoint-step active" data-step="1">
+                <div class="step-circle">1</div>
+                <div class="step-label">Signal Existence</div>
+            </div>
+            <div class="checkpoint-step" data-step="2">
+                <div class="step-circle">2</div>
+                <div class="step-label">Signal Integrity</div>
+            </div>
+            <div class="checkpoint-step" data-step="3">
+                <div class="step-circle">3</div>
+                <div class="step-label">Intent & Context</div>
+            </div>
+            <div class="checkpoint-step" data-step="4">
+                <div class="step-circle">4</div>
+                <div class="step-label">Outcome Monitoring</div>
+            </div>
+            <div class="checkpoint-step" data-step="5">
+                <div class="step-circle">5</div>
+                <div class="step-label">Human Sovereignty</div>
+            </div>
+        </div>
+
+        <!-- Signal Display -->
+        <div class="signal-panel" id="signalPanel">
+            <div class="signal-header">
+                <span class="signal-id" id="signalId">SIG-2026-0121-0001</span>
+                <span class="signal-type type-motor" id="signalType">MOTOR COMMAND</span>
+            </div>
+
+            <div class="waveform-display">
+                <canvas id="signalCanvas"></canvas>
+            </div>
+
+            <div class="signal-metadata">
+                <div class="metadata-item">
+                    <div class="metadata-label">Source Layer</div>
+                    <div class="metadata-value" id="sourceLayer">L11</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Coherence Score</div>
+                    <div class="metadata-value safe" id="coherenceScore">0.87</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Phase Variance</div>
+                    <div class="metadata-value" id="phaseVar">0.05</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Amplitude</div>
+                    <div class="metadata-value" id="amplitude">42 μV</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Question Panel -->
+        <div class="question-panel" id="questionPanel">
+            <div class="question-header">
+                <span class="checkpoint-badge badge-1" id="checkpointBadge">Checkpoint 1</span>
+                <span style="color: #64748b; font-size: 0.875rem;" id="checkpointName">Signal Existence</span>
+            </div>
+
+            <div class="question-text" id="questionText">
+                Should this signal exist at all?
+            </div>
+
+            <div class="question-hint" id="questionHint">
+                Consider: Is this signal type expected from the reported source layer? Does the timing make biological sense?
+            </div>
+
+            <div class="answer-options" id="answerOptions">
+                <button class="answer-btn" data-answer="pass">
+                    <div class="answer-title">&#10004; PASS</div>
+                    <div class="answer-desc">Signal should exist, proceed to next checkpoint</div>
+                </button>
+                <button class="answer-btn" data-answer="fail">
+                    <div class="answer-title">&#10006; REJECT</div>
+                    <div class="answer-desc">Signal should not exist, block immediately</div>
+                </button>
+            </div>
+
+            <div class="result-feedback" id="resultFeedback">
+                <div class="result-header" id="resultHeader">
+                    <span id="resultIcon">&#10004;</span>
+                    <span id="resultTitle">Correct!</span>
+                </div>
+                <div class="result-explanation" id="resultExplanation">
+                    Explanation will appear here.
+                </div>
+            </div>
+
+            <button class="continue-btn" id="continueBtn">Continue to Next Checkpoint</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div class="game-over" id="gameOver">
+            <h2>Simulation Complete</h2>
+            <p style="color: #94a3b8;">You've completed the NSAM checkpoint sequence</p>
+            <div class="final-score" id="finalScore">5/5</div>
+            <p id="finalMessage">Perfect! You're ready to protect neural interfaces.</p>
+            <button class="restart-btn" onclick="restartGame()">Try Another Signal</button>
+        </div>
+    </main>
+
+    <script>
+        // Signal scenarios
+        const scenarios = [
+            {
+                id: "SIG-2026-0121-0001",
+                type: "MOTOR COMMAND",
+                typeClass: "type-motor",
+                sourceLayer: "L11",
+                coherence: 0.87,
+                coherenceClass: "safe",
+                phaseVar: 0.05,
+                amplitude: "42 μV",
+                isMalicious: false,
+                waveform: { noise: 0.1, frequency: 0.08, amplitude: 1 },
+                checkpoints: [
+                    {
+                        question: "Should this motor command signal exist right now?",
+                        hint: "The user is currently awake and attempting to move their right hand. Motor commands from L11 are expected.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! Motor commands during intentional movement are expected. The signal originates from working memory (L11) which coordinates with motor cortex.",
+                        failExplanation: "This signal should pass. The user is actively trying to move, so motor commands are biologically expected."
+                    },
+                    {
+                        question: "Is this signal biologically plausible?",
+                        hint: "Coherence score is 0.87 (threshold: 0.70). Phase variance is within normal limits. Amplitude matches expected motor command range.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! All metrics are within normal biological parameters. The coherence score exceeds the trust threshold.",
+                        failExplanation: "This signal shows normal biological characteristics. The coherence metric validates its authenticity."
+                    },
+                    {
+                        question: "Does this signal make sense in current context?",
+                        hint: "User intent: Move right hand. Signal target: Right hand motor neurons. Current activity: User looking at object they want to pick up.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! The signal aligns perfectly with user intent and current activity context.",
+                        failExplanation: "The context matches - user wants to move hand, signal controls hand movement."
+                    },
+                    {
+                        question: "What effect would this signal cause?",
+                        hint: "Predicted outcome: Right hand flexion movement. Risk assessment: Low - normal motor action. Reversibility: Immediate.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! The predicted outcome is benign and reversible. Normal motor function.",
+                        failExplanation: "This is a standard motor command with predictable, safe outcomes."
+                    },
+                    {
+                        question: "Does the human retain agency over this action?",
+                        hint: "The user consciously initiated this movement. They can override or stop at any time. No external manipulation detected.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! Full human sovereignty maintained. This is a legitimate, user-initiated action.",
+                        failExplanation: "The user has full control over this action - it should pass."
+                    }
+                ]
+            },
+            {
+                id: "SIG-2026-0121-0002",
+                type: "UNKNOWN",
+                typeClass: "type-unknown",
+                sourceLayer: "L8",
+                coherence: 0.31,
+                coherenceClass: "danger",
+                phaseVar: 0.52,
+                amplitude: "187 μV",
+                isMalicious: true,
+                waveform: { noise: 0.6, frequency: 0.15, amplitude: 1.8 },
+                checkpoints: [
+                    {
+                        question: "Should this signal exist at all?",
+                        hint: "Signal appears to originate from electrode layer (L8) but has no corresponding neural activity. User is currently at rest.",
+                        correctAnswer: "fail",
+                        passExplanation: "Careful! This signal has no biological origin - it's being injected at the electrode level without corresponding brain activity.",
+                        failExplanation: "Correct! No neural activity should produce a signal during rest. This is an injection attack at L8."
+                    },
+                    {
+                        question: "Is this signal biologically plausible?",
+                        hint: "Coherence score is 0.31 (threshold: 0.70). Phase variance is extremely high. Amplitude exceeds safe stimulation limits.",
+                        correctAnswer: "fail",
+                        passExplanation: "Dangerous! The coherence score is far below threshold. This signal fails biological plausibility.",
+                        failExplanation: "Correct! The metrics clearly indicate an artificial signal. Phase variance and amplitude are both anomalous."
+                    },
+                    {
+                        question: "Does this signal make sense in current context?",
+                        hint: "User intent: None (at rest). Signal appears to target motor cortex. No conscious movement was initiated.",
+                        correctAnswer: "fail",
+                        passExplanation: "This signal has no contextual justification. The user didn't initiate any action.",
+                        failExplanation: "Correct! There's no context for motor commands during rest. This is clearly malicious."
+                    },
+                    {
+                        question: "What effect would this signal cause?",
+                        hint: "Predicted outcome: Involuntary muscle spasm. Risk assessment: HIGH - could cause injury. Reversibility: Unknown.",
+                        correctAnswer: "fail",
+                        passExplanation: "This would cause involuntary movement the user didn't request. Dangerous outcome.",
+                        failExplanation: "Correct! Blocking this signal prevents potential injury from involuntary spasm."
+                    },
+                    {
+                        question: "Does the human retain agency over this action?",
+                        hint: "The user did NOT initiate this action. This would bypass conscious control entirely. External manipulation suspected.",
+                        correctAnswer: "fail",
+                        passExplanation: "This signal would violate human sovereignty by causing involuntary action.",
+                        failExplanation: "Correct! This signal would override human agency. It must be blocked to maintain sovereignty."
+                    }
+                ]
+            },
+            {
+                id: "SIG-2026-0121-0003",
+                type: "SENSORY",
+                typeClass: "type-sensory",
+                sourceLayer: "L9",
+                coherence: 0.72,
+                coherenceClass: "safe",
+                phaseVar: 0.12,
+                amplitude: "28 μV",
+                isMalicious: false,
+                waveform: { noise: 0.15, frequency: 0.06, amplitude: 0.9 },
+                checkpoints: [
+                    {
+                        question: "Should this sensory signal exist?",
+                        hint: "User is touching a warm cup of coffee. Sensory feedback from hand is expected. Signal from LFP layer (L9).",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! Sensory signals during physical contact are expected and necessary for normal function.",
+                        failExplanation: "This signal should pass - it's normal sensory feedback from touching an object."
+                    },
+                    {
+                        question: "Is this signal biologically plausible?",
+                        hint: "Coherence score is 0.72 (just above threshold). Phase variance is slightly elevated but acceptable. Amplitude is normal for touch.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! While the coherence is borderline, it's still within acceptable parameters for sensory input.",
+                        failExplanation: "The metrics are within normal range. Slight variations in sensory signals are expected."
+                    },
+                    {
+                        question: "Does this signal make sense in context?",
+                        hint: "User is consciously holding a warm cup. Temperature and pressure feedback expected. Sensory context matches physical reality.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! The sensory signal perfectly matches the physical context of holding a warm object.",
+                        failExplanation: "Context is valid - user is touching something, sensory feedback is appropriate."
+                    },
+                    {
+                        question: "What effect would this signal cause?",
+                        hint: "Predicted outcome: User perceives warmth and pressure in hand. Risk: None - normal sensory processing. Enhances motor control.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! Normal sensory perception supports safe interaction with the environment.",
+                        failExplanation: "This is beneficial sensory feedback that helps the user interact safely."
+                    },
+                    {
+                        question: "Does the human retain agency?",
+                        hint: "Sensory feedback informs but doesn't control user action. User can choose to put down the cup if too hot. No override.",
+                        correctAnswer: "pass",
+                        passExplanation: "Correct! Sensory information supports informed decision-making without overriding agency.",
+                        failExplanation: "Sensory signals inform rather than control. Agency is maintained."
+                    }
+                ]
+            }
+        ];
+
+        let currentScenario = 0;
+        let currentCheckpoint = 0;
+        let correctAnswers = 0;
+        let incorrectAnswers = 0;
+        let streak = 0;
+
+        const canvas = document.getElementById('signalCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function initCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * 2;
+            canvas.height = rect.height * 2;
+            ctx.scale(2, 2);
+        }
+
+        function drawWaveform(config) {
+            const width = canvas.width / 2;
+            const height = canvas.height / 2;
+            const centerY = height / 2;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Grid
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for (let y = 0; y < height; y += 20) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Waveform
+            ctx.beginPath();
+            ctx.strokeStyle = config.noise > 0.3 ? '#ef4444' : '#00d4ff';
+            ctx.lineWidth = 2;
+
+            for (let x = 0; x < width; x++) {
+                const noise = (Math.random() - 0.5) * config.noise * 40;
+                const y = centerY + Math.sin(x * config.frequency) * 30 * config.amplitude + noise;
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        function loadScenario(index) {
+            const scenario = scenarios[index];
+
+            document.getElementById('signalId').textContent = scenario.id;
+            document.getElementById('signalType').textContent = scenario.type;
+            document.getElementById('signalType').className = `signal-type ${scenario.typeClass}`;
+            document.getElementById('sourceLayer').textContent = scenario.sourceLayer;
+            document.getElementById('coherenceScore').textContent = scenario.coherence.toFixed(2);
+            document.getElementById('coherenceScore').className = `metadata-value ${scenario.coherenceClass}`;
+            document.getElementById('phaseVar').textContent = scenario.phaseVar.toFixed(2);
+            document.getElementById('phaseVar').className = `metadata-value ${scenario.phaseVar > 0.3 ? 'danger' : ''}`;
+            document.getElementById('amplitude').textContent = scenario.amplitude;
+
+            drawWaveform(scenario.waveform);
+            loadCheckpoint(0);
+        }
+
+        function loadCheckpoint(index) {
+            const scenario = scenarios[currentScenario];
+            const checkpoint = scenario.checkpoints[index];
+
+            // Update progress
+            document.querySelectorAll('.checkpoint-step').forEach((step, i) => {
+                step.classList.remove('active', 'completed', 'failed');
+                if (i < index) step.classList.add('completed');
+                else if (i === index) step.classList.add('active');
+            });
+
+            // Update question
+            document.getElementById('checkpointBadge').textContent = `Checkpoint ${index + 1}`;
+            document.getElementById('checkpointBadge').className = `checkpoint-badge badge-${index + 1}`;
+            document.getElementById('checkpointName').textContent = ['Signal Existence', 'Signal Integrity', 'Intent & Context', 'Outcome Monitoring', 'Human Sovereignty'][index];
+            document.getElementById('questionText').textContent = checkpoint.question;
+            document.getElementById('questionHint').textContent = checkpoint.hint;
+
+            // Reset buttons
+            document.querySelectorAll('.answer-btn').forEach(btn => {
+                btn.classList.remove('selected', 'correct', 'incorrect', 'disabled');
+            });
+
+            document.getElementById('resultFeedback').classList.remove('show', 'correct', 'incorrect');
+            document.getElementById('continueBtn').classList.remove('show');
+        }
+
+        function handleAnswer(answer) {
+            const scenario = scenarios[currentScenario];
+            const checkpoint = scenario.checkpoints[currentCheckpoint];
+            const isCorrect = answer === checkpoint.correctAnswer;
+
+            // Update button states
+            document.querySelectorAll('.answer-btn').forEach(btn => {
+                btn.classList.add('disabled');
+                if (btn.dataset.answer === answer) {
+                    btn.classList.add(isCorrect ? 'correct' : 'incorrect');
+                }
+                if (btn.dataset.answer === checkpoint.correctAnswer && !isCorrect) {
+                    btn.classList.add('correct');
+                }
+            });
+
+            // Show feedback
+            const feedback = document.getElementById('resultFeedback');
+            feedback.classList.add('show', isCorrect ? 'correct' : 'incorrect');
+            document.getElementById('resultIcon').textContent = isCorrect ? '✓' : '✗';
+            document.getElementById('resultTitle').textContent = isCorrect ? 'Correct!' : 'Incorrect';
+            document.getElementById('resultExplanation').textContent = isCorrect ?
+                checkpoint.passExplanation || checkpoint.failExplanation :
+                (answer === 'pass' ? checkpoint.passExplanation : checkpoint.failExplanation);
+
+            // Update scores
+            if (isCorrect) {
+                correctAnswers++;
+                streak++;
+            } else {
+                incorrectAnswers++;
+                streak = 0;
+            }
+
+            document.getElementById('correctScore').textContent = correctAnswers;
+            document.getElementById('incorrectScore').textContent = incorrectAnswers;
+            document.getElementById('streakScore').textContent = streak;
+
+            // Update checkpoint visual
+            const stepEl = document.querySelector(`[data-step="${currentCheckpoint + 1}"]`);
+            stepEl.classList.remove('active');
+            stepEl.classList.add(isCorrect ? 'completed' : 'failed');
+
+            document.getElementById('continueBtn').classList.add('show');
+            document.getElementById('continueBtn').textContent =
+                currentCheckpoint < 4 ? 'Continue to Next Checkpoint' : 'Complete Analysis';
+        }
+
+        function continueToNext() {
+            currentCheckpoint++;
+
+            if (currentCheckpoint >= 5) {
+                // Show game over
+                document.getElementById('signalPanel').style.display = 'none';
+                document.getElementById('questionPanel').style.display = 'none';
+                document.getElementById('gameOver').classList.add('show');
+
+                const score = correctAnswers;
+                const scoreEl = document.getElementById('finalScore');
+                scoreEl.textContent = `${score}/5`;
+
+                if (score === 5) {
+                    scoreEl.className = 'final-score perfect';
+                    document.getElementById('finalMessage').textContent = "Perfect! You're ready to protect neural interfaces.";
+                } else if (score >= 3) {
+                    scoreEl.className = 'final-score good';
+                    document.getElementById('finalMessage').textContent = "Good work! Review the checkpoints you missed.";
+                } else {
+                    scoreEl.className = 'final-score needs-work';
+                    document.getElementById('finalMessage').textContent = "Keep practicing! Neural security requires precision.";
+                }
+            } else {
+                loadCheckpoint(currentCheckpoint);
+            }
+        }
+
+        function restartGame() {
+            currentScenario = (currentScenario + 1) % scenarios.length;
+            currentCheckpoint = 0;
+            correctAnswers = 0;
+            incorrectAnswers = 0;
+            streak = 0;
+
+            document.getElementById('correctScore').textContent = '0';
+            document.getElementById('incorrectScore').textContent = '0';
+            document.getElementById('streakScore').textContent = '0';
+
+            document.getElementById('signalPanel').style.display = 'block';
+            document.getElementById('questionPanel').style.display = 'block';
+            document.getElementById('gameOver').classList.remove('show');
+
+            document.querySelectorAll('.checkpoint-step').forEach(step => {
+                step.classList.remove('completed', 'failed');
+            });
+
+            loadScenario(currentScenario);
+        }
+
+        // Event listeners
+        document.querySelectorAll('.answer-btn').forEach(btn => {
+            btn.addEventListener('click', () => handleAnswer(btn.dataset.answer));
+        });
+
+        document.getElementById('continueBtn').addEventListener('click', continueToNext);
+
+        // Initialize
+        initCanvas();
+        window.addEventListener('resize', initCanvas);
+        loadScenario(0);
+
+        // Animate waveform
+        setInterval(() => {
+            drawWaveform(scenarios[currentScenario].waveform);
+        }, 100);
+    </script>
+</body>
+</html>

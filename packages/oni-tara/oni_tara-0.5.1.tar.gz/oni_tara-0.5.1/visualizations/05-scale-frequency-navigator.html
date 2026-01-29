@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scale-Frequency Navigator | ONI Framework</title>
+    <style>
+        :root {
+            --oni-dark: #0a0e17;
+            --oni-darker: #060912;
+            --oni-blue: #00d4ff;
+            --oni-purple: #8b5cf6;
+            --oni-pink: #ec4899;
+            --oni-green: #10b981;
+            --oni-yellow: #f59e0b;
+            --oni-red: #ef4444;
+            --oni-orange: #f97316;
+            --oni-gray: #1e293b;
+            --oni-light: #e2e8f0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--oni-dark);
+            color: var(--oni-light);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            padding: 1rem 2rem;
+            background: var(--oni-darker);
+            border-bottom: 1px solid var(--oni-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            background: linear-gradient(135deg, var(--oni-purple), var(--oni-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .scale-indicator {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .current-scale {
+            font-family: 'SF Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--oni-blue);
+        }
+
+        .scale-name {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        /* Main Visualization */
+        .main-viz {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+        }
+
+        /* Timeline Navigator */
+        .timeline-nav {
+            width: 120px;
+            background: var(--oni-darker);
+            border-right: 1px solid var(--oni-gray);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 0;
+        }
+
+        .scale-track {
+            flex: 1;
+            width: 4px;
+            background: var(--oni-gray);
+            border-radius: 2px;
+            position: relative;
+            margin: 1rem 0;
+        }
+
+        .scale-thumb {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 24px;
+            height: 24px;
+            background: var(--oni-blue);
+            border-radius: 50%;
+            cursor: grab;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+            transition: transform 0.1s;
+        }
+
+        .scale-thumb:active {
+            cursor: grabbing;
+            transform: translateX(-50%) scale(1.1);
+        }
+
+        .scale-marker {
+            position: absolute;
+            left: -40px;
+            width: 100px;
+            text-align: right;
+            font-size: 0.7rem;
+            color: #64748b;
+            transform: translateY(-50%);
+        }
+
+        .scale-marker.active {
+            color: var(--oni-blue);
+            font-weight: 600;
+        }
+
+        .zoom-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .zoom-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid var(--oni-gray);
+            background: transparent;
+            color: var(--oni-light);
+            font-size: 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .zoom-btn:hover {
+            background: var(--oni-gray);
+            border-color: var(--oni-blue);
+        }
+
+        /* Central Display */
+        .central-display {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        .scale-title {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .scale-title h2 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .scale-title p {
+            color: #94a3b8;
+        }
+
+        /* Waveform Display */
+        .waveform-container {
+            flex: 1;
+            background: var(--oni-darker);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .waveform-grid {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        #mainCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .time-axis {
+            position: absolute;
+            bottom: 10px;
+            left: 80px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #64748b;
+        }
+
+        .freq-axis {
+            position: absolute;
+            top: 20px;
+            bottom: 40px;
+            left: 10px;
+            width: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #64748b;
+            text-align: right;
+        }
+
+        /* Info Cards */
+        .info-strip {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .info-card {
+            flex: 1;
+            background: var(--oni-gray);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .info-card-title {
+            font-size: 0.7rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-card-content {
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .info-highlight {
+            color: var(--oni-blue);
+            font-weight: 600;
+        }
+
+        /* Right Panel - Details */
+        .detail-panel {
+            width: 320px;
+            background: var(--oni-darker);
+            border-left: 1px solid var(--oni-gray);
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+
+        .detail-section {
+            margin-bottom: 2rem;
+        }
+
+        .detail-section-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--oni-gray);
+        }
+
+        /* Frequency Bands */
+        .freq-band {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            background: var(--oni-gray);
+            transition: all 0.2s;
+        }
+
+        .freq-band.active {
+            background: rgba(0, 212, 255, 0.15);
+            border: 1px solid var(--oni-blue);
+        }
+
+        .freq-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        .freq-delta { background: #ef4444; }
+        .freq-theta { background: #f97316; }
+        .freq-alpha { background: #f59e0b; }
+        .freq-beta { background: #10b981; }
+        .freq-gamma { background: #8b5cf6; }
+        .freq-hfo { background: #ec4899; }
+
+        .freq-info {
+            flex: 1;
+        }
+
+        .freq-name {
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .freq-range {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        /* Security Implications */
+        .security-item {
+            padding: 0.75rem;
+            background: var(--oni-gray);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .security-item.threat {
+            border-left: 3px solid var(--oni-red);
+        }
+
+        .security-item.defense {
+            border-left: 3px solid var(--oni-green);
+        }
+
+        .security-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .security-desc {
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        /* Scale Presets */
+        .preset-btns {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .preset-btn {
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--oni-gray);
+            background: transparent;
+            color: var(--oni-light);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--oni-blue);
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .preset-btn.active {
+            background: var(--oni-blue);
+            border-color: var(--oni-blue);
+            color: var(--oni-dark);
+        }
+
+        /* Animation */
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(0, 212, 255, 0.6); }
+        }
+
+        .scale-thumb {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Scale-Frequency Navigator</h1>
+        <div class="scale-indicator">
+            <span class="scale-name">Current Scale:</span>
+            <span class="current-scale" id="currentScale">100ms</span>
+        </div>
+    </header>
+
+    <main class="main-viz">
+        <!-- Timeline Navigator -->
+        <nav class="timeline-nav">
+            <div class="zoom-controls">
+                <button class="zoom-btn" id="zoomIn">+</button>
+                <button class="zoom-btn" id="zoomOut">-</button>
+            </div>
+
+            <div class="scale-track" id="scaleTrack">
+                <div class="scale-marker" style="top: 0%;">Lifetime</div>
+                <div class="scale-marker" style="top: 20%;">Years</div>
+                <div class="scale-marker" style="top: 40%;">Hours</div>
+                <div class="scale-marker" style="top: 60%;">Seconds</div>
+                <div class="scale-marker active" style="top: 80%;">100ms</div>
+                <div class="scale-marker" style="top: 100%;">1ms</div>
+                <div class="scale-thumb" id="scaleThumb" style="top: 80%;"></div>
+            </div>
+        </nav>
+
+        <!-- Central Display -->
+        <section class="central-display">
+            <div class="scale-title">
+                <h2 id="scaleName">Milliseconds Scale</h2>
+                <p id="scaleDesc">Individual spike timing, high-frequency oscillations, fast neural events</p>
+            </div>
+
+            <div class="waveform-container">
+                <canvas id="mainCanvas"></canvas>
+                <div class="time-axis" id="timeAxis">
+                    <span>0ms</span>
+                    <span>25ms</span>
+                    <span>50ms</span>
+                    <span>75ms</span>
+                    <span>100ms</span>
+                </div>
+                <div class="freq-axis">
+                    <span>150 Hz</span>
+                    <span>100 Hz</span>
+                    <span>50 Hz</span>
+                    <span>10 Hz</span>
+                    <span>1 Hz</span>
+                </div>
+            </div>
+
+            <div class="info-strip">
+                <div class="info-card">
+                    <div class="info-card-title">Dominant Frequency</div>
+                    <div class="info-card-content">
+                        <span class="info-highlight" id="domFreq">Gamma (30-100 Hz)</span>
+                        <br>Fast oscillations encoding active processing
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-card-title">Information Content</div>
+                    <div class="info-card-content">
+                        <span class="info-highlight" id="infoContent">~2.5 bits/spike</span>
+                        <br>High temporal precision, low redundancy
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-card-title">Security Window</div>
+                    <div class="info-card-content">
+                        <span class="info-highlight" id="secWindow">&lt;1ms validation</span>
+                        <br>Real-time coherence checking required
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Detail Panel -->
+        <aside class="detail-panel">
+            <div class="detail-section">
+                <div class="detail-section-title">Quick Navigate</div>
+                <div class="preset-btns">
+                    <button class="preset-btn" data-scale="1">1ms (Spike)</button>
+                    <button class="preset-btn active" data-scale="100">100ms (Percept)</button>
+                    <button class="preset-btn" data-scale="1000">1s (Working Memory)</button>
+                    <button class="preset-btn" data-scale="60000">1min (Attention)</button>
+                    <button class="preset-btn" data-scale="3600000">1hr (Learning)</button>
+                    <button class="preset-btn" data-scale="86400000">1day (Consolidation)</button>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">Active Frequency Bands</div>
+                <div id="freqBands">
+                    <div class="freq-band">
+                        <div class="freq-color freq-gamma"></div>
+                        <div class="freq-info">
+                            <div class="freq-name">Gamma</div>
+                            <div class="freq-range">30-100 Hz</div>
+                        </div>
+                    </div>
+                    <div class="freq-band active">
+                        <div class="freq-color freq-beta"></div>
+                        <div class="freq-info">
+                            <div class="freq-name">Beta</div>
+                            <div class="freq-range">13-30 Hz</div>
+                        </div>
+                    </div>
+                    <div class="freq-band">
+                        <div class="freq-color freq-alpha"></div>
+                        <div class="freq-info">
+                            <div class="freq-name">Alpha</div>
+                            <div class="freq-range">8-13 Hz</div>
+                        </div>
+                    </div>
+                    <div class="freq-band">
+                        <div class="freq-color freq-theta"></div>
+                        <div class="freq-info">
+                            <div class="freq-name">Theta</div>
+                            <div class="freq-range">4-8 Hz</div>
+                        </div>
+                    </div>
+                    <div class="freq-band">
+                        <div class="freq-color freq-delta"></div>
+                        <div class="freq-info">
+                            <div class="freq-name">Delta</div>
+                            <div class="freq-range">0.5-4 Hz</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">Security at This Scale</div>
+                <div id="securityItems">
+                    <div class="security-item threat">
+                        <div class="security-title">Phase-Locked Injection</div>
+                        <div class="security-desc">Attackers can synchronize malicious signals to gamma bursts</div>
+                    </div>
+                    <div class="security-item defense">
+                        <div class="security-title">Coherence Validation</div>
+                        <div class="security-desc">Real-time phase variance checking catches timing anomalies</div>
+                    </div>
+                    <div class="security-item threat">
+                        <div class="security-title">High-Frequency Masking</div>
+                        <div class="security-desc">Noise injection can hide in gamma band activity</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">Scale Invariants</div>
+                <div class="info-card" style="background: var(--oni-gray);">
+                    <div class="info-card-content" style="font-size: 0.85rem;">
+                        The ONI Framework maintains <span class="info-highlight">cross-scale coherence</span> by tracking how patterns at this scale relate to larger temporal structures. A valid 100ms burst should nest within appropriate theta cycles and contribute to second-scale working memory patterns.
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        // Scale definitions
+        const scales = {
+            1: {
+                name: "Microsecond Scale",
+                desc: "Individual action potentials, synaptic transmission, fastest neural events",
+                timeLabels: ["0μs", "250μs", "500μs", "750μs", "1ms"],
+                freqLabels: ["10kHz", "5kHz", "1kHz", "500Hz", "100Hz"],
+                domFreq: "High-Frequency Oscillations (100-500 Hz)",
+                infoContent: "~1 bit/spike",
+                secWindow: "<100μs validation",
+                waveConfig: { freq: 0.3, amp: 0.4, noise: 0.1, spikes: true },
+                activeBands: ["hfo"],
+                security: [
+                    { type: "threat", title: "Spike Timing Attack", desc: "Precise manipulation of individual action potentials" },
+                    { type: "defense", title: "Refractory Period Validation", desc: "Biological timing constraints provide natural validation" }
+                ]
+            },
+            100: {
+                name: "Milliseconds Scale",
+                desc: "Individual spike timing, high-frequency oscillations, fast neural events",
+                timeLabels: ["0ms", "25ms", "50ms", "75ms", "100ms"],
+                freqLabels: ["150Hz", "100Hz", "50Hz", "10Hz", "1Hz"],
+                domFreq: "Gamma (30-100 Hz)",
+                infoContent: "~2.5 bits/spike",
+                secWindow: "<1ms validation",
+                waveConfig: { freq: 0.15, amp: 0.6, noise: 0.15, spikes: false },
+                activeBands: ["gamma", "beta"],
+                security: [
+                    { type: "threat", title: "Phase-Locked Injection", desc: "Attackers can synchronize malicious signals to gamma bursts" },
+                    { type: "defense", title: "Coherence Validation", desc: "Real-time phase variance checking catches timing anomalies" },
+                    { type: "threat", title: "High-Frequency Masking", desc: "Noise injection can hide in gamma band activity" }
+                ]
+            },
+            1000: {
+                name: "Seconds Scale",
+                desc: "Working memory maintenance, conscious perception, attention cycles",
+                timeLabels: ["0s", "0.25s", "0.5s", "0.75s", "1s"],
+                freqLabels: ["50Hz", "30Hz", "10Hz", "4Hz", "1Hz"],
+                domFreq: "Theta (4-8 Hz) + Gamma bursts",
+                infoContent: "~4 items in working memory",
+                secWindow: "100ms validation windows",
+                waveConfig: { freq: 0.05, amp: 0.8, noise: 0.1, spikes: false },
+                activeBands: ["theta", "gamma"],
+                security: [
+                    { type: "threat", title: "Memory Encoding Hijack", desc: "False items injected during theta-gamma coupling" },
+                    { type: "defense", title: "Capacity Monitoring", desc: "Working memory overflow detection" },
+                    { type: "threat", title: "Attention Capture", desc: "Forced attention shifts via unexpected salience" }
+                ]
+            },
+            60000: {
+                name: "Minutes Scale",
+                desc: "Sustained attention, task switching, short-term learning",
+                timeLabels: ["0m", "15s", "30s", "45s", "1m"],
+                freqLabels: ["10Hz", "4Hz", "1Hz", "0.1Hz", "0.01Hz"],
+                domFreq: "Alpha (8-13 Hz) modulation",
+                infoContent: "Task-level information integration",
+                secWindow: "1s validation batches",
+                waveConfig: { freq: 0.02, amp: 1, noise: 0.05, spikes: false },
+                activeBands: ["alpha", "theta"],
+                security: [
+                    { type: "threat", title: "Fatigue Induction", desc: "Gradual attention degradation through subtle interference" },
+                    { type: "defense", title: "Baseline Deviation Tracking", desc: "Alertness patterns monitored for anomalies" }
+                ]
+            },
+            3600000: {
+                name: "Hours Scale",
+                desc: "Learning sessions, memory consolidation prep, circadian influences",
+                timeLabels: ["0h", "15m", "30m", "45m", "1h"],
+                freqLabels: ["1Hz", "0.1Hz", "0.01Hz", "mHz", "μHz"],
+                domFreq: "Slow oscillations + Ultradian rhythms",
+                infoContent: "Skill acquisition, episodic encoding",
+                secWindow: "10s validation + trend analysis",
+                waveConfig: { freq: 0.008, amp: 1, noise: 0.03, spikes: false },
+                activeBands: ["delta", "theta"],
+                security: [
+                    { type: "threat", title: "Learning Interference", desc: "Disruption of consolidation processes" },
+                    { type: "defense", title: "Long-term Pattern Matching", desc: "Expected learning curves validated against baseline" }
+                ]
+            },
+            86400000: {
+                name: "Days Scale",
+                desc: "Memory consolidation, circadian rhythms, sleep cycles",
+                timeLabels: ["0h", "6h", "12h", "18h", "24h"],
+                freqLabels: ["mHz", "100μHz", "10μHz", "1μHz", "0.1μHz"],
+                domFreq: "Circadian (24h) + Sleep spindles",
+                infoContent: "Long-term memory formation",
+                secWindow: "Hourly validation + sleep monitoring",
+                waveConfig: { freq: 0.003, amp: 1, noise: 0.02, spikes: false },
+                activeBands: ["delta"],
+                security: [
+                    { type: "threat", title: "Sleep Architecture Attack", desc: "Manipulation of memory replay during sleep" },
+                    { type: "defense", title: "Sleep Stage Validation", desc: "Expected patterns verified across sleep cycles" },
+                    { type: "threat", title: "Identity Drift", desc: "Gradual personality changes over repeated nights" }
+                ]
+            }
+        };
+
+        let currentScale = 100;
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function initCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = (rect.width - 100) * 2;
+            canvas.height = (rect.height - 60) * 2;
+            ctx.scale(2, 2);
+        }
+
+        function drawWaveform(config) {
+            const width = canvas.width / 2;
+            const height = canvas.height / 2;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, 'rgba(139, 92, 246, 0.1)');
+            gradient.addColorStop(0.5, 'rgba(0, 212, 255, 0.05)');
+            gradient.addColorStop(1, 'rgba(236, 72, 153, 0.1)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Grid
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += 30) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Multiple frequency components
+            const layers = [
+                { color: 'rgba(139, 92, 246, 0.6)', freq: config.freq * 3, amp: config.amp * 0.3 },
+                { color: 'rgba(0, 212, 255, 0.8)', freq: config.freq, amp: config.amp },
+                { color: 'rgba(236, 72, 153, 0.5)', freq: config.freq * 0.3, amp: config.amp * 0.5 }
+            ];
+
+            layers.forEach(layer => {
+                ctx.beginPath();
+                ctx.strokeStyle = layer.color;
+                ctx.lineWidth = 2;
+
+                const centerY = height / 2;
+                for (let x = 0; x < width; x++) {
+                    const noise = (Math.random() - 0.5) * config.noise * 30;
+                    const y = centerY + Math.sin(x * layer.freq + Date.now() * 0.001) * 40 * layer.amp + noise;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            });
+
+            // Spikes if enabled
+            if (config.spikes) {
+                ctx.fillStyle = '#00d4ff';
+                for (let i = 0; i < 5; i++) {
+                    const x = Math.random() * width;
+                    const y = height / 2 + (Math.random() - 0.5) * 60;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        function updateScale(scale) {
+            currentScale = scale;
+            const scaleData = scales[scale];
+
+            // Update UI
+            document.getElementById('currentScale').textContent = formatScale(scale);
+            document.getElementById('scaleName').textContent = scaleData.name;
+            document.getElementById('scaleDesc').textContent = scaleData.desc;
+            document.getElementById('domFreq').textContent = scaleData.domFreq;
+            document.getElementById('infoContent').textContent = scaleData.infoContent;
+            document.getElementById('secWindow').textContent = scaleData.secWindow;
+
+            // Update time axis
+            const timeAxis = document.getElementById('timeAxis');
+            timeAxis.innerHTML = scaleData.timeLabels.map(l => `<span>${l}</span>`).join('');
+
+            // Update frequency bands
+            document.querySelectorAll('.freq-band').forEach(band => {
+                const bandName = band.querySelector('.freq-name').textContent.toLowerCase();
+                band.classList.toggle('active', scaleData.activeBands.includes(bandName));
+            });
+
+            // Update security items
+            const securityContainer = document.getElementById('securityItems');
+            securityContainer.innerHTML = scaleData.security.map(item => `
+                <div class="security-item ${item.type}">
+                    <div class="security-title">${item.title}</div>
+                    <div class="security-desc">${item.desc}</div>
+                </div>
+            `).join('');
+
+            // Update preset buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.toggle('active', parseInt(btn.dataset.scale) === scale);
+            });
+
+            // Update scale markers
+            const markerPositions = { 1: 100, 100: 80, 1000: 60, 60000: 40, 3600000: 20, 86400000: 0 };
+            document.querySelectorAll('.scale-marker').forEach(marker => {
+                marker.classList.remove('active');
+            });
+
+            // Update thumb position
+            const thumbPos = markerPositions[scale] || 50;
+            document.getElementById('scaleThumb').style.top = thumbPos + '%';
+        }
+
+        function formatScale(ms) {
+            if (ms < 1) return (ms * 1000) + 'μs';
+            if (ms < 1000) return ms + 'ms';
+            if (ms < 60000) return (ms / 1000) + 's';
+            if (ms < 3600000) return (ms / 60000) + 'min';
+            if (ms < 86400000) return (ms / 3600000) + 'hr';
+            return (ms / 86400000) + 'day';
+        }
+
+        // Event Listeners
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                updateScale(parseInt(btn.dataset.scale));
+            });
+        });
+
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            const scaleKeys = Object.keys(scales).map(Number).sort((a, b) => a - b);
+            const currentIndex = scaleKeys.indexOf(currentScale);
+            if (currentIndex > 0) {
+                updateScale(scaleKeys[currentIndex - 1]);
+            }
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            const scaleKeys = Object.keys(scales).map(Number).sort((a, b) => a - b);
+            const currentIndex = scaleKeys.indexOf(currentScale);
+            if (currentIndex < scaleKeys.length - 1) {
+                updateScale(scaleKeys[currentIndex + 1]);
+            }
+        });
+
+        // Draggable thumb
+        const thumb = document.getElementById('scaleThumb');
+        const track = document.getElementById('scaleTrack');
+        let isDragging = false;
+
+        thumb.addEventListener('mousedown', () => isDragging = true);
+        document.addEventListener('mouseup', () => isDragging = false);
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const rect = track.getBoundingClientRect();
+            const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+
+            // Map position to scale
+            const scaleKeys = Object.keys(scales).map(Number).sort((a, b) => b - a);
+            const index = Math.round(y * (scaleKeys.length - 1));
+            updateScale(scaleKeys[index]);
+        });
+
+        // Initialize
+        initCanvas();
+        window.addEventListener('resize', initCanvas);
+
+        // Animation loop
+        function animate() {
+            drawWaveform(scales[currentScale].waveConfig);
+            requestAnimationFrame(animate);
+        }
+        animate();
+    </script>
+</body>
+</html>

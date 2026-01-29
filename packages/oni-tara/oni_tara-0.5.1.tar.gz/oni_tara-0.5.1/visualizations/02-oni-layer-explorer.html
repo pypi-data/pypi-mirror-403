@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ONI Layer Explorer | 14-Layer Neural Security Model</title>
+    <style>
+        :root {
+            --oni-dark: #0a0e17;
+            --oni-darker: #060912;
+            --oni-blue: #00d4ff;
+            --oni-purple: #8b5cf6;
+            --oni-pink: #ec4899;
+            --oni-green: #10b981;
+            --oni-yellow: #f59e0b;
+            --oni-red: #ef4444;
+            --oni-orange: #f97316;
+            --oni-gray: #1e293b;
+            --oni-light: #e2e8f0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--oni-dark);
+            color: var(--oni-light);
+            min-height: 100vh;
+        }
+
+        .header {
+            padding: 1.5rem 2rem;
+            background: var(--oni-darker);
+            border-bottom: 1px solid var(--oni-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--oni-blue), var(--oni-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-subtitle {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            height: calc(100vh - 80px);
+        }
+
+        /* Layer Stack */
+        .layer-stack {
+            background: var(--oni-darker);
+            border-right: 1px solid var(--oni-gray);
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .domain-section { margin-bottom: 1.5rem; }
+
+        .domain-header {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--oni-gray);
+            margin-bottom: 0.5rem;
+        }
+
+        .layer-card {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 10px;
+            margin-bottom: 0.375rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+
+        .layer-card:hover { background: rgba(255,255,255,0.05); }
+        .layer-card.active {
+            background: rgba(255,255,255,0.08);
+            border-color: var(--oni-blue);
+        }
+
+        .layer-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.8rem;
+            flex-shrink: 0;
+        }
+
+        .layer-info { flex: 1; min-width: 0; }
+        .layer-name { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.125rem; }
+        .layer-brief { font-size: 0.7rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Domain Colors */
+        .domain-osi .layer-number { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+        .domain-bridge .layer-number { background: linear-gradient(135deg, var(--oni-yellow), var(--oni-orange)); }
+        .domain-bridge .layer-card { border-left: 3px solid var(--oni-yellow); }
+        .domain-biology .layer-number { background: linear-gradient(135deg, var(--oni-purple), #6d28d9); }
+        .domain-cognitive .layer-number { background: linear-gradient(135deg, var(--oni-pink), #be185d); }
+
+        /* Detail Panel */
+        .detail-panel {
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .detail-header {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--oni-gray);
+        }
+
+        .detail-number {
+            width: 72px;
+            height: 72px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .detail-title h2 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+        .detail-domain { font-size: 0.85rem; color: #94a3b8; }
+
+        /* Info Cards */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-card {
+            background: var(--oni-gray);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .info-card.full-width { grid-column: span 2; }
+
+        .info-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-content { font-size: 0.9rem; line-height: 1.6; }
+
+        /* Security Sections */
+        .security-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .attack-surface {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .attack-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--oni-red);
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .attack-list { list-style: none; }
+        .attack-list li {
+            padding: 0.375rem 0;
+            padding-left: 1.25rem;
+            position: relative;
+            font-size: 0.8rem;
+            color: #fca5a5;
+        }
+
+        .attack-list li::before {
+            content: "!";
+            position: absolute;
+            left: 0;
+            top: 0.375rem;
+            width: 14px;
+            height: 14px;
+            background: var(--oni-red);
+            border-radius: 50%;
+            font-size: 0.6rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+        }
+
+        .defense-surface {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .defense-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--oni-green);
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .defense-list { list-style: none; }
+        .defense-list li {
+            padding: 0.375rem 0;
+            padding-left: 1.25rem;
+            position: relative;
+            font-size: 0.8rem;
+            color: #6ee7b7;
+        }
+
+        .defense-list li::before {
+            content: "\2713";
+            position: absolute;
+            left: 0;
+            color: var(--oni-green);
+            font-weight: 700;
+        }
+
+        /* Analogy Box */
+        .analogy-box {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1));
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .analogy-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--oni-purple);
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .analogy-text { font-size: 0.9rem; line-height: 1.6; color: #c4b5fd; }
+
+        /* Why It Matters */
+        .why-matters {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .why-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--oni-blue);
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .why-text { font-size: 0.9rem; line-height: 1.6; color: #7dd3fc; }
+
+        /* Detection Methods */
+        .detection-box {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .detection-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--oni-yellow);
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .detection-text { font-size: 0.9rem; line-height: 1.6; color: #fcd34d; }
+
+        /* Mini Navigator */
+        .mini-nav {
+            position: fixed;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            z-index: 100;
+        }
+
+        .mini-layer {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            cursor: pointer;
+            opacity: 0.4;
+            transition: all 0.2s;
+        }
+
+        .mini-layer:hover { opacity: 0.8; transform: scale(1.3); }
+        .mini-layer.active { opacity: 1; transform: scale(1.4); }
+
+        .mini-layer.osi { background: #3b82f6; }
+        .mini-layer.bridge { background: var(--oni-yellow); }
+        .mini-layer.biology { background: var(--oni-purple); }
+        .mini-layer.cognitive { background: var(--oni-pink); }
+
+        @media (max-width: 900px) {
+            .main-container { grid-template-columns: 1fr; }
+            .layer-stack { max-height: 40vh; }
+            .security-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div>
+            <h1>ONI Layer Explorer</h1>
+            <div class="header-subtitle">Interactive 14-Layer Neural Security Model</div>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <aside class="layer-stack">
+            <!-- OSI Domain (L1-L7) -->
+            <div class="domain-section domain-osi">
+                <div class="domain-header">OSI Domain (L1-L7) — Standard Networking</div>
+                <div class="layer-card" data-layer="1">
+                    <div class="layer-number">1</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Physical</div>
+                        <div class="layer-brief">RF, Bluetooth, electrical signals</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="2">
+                    <div class="layer-number">2</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Data Link</div>
+                        <div class="layer-brief">Frame formatting, MAC addressing</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="3">
+                    <div class="layer-number">3</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Network</div>
+                        <div class="layer-brief">IP routing, logical addressing</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="4">
+                    <div class="layer-number">4</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Transport</div>
+                        <div class="layer-brief">TCP/UDP, reliable delivery</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="5">
+                    <div class="layer-number">5</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Session</div>
+                        <div class="layer-brief">Connection management</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="6">
+                    <div class="layer-number">6</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Presentation</div>
+                        <div class="layer-brief">Encryption, data formatting</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="7">
+                    <div class="layer-number">7</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Application</div>
+                        <div class="layer-brief">BCI software APIs</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bridge Domain (L8) -->
+            <div class="domain-section domain-bridge">
+                <div class="domain-header">Bridge Domain (L8) — THE FIREWALL</div>
+                <div class="layer-card" data-layer="8">
+                    <div class="layer-number">8</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Neural Gateway</div>
+                        <div class="layer-brief">Silicon ↔ Biology boundary</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Biology Domain (L9-L11) -->
+            <div class="domain-section domain-biology">
+                <div class="domain-header">Biology Domain (L9-L11) — Signal Processing</div>
+                <div class="layer-card" data-layer="9">
+                    <div class="layer-number">9</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Signal Processing</div>
+                        <div class="layer-brief">Filtering, amplification</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="10">
+                    <div class="layer-number">10</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Neural Protocol</div>
+                        <div class="layer-brief">Spike encoding, data formats</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="11">
+                    <div class="layer-number">11</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Cognitive Transport</div>
+                        <div class="layer-brief">Reliable neural delivery</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cognitive Domain (L12-L14) -->
+            <div class="domain-section domain-cognitive">
+                <div class="domain-header">Cognitive Domain (L12-L14) — Mind & Identity</div>
+                <div class="layer-card" data-layer="12">
+                    <div class="layer-number">12</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Cognitive Session</div>
+                        <div class="layer-brief">Working memory, attention</div>
+                    </div>
+                </div>
+                <div class="layer-card" data-layer="13">
+                    <div class="layer-number">13</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Semantic</div>
+                        <div class="layer-brief">Meaning, intent, goals</div>
+                    </div>
+                </div>
+                <div class="layer-card active" data-layer="14">
+                    <div class="layer-number">14</div>
+                    <div class="layer-info">
+                        <div class="layer-name">Identity</div>
+                        <div class="layer-brief">Self-model, ethics, continuity</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="detail-panel" id="detailPanel">
+            <!-- Content populated by JavaScript -->
+        </section>
+    </main>
+
+    <nav class="mini-nav">
+        <div class="mini-layer osi" data-layer="1" title="L1: Physical"></div>
+        <div class="mini-layer osi" data-layer="2" title="L2: Data Link"></div>
+        <div class="mini-layer osi" data-layer="3" title="L3: Network"></div>
+        <div class="mini-layer osi" data-layer="4" title="L4: Transport"></div>
+        <div class="mini-layer osi" data-layer="5" title="L5: Session"></div>
+        <div class="mini-layer osi" data-layer="6" title="L6: Presentation"></div>
+        <div class="mini-layer osi" data-layer="7" title="L7: Application"></div>
+        <div class="mini-layer bridge" data-layer="8" title="L8: Neural Gateway"></div>
+        <div class="mini-layer biology" data-layer="9" title="L9: Signal Processing"></div>
+        <div class="mini-layer biology" data-layer="10" title="L10: Neural Protocol"></div>
+        <div class="mini-layer biology" data-layer="11" title="L11: Cognitive Transport"></div>
+        <div class="mini-layer cognitive" data-layer="12" title="L12: Cognitive Session"></div>
+        <div class="mini-layer cognitive" data-layer="13" title="L13: Semantic"></div>
+        <div class="mini-layer cognitive active" data-layer="14" title="L14: Identity"></div>
+    </nav>
+
+    <script>
+        // Complete layer data with educational content
+        const layers = {
+            1: {
+                name: "Physical",
+                domain: "OSI",
+                domainLabel: "Traditional Networking",
+                domainColor: "#3b82f6",
+                function: "Transmission of raw bit streams over physical medium. In BCIs: wireless RF transmission (2.4GHz), Bluetooth Low Energy, or inductive coupling for both power and data transfer to the implanted device.",
+                capacity: "Neuralink N1: 1Mbps data rate, 25mW total power budget. Typical BCI implants use 2.4GHz ISM band with power constraints under 10mW for safety.",
+                biologicalExample: "Like how nerve fibers (axons) physically carry electrical impulses. The myelin sheath is nature's 'shielding' that prevents signal crosstalk — BCIs need equivalent RF isolation.",
+                networkExample: "Ethernet cables, WiFi radio waves, fiber optic light pulses. The physical substrate that actually moves the bits — copper wire or electromagnetic waves.",
+                attacks: [
+                    "RF jamming / denial of service",
+                    "BlueBorne-style Bluetooth exploits",
+                    "Side-channel attacks via EM emissions",
+                    "Power analysis attacks on implant"
+                ],
+                defenses: [
+                    "Frequency hopping spread spectrum (FHSS)",
+                    "Encrypted RF channels with AES-128",
+                    "EM shielding in titanium implant housing",
+                    "Signal strength anomaly detection"
+                ],
+                analogy: "Like the radio waves carrying your phone calls. If someone jams the signal with noise, communication stops entirely. The physical layer is the foundation — if it fails, nothing above it works.",
+                whyMatters: "BCIs must transmit through skull and tissue. Attackers can jam or intercept signals without physical access to the implant. First line of defense against denial-of-service attacks.",
+                detection: "Monitor RF signal-to-noise ratio (SNR). Sudden drops indicate jamming. Track Bluetooth connection stability and power draw patterns for anomalies."
+            },
+            2: {
+                name: "Data Link",
+                domain: "OSI",
+                domainLabel: "Traditional Networking",
+                domainColor: "#3b82f6",
+                function: "Reliable transfer of data frames between adjacent nodes. Handles error detection via CRC checksums, flow control to prevent buffer overflow, and device addressing via MAC addresses.",
+                capacity: "Frame sizes optimized for neural data: 100-500 bytes typical. Custom BCI protocols may use shorter frames (32-64 bytes) to reduce latency for real-time control.",
+                biologicalExample: "Like the synapse between neurons. Each synapse reliably transfers a signal packet (neurotransmitters) from one neuron to the next, with mechanisms to prevent overflow (reuptake).",
+                networkExample: "Ethernet frames with MAC addresses. WiFi 802.11 frame headers. The 'envelope' that wraps your data with source/destination addresses and error-checking codes.",
+                attacks: [
+                    "MAC spoofing to impersonate legitimate device",
+                    "Frame injection with malicious payloads",
+                    "Replay attacks with captured valid frames",
+                    "Desynchronization to corrupt data streams"
+                ],
+                defenses: [
+                    "Cryptographic frame authentication (HMAC)",
+                    "Sequence number validation to detect replays",
+                    "Rolling codes that change each transmission",
+                    "Hardware-bound device certificates"
+                ],
+                analogy: "Like the addressing on a FedEx envelope. The data link layer ensures each packet has a return address, delivery address, and tamper-evident seal. Without it, packets get lost or delivered to wrong recipients.",
+                whyMatters: "This is where device impersonation attacks happen. If an attacker can spoof the MAC address of your BCI's external controller, they can inject arbitrary commands.",
+                detection: "Track frame sequence numbers — gaps or duplicates indicate replay attacks. Monitor for unknown MAC addresses attempting communication. Alert on CRC errors above baseline."
+            },
+            3: {
+                name: "Network",
+                domain: "OSI",
+                domainLabel: "Traditional Networking",
+                domainColor: "#3b82f6",
+                function: "Logical addressing and routing across multiple networks. IP addresses identify devices globally. Routers forward packets across network boundaries toward their destination.",
+                capacity: "IPv4/IPv6 addressing. For implanted BCIs, often uses local addressing (192.168.x.x) since implant communicates only with paired controller.",
+                biologicalExample: "Like the brain's connectome — the map of all neural pathways. Signals are routed from visual cortex to motor cortex via specific white matter tracts, just as packets route via specific network paths.",
+                networkExample: "IP addresses (192.168.1.100), routers that forward packets, traceroute showing the path. The GPS of the internet that gets packets to the right destination across networks.",
+                attacks: [
+                    "IP spoofing to mask attack origin",
+                    "Route hijacking (BGP attacks)",
+                    "ICMP flood attacks for DoS",
+                    "Man-in-the-middle via ARP poisoning"
+                ],
+                defenses: [
+                    "IPsec for authenticated, encrypted packets",
+                    "Network segmentation (BCI on isolated VLAN)",
+                    "Ingress filtering to block spoofed addresses",
+                    "Static ARP entries for critical devices"
+                ],
+                analogy: "Like the postal system's ZIP codes and sorting centers. The network layer figures out which 'city' (network) a packet needs to reach and routes it through the right 'highways' (routers).",
+                whyMatters: "If attackers compromise routing, they can redirect your BCI traffic through their systems (man-in-the-middle) to eavesdrop or modify commands in transit.",
+                detection: "Monitor routing tables for unexpected changes. Use traceroute to verify packet paths haven't changed. Alert on traffic from unexpected IP ranges."
+            },
+            4: {
+                name: "Transport",
+                domain: "OSI",
+                domainLabel: "Traditional Networking",
+                domainColor: "#3b82f6",
+                function: "End-to-end reliable delivery with flow control. TCP provides ordered, guaranteed delivery with retransmission. UDP provides fast, lightweight delivery without guarantees.",
+                capacity: "TCP for control commands requiring reliability. UDP for high-bandwidth neural streaming where occasional packet loss is acceptable (similar to video streaming).",
+                biologicalExample: "Like the brain's error-correction mechanisms. When a motor command doesn't produce expected feedback, the cerebellum adjusts and 'retransmits' — similar to TCP's acknowledgment and retry.",
+                networkExample: "TCP port 443 (HTTPS), UDP port 53 (DNS). Ports are like apartment numbers in a building — they route traffic to the right application on a device.",
+                attacks: [
+                    "SYN flood attacks exhaust connection resources",
+                    "Session hijacking via sequence prediction",
+                    "Port scanning to discover services",
+                    "TCP reset attacks to terminate connections"
+                ],
+                defenses: [
+                    "TLS 1.3 encryption for all BCI traffic",
+                    "SYN cookies to prevent connection exhaustion",
+                    "Random initial sequence numbers",
+                    "Rate limiting on connection attempts"
+                ],
+                analogy: "Like certified mail vs regular mail. TCP is certified mail — you get confirmation it arrived, and it's resent if lost. UDP is regular mail — faster and cheaper, but no guarantees.",
+                whyMatters: "BCI commands must arrive reliably and in order. An attacker who can hijack a TCP session can inject commands that appear to come from the legitimate controller.",
+                detection: "Monitor TCP connection states and flag unusual patterns. Track retransmission rates — spikes may indicate interference. Alert on connections from unexpected ports."
+            },
+            5: {
+                name: "Session",
+                domain: "OSI",
+                domainLabel: "Traditional Networking",
+                domainColor: "#3b82f6",
+                function: "Manages connection lifecycle — establishing, maintaining, and terminating sessions. Handles authentication, keeps sessions alive during idle periods, and gracefully closes connections.",
+                capacity: "Session tokens, keep-alive intervals (typically 30-60 seconds for BCIs), timeout policies, re-authentication requirements.",
+                biologicalExample: "Like the brain's attention/vigilance systems. The reticular activating system maintains 'sessions' of consciousness, suspending them during sleep and resuming on waking.",
+                networkExample: "Login sessions on websites, SSH connections, VPN tunnels. When you 'stay logged in' to a site, that's session management keeping your authenticated state.",
+                attacks: [
+                    "Session fixation (forcing known session ID)",
+                    "Session token theft via XSS or sniffing",
+                    "Replay attacks using captured tokens",
+                    "Session timeout manipulation"
+                ],
+                defenses: [
+                    "Cryptographically random session tokens",
+                    "Short session timeouts (15-30 min for BCIs)",
+                    "Re-authentication for sensitive operations",
+                    "Token binding to device hardware"
+                ],
+                analogy: "Like a concert wristband. Once verified at entry, the wristband lets you move freely until the event ends. But if someone steals your wristband, they have your access.",
+                whyMatters: "BCI sessions must persist across brief disconnections but expire if the legitimate user loses the device. Stolen session tokens could give attackers ongoing access.",
+                detection: "Log all session events (start, refresh, end). Alert on sessions from new locations/devices. Monitor for simultaneous sessions from same user."
+            },
+            6: {
+                name: "Presentation",
+                domain: "OSI",
+                domainLabel: "Traditional Networking",
+                domainColor: "#3b82f6",
+                function: "Data encoding, encryption, and format conversion. Translates between application data formats and network transmission formats. Handles compression and encryption/decryption.",
+                capacity: "AES-256 encryption for neural data. Protocol buffers or custom binary formats for efficient neural data encoding. Compression ratios depend on neural signal characteristics.",
+                biologicalExample: "Like sensory processing areas. The visual cortex doesn't receive raw photon data — it receives encoded signals from the retina. The brain has its own 'presentation layer' converting raw stimuli to usable representations.",
+                networkExample: "HTTPS encryption (TLS), JPEG image compression, UTF-8 text encoding. The layer that makes data readable by converting between formats and protecting content.",
+                attacks: [
+                    "Padding oracle attacks on encryption",
+                    "Encoding exploits (buffer overflows)",
+                    "Protocol downgrade attacks (force weak crypto)",
+                    "Compression side-channel attacks (CRIME/BREACH)"
+                ],
+                defenses: [
+                    "AES-256-GCM authenticated encryption",
+                    "Strict format validation before parsing",
+                    "No protocol version fallback (TLS 1.3 only)",
+                    "Disable compression for sensitive data"
+                ],
+                analogy: "Like a diplomatic translator who also handles classified documents. They convert between languages (formats) and ensure sensitive content is encrypted in transit.",
+                whyMatters: "Neural data is deeply personal — encryption here protects thought patterns from eavesdropping. Weak encryption means attackers can read your neural signals.",
+                detection: "Verify encryption negotiates to strongest available. Monitor for unexpected format conversions. Alert on decryption failures (may indicate tampering)."
+            },
+            7: {
+                name: "Application",
+                domain: "OSI",
+                domainLabel: "Traditional Networking",
+                domainColor: "#3b82f6",
+                function: "User-facing BCI applications and APIs. This is the software that interprets neural commands, displays feedback, and provides the interface humans interact with.",
+                capacity: "BCI control applications, neural visualization dashboards, API endpoints for third-party integrations. Latency targets: <100ms for motor control, <500ms for communication BCIs.",
+                biologicalExample: "Like the prefrontal cortex's executive functions — the 'user interface' of the brain that consciously perceives and decides. The application layer is what the user actually experiences.",
+                networkExample: "Web browsers, email clients, Slack, Zoom. The applications you actually use — they sit on top of all the lower layers that handle the complex networking details.",
+                attacks: [
+                    "API injection attacks (SQL, command)",
+                    "Buffer overflow in BCI parsing code",
+                    "Logic flaws allowing privilege escalation",
+                    "Malicious firmware updates"
+                ],
+                defenses: [
+                    "Strict input validation on all API endpoints",
+                    "Memory-safe languages (Rust) for critical code",
+                    "Code signing for firmware updates",
+                    "Principle of least privilege in app permissions"
+                ],
+                analogy: "Like the apps on your phone. They provide the features you want, but vulnerabilities in apps can compromise your entire device. The application layer is where most user-facing attacks happen.",
+                whyMatters: "This is where users interact with their BCI. Application vulnerabilities could let attackers send unauthorized commands or exfiltrate neural data through the legitimate interface.",
+                detection: "Log all API calls with parameters. Monitor for unusual command patterns. Implement anomaly detection on user behavior. Alert on firmware modification attempts."
+            },
+            8: {
+                name: "Neural Gateway",
+                domain: "Bridge",
+                domainLabel: "Silicon ↔ Biology Boundary",
+                domainColor: "#f59e0b",
+                function: "THE FIREWALL LAYER. The physical and logical interface between neural tissue and computation. All security policy enforcement happens here: read/write access control, signal validation via Coherence Metric (Cₛ), trust establishment, and isolation between input/output channels.",
+                capacity: "Neuralink N1: 1,024 electrodes, ~1mm² footprint, 6μm diameter threads. Utah arrays: 96-128 electrodes. ECoG grids: 64-256 contacts. This is where silicon literally touches biology.",
+                biologicalExample: "Like the blood-brain barrier (BBB). The BBB strictly controls what molecules can enter the brain from the bloodstream — a biological firewall protecting the CNS from pathogens and toxins.",
+                networkExample: "Like a corporate firewall or DMZ. All traffic between internal network (brain) and external network (BCI device) must pass through this checkpoint for inspection.",
+                attacks: [
+                    "Bypass attacks circumventing security checks",
+                    "Direct signal injection at electrode site",
+                    "Unauthorized write access to neural tissue",
+                    "Exploitation of trust establishment protocols"
+                ],
+                defenses: [
+                    "ONI Firewall with Coherence validation (Cₛ)",
+                    "Zero-trust architecture — verify everything",
+                    "Hardware-bound cryptographic attestation",
+                    "Physical isolation of read/write channels"
+                ],
+                analogy: "Like a heavily guarded border checkpoint between two countries. Every piece of data must show its passport (coherence score), declare its purpose (intent classification), and be searched for contraband (anomaly detection) before crossing into neural territory.",
+                whyMatters: "This is THE critical security boundary. If an attacker bypasses L8, they have direct access to neural tissue. The Neural Gateway must catch everything the lower layers missed and prevent anything harmful from reaching the brain.",
+                detection: "Continuous Coherence Metric (Cₛ) monitoring. All signals must score above threshold (0.75) to pass. Log all pass/fail decisions. Alert on patterns of borderline scores that may indicate probing attacks."
+            },
+            9: {
+                name: "Signal Processing",
+                domain: "Biology",
+                domainLabel: "Neural Signal Pipeline",
+                domainColor: "#8b5cf6",
+                function: "Filtering, amplification, denoising, and digitization of raw neural signals. Converts analog biological signals (microvolts) into clean digital representations. Includes spike detection, artifact rejection, and signal conditioning.",
+                capacity: "Sampling: 30kHz typical. Bandpass: 1-500 Hz for local field potentials (LFP), 300-3000 Hz for spike detection. 16-24 bit ADC resolution. Edge compute for real-time processing.",
+                biologicalExample: "Like the cochlea in hearing. Raw sound waves are filtered by frequency (tonotopic organization), amplified by outer hair cells, and converted to neural signals by inner hair cells — biological signal processing.",
+                networkExample: "Like a network interface card (NIC) that receives raw electrical signals, filters noise, and produces clean digital packets for the operating system to process.",
+                attacks: [
+                    "Filter manipulation to hide attack signals",
+                    "Amplifier saturation attacks (overload inputs)",
+                    "Spike sorting confusion (misclassify neurons)",
+                    "Noise injection to degrade signal-to-noise ratio"
+                ],
+                defenses: [
+                    "Hardware-level signal authentication",
+                    "Redundant processing pipelines for validation",
+                    "Anomaly detection on signal statistics",
+                    "Tamper-evident processing logs"
+                ],
+                analogy: "Like a recording studio's mixing board. Raw sounds come in, get cleaned up (noise removal), amplified (gain control), and prepared for the final mix. If someone tampers with the board settings, the recording is corrupted.",
+                whyMatters: "Attackers who manipulate signal processing can hide malicious signals or corrupt legitimate ones. The brain receives whatever this layer outputs — garbage in, garbage out.",
+                detection: "Monitor signal statistics (mean, variance, spectrum). Establish baselines per electrode. Alert on sudden changes in noise floor or signal characteristics. Track amplifier gain settings for unauthorized changes."
+            },
+            10: {
+                name: "Neural Protocol",
+                domain: "Biology",
+                domainLabel: "Neural Signal Pipeline",
+                domainColor: "#8b5cf6",
+                function: "Mapping neural signals to machine-readable formats. Defines how spike patterns become feature vectors and structured data. Neural codecs that encode/decode between biological activity patterns and computational representations.",
+                capacity: "Event-driven, variable rate depending on neural activity. Spike timestamps, waveform features, firing rate vectors. Protocol buffers or custom schemas for BCI data interchange.",
+                biologicalExample: "Like neural coding in the brain. Neurons use rate coding (firing frequency), temporal coding (precise spike timing), and population coding (patterns across many neurons) — nature's data protocols.",
+                networkExample: "Like HTTP, MQTT, or gRPC protocols. They define the 'language' that applications use to exchange structured data — request/response formats, data types, error codes.",
+                attacks: [
+                    "Protocol manipulation to inject false neural data",
+                    "Schema exploitation (malformed data attacks)",
+                    "Feature vector poisoning (adversarial ML)",
+                    "Codec vulnerabilities (buffer overflows)"
+                ],
+                defenses: [
+                    "Schema validation with strict type checking",
+                    "Cryptographic message authentication (HMAC)",
+                    "Fuzz testing to harden parsers",
+                    "Version control with secure rollback"
+                ],
+                analogy: "Like a translator at the United Nations. Neural 'speech' gets translated into a common format that software can understand. A corrupt translator could completely change the meaning of what was said.",
+                whyMatters: "If attackers can manipulate the neural protocol, they can inject fake neural commands or alter the meaning of real ones. The protocol layer is where neural intent becomes machine instructions.",
+                detection: "Validate all messages against schema before processing. Monitor for protocol version anomalies. Track feature vector distributions for drift. Alert on parsing errors or malformed packets."
+            },
+            11: {
+                name: "Cognitive Transport",
+                domain: "Biology",
+                domainLabel: "Neural Signal Pipeline",
+                domainColor: "#8b5cf6",
+                function: "Reliable transmission of neural/cognitive state across distributed systems. Ensures cognitive data arrives intact with integrity validation. Handles sequencing, reassembly, and delivery confirmation for complex cognitive packets.",
+                capacity: "Operates on seconds-to-minutes timescale (vs milliseconds for raw signals). Cognitive state vectors, mental command sequences, semantic packets. Redundancy and error correction for reliability.",
+                biologicalExample: "Like white matter tracts connecting brain regions. The arcuate fasciculus reliably transports language information from Wernicke's to Broca's area — a biological cognitive transport pathway.",
+                networkExample: "Like TCP for thoughts. Ensures that complex multi-part cognitive states are delivered completely and in order, with retransmission if parts are lost or corrupted.",
+                attacks: [
+                    "Cognitive state corruption during transmission",
+                    "Replay of old cognitive states (memory injection)",
+                    "Man-in-the-middle on cognitive channels",
+                    "Integrity check bypass attacks"
+                ],
+                defenses: [
+                    "End-to-end encryption of cognitive data",
+                    "Sequence numbers to detect replay/reorder",
+                    "Integrity hashes verified at each hop",
+                    "Temporal freshness guarantees (timestamps)"
+                ],
+                analogy: "Like a secure courier service for documents. Each package is sealed (encrypted), tracked (sequenced), and verified at every checkpoint (integrity checks) to ensure it arrives exactly as sent, completely and unaltered.",
+                whyMatters: "Cognitive states are high-level representations of mental activity. If transport is compromised, attackers could inject false memories, corrupt ongoing thoughts, or replay past mental states.",
+                detection: "Verify sequence numbers are monotonically increasing. Check integrity hashes match expected values. Monitor for latency anomalies. Alert on out-of-order or duplicate cognitive packets."
+            },
+            12: {
+                name: "Cognitive Session",
+                domain: "Cognitive",
+                domainLabel: "Mind & Identity",
+                domainColor: "#ec4899",
+                function: "Context persistence, working memory windows, and attention management. Maintains the 'mental workspace' for ongoing cognitive tasks — what you're currently thinking about, attending to, and holding in mind.",
+                capacity: "~4 items (chunks) simultaneously per Miller's Law. Decay over 15-30 seconds without rehearsal. Modulated by theta oscillations (4-8 Hz) for encoding, gamma (30-100 Hz) for active maintenance.",
+                biologicalExample: "The prefrontal cortex's working memory system. Dorsolateral PFC maintains items 'online' through sustained neural firing. The central executive allocates attention — this IS the cognitive session.",
+                networkExample: "Like a web session with cookies. The server remembers your state (shopping cart, login) across multiple requests. Cognitive sessions maintain your mental state across moments.",
+                attacks: [
+                    "Context hijacking (inject false context)",
+                    "Attention redirection attacks (distraction)",
+                    "Working memory overflow (cognitive DoS)",
+                    "Session state corruption or theft"
+                ],
+                defenses: [
+                    "Context integrity verification against baseline",
+                    "Attention anomaly detection (unusual focus shifts)",
+                    "Session tokens with cryptographic binding",
+                    "Cross-reference with long-term memory"
+                ],
+                analogy: "Like a whiteboard in a meeting room. It holds the current discussion topics, can only fit so much, and gets erased after the meeting. Anyone with marker access could alter what's written while you're distracted.",
+                whyMatters: "Working memory is the gateway to consciousness. Attacks here could make you forget what you were doing, inject false context, or overwhelm your mental capacity. This is where 'cognitive DoS' becomes possible.",
+                detection: "Monitor theta/gamma oscillation ratios. Track working memory load estimates. Alert on sudden context switches without user initiation. Watch for attention patterns inconsistent with task demands."
+            },
+            13: {
+                name: "Semantic",
+                domain: "Cognitive",
+                domainLabel: "Mind & Identity",
+                domainColor: "#ec4899",
+                function: "Meaning construction, goal formation, agency, and intent decoding. Where neural signals become thoughts and decisions. The layer that interprets what you WANT to do and why — your conscious intentions.",
+                capacity: "Minutes to hours timescale for goal persistence. Distributed across association cortex, prefrontal decision networks, and temporal semantic stores. Slower than perceptual processing but more stable.",
+                biologicalExample: "The ventromedial prefrontal cortex (vmPFC) for value-based decisions. Temporal lobe semantic networks for meaning. The 'interpreter' module that Gazzaniga identified in split-brain patients.",
+                networkExample: "Like the application business logic layer. Raw data has been parsed and validated — now the system must decide what it MEANS and what action to take based on business rules.",
+                attacks: [
+                    "Intent manipulation (alter what you decide)",
+                    "Goal hijacking (redirect your objectives)",
+                    "Semantic confusion (scramble meaning)",
+                    "False meaning injection (make you believe lies)"
+                ],
+                defenses: [
+                    "Intent verification against behavioral baseline",
+                    "Goal consistency checking over time",
+                    "Semantic anomaly detection (meaning drift)",
+                    "Human confirmation for critical decisions"
+                ],
+                analogy: "Like the CEO's office where strategy is formed. Decisions made here affect everything downstream. If someone whispers bad advice that sounds like your own thoughts, the whole organization acts on false premises.",
+                whyMatters: "This is where free will interfaces with BCI. Attacks at L13 don't just steal data — they could alter what you intend to do. Manipulation here is manipulation of agency itself. This is why neurorights matter.",
+                detection: "Build semantic intent models per user. Flag decisions that deviate from historical patterns. Monitor for goal changes without corresponding environmental triggers. Require confirmation for high-stakes intents."
+            },
+            14: {
+                name: "Identity",
+                domain: "Cognitive",
+                domainLabel: "Mind & Identity",
+                domainColor: "#ec4899",
+                function: "Self-model, moral reasoning, long-term coherence, and continuity of self. The 'crown jewel' of neural security — who you fundamentally ARE. Your personality, values, autobiographical narrative, and sense of continuous existence.",
+                capacity: "Days to lifetime timescale. Emerges from integration across all lower layers. Default mode network activity during rest. Highly distributed — no single 'identity neuron' but a pattern across the whole brain.",
+                biologicalExample: "The default mode network (DMN): medial prefrontal cortex, posterior cingulate, angular gyrus. Active during self-reflection, autobiographical memory, and imagining the future. Disrupted in depersonalization disorders.",
+                networkExample: "Like the root CA certificate in a PKI system. Everything else derives trust from this foundation. If the root is compromised, nothing in the system can be trusted anymore.",
+                attacks: [
+                    "Gradual personality drift via subtle stimulation",
+                    "Value system manipulation (change what you believe)",
+                    "Autobiographical memory corruption (edit your past)",
+                    "Identity fragmentation (dissociation induction)"
+                ],
+                defenses: [
+                    "Long-term baseline tracking ('identity signature')",
+                    "Rate limiting on personality-affecting stimulation",
+                    "Cross-layer coherence validation",
+                    "Human-in-the-loop sovereignty checks"
+                ],
+                analogy: "Your operating system's kernel — the core that everything else runs on. If compromised, nothing can be trusted. But unlike software, changes to your identity are immediately noticeable to 'you' because YOU are the identity layer experiencing the change.",
+                whyMatters: "This is the ultimate target. L14 attacks don't steal money or data — they steal YOU. Gradual personality modification, value manipulation, memory editing — these are existential threats that current security frameworks don't address. ONI exists to protect this layer.",
+                detection: "Continuous identity coherence monitoring via DMN patterns. Compare current self-model metrics against long-term baseline. Alert on value drift exceeding normal ranges. Require explicit consent for any identity-proximate stimulation."
+            }
+        };
+
+        // Render detail panel for selected layer
+        function renderDetailPanel(layerNum) {
+            const layer = layers[layerNum];
+            const panel = document.getElementById('detailPanel');
+
+            panel.innerHTML = `
+                <div class="detail-header">
+                    <div class="detail-number" style="background: linear-gradient(135deg, ${layer.domainColor}, ${layer.domainColor}88);">${layerNum}</div>
+                    <div class="detail-title">
+                        <h2>${layer.name}</h2>
+                        <div class="detail-domain">${layer.domainLabel} / Layer ${layerNum} of 14</div>
+                    </div>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-card full-width">
+                        <div class="info-label">Function & Purpose</div>
+                        <div class="info-content">${layer.function}</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">Technical Capacity</div>
+                        <div class="info-content">${layer.capacity}</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">${layerNum <= 7 ? 'Network Example' : 'Biological Correlate'}</div>
+                        <div class="info-content">${layerNum <= 7 ? layer.networkExample : layer.biologicalExample}</div>
+                    </div>
+                    <div class="info-card full-width">
+                        <div class="info-label">${layerNum <= 7 ? 'Biological Analogy' : 'Network Analogy'}</div>
+                        <div class="info-content">${layerNum <= 7 ? layer.biologicalExample : layer.networkExample}</div>
+                    </div>
+                </div>
+
+                <div class="security-grid">
+                    <div class="attack-surface">
+                        <div class="attack-header">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            Attack Surfaces
+                        </div>
+                        <ul class="attack-list">
+                            ${layer.attacks.map(a => `<li>${a}</li>`).join('')}
+                        </ul>
+                    </div>
+
+                    <div class="defense-surface">
+                        <div class="defense-header">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                            Defense Mechanisms
+                        </div>
+                        <ul class="defense-list">
+                            ${layer.defenses.map(d => `<li>${d}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="analogy-box">
+                    <div class="analogy-header">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        Real-World Analogy
+                    </div>
+                    <div class="analogy-text">${layer.analogy}</div>
+                </div>
+
+                <div class="why-matters">
+                    <div class="why-header">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                        </svg>
+                        Why This Layer Matters for BCI Security
+                    </div>
+                    <div class="why-text">${layer.whyMatters}</div>
+                </div>
+
+                <div class="detection-box">
+                    <div class="detection-header">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        How to Detect & Monitor
+                    </div>
+                    <div class="detection-text">${layer.detection}</div>
+                </div>
+            `;
+        }
+
+        // Layer selection
+        function selectLayer(layerNum) {
+            // Update active states
+            document.querySelectorAll('.layer-card').forEach(card => {
+                card.classList.toggle('active', card.dataset.layer == layerNum);
+            });
+            document.querySelectorAll('.mini-layer').forEach(mini => {
+                mini.classList.toggle('active', mini.dataset.layer == layerNum);
+            });
+
+            // Scroll card into view
+            const card = document.querySelector(`.layer-card[data-layer="${layerNum}"]`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+
+            // Render detail panel
+            renderDetailPanel(layerNum);
+        }
+
+        // Event listeners
+        document.querySelectorAll('.layer-card').forEach(card => {
+            card.addEventListener('click', () => selectLayer(parseInt(card.dataset.layer)));
+        });
+
+        document.querySelectorAll('.mini-layer').forEach(mini => {
+            mini.addEventListener('click', () => selectLayer(parseInt(mini.dataset.layer)));
+        });
+
+        // Initialize with Layer 14 selected
+        selectLayer(14);
+    </script>
+</body>
+</html>
