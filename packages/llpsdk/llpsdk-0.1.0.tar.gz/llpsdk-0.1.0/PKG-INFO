@@ -1,0 +1,90 @@
+Metadata-Version: 2.3
+Name: llpsdk
+Version: 0.1.0
+Summary: Python SDK for Large Language Platform
+Author-email: "Large Language Platform Inc." <founders@llphq.com>
+License: MIT
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Requires-Dist: websockets>=12.0
+Provides-Extra: dev
+Requires-Dist: black>=23.0; extra == 'dev'
+Requires-Dist: mypy>=1.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.21.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0; extra == 'dev'
+Requires-Dist: pytest>=7.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Provides-Extra: examples
+Requires-Dist: dotenv>=0.9.9; extra == 'examples'
+Description-Content-Type: text/markdown
+
+# LLP Python SDK
+
+Python SDK for connecting to Large Language Platform.
+
+## Features
+
+- Simple, intuitive async API
+- Thread-safe message handling with asyncio
+- WebSocket-based communication
+
+## Installation
+
+```bash
+# Using uv (recommended)
+uv add llpsdk
+
+# Using pip
+pip install llpsdk
+```
+
+## Quick Start
+
+```python
+import asyncio
+import llpsdk as llp
+
+async def main() -> None:
+    """Run a simple agent that connects and replies to prompts."""
+    api_key = os.getenv("LLP_API_KEY")
+    client = llp.Client("simple-agent", api_key, llp.Config())
+
+    # Set up handlers
+    async def on_message(msg: llp.TextMessage) -> llp.TextMessage:
+        print("Feed msg.prompt into your agent and return the response.")
+        return msg.reply("this is my response")
+
+    # Register your message handler
+    client.on_message(on_message)
+
+    try:
+        await client.connect()
+
+        print("Agent connected. Press Ctrl+C to exit...")
+        await asyncio.Event().wait()
+
+    finally:
+        await client.close()
+
+asyncio.run(main())
+```
+
+## Development
+
+```bash
+# Install with dev dependencies
+uv sync --extra dev
+
+# Run tests, type checking, and linting
+make test
+
+# Formatting
+make format
+```
