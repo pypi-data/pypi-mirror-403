@@ -1,0 +1,287 @@
+# tgzr.hosts.harmony
+Toonboom Harmony integration in tgzr
+
+## Goal
+
+The goal of this package is to ease the development and distribution of ToonBoom Harmony tools (ui and batch).
+
+To do so, we introduce:
+- Executable commands:
+    - `harmony` to launch harmony
+    - `harpy` to launch a python python with `ToonBoom.harmony` package importable
+    - `harcli`, a command line interface to manage all this. Plugins can extend this cli with their own commands.
+    - They fix harmony's wonky python integration:
+        - Bad site initialization, editable install not picked up
+        - Bad system initialization, compiled lib extension not loadable
+    - Unfortunatly there's nothing we can do about harmony's gui requiring old AF python 3.9 even though it totally works with recent pythons in batch. Please poke ToonBoom about it if you have a chance!
+- `Harmony Plugins`:
+    - Packages which can be installed by standard python packaging tools like pip, uv, hatch, etc... and automatically loaded by harmony and harpy at startup.
+    - Since they are standard python packages, plugins can require the installation of other plugins/package so your plugin can collaborate together and rely on shared libraries.
+    - Since they are standard python packages, plugins can be shared to and installed from PyPI, private package indexes, git repositories, or a simple folders on your network.
+- `TGZR Toolbar`, with a button to show plugins' GUI.
+
+To demonstrate plugins usage, `tgzr.hosts.harmony` ships with two plugins:
+- `ThePanel`:
+    - Shows a floating Qt panel.
+    - Allow other plugins to add widgets as tabs in the panel.
+- `XSheet`:
+    - Build a XSheet from the conent of the scene.
+    - Adds a "XSheet" tab in the "ThePanel" window to show the content of a 
+xsheet generated from the scene.
+    - Adds the "xsheet" command group to `harcli`, to demonstrate how a plugin can provide command line tools.
+
+These plugins are automatically installed alongside `tgzr.hosts.harmony`.
+
+## Not Goal
+
+This package does not attempt to ease the creation of the virtualenv needed to 
+use it, nor the installation of plugin in this virtualenv.
+
+If you need a GUI for this, you may want to have a look at the [tgzr platform](https://www.tgzr.org) which provides a user experience *"from scratch to harmony launch"* using (almost) only your mouse ;)
+
+If you want to learn more on how and why you should use python virtual envs, there are plenty of ressources online. W3Schools has a [good introduction](https://www.w3schools.com/python/python_virtualenv.asp) and the [official documentation](https://packaging.python.org/en/latest/guides/section-install/) is quite detailed./
+I would recommand having a look at [uv](https://docs.astral.sh/uv/), a very nicely packaged tool which makes all this lightning fast.
+
+
+# Installation
+
+## 1 - Create a python 3.9 venv
+
+With uv:
+```
+uv venv -p 3.9 my_venv
+```
+
+Without uv, you need to install a python 3.9 and then use it to do:
+```
+python -m venv my_venv
+```
+
+## 2 - activate the venv
+
+Windows:
+```
+my_venv\Scripts\activate
+```
+
+Others:
+```
+source my_venv/bin/activate
+``` 
+
+## 3 - install tgzr.hosts.harmony
+
+With uv:
+```
+uv pip install -U tgzr.hosts.harmony
+```
+
+Without uv:
+```
+pip install -U tgzr.hosts.harmony
+``` 
+
+# Usage
+
+## harmony
+
+With the virtualenv activated, enter:
+```
+harmony
+```
+
+The default path to find harmony is `"C:/Program Files (x86)/Toon Boom Animation/Toon Boom Harmony 25 Premium"` (The folder containing "win64/bin/HarmonyPremium.exe")
+
+If your harmony is not installed in the default path, you can specify a custom one 
+using an environment variable:
+```
+tgzr_hosts_harmony_install_path='c:/my_custom_install_folder_/'
+```
+
+or using a ".env" file:
+```.env
+tgzr_hosts_harmony_install_path='c:/my_custom_install_folder_/'
+```
+
+> Note: 
+>
+> It would be trivial to add a `harcli` command to generate a ".env" file.\
+> Ask for it in tgzr discord or in the github repository if you need it :)
+
+## harpy
+
+With the virtualenv activated, enter:
+```
+harpy
+```
+
+`harpy` is a python console where you can import `ToonBoom.harmony` and do harmony stuff with it.
+
+The idea would be to add commands like `harpy -m module` or `harpy -c <commands>` so that you can batch arbitrary harmony code. If you want this to be implemented, just ask for it in the tgzr discord or the github project!
+
+## harcli
+
+With the virtualenv activated, enter:
+```
+harcli
+```
+
+`harcli` is a command line interface to manage your `tgzr.hosts.harmony` installation.
+
+Enter `harcli -h` for help, or `harcli CMD -h` for help on a specific command.
+
+Available commands are:
+- `harcli info`: Show infos about this installation.
+- plugins: 
+    - `harcli plugins show`: show info about installed plugins
+    - `harcli plugins install name ...`: install more plugins
+    - `harcli plugins uninstall name ...`: uninstall some plugins
+- settings: 
+    - `harcli settings show`: Show info about installed plugins
+
+> Note:
+>
+> Harmony plugins can extend `harcli` with their own commands.\
+> For example, the xsheet plugin adds a "xsheet export" command.
+
+# Install a plugin 
+
+## With standard python tools
+Activate the virtualenv containing `tgzr.hosts.harmony`, and install the plugin there:
+
+With uv:
+```
+uv pip install my-awesome-plugin
+```
+
+Without uv:
+```
+pip install my-awesome-plugin
+```
+
+## With `harcli`
+
+Alternatively, if you dont know how to use `pip` or `uv`, you can use `harcli`.
+
+To install plugin(s) (or any package):
+
+```
+harcli plugins install my-plugin your-plugin some-lib
+```
+
+To uninstall plugin(s) (or any package):
+```
+harcli plugins uninstall my-plugin your-plugin some-lib
+```
+
+Enter `harcli plugins -h` for more options
+
+
+# Create a plugin
+
+## 1 - Create a new package
+
+To create a plugin you need to create a python package.
+An easy way is to use `uv`:
+
+```
+cd my-dev-folder
+uv init -p 3.9 --package my-harmony-plugin
+```
+
+You will then have this structure:
+
+```
+my-harmony-plugin/
+├── .git
+├── .gitignore
+├── pyproject.toml
+├── .python-version
+├── README.md
+└── src
+    └── my_harmony_plugin
+        └── __init__.py
+```
+
+## 2 - Implement the plugin
+
+In `my-harmony-plugin/src/my_harmony_plugin/__init__.py`, you can define your plugin.
+A HarmonyPlugin must inherit the HarmonyPlugin class from `tgzr.hosts.harmony.plugin`:
+
+```
+from tgzr.hosts.harmony.plugin import HarmonyPlugin
+
+class MyHarmonyPlugin(HarmonyPlugin):
+
+    def prepare_env(self, env: dict[str, str]):
+        '''Implement this if your plugin wants to set env vars'''
+
+    def install(self):
+        '''Implement this if your plugin wants to do something at harmony startup.'''
+        print(f"Installing {self.plugin_id()}")
+
+    def install_gui(self):
+        '''Implement this if your plugin wants to do something at harmony GUI startup.'''
+        print(f"Installing GUI {self.plugin_id()}")
+```
+
+You can add more python files there and import them in __init__.py if needed.
+You can even import other packages / other plugins if you declare them as project dependencies in `pyproject.toml`.
+
+## 3 - Declare the plugin
+
+For you plugin to be discoverable when installed, you need to declare it as an "entry point" in your `pyproject.toml`.
+The entry point group name must be "tgzr.hosts.harmony.plugin", and the entry point must lead to a subclass of HarmonyPlugin.
+
+In our example, these would be the lines to add to `pyproject.toml`:
+
+```pyproject.toml
+
+[project.entry-points."tgzr.hosts.harmony.plugin"]
+my_plugin = "my_harmony_plugin:MyHarmonyPlugin"
+
+``` 
+
+## 4 - Test your plugin
+
+While developing, you will want to be able to see your changes in the code without building and installing the package every time.
+
+To achieve that, you need to install your package in "editable" mode.\
+From the root of your project, enter:
+```
+pip install -e .
+```
+
+You can now run `harmony` or `uv run harmony` and your plugin will be loaded \o/
+
+## 4 - build the plugin package
+
+With uv:
+```
+uv build
+```
+
+This will create a `dist` folder in your project and add a .tar.gz + a .whl file in it.
+
+If you want to give your plugin to a friend, give them the .whl file and tell them
+to run `pip install my_harmony_plugin-xxxx.whl` in their harmony virtualenv.
+
+## 4 - publish the plugin package
+
+If you want the whole world to be able to use your plugin, you can publish it to PyPI.
+
+(you will need to create an account and an access token)
+
+With `uv`
+```
+uv publish -t <your-token> dist/* 
+```
+
+> Note:
+>
+> You dont need to publish to PyPI to share your plugin. You can also
+> host the file in a gitlab/github/... project and install it from there.
+> (search "pip install package from github" for details)
+>
+
+Have fun!
