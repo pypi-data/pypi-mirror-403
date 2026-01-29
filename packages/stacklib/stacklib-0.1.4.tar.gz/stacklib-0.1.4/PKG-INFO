@@ -1,0 +1,436 @@
+Metadata-Version: 2.4
+Name: stacklib
+Version: 0.1.4
+Summary: A chainable stack-based utility library
+Author: NovaStar
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
+
+# StackLib
+
+A **chainable, stack-based utility library for Python**, inspired by stack-based languages like **Forth** and **PostScript**.
+
+StackLib focuses on:
+
+* method chaining
+* expressive stack manipulation
+* functional-style helpers
+* simplicity over strict error handling
+
+## Installation
+
+```bash
+pip install stacklib
+```
+
+## Basic Usage
+
+```python
+from stacklib.Stack import stack
+
+stack = stack()
+stack.push(10).push(5).add()
+
+print(f'Stack: {stack}')
+```
+
+## Stack Model
+
+* The **top of the stack is index `0`**
+* Most operations **modify the stack in-place**
+* Most stack operations are **chainable**
+* Some operations (comparisons / logic) **return values instead of the stack**
+
+## Features
+
+* Chainable stack operations
+* Arithmetic operations
+* Stack manipulation helpers (`dup`, `swap`, `rot`, `over`)
+* Functional helpers (`map`, `filter`, `map_if`, `apply_at`)
+* Logical and comparison operators
+* Snapshot / restore system
+
+## Creating a Stack
+
+```python
+from stacklib.Stack import stack
+
+stack = stack()
+```
+
+This creates a new, empty stack instance.
+
+## Core Stack Operations
+
+### `push(item)`
+
+Adds an item to the top of the stack.
+
+```python
+print(f'Stack before: {stack}')
+stack.push(5)
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: []
+Stack after: [5]
+```
+
+### `drop(num=1)`
+
+Removes items from the top of the stack.
+
+```python
+stack.push(5).push(10)
+print(f'Stack before: {stack}')
+
+stack.drop()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [10, 5]
+Stack after: [5]
+```
+
+### `dup()`
+
+Duplicates the top item.
+
+```python
+stack.push(1)
+print(f'Stack before: {stack}')
+stack.dup()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [1]
+Stack after: [1, 1]
+```
+
+### `swap()`
+
+Swaps the top two items.
+
+```python
+stack.push(1).push(2)
+print(f'Stack before: {stack}')
+stack.swap()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [2, 1]
+Stack after: [1, 2]
+```
+
+### `rot()`
+
+Rotates the top three items.
+
+```python
+stack.push("Im still").push(1).push(2).push(3)
+print(f'Stack before: {stack}')
+stack.rot()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [3, 2, 1, "Im still"]
+Stack after: [2, 1, 3, "Im still"]
+```
+
+### `over()`
+
+Copies the second item to the top.
+
+```python
+stack.push(1).push(2)
+print(f'Stack before: {stack}')
+stack.over()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [2, 1]
+Stack after: [1, 2, 1]
+```
+
+## Stack Cycling
+
+### `cycle()`
+
+Moves the last item to the top.
+
+```python
+stack.push(1).push(2).push(3)
+print(f'Stack before: {stack}')
+stack.cycle()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [3, 2, 1]
+Stack after: [1, 3, 2]
+```
+
+### `rcycle()`
+
+Moves the top item to the bottom.
+
+```python
+stack.push(1).push(2).push(3)
+print(f'Stack before: {stack}')
+stack.rcycle()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [3, 2, 1]
+Stack after: [2, 1, 3]
+```
+
+## Arithmetic Operations
+
+These operate on:
+
+* the top two stack items
+  **or**
+* the top item and a provided argument
+
+All are chainable
+
+### `add(num=None)`
+
+### `sub(num=None)`
+
+### `mul(num=None)`
+
+### `div(num=None)`
+
+### `res(num=None)`
+
+### `mod(num=None)`
+
+### `pow(exponent=None)`
+
+### `neg()`
+
+### `abs()`
+
+Example:
+
+```python
+stack.push(10).push(5).add()
+print(f'Stack: {stack}')
+```
+
+Output:
+
+```
+Stack: [15]
+```
+
+## Packing & Unpacking
+
+### `pack(num)`
+
+Groups items into a list
+
+if given an argument (num) it will group that ammount of items starting from the top of the stack
+
+num defaults to 2
+
+```python
+stack.push(1).push(2).push(3).push(4)
+print(f'Stack before: {stack}')
+stack.pack(3)
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before:  [4, 3, 2, 1]
+Stack after: [[4, 3, 2], 1]
+```
+
+### `unpack()`
+
+Unpacks a list back into stack items
+
+```python
+stack.unpack()
+print(f'Stack after: {stack}')
+```
+
+Output: [3, 2, 1]
+
+```
+Stack after: [3, 2, 1, 3, 2, 1]
+```
+
+## Queries
+
+### `is_empty()`
+
+Returns `True` if the stack is empty
+
+### `depth()`
+
+Returns the number of items
+
+### `peek(index)`
+
+Returns the value at a specific index
+
+index defaults to 0
+
+### `last()`
+
+Returns the last item in the stack
+
+## Comparison & Logic
+
+These **return boolean values** (not the stack)
+
+### `greater(num)`
+
+### `less(num)`
+
+### `equal(item)`
+
+```python
+stack.push(10).push(5)
+stack.push(10).push(5)
+print(f'Stack before: {stack}')
+print(stack.greater())
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [5, 10, 5, 10]
+False
+Stack after: [5, 10, 5, 10]
+```
+
+## Logical Operations
+
+### `sand(item)` → logical AND 
+
+### `sor(item)` → logical OR
+
+(if no argument is given on `sand` / `sor`, they uses both top items on the stack)
+
+### `snot()` → logical NOT
+
+
+```python
+stack.push(True)
+stack.push(True)
+print(f'Stack before: {stack}')
+stack.snot()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [True, True]
+False
+Stack after: [False, True]
+```
+
+## Functional Helpers
+
+### `map(func)`
+
+Applies a function to all items.
+
+```python
+stack.push(1).push(2).push(3)
+print(f'Stack before: {stack}')
+stack.map(lambda x: x * 2)
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Stack before: [3, 2, 1]
+Stack after: [6, 4, 2]
+```
+
+### `filter(func)`
+
+Keeps only items where `func(item)` is `True`
+
+### `apply_at(func, index)`
+
+Applies a function to a specific index
+
+index defaults to 0
+
+### `map_if(func, filter_func)`
+
+Applies `func` only to items that match `filter_func`
+
+## Snapshots
+
+### `snapshot()`
+
+Saves the current stack state.
+
+### `restore()`
+
+Restores the most recent snapshot.
+
+```python
+stack.push(1).snapshot()
+stack.push(99)
+print(f'Stack before: {stack}')
+stack.restore()
+print(f'Stack after: {stack}')
+```
+
+Output:
+
+```
+Before: [99, 1]
+After: [1]
+```
+
+## Why This Exists
+
+This library exists because:
+
+* stack-based programming is fun
+* it’s a good mental model for certain problems
+* and it was a fun idea for a project
+
+## License
+
+MIT License
