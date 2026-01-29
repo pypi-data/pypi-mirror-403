@@ -1,0 +1,251 @@
+import json
+import requests
+import secrets
+from pathlib import Path
+
+from rich.text import Text
+from rich.table import Table
+from rich.console import Group
+
+from devopsmind.cli.cli import frame
+from devopsmind.constants import DATA_DIR, RELAY_URL
+from devopsmind.progress import load_state, save_state
+from .snapshot import build_snapshot, derive_rank_from_xp
+from .signer import sign_snapshot
+
+SNAPSHOT_PATH = DATA_DIR / "snapshot.json"
+SNAPSHOT_RELAY_URL = f"{RELAY_URL}/snapshot"
+SNAPSHOT_GET_URL = f"{RELAY_URL}/snapshot/get"
+SNAPSHOT_EXISTS_URL = f"{RELAY_URL}/snapshot/exists"
+
+
+# -------------------------------------------------
+# Helpers
+# -------------------------------------------------
+def _save_json(path: Path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2))
+
+
+def _snapshot_changed(new_snapshot: dict) -> bool:
+    if not SNAPSHOT_PATH.exists():
+        return True
+
+    try:
+        old = json.loads(SNAPSHOT_PATH.read_text())
+    except Exception:
+        return True
+
+    for k in ("updated_at", "signature", "nonce"):
+        old.pop(k, None)
+        new_snapshot.pop(k, None)
+
+    return old != new_snapshot
+
+
+# -------------------------------------------------
+# 🔍 CLOUD EXISTENCE CHECK (READ-ONLY)
+# -------------------------------------------------
+def cloud_snapshot_exists(email_hash: str) -> bool:
+    try:
+        r = requests.post(
+            SNAPSHOT_EXISTS_URL,
+            json={"email_hash": email_hash},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            return bool(r.json().get("exists"))
+    except Exception:
+        pass
+    return False
+
+
+# -------------------------------------------------
+# 📥 FETCH SNAPSHOT (READ-ONLY)
+# -------------------------------------------------
+def fetch_snapshot(email_hash: str):
+    try:
+        r = requests.post(
+            SNAPSHOT_GET_URL,
+            json={"email_hash": email_hash},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
+
+# -------------------------------------------------
+# Restore from REMOTE snapshot (STRUCTURED XP)
+# -------------------------------------------------
+def restore_from_remote(state: dict) -> dict:
+    profile = state.get("profile") or {}
+    email_hash = profile.get("email_hash")
+
+    if not email_hash:
+        return state
+
+    decisions = state.get("restore_decision", {})
+    decision = decisions.get(email_hash)
+
+    if decision is None and cloud_snapshot_exists(email_hash):
+        choice = input(
+            "⚠️ Existing progress found for this account.\n"
+            "Restore cloud progress now? [Y/n]: "
+        ).strip().lower()
+
+        decision = choice in ("", "y", "yes")
+        decisions[email_hash] = decision
+        state["restore_decision"] = decisions
+        save_state(state)
+
+    if decision is not True:
+        return state
+
+    snapshot = fetch_snapshot(email_hash)
+    if not isinstance(snapshot, dict) or "schema" not in snapshot:
+        state["restore_error"] = "Snapshot fetch failed"
+        save_state(state)
+        return state
+
+    state["profile"] = {
+        "username": snapshot.get("username"),
+        "gamer": snapshot.get("handle"),
+        "user_id": snapshot.get("user_id"),
+        "email_hash": snapshot.get("email_hash"),
+    }
+
+    state["progress"] = {
+        "completed": snapshot.get("completed_labs", []),
+        "by_stack": snapshot.get("by_stack", {}),
+        "by_difficulty": snapshot.get("by_difficulty", {}),
+        "by_stack_difficulty": snapshot.get("by_stack_difficulty", {}),
+    }
+
+    state["badges"] = snapshot.get("badges", [])
+    state["achievements_unlocked"] = snapshot.get("badges", [])
+
+    # ✅ STRUCTURED XP RESTORE (supports legacy + new)
+    snap_xp = snapshot.get("xp", {})
+
+    if isinstance(snap_xp, dict):
+        state["xp"] = {
+            "labs": int(snap_xp.get("labs", 0)),
+            "projects": int(snap_xp.get("projects", 0)),
+            "total": int(snap_xp.get("total", 0)),
+        }
+    else:
+        state["xp"] = {
+            "labs": int(snap_xp),
+            "projects": 0,
+            "total": int(snap_xp),
+        }
+
+    state["last_synced"] = snapshot.get("updated_at")
+
+    save_state(state)
+    return state
+
+
+# -------------------------------------------------
+# Sync snapshot to relay (WRITE PATH)
+# -------------------------------------------------
+def attempt_sync():
+    state = load_state()
+    profile = state.get("profile") or {}
+    email_hash = profile.get("email_hash")
+
+    if not email_hash:
+        return {"error": "email hash missing"}
+
+    snapshot = build_snapshot(state)
+
+    if not _snapshot_changed(snapshot):
+        return {"already": True}
+
+    snapshot["nonce"] = secrets.token_hex(16)
+    signature = sign_snapshot(snapshot, email_hash)
+    snapshot["signature"] = signature
+
+    _save_json(SNAPSHOT_PATH, snapshot)
+
+    # ✅ STRUCTURED XP SYNC
+    xp = state.get("xp", {})
+
+    snap_xp = snapshot.get("xp", {})
+    if isinstance(snap_xp, dict):
+        xp["labs"] = int(snap_xp.get("labs", 0))
+        xp["projects"] = int(snap_xp.get("projects", 0))
+        xp["total"] = int(snap_xp.get("total", xp["labs"] + xp["projects"]))
+    else:
+        xp["labs"] = int(snap_xp)
+        xp["projects"] = 0
+        xp["total"] = int(snap_xp)
+
+    state["xp"] = xp
+    save_state(state)
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-DevOpsMind-Signature": signature,
+    }
+
+    try:
+        r = requests.post(
+            SNAPSHOT_RELAY_URL,
+            json=snapshot,
+            headers=headers,
+            timeout=10,
+        )
+        return r.json()
+    except Exception:
+        return {"pending": True}
+
+
+# -------------------------------------------------
+# Default sync command
+# -------------------------------------------------
+def sync_default(local: bool = False):
+    state = load_state()
+    state = restore_from_remote(state)
+
+    xp_block = state.get("xp", {})
+    labs_xp = int(xp_block.get("labs", 0))
+    rank = derive_rank_from_xp(labs_xp)
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Source")
+    table.add_column("XP", justify="right")
+    table.add_column("Rank")
+    table.add_row("Snapshot", str(labs_xp), rank)
+
+    notes = []
+    decisions = state.get("restore_decision", {})
+    email_hash = state.get("profile", {}).get("email_hash")
+
+    if decisions.get(email_hash) is True:
+        if "restore_error" in state:
+            notes.append(
+                Text(
+                    "⚠ Cloud restore failed. You can retry later using `devopsmind sync`.",
+                    style="yellow",
+                )
+            )
+        else:
+            notes.append(
+                Text(
+                    "✔ Snapshot restored using email identity.",
+                    style="green",
+                )
+            )
+    elif decisions.get(email_hash) is False:
+        notes.append(
+            Text(
+                "ℹ Snapshot restore skipped by user choice.",
+                style="dim",
+            )
+        )
+
+    return frame("🔄 Sync", Group(table, *notes))
