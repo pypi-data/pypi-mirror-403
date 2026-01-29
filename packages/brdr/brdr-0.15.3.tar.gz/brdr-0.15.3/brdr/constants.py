@@ -1,0 +1,53 @@
+# Download-settings: when extracting features by URL
+# Limit used when extracting features by URL, using the feature API (f.e. from GRB)
+
+DOWNLOAD_LIMIT: int = 10000
+
+# default CRS:
+DEFAULT_CRS = "EPSG:31370"  # BelgianLambert72
+
+RELEVANT_DISTANCE_DECIMALS = 2
+
+PREFIX_FIELDNAME = "brdr_"
+BASE_OBSERVATION_FIELD_NAME = (
+    PREFIX_FIELDNAME + "base_observation"
+)  # for use in grb_actualisation
+ID_THEME_FIELD_NAME = PREFIX_FIELDNAME + "id"
+ID_REFERENCE_FIELD_NAME = PREFIX_FIELDNAME + "ref_id"
+OBSERVATION_FIELD_NAME = PREFIX_FIELDNAME + "observation"
+BASE_METADATA_FIELD_NAME = (
+    PREFIX_FIELDNAME + "metadata_base"
+)  # fieldname to write the base metadata of the input geometrie
+METADATA_FIELD_NAME = PREFIX_FIELDNAME + "metadata"
+EVALUATION_FIELD_NAME = PREFIX_FIELDNAME + "evaluation"
+STABILITY = PREFIX_FIELDNAME + "stability"
+ZERO_STREAK = PREFIX_FIELDNAME + "zero_streak"
+PREDICTION_SCORE = PREFIX_FIELDNAME + "prediction_score"
+PREDICTION_COUNT = PREFIX_FIELDNAME + "prediction_count"
+DIFF_PERCENTAGE_FIELD_NAME = PREFIX_FIELDNAME + "diff_percentage"
+DIFF_AREA_FIELD_NAME = PREFIX_FIELDNAME + "diff_area"
+FULL_BASE_FIELD_NAME = PREFIX_FIELDNAME + "full_base"
+FULL_ACTUAL_FIELD_NAME = PREFIX_FIELDNAME + "full_actual"
+EQUAL_REFERENCE_FEATURES_FIELD_NAME = PREFIX_FIELDNAME + "equal_reference_features"
+OD_ALIKE_FIELD_NAME = PREFIX_FIELDNAME + "od_alike"
+
+AREA_ATTRIBUTE = PREFIX_FIELDNAME + "area"
+PERIMETER_ATTRIBUTE = PREFIX_FIELDNAME + "perimeter"
+SHAPE_INDEX_ATTRIBUTE = PREFIX_FIELDNAME + "shape_index"
+
+NR_CALCULATION_FIELD_NAME = PREFIX_FIELDNAME + "nr_calculations"
+RELEVANT_DISTANCE_FIELD_NAME = PREFIX_FIELDNAME + "relevant_distance"
+REMARK_FIELD_NAME = PREFIX_FIELDNAME + "remark"
+SYMMETRICAL_AREA_CHANGE = PREFIX_FIELDNAME + "sym_diff_area_index"
+SYMMETRICAL_AREA_PERCENTAGE_CHANGE = PREFIX_FIELDNAME + "sym_diff_area_index_perc"
+AREA_CHANGE = PREFIX_FIELDNAME + "diff_area_index"
+AREA_PERCENTAGE_CHANGE = PREFIX_FIELDNAME + "diff_area_index_perc"
+LENGTH_CHANGE = PREFIX_FIELDNAME + "diff_length_index"
+LENGTH_PERCENTAGE_CHANGE = PREFIX_FIELDNAME + "diff_length_index_perc"
+LAST_VERSION_DATE = "last_version_date"
+VERSION_DATE = "version_date"
+DATE_FORMAT = "%Y-%m-%d"
+
+MAX_REFERENCE_BUFFER = 10
+
+BUFFER_MULTIPLICATION_FACTOR = 1.01

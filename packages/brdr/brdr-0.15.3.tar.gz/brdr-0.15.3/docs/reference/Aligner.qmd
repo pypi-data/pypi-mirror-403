@@ -1,0 +1,454 @@
+# Aligner { #brdr.aligner.Aligner }
+
+```python
+aligner.Aligner(processor=None, crs=DEFAULT_CRS, config=None, feedback=None)
+```
+
+Compares and aligns thematic geospatial data against a set of reference data.
+
+The Aligner manages the loading of both thematic and reference data, configures
+the geometric processing rules, and executes the alignment, prediction, and
+evaluation logic across a series of relevant distances.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name                | Type                                                                                                                     | Description                                                                       |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| logger              | [Logger](`brdr.logger.Logger`)                                                                                           | Instance for logging feedback and information.                                    |
+| log_metadata        | [bool](`bool`)                                                                                                           | If True, metadata about the actuation is logged in the results.                   |
+| add_observations    | [bool](`bool`)                                                                                                           | If True, process result observations will be computed by default.                 |
+| processor           | [BaseProcessor](`brdr.processor.BaseProcessor`) or [AlignerGeometryProcessor](`brdr.processor.AlignerGeometryProcessor`) | The geometric processor used for alignment calculations.                          |
+| correction_distance | [float](`float`)                                                                                                         | Distance used in buffer operations to remove slivers (technical correction).      |
+| mitre_limit         | [int](`int`)                                                                                                             | Parameter for the buffer operation to control the maximum length of join corners. |
+| max_workers         | ([int](`int`), [optional](`optional`))                                                                                   | The maximum number of workers for parallel execution (ThreadPoolExecutor).        |
+| crs                 | [str](`str`)                                                                                                             | The Coordinate Reference System (CRS) being used (bv. 'EPSG:31370').              |
+| name_thematic_id    | [str](`str`)                                                                                                             | Name of the identifier field for thematic data.                                   |
+| diff_metric         | [DiffMetric](`brdr.enums.DiffMetric`)                                                                                    | The metric used to measure differences between geometries (bv. area change).      |
+| reference_data      | ([AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`), [optional](`optional`))                       | Loaded collection of reference features.                                          |
+| thematic_data       | ([AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`), [optional](`optional`))                       | Loaded collection of thematic features.                                           |
+
+## Notes {.doc-section .doc-section-notes}
+
+The Aligner acts as the central orchestrator of the `brdr` package. It connects
+data loaders with geometric processors.
+
+```{mermaid}
+graph LR
+    T[Thematic Data] --> Aligner
+    R[Reference Data] --> Aligner
+    Aligner --> P{Processor}
+    P --> Res[AlignerResult]
+```
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from brdr.aligner import Aligner
+>>> aligner = Aligner(crs="EPSG:31370")
+>>> aligner.load_thematic_data(my_features)
+>>> results = aligner.align(relevant_distances=[0.5, 1.0])
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [compare_to_reference](#brdr.aligner.Aligner.compare_to_reference) | Calculates observation-related information based on the input geometry. |
+| [evaluate](#brdr.aligner.Aligner.evaluate) | Evaluates input geometries against predictions using observation matching |
+| [get_difference_metrics_for_thematic_data](#brdr.aligner.Aligner.get_difference_metrics_for_thematic_data) | Calculates difference metrics for thematic elements across a series of distances. |
+| [load_reference_data](#brdr.aligner.Aligner.load_reference_data) | Loads the reference features into the aligner and prepares them for processing. |
+| [load_thematic_data](#brdr.aligner.Aligner.load_thematic_data) | Loads the thematic features into the aligner using a specific loader. |
+| [predict](#brdr.aligner.Aligner.predict) | Predicts the 'most interesting' relevant distances for changes in thematic |
+| [process](#brdr.aligner.Aligner.process) | Executes the alignment process across multiple relevant distances. |
+
+### compare_to_reference { #brdr.aligner.Aligner.compare_to_reference }
+
+```python
+aligner.Aligner.compare_to_reference(geometry, with_geom=False)
+```
+
+Calculates observation-related information based on the input geometry.
+
+This method performs a spatial analysis to determine how much of the input
+geometry is covered by reference features and identifies which specific
+reference elements are involved. It also detects "OD" (Onbekend Terrein/Open
+Space) areas that are not covered by any reference data.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                 | Description                                                                                                         | Default    |
+|-----------|------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|------------|
+| geometry  | [BaseGeometry](`shapely.geometry.base.BaseGeometry`) | The input geometry to be analyzed against the reference dataset.                                                    | _required_ |
+| with_geom | [bool](`bool`)                                       | If True, includes the GeoJSON representation of each intersection and the OD-area in the output. Defaults to False. | `False`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|--------|------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [Dict](`typing.Dict`)\[[str](`str`), [Any](`typing.Any`)\] | A dictionary containing the alignment analysis:  - **alignment_date** (str): Timestamp of the calculation. - **brdr_version** (str): Version of the package used. - **full** (bool): True if the geometry is entirely composed of   complete reference features. - **area** (float): Total area of the input geometry. - **last_version_date** (str, optional): The most recent version date   found among the intersected reference features. - **reference_features** (dict): A mapping of reference IDs to:     - *full* (bool): True if the reference feature is fully contained.     - *area* (float): Area of the intersection.     - *percentage* (float): Coverage percentage relative to the reference.     - *geometry* (str, optional): GeoJSON string (if with_geom is True). - **reference_od** (dict, optional): Description of areas not covered   by reference features, containing 'area' and optionally 'geometry'. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The method uses a spatial index (R-tree) to efficiently find intersecting
+reference features. A correction distance is applied to the "OD" calculation
+to filter out insignificant slivers.
+
+
+
+```{mermaid}
+graph TD
+    In[Input Geometry] --> Query[Spatial Index Query]
+    Query --> Intersect[Calculate Intersections]
+    Intersect --> Stats[Compute Area & %]
+    In --> Diff[Difference with Union of Refs]
+    Diff --> OD[Identify Unknown Area / OD]
+    Stats --> Dict[Final observation Dictionary]
+    OD --> Dict
+```
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> info = aligner.compare_to_reference(my_geom, with_geom=True)
+>>> print(info["full"])
+>>> print(info["reference_features"].keys())  # IDs of intersected refs
+```
+
+### evaluate { #brdr.aligner.Aligner.evaluate }
+
+```python
+aligner.Aligner.evaluate(
+    relevant_distances=None,
+    *,
+    thematic_ids=None,
+    metadata_field=METADATA_FIELD_NAME,
+    full_reference_strategy=FullReferenceStrategy.NO_FULL_REFERENCE,
+    max_predictions=-1,
+    multi_to_best_prediction=True,
+)
+```
+
+Evaluates input geometries against predictions using observation matching
+and selection strategies.
+
+This method identifies the best candidate geometries for alignment by
+comparing predicted geometries against the original attributes and
+reference data. It tags results with evaluation labels (e.g.,
+PREDICTION_UNIQUE) to facilitate decision-making.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                     | Type                                                        | Description                                                                                                                                                              | Default                                   |
+|--------------------------|-------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------|
+| relevant_distances       | [Iterable](`typing.Iterable`)\[[float](`float`)\]           | Distances to evaluate. Defaults to 0.0m to 3.0m (step 0.1m).                                                                                                             | `None`                                    |
+| thematic_ids             | [List](`typing.List`)\[[ThematicId](`ThematicId`)\]         | List of IDs to evaluate. If None, all loaded thematic features are processed. Features not in this list are marked as NOT_EVALUATED.                                     | `None`                                    |
+| metadata_field           | [str](`str`)                                                | The field name containing the metadata of the input geometry. Defaults to METADATA_FIELD_NAME.                                                                           | `METADATA_FIELD_NAME`                     |
+| full_reference_strategy  | [FullReferenceStrategy](`brdr.enums.FullReferenceStrategy`) | Strategy to prioritize predictions based on their 'fullness' relative to reference data. Defaults to NO_FULL_REFERENCE.                                                  | `FullReferenceStrategy.NO_FULL_REFERENCE` |
+| max_predictions          | [int](`int`)                                                | Maximum number of predictions to return per feature. -1 returns all candidates. Defaults to -1.                                                                          | `-1`                                      |
+| multi_to_best_prediction | [bool](`bool`)                                              | If True and `max_predictions=1`, returns the candidate with the highest score. If False, returns the original geometry when multiple candidates exist. Defaults to True. | `True`                                    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                          | Description                                                                               |
+|--------|-----------------------------------------------|-------------------------------------------------------------------------------------------|
+|        | [AlignerResult](`brdr.aligner.AlignerResult`) | An object containing evaluated results with detailed metadata and evaluation status tags. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                      |
+|--------|----------------------------|------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If provided `thematic_ids` are not present in the thematic data. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The evaluation logic follows a specific priority tree:
+1. **observation Match**: If a prediction matches the base observation exactly,
+   it is prioritized (score 100).
+2. **Fullness**: If a strategy is set, 'full' predictions get a score boost.
+3. **Scoring**: Candidates are ranked by their prediction score.
+4. **Selection**: Based on `max_predictions`, the best candidates are selected.
+
+
+
+```{mermaid}
+graph TD
+    Start[Start Evaluation] --> Pred[Generate Predictions]
+    Pred --> Match{observation Match?}
+    Match -- Yes --> HighScore[Prioritize & Score 100]
+    Match -- No --> Full{Full Reference?}
+    Full -- Yes --> Strategy[Apply Fullness Strategy]
+    Full -- No --> Rank[Rank by Prediction Score]
+    Strategy --> Rank
+    HighScore --> Rank
+    Rank --> Select{Max Predictions?}
+    Select --> Final[Return AlignerResult]
+```
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> aligner = Aligner()
+>>> # Evaluate with a limit of 1 best prediction per feature
+>>> results = aligner.evaluate(thematic_ids=["id_01"],full_reference_strategy=FullReferenceStrategy.ONLY_FULL_REFERENCE,max_predictions=1)
+```
+
+### get_difference_metrics_for_thematic_data { #brdr.aligner.Aligner.get_difference_metrics_for_thematic_data }
+
+```python
+aligner.Aligner.get_difference_metrics_for_thematic_data(
+    dict_processresults=None,
+    thematic_data=None,
+    diff_metric=DiffMetric.SYMMETRICAL_AREA_CHANGE,
+)
+```
+
+Calculates difference metrics for thematic elements across a series of distances.
+
+This method iterates through the processed results and compares the resulting
+geometries against their original thematic counterparts. It uses the
+spatial context of the reference data to calculate metrics like area
+change or symmetrical difference.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type                                                                                                                                                                           | Description                                                                                                                                                                       | Default                              |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------|
+| dict_processresults | [Dict](`typing.Dict`)\[[ThematicId](`ThematicId`), [Dict](`typing.Dict`)\[[float](`float`), [Optional](`typing.Optional`)\[[ProcessResult](`brdr.typings.ProcessResult`)\]\]\] | A nested dictionary where keys are thematic IDs and values are dictionaries mapping relevant distances to `ProcessResult`[] objects. Required if not provided via internal state. | `None`                               |
+| thematic_data       | [AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`)                                                                                                       | The collection containing the original thematic geometries. Defaults to `self.thematic_data`.                                                                                     | `None`                               |
+| diff_metric         | [DiffMetric](`brdr.enums.DiffMetric`)                                                                                                                                          | The metric used to quantify the geometric change. Defaults to `DiffMetric.SYMMETRICAL_AREA_CHANGE`.                                                                               | `DiffMetric.SYMMETRICAL_AREA_CHANGE` |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                                             | Description                                                                                                                    |
+|--------|------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+|        | [Dict](`typing.Dict`)\[[ThematicId](`ThematicId`), [Dict](`typing.Dict`)\[[float](`float`), [float](`float`)\]\] | A nested dictionary where each thematic ID maps to a dictionary of distances and their corresponding calculated metric values. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                      |
+|--------|----------------------------|------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If `dict_processresults` is not provided and cannot be resolved. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The calculation involves three primary geometric components:
+1. **Original Geometry**: The thematic feature before alignment.
+2. **Result Geometry**: The feature after alignment at a specific distance.
+3. **Reference Union**: The combined geometry of all reference data, used
+   to contextualize the change.
+
+
+
+```{mermaid}
+graph LR
+    PR[Process Results] --> Calc[Metric Calculator]
+    Orig[Original Geometries] --> Calc
+    Ref[Reference Union] --> Calc
+    Calc --> Output[Distance-Metric Map]
+```
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> metrics = aligner.get_difference_metrics_for_thematic_data(
+...     dict_processresults=my_results,
+...     diff_metric=DiffMetric.AREA_CHANGE
+... )
+>>> # Get area change for feature 'A' at distance 0.5
+>>> print(metrics['A'][0.5])
+```
+```
+
+### load_reference_data { #brdr.aligner.Aligner.load_reference_data }
+
+```python
+aligner.Aligner.load_reference_data(loader)
+```
+
+Loads the reference features into the aligner and prepares them for processing.
+
+This method retrieves data via the provided loader, synchronizes the CRS,
+and marks the feature collection as a reference dataset to enable
+spatial indexing and comparison logic.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                           | Description                                                                                         | Default    |
+|--------|--------------------------------|-----------------------------------------------------------------------------------------------------|------------|
+| loader | [Loader](`brdr.loader.Loader`) | An instance of a Loader class (e.g., WFSReferenceLoader) that implements the `load_data` interface. | _required_ |
+
+#### Notes {.doc-section .doc-section-notes}
+
+Setting `is_reference = True` on the resulting dataset is essential for
+the internal alignment logic, as it distinguishes the 'anchor' geometries
+from the thematic geometries that need to be shifted.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from brdr.loader import WFSReferenceLoader
+>>> ref_loader = WFSReferenceLoader(url="https://geoserver.com/wfs")
+>>> aligner.load_reference_data(ref_loader)
+>>> print(aligner.reference_data.is_reference)
+True
+```
+
+### load_thematic_data { #brdr.aligner.Aligner.load_thematic_data }
+
+```python
+aligner.Aligner.load_thematic_data(loader)
+```
+
+Loads the thematic features into the aligner using a specific loader.
+
+This method executes the loader's data retrieval logic and ensures that
+the resulting feature collection is tagged with the Aligner's CRS.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                           | Description                                                                                                          | Default    |
+|--------|--------------------------------|----------------------------------------------------------------------------------------------------------------------|------------|
+| loader | [Loader](`brdr.loader.Loader`) | An instance of a Loader class (e.g., GeoJsonLoader or WFSReferenceLoader) that implements the `load_data` interface. | _required_ |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The method automatically synchronizes the CRS of the loaded data with
+the `self.crs` attribute of the Aligner instance.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from brdr.loader import GeoJsonLoader
+>>> loader = GeoJsonLoader(path="data/themes.json")
+>>> aligner.load_thematic_data(loader)
+```
+
+### predict { #brdr.aligner.Aligner.predict }
+
+```python
+aligner.Aligner.predict(
+    relevant_distances=None,
+    *,
+    thematic_ids=None,
+    diff_metric=None,
+)
+```
+
+Predicts the 'most interesting' relevant distances for changes in thematic
+elements.
+
+This method analyzes the stability of geometric differences across a range
+of distances. It identifies "breakpoints" where changes occur and
+"zero-streaks" where the geometry remains stable. Based on this, a
+prediction score is assigned to specific results.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name               | Type                                                                                  | Description                                                                                                         | Default   |
+|--------------------|---------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|-----------|
+| relevant_distances | [List](`typing.List`)\[[float](`float`)\] or [np](`numpy`).[ndarray](`numpy.ndarray`) | A series of distances (in meters) to be analyzed. Defaults to a range from 0.0 to 3.0 meters with steps of 0.1m.    | `None`    |
+| thematic_ids       | [List](`typing.List`)\[[ThematicId](`ThematicId`)\]                                   | Specific thematic IDs to process. If None, all loaded thematic geometries are used.                                 | `None`    |
+| diff_metric        | [DiffMetric](`brdr.enums.DiffMetric`)                                                 | The metric used to determine differences (e.g., area change). If None, the Aligner's default `diff_metric` is used. | `None`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                          | Description                                                                                              |
+|--------|-----------------------------------------------|----------------------------------------------------------------------------------------------------------|
+|        | [AlignerResult](`brdr.aligner.AlignerResult`) | A result object containing the process results enriched with stability properties and prediction scores. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                  |
+|--------|----------------------------|--------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If provided `thematic_ids` are not found in the loaded data. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The prediction logic follows a four-step process:
+1. **Series Processing**: Calculates results for all specified distances.
+2. **Metric Calculation**: Computes the difference between original and
+   result for each step.
+3. **Stability Analysis**: Identifies streaks where the change is minimal
+   (zero-streaks) or where the metric flips sign (breakpoints).
+4. **Scoring**: Assigns a `PREDICTION_SCORE` to results that fall within
+   a significant stability window.
+
+```{mermaid}
+graph TD
+    A[Input Distances] --> B[Process Series]
+    B --> C[Calculate Diffs]
+    C --> D[Stability Analysis]
+    D --> E{Stable?}
+    E -- Yes --> F[Assign Prediction Score]
+    E -- No --> G[Mark unstable]
+    F --> H[AlignerResult]
+    G --> H
+```
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> aligner = Aligner(crs="EPSG:31370")
+>>> # Predict using default distance range
+>>> prediction_results = aligner.predict(thematic_ids=["id_1", "id_2"])
+```
+
+### process { #brdr.aligner.Aligner.process }
+
+```python
+aligner.Aligner.process(
+    relevant_distances=None,
+    *,
+    thematic_ids=None,
+    max_workers=None,
+)
+```
+
+Executes the alignment process across multiple relevant distances.
+
+This method iterates through the specified thematic features and calculates
+the alignment for each provided 'relevant distance'. It can utilize
+parallel processing via a ThreadPoolExecutor to speed up calculations.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name               | Type                                                | Description                                                                                                                     | Default   |
+|--------------------|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|-----------|
+| relevant_distances | [Iterable](`typing.Iterable`)\[[float](`float`)\]   | A series of distances (in meters) to use for the alignment logic. This parameter is mandatory.                                  | `None`    |
+| thematic_ids       | [List](`typing.List`)\[[ThematicId](`ThematicId`)\] | A specific list of IDs to process. If None, all thematic features currently loaded in the aligner will be processed.            | `None`    |
+| max_workers        | [int](`int`)                                        | The number of threads for parallel execution. If -1, execution is serial. If None, the Aligner's default `max_workers` is used. | `None`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                  | Description                                                                                   |
+|--------|-----------------------|-----------------------------------------------------------------------------------------------|
+|        | \[AlignerResult\]\[\] | An object containing the structured results, accessible by thematic ID and relevant distance. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                         |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If `relevant_distances` is None or empty. If any provided `thematic_ids` are not found in the loaded thematic data. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The processing flow involves distributing geometry-distance pairs across
+available worker threads:
+
+```{mermaid}
+graph TD
+    Start[Process Call] --> Check{Valid IDs?}
+    Check -- Yes --> Parallel{max_workers > 0?}
+    Parallel -- Yes --> Workers[ThreadPoolExecutor]
+    Parallel -- No --> Serial[Single Thread]
+    Workers --> Proc[Geometry Processor]
+    Serial --> Proc
+    Proc --> Result[AlignerResult]
+```
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> aligner.process(relevant_distances=[0, 0.5, 1.0], max_workers=4)
+<brdr.aligner.AlignerResult object at ...>
+```

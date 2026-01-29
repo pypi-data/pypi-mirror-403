@@ -1,0 +1,58 @@
+# Loader { #brdr.loader.Loader }
+
+```python
+loader.Loader(is_reference)
+```
+
+Abstract base class for all data loaders.
+
+The Loader handles the conversion of raw spatial data into an
+`AlignerFeatureCollection`, ensuring geometries are valid and 2D.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name                 | Type                                                                                                      | Description                                                                                         |
+|----------------------|-----------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| data_dict            | [Dict](`typing.Dict`)\[[ThematicId](`ThematicId`), [BaseGeometry](`shapely.geometry.base.BaseGeometry`)\] | Mapping of unique IDs to their corresponding Shapely geometries.                                    |
+| data_dict_properties | [Dict](`typing.Dict`)\[[ThematicId](`ThematicId`), [dict](`dict`)\]                                       | Mapping of IDs to attribute dictionaries.                                                           |
+| data_dict_source     | [Dict](`typing.Dict`)\[[Any](`typing.Any`), [str](`str`)\]                                                | Metadata regarding the data source (e.g., URL or file path).                                        |
+| versiondate_info     | ([dict](`dict`), [optional](`optional`))                                                                  | Configuration for parsing version dates, containing 'name' (field) and 'format' (strptime pattern). |
+| is_reference         | [bool](`bool`)                                                                                            | Whether the loaded data serves as a reference (target) layer.                                       |
+
+## Notes {.doc-section .doc-section-notes}
+
+All subclasses must implement `load_data` or populate the internal
+data dictionaries before calling the base `load_data` method.
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [load_data](#brdr.loader.Loader.load_data) | Processes raw data into a validated AlignerFeatureCollection. |
+
+### load_data { #brdr.loader.Loader.load_data }
+
+```python
+loader.Loader.load_data()
+```
+
+Processes raw data into a validated AlignerFeatureCollection.
+
+This method performs geometric validation, version date extraction,
+and wraps the data into AlignerFeature objects.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                     | Description                                       |
+|--------|--------------------------------------------------------------------------|---------------------------------------------------|
+|        | [AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`) | A collection of processed and validated features. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The processing pipeline follows these steps:
+
+
+
+1. **Geometry Fix**: Forces 2D and applies `make_valid`.
+2. **Metadata Enrichment**: Parses version dates if `versiondate_info` is set.
+3. **Feature Creation**: Generates unique UUIDs and wraps features.

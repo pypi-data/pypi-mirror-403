@@ -1,0 +1,78 @@
+# DieussaertGeometryProcessor { #brdr.processor.DieussaertGeometryProcessor }
+
+```python
+processor.DieussaertGeometryProcessor(config, feedback=None)
+```
+
+Processor implementing the Dieussaert area-based alignment algorithm.
+
+Unlike vertex snapping, this processor evaluates the overlap between thematic
+geometries and reference polygons. It decides per reference feature whether
+to include it fully, partially, or exclude it based on area-based thresholds.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name         | Type                                    | Description                                                        |
+|--------------|-----------------------------------------|--------------------------------------------------------------------|
+| processor_id | [ProcessorID](`brdr.enums.ProcessorID`) | The unique identifier for this processor (ProcessorID.DIEUSSAERT). |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [process](#brdr.processor.DieussaertGeometryProcessor.process) | Coordinates the alignment process for single or multi-geometries. |
+
+### process { #brdr.processor.DieussaertGeometryProcessor.process }
+
+```python
+processor.DieussaertGeometryProcessor.process(
+    input_geometry,
+    reference_data,
+    relevant_distance,
+    mitre_limit,
+    correction_distance,
+    **kwargs,
+)
+```
+
+Coordinates the alignment process for single or multi-geometries.
+
+If `multi_as_single_modus` is disabled, MultiPolygons are processed
+piecewise and merged afterward to ensure stability.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type                                                                     | Description                                     | Default    |
+|---------------------|--------------------------------------------------------------------------|-------------------------------------------------|------------|
+| input_geometry      | [BaseGeometry](`shapely.geometry.base.BaseGeometry`)                     | The thematic geometry to align.                 | _required_ |
+| reference_data      | [AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`) | The reference (target) dataset.                 | _required_ |
+| relevant_distance   | [float](`float`)                                                         | The distance threshold for alignment decisions. | _required_ |
+| mitre_limit         | [float](`float`)                                                         | Mitre limit for buffering operations.           | _required_ |
+| correction_distance | [float](`float`)                                                         | Distance used for noise and sliver removal.     | _required_ |
+| **kwargs            | [Any](`typing.Any`)                                                      | Additional processor arguments.                 | `{}`       |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                          | Description                                           |
+|--------|-----------------------------------------------|-------------------------------------------------------|
+|        | [ProcessResult](`brdr.typings.ProcessResult`) | The merged or single result of the alignment process. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The algorithm optimizes performance by splitting the input into an
+'inner' and 'outer' zone. Only the 'outer' zone (near the boundaries)
+is evaluated against reference data.
+
+
+
+```{mermaid}
+graph TD
+    Start[Input Geometry] --> Split[Split: Inner vs Outer]
+    Split --> Query[Spatial Query Reference Data]
+    Query --> OD[Process Open Domain]
+    Query --> Ref[Process Intersecting Refs]
+    OD --> Combine[Combine Results]
+    Ref --> Combine
+    Combine --> Post[Post-processing]
+    Post --> End[ProcessResult]
+```

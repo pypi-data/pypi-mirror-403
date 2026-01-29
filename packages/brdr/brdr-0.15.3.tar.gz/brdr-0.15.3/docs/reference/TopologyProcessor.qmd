@@ -1,0 +1,86 @@
+# TopologyProcessor { #brdr.processor.TopologyProcessor }
+
+```python
+processor.TopologyProcessor(config, feedback=None)
+```
+
+Processor that aligns geometries while preserving topological relationships.
+
+Instead of processing features independently, the TopologyProcessor
+decomposes thematic data into unique 'arcs' (shared boundaries). Each arc
+is aligned once using network-based processing, ensuring that shared
+boundaries remain perfectly snapped together in the final output.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name                           | Type                                                                                               | Description                                                               |
+|--------------------------------|----------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| processor_id                   | [ProcessorID](`brdr.enums.ProcessorID`)                                                            | The unique identifier for this processor (ProcessorID.TOPOLOGY).          |
+| thematic_data                  | ([AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`), [optional](`optional`)) | Cached reference to the full thematic dataset used for topology building. |
+| topo_thematic                  | ([dict](`dict`), [optional](`optional`))                                                           | The generated TopoJSON-like structure of the thematic data.               |
+| thematic_geometries_to_process | ([dict](`dict`), [optional](`optional`))                                                           | Mapping of arc IDs to their respective LineString geometries.             |
+| id_to_arcs                     | ([dict](`dict`), [optional](`optional`))                                                           | Mapping of feature IDs to the list of arc IDs that form their boundary.   |
+| wkb_to_id                      | ([dict](`dict`), [optional](`optional`))                                                           | Reverse index mapping geometry WKB strings to feature IDs.                |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [process](#brdr.processor.TopologyProcessor.process) | Aligns a geometry by processing its topological arcs. |
+
+### process { #brdr.processor.TopologyProcessor.process }
+
+```python
+processor.TopologyProcessor.process(
+    input_geometry,
+    reference_data,
+    mitre_limit,
+    correction_distance,
+    relevant_distance,
+    thematic_data,
+    **kwargs,
+)
+```
+
+Aligns a geometry by processing its topological arcs.
+
+This method identifies which unique arcs belong to the input geometry,
+aligns those arcs using the `NetworkGeometryProcessor`, and then
+reconstructs the final geometry.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type                                                                     | Description                                                        | Default    |
+|---------------------|--------------------------------------------------------------------------|--------------------------------------------------------------------|------------|
+| input_geometry      | [BaseGeometry](`shapely.geometry.base.BaseGeometry`)                     | The specific thematic geometry to align.                           | _required_ |
+| reference_data      | [AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`) | The reference dataset used for alignment.                          | _required_ |
+| mitre_limit         | [float](`float`)                                                         | Mitre limit for buffering operations.                              | _required_ |
+| correction_distance | [float](`float`)                                                         | Distance used for cleaning and noise reduction.                    | _required_ |
+| relevant_distance   | [float](`float`)                                                         | The maximum distance for alignment.                                | _required_ |
+| thematic_data       | [AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`) | The full thematic collection required to build/query the topology. | _required_ |
+| **kwargs            | [Any](`typing.Any`)                                                      | Additional arguments.                                              | `{}`       |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                          | Description                                                                  |
+|--------|-----------------------------------------------|------------------------------------------------------------------------------|
+|        | [ProcessResult](`brdr.typings.ProcessResult`) | The reconstructed geometry where shared boundaries are consistently aligned. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The topological workflow ensures "gapless" alignment:
+
+
+
+```{mermaid}
+graph TD
+    In[Input Geometry] --> Cache{Cache Built?}
+    Cache -- No --> Build[Build Topology: Extract Arcs]
+    Build --> Cache
+    Cache -- Yes --> Map[Map Geometry to Arc IDs]
+    Map --> Loop[For each unique Arc]
+    Loop --> Net[Align Arc via NetworkProcessor]
+    Net --> Loop
+    Loop --> Dissolve[Reconstruct Polygon from Aligned Arcs]
+    Dissolve --> End[Final ProcessResult]
+```

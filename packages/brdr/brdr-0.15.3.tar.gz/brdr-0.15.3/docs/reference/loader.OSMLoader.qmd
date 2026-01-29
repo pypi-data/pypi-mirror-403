@@ -1,0 +1,66 @@
+# loader.OSMLoader { #brdr.osm.loader.OSMLoader }
+
+```python
+osm.loader.OSMLoader(osm_tags, aligner)
+```
+
+Loader for OpenStreetMap (OSM) features based on specific tags.
+
+This loader uses the `osmnx` library to fetch geographical features from
+OpenStreetMap within a buffered bounding box of the thematic data. It
+automatically handles Coordinate Reference System (CRS) transformations
+between the project CRS and the WGS84 system required by OSM.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                 | Description                                                                                               | Default    |
+|----------|----------------------|-----------------------------------------------------------------------------------------------------------|------------|
+| osm_tags | [dict](`dict`)       | A dictionary of OSM tags used to filter features (e.g., {'highway': True} of {'building': 'industrial'}). | _required_ |
+| aligner  | [Aligner](`Aligner`) | The aligner object providing the spatial context, target CRS, and logger.                                 | _required_ |
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name             | Type                 | Description                                                            |
+|------------------|----------------------|------------------------------------------------------------------------|
+| aligner          | [Aligner](`Aligner`) | Reference to the parent aligner object.                                |
+| osm_tags         | [dict](`dict`)       | The tags used for filtering OSM data.                                  |
+| data_dict_source | [dict](`dict`)       | Metadata dictionary tracking the data source ("OSM") and version date. |
+| versiondate_info | [dict](`dict`)       | Dictionary specifying the version date field name and format.          |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [load_data](#brdr.osm.loader.OSMLoader.load_data) | Download and process OSM features. |
+
+### load_data { #brdr.osm.loader.OSMLoader.load_data }
+
+```python
+osm.loader.OSMLoader.load_data()
+```
+
+Download and process OSM features.
+
+The process involves:
+1. Buffering the thematic union to define the search area.
+2. Transforming the search area to WGS84 (EPSG:4326).
+3. Fetching features via `osmnx` based on the provided tags.
+4. Re-projecting the downloaded features back to the Aligner's CRS.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                | Description                                                                                                |
+|--------|---------------------|------------------------------------------------------------------------------------------------------------|
+|        | [Any](`typing.Any`) | The result of the parent DictLoader's load_data method, containing the downloaded geometries and metadata. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                         |
+|--------|----------------------------|-------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If thematic data has not been loaded into the aligner prior to calling this method. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The search area is expanded using `OSM_MAX_REFERENCE_BUFFER` to ensure
+that reference features partially outside the thematic area are
+fully captured for alignment.

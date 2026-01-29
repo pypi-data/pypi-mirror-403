@@ -1,0 +1,78 @@
+# SnapGeometryProcessor { #brdr.processor.SnapGeometryProcessor }
+
+```python
+processor.SnapGeometryProcessor(config, feedback=None)
+```
+
+Processor that aligns geometries by snapping them to the reference data.
+
+This processor uses the snapping algorithm to pull the vertices of the
+thematic geometry towards the nearest components of the reference data
+within a specified distance.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name         | Type                                    | Description                                                  |
+|--------------|-----------------------------------------|--------------------------------------------------------------|
+| processor_id | [ProcessorID](`brdr.enums.ProcessorID`) | The unique identifier for this processor (ProcessorID.SNAP). |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [process](#brdr.processor.SnapGeometryProcessor.process) | Aligns the input geometry by snapping its vertices to the reference geometries. |
+
+### process { #brdr.processor.SnapGeometryProcessor.process }
+
+```python
+processor.SnapGeometryProcessor.process(
+    correction_distance,
+    reference_data,
+    input_geometry,
+    mitre_limit,
+    relevant_distance,
+    **kwargs,
+)
+```
+
+Aligns the input geometry by snapping its vertices to the reference geometries.
+
+The process considers the Open Domain (OD) strategy to determine how
+areas not covered by reference features should be handled (e.g.,
+ignored, kept as-is, or used as a virtual snapping target).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type                                                                     | Description                                        | Default    |
+|---------------------|--------------------------------------------------------------------------|----------------------------------------------------|------------|
+| correction_distance | [float](`float`)                                                         | Distance used for cleaning geometric noise.        | _required_ |
+| reference_data      | [AlignerFeatureCollection](`brdr.feature_data.AlignerFeatureCollection`) | The collection of reference geometries.            | _required_ |
+| input_geometry      | [BaseGeometry](`shapely.geometry.base.BaseGeometry`)                     | The thematic geometry to be snapped.               | _required_ |
+| mitre_limit         | [float](`float`)                                                         | Mitre limit for buffering operations.              | _required_ |
+| relevant_distance   | [float](`float`)                                                         | The maximum distance within which snapping occurs. | _required_ |
+| **kwargs            | [Any](`typing.Any`)                                                      | Additional arguments passed to the processor.      | `{}`       |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                          | Description                                                        |
+|--------|-----------------------------------------------|--------------------------------------------------------------------|
+|        | [ProcessResult](`brdr.typings.ProcessResult`) | A dictionary containing the snapped result and difference metrics. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The snapping logic is influenced by the `od_strategy` (Open Domain):
+
+
+
+```{mermaid}
+graph TD
+    In[Input Geometry] --> OD{OD Strategy?}
+    OD -- EXCLUDE --> Snap[Snap to Real Refs]
+    OD -- AS_IS --> Keep[Keep OD part as-is]
+    OD -- OTHER --> Virtual[Create Virtual Ref]
+    Virtual --> SnapAll[Snap to Real + Virtual Refs]
+    Keep --> Merge[Merge snapped & as-is parts]
+    Snap --> Post[Post-process Result]
+    SnapAll --> Post
+    Merge --> Post
+```

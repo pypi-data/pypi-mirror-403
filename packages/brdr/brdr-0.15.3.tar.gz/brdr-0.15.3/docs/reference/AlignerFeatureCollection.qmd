@@ -1,0 +1,68 @@
+# AlignerFeatureCollection { #brdr.feature_data.AlignerFeatureCollection }
+
+```python
+feature_data.AlignerFeatureCollection(
+    features,
+    source=None,
+    id_fieldname=None,
+    crs=None,
+    is_reference=False,
+)
+```
+
+A collection of AlignerFeature objects with spatial indexing and utility properties.
+
+This class manages a group of features, providing high-level access to
+spatial operations like unary unions and R-tree indexing for fast
+spatial queries.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name         | Type                                                                                               | Description                                                                                    |
+|--------------|----------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| features     | [dict](`dict`)\[[ThematicId](`ThematicId`), [AlignerFeature](`brdr.feature_data.AlignerFeature`)\] | A dictionary mapping feature IDs to their corresponding AlignerFeature objects.                |
+| source       | [dict](`dict`)\[[str](`str`), [str](`str`)\]                                                       | Metadata regarding the source of the data.                                                     |
+| is_reference | [bool](`bool`)                                                                                     | Flag indicating if this collection serves as the reference dataset (enables spatial indexing). |
+| crs          | ([CRS](`pyproj.CRS`), [optional](`optional`))                                                      | The Coordinate Reference System associated with the collection.                                |
+
+## Notes {.doc-section .doc-section-notes}
+
+When `is_reference` is set to True, the collection lazily initializes a
+spatial index ([shapely.strtree.STRtree][]) upon the first access to the
+`tree` property.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> collection = AlignerFeatureCollection(features=my_feature_dict, is_reference=True)
+>>> # Access the spatial index
+>>> index = collection.tree
+>>> # Get a union of all geometries
+>>> total_area = collection.union.area
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [to_geojson](#brdr.feature_data.AlignerFeatureCollection.to_geojson) | Converts the collection into a GeoJSON FeatureCollection format. |
+
+### to_geojson { #brdr.feature_data.AlignerFeatureCollection.to_geojson }
+
+```python
+feature_data.AlignerFeatureCollection.to_geojson(geom_attributes=False)
+```
+
+Converts the collection into a GeoJSON FeatureCollection format.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name            | Type           | Description                                                                                                           | Default   |
+|-----------------|----------------|-----------------------------------------------------------------------------------------------------------------------|-----------|
+| geom_attributes | [bool](`bool`) | If True, includes calculated geometric attributes (like area or length) in the feature properties. Defaults to False. | `False`   |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                             | Description                           |
+|--------|--------------------------------------------------|---------------------------------------|
+|        | [FeatureCollection](`geojson.FeatureCollection`) | A GeoJSON representation of the data. |

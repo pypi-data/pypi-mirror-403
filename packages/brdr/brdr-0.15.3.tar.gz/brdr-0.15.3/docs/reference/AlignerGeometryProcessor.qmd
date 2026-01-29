@@ -1,0 +1,85 @@
+# AlignerGeometryProcessor { #brdr.processor.AlignerGeometryProcessor }
+
+```python
+processor.AlignerGeometryProcessor(config, feedback=None)
+```
+
+Processor responsible for aligning thematic geometries to reference data.
+
+This class identifies the geometry type and delegates the alignment logic
+to specialized processors (Dieussaert or Network-based) while handling
+validation and edge cases like area limits and zero-distance processing.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name         | Type                                    | Description                                  |
+|--------------|-----------------------------------------|----------------------------------------------|
+| processor_id | [ProcessorID](`brdr.enums.ProcessorID`) | Unique identifier for the aligner processor. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [process](#brdr.processor.AlignerGeometryProcessor.process) | Process and align a single geometry based on reference data. |
+
+### process { #brdr.processor.AlignerGeometryProcessor.process }
+
+```python
+processor.AlignerGeometryProcessor.process(
+    correction_distance,
+    reference_data,
+    input_geometry,
+    mitre_limit,
+    relevant_distance=1.0,
+    **kwargs,
+)
+```
+
+Process and align a single geometry based on reference data.
+
+The method validates the input geometry, checks against area constraints,
+and selects the appropriate sub-processor (Dieussaert for polygons or
+Network for linear/complex structures).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type                                                                                                     | Description                                                                                          | Default    |
+|---------------------|----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|------------|
+| correction_distance | [float](`float`)                                                                                         | The maximum distance a vertex can be moved during alignment.                                         | _required_ |
+| reference_data      | [GeoDataFrame](`GeoDataFrame`) or [list](`list`)\[[BaseGeometry](`shapely.geometry.base.BaseGeometry`)\] | The target geometries to which the input_geometry should align.                                      | _required_ |
+| input_geometry      | [BaseGeometry](`shapely.geometry.base.BaseGeometry`)                                                     | The geometry to be processed. Supports Polygon, MultiPolygon, and linear geometries.                 | _required_ |
+| mitre_limit         | [float](`float`)                                                                                         | The limit used for miter joins to prevent sharp spikes in corners.                                   | _required_ |
+| relevant_distance   | [float](`float`)                                                                                         | The search radius used to find nearby reference geometries. If set to 0, no processing is performed. | `1.0`      |
+| **kwargs            | [dict](`dict`)                                                                                           | Additional keyword arguments passed to sub-processors.                                               | `{}`       |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                          | Description                                                                                      |
+|--------|-----------------------------------------------|--------------------------------------------------------------------------------------------------|
+|        | [ProcessResult](`brdr.typings.ProcessResult`) | An object containing the aligned geometry and processing metadata (e.g., remarks or error logs). |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                             |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the input_geometry is a GeometryCollection. If the input_geometry exceeds the configured area_limit. |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The logic follows this decision flow:
+
+```{mermaid}
+graph TD
+      A[Start Process] --> B{GeometryCollection?}
+      B -- Yes --> C[Raise ValueError]
+      B -- No --> D{Polygon/MultiPolygon?}
+      D -- No --> E[Network Processor]
+      D -- Yes --> F{Area > Limit?}
+      F -- Yes --> G[Raise ValueError]
+      F -- No --> H{RD == 0?}
+      H -- Yes --> I[Return Original]
+      H -- No --> J[Dieussaert Processor]
+      J -- Success --> K[Return Result]
+      J -- Fail --> E
+      E --> K
+```

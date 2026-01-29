@@ -1,0 +1,145 @@
+# AlignerResult { #brdr.aligner.AlignerResult }
+
+```python
+aligner.AlignerResult(process_results)
+```
+
+Stores and processes the results from the alignment operation.
+
+This class manages the lifecycle of alignment results, including enrichment with
+geometric metrics (like area or length change), filtering by result type,
+and exporting to GeoJSON format.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name     | Type                                                                                                                                                                           | Description                                                                                                                |
+|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| results  | [Dict](`typing.Dict`)\[[ThematicId](`ThematicId`), [Dict](`typing.Dict`)\[[float](`float`), [Optional](`typing.Optional`)\[[ProcessResult](`brdr.typings.ProcessResult`)\]\]\] | A nested dictionary where the outer key is the theme ID and the inner key is the relevant distance used during processing. |
+| metadata | [Optional](`typing.Optional`)\[[Any](`typing.Any`)\]                                                                                                                           | Optional metadata about the overall alignment operation.                                                                   |
+
+## Notes {.doc-section .doc-section-notes}
+
+The class acts as a post-processor. It takes the raw output from the geometric
+engines and calculates semantic differences before exporting.
+
+```{mermaid}
+graph TD
+    Raw[Raw Process Results] --> AR[AlignerResult]
+    AR --> |get_results| Enriched[Enriched with Area/Length Metrics]
+    Enriched --> |get_results_as_geojson| GeoJSON[GeoJSON FeatureCollection]
+    GeoJSON --> |save_results| Disk[Local .geojson files]
+```
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> # Initializing and saving results
+>>> result_obj = AlignerResult(raw_results)
+>>> result_obj.save_results(aligner, path="./output_folder")
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [get_results](#brdr.aligner.AlignerResult.get_results) | Retrieves results enriched with geometric metrics and filtered by type. |
+| [get_results_as_geojson](#brdr.aligner.AlignerResult.get_results_as_geojson) | Converts the results into a GeoJSON FeatureCollection format. |
+| [save_results](#brdr.aligner.AlignerResult.save_results) | Exports the results as multiple GeoJSON files to a directory. |
+
+### get_results { #brdr.aligner.AlignerResult.get_results }
+
+```python
+aligner.AlignerResult.get_results(
+    aligner,
+    result_type=AlignerResultType.PROCESSRESULTS,
+)
+```
+
+Retrieves results enriched with geometric metrics and filtered by type.
+
+This method mutates the stored `ProcessResult` objects by adding calculated
+difference metrics (e.g., symmetrical area change) to their properties.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                | Description                                                             | Default                            |
+|-------------|-----------------------------------------------------|-------------------------------------------------------------------------|------------------------------------|
+| aligner     | [Aligner](`brdr.aligner.Aligner`)                   | The 'Aligner' object used to access thematic data and comparison logic. | _required_                         |
+| result_type | [AlignerResultType](`brdr.enums.AlignerResultType`) | Filters the results based on status. Defaults to PROCESSRESULTS.        | `AlignerResultType.PROCESSRESULTS` |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                                                                                                           | Description                                    |
+|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------|
+|        | [Dict](`typing.Dict`)\[[ThematicId](`ThematicId`), [Dict](`typing.Dict`)\[[float](`float`), [Optional](`typing.Optional`)\[[ProcessResult](`brdr.typings.ProcessResult`)\]\]\] | A dictionary of filtered and enriched results. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                  |
+|--------|----------------------------|----------------------------------------------|
+|        | [ValueError](`ValueError`) | If an unsupported `result_type` is provided. |
+
+### get_results_as_geojson { #brdr.aligner.AlignerResult.get_results_as_geojson }
+
+```python
+aligner.AlignerResult.get_results_as_geojson(
+    aligner,
+    result_type=AlignerResultType.PROCESSRESULTS,
+    add_metadata=False,
+    add_original_attributes=False,
+)
+```
+
+Converts the results into a GeoJSON FeatureCollection format.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                    | Type                                                | Description                                                             | Default                            |
+|-------------------------|-----------------------------------------------------|-------------------------------------------------------------------------|------------------------------------|
+| aligner                 | [Aligner](`brdr.aligner.Aligner`)                   | The 'Aligner' object providing CRS and thematic metadata.               | _required_                         |
+| result_type             | [AlignerResultType](`brdr.enums.AlignerResultType`) | The type of results to export. Defaults to PROCESSRESULTS.              | `AlignerResultType.PROCESSRESULTS` |
+| add_metadata            | [bool](`bool`)                                      | If True, includes the descriptive comparison observation in properties. | `False`                            |
+| add_original_attributes | [bool](`bool`)                                      | If True, includes original thematic attributes in the output.           | `False`                            |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                                            |
+|--------|------------------------------------------------------------|--------------------------------------------------------|
+|        | [Dict](`typing.Dict`)\[[str](`str`), [Any](`typing.Any`)\] | A dictionary representing a GeoJSON FeatureCollection. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                         |
+|--------|----------------------------|-------------------------------------|
+|        | [ValueError](`ValueError`) | If `self.results` is empty or None. |
+
+### save_results { #brdr.aligner.AlignerResult.save_results }
+
+```python
+aligner.AlignerResult.save_results(
+    aligner,
+    path,
+    result_type=AlignerResultType.PROCESSRESULTS,
+    add_metadata=False,
+    add_original_attributes=False,
+)
+```
+
+Exports the results as multiple GeoJSON files to a directory.
+
+Creates separate files for original results, differences, and specific
+area changes (added/removed).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                    | Type                                                | Description                                              | Default                            |
+|-------------------------|-----------------------------------------------------|----------------------------------------------------------|------------------------------------|
+| aligner                 | [Aligner](`brdr.aligner.Aligner`)                   | The 'Aligner' object for spatial context.                | _required_                         |
+| path                    | [str](`str`)                                        | Target directory path where files will be created.       | _required_                         |
+| result_type             | [AlignerResultType](`brdr.enums.AlignerResultType`) | Type of results to export. Defaults to PROCESSRESULTS.   | `AlignerResultType.PROCESSRESULTS` |
+| add_metadata            | [bool](`bool`)                                      | Whether to include alignment observations in the output. | `False`                            |
+| add_original_attributes | [bool](`bool`)                                      | Whether to include original feature attributes.          | `False`                            |
+
+#### Notes {.doc-section .doc-section-notes}
+
+The output files follow the naming convention: `{result_type}_{name}.geojson`.
