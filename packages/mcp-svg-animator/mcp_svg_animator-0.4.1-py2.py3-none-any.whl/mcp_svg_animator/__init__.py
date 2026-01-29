@@ -1,0 +1,3 @@
+"""Mcp Svg Animator - A Python project following TDD principles."""
+
+__version__ = "0.4.1"
