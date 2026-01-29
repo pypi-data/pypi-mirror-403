@@ -1,0 +1,261 @@
+# mk2html
+
+A powerful Python CLI tool that converts Markdown files to beautiful, interactive HTML documents with Table of Contents, Dark/Light mode, Mermaid diagram support, and syntax highlighting.
+
+[![Tests](https://github.com/km1790/mk2html/actions/workflows/tests.yml/badge.svg)](https://github.com/km1790/mk2html/actions/workflows/tests.yml)
+[![PyPI version](https://img.shields.io/pypi/v/mk2html.svg)](https://pypi.org/project/mk2html/)
+[![Python](https://img.shields.io/pypi/pyversions/mk2html.svg)](https://pypi.org/project/mk2html/)
+[![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
+
+## ✨ Features
+
+- 🌙 **Dark/Light Mode** - Toggle between themes with persistence via localStorage
+- 📑 **Auto Table of Contents** - Generated from headings with active section highlighting
+- 📊 **Mermaid Diagrams** - Flowcharts, sequence, class, gantt, pie, state diagrams
+- 🎨 **Syntax Highlighting** - Language-aware code highlighting with Highlight.js
+- 🔢 **Line Numbers** - Code blocks include line numbers
+- 📈 **Progress Bar** - Shows reading progress as you scroll
+- 🔝 **Back to Top** - Floating button for quick navigation
+- 📱 **Responsive Design** - Mobile-friendly with collapsible sidebar
+- 🖨️ **Print Styles** - Clean output when printing
+- 🔗 **Click-to-Copy** - Click any heading to copy its link
+
+## 📦 Installation
+
+### Prerequisites
+
+- Python 3.7 or higher
+- pip (Python package manager)
+
+### Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Or install manually:
+
+```bash
+pip install markdown Pygments
+```
+
+### Make Executable (Optional)
+
+```bash
+chmod +x mk2html.py
+```
+
+### Create Global Symlink (Optional)
+
+```bash
+ln -s $(pwd)/mk2html.py /usr/local/bin/mk2html
+```
+
+## 🚀 Usage
+
+### Basic Usage
+
+```bash
+python3 mk2html.py input.md
+```
+
+This creates `input.html` in the same directory.
+
+### Specify Output File
+
+```bash
+python3 mk2html.py docs.md -o documentation.html
+```
+
+### Custom Title
+
+```bash
+python3 mk2html.py guide.md --title "User Guide"
+```
+
+### Start with Dark Theme
+
+```bash
+python3 mk2html.py report.md --theme dark
+```
+
+### Disable Mermaid Support
+
+```bash
+python3 mk2html.py spec.md --no-mermaid
+```
+
+### Read from Stdin
+
+```bash
+cat input.md | python3 mk2html.py - -o output.html
+```
+
+### Quiet Mode (for scripts)
+
+```bash
+python3 mk2html.py input.md -q
+```
+
+### Full Options
+
+```bash
+python3 mk2html.py --help
+```
+
+```
+usage: mk2html [-h] [-o FILE] [-t TITLE] [--theme {light,dark}] [--no-mermaid]
+               [--no-toc] [-q] [-v]
+               INPUT
+
+Convert Markdown to beautiful, interactive HTML with TOC and Mermaid support.
+
+positional arguments:
+  INPUT                 Input Markdown file (use "-" for stdin)
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o FILE, --output FILE
+                        Output HTML file (default: input filename with .html extension)
+  -t TITLE, --title TITLE
+                        Document title (default: filename without extension)
+  --theme {light,dark}  Default theme (default: light)
+  --no-mermaid          Disable Mermaid diagram support
+  --no-toc              Disable table of contents generation
+  -q, --quiet           Suppress output messages
+  -v, --version         show program's version number and exit
+```
+
+## 📊 Mermaid Diagrams
+
+The tool supports all Mermaid diagram types. Simply use fenced code blocks with `mermaid` language:
+
+### Flowchart
+
+````markdown
+```mermaid
+flowchart TD
+    A[Start] --> B{Is it working?}
+    B -->|Yes| C[Great!]
+    B -->|No| D[Debug]
+    D --> B
+```
+````
+
+### Sequence Diagram
+
+````markdown
+```mermaid
+sequenceDiagram
+    Alice->>Bob: Hello Bob!
+    Bob-->>Alice: Hi Alice!
+```
+````
+
+### Pie Chart
+
+````markdown
+```mermaid
+pie title Project Distribution
+    "Development" : 45
+    "Testing" : 25
+    "Documentation" : 15
+    "Other" : 15
+```
+````
+
+### Gantt Chart
+
+````markdown
+```mermaid
+gantt
+    title Project Timeline
+    dateFormat YYYY-MM-DD
+    section Phase 1
+        Task 1 :a1, 2024-01-01, 30d
+        Task 2 :after a1, 20d
+```
+````
+
+## 🎨 Syntax Highlighting
+
+Code blocks are automatically highlighted with language detection:
+
+````markdown
+```python
+def hello_world():
+    print("Hello, World!")
+```
+
+```javascript
+const greet = (name) => {
+    console.log(`Hello, ${name}!`);
+};
+```
+````
+
+Supported languages include: Python, JavaScript, TypeScript, Java, C, C++, Go, Rust, Ruby, PHP, SQL, HTML, CSS, JSON, YAML, Bash, and many more.
+
+## 🌙 Theme Support
+
+The generated HTML includes both light and dark themes:
+
+- **Light Theme**: Clean white background with blue accents
+- **Dark Theme**: Dark slate background with softer colors
+
+Users can toggle between themes using the switch in the header. The preference is saved in localStorage.
+
+## 📁 Project Structure
+
+```
+mk2html/
+├── mk2html.py              # Main CLI tool
+├── requirements.txt        # Python dependencies
+├── README.md              # This file
+├── SESSION.md             # Development session log
+├── sample.md              # Sample markdown file
+├── sample_with_mermaid.md # Sample with Mermaid diagrams
+└── *.html                 # Generated output files
+```
+
+## 🔧 Dependencies
+
+| Package | Version | Description |
+|---------|---------|-------------|
+| markdown | ≥3.4.0 | Markdown parsing |
+| Pygments | ≥2.15.0 | Syntax highlighting (backup) |
+
+### External CDN Resources
+
+The generated HTML loads these from CDN:
+- [Mermaid.js](https://mermaid.js.org/) v10 - Diagram rendering
+- [Highlight.js](https://highlightjs.org/) v11.9 - Syntax highlighting
+
+## 📝 Example
+
+Convert the sample file:
+
+```bash
+python3 mk2html.py sample_with_mermaid.md -o demo.html --title "Demo Document"
+```
+
+Then open `demo.html` in your browser.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit issues or pull requests.
+
+## 📄 License
+
+MIT License - feel free to use this tool for any purpose.
+
+## 🙏 Acknowledgments
+
+- [Python-Markdown](https://python-markdown.github.io/) for Markdown parsing
+- [Mermaid.js](https://mermaid.js.org/) for diagram rendering
+- [Highlight.js](https://highlightjs.org/) for syntax highlighting
+- Design inspired by modern documentation sites
+
+---
+
+Made with ❤️ by Kinshuk
