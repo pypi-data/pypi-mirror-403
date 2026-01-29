@@ -1,0 +1,166 @@
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
+
+[project]
+name = "voyage-embedders-haystack"
+version = "1.9.0"
+description = 'Haystack component to embed strings and Documents using VoyageAI Embedding models.'
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+keywords = ["Haystack", "VoyageAI", "Embedding", "Rankers", "Semantic Search"]
+authors = [{ name = "Ashwin Mathur" }]
+maintainers = [{ name = "Ashwin Mathur" }]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = ["haystack-ai", "typing_extensions", "numpy", "voyageai>=0.3.7"]
+
+[project.urls]
+Documentation = "https://github.com/awinml/voyage-embedders-haystack#readme"
+Issues = "https://github.com/awinml/voyage-embedders-haystack/issues"
+Source = "https://github.com/awinml/voyage-embedders-haystack"
+
+[tool.uv.build-backend]
+module-name = "haystack_integrations"
+namespace = true
+
+[dependency-groups]
+dev = [
+  "coverage[toml]>=6.5",
+  "coveralls",
+  "pytest",
+  "pytest-cov>=5",
+  "pytest-rerunfailures>=12.0",
+  "datasets",
+  "ty>=0.0.13",
+  "ruff>=0.14.14",
+  "pre-commit>=4.5.0",
+]
+
+[tool.uv]
+managed = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ARG",
+  "B",
+  "C",
+  "DTZ",
+  "E",
+  "EM",
+  "F",
+  "FBT",
+  "I",
+  "ICN",
+  "ISC",
+  "N",
+  "PLC",
+  "PLE",
+  "PLR",
+  "PLW",
+  "Q",
+  "RUF",
+  "S",
+  "T",
+  "TID",
+  "UP",
+  "W",
+  "YTT",
+]
+ignore = [
+  # Allow non-abstract empty methods in abstract base classes
+  "B027",
+  # Allow boolean positional values in function calls, like `dict.get(... True)`
+  "FBT003",
+  # Ignore checks for possible passwords
+  "S105",
+  "S106",
+  "S107",
+  # Ignore complexity
+  "C901",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+  # Ignore print statements
+  "T201",
+  # Ignore function call in argument default - for secrets
+  "B008",
+  # Ignore Boolean positionals in function calls
+  "FBT001",
+  "FBT002",
+]
+unfixable = [
+  # Don't touch unused imports
+  "F401",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["voyage_embedders"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use magic values, assertions, and relative imports
+"tests/**/*" = ["PLR2004", "S101", "TID252"]
+
+[tool.coverage.run]
+source_pkgs = ["haystack_integrations"]
+branch = true
+parallel = true
+omit = [
+  "src/haystack_integrations/components/embedders/voyage_embedders/__about__.py",
+  "example",
+]
+
+[tool.coverage.paths]
+voyage_embedders = [
+  "src/haystack_integrations/components/embedders/voyage_embedders",
+  "*/voyage_embedders/src/haystack_integrations/components/embedders/voyage_embedders",
+]
+
+[tool.coverage.report]
+omit = ["*/__init__.py"]
+show_missing = true
+exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-vv"
+markers = ["unit: unit tests", "integration: integration tests", "flaky: tests with retry logic for external API rate limits"]
+log_cli = true
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["haystack.*", "haystack_integrations.*", "pytest.*"]
+ignore_missing_imports = true
+
+[tool.ty.environment]
+root = ["src", "tests"]
+
+[tool.ty.src]
+include = ["src", "tests"]
+respect-ignore-files = true
+
+# Relax strict type checking for test files where MagicMock is used
+[[tool.ty.overrides]]
+include = ["tests/**"]
+
+[tool.ty.overrides.rules]
+invalid-assignment = "ignore"
