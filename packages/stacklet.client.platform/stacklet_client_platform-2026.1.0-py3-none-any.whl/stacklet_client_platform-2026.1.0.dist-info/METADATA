@@ -1,0 +1,180 @@
+Metadata-Version: 2.4
+Name: stacklet.client.platform
+Version: 2026.1.0
+Summary: Stacklet Platform Client
+Author-email: Stacklet Engineering <foss+stacklet-admin@stacklet.io>
+Maintainer-email: Stacklet Engineering <foss+stacklet-admin@stacklet.io>
+License-Expression: Apache-2.0
+License-File: LICENSE
+Requires-Python: <=3.14,>=3.9
+Requires-Dist: boto3<2,>=1.39.16
+Requires-Dist: charset-normalizer<4,>=3.4.2
+Requires-Dist: click<9,>=8.0.1
+Requires-Dist: jmespath<2,>=1.0.1
+Requires-Dist: jsonschema<5,>=4.9.0
+Requires-Dist: pyjwt<3,>=2.4.0
+Requires-Dist: pyyaml~=6.0
+Requires-Dist: requests<3,>=2.32.4
+Description-Content-Type: text/markdown
+
+# Stacklet CLI
+
+## Installation
+
+```
+$ pip install stacklet.client.platform
+```
+
+## Configuration
+
+To get started, use the `auto-configure` command to initialize the CLI configuration
+by supplying the prefix or URL associated with an instance of the Stacklet platform:
+
+```
+# Using a complete console URL
+stacklet-admin auto-configure --url https://console.myorg.stacklet.io
+
+# Using a base domain
+stacklet-admin auto-configure --url myorg.stacklet.io
+
+# Using just a deployment prefix (assumes a .stacklet.io suffix)
+stacklet-admin auto-configure --prefix myorg
+```
+
+This will create a configuration file in `~/.stacklet/config.json`.
+
+## Logging In
+
+### With Single Sign-On
+
+Use the `login` command with no arguments to start an SSO login:
+
+```
+stacklet-admin login
+```
+
+This will open a browser window and log in via SSO. Once the login is successful in the browser,
+the window may automatically close.
+
+### Without Single Sign-On
+
+Provide a username to the `login` command to bypass SSO:
+
+```
+stacklet-admin login --username test-user
+```
+
+This will prompt for a password. It is also possible to use the `--password` argument
+to avoid the prompt, though that is a less secure option as it can expose the password
+through command history and process listings.
+
+
+### With API keys
+
+It's possible to use the CLI with API keys. In this case the `login` step is
+not run, but the API key is set in the environment via `STACKLET_API_KEY`.
+
+This can be done once via `export STACKLET_API_KEY=<my-key>` or by passing it before every command, like:
+
+```
+STACKLET_API_KEY=<my-key> stacklet-admin <command> <subcommand>
+```
+
+
+## Running Commands
+
+Commands are grouped into command groups, for example, all the commands relating to accounts can be
+found by running the following command:
+
+```
+Usage: stacklet-admin account [OPTIONS] COMMAND [ARGS]...
+
+  Query against and Run mutations against Account objects in Stacklet.
+
+  Define a custom config file with the --config option
+
+  Specify a different output format with the --output option
+
+  Example:
+
+      $ stacklet account --output json list
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  add           Add an account to Stacklet
+  list          List cloud accounts in Stacklet
+  remove        Remove an account from Stacklet
+  show          Show an account in Stacklet
+  update        Update an account in platform
+  validate      Validate an account in Stacklet
+  validate-all  Validate all accounts in Stacklet
+```
+
+Then run the command:
+
+```
+stacklet-admin account list
+data:
+  accounts:
+    edges:
+    - node:
+        description: null
+        email: sonny@stacklet.io
+        id: account:aws:123456789012
+        key: '123456789012'
+        name: Sandbox Sonny
+        path: null
+        provider: AWS
+        securityContext: arn:aws:iam::123456789012:role/dev-stacklet-execution
+        shortName: null
+        tags: null
+        variables: null
+    pageInfo:
+      endCursor: eJxTMlQCAADtAHY=
+      hasNextPage: false
+      hasPreviousPage: false
+      startCursor: eJxTMlQCAADtAHY=
+```
+
+### Pagination
+
+For commands that utilize pagination, select the next page by running the following command:
+
+```
+stacklet-admin account list --after "eJxTMlQCAADtAHY="
+data:
+  accounts:
+    edges: []
+    pageInfo:
+      endCursor: ''
+      hasNextPage: false
+      hasPreviousPage: true
+      startCursor: ''
+```
+
+The value of `--after` should be the value of the `endCursor` key under the `pageInfo` section in
+the response. For results with multiple pages, continue to use the `endCursor` value to progress
+through the pages. Additionally, use the `--before` option to move back one page.
+
+`--first` and `--last` are numerical options used to select the first n or last n results of a
+response. For example, to return the first account:
+
+```
+stacklet-admin account list --first 1
+```
+
+To return the last account:
+
+```
+stacklet-admin account list --last 1
+```
+
+# Development
+
+## Installation
+
+```
+$ just install
+```
