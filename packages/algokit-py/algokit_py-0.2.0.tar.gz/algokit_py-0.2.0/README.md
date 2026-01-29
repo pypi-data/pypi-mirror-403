@@ -1,0 +1,38 @@
+# algokit-py
+
+A lightweight Python algorithms library with clean, well-documented, and tested implementations.
+Designed for learning, interviews, and real-world algorithm reasoning.
+
+## Features
+
+### Search Algorithms
+- Linear Search
+- Binary Search (iterative, invariant-based)
+
+### Sorting Algorithms
+- Insertion Sort (in-place, stable)
+
+## Usage
+
+### Install
+
+```python
+pip install algokit-py
+```
+
+### Search
+```python
+from algokit_py.search import linear_search, binary_search
+
+print(linear_search([1, 2, 3], 2))
+print(binary_search([1, 2, 3], 2))
+```
+
+### Sorting
+```python
+from algokit_py.sort import insertion_sort
+
+data = [3, 1, 2]
+insertion_sort(data)
+print(data)   # [1, 2, 3]
+```
