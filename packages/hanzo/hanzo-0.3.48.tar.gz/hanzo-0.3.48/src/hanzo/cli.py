@@ -1,0 +1,872 @@
+"""Main CLI entry point for Hanzo."""
+
+import os
+import sys
+import signal
+import asyncio
+import subprocess
+from typing import Optional
+
+import click
+from rich.console import Console
+
+from .commands import (
+    mcp,
+    auth,
+    auto,
+    base,
+    chat,
+    cx,
+    doc,
+    env,
+    events,
+    flow,
+    fn,
+    growth,
+    install,
+    k8s,
+    iam,
+    jobs,
+    kv,
+    ml,
+    node,
+    o11y,
+    platform,
+    repl,
+    agent,
+    miner,
+    tools,
+    config,
+    router,
+    network,
+    cloud,
+    pubsub,
+    queues,
+    run,
+    search,
+    secrets,
+    storage,
+    tasks,
+    vector,
+)
+from .ui.startup import show_startup
+from .utils.output import console
+from .interactive.repl import HanzoREPL
+from .interactive.enhanced_repl import EnhancedHanzoREPL
+
+# Version
+__version__ = "0.3.48"
+
+
+@click.group(invoke_without_command=True)
+@click.version_option(version=__version__, prog_name="hanzo")
+@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
+@click.option("--json", is_flag=True, help="JSON output format")
+@click.option("--config", "-c", type=click.Path(), help="Config file path")
+@click.pass_context
+def cli(ctx, verbose: bool, json: bool, config: Optional[str]):
+    """Hanzo AI - Unified CLI for local, private, and free AI.
+
+    Run without arguments to enter interactive mode.
+    """
+    # Ensure context object exists
+    ctx.ensure_object(dict)
+    ctx.obj["verbose"] = verbose
+    ctx.obj["json"] = json
+    ctx.obj["config"] = config
+    ctx.obj["console"] = console
+
+    # If no subcommand, enter interactive mode or start compute node
+    if ctx.invoked_subcommand is None:
+        # Check if we should start as a compute node
+        import os
+
+        if os.environ.get("HANZO_COMPUTE_NODE") == "1":
+            # Start as a compute node
+            asyncio.run(start_compute_node(ctx))
+        else:
+            # Show startup UI (unless in quiet mode)
+            if not ctx.obj.get("quiet") and not os.environ.get("HANZO_NO_STARTUP"):
+                show_startup(minimal=os.environ.get("HANZO_MINIMAL_UI") == "1")
+
+            # Enter interactive REPL mode
+            try:
+                # Use enhanced REPL if available, otherwise fallback
+                use_enhanced = os.environ.get("HANZO_ENHANCED_REPL", "1") == "1"
+                if use_enhanced:
+                    repl = EnhancedHanzoREPL(console=console)
+                else:
+                    repl = HanzoREPL(console=console)
+                asyncio.run(repl.run())
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Interrupted[/yellow]")
+            except EOFError:
+                console.print("\n[yellow]Goodbye![/yellow]")
+
+
+# Register command groups
+cli.add_command(agent.agent_group)
+cli.add_command(auth.auth_group)
+cli.add_command(auto.auto_group)
+cli.add_command(base.base_group)
+cli.add_command(node.cluster)
+cli.add_command(cloud.cloud_group)
+cli.add_command(config.config_group)
+cli.add_command(cx.cx_group)
+cli.add_command(doc.doc_group)
+cli.add_command(env.env_group)
+cli.add_command(events.events_group)
+cli.add_command(flow.flow_group)
+cli.add_command(fn.fn_group)
+cli.add_command(growth.growth_group)
+cli.add_command(iam.iam_group)
+cli.add_command(install.install_group)
+cli.add_command(jobs.jobs_group)
+cli.add_command(k8s.k8s_group)
+cli.add_command(kv.kv_group)
+cli.add_command(mcp.mcp_group)
+cli.add_command(miner.miner_group)
+cli.add_command(ml.ml_group)
+cli.add_command(chat.chat_command)
+cli.add_command(network.network_group)
+cli.add_command(o11y.o11y_group)
+cli.add_command(platform.platform_group)
+cli.add_command(pubsub.pubsub_group)
+cli.add_command(queues.queues_group)
+cli.add_command(repl.repl_group)
+cli.add_command(router.router_group)
+cli.add_command(run.run_group)
+cli.add_command(search.search_group)
+cli.add_command(secrets.secrets_group)
+cli.add_command(storage.storage_group)
+cli.add_command(tasks.tasks_group)
+cli.add_command(tools.tools_group)
+cli.add_command(vector.vector_group)
+
+# Aliases
+cli.add_command(doc.doc_group, name="docdb")  # docdb alias for doc
+cli.add_command(fn.fn_group, name="fn")  # fn alias for function
+
+
+# Quick aliases
+@cli.command()
+@click.argument("prompt", nargs=-1, required=True)
+@click.option("--model", "-m", default="llama-3.2-3b", help="Model to use")
+@click.option("--local/--cloud", default=True, help="Use local or cloud model")
+@click.pass_context
+def ask(ctx, prompt: tuple, model: str, local: bool):
+    """Quick question to AI (alias for 'hanzo chat --once')."""
+    prompt_text = " ".join(prompt)
+    asyncio.run(chat.ask_once(ctx, prompt_text, model, local))
+
+
+# Observability quick commands
+@cli.command()
+@click.argument("query", required=False)
+@click.option("--source", "-s", help="Log source/service")
+@click.option("--follow", "-f", is_flag=True, help="Follow logs")
+@click.option("--level", "-l", type=click.Choice(["debug", "info", "warn", "error"]))
+@click.option("--limit", "-n", default=100, help="Max results")
+def log(query: str, source: str, follow: bool, level: str, limit: int):
+    """View service logs (shortcut for 'hanzo o11y log').
+
+    \b
+    Examples:
+      hanzo log                     # Show recent logs
+      hanzo log "error" -s my-api   # Search for errors
+      hanzo log -f -s my-api        # Tail logs
+    """
+    if follow:
+        console.print(f"[cyan]Tailing log{' for ' + source if source else ''}...[/cyan]")
+        console.print("[dim]Press Ctrl+C to stop[/dim]")
+    elif query:
+        console.print(f"[cyan]Searching log for '{query}'...[/cyan]")
+    else:
+        console.print("[cyan]Recent log entries:[/cyan]")
+    console.print("[dim]No log entries found[/dim]")
+
+
+@cli.command()
+@click.argument("query", required=False)
+@click.option("--service", "-s", help="Filter by service")
+@click.option("--range", "-r", default="1h", help="Time range")
+def metric(query: str, service: str, range: str):
+    """View service metric (shortcut for 'hanzo o11y metric').
+
+    \b
+    Examples:
+      hanzo metric                          # Show key metric
+      hanzo metric "http_requests_total"    # Query specific metric
+      hanzo metric -s my-api -r 24h         # Service metric for 24h
+    """
+    console.print(f"[cyan]Metric{' for ' + service if service else ''} (last {range}):[/cyan]")
+    console.print("[dim]No metric found[/dim]")
+
+
+@cli.command()
+@click.argument("trace_id", required=False)
+@click.option("--service", "-s", help="Filter by service")
+@click.option("--min-duration", "-d", help="Min duration (e.g., 100ms)")
+def trace(trace_id: str, service: str, min_duration: str):
+    """View distributed trace (shortcut for 'hanzo o11y trace').
+
+    \b
+    Examples:
+      hanzo trace                     # Recent trace
+      hanzo trace abc123              # Show specific trace
+      hanzo trace -s my-api -d 1s     # Slow trace for service
+    """
+    if trace_id:
+        console.print(f"[cyan]Trace {trace_id}:[/cyan]")
+    else:
+        console.print(f"[cyan]Recent trace{' for ' + service if service else ''}:[/cyan]")
+    console.print("[dim]No trace found[/dim]")
+
+
+# Alias observe -> o11y
+cli.add_command(o11y.o11y_group, name="observe")
+
+
+# Alias deploy -> run
+cli.add_command(run.run_group, name="deploy")
+
+
+@cli.command()
+@click.option("--name", "-n", default="hanzo-local", help="Node name")
+@click.option("--port", "-p", default=8000, help="API port")
+@click.pass_context
+def serve(ctx, name: str, port: int):
+    """Start local AI node (alias for 'hanzo node start')."""
+    asyncio.run(node.start_node(ctx, name, port))
+
+
+@cli.command()
+@click.option("--name", "-n", help="Node name (auto-generated if not provided)")
+@click.option(
+    "--port", "-p", default=52415, help="Node port (default: 52415 for hanzo/net)"
+)
+@click.option(
+    "--network", default="local", help="Network to join (mainnet/testnet/local)"
+)
+@click.option(
+    "--models", "-m", multiple=True, help="Models to serve (e.g., llama-3.2-3b)"
+)
+@click.option("--max-jobs", type=int, default=10, help="Max concurrent jobs")
+@click.pass_context
+def net(ctx, name: str, port: int, network: str, models: tuple, max_jobs: int):
+    """Start the Hanzo Network distributed AI compute node."""
+    try:
+        asyncio.run(start_compute_node(ctx, name, port, network, models, max_jobs))
+    except KeyboardInterrupt:
+        # Already handled in start_compute_node
+        pass
+
+
+@cli.command()
+@click.option("--name", "-n", help="Node name (auto-generated if not provided)")
+@click.option(
+    "--port", "-p", default=52415, help="Node port (default: 52415 for hanzo/net)"
+)
+@click.option(
+    "--network", default="local", help="Network to join (mainnet/testnet/local)"
+)
+@click.option(
+    "--models", "-m", multiple=True, help="Models to serve (e.g., llama-3.2-3b)"
+)
+@click.option("--max-jobs", type=int, default=10, help="Max concurrent jobs")
+@click.pass_context
+def node(ctx, name: str, port: int, network: str, models: tuple, max_jobs: int):
+    """Alias for 'hanzo net' - Start as a compute node for the Hanzo network."""
+    try:
+        asyncio.run(start_compute_node(ctx, name, port, network, models, max_jobs))
+    except KeyboardInterrupt:
+        # Already handled in start_compute_node
+        pass
+
+
+@cli.command()
+@click.option("--workspace", default="~/.hanzo/dev", help="Workspace directory")
+@click.option(
+    "--orchestrator",
+    default="gpt-5",
+    help="Orchestrator: gpt-5, router:gpt-4o, direct:claude, codex, gpt-5-pro-codex, cost-optimized",
+)
+@click.option(
+    "--orchestrator-mode",
+    type=click.Choice(["router", "direct", "codex", "hybrid", "local"]),
+    default=None,
+    help="Force orchestrator mode (router via hanzo-router, direct API, codex, hybrid, local)",
+)
+@click.option(
+    "--router-endpoint",
+    default=None,
+    help="Hanzo router endpoint (default: http://localhost:4000)",
+)
+@click.option("--claude-path", help="Path to Claude Code executable")
+@click.option("--monitor", is_flag=True, help="Start in monitor mode")
+@click.option("--repl", is_flag=True, help="Start REPL interface (default)")
+@click.option("--instances", type=int, default=2, help="Number of worker agents")
+@click.option("--mcp-tools", is_flag=True, default=True, help="Enable all MCP tools")
+@click.option(
+    "--network-mode", is_flag=True, default=True, help="Network agents together"
+)
+@click.option(
+    "--guardrails", is_flag=True, default=True, help="Enable code quality guardrails"
+)
+@click.option(
+    "--use-network/--no-network", default=True, help="Use hanzo-network if available"
+)
+@click.option(
+    "--use-hanzo-net",
+    is_flag=True,
+    help="Use hanzo/net for local AI (auto-enabled with local: models)",
+)
+@click.option(
+    "--hanzo-net-port",
+    type=int,
+    default=52415,
+    help="Port for hanzo/net (default: 52415)",
+)
+@click.pass_context
+def dev(
+    ctx,
+    workspace: str,
+    orchestrator: str,
+    orchestrator_mode: str,
+    router_endpoint: str,
+    claude_path: str,
+    monitor: bool,
+    repl: bool,
+    instances: int,
+    mcp_tools: bool,
+    network_mode: bool,
+    guardrails: bool,
+    use_network: bool,
+    use_hanzo_net: bool,
+    hanzo_net_port: int,
+):
+    """Start Hanzo Dev - AI Coding OS with configurable orchestrator.
+
+    This creates a multi-agent system where:
+    - Configurable orchestrator (GPT-5, GPT-4, Claude, or LOCAL) manages the network
+    - Local AI via hanzo/net for cost-effective orchestration
+    - Worker agents (Claude + local) handle code implementation
+    - Critic agents review and improve code (System 2 thinking)
+    - Cost-optimized routing (local models for simple tasks)
+    - All agents can use MCP tools
+    - Agents can call each other recursively
+    - Guardrails prevent code degradation
+    - Auto-recovery from failures
+
+    Examples:
+        hanzo dev                                    # GPT-5 orchestrator (default)
+        hanzo dev --orchestrator gpt-4               # GPT-4 orchestrator
+        hanzo dev --orchestrator claude-3-5-sonnet   # Claude orchestrator
+        hanzo dev --orchestrator local:llama3.2      # Local Llama 3.2 via hanzo/net
+        hanzo dev --use-hanzo-net                    # Enable local AI workers
+        hanzo dev --instances 4                      # More worker agents
+        hanzo dev --monitor                          # Auto-monitor and restart mode
+    """
+    from .dev import run_dev_orchestrator
+    from .orchestrator_config import OrchestratorMode, get_orchestrator_config
+
+    # Get orchestrator configuration
+    orch_config = get_orchestrator_config(orchestrator)
+
+    # Override mode if specified
+    if orchestrator_mode:
+        orch_config.mode = OrchestratorMode(orchestrator_mode)
+
+    # Override router endpoint if specified
+    if router_endpoint and orch_config.router:
+        orch_config.router.endpoint = router_endpoint
+
+    # Auto-enable hanzo net if using local orchestrator
+    if orchestrator.startswith("local:") or orch_config.mode == OrchestratorMode.LOCAL:
+        use_hanzo_net = True
+
+    # Show configuration
+    console.print(f"[bold cyan]Orchestrator Configuration[/bold cyan]")
+    console.print(f"  Mode: {orch_config.mode.value}")
+    console.print(f"  Primary Model: {orch_config.primary_model}")
+    if orch_config.router:
+        console.print(f"  Router Endpoint: {orch_config.router.endpoint}")
+    if orch_config.codex:
+        console.print(f"  Codex Model: {orch_config.codex.model}")
+    console.print(
+        f"  Cost Optimization: {'Enabled' if orch_config.enable_cost_optimization else 'Disabled'}"
+    )
+    console.print()
+
+    asyncio.run(
+        run_dev_orchestrator(
+            workspace=workspace,
+            orchestrator_model=orchestrator,
+            orchestrator_config=orch_config,  # Pass the config
+            claude_path=claude_path,
+            monitor=monitor,
+            repl=repl or not monitor,  # Default to REPL if not monitoring
+            instances=instances,
+            mcp_tools=mcp_tools,
+            network_mode=network_mode,
+            guardrails=guardrails,
+            use_network=use_network,
+            use_hanzo_net=use_hanzo_net,
+            hanzo_net_port=hanzo_net_port,
+            console=ctx.obj.get("console", console),
+        )
+    )
+
+
+async def start_compute_node(
+    ctx,
+    name: str = None,
+    port: int = 52415,
+    network: str = "mainnet",
+    models: tuple = None,
+    max_jobs: int = 10,
+):
+    """Start this instance as a compute node using hanzo/net."""
+    from .utils.net_check import check_net_installation
+
+    console = ctx.obj.get("console", Console())
+
+    console.print("[bold cyan]Starting Hanzo Net Compute Node[/bold cyan]")
+    console.print(f"Network: {network}")
+    console.print(f"Port: {port}")
+
+    # Check hanzo/net availability
+    is_available, net_path, python_exe = check_net_installation()
+
+    if not is_available:
+        console.print("[red]Error:[/red] hanzo-net is not installed")
+        console.print("\nTo install hanzo-net from PyPI:")
+        console.print("  pip install hanzo-net")
+        console.print("\nOr for development, clone from GitHub:")
+        console.print("  git clone https://github.com/hanzoai/net.git ~/work/hanzo/net")
+        console.print("  cd ~/work/hanzo/net && pip install -e .")
+        return
+
+    try:
+        import os
+        import sys
+        import subprocess
+
+        # Use the checked net_path and python_exe
+        if not net_path:
+            # net is installed as a package
+            console.print("[green]✓[/green] Using installed hanzo/net")
+
+            # Set up sys.argv for net's argparse
+            original_argv = sys.argv.copy()
+            try:
+                # Build argv for net
+                sys.argv = ["hanzo-net"]  # Program name
+
+                # Add options
+                if port != 52415:
+                    sys.argv.extend(["--chatgpt-api-port", str(port)])
+                if name:
+                    sys.argv.extend(["--node-id", name])
+                if network != "local":
+                    sys.argv.extend(["--discovery-module", network])
+                if models:
+                    sys.argv.extend(["--default-model", models[0]])
+
+                # Import and run net
+                from net.main import run as net_run
+
+                console.print(f"\n[green]✓[/green] Node initialized")
+                console.print(f"  Port: {port}")
+                console.print(
+                    f"  Models: {', '.join(models) if models else 'auto-detect'}"
+                )
+                console.print("\n[bold green]Hanzo Net is running![/bold green]")
+                console.print("WebUI: http://localhost:52415")
+                console.print("API: http://localhost:52415/v1/chat/completions")
+                console.print("\nPress Ctrl+C to stop\n")
+
+                # Set up signal handlers for async version
+                stop_event = asyncio.Event()
+
+                def async_signal_handler(signum, frame):
+                    console.print("\n[yellow]Stopping hanzo net...[/yellow]")
+                    stop_event.set()
+
+                signal.signal(signal.SIGINT, async_signal_handler)
+                signal.signal(signal.SIGTERM, async_signal_handler)
+
+                # Run net with proper signal handling
+                try:
+                    net_task = asyncio.create_task(net_run())
+                    stop_task = asyncio.create_task(stop_event.wait())
+
+                    # Wait for either net to complete or stop signal
+                    done, pending = await asyncio.wait(
+                        [net_task, stop_task], return_when=asyncio.FIRST_COMPLETED
+                    )
+
+                    # Cancel pending tasks
+                    for task in pending:
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+
+                    # Check if we stopped due to signal
+                    if stop_task in done:
+                        console.print("[green]✓[/green] Node stopped gracefully")
+                except asyncio.CancelledError:
+                    console.print("[yellow]Cancelled[/yellow]")
+            finally:
+                sys.argv = original_argv
+        else:
+            # Run from source directory using the detected python_exe
+            console.print(f"[green]✓[/green] Using hanzo/net from {net_path}")
+            if python_exe != sys.executable:
+                console.print(f"[green]✓[/green] Using hanzo/net venv")
+            else:
+                console.print("[yellow]⚠[/yellow] Using system Python")
+
+            # Change to net directory and run
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(net_path)
+
+                # Set up environment
+                env = os.environ.copy()
+                if models:
+                    env["NET_MODELS"] = ",".join(models)
+                if name:
+                    env["NET_NODE_NAME"] = name
+                env["PYTHONPATH"] = (
+                    os.path.join(net_path, "src") + ":" + env.get("PYTHONPATH", "")
+                )
+
+                console.print(f"\n[green]✓[/green] Starting net node")
+                console.print(f"  Port: {port}")
+                console.print(
+                    f"  Models: {', '.join(models) if models else 'auto-detect'}"
+                )
+                console.print("\n[bold green]Hanzo Net is running![/bold green]")
+                console.print("WebUI: http://localhost:52415")
+                console.print("API: http://localhost:52415/v1/chat/completions")
+                console.print("\nPress Ctrl+C to stop\n")
+
+                # Build command line args
+                cmd_args = [python_exe, "-m", "net.main"]
+                if port != 52415:
+                    cmd_args.extend(["--chatgpt-api-port", str(port)])
+                if name:
+                    cmd_args.extend(["--node-id", name])
+                if network != "local":
+                    cmd_args.extend(["--discovery-module", network])
+                if models:
+                    cmd_args.extend(["--default-model", models[0]])
+
+                # Run net command with detected python in a more signal-friendly way
+                # Create new process group for better signal handling
+                process = subprocess.Popen(
+                    cmd_args,
+                    env=env,
+                    preexec_fn=os.setsid if hasattr(os, "setsid") else None,
+                )
+
+                # Set up signal handlers to forward to subprocess group
+                def signal_handler(signum, frame):
+                    if process.poll() is None:  # Process is still running
+                        console.print("\n[yellow]Stopping hanzo net...[/yellow]")
+                        try:
+                            # Send signal to entire process group
+                            if hasattr(os, "killpg"):
+                                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                            else:
+                                process.terminate()
+                            process.wait(timeout=5)  # Wait up to 5 seconds
+                        except subprocess.TimeoutExpired:
+                            console.print("[yellow]Force stopping...[/yellow]")
+                            if hasattr(os, "killpg"):
+                                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                            else:
+                                process.kill()
+                            process.wait()
+                        except ProcessLookupError:
+                            pass  # Process already terminated
+                    raise KeyboardInterrupt
+
+                # Register signal handlers
+                signal.signal(signal.SIGINT, signal_handler)
+                signal.signal(signal.SIGTERM, signal_handler)
+
+                # Wait for process to complete
+                returncode = process.wait()
+
+                if returncode != 0 and returncode != -2:  # -2 is Ctrl+C
+                    console.print(f"[red]Net exited with code {returncode}[/red]")
+
+            finally:
+                os.chdir(original_cwd)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutting down node...[/yellow]")
+        console.print("[green]✓[/green] Node stopped")
+    except Exception as e:
+        console.print(f"[red]Error starting compute node: {e}[/red]")
+
+
+@cli.command()
+@click.pass_context
+def dashboard(ctx):
+    """Open interactive dashboard."""
+    from .interactive.dashboard import run_dashboard
+
+    run_dashboard()
+
+
+@cli.command()
+@click.option("--json", "json_output", is_flag=True, help="JSON output format")
+@click.pass_context
+def doctor(ctx, json_output: bool):
+    """Show installed Hanzo tools, versions, and system info.
+
+    Checks all Hanzo CLI tools installed via uv, cargo, npm, or homebrew.
+    """
+    import shutil
+    import platform
+    from rich.table import Table
+    from rich.panel import Panel
+
+    console = ctx.obj.get("console", Console())
+
+    if json_output:
+        import json as json_module
+        result = {"tools": [], "system": {}}
+
+    # System info
+    console.print(Panel.fit(
+        f"[bold cyan]Hanzo Doctor[/bold cyan]\n"
+        f"[dim]System: {platform.system()} {platform.machine()}[/dim]",
+        border_style="cyan"
+    ))
+    console.print()
+
+    # Check uv tools
+    tools_found = []
+
+    console.print("[bold]Python Tools (uv):[/bold]")
+    try:
+        result_uv = subprocess.run(
+            ["uv", "tool", "list"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result_uv.returncode == 0:
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("Package", style="cyan")
+            table.add_column("Version", style="green")
+            table.add_column("Path", style="dim")
+
+            for line in result_uv.stdout.strip().split('\n'):
+                if line.startswith('hanzo'):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        name, version = parts[0], parts[1]
+                        path = shutil.which(name) or f"~/.local/bin/{name}"
+                        table.add_row(name, version, path)
+                        tools_found.append({"name": name, "version": version, "path": path, "source": "uv"})
+
+            if tools_found:
+                console.print(table)
+            else:
+                console.print("  [dim](none installed)[/dim]")
+        else:
+            console.print("  [dim](uv not available)[/dim]")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        console.print("  [dim](uv not installed)[/dim]")
+
+    console.print()
+
+    # Check for other AI CLI tools
+    console.print("[bold]AI CLI Tools:[/bold]")
+    ai_tools = [
+        ("claude", "Claude Code"),
+        ("gemini", "Gemini CLI"),
+        ("codex", "OpenAI Codex"),
+        ("cursor", "Cursor"),
+        ("aider", "Aider"),
+    ]
+
+    ai_table = Table(show_header=True, header_style="bold")
+    ai_table.add_column("Tool", style="cyan")
+    ai_table.add_column("Version", style="green")
+    ai_table.add_column("Path", style="dim")
+
+    ai_found = False
+    for cmd, name in ai_tools:
+        path = shutil.which(cmd)
+        if path:
+            ai_found = True
+            try:
+                ver_result = subprocess.run(
+                    [cmd, "--version"],
+                    capture_output=True, text=True, timeout=5
+                )
+                version = ver_result.stdout.strip().split('\n')[0] if ver_result.returncode == 0 else "?"
+            except:
+                version = "?"
+            ai_table.add_row(name, version, path)
+
+    if ai_found:
+        console.print(ai_table)
+    else:
+        console.print("  [dim](none detected)[/dim]")
+
+    console.print()
+
+    # Check API keys
+    console.print("[bold]API Keys:[/bold]")
+    api_keys = [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "XAI_API_KEY",
+        "GROQ_API_KEY",
+        "GITHUB_TOKEN",
+        "HF_TOKEN",
+    ]
+
+    keys_found = []
+    for key in api_keys:
+        if os.environ.get(key):
+            keys_found.append(key)
+            console.print(f"  [green]✓[/green] {key}")
+
+    if not keys_found:
+        console.print("  [dim](none set)[/dim]")
+
+    console.print()
+    console.print("[bold green]✓[/bold green] Doctor check complete")
+
+    if json_output:
+        result["tools"] = tools_found
+        result["system"] = {
+            "platform": platform.system(),
+            "arch": platform.machine(),
+            "python": platform.python_version(),
+        }
+        print(json_module.dumps(result, indent=2))
+
+
+@cli.command()
+@click.option("--all", "upgrade_all", is_flag=True, help="Upgrade all Hanzo tools")
+@click.option("--force", "-f", is_flag=True, help="Force reinstall")
+@click.argument("packages", nargs=-1)
+@click.pass_context
+def update(ctx, upgrade_all: bool, force: bool, packages: tuple):
+    """Update Hanzo CLI tools to latest versions.
+
+    \b
+    Examples:
+      hanzo update              # Update hanzo and hanzo-mcp
+      hanzo update --all        # Update all Hanzo tools
+      hanzo update hanzo-mcp    # Update specific package
+      hanzo update --force      # Force reinstall
+    """
+    console = ctx.obj.get("console", Console())
+
+    # Default packages to update
+    default_packages = ["hanzo", "hanzo-mcp"]
+    all_packages = ["hanzo", "hanzo-mcp", "hanzo-agents", "hanzo-memory", "hanzo-network"]
+
+    if packages:
+        to_update = list(packages)
+    elif upgrade_all:
+        to_update = all_packages
+    else:
+        to_update = default_packages
+
+    console.print("[bold cyan]Updating Hanzo CLI tools...[/bold cyan]")
+    console.print()
+
+    # Check if uv is available
+    import shutil
+    if not shutil.which("uv"):
+        console.print("[red]Error:[/red] uv is not installed")
+        console.print("Install with: curl -LsSf https://astral.sh/uv/install.sh | sh")
+        return
+
+    success = []
+    failed = []
+
+    for pkg in to_update:
+        console.print(f"  Updating [cyan]{pkg}[/cyan]...", end=" ")
+        try:
+            cmd = ["uv", "tool", "upgrade" if not force else "install", pkg]
+            if force:
+                cmd.append("--force")
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True, text=True, timeout=120
+            )
+
+            if result.returncode == 0:
+                # Get new version
+                ver_result = subprocess.run(
+                    ["uv", "tool", "list"],
+                    capture_output=True, text=True, timeout=10
+                )
+                version = "?"
+                for line in ver_result.stdout.split('\n'):
+                    if line.startswith(pkg + ' '):
+                        version = line.split()[1] if len(line.split()) > 1 else "?"
+                        break
+
+                console.print(f"[green]✓[/green] {version}")
+                success.append(pkg)
+            else:
+                # Try install if upgrade failed (package not installed)
+                if "not installed" in result.stderr.lower():
+                    install_result = subprocess.run(
+                        ["uv", "tool", "install", pkg],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    if install_result.returncode == 0:
+                        console.print("[green]✓[/green] installed")
+                        success.append(pkg)
+                    else:
+                        console.print(f"[red]✗[/red] {install_result.stderr.strip()}")
+                        failed.append(pkg)
+                else:
+                    console.print(f"[red]✗[/red] {result.stderr.strip()}")
+                    failed.append(pkg)
+
+        except subprocess.TimeoutExpired:
+            console.print("[red]✗[/red] timeout")
+            failed.append(pkg)
+        except Exception as e:
+            console.print(f"[red]✗[/red] {e}")
+            failed.append(pkg)
+
+    console.print()
+    if success:
+        console.print(f"[bold green]✓[/bold green] Updated: {', '.join(success)}")
+    if failed:
+        console.print(f"[bold red]✗[/bold red] Failed: {', '.join(failed)}")
+
+
+def main():
+    """Main entry point."""
+    try:
+        cli(auto_envvar_prefix="HANZO")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted by user[/yellow]")
+        sys.exit(0)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
