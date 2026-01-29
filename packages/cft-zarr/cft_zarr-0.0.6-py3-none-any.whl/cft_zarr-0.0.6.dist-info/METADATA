@@ -1,0 +1,101 @@
+Metadata-Version: 2.3
+Name: cft-zarr
+Version: 0.0.6
+Summary: CFT Zarr codecs for 12-bit fluorescence and RGB compression
+Author: Eli White
+Author-email: eliwhite@gmail.com
+Requires-Python: >=3.11,<=3.14
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Dist: imagecodecs (>=2024.1.1)
+Requires-Dist: numpy (>=2.0.0,<3.0.0)
+Requires-Dist: zarr (>=3.0.0)
+Description-Content-Type: text/markdown
+
+# CFT Zarr Custom Codecs
+
+Custom codecs for Zarr v3 optimized for CFT (Cryo-Fluorescence Tomography) data storage.
+
+## Codecs
+
+This package provides custom Zarr v3 codecs:
+
+- **`cft_zarr.jpeg_compressor`**: JPEG compressor for RGB images (BytesBytesCodec - supports incremental updates)
+- **`cft_zarr.shift12jls_compressor`**: JPEG-LS compressor for 12-bit fluorescent data (BytesBytesCodec - supports incremental updates)
+- **`cft_zarr.jpeg`**: JPEG codec for RGB images (ArrayBytesCodec)
+- **`cft_zarr.shift12jls`**: JPEG-LS codec for 12-bit fluorescent data (ArrayBytesCodec)
+- **`cft_zarr.jpegxl`**: JPEG XL codec (ArrayBytesCodec)
+
+## Installation
+
+```bash
+pip install cft-zarr
+```
+
+## Usage
+
+### Reading Zarr Files
+
+**Important**: You must import `cft_zarr` before opening Zarr files that use these codecs. This registers the codecs with Zarr.
+
+```python
+import cft_zarr  # This registers the codecs
+import zarr
+
+# Now you can open Zarr files that use custom codecs
+arr = zarr.open('rgb.zarr', mode='r')
+```
+
+### Using with napari
+
+When opening Zarr files in napari, `cft_zarr` can be auto-registered via the
+napari plugin system (installed in the same environment as napari). If you
+still have trouble, import `cft_zarr` first:
+
+```python
+import cft_zarr  # Register codecs before opening files
+import napari
+
+# Now napari can read Zarr files with custom codecs
+viewer = napari.Viewer()
+viewer.open('path/to/file.zarr')  # Will work with custom codecs
+```
+
+Or in a Python script before launching napari:
+
+```python
+import cft_zarr  # Must import before opening Zarr files
+import napari
+
+viewer = napari.Viewer()
+viewer.open('rgb.zarr')
+napari.run()
+```
+
+### Creating Zarr Arrays with Custom Codecs
+
+```python
+import cft_zarr
+from cft_zarr import JPEGCompressor, Shift12JLSCompressor
+import zarr
+
+# Create RGB array with JPEG compression
+rgb_array = zarr.create(
+    shape=(100, 512, 512, 3),
+    chunks=(4, 512, 512, 3),
+    dtype='uint8',
+    compressors=[JPEGCompressor(level=85)]
+)
+
+# Create fluorescent array with Shift12JLS compression
+fl_array = zarr.create(
+    shape=(100, 512, 512),
+    chunks=(4, 512, 512),
+    dtype='uint16',
+    compressors=[Shift12JLSCompressor()]
+)
+```
+
+
