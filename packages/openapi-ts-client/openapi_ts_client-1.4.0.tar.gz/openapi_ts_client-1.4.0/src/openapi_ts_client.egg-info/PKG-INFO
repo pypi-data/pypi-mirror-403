@@ -1,0 +1,523 @@
+Metadata-Version: 2.4
+Name: openapi-ts-client
+Version: 1.4.0
+Summary: Generate TypeScript clients from OpenAPI specifications
+License: MIT License
+        
+        Copyright (c) 2026 fa-krug
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://github.com/fa-krug/openapi-ts-client
+Project-URL: Repository, https://github.com/fa-krug/openapi-ts-client
+Keywords: openapi,swagger,typescript,client,generator,codegen
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Code Generators
+Classifier: Typing :: Typed
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: jinja2>=3.1.0
+Requires-Dist: openapi-core>=0.19.0
+Requires-Dist: pyyaml>=6.0
+Provides-Extra: dev
+Requires-Dist: ruff>=0.4.0; extra == "dev"
+Requires-Dist: pre-commit>=3.0.0; extra == "dev"
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.10; extra == "dev"
+Requires-Dist: tree-sitter>=0.21; extra == "dev"
+Requires-Dist: tree-sitter-typescript>=0.21; extra == "dev"
+Dynamic: license-file
+
+# openapi-ts-client
+
+[![PyPI version](https://badge.fury.io/py/openapi-ts-client.svg)](https://pypi.org/project/openapi-ts-client/)
+[![Python versions](https://img.shields.io/pypi/pyversions/openapi-ts-client.svg)](https://pypi.org/project/openapi-ts-client/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Generate TypeScript clients from OpenAPI 3.x specifications.
+
+## Features
+
+- Supports OpenAPI 3.0.x and 3.1.x specifications
+- Three output formats: Fetch API, Axios, and Angular
+- Fully typed TypeScript output with models and API classes
+- Accepts specs as Python dictionaries or JSON strings
+- Automatic validation of OpenAPI specifications
+
+## Why This Project?
+
+Python backend frameworks like FastAPI and django-ninja already generate OpenAPI specs from your type hints. This library enables those frameworks to take the next step: generating TypeScript clients that mirror your backend types exactly. Framework authors can integrate openapi-ts-client to give their users end-to-end type safety with zero manual type definitions.
+
+## Installation
+
+```bash
+pip install openapi-ts-client
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/fa-krug/openapi-ts-client.git
+cd openapi-ts-client
+pip install -e .
+```
+
+## CLI Usage
+
+```bash
+# Generate from file
+openapi-ts-client ./openapi.json
+
+# Specify output format and directory
+openapi-ts-client ./openapi.json -f axios -o ./src/api
+
+# Generate from URL
+openapi-ts-client https://api.example.com/openapi.json
+
+# Generate from stdin
+cat openapi.json | openapi-ts-client -
+
+# Use config file
+openapi-ts-client --config ./my-config.json
+
+# Verbose output
+openapi-ts-client ./openapi.json -v
+```
+
+### Config File
+
+Create `openapi-ts-client.json` for repeated use:
+
+```json
+{
+  "clients": [
+    {
+      "input": "./specs/users-api.json",
+      "format": "fetch",
+      "output": "./src/api/users"
+    },
+    {
+      "input": "./specs/orders-api.json",
+      "format": "axios",
+      "output": "./src/api/orders"
+    }
+  ]
+}
+```
+
+Then run:
+
+```bash
+openapi-ts-client
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-f, --format` | Output format: fetch, axios, angular | fetch |
+| `-o, --output` | Output directory | ./generated |
+| `-c, --config` | Config file path | openapi-ts-client.json |
+| `--no-validate` | Skip OpenAPI spec validation | - |
+| `--clean` | Clear output directory before generating | - |
+| `--force` | Continue even if output directory is not empty (may overwrite files) | - |
+| `-q, --quiet` | Suppress all output except errors | - |
+| `-v, --verbose` | Show detailed progress | - |
+
+## Quick Start
+
+```python
+from openapi_ts_client import generate_typescript_client, ClientFormat
+
+# Load your OpenAPI spec (from file, URL, or inline)
+with open("openapi.json", "r") as f:
+    spec = f.read()
+
+# Generate a TypeScript client
+result = generate_typescript_client(
+    openapi_spec=spec,
+    output_format=ClientFormat.FETCH,
+    output_path="./generated/api"
+)
+
+print(result)
+# Output: TypeScript Fetch client generated for 'My API' v1.0.0 (OpenAPI 3.0.0). Output: /path/to/generated/api
+```
+
+## Usage
+
+### Basic Usage
+
+```python
+from openapi_ts_client import generate_typescript_client, ClientFormat
+
+# Inline OpenAPI 3.x specification
+spec = {
+    "openapi": "3.0.0",
+    "info": {
+        "title": "My API",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/users": {
+            "get": {
+                "summary": "Get all users",
+                "operationId": "getUsers",
+                "responses": {
+                    "200": {
+                        "description": "Success"
+                    }
+                }
+            }
+        }
+    }
+}
+
+# Generate with defaults (Fetch client, temp directory)
+result = generate_typescript_client(spec)
+```
+
+### Loading from JSON File
+
+```python
+from openapi_ts_client import generate_typescript_client
+
+# Load spec from a JSON file (as string)
+with open("openapi.json", "r") as f:
+    json_string = f.read()
+
+result = generate_typescript_client(json_string, output_path="./src/api")
+```
+
+### Loading from YAML File
+
+```python
+import yaml
+from openapi_ts_client import generate_typescript_client
+
+# Load spec from YAML (convert to dict)
+with open("openapi.yaml", "r") as f:
+    spec = yaml.safe_load(f)
+
+result = generate_typescript_client(spec, output_path="./src/api")
+```
+
+## Client Formats
+
+The package supports three output formats, each optimized for different use cases:
+
+### Fetch API Client (Default)
+
+Native browser Fetch API client with no external dependencies.
+
+```python
+from openapi_ts_client import generate_typescript_client, ClientFormat
+
+result = generate_typescript_client(
+    spec,
+    output_format=ClientFormat.FETCH,
+    output_path="./generated/fetch-client"
+)
+```
+
+**Generated structure:**
+```
+fetch-client/
+├── index.ts          # Main entry point, exports all
+├── runtime.ts        # HTTP client runtime utilities
+├── apis/
+│   ├── index.ts      # Exports all API classes
+│   ├── PetApi.ts     # API class for /pet endpoints
+│   ├── StoreApi.ts   # API class for /store endpoints
+│   └── UserApi.ts    # API class for /user endpoints
+└── models/
+    ├── index.ts      # Exports all model interfaces
+    ├── Pet.ts        # TypeScript interface for Pet
+    ├── Order.ts      # TypeScript interface for Order
+    └── User.ts       # TypeScript interface for User
+```
+
+**Usage in TypeScript:**
+```typescript
+import { Configuration, PetApi, Pet } from './generated/fetch-client';
+
+const config = new Configuration({
+    basePath: 'https://api.example.com',
+    headers: {
+        'Authorization': 'Bearer YOUR_TOKEN'
+    }
+});
+
+const petApi = new PetApi(config);
+
+// Get a pet by ID
+const pet: Pet = await petApi.getPetById({ petId: 1 });
+
+// Create a new pet
+const newPet = await petApi.addPet({
+    pet: { name: 'Fluffy', status: 'available' }
+});
+```
+
+### Axios Client
+
+Client using the popular Axios HTTP library with interceptors support.
+
+```python
+from openapi_ts_client import generate_typescript_client, ClientFormat
+
+result = generate_typescript_client(
+    spec,
+    output_format=ClientFormat.AXIOS,
+    output_path="./generated/axios-client"
+)
+```
+
+**Generated structure:**
+```
+axios-client/
+├── index.ts          # Main entry point
+├── api.ts            # All API classes and interfaces
+├── base.ts           # Base API class
+├── common.ts         # Common utilities
+└── configuration.ts  # Configuration class
+```
+
+**Usage in TypeScript:**
+```typescript
+import { Configuration, PetApi } from './generated/axios-client';
+import axios from 'axios';
+
+const config = new Configuration({
+    basePath: 'https://api.example.com',
+    accessToken: 'YOUR_TOKEN'
+});
+
+const petApi = new PetApi(config);
+
+// Get a pet by ID
+const response = await petApi.getPetById(1);
+const pet = response.data;
+
+// With custom Axios instance (for interceptors)
+const axiosInstance = axios.create();
+axiosInstance.interceptors.request.use((config) => {
+    config.headers.Authorization = `Bearer ${getToken()}`;
+    return config;
+});
+
+const petApiWithInterceptors = new PetApi(config, undefined, axiosInstance);
+```
+
+### Angular Client
+
+Angular-optimized client with injectable services and RxJS Observables.
+
+```python
+from openapi_ts_client import generate_typescript_client, ClientFormat
+
+result = generate_typescript_client(
+    spec,
+    output_format=ClientFormat.ANGULAR,
+    output_path="./generated/angular-client"
+)
+```
+
+**Generated structure:**
+```
+angular-client/
+├── index.ts              # Main entry point
+├── api.module.ts         # Angular module for importing
+├── api.base.service.ts   # Base service class
+├── configuration.ts      # Configuration class
+├── provide-api.ts        # Standalone provider function
+├── api/
+│   ├── api.ts            # Exports all services
+│   ├── pet.service.ts    # Injectable PetService
+│   ├── store.service.ts  # Injectable StoreService
+│   └── user.service.ts   # Injectable UserService
+└── model/
+    ├── models.ts         # Exports all models
+    ├── pet.ts            # Pet interface
+    ├── order.ts          # Order interface
+    └── user.ts           # User interface
+```
+
+**Usage in Angular:**
+```typescript
+// app.module.ts
+import { ApiModule, Configuration } from './generated/angular-client';
+
+@NgModule({
+    imports: [
+        ApiModule.forRoot(() => new Configuration({
+            basePath: 'https://api.example.com'
+        }))
+    ]
+})
+export class AppModule { }
+
+// Or with standalone components (Angular 14+)
+// app.config.ts
+import { provideApi } from './generated/angular-client';
+
+export const appConfig = {
+    providers: [
+        provideApi({
+            basePath: 'https://api.example.com'
+        })
+    ]
+};
+```
+
+```typescript
+// pet.component.ts
+import { Component, inject } from '@angular/core';
+import { PetService, Pet } from './generated/angular-client';
+
+@Component({
+    selector: 'app-pet',
+    template: `<div>{{ pet?.name }}</div>`
+})
+export class PetComponent {
+    private petService = inject(PetService);
+    pet: Pet | null = null;
+
+    ngOnInit() {
+        this.petService.getPetById(1).subscribe(pet => {
+            this.pet = pet;
+        });
+    }
+}
+```
+
+## API Reference
+
+### `generate_typescript_client(openapi_spec, output_format, output_path)`
+
+Generate a TypeScript client from an OpenAPI specification.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `openapi_spec` | `dict \| str` | required | The OpenAPI specification as a dictionary or JSON string |
+| `output_format` | `ClientFormat` | `ClientFormat.FETCH` | The output client format |
+| `output_path` | `str \| Path \| None` | `None` | Output directory (uses temp dir if not specified) |
+| `skip_validation` | `bool` | `False` | Skip OpenAPI specification validation |
+| `clean` | `bool` | `False` | Clear the output directory before generating. Cannot be used together with `force`. |
+| `force` | `bool` | `False` | Continue generation even if output directory is not empty. Files will be overwritten but existing files not part of the generated output will remain. Cannot be used together with `clean`. |
+
+**Returns:**
+
+- `str`: A status message with generation details
+
+**Raises:**
+
+- `ValueError`: If the specification is invalid or missing required fields
+- `TypeError`: If `openapi_spec` is neither a dict nor a string
+
+### `ClientFormat` Enum
+
+| Value | Description |
+|-------|-------------|
+| `ClientFormat.FETCH` | Native Fetch API client (default) |
+| `ClientFormat.AXIOS` | Axios HTTP library client |
+| `ClientFormat.ANGULAR` | Angular-optimized client with services |
+
+## Supported OpenAPI Features
+
+### Versions
+- OpenAPI 3.0.x
+- OpenAPI 3.1.x
+
+### Schema Types
+- Primitive types (string, number, integer, boolean)
+- Arrays and objects
+- Enums
+- `$ref` references
+- `allOf`, `anyOf`, `oneOf` compositions
+- Nullable types
+
+### Operations
+- All HTTP methods (GET, POST, PUT, DELETE, PATCH, etc.)
+- Path parameters
+- Query parameters
+- Request bodies (JSON, form data)
+- Response types
+- Operation tags (for grouping into API classes)
+
+### Security
+- API Key authentication
+- Bearer token authentication
+- OAuth2 flows
+- Basic authentication
+
+## Requirements
+
+- Python 3.8+
+
+**Runtime dependencies:**
+- `jinja2>=3.1.0` - Template engine
+- `openapi-core>=0.19.0` - OpenAPI spec validation
+
+**For using generated clients:**
+- Node.js with TypeScript
+- Axios (for Axios client)
+- Angular 14+ (for Angular client)
+
+## Development
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Lint and format
+ruff check src --fix
+ruff format src
+
+# Setup pre-commit hooks
+pre-commit install
+```
+
+## Acknowledgements
+
+This project builds on the excellent work of the [OpenAPI Generator](https://openapi-generator.tech/) team. Their years of effort creating robust code generation templates provided the foundation that made openapi-ts-client possible. Thank you for your contributions to the open-source community.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Links
+
+- [GitHub Repository](https://github.com/fa-krug/openapi-ts-client)
+- [Issue Tracker](https://github.com/fa-krug/openapi-ts-client/issues)
