@@ -1,0 +1,49 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/ruff-action@v3
+      - run: ruff format --check
+
+  clang-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jidicula/clang-format-action@v4.16.0
+        with:
+          clang-format-version: '18'
+          check-path: 'src'
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ '3.10', '3.11', '3.12', '3.13', '3.14' ]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install OR-Tools
+        run: |
+          wget -O or-tools.tar.gz https://github.com/google/or-tools/releases/download/v9.12/or-tools_amd64_ubuntu-24.04_cpp_v9.12.4544.tar.gz
+          tar -xzf or-tools.tar.gz
+          export ORTOOLS_DIR=$(realpath $(find . -maxdepth 1 -name "or-tools_x86_64_Ubuntu*" -type d))
+          echo "ORTOOLS_DIR=$ORTOOLS_DIR" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$ORTOOLS_DIR/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=$ORTOOLS_DIR/bin:$PATH" >> $GITHUB_ENV
+      - name: Install the package
+        run: |
+          python -m pip install --upgrade pip
+          pip install --group dev .
+      - name: Run tests
+        run: pytest
