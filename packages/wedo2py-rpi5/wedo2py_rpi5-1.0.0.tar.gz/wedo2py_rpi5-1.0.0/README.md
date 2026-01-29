@@ -1,0 +1,170 @@
+# Wedo2python - LEGO WeDo 2.0 BLE Python Library (Raspberry Pi & Linux)
+
+Control LEGO WeDo 2.0 over Bluetooth Low Energy (BLE) using Python and the **Bleak** library.
+This package is designed primarily for **Raspberry Pi 5 / Raspberry Pi OS Bookworm**, but works on most modern Linux systems with BLE support.
+
+# Features
+
+Motor control (Port A / B) 
+Tilt sensor (read orientation) 
+Distance / Motion sensor
+LED color control
+Piezo / Sound tones 
+Battery level readout
+GATT-based BLE communication (Bleak) 
+
+
+# Requirements
+
+* Python **3.9+**
+* Linux with **BlueZ** + Bluetooth LE
+* Recommended device: **Raspberry Pi 5**
+* BLE library: **Bleak**
+
+# Installation 
+
+# If using Raspberry Pi, ensure BLE packages are installed:
+sudo apt update
+sudo apt install bluetooth bluez python3-dbus
+
+# Recommended - Use a Virtual Environment
+It is strongly recommended to run this library inside a Python virtual environment.
+
+Reasons:
+1) prevents conflicts between system Python packages and BLE dependencies (bleak, dbus)
+2) avoids the externally managed environment error on Raspberry Pi OS
+3) allows clean upgrades and uninstalling without affecting the OS
+
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies inside the virtual environment
+pip install --upgrade pip
+pip install wedo2python
+
+# Run your scripts via the virtual environment Python
+venv/bin/python examples/Color_example.py
+
+# Exit the virtual environment
+deactivate
+
+# Important
+
+If you run the library outside a virtual environment, you may experience errors such as:
+**error: externally-managed-environment**
+**ModuleNotFoundError: No module named 'bleak'**
+
+
+# Quick Example
+
+from wedo2python.app import WeDo2Python
+
+hub = WeDo2Python("AA:BB:CC:DD:EE:FF")   # your WeDo Hub MAC
+hub.connect()
+
+hub.set_color("green")
+hub.motor_this_way(hub.port("B"))
+hub.set_motor_power(hub.port("B"), 60)
+hub.motor_on(hub.port("B"))
+
+hub.disconnect()
+
+
+# Control the LED color:
+hub.set_color("red")
+hub.set_color("blue")
+hub.set_color("white")
+hub.set_color("off")
+
+**LED Colors Supported**
+| Name      | Value |
+| --------- | ----- |
+| off       | 0     |
+| pink      | 1     |
+| purple    | 2     |
+| blue      | 3     |
+| lightblue | 4     |
+| cyan      | 5     |
+| green     | 6     |
+| yellow    | 7     |
+| orange    | 8     |
+| red       | 9     |
+| white     | 10    |
+
+
+# Motor example
+hub.motor_this_way(hub.port("B"))   # direction right
+hub.motor_that_way(hub.port("B"))   # direction left
+hub.set_motor_power(hub.port("B"), 80)  # 0-100
+hub.motor_on(hub.port("B"))
+hub.motor_off(hub.port("B"))
+
+
+# Tilt sensor 
+hub.tilt_sensor(hub.port("A"))
+tilt = hub.read_tilt_value()
+print(tilt)
+
+
+# Distance (motion) sensor
+hub.distance_sensor(hub.port("A"))
+dist = hub.read_distance_value()
+print(dist, "cm")
+
+
+# Sound (piezo tone)
+
+**The hub can play 16 internal tones.**
+hub.sound(1)   # tone ID = 1
+hub.sound(12)  # tone ID = 12
+hub.sound(16)  # long tone
+
+**Stop sound:**
+hub.sound_off()
+
+**Full list of available tones**
+| Tone number | Description |
+| ----------- | ----------- |
+| 1           | A           |
+| 2           | F           |
+| 3           | cH          |
+| 4           | A (1000Hz)  |
+| 5           | eH          |
+| 6           | fH          |
+| 7           | gS          |
+| 8           | fS          |
+| 9           | G           |
+| 10          | aS          |
+| 11          | dH          |
+| 12          | cSH         |
+| 13          | B           |
+| 14          | fSH         |
+| 15          | A (500Hz)   |
+| 16          | cH (Long)   |
+
+
+# Finding the MAC of the WeDo Hub
+bluetoothctl
+scan on
+
+# A device of the following type will appear:
+e.g. LEGO Hub 04:EE:03:16:ED:1D
+
+
+# Troubleshooting
+| Issue                          | Solution                                          |
+| ------------------------------ | ------------------------------------------------- |
+| `Cannot connect`               | Turn Hub off/on, press button until LED flashes   |
+| `Works once then disconnects`  | Wait 3 seconds before next connection             |
+| `Motor doesn't run`            | Ensure correct port A/B                           |
+| `Tilt sensor wrong values`     | Sensor must be on Port A physically               |
+| Error: `BLE permission denied` | Run `sudo usermod -a -G bluetooth $USER` and reboot |
+
+# License
+This project is licensed under the Apache 2.0 License.
+You are free to use it for research, teaching, commercial and educational projects.
+
+# Credits
+Developed by Eva Anastasaki
+Python BLE implementation for LEGO WeDo 2.0-fully optimized for Raspberry Pi 5.
