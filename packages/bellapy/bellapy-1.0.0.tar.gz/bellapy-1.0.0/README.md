@@ -1,0 +1,548 @@
+# bellapy
+
+**A lightweight, production-tested data preparation toolkit for ML practitioners.**
+
+> **Stop rewriting the same data cleaning scripts.**
+> Your personal ML operations library, extracted from real production workflows.
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+## The Problem
+
+You've written the same scripts 100 times:
+- `deduplicate_data.py` - MD5 hashing, again
+- `merge_datasets.py` - Combining JSONLs, again
+- `scrub_pii.py` - Regex hell, again
+- `convert_format.py` - OpenAI vs HF, again
+
+**Every project. Every time. Different folder. Different bugs.**
+
+## The Solution
+
+**One library. One command. Forever.**
+
+```bash
+bellapy data dedupe my_dataset.jsonl
+```
+
+That's it. No copying scripts. No finding "that file from 3 months ago."
+
+---
+
+## What is bellapy?
+
+A **pip-installable toolkit** for ML practitioners who are tired of reinventing the wheel.
+
+Built from **real ML workflows** - not academic examples. This is the code that:
+- Cleaned 15,000+ training examples
+- Powered DPO data collection for production models
+- Processed datasets for Llama, Qwen, Dolphin, and Gemma fine-tunes
+- Merged hundreds of conversation datasets
+
+**It's not a framework. It's your personal library.**
+
+---
+
+## Quick Start
+
+### Install
+```bash
+pip install -e /path/to/bellapy
+```
+
+### Use (CLI)
+```bash
+# Remove duplicates
+bellapy data dedupe dataset.jsonl
+
+# Merge multiple files
+bellapy data merge combined.jsonl file1.jsonl file2.jsonl file3.jsonl
+
+# Scrub PII (emails, phones, API keys, etc.)
+bellapy data clean dataset.jsonl
+
+# Convert to OpenAI format
+bellapy data convert dataset.jsonl --format openai
+
+# View stats
+bellapy data stats dataset.jsonl
+```
+
+### Use (Python)
+```python
+from bellapy.data import deduplicate, merge_files, clean_dataset
+
+deduplicate("raw.jsonl", "unique.jsonl")
+clean_dataset("unique.jsonl", "clean.jsonl")  # PII scrubbed
+```
+
+---
+
+## 🎯 Recipes
+
+### Recipe 1: Clean & Dedupe Your Dataset
+
+**The problem:** You have a messy dataset with duplicates and PII.
+
+```bash
+# Before: 10,000 examples with duplicates and emails/phones
+bellapy data dedupe raw_data.jsonl -o step1.jsonl
+bellapy data clean step1.jsonl -o clean_data.jsonl
+bellapy data stats clean_data.jsonl
+
+# After: 8,500 unique examples, PII replaced with [EMAIL]/[PHONE]
+```
+
+**As Python:**
+```python
+from bellapy.data import deduplicate, clean_dataset, get_stats
+
+# Pipeline
+deduplicate("raw_data.jsonl", "step1.jsonl")
+clean_dataset("step1.jsonl", "clean_data.jsonl", scrub_pii_enabled=True)
+
+# Check results
+stats = get_stats("clean_data.jsonl")
+print(f"Cleaned {stats['total']} examples, removed {stats['duplicates']} dupes")
+```
+
+---
+
+### Recipe 2: Merge Multiple Sources
+
+**The problem:** You have 5 datasets from different sources. Need one clean file.
+
+```bash
+bellapy data merge combined.jsonl \
+  organic_convos.jsonl \
+  synthetic_data.jsonl \
+  user_feedback.jsonl \
+  reddit_scrape.jsonl \
+  gpt_generated.jsonl
+
+# Automatically deduplicates during merge
+bellapy data stats combined.jsonl
+```
+
+**As Python:**
+```python
+from bellapy.data import merge_files
+
+sources = [
+    "organic_convos.jsonl",
+    "synthetic_data.jsonl",
+    "user_feedback.jsonl",
+    "reddit_scrape.jsonl",
+    "gpt_generated.jsonl"
+]
+
+merge_files("combined.jsonl", sources, dedupe=True)
+```
+
+---
+
+### Recipe 3: Prepare for Fine-Tuning (OpenAI/HF)
+
+**The problem:** Your dataset is clean but in the wrong format.
+
+```bash
+# Convert to OpenAI messages format
+bellapy data convert dataset.jsonl --format openai -o openai_format.jsonl
+
+# Split train/test (90/10)
+bellapy data split openai_format.jsonl --ratio 0.9
+
+# Result: dataset_train.jsonl + dataset_test.jsonl
+```
+
+**As Python:**
+```python
+from bellapy.data import convert_format, split_dataset
+
+# Convert
+convert_format("dataset.jsonl", "openai_format.jsonl", target_format="openai")
+
+# Split
+train_file, test_file = split_dataset("openai_format.jsonl", train_ratio=0.9)
+```
+
+---
+
+### Recipe 4: The Full Pipeline
+
+**The problem:** You need production-ready data from raw sources.
+
+```bash
+# 1. Merge all sources
+bellapy data merge raw_combined.jsonl source1.jsonl source2.jsonl source3.jsonl
+
+# 2. Deduplicate
+bellapy data dedupe raw_combined.jsonl -o unique.jsonl
+
+# 3. Clean (PII + sanitization)
+bellapy data clean unique.jsonl -o clean.jsonl
+
+# 4. Convert to training format
+bellapy data convert clean.jsonl --format openai -o final.jsonl
+
+# 5. Split train/test
+bellapy data split final.jsonl --ratio 0.9
+
+# 6. Check final stats
+bellapy data stats final_train.jsonl
+```
+
+**One-liner Python version:**
+```python
+from bellapy.data import merge_files, deduplicate, clean_dataset, convert_format, split_dataset
+
+# Full pipeline
+sources = ["source1.jsonl", "source2.jsonl", "source3.jsonl"]
+merge_files("raw.jsonl", sources)
+deduplicate("raw.jsonl", "unique.jsonl")
+clean_dataset("unique.jsonl", "clean.jsonl")
+convert_format("clean.jsonl", "final.jsonl", target_format="openai")
+split_dataset("final.jsonl", train_ratio=0.9)
+```
+
+---
+
+## 🛠️ What's Included
+
+### Phase 1: Data Processing ✅ (Available Now)
+
+| Feature | CLI | Python | What It Does |
+|---------|-----|--------|--------------|
+| **Deduplication** | `bellapy data dedupe` | `deduplicate()` | MD5 hash-based duplicate removal |
+| **Merging** | `bellapy data merge` | `merge_files()` | Combine multiple datasets |
+| **Statistics** | `bellapy data stats` | `get_stats()` | Dataset analysis (size, formats, dupes) |
+| **PII Scrubbing** | `bellapy data clean` | `clean_dataset()` | Remove emails, phones, SSNs, API keys |
+| **Sanitization** | `bellapy data clean` | `sanitize_content()` | Clean spam, emojis, broken text |
+| **Format Conversion** | `bellapy data convert` | `convert_format()` | OpenAI ↔ HuggingFace ↔ Simple |
+| **Train/Test Split** | `bellapy data split` | `split_dataset()` | Ratio-based splitting with shuffle |
+| **Sampling** | Python only | `sample_dataset()` | Random or ratio-based sampling |
+| **Stratified Sampling** | Python only | `stratified_sample()` | Length-balanced sampling |
+| **Length Filtering** | Python only | `filter_by_length()` | Filter by min/max character count |
+| **Pattern Filtering** | Python only | `filter_by_pattern()` | Regex-based filtering |
+| **Quality Filtering** | Python only | `filter_by_quality()` | Remove short, repetitive, URL-heavy |
+| **Custom Filtering** | Python only | `filter_custom()` | Your own filter function |
+| **Format Validation** | Python only | `validate_format()` | Check and fix format issues |
+| **Duplicate Analysis** | Python only | `check_duplicates_detailed()` | Detailed duplicate report |
+
+### Phase 2: Training (Coming Soon)
+
+- Modal backend utilities
+- Model-agnostic trainer
+- Config management
+- Training CLI
+
+### Phase 3: DPO Collection (Coming Soon)
+
+- DPO session management
+- Preference collection interface
+- Analysis tools
+- Interactive CLI
+
+### Phase 4: Inference (Coming Soon)
+
+- Model caching with LoRA
+- Conversation history
+- Generation utilities
+
+---
+
+## 📚 Full Documentation
+
+### Command Reference
+
+```bash
+bellapy data dedupe <file> [-o OUTPUT] [-q]
+  Remove duplicates using MD5 hashing
+
+bellapy data merge <output> <file1> <file2> ... [--no-dedupe] [-q]
+  Combine multiple JSONL files
+
+bellapy data stats <file>
+  Show dataset statistics (total, duplicates, formats, lengths)
+
+bellapy data clean <file> [-o OUTPUT] [--no-pii] [--no-sanitize] [-q]
+  Clean dataset with PII scrubbing and sanitization
+
+bellapy data convert <file> [-o OUTPUT] -f FORMAT [--assistant-key KEY] [-q]
+  Convert between formats (messages, simple, openai, hf)
+
+bellapy data split <file> [-r RATIO] [--no-shuffle] [-q]
+  Split into train/test sets
+```
+
+### PII Detection
+
+**Coverage:** Pattern-based detection for common PII types. Not ML-based.
+
+**What it catches reliably:**
+- **Emails** → `[EMAIL]` (standard formats)
+- **Phone numbers** → `[PHONE]` (US 10-digit, some international)
+- **SSNs** → `[SSN]` (XXX-XX-XXXX format)
+- **Credit cards** → `[CREDIT_CARD]`
+- **IP addresses** → `[IP]`
+- **URLs** → `[URL]`
+- **API keys** → `[API_KEY]` (standard patterns)
+- **Private keys** → `[PRIVATE_KEY]`
+- **Passwords** → `[PASSWORD]` (in common formats)
+- **ZIP codes** → `[ZIP]`
+- **MAC addresses** → `[MAC_ADDR]`
+
+**Limitations:**
+- International phone formats may vary
+- Novel API key formats require pattern updates
+- Context-dependent PII (names, addresses) not detected
+
+**Always verify:** Review scrubbed output before sharing datasets publicly.
+
+### Format Support
+
+**Input formats:**
+```jsonl
+{"user": "Hello", "assistant": "Hi"}
+{"user": "Hello", "EzrA": "Hi"}
+{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]}
+```
+
+**Output formats:**
+- `messages` - OpenAI/HF format with role-based messages
+- `simple` - Simple user/assistant key-value pairs
+- `openai` - OpenAI fine-tuning format
+- `hf` - HuggingFace datasets format
+
+---
+
+## ⚡ Performance Notes
+
+- **Deduplication:** MD5 hashing, O(n) single pass, streaming processing
+- **Large files (>1M lines):** Minimal memory overhead via streaming
+- **Tested on:** Datasets up to 500K examples without issues
+- **Memory efficient:** Processes files line-by-line, not loading entire dataset into RAM
+
+For datasets >10M examples, consider splitting before processing or using sampling.
+
+---
+
+## 💻 Installation
+
+### Recommended (Most Users)
+```bash
+git clone https://github.com/JuiceB0xC0de/bellapy.git
+cd bellapy
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+### With Training Dependencies
+```bash
+pip install -e ".[training]"
+```
+
+### Development Install
+```bash
+pip install -e ".[dev]"
+```
+
+For advanced installation options (PyPI, training dependencies, development setup), see [INSTALL.md](INSTALL.md).
+
+### Verify Installation
+```bash
+bellapy --version
+bellapy data --help
+```
+
+---
+
+## 📁 Project Structure
+
+```
+bellapy/
+├── bellapy/
+│   ├── data/              # Data processing
+│   │   ├── processors.py  # Dedupe, merge, stats, split
+│   │   ├── cleaning.py    # PII scrubbing, sanitization
+│   │   └── formats.py     # Format conversion
+│   ├── cli/               # Command-line interface
+│   ├── training/          # Training utilities (Phase 2)
+│   ├── dpo/              # DPO collection (Phase 3)
+│   └── inference/        # Model inference (Phase 4)
+├── examples/             # Copy-paste examples
+├── templates/            # Config templates
+└── tests/               # Test suite (in development)
+```
+
+**Testing Note:** Basic tests cover core data operations. Users should validate pipelines on their own datasets before production use.
+
+---
+
+## 🚀 Examples
+
+Check out `examples/` for real-world usage:
+- `examples/clean_dataset.py` - Full cleaning workflow
+- `examples/merge_multiple_datasets.py` - Combining sources
+- `examples/prepare_for_training.py` - OpenAI/HF preparation
+- `examples/advanced_filtering.py` - Sampling and filtering techniques
+
+---
+
+## ⚠️ Common Mistakes
+
+**Don't do this:**
+```bash
+# ❌ Piping large datasets through multiple commands
+cat huge.jsonl | command1 | command2  # Memory explosion
+
+# ✅ Do this instead
+bellapy data dedupe huge.jsonl -o step1.jsonl
+bellapy data clean step1.jsonl -o step2.jsonl
+```
+
+**Don't do this:**
+```python
+# ❌ Loading entire file into memory
+with open('data.jsonl') as f:
+    data = json.load(f)  # Boom on large files
+
+# ✅ Do this instead
+from bellapy.data import deduplicate
+deduplicate('data.jsonl', 'output.jsonl')  # Streaming
+```
+
+**Don't do this:**
+```bash
+# ❌ Overwriting your only copy
+bellapy data clean dataset.jsonl -o dataset.jsonl
+
+# ✅ Do this instead
+bellapy data clean dataset.jsonl -o dataset_clean.jsonl
+```
+
+---
+
+## 🔧 Troubleshooting
+
+**"File not found" errors:**
+- Use absolute paths or verify current directory with `pwd`
+- Check file extensions (.jsonl required for most commands)
+
+**"Invalid JSON" errors:**
+- Run `bellapy data stats <file>` to identify broken lines
+- Use Python's `validate_format()` to auto-fix common issues
+
+**Performance degradation:**
+- Large files? Use `sample_dataset()` for testing first
+- Memory issues? Check file size and consider splitting
+- Slow processing? Ensure you're not loading entire file into memory
+
+**PII not detected:**
+- Pattern-based detection has limitations (see PII Detection section)
+- Always manually verify scrubbed output
+- Contribute new patterns via PR if you find gaps
+
+---
+
+## 🎨 Why This Exists
+
+**Built from frustration.**
+
+After the 50th time copying `deduplicate.py` between projects, I built this. It's the library I wish existed when I started.
+
+**Not a framework.** No complicated configs. No inheritance hierarchies. Just utilities that do one thing well.
+
+**Real code from real projects:**
+- Cleaned datasets for fine-tuning workflows (Llama 3.2, Qwen 2.5, Dolphin 2.9, and others)
+- Processed 15,000+ DPO training examples
+- Merged hundreds of conversation datasets
+- Scrubbed PII from production data
+
+*Model names listed as examples of use cases, not endorsements or affiliations.*
+
+If you've ever thought "I wrote this before," this is for you.
+
+---
+
+## 🎸 Design Philosophy
+
+**Against:** Frameworks that lock you in
+**For:** Tools that get out of your way
+
+**Against:** "One true way" abstractions
+**For:** Sharp utilities you can compose
+
+**Against:** Hiding complexity
+**For:** Transparent operations you can verify
+
+Built by someone who breaks systems to understand them.
+Shared because knowledge held is dead knowledge.
+
+---
+
+## 🤝 Contributing
+
+This is a personal library, but PRs are welcome for:
+- Bug fixes with test cases
+- New PII detection patterns (with examples)
+- Format converters for common ML frameworks
+- Performance improvements with benchmarks
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
+
+**What we don't accept:**
+- Framework abstractions
+- Unrelated features
+- Breaking changes without migration paths
+
+---
+
+## 📝 License
+
+MIT License - See [LICENSE](LICENSE)
+
+---
+
+## 🗺️ Roadmap
+
+**v1.0.0** (Current) - Production Data Processing ✅
+- Deduplication, merging, stats
+- PII scrubbing and sanitization
+- Format conversion
+- Train/test splitting
+- Advanced filtering & sampling
+- Quality validation
+
+**v1.1.0** (Planned) - Training Utilities
+- Modal backend helpers
+- Model-agnostic trainer
+- Config management
+
+**v1.2.0** (Planned) - DPO Collection
+- Session management
+- Interactive CLI
+- Analysis tools
+
+**v1.3.0** (Planned) - Inference
+- Model caching
+- LoRA support
+- Generation utilities
+
+---
+
+## 📮 Feedback
+
+Found a bug? Want a feature? Open an issue.
+
+---
+
+**Built by someone who got tired of copy/pasting the same scripts.**
+
+**For everyone who's ever searched for "that deduplication script from 3 months ago."**
+
+**Stop rewriting. Start using bellapy.**
