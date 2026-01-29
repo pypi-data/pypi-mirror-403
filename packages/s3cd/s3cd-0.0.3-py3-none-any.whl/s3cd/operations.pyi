@@ -1,0 +1,16 @@
+from _typeshed import Incomplete
+from pathlib import Path
+from s3cd.config import S3Client as S3Client, S3ClientError as S3ClientError
+from s3cd.info import ReleaseInfoGenerator as ReleaseInfoGenerator
+from s3cd.settings import AppSettings as AppSettings
+from uuid import UUID
+
+class S3Operations:
+    config: Incomplete
+    s3_client: Incomplete
+    verbose: Incomplete
+    def __init__(self, verbose: bool = False) -> None: ...
+    def validate_source_directory(self, source_path: Path) -> None: ...
+    def validate_release_directory(self, source_path: Path, release_id: UUID) -> Path: ...
+    def validate_index_html(self, release_path: Path) -> None: ...
+    def upload(self, source_dir: str) -> None: ...
