@@ -1,0 +1,20 @@
+"""Reject reason for order rejection."""
+
+from enum import Enum
+
+
+class RejectReason(str, Enum):
+    """Reject reason for order rejection."""
+
+    MARGIN_INSUFFICIENT = "MARGIN_INSUFFICIENT"
+    PRICE_INVALID = "PRICE_INVALID"
+    SYMBOL_INVALID = "SYMBOL_INVALID"
+    VOLUME_INVALID = "VOLUME_INVALID"
+    MARKET_CLOSED = "MARKET_CLOSED"
+    POSITION_LIMIT = "POSITION_LIMIT"
+    TRADE_DISABLED = "TRADE_DISABLED"
+    REQUOTE = "REQUOTE"
+    BROKER_REJECT = "BROKER_REJECT"
+    INVALID_ORDER = "INVALID_ORDER"
+    RISK_LIMIT_EXCEEDED = "RISK_LIMIT_EXCEEDED"
+    UNKNOWN = "UNKNOWN"
