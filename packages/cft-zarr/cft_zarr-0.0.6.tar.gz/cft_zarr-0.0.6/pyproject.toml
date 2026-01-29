@@ -1,0 +1,41 @@
+[tool.poetry]
+name = "cft-zarr"
+version = "0.0.6"
+description = "CFT Zarr codecs for 12-bit fluorescence and RGB compression"
+authors = ["Eli White <eliwhite@gmail.com>"]
+readme = "README.md"
+include = ["cft_zarr/napari.yaml"]
+
+[tool.poetry.dependencies]
+zarr = ">=3.0.0"
+imagecodecs = ">=2024.1.1"
+python = ">=3.11,<=3.14"
+numpy = "^2.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry-monorepo-dependency-plugin]
+enable = true
+
+# Entry points for automatic codec registration
+# Zarr v3 codec entry points (for Zarr to discover codecs)
+[tool.poetry.plugins."zarr.codecs"]
+"cft_zarr.jpeg_compressor" = "cft_zarr.jpeg_compressor:JPEGCompressor"
+"cft_zarr.shift12jls_compressor" = "cft_zarr.shift12jls_compressor:Shift12JLSCompressor"
+"cft_zarr.jpeg" = "cft_zarr.jpeg:JPEGCodec"
+"cft_zarr.shift12jls" = "cft_zarr.shift12jls:Shift12JLSCodec"
+"cft_zarr.jpegxl" = "cft_zarr.jpegxl:JPEGXLCodec"
+
+# Napari plugin entry point - ensures cft_zarr is imported when napari starts
+# This triggers codec registration in __init__.py before any Zarr files are opened
+# The entry point points to the module, which causes it to be imported on napari startup
+[tool.poetry.plugins."napari.plugin"]
+"cft-zarr" = "cft_zarr"
+
+[tool.poetry.plugins."napari.manifest"]
+"cft-zarr" = "cft_zarr:napari.yaml"
