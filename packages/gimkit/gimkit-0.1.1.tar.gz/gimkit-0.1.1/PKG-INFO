@@ -1,0 +1,140 @@
+Metadata-Version: 2.3
+Name: gimkit
+Version: 0.1.1
+Summary: Guided Infilling Modeling
+Keywords: machine learning,deep learning,language models,structured generation,guided infilling
+Author: Shichao Song
+Author-email: Shichao Song <song.shichao@outlook.com>
+License: MIT
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: Intended Audience :: Science/Research
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Dist: json-repair>=0.55.1
+Requires-Dist: llguidance>=1.3.0
+Requires-Dist: outlines[openai]>=1.2.9
+Requires-Dist: vllm>=0.14.0 ; extra == 'vllm'
+Requires-Python: >=3.10
+Project-URL: Documentation, https://github.com/SculptAI/GIMKit
+Project-URL: Homepage, https://github.com/SculptAI/GIMKit
+Project-URL: Issues, https://github.com/SculptAI/GIM/issues
+Project-URL: Repository, https://github.com/SculptAI/GIMKit
+Provides-Extra: vllm
+Description-Content-Type: text/markdown
+
+<h1 align="center">GIMKit</h1>
+
+<p align="center">
+
+<a href="https://pypi.org/project/gimkit">
+  <img src="https://img.shields.io/pypi/v/gimkit?label=pypi%20package" alt="PyPI Version">
+</a>
+<a href="https://pypi.org/project/gimkit">
+  <img src="https://img.shields.io/pypi/pyversions/gimkit.svg" alt="Supported Python versions">
+</a>
+<a href="https://pypi.org/project/gimkit">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey" alt="Supported Platforms">
+</a>
+
+</p>
+
+## Installation
+
+Install GIMKit using pip:
+
+```bash
+pip install gimkit
+```
+
+For vLLM support, install with the optional dependency:
+
+```bash
+pip install gimkit[vllm]
+```
+
+## Quick Start
+
+Here's a simple example using the OpenAI backend:
+
+```python
+from openai import OpenAI
+from gimkit import from_openai, guide as g
+
+# Initialize the client and model
+client = OpenAI()  # Uses OPENAI_API_KEY environment variable
+model = from_openai(client, model_name="gpt-4")
+
+# Create a query with masked tags
+result = model(f"Hello, {g(desc='a single word')}!", use_gim_prompt=True)
+print(result)  # Output: Hello, world!
+```
+
+## Usage
+
+### Creating Masked Tags: Use the `guide` helper (imported as `g`) to create masked tags
+
+```python
+from gimkit import guide as g
+
+# Basic tag with description
+tag = g(name="greeting", desc="A friendly greeting")
+
+# Specialized tags
+name_tag = g.person_name(name="user_name")
+email_tag = g.e_mail(name="email")
+phone_tag = g.phone_number(name="phone")
+word_tag = g.single_word(name="word")
+
+# Selection from choices
+choice_tag = g.select(name="color", choices=["red", "green", "blue"])
+
+# Tag with regex constraint
+custom_tag = g(name="code", desc="A 4-digit code", regex=r"\d{4}")
+```
+
+### Building Queries: Combine masked tags with text to build queries
+
+```python
+from gimkit import from_openai, guide as g
+from openai import OpenAI
+
+client = OpenAI()
+model = from_openai(client, model_name="gpt-4")
+
+query = f"""
+Name: {g.person_name(name="name")}
+Email: {g.e_mail(name="email")}
+Favorite color: {g.select(name="color", choices=["red", "green", "blue"])}
+"""
+
+result = model(query, use_gim_prompt=True)
+print(result)
+```
+
+### Accessing Results: Access filled tags from the result
+
+```python
+result = model(query, use_gim_prompt=True)
+
+# Iterate over all tags
+for tag in result.tags:
+    print(f"{tag.name}: {tag.content}")
+
+# Access by name
+print(result.tags["name"].content)
+
+# Modify tag content
+result.tags["email"].content = "REDACTED"
+```
+
+## Design Philosophy
+
+- Stable over feature
+- Small open-source model first
