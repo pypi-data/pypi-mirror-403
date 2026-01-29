@@ -1,0 +1,112 @@
+Metadata-Version: 2.4
+Name: pyaxm
+Version: 2026.1.23
+Summary: Query Apple Business Manager using Python
+Project-URL: Repository, https://github.com/kaincenteno/pyaxm
+License-Expression: GPL-3.0-or-later
+License-File: LICENSE
+Keywords: abm,apple business manager,axm
+Requires-Python: >=3.10
+Requires-Dist: authlib
+Requires-Dist: pandas
+Requires-Dist: pycryptodomex
+Requires-Dist: pydantic
+Requires-Dist: requests
+Requires-Dist: typer
+Description-Content-Type: text/markdown
+
+The purpose of this repo is to create a python library to easily get information using the Apple Business Manager API using Python.
+
+A CLI command is also included, `pyacm-cli`.
+
+https://developer.apple.com/documentation/applebusinessmanagerapi
+
+## Setup
+If you want to setup the authentication using envvars, do the following:
+
+You will need to setup 2 environmental variables that are provided
+when creating the private key in ABM:
+
+`AXM_CLIENT_ID` and `AXM_KEY_ID`
+
+Place the private key in your home directory inside the `.config/pyaxm` folder
+and rename it `key.pem`
+
+This location will be used to store a cached access_token that can be reused
+until it expires. While testing I have experienced that requesting too many
+access tokens will result in a response with status code 400 when 
+trying to get a new token.
+
+Otherwise you will have to pass the client id, key id and private key as arguments
+to the client like so:
+
+```python
+from pyaxm.client import Client
+
+axm_client = Client(
+    axm_client_id="CLIENT_ID",
+    axm_key_id="KEY_ID",
+    key_path="PRIVATE_KEY",
+    token_path="TOKEN_PATH"
+)
+```
+The token path is the location where the access token will be stored.
+
+## Installation:
+`pip install pyaxm`
+
+## CLI:
+A command-line interface (CLI) tool called `pyaxm-cli` is included for easy access to the API.
+
+### Overview
+The CLI provides a convenient way to interact with the Apple Business Manager API directly from your terminal. It includes commands for managing devices, MDM servers, and retrieving device information.
+
+### Detailed Documentation
+For comprehensive documentation of all available commands, options, and usage examples, please refer to the [CLI documentation](docs/cli.md).
+
+### Updating Documentation
+The CLI documentation is automatically generated from the code. To update it after making changes to the CLI implementation, run:
+```bash
+typer pyaxm.cli utils docs --name pyaxm-cli --output docs/cli.md
+```
+
+A GitHub workflow automatically checks that the documentation stays in sync.
+
+# Client:
+Example usage:
+```python
+from pyaxm.client import Client
+
+axm_client = Client()
+
+devices = axm_client.list_devices()
+print(devices)
+
+device = axm_client.get_device(device_id='SERIAL_NUMBER')
+print(device)
+
+mdm_servers = axm_client.list_mdm_servers()
+print(mdm_servers)
+
+# The MDM server ID can be extracted from listing all mdm servers
+mdm_server = axm_client.list_devices_in_mdm_server(server_id="MDM_SERVER_ID")
+print(mdm_server)
+
+device_assigned_server = axm_client.list_devices_in_mdm_server(device_id='SERIAL_NUMBER')
+print(device_assigned_server)
+
+assignment_result = axm_client.assign_unassign_device_to_mdm_server(
+    device_ids=['SERIAL_NUMBER', "ANOTHER_SERIAL_NUMBER"],
+    server_id="MDM_SERVER_ID",
+    action="ASSIGN_DEVICES"|"UNASSIGN_DEVICES"
+)
+print(assignment_result)
+
+apple_care_coverage = axm_client.get_apple_care_coverage(device_id='SERIAL_NUMBER')
+print(apple_care_coverage)
+```
+
+## Issues:
+* need to add tests
+
+This is still a work in progress
