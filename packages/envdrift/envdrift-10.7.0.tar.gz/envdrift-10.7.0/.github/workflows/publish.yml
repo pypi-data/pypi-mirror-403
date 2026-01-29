@@ -1,0 +1,151 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    name: Test matrix (3.11–3.14)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run tests
+        run: uv run pytest
+
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Fetch all history for hatch-vcs to determine version
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish
+
+      - name: Extract release notes
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ.get("GITHUB_REF_NAME", "").strip()
+          version = tag[1:] if tag.startswith("v") else tag
+          changelog = Path("CHANGELOG.md")
+          if not tag or not changelog.exists():
+            print("Skipping release notes extraction.")
+            raise SystemExit(0)
+
+          text = changelog.read_text()
+          pattern = re.compile(
+            rf"^##\s+.*\bv?{re.escape(version)}\b.*$\n(?P<body>.*?)(?=^##\s+|\Z)",
+            re.M | re.S,
+          )
+          match = pattern.search(text)
+          if not match:
+            print(f"No changelog section found for {version}.")
+            raise SystemExit(0)
+
+          body = match.group("body").strip()
+          if not body:
+            print(f"Changelog section for {version} is empty.")
+            raise SystemExit(0)
+
+          Path("release-notes.md").write_text(body + "\n")
+          print("Wrote release-notes.md")
+          PY
+
+      - name: Create GitHub release (if missing)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+            exit 0
+          fi
+
+          if [ -f release-notes.md ]; then
+            gh release create "$tag" --title "$tag" --notes-file release-notes.md
+          else
+            gh release create "$tag" --title "$tag" --generate-notes
+          fi
+
+      - name: Add PyPI link to release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          pypi_url="https://pypi.org/project/envdrift/${version}/"
+          body="$(gh release view "$tag" --json body -q .body || true)"
+          if [ -z "$body" ] || [ "$body" = "null" ]; then
+            echo "No release body found; creating notes with PyPI link."
+            printf "PyPI: %s\n" "$pypi_url" > release-body.md
+            gh release edit "$tag" --notes-file release-body.md
+            exit 0
+          fi
+          case "$body" in
+            *"$pypi_url"*)
+              echo "PyPI link already present."
+              exit 0
+              ;;
+          esac
+          printf "%s\n\nPyPI: %s\n" "$body" "$pypi_url" > release-body.md
+          gh release edit "$tag" --notes-file release-body.md
+
+      - name: Upload release artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          shopt -s nullglob
+          files=(dist/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No dist files to upload."
+            exit 0
+          fi
+          gh release upload "$tag" "${files[@]}" --clobber
