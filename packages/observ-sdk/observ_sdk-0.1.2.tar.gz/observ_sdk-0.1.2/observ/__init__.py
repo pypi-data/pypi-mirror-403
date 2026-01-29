@@ -1,0 +1,238 @@
+"""Observ Python SDK - AI tracing and semantic caching"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Optional
+
+import httpx
+
+from .providers import (
+    AnthropicMessagesWrapper,
+    GeminiGenerateContentWrapper,
+    MistralChatCompletionsWrapper,
+    OpenAIChatCompletionsWrapper,
+    OpenRouterChatCompletionsWrapper,
+    XAIChatCompletionsWrapper,
+)
+
+if TYPE_CHECKING:
+    import anthropic
+    import mistralai
+    import openai
+
+
+class Observ:
+    """Main Observ SDK class for tracing AI provider calls."""
+
+    def __init__(
+        self,
+        api_key: str,
+        project_id: str = "default",
+        recall: bool = True,
+        environment: str = "production",
+        endpoint: str = "https://api.observ.dev",
+        debug: bool = False,
+    ) -> None:
+        self.api_key = api_key
+        self.project_id = project_id
+        self.recall = recall
+        self.environment = environment
+        self.endpoint = endpoint
+        self.debug = debug
+        self.jwt_token: Optional[str] = None
+        self.http_client = httpx.Client(timeout=30.0)
+
+    def log(self, message: str) -> None:
+        """Log a message if debug mode is enabled."""
+        if self.debug:
+            print(f"[Observ] {message}")
+
+    def set_jwt_token(self, token: str) -> None:
+        """Set JWT token for session reuse."""
+        self.jwt_token = token
+
+    def get_auth_header(self) -> str:
+        """Get authorization header (JWT if available, otherwise API key)."""
+        if self.jwt_token:
+            return f"Bearer {self.jwt_token}"
+        return f"Bearer {self.api_key}"
+
+    def anthropic(self, client: anthropic.Anthropic) -> anthropic.Anthropic:
+        """Wrap an Anthropic client to route through Observ gateway."""
+        client.messages = AnthropicMessagesWrapper(client.messages, self)  # type: ignore[assignment]
+        return client
+
+    def openai(self, client: openai.OpenAI) -> openai.OpenAI:
+        """Wrap an OpenAI client to route through Observ gateway."""
+        client.chat.completions = OpenAIChatCompletionsWrapper(  # type: ignore[assignment]
+            client.chat.completions, self
+        )
+        return client
+
+    def gemini(self, model: Any) -> Any:
+        """Wrap a Gemini GenerativeModel to route through Observ gateway."""
+        wrapper = GeminiGenerateContentWrapper(model, self)
+        model.generate_content = wrapper.generate_content
+        model.with_metadata = wrapper.with_metadata
+        model.with_session_id = wrapper.with_session_id
+        return model
+
+    def xai(self, client: openai.OpenAI) -> openai.OpenAI:
+        """Wrap an xAI client (using OpenAI SDK) to route through Observ gateway."""
+        client.chat.completions = XAIChatCompletionsWrapper(  # type: ignore[assignment]
+            client.chat.completions, self
+        )
+        return client
+
+    def mistral(self, client: mistralai.Mistral) -> mistralai.Mistral:
+        """Wrap a Mistral client to route through Observ gateway."""
+        client.chat.completions = MistralChatCompletionsWrapper(  # type: ignore[assignment]
+            client.chat.completions, self
+        )
+        return client
+
+    def openrouter(self, client: openai.OpenAI) -> openai.OpenAI:
+        """Wrap an OpenRouter client (using OpenAI SDK) to route through Observ gateway."""
+        client.chat.completions = OpenRouterChatCompletionsWrapper(  # type: ignore[assignment]
+            client.chat.completions, self
+        )
+        return client
+
+    def _send_callback(self, trace_id: str, response: Any, duration_ms: int) -> None:
+        """Send completion callback to gateway for Anthropic responses."""
+        try:
+            content = ""
+            if hasattr(response, "content") and len(response.content) > 0:
+                content = response.content[0].text
+
+            # Extract tokens - Anthropic provides input_tokens and output_tokens
+            input_tokens = 0
+            output_tokens = 0
+            if hasattr(response, "usage"):
+                input_tokens = getattr(response.usage, "input_tokens", 0)
+                output_tokens = getattr(response.usage, "output_tokens", 0)
+
+            callback = {
+                "trace_id": trace_id,
+                "content": content,
+                "duration_ms": duration_ms,
+                "tokens_used": input_tokens + output_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+
+            self.http_client.post(
+                f"{self.endpoint}/v1/llm/callback",
+                json=callback,
+                timeout=5.0,
+            )
+        except Exception as e:
+            self.log(f"Callback error: {e}")
+
+    def _send_callback_openai(self, trace_id: str, response: Any, duration_ms: int) -> None:
+        """Send completion callback to gateway for OpenAI/xAI/OpenRouter responses."""
+        try:
+            content = ""
+            if hasattr(response, "choices") and len(response.choices) > 0:
+                message = response.choices[0].message
+                if hasattr(message, "content"):
+                    content = message.content or ""
+
+            # Extract tokens - OpenAI provides prompt_tokens and completion_tokens
+            input_tokens = 0
+            output_tokens = 0
+            if hasattr(response, "usage"):
+                usage = response.usage
+                input_tokens = getattr(usage, "prompt_tokens", 0)
+                output_tokens = getattr(usage, "completion_tokens", 0)
+
+            callback = {
+                "trace_id": trace_id,
+                "content": content,
+                "duration_ms": duration_ms,
+                "tokens_used": input_tokens + output_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+
+            self.http_client.post(
+                f"{self.endpoint}/v1/llm/callback",
+                json=callback,
+                timeout=5.0,
+            )
+        except Exception as e:
+            self.log(f"Callback error: {e}")
+
+    def _send_callback_gemini(self, trace_id: str, response: Any, duration_ms: int) -> None:
+        """Send completion callback to gateway for Gemini responses."""
+        try:
+            content = ""
+            if hasattr(response, "text"):
+                content = response.text
+            elif hasattr(response, "candidates") and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
+                    if len(candidate.content.parts) > 0:
+                        content = candidate.content.parts[0].text
+
+            # Extract tokens - Gemini provides prompt_token_count and candidates_token_count
+            input_tokens = 0
+            output_tokens = 0
+            if hasattr(response, "usage_metadata"):
+                usage = response.usage_metadata
+                input_tokens = getattr(usage, "prompt_token_count", 0)
+                output_tokens = getattr(usage, "candidates_token_count", 0)
+
+            callback = {
+                "trace_id": trace_id,
+                "content": content,
+                "duration_ms": duration_ms,
+                "tokens_used": input_tokens + output_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+
+            self.http_client.post(
+                f"{self.endpoint}/v1/llm/callback",
+                json=callback,
+                timeout=5.0,
+            )
+        except Exception as e:
+            self.log(f"Callback error: {e}")
+
+    def _send_callback_mistral(self, trace_id: str, response: Any, duration_ms: int) -> None:
+        """Send completion callback to gateway for Mistral responses."""
+        try:
+            content = ""
+            if hasattr(response, "choices") and len(response.choices) > 0:
+                message = response.choices[0].message
+                if hasattr(message, "content"):
+                    content = message.content or ""
+
+            # Extract tokens - Mistral provides prompt_tokens and completion_tokens
+            input_tokens = 0
+            output_tokens = 0
+            if hasattr(response, "usage"):
+                usage = response.usage
+                input_tokens = getattr(usage, "prompt_tokens", 0)
+                output_tokens = getattr(usage, "completion_tokens", 0)
+
+            callback = {
+                "trace_id": trace_id,
+                "content": content,
+                "duration_ms": duration_ms,
+                "tokens_used": input_tokens + output_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+
+            self.http_client.post(
+                f"{self.endpoint}/v1/llm/callback",
+                json=callback,
+                timeout=5.0,
+            )
+        except Exception as e:
+            self.log(f"Callback error: {e}")
+
+
+__all__ = ["Observ"]
