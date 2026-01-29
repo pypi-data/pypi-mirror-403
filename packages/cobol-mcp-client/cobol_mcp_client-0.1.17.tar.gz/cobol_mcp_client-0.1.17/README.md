@@ -1,0 +1,112 @@
+# cobol-mcp-client
+
+An MCP (Model Context Protocol) server for COBOL development assistance. Provides static analysis with blind-spot detection and hybrid documentation search across major COBOL dialects.
+
+## Quick Start
+
+```bash
+uvx --from cobol-mcp-client cobol-mcp setup YOUR_API_KEY
+```
+
+This launches an interactive wizard to select which IDEs to configure. Use arrow keys to navigate, Enter to select, and Enter on "Proceed" to confirm.
+
+### Direct Install (skip prompts)
+
+```bash
+uvx --from cobol-mcp-client cobol-mcp setup YOUR_API_KEY --ide cursor
+uvx --from cobol-mcp-client cobol-mcp setup YOUR_API_KEY --ide claude-code
+```
+
+### List Supported IDEs
+
+```bash
+uvx --from cobol-mcp-client cobol-mcp list-ides
+```
+
+Supported: cursor, claude-code, claude-desktop, vscode, windsurf, amp, zed, cline, continue, roo-code
+
+## What It Does
+
+Three tools exposed via MCP:
+
+| Tool | Description |
+|------|-------------|
+| `check(file_path)` | Static analysis of COBOL source files. Runs 30+ rules covering FILE STATUS, uninitialized variables, missing STOP RUN, arithmetic overflow, and IMS DL/I issues. |
+| `search(query)` | Hybrid semantic + keyword search across GnuCOBOL, IBM Enterprise COBOL, IBM CICS, and Micro Focus Visual COBOL documentation. |
+| `translate_reference(topic)` | COBOL-to-Java translation patterns for data types, control flow, file I/O, CICS, DB2, and more. |
+
+Resources available:
+- `cobol://context` — Dialect differences and search tips
+- `cobol://rules` — Full rule documentation
+- `cobol://gnucobol` — GnuCOBOL compiler reference
+
+## Dialects & Documentation Coverage
+
+| Source | Coverage |
+|--------|----------|
+| GnuCOBOL 3.x | Programmer's Guide, Quick Reference, Sample Programs |
+| IBM Enterprise COBOL 6.x | Full language reference |
+| IBM CICS TS | EXEC CICS commands, transaction processing |
+| Micro Focus Visual COBOL | Developer's Guide, Application Modernization Tools |
+| Dialect comparison guides | Cross-dialect syntax differences |
+
+## Static Analysis Rules
+
+| Category | Rules | Examples |
+|----------|-------|----------|
+| General COBOL | 5 | Missing FILE STATUS, uninitialized variables, missing STOP RUN, arithmetic overflow |
+| File I/O | 4 | WRITE target validation, file mode checks, FILE STATUS binding |
+| IMS DL/I | 25+ | DL/I function codes, PCB validation, status code handling, GSAM, checkpoint/restart, SSA validation |
+
+## Manual Configuration
+
+If you prefer to configure manually, add to your IDE's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "cobol": {
+      "command": "uvx",
+      "args": ["--refresh", "--from", "cobol-mcp-client", "cobol-mcp"],
+      "env": {
+        "COBOL_MCP_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Config file locations (macOS):**
+
+| IDE | Path |
+|-----|------|
+| Cursor | `~/.cursor/mcp.json` |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| VS Code | `~/Library/Application Support/Code/User/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Zed | `~/.config/zed/settings.json` (uses `context_servers` key) |
+| Cline | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
+| Continue | `~/.continue/config.json` (uses `experimental.modelContextProtocolServers`) |
+| Roo Code | `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json` |
+
+For Claude Code and Amp, use the CLI setup command — they configure via their own `mcp add` commands.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `COBOL_MCP_API_KEY` | Yes | API key from [cobolmcp.com](https://cobolmcp.com) |
+| `COBOL_MCP_API_URL` | No | Backend API URL (defaults to production) |
+
+## Development
+
+```bash
+git clone https://github.com/haladir-ai/cobol-mcp-client
+cd cobol-mcp-client
+pip install -e .
+python -m pytest tests/ -v
+```
+
+## License
+
+Proprietary.
