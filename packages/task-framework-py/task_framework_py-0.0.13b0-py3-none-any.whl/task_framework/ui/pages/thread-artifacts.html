@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Thread Artifacts - Task Framework</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- htmx via CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles -->
+    <style>
+      .nav-item {
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-item:hover {
+        transform: translateX(4px);
+      }
+
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #6b7280;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .fade-in {
+        animation: fadeIn 0.3s ease-out;
+      }
+
+      /* Kind badge colors */
+      .kind-text {
+        background-color: #3b82f6;
+      }
+      .kind-rich_text {
+        background-color: #6366f1;
+      }
+      .kind-json {
+        background-color: #8b5cf6;
+      }
+      .kind-file {
+        background-color: #22c55e;
+      }
+      .kind-binary {
+        background-color: #14b8a6;
+      }
+      .kind-url {
+        background-color: #f59e0b;
+      }
+      .kind-bundle {
+        background-color: #ef4444;
+      }
+      .kind-metrics {
+        background-color: #ec4899;
+      }
+      .kind-log {
+        background-color: #6b7280;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div
+      hx-get="/ui/components/api-utils.html"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    ></div>
+
+    <div class="flex h-screen overflow-hidden">
+      <!-- Left Sidebar (loaded via htmx) -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <!-- Loading placeholder -->
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content Area -->
+      <main class="flex-1 overflow-y-auto">
+        <!-- Top Bar -->
+        <div class="bg-white shadow-sm border-b border-gray-200">
+          <div class="px-6 py-4">
+            <div class="flex items-center text-sm text-gray-600 mb-2">
+              <a href="/ui/threads" class="hover:text-blue-600">Threads</a>
+              <svg
+                class="w-4 h-4 mx-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 5l7 7-7 7"
+                ></path>
+              </svg>
+              <a href="#" id="thread-link" class="hover:text-blue-600">...</a>
+              <svg
+                class="w-4 h-4 mx-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 5l7 7-7 7"
+                ></path>
+              </svg>
+              <span>Artifacts</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-2xl font-semibold text-gray-800">
+                  Thread Artifacts
+                </h2>
+                <p class="text-sm text-gray-600 mt-1">
+                  View and manage input/output artifacts for this thread
+                </p>
+              </div>
+              <button
+                onclick="loadArtifacts()"
+                class="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors"
+              >
+                <svg
+                  class="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filters Section -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Direction Filter -->
+            <div>
+              <label class="text-xs font-medium text-gray-700 block mb-1"
+                >Direction</label
+              >
+              <select
+                id="filter-direction"
+                onchange="loadArtifacts()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="both">Both</option>
+                <option value="input">Inputs Only</option>
+                <option value="output">Outputs Only</option>
+              </select>
+            </div>
+
+            <!-- Kind Filter -->
+            <div>
+              <label class="text-xs font-medium text-gray-700 block mb-1"
+                >Kind</label
+              >
+              <select
+                id="filter-kind"
+                onchange="loadArtifacts()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All Kinds</option>
+                <option value="text">Text</option>
+                <option value="rich_text">Rich Text</option>
+                <option value="json">JSON</option>
+                <option value="file">File</option>
+                <option value="binary">Binary</option>
+                <option value="url">URL</option>
+                <option value="bundle">Bundle</option>
+                <option value="metrics">Metrics</option>
+                <option value="log">Log</option>
+              </select>
+            </div>
+
+            <!-- Ref Pattern Filter -->
+            <div>
+              <label class="text-xs font-medium text-gray-700 block mb-1"
+                >Ref Pattern</label
+              >
+              <input
+                type="text"
+                id="filter-ref"
+                placeholder="e.g., result:*"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                onkeyup="debounceLoadArtifacts()"
+              />
+            </div>
+
+            <!-- Limit Filter -->
+            <div>
+              <label class="text-xs font-medium text-gray-700 block mb-1"
+                >Show</label
+              >
+              <select
+                id="filter-limit"
+                onchange="loadArtifacts()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Include Archived Checkbox -->
+          <div class="mt-3">
+            <label class="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                id="filter-archived"
+                onchange="loadArtifacts()"
+                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span class="ml-2 text-sm text-gray-700"
+                >Include archived artifacts</span
+              >
+            </label>
+          </div>
+        </div>
+
+        <!-- Artifacts Content -->
+        <div class="p-6">
+          <!-- Loading State -->
+          <div id="loading-state" class="text-center py-12">
+            <svg
+              class="animate-spin h-8 w-8 text-blue-600 mx-auto"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <p class="text-gray-600 mt-4">Loading artifacts...</p>
+          </div>
+
+          <!-- Error State -->
+          <div id="error-state" class="hidden">
+            <div
+              class="bg-red-50 border border-red-200 rounded-lg p-6 text-center"
+            >
+              <svg
+                class="w-12 h-12 text-red-600 mx-auto mb-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+              <h3 class="text-lg font-semibold text-red-900 mb-2">
+                Error Loading Artifacts
+              </h3>
+              <p id="error-message" class="text-red-700 mb-4"></p>
+              <button
+                onclick="loadArtifacts()"
+                class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+
+          <!-- Empty State -->
+          <div id="empty-state" class="hidden">
+            <div class="bg-white rounded-lg shadow-md p-12 text-center">
+              <svg
+                class="w-16 h-16 text-gray-400 mx-auto mb-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                ></path>
+              </svg>
+              <h3 class="text-xl font-semibold text-gray-800 mb-2">
+                No Artifacts Found
+              </h3>
+              <p class="text-gray-600">
+                No artifacts match the current filters
+              </p>
+            </div>
+          </div>
+
+          <!-- Artifacts Grid -->
+          <div id="artifacts-container" class="hidden space-y-4 fade-in">
+            <!-- Stats Bar -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-6">
+                  <div>
+                    <p class="text-sm text-gray-500">Total Artifacts</p>
+                    <p id="stat-total" class="text-2xl font-bold text-gray-800">
+                      0
+                    </p>
+                  </div>
+                  <div>
+                    <p class="text-sm text-gray-500">Inputs</p>
+                    <p
+                      id="stat-inputs"
+                      class="text-2xl font-bold text-blue-600"
+                    >
+                      0
+                    </p>
+                  </div>
+                  <div>
+                    <p class="text-sm text-gray-500">Outputs</p>
+                    <p
+                      id="stat-outputs"
+                      class="text-2xl font-bold text-green-600"
+                    >
+                      0
+                    </p>
+                  </div>
+                </div>
+                <div class="text-sm text-gray-600">
+                  Showing <span id="pagination-info">0</span> artifacts
+                </div>
+              </div>
+            </div>
+
+            <!-- Artifacts List -->
+            <div id="artifacts-list" class="space-y-3">
+              <!-- Artifact cards will be inserted here by JavaScript -->
+            </div>
+
+            <!-- Pagination -->
+            <div
+              id="pagination-container"
+              class="flex items-center justify-between bg-white rounded-lg shadow-md p-4"
+            >
+              <div class="text-sm text-gray-700">
+                <span id="pagination-text">Page 1</span>
+              </div>
+              <div class="flex space-x-2">
+                <button
+                  id="btn-prev-page"
+                  onclick="loadPreviousPage()"
+                  disabled
+                  class="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  id="btn-next-page"
+                  onclick="loadNextPage()"
+                  disabled
+                  class="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Artifact Detail Modal -->
+    <div
+      id="artifact-modal"
+      class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onclick="hideArtifactModal(event)"
+    >
+      <div
+        class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+        onclick="event.stopPropagation()"
+      >
+        <!-- Modal Header -->
+        <div
+          class="border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 bg-white"
+        >
+          <h3 id="modal-title" class="text-xl font-semibold text-gray-800">
+            Artifact Details
+          </h3>
+          <button
+            onclick="hideArtifactModal()"
+            class="text-gray-400 hover:text-gray-600"
+          >
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              ></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Modal Body -->
+        <div id="modal-body" class="px-6 py-6">
+          <!-- Content will be inserted by JavaScript -->
+        </div>
+      </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+      // STORAGE_KEYS is now defined in api-utils.html
+
+      // Get thread ID from URL
+      const pathParts = window.location.pathname.split("/");
+      const threadId = pathParts[pathParts.length - 2]; // /ui/threads/{thread_id}/artifacts
+
+      // Pagination state
+      let currentCursor = null;
+      let hasMoreArtifacts = false;
+      let artifactsCache = [];
+
+      // Debounce timer for ref filter
+      let debounceTimer = null;
+
+      /**
+       * Wait for API utilities to be loaded
+       */
+      function waitForApiUtils() {
+        return new Promise((resolve) => {
+          if (typeof apiFetch !== "undefined") {
+            resolve();
+          } else {
+            const checkInterval = setInterval(() => {
+              if (typeof apiFetch !== "undefined") {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 50);
+          }
+        });
+      }
+
+      /**
+       * Initialize the page
+       */
+      document.addEventListener("DOMContentLoaded", async function () {
+        // Wait for API utilities to load
+        await waitForApiUtils();
+        
+        console.log("Artifacts page initialized for thread:", threadId);
+
+        // Update connection status
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || "";
+
+        // Update breadcrumb
+        document.getElementById("thread-link").href = `/ui/threads/${threadId}`;
+        document.getElementById("thread-link").textContent = threadId;
+
+        // Check if API key is configured
+        if (!apiKey) {
+          showError(
+            "API Key not configured. Please go to Settings to configure your credentials."
+          );
+          return;
+        }
+
+        // Load artifacts
+        loadArtifacts();
+      });
+
+      /**
+       * Debounced load artifacts for ref filter
+       */
+      function debounceLoadArtifacts() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          currentCursor = null;
+          loadArtifacts();
+        }, 500);
+      }
+
+      /**
+       * Load artifacts from API
+       */
+      async function loadArtifacts() {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+        const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+        if (!apiKey) {
+          showError("API Key not configured");
+          return;
+        }
+
+        // Show loading state
+        showLoading();
+
+        // Get filter values
+        const direction = document.getElementById("filter-direction").value;
+        const kind = document.getElementById("filter-kind").value;
+        const ref = document.getElementById("filter-ref").value.trim();
+        const limit = parseInt(document.getElementById("filter-limit").value);
+        const includeArchived =
+          document.getElementById("filter-archived").checked;
+
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (direction !== "both") params.append("direction", direction);
+        if (kind) params.append("kind", kind);
+        if (ref) params.append("ref", ref);
+        if (includeArchived) params.append("include_archived", "true");
+        params.append("limit", limit.toString());
+        if (currentCursor) params.append("cursor", currentCursor);
+
+        try {
+          const response = await apiFetch(
+            `/threads/${threadId}/artifacts?${params.toString()}`
+          );
+
+          const data = await response.json();
+          displayArtifacts(data);
+        } catch (error) {
+          console.error("Error loading artifacts:", error);
+          showError(error.message);
+        }
+      }
+
+      /**
+       * Display artifacts
+       */
+      function displayArtifacts(data) {
+        const artifacts = data.items || [];
+        const pagination = data.pagination || {};
+
+        if (artifacts.length === 0) {
+          showEmpty();
+          return;
+        }
+
+        // Update pagination state
+        hasMoreArtifacts = pagination.has_more || false;
+        artifactsCache = artifacts;
+
+        // Show artifacts container
+        document.getElementById("loading-state").classList.add("hidden");
+        document.getElementById("error-state").classList.add("hidden");
+        document.getElementById("empty-state").classList.add("hidden");
+        document
+          .getElementById("artifacts-container")
+          .classList.remove("hidden");
+
+        // Calculate stats (this is approximate as we don't get direction from API)
+        const total = pagination.total || artifacts.length;
+        document.getElementById("stat-total").textContent = total;
+        document.getElementById("stat-inputs").textContent =
+          artifacts.filter((a) => a.direction === "input").length || "-";
+        document.getElementById("stat-outputs").textContent =
+          artifacts.filter((a) => a.direction === "output").length || "-";
+
+        // Update pagination info
+        document.getElementById(
+          "pagination-info"
+        ).textContent = `${artifacts.length} of ${total}`;
+
+        // Populate artifacts list
+        const listEl = document.getElementById("artifacts-list");
+        listEl.innerHTML = artifacts
+          .map((artifact) => createArtifactCard(artifact))
+          .join("");
+
+        // Update pagination buttons
+        document.getElementById("btn-prev-page").disabled = !currentCursor;
+        document.getElementById("btn-next-page").disabled = !hasMoreArtifacts;
+
+        if (pagination.cursor) {
+          currentCursor = pagination.cursor;
+        }
+      }
+
+      /**
+       * Create an artifact card HTML
+       */
+      function createArtifactCard(artifact) {
+        const kindClass = `kind-${artifact.kind.replace("_", "-")}`;
+
+        // Build content preview
+        let contentPreview = "";
+        if (artifact.kind === "text" || artifact.kind === "rich_text") {
+          const truncated =
+            artifact.text && artifact.text.length > 150
+              ? artifact.text.substring(0, 150) + "..."
+              : artifact.text || "";
+          contentPreview = `<p class="text-sm text-gray-700 mt-2 bg-gray-50 p-3 rounded">${escapeHtml(
+            truncated
+          )}</p>`;
+        } else if (artifact.kind === "file" || artifact.kind === "binary") {
+          contentPreview = `<p class="text-sm text-gray-700 mt-2">
+                    📎 File: <code class="bg-gray-100 px-2 py-1 rounded">${
+                      artifact.file_ref || "N/A"
+                    }</code>
+                    ${
+                      artifact.filename
+                        ? `<br>📝 Name: ${artifact.filename}`
+                        : ""
+                    }
+                </p>`;
+        } else if (artifact.kind === "url") {
+          contentPreview = `<p class="text-sm text-gray-700 mt-2">
+                    🔗 <a href="${artifact.url}" target="_blank" class="text-blue-600 hover:underline">${artifact.url}</a>
+                </p>`;
+        } else if (artifact.kind === "json" || artifact.kind === "metrics") {
+          contentPreview = `<pre class="text-xs text-gray-700 mt-2 bg-gray-50 p-3 rounded overflow-x-auto">${JSON.stringify(
+            artifact.value,
+            null,
+            2
+          ).substring(0, 200)}${
+            JSON.stringify(artifact.value).length > 200 ? "..." : ""
+          }</pre>`;
+        }
+
+        return `
+                <div class="bg-white rounded-lg shadow-md p-5 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2 mb-2">
+                                <span class="px-2 py-1 text-xs font-semibold text-white rounded ${kindClass}">
+                                    ${artifact.kind}
+                                </span>
+                                ${
+                                  artifact.ref
+                                    ? `<span class="text-sm font-medium text-gray-800">${artifact.ref}</span>`
+                                    : ""
+                                }
+                            </div>
+                            
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-gray-600 mb-2">
+                                <div>
+                                    <span class="font-medium">Media Type:</span> ${
+                                      artifact.media_type || "N/A"
+                                    }
+                                </div>
+                                ${
+                                  artifact.size
+                                    ? `<div><span class="font-medium">Size:</span> ${formatSize(
+                                        artifact.size
+                                      )}</div>`
+                                    : ""
+                                }
+                                ${
+                                  artifact.created_at
+                                    ? `<div><span class="font-medium">Created:</span> ${formatDateTime(
+                                        artifact.created_at
+                                      )}</div>`
+                                    : ""
+                                }
+                                ${
+                                  artifact.id
+                                    ? `<div><span class="font-medium">ID:</span> ${artifact.id.substring(
+                                        0,
+                                        12
+                                      )}...</div>`
+                                    : ""
+                                }
+                            </div>
+                            
+                            ${
+                              artifact.explain
+                                ? `<p class="text-sm text-gray-600 italic mb-2">${escapeHtml(
+                                    artifact.explain
+                                  )}</p>`
+                                : ""
+                            }
+                            
+                            ${contentPreview}
+                        </div>
+                        
+                        <div class="ml-4 flex flex-col space-y-2">
+                            <button 
+                                onclick='viewArtifact(${JSON.stringify(
+                                  artifact
+                                ).replace(/'/g, "&apos;")})'
+                                class="px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                                View
+                            </button>
+                            ${
+                              artifact.ref
+                                ? `
+                                <button 
+                                    onclick='copyRef("${artifact.ref}")'
+                                    class="px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 rounded transition-colors">
+                                    Copy Ref
+                                </button>
+                            `
+                                : ""
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+      }
+
+      /**
+       * View artifact details in modal
+       */
+      function viewArtifact(artifact) {
+        document.getElementById("modal-title").textContent =
+          artifact.ref || "Artifact Details";
+
+        let content = `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm font-medium text-gray-500">Kind</label>
+                            <p class="text-gray-800">${artifact.kind}</p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500">Media Type</label>
+                            <p class="text-gray-800">${
+                              artifact.media_type || "N/A"
+                            }</p>
+                        </div>
+                        ${
+                          artifact.size
+                            ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">Size</label>
+                                <p class="text-gray-800">${formatSize(
+                                  artifact.size
+                                )}</p>
+                            </div>
+                        `
+                            : ""
+                        }
+                        ${
+                          artifact.sha256
+                            ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">SHA256</label>
+                                <p class="text-gray-800 font-mono text-xs break-all">${artifact.sha256}</p>
+                            </div>
+                        `
+                            : ""
+                        }
+                        ${
+                          artifact.created_at
+                            ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">Created At</label>
+                                <p class="text-gray-800">${formatDateTime(
+                                  artifact.created_at
+                                )}</p>
+                            </div>
+                        `
+                            : ""
+                        }
+                        ${
+                          artifact.filename
+                            ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">Filename</label>
+                                <p class="text-gray-800">${artifact.filename}</p>
+                            </div>
+                        `
+                            : ""
+                        }
+                    </div>
+                    
+                    ${
+                      artifact.explain
+                        ? `
+                        <div>
+                            <label class="text-sm font-medium text-gray-500">Explanation</label>
+                            <p class="text-gray-800">${escapeHtml(
+                              artifact.explain
+                            )}</p>
+                        </div>
+                    `
+                        : ""
+                    }
+                    
+                    <div>
+                        <label class="text-sm font-medium text-gray-500 mb-2 block">Content</label>
+            `;
+
+        // Add content based on kind
+        if (artifact.kind === "text" || artifact.kind === "rich_text") {
+          content += `<div class="bg-gray-50 p-4 rounded text-sm whitespace-pre-wrap">${escapeHtml(
+            artifact.text || "No content"
+          )}</div>`;
+        } else if (artifact.kind === "json" || artifact.kind === "metrics") {
+          content += `<pre class="bg-gray-50 p-4 rounded text-sm overflow-x-auto">${JSON.stringify(
+            artifact.value,
+            null,
+            2
+          )}</pre>`;
+        } else if (artifact.kind === "file" || artifact.kind === "binary") {
+          content += `<div class="bg-gray-50 p-4 rounded text-sm">
+                    <p>File Reference: <code class="bg-gray-200 px-2 py-1 rounded">${artifact.file_ref}</code></p>
+                    <p class="mt-2 text-gray-600">Use the file storage API to download this file.</p>
+                </div>`;
+        } else if (artifact.kind === "url") {
+          content += `<div class="bg-gray-50 p-4 rounded text-sm">
+                    <a href="${artifact.url}" target="_blank" class="text-blue-600 hover:underline break-all">${artifact.url}</a>
+                </div>`;
+        } else {
+          content += `<div class="bg-gray-50 p-4 rounded text-sm text-gray-600">No preview available for this artifact type</div>`;
+        }
+
+        content += `</div></div>`;
+
+        document.getElementById("modal-body").innerHTML = content;
+        document.getElementById("artifact-modal").classList.remove("hidden");
+      }
+
+      /**
+       * Hide artifact modal
+       */
+      function hideArtifactModal(event) {
+        if (!event || event.target.id === "artifact-modal") {
+          document.getElementById("artifact-modal").classList.add("hidden");
+        }
+      }
+
+      /**
+       * Copy reference to clipboard
+       */
+      function copyRef(ref) {
+        navigator.clipboard
+          .writeText(ref)
+          .then(() => {
+            alert(`Copied to clipboard: ${ref}`);
+          })
+          .catch((err) => {
+            console.error("Failed to copy:", err);
+          });
+      }
+
+      /**
+       * Pagination functions
+       */
+      function loadPreviousPage() {
+        // Note: cursor-based pagination typically doesn't support going backwards
+        // This would require maintaining a stack of cursors or using offset-based pagination
+        alert("Previous page navigation requires offset-based pagination");
+      }
+
+      function loadNextPage() {
+        if (hasMoreArtifacts) {
+          loadArtifacts();
+        }
+      }
+
+      /**
+       * Utility functions
+       */
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+        if (bytes < 1024 * 1024 * 1024)
+          return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+      }
+
+      function formatDateTime(dateString) {
+        if (!dateString) return "-";
+        const date = new Date(dateString);
+        return date.toLocaleString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function showLoading() {
+        document.getElementById("loading-state").classList.remove("hidden");
+        document.getElementById("error-state").classList.add("hidden");
+        document.getElementById("empty-state").classList.add("hidden");
+        document.getElementById("artifacts-container").classList.add("hidden");
+      }
+
+      function showError(message) {
+        document.getElementById("loading-state").classList.add("hidden");
+        document.getElementById("error-state").classList.remove("hidden");
+        document.getElementById("empty-state").classList.add("hidden");
+        document.getElementById("artifacts-container").classList.add("hidden");
+        document.getElementById("error-message").textContent = message;
+      }
+
+      function showEmpty() {
+        document.getElementById("loading-state").classList.add("hidden");
+        document.getElementById("error-state").classList.add("hidden");
+        document.getElementById("empty-state").classList.remove("hidden");
+        document.getElementById("artifacts-container").classList.add("hidden");
+      }
+    </script>
+  </body>
+</html>

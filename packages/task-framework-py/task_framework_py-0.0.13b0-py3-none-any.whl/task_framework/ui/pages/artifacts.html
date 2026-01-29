@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Artifacts - Task Framework</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- htmx via CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+  <!-- Custom styles -->
+  <style>
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .nav-item:hover {
+      transform: translateX(4px);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #6b7280;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Kind badge colors */
+    .kind-text {
+      background-color: #3b82f6;
+    }
+
+    .kind-rich_text {
+      background-color: #6366f1;
+    }
+
+    .kind-json {
+      background-color: #8b5cf6;
+    }
+
+    .kind-file {
+      background-color: #22c55e;
+    }
+
+    .kind-binary {
+      background-color: #14b8a6;
+    }
+
+    .kind-url {
+      background-color: #f59e0b;
+    }
+
+    .kind-bundle {
+      background-color: #ef4444;
+    }
+
+    .kind-metrics {
+      background-color: #ec4899;
+    }
+
+    .kind-log {
+      background-color: #6b7280;
+    }
+
+    .kind-table {
+      background-color: #10b981;
+    }
+
+    .kind-http_request {
+      background-color: #f97316;
+    }
+
+    .kind-http_response {
+      background-color: #06b6d4;
+    }
+
+    .kind-geo {
+      background-color: #84cc16;
+    }
+
+    .kind-patch {
+      background-color: #a855f7;
+    }
+
+    .kind-provenance {
+      background-color: #64748b;
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <!-- API Utilities (loaded via htmx) -->
+  <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  <div class="flex h-screen overflow-hidden">
+    <!-- Left Sidebar (loaded via htmx) -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <!-- Loading placeholder -->
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto">
+      <!-- Top Bar -->
+      <div class="bg-white shadow-sm border-b border-gray-200">
+        <div class="px-6 py-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h2 class="text-2xl font-semibold text-gray-800">Artifacts</h2>
+              <p class="text-sm text-gray-600 mt-1">
+                View and manage all artifacts across threads
+              </p>
+            </div>
+            <button onclick="loadArtifacts()"
+              class="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                </path>
+              </svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters Section -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <!-- Ref Pattern Filter -->
+          <input type="text" id="filter-ref" placeholder="Ref pattern (e.g., result:*)"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onkeyup="debounceLoadArtifacts()" />
+
+          <!-- Kind Filter -->
+          <select id="filter-kind" onchange="resetAndLoadArtifacts()"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">All kinds</option>
+            <option value="text">Text</option>
+            <option value="rich_text">Rich Text</option>
+            <option value="json">JSON</option>
+            <option value="file">File</option>
+            <option value="binary">Binary</option>
+            <option value="url">URL</option>
+            <option value="bundle">Bundle</option>
+            <option value="metrics">Metrics</option>
+            <option value="log">Log</option>
+            <option value="table">Table</option>
+            <option value="http_request">HTTP Request</option>
+            <option value="http_response">HTTP Response</option>
+            <option value="geo">Geo</option>
+            <option value="patch">Patch</option>
+            <option value="provenance">Provenance</option>
+          </select>
+
+          <!-- Direction Filter -->
+          <select id="filter-direction" onchange="resetAndLoadArtifacts()"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">All directions</option>
+            <option value="input">Input</option>
+            <option value="output">Output</option>
+          </select>
+
+          <!-- Task Definition Filter -->
+          <select id="filter-task" onchange="onTaskFilterChange()"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">All Tasks</option>
+          </select>
+
+          <!-- Task Version Filter -->
+          <select id="filter-version" onchange="resetAndLoadArtifacts()"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">All Versions</option>
+          </select>
+
+          <!-- Thread ID Filter -->
+          <input type="text" id="filter-thread-id" placeholder="Thread ID"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onkeyup="debounceLoadArtifacts()" />
+
+          <!-- App ID Filter -->
+          <input type="text" id="filter-app-id" placeholder="App ID"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onkeyup="debounceLoadArtifacts()" />
+        </div>
+
+        <!-- Second row of filters -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
+          <!-- Media Type Filter -->
+          <input type="text" id="filter-media-type" placeholder="Media type (e.g., application/json)"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onkeyup="debounceLoadArtifacts()" />
+
+          <!-- Limit Filter -->
+          <select id="filter-limit" onchange="resetAndLoadArtifacts()"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="10">Show 10</option>
+            <option value="25" selected>Show 25</option>
+            <option value="50">Show 50</option>
+            <option value="100">Show 100</option>
+          </select>
+
+          <!-- Include Archived Checkbox -->
+          <div class="flex items-center">
+            <label class="inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="filter-archived" onchange="resetAndLoadArtifacts()"
+                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+              <span class="ml-2 text-sm text-gray-700">Include archived</span>
+            </label>
+          </div>
+
+          <!-- Clear Filters Button -->
+          <button onclick="clearFilters()"
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            Clear Filters
+          </button>
+        </div>
+      </div>
+
+      <!-- Artifacts Content -->
+      <div class="p-6">
+        <!-- Loading State -->
+        <div id="loading-state" class="text-center py-12">
+          <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <p class="text-gray-600 mt-4">Loading artifacts...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden">
+          <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+            <svg class="w-12 h-12 text-red-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <h3 class="text-lg font-semibold text-red-900 mb-2">
+              Error Loading Artifacts
+            </h3>
+            <p id="error-message" class="text-red-700 mb-4"></p>
+            <button onclick="loadArtifacts()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
+              Try Again
+            </button>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="hidden">
+          <div class="bg-white rounded-lg shadow-md p-12 text-center">
+            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+              </path>
+            </svg>
+            <h3 class="text-xl font-semibold text-gray-800 mb-2">
+              No Artifacts Found
+            </h3>
+            <p class="text-gray-600">
+              No artifacts match the current filters
+            </p>
+          </div>
+        </div>
+
+        <!-- Artifacts Table -->
+        <div id="artifacts-table-container" class="hidden bg-white rounded-lg shadow-md overflow-hidden fade-in">
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Ref / ID
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Kind
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Task Definition
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Thread
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="artifacts-table-body" class="bg-white divide-y divide-gray-200">
+                <!-- Rows will be inserted here by JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div id="pagination-container"
+            class="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
+            <div class="text-sm text-gray-700">
+              Showing <span id="pagination-info">0</span> artifacts
+            </div>
+            <div class="flex space-x-2">
+              <button id="btn-prev-page" onclick="loadPreviousPage()" disabled
+                class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                Previous
+              </button>
+              <button id="btn-next-page" onclick="loadNextPage()" disabled
+                class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Artifact Detail Modal -->
+  <div id="artifact-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    onclick="hideArtifactModal(event)">
+    <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+      onclick="event.stopPropagation()">
+      <!-- Modal Header -->
+      <div class="border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 bg-white">
+        <h3 id="modal-title" class="text-xl font-semibold text-gray-800">
+          Artifact Details
+        </h3>
+        <button onclick="hideArtifactModal()" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div id="modal-body" class="px-6 py-6">
+        <!-- Content will be inserted by JavaScript -->
+      </div>
+
+      <!-- Modal Footer with Actions -->
+      <div class="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end space-x-3">
+        <button id="modal-btn-download" onclick="downloadArtifact()"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors hidden">
+          Download
+        </button>
+        <button id="modal-btn-archive" onclick="archiveArtifact()"
+          class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm font-medium transition-colors">
+          Archive
+        </button>
+        <button id="modal-btn-delete" onclick="deleteArtifact()"
+          class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h3 id="confirm-title" class="text-lg font-semibold text-gray-800">
+          Confirm Action
+        </h3>
+      </div>
+      <div class="px-6 py-4">
+        <p id="confirm-message" class="text-gray-700"></p>
+      </div>
+      <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+        <button onclick="hideConfirmModal()"
+          class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+          Cancel
+        </button>
+        <button id="confirm-btn" onclick="confirmAction()"
+          class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript -->
+  <script>
+    // STORAGE_KEYS is now defined in api-utils.html
+
+    // Pagination state
+    let currentOffset = 0;
+    let currentLimit = 25;
+    let hasMoreArtifacts = false;
+    let artifactsCache = [];
+    let currentArtifact = null;
+    let confirmCallback = null;
+    let availableTasks = [];
+
+    // Debounce timer for filters
+    let debounceTimer = null;
+
+    /**
+     * Wait for API utilities to be loaded
+     */
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof apiFetch !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof apiFetch !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    /**
+     * Initialize the page
+     */
+    document.addEventListener("DOMContentLoaded", async function () {
+      // Wait for API utilities to load
+      await waitForApiUtils();
+
+      console.log("Artifacts page initialized");
+
+      // Check if API key is configured
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || "";
+      if (!apiKey) {
+        showError(
+          "API Key not configured. Please go to Settings to configure your credentials."
+        );
+        return;
+      }
+
+      // Load available tasks for filter
+      await loadAvailableTasks();
+
+      // Load artifacts
+      loadArtifacts();
+    });
+
+    /**
+     * Load available tasks for filter
+     */
+    async function loadAvailableTasks() {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      if (!apiKey) return;
+
+      try {
+        const response = await fetch('/admin/tasks', {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          availableTasks = data.tasks || [];
+          populateTaskFilter();
+        }
+      } catch (error) {
+        console.error('Error loading tasks:', error);
+      }
+    }
+
+    /**
+     * Populate task filter dropdown
+     */
+    function populateTaskFilter() {
+      const taskSelect = document.getElementById('filter-task');
+      taskSelect.innerHTML = '<option value="">All Tasks</option>';
+
+      availableTasks.forEach(task => {
+        const option = document.createElement('option');
+        option.value = task.task_id;
+        option.textContent = `${task.name} (${task.task_id})`;
+        option.dataset.versions = JSON.stringify(task.versions || []);
+        taskSelect.appendChild(option);
+      });
+    }
+
+    /**
+     * Handle task filter change
+     */
+    function onTaskFilterChange() {
+      const taskSelect = document.getElementById('filter-task');
+      const versionSelect = document.getElementById('filter-version');
+      const selectedOption = taskSelect.selectedOptions[0];
+
+      versionSelect.innerHTML = '<option value="">All Versions</option>';
+
+      if (selectedOption && selectedOption.dataset.versions) {
+        const versions = JSON.parse(selectedOption.dataset.versions);
+        versions.forEach(version => {
+          const option = document.createElement('option');
+          option.value = version;
+          option.textContent = version;
+          versionSelect.appendChild(option);
+        });
+      }
+
+      resetAndLoadArtifacts();
+    }
+
+    /**
+     * Debounced load artifacts for text filters
+     */
+    function debounceLoadArtifacts() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        currentOffset = 0;
+        loadArtifacts();
+      }, 500);
+    }
+
+    /**
+     * Reset offset and load artifacts
+     */
+    function resetAndLoadArtifacts() {
+      currentOffset = 0;
+      currentLimit = parseInt(document.getElementById("filter-limit").value);
+      loadArtifacts();
+    }
+
+    /**
+     * Clear all filters
+     */
+    function clearFilters() {
+      document.getElementById("filter-ref").value = "";
+      document.getElementById("filter-kind").value = "";
+      document.getElementById("filter-direction").value = "";
+      document.getElementById("filter-task").value = "";
+      document.getElementById("filter-version").innerHTML = '<option value="">All Versions</option>';
+      document.getElementById("filter-media-type").value = "";
+      document.getElementById("filter-thread-id").value = "";
+      document.getElementById("filter-app-id").value = "";
+      document.getElementById("filter-limit").value = "25";
+      document.getElementById("filter-archived").checked = false;
+      resetAndLoadArtifacts();
+    }
+
+    /**
+     * Load artifacts from API
+     */
+    async function loadArtifacts() {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+      const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+      if (!apiKey) {
+        showError("API Key not configured");
+        return;
+      }
+
+      // Show loading state
+      showLoading();
+
+      // Get filter values
+      const ref = document.getElementById("filter-ref").value.trim();
+      const kind = document.getElementById("filter-kind").value;
+      const direction = document.getElementById("filter-direction").value;
+      const taskId = document.getElementById("filter-task").value;
+      const taskVersion = document.getElementById("filter-version").value;
+      const mediaType = document.getElementById("filter-media-type").value.trim();
+      const threadId = document.getElementById("filter-thread-id").value.trim();
+      const appIdFilter = document.getElementById("filter-app-id").value.trim();
+      const limit = parseInt(document.getElementById("filter-limit").value);
+      const includeArchived = document.getElementById("filter-archived").checked;
+
+      // Update current limit
+      currentLimit = limit;
+
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (ref) params.append("ref", ref);
+      if (kind) params.append("kind", kind);
+      if (direction) params.append("direction", direction);
+      if (taskId) params.append("task_id", taskId);
+      if (taskVersion) params.append("task_version", taskVersion);
+      if (mediaType) params.append("media_type", mediaType);
+      if (threadId) params.append("thread_id", threadId);
+      if (appIdFilter) params.append("app_id", appIdFilter);
+      if (includeArchived) params.append("include_archived", "true");
+      params.append("limit", limit.toString());
+      params.append("offset", currentOffset.toString());
+
+      try {
+        const response = await apiFetch(`/artifacts?${params.toString()}`);
+
+        const data = await response.json();
+        displayArtifacts(data);
+      } catch (error) {
+        console.error("Error loading artifacts:", error);
+        showError(error.message);
+      }
+    }
+
+    /**
+     * Display artifacts
+     */
+    function displayArtifacts(data) {
+      const artifacts = data.items || [];
+      const pagination = data.pagination || {};
+
+      if (artifacts.length === 0) {
+        showEmpty();
+        return;
+      }
+
+      // Update pagination state
+      // Use has_more from API, or fallback: if we got a full page, there might be more
+      hasMoreArtifacts = pagination.has_more || false;
+      if (!pagination.has_more && artifacts.length === currentLimit) {
+        // If API doesn't return has_more but we got a full page, assume there might be more
+        hasMoreArtifacts = true;
+      }
+
+      artifactsCache = artifacts;
+
+      // Show artifacts container
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document
+        .getElementById("artifacts-table-container")
+        .classList.remove("hidden");
+
+      // Update pagination info
+      const total = pagination.total || "many";
+      const showing = artifacts.length;
+      const startItem = currentOffset + 1;
+      const endItem = currentOffset + showing;
+
+      if (typeof total === 'number') {
+        document.getElementById("pagination-info").textContent =
+          `${startItem}-${endItem} of ${total}`;
+        // Better has_more detection with total
+        hasMoreArtifacts = endItem < total;
+      } else {
+        document.getElementById("pagination-info").textContent =
+          `${startItem}-${endItem}`;
+      }
+
+      // Populate artifacts table
+      const tableBodyEl = document.getElementById("artifacts-table-body");
+      tableBodyEl.innerHTML = artifacts
+        .map((artifact) => createArtifactRow(artifact))
+        .join("");
+
+      // Update pagination buttons
+      document.getElementById("btn-prev-page").disabled = currentOffset === 0;
+      document.getElementById("btn-next-page").disabled = !hasMoreArtifacts;
+
+      // Debug logging
+      console.log('Pagination state:', {
+        currentOffset,
+        currentLimit,
+        showing: artifacts.length,
+        total: pagination.total,
+        has_more: pagination.has_more,
+        computed_has_more: hasMoreArtifacts
+      });
+    }
+
+    /**
+     * Create an artifact table row HTML
+     */
+    function createArtifactRow(artifact) {
+      const kindClass = `kind-${artifact.kind.replace("_", "-")}`;
+
+      // Determine ref/id display
+      const refDisplay = artifact.ref
+        ? escapeHtml(artifact.ref)
+        : `<span class="text-gray-400 text-xs">${artifact.id.substring(0, 12)}...</span>`;
+
+      // Archive badge
+      const archiveBadge = artifact.archived
+        ? `<span class="ml-2 px-2 py-0.5 text-xs font-semibold text-white bg-gray-600 rounded">Archived</span>`
+        : "";
+
+      // Thread link
+      const threadLink = artifact.thread_id
+        ? `<a href="/ui/threads/${artifact.thread_id}" class="text-blue-600 hover:underline">
+              ${artifact.thread_id.substring(0, 12)}...
+            </a>`
+        : `<span class="text-gray-400">-</span>`;
+
+      // Task definition display (from thread metadata cache)
+      const taskDisplay = artifact.task_id
+        ? `<a href="/ui/tasks/${encodeURIComponent(artifact.task_id)}/versions/${encodeURIComponent(artifact.task_version || '')}" class="text-blue-600 hover:underline">
+              <div class="text-sm">${escapeHtml(artifact.task_id)}</div>
+              ${artifact.task_version ? `<div class="text-xs text-gray-500">${escapeHtml(artifact.task_version)}</div>` : ''}
+            </a>`
+        : `<span class="text-gray-400">-</span>`;
+
+      // Direction badge
+      const directionBadge = artifact.direction
+        ? artifact.direction === 'input'
+          ? `<span class="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded">Input</span>`
+          : `<span class="px-2 py-1 text-xs font-semibold text-purple-800 bg-purple-100 rounded">Output</span>`
+        : `<span class="text-gray-400 text-xs">-</span>`;
+
+      return `
+          <tr class="${artifact.archived ? "opacity-60" : ""}">
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              <div class="font-medium text-gray-900">${refDisplay}${archiveBadge}</div>
+              ${artifact.explain ? `<div class="text-xs text-gray-500 mt-1">${escapeHtml(artifact.explain)}</div>` : ''}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="px-2 py-1 text-xs font-semibold text-white rounded ${kindClass}">
+                ${artifact.kind}
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              ${directionBadge}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              ${taskDisplay}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              ${threadLink}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+              ${formatDateTime(artifact.created_at)}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              <div class="flex items-center space-x-2">
+                <button
+                  onclick='viewArtifact(${JSON.stringify(artifact).replace(/'/g, "&apos;")})'
+                  class="text-blue-600 hover:text-blue-800"
+                  title="View Details"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                  </svg>
+                </button>
+                ${artifact.file_ref || artifact.url
+          ? `
+                <button
+                  onclick='quickDownload("${artifact.id}")'
+                  class="text-green-600 hover:text-green-800"
+                  title="Download"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                  </svg>
+                </button>
+                `
+          : ""
+        }
+                ${!artifact.archived
+          ? `
+                <button
+                  onclick='quickArchive("${artifact.id}")'
+                  class="text-yellow-600 hover:text-yellow-800"
+                  title="Archive"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path>
+                  </svg>
+                </button>
+                `
+          : ""
+        }
+                <button
+                  onclick='quickDelete("${artifact.id}")'
+                  class="text-red-600 hover:text-red-800"
+                  title="Delete"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+    }
+
+    /**
+     * View artifact details in modal
+     */
+    function viewArtifact(artifact) {
+      currentArtifact = artifact;
+      document.getElementById("modal-title").textContent =
+        artifact.ref || `Artifact ${artifact.id}`;
+
+      let content = `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm font-medium text-gray-500">ID</label>
+                            <p class="text-gray-800 font-mono text-sm break-all">${artifact.id}</p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500">Kind</label>
+                            <p class="text-gray-800">${artifact.kind}</p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500">Media Type</label>
+                            <p class="text-gray-800">${artifact.media_type || "N/A"
+        }</p>
+                        </div>
+                        ${artifact.thread_id
+          ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">Thread ID</label>
+                                <p class="text-gray-800">
+                                    <a href="/ui/threads/${artifact.thread_id}" class="text-blue-600 hover:underline">
+                                        ${artifact.thread_id}
+                                    </a>
+                                </p>
+                            </div>
+                        `
+          : ""
+        }
+                        ${artifact.size
+          ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">Size</label>
+                                <p class="text-gray-800">${formatSize(
+            artifact.size
+          )}</p>
+                            </div>
+                        `
+          : ""
+        }
+                        ${artifact.sha256
+          ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">SHA256</label>
+                                <p class="text-gray-800 font-mono text-xs break-all">${artifact.sha256}</p>
+                            </div>
+                        `
+          : ""
+        }
+                        ${artifact.created_at
+          ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">Created At</label>
+                                <p class="text-gray-800">${formatDateTime(
+            artifact.created_at
+          )}</p>
+                            </div>
+                        `
+          : ""
+        }
+                        ${artifact.archived_at
+          ? `
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">Archived At</label>
+                                <p class="text-gray-800">${formatDateTime(
+            artifact.archived_at
+          )}</p>
+                            </div>
+                        `
+          : ""
+        }
+                    </div>
+                    
+                    ${artifact.explain
+          ? `
+                        <div>
+                            <label class="text-sm font-medium text-gray-500">Explanation</label>
+                            <p class="text-gray-800">${escapeHtml(
+            artifact.explain
+          )}</p>
+                        </div>
+                    `
+          : ""
+        }
+                    
+                    ${artifact.labels &&
+          Object.keys(artifact.labels).length > 0
+          ? `
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 mb-2 block">Labels</label>
+                            <pre class="bg-gray-50 p-4 rounded text-sm overflow-x-auto">${JSON.stringify(
+            artifact.labels,
+            null,
+            2
+          )}</pre>
+                        </div>
+                    `
+          : ""
+        }
+                    
+                    <div>
+                        <label class="text-sm font-medium text-gray-500 mb-2 block">Content</label>
+            `;
+
+      // Add content based on kind
+      if (artifact.kind === "text" || artifact.kind === "rich_text") {
+        content += `<div class="bg-gray-50 p-4 rounded text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">${escapeHtml(
+          artifact.text || "No content"
+        )}</div>`;
+      } else if (artifact.kind === "json" || artifact.kind === "metrics") {
+        content += `<pre class="bg-gray-50 p-4 rounded text-sm overflow-x-auto max-h-96 overflow-y-auto">${JSON.stringify(
+          artifact.value,
+          null,
+          2
+        )}</pre>`;
+      } else if (artifact.kind === "file" || artifact.kind === "binary") {
+        content += `<div class="bg-gray-50 p-4 rounded text-sm">
+                    <p>File Reference: <code class="bg-gray-200 px-2 py-1 rounded">${artifact.file_ref}</code></p>
+                    <p class="mt-2 text-gray-600">Click Download to retrieve this file.</p>
+                </div>`;
+      } else if (artifact.kind === "url") {
+        content += `<div class="bg-gray-50 p-4 rounded text-sm">
+                    <a href="${artifact.url}" target="_blank" class="text-blue-600 hover:underline break-all">${artifact.url}</a>
+                </div>`;
+      } else {
+        content += `<div class="bg-gray-50 p-4 rounded text-sm text-gray-600">No preview available for this artifact type</div>`;
+      }
+
+      content += `</div></div>`;
+
+      document.getElementById("modal-body").innerHTML = content;
+
+      // Show/hide download button
+      if (artifact.file_ref || artifact.url) {
+        document.getElementById("modal-btn-download").classList.remove("hidden");
+      } else {
+        document.getElementById("modal-btn-download").classList.add("hidden");
+      }
+
+      // Update archive button text
+      const archiveBtn = document.getElementById("modal-btn-archive");
+      if (artifact.archived) {
+        archiveBtn.textContent = "Unarchive";
+        archiveBtn.classList.remove("bg-yellow-600", "hover:bg-yellow-700");
+        archiveBtn.classList.add("bg-green-600", "hover:bg-green-700");
+      } else {
+        archiveBtn.textContent = "Archive";
+        archiveBtn.classList.remove("bg-green-600", "hover:bg-green-700");
+        archiveBtn.classList.add("bg-yellow-600", "hover:bg-yellow-700");
+      }
+
+      document.getElementById("artifact-modal").classList.remove("hidden");
+    }
+
+    /**
+     * Hide artifact modal
+     */
+    function hideArtifactModal(event) {
+      if (!event || event.target.id === "artifact-modal") {
+        document.getElementById("artifact-modal").classList.add("hidden");
+        currentArtifact = null;
+      }
+    }
+
+    /**
+     * Extract filename from Content-Disposition header
+     */
+    function getFilenameFromContentDisposition(contentDisposition) {
+      if (!contentDisposition) return null;
+
+      // Try filename*=UTF-8'' format first (RFC 6266)
+      const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utf8Match && utf8Match[1]) {
+        try {
+          return decodeURIComponent(utf8Match[1]);
+        } catch (e) {
+          console.warn("Failed to decode UTF-8 filename:", e);
+        }
+      }
+
+      // Fallback to filename="" format
+      const asciiMatch = contentDisposition.match(/filename="([^"]+)"/i);
+      if (asciiMatch && asciiMatch[1]) {
+        return asciiMatch[1];
+      }
+
+      // Fallback to filename= format (without quotes)
+      const simpleMatch = contentDisposition.match(/filename=([^;]+)/i);
+      if (simpleMatch && simpleMatch[1]) {
+        return simpleMatch[1].trim();
+      }
+
+      return null;
+    }
+
+    /**
+     * Download artifact
+     */
+    async function downloadArtifact() {
+      if (!currentArtifact) return;
+
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      if (!apiKey) {
+        alert("API Key not configured");
+        return;
+      }
+
+      try {
+        // If artifact has file_ref, download directly from files endpoint
+        if (currentArtifact.file_ref) {
+          const fileRef = currentArtifact.file_ref;
+
+          // Fetch file with proper headers to get Content-Disposition
+          const downloadResponse = await apiFetch(`/files/${fileRef}`);
+
+          // Extract filename from Content-Disposition header
+          const contentDisposition = downloadResponse.headers.get("Content-Disposition");
+          let filename = getFilenameFromContentDisposition(contentDisposition);
+
+          // Fallback to file_ref if no filename in header
+          if (!filename) {
+            filename = fileRef;
+          }
+
+          // Get the blob and create a download link
+          const blob = await downloadResponse.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } else if (currentArtifact.url) {
+          // For URL artifacts, open in new tab
+          window.open(currentArtifact.url, "_blank");
+        } else {
+          throw new Error("Artifact has no file_ref or url");
+        }
+      } catch (error) {
+        console.error("Error downloading artifact:", error);
+        alert(`Error downloading artifact: ${error.message}`);
+      }
+    }
+
+    /**
+     * Quick download from list
+     */
+    async function quickDownload(artifactId) {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      if (!apiKey) {
+        alert("API Key not configured");
+        return;
+      }
+
+      try {
+        // First, get the artifact to retrieve file_ref
+        const artifactResponse = await apiFetch(`/artifacts/${artifactId}`);
+
+        const artifact = await artifactResponse.json();
+
+        // If artifact has file_ref, download directly from files endpoint
+        if (artifact.file_ref) {
+          const fileRef = artifact.file_ref;
+
+          // Fetch file with proper headers to get Content-Disposition
+          const downloadResponse = await apiFetch(`/files/${fileRef}`);
+
+          // Extract filename from Content-Disposition header
+          const contentDisposition = downloadResponse.headers.get("Content-Disposition");
+          let filename = getFilenameFromContentDisposition(contentDisposition);
+
+          // Fallback to file_ref if no filename in header
+          if (!filename) {
+            filename = fileRef;
+          }
+
+          // Get the blob and create a download link
+          const blob = await downloadResponse.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } else if (artifact.url) {
+          // For URL artifacts, open in new tab
+          window.open(artifact.url, "_blank");
+        } else {
+          throw new Error("Artifact has no file_ref or url");
+        }
+      } catch (error) {
+        console.error("Error downloading artifact:", error);
+        alert(`Error downloading artifact: ${error.message}`);
+      }
+    }
+
+    /**
+     * Archive artifact
+     */
+    function archiveArtifact() {
+      if (!currentArtifact) return;
+
+      const action = currentArtifact.archived ? "unarchive" : "archive";
+      showConfirmModal(
+        `${action.charAt(0).toUpperCase() + action.slice(1)} Artifact`,
+        `Are you sure you want to ${action} this artifact?`,
+        async () => {
+          await performArchive(currentArtifact.id);
+        }
+      );
+    }
+
+    /**
+     * Quick archive from list
+     */
+    function quickArchive(artifactId) {
+      showConfirmModal(
+        "Archive Artifact",
+        "Are you sure you want to archive this artifact?",
+        async () => {
+          await performArchive(artifactId);
+        }
+      );
+    }
+
+    /**
+     * Perform archive operation
+     */
+    async function performArchive(artifactId) {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      if (!apiKey) {
+        alert("API Key not configured");
+        return;
+      }
+
+      try {
+        const response = await apiFetch(`/artifacts/${artifactId}:archive`, {
+          method: "POST",
+        });
+
+        alert("Artifact archived successfully");
+        hideArtifactModal();
+        loadArtifacts();
+      } catch (error) {
+        console.error("Error archiving artifact:", error);
+        alert(`Error archiving artifact: ${error.message}`);
+      }
+    }
+
+    /**
+     * Delete artifact
+     */
+    function deleteArtifact() {
+      if (!currentArtifact) return;
+
+      showConfirmModal(
+        "Delete Artifact",
+        "Are you sure you want to permanently delete this artifact? This action cannot be undone.",
+        async () => {
+          await performDelete(currentArtifact.id);
+        }
+      );
+    }
+
+    /**
+     * Quick delete from list
+     */
+    function quickDelete(artifactId) {
+      showConfirmModal(
+        "Delete Artifact",
+        "Are you sure you want to permanently delete this artifact? This action cannot be undone.",
+        async () => {
+          await performDelete(artifactId);
+        }
+      );
+    }
+
+    /**
+     * Perform delete operation
+     */
+    async function performDelete(artifactId) {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      if (!apiKey) {
+        alert("API Key not configured");
+        return;
+      }
+
+      try {
+        const response = await apiFetch(`/artifacts/${artifactId}`, {
+          method: "DELETE",
+        });
+
+        alert("Artifact deleted successfully");
+        hideArtifactModal();
+        loadArtifacts();
+      } catch (error) {
+        console.error("Error deleting artifact:", error);
+        alert(`Error deleting artifact: ${error.message}`);
+      }
+    }
+
+    /**
+     * Show confirmation modal
+     */
+    function showConfirmModal(title, message, callback) {
+      document.getElementById("confirm-title").textContent = title;
+      document.getElementById("confirm-message").textContent = message;
+      confirmCallback = callback;
+      document.getElementById("confirm-modal").classList.remove("hidden");
+    }
+
+    /**
+     * Hide confirmation modal
+     */
+    function hideConfirmModal() {
+      document.getElementById("confirm-modal").classList.add("hidden");
+      confirmCallback = null;
+    }
+
+    /**
+     * Confirm action
+     */
+    async function confirmAction() {
+      if (confirmCallback) {
+        await confirmCallback();
+        hideConfirmModal();
+      }
+    }
+
+    /**
+     * Pagination functions
+     */
+    function loadPreviousPage() {
+      if (currentOffset > 0) {
+        currentOffset = Math.max(0, currentOffset - currentLimit);
+        loadArtifacts();
+      }
+    }
+
+    function loadNextPage() {
+      if (hasMoreArtifacts) {
+        currentOffset += currentLimit;
+        loadArtifacts();
+      }
+    }
+
+    /**
+     * Utility functions
+     */
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+      if (bytes < 1024 * 1024 * 1024)
+        return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+      return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+    }
+
+    function formatDateTime(dateString) {
+      if (!dateString) return "-";
+      const date = new Date(dateString);
+      return date.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return "";
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showLoading() {
+      document.getElementById("loading-state").classList.remove("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document.getElementById("artifacts-table-container").classList.add("hidden");
+    }
+
+    function showError(message) {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.remove("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document.getElementById("artifacts-table-container").classList.add("hidden");
+      document.getElementById("error-message").textContent = message;
+    }
+
+    function showEmpty() {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.remove("hidden");
+      document.getElementById("artifacts-table-container").classList.add("hidden");
+    }
+  </script>
+</body>
+
+</html>

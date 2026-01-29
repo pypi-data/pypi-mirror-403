@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threads - Task Framework</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- htmx via CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+  <!-- Custom styles -->
+  <style>
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .nav-item:hover {
+      transform: translateX(4px);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #6b7280;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* State badge colors */
+    .state-queued {
+      background-color: #eab308;
+    }
+
+    .state-running {
+      background-color: #3b82f6;
+    }
+
+    .state-succeeded {
+      background-color: #22c55e;
+    }
+
+    .state-failed {
+      background-color: #ef4444;
+    }
+
+    .state-stopped {
+      background-color: #6b7280;
+    }
+
+    .state-timeout {
+      background-color: #f97316;
+    }
+
+    .state-expired {
+      background-color: #8b5cf6;
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <!-- API Utilities (loaded via htmx) -->
+  <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  <div class="flex h-screen overflow-hidden">
+    <!-- Left Sidebar (loaded via htmx) -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <!-- Loading placeholder -->
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto">
+      <!-- Top Bar -->
+      <div class="bg-white shadow-sm border-b border-gray-200">
+        <div class="px-6 py-4 flex justify-between items-center">
+          <div>
+            <h2 class="text-2xl font-semibold text-gray-800">Threads</h2>
+            <p class="text-sm text-gray-600 mt-1">
+              View and manage your task execution threads
+            </p>
+          </div>
+          <a href="/ui/threads/create"
+            class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            Create Thread
+          </a>
+        </div>
+      </div>
+
+      <!-- Filters Section -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <!-- Basic Filters Row -->
+        <div class="flex items-center space-x-4 mb-3">
+          <!-- Task Filter -->
+          <div>
+            <label for="filter-task" class="block text-xs text-gray-500 mb-1">Task</label>
+            <select id="filter-task" onchange="onTaskFilterChange()"
+              class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="">All Tasks</option>
+            </select>
+          </div>
+
+          <!-- Version Filter -->
+          <div>
+            <label for="filter-version" class="block text-xs text-gray-500 mb-1">Version</label>
+            <select id="filter-version" onchange="loadThreads()"
+              class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="">All Versions</option>
+            </select>
+          </div>
+
+          <!-- State Filter -->
+          <div>
+            <label for="filter-state" class="block text-xs text-gray-500 mb-1">State</label>
+            <select id="filter-state" onchange="loadThreads()"
+              class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="">All States</option>
+              <option value="queued">Queued</option>
+              <option value="running">Running</option>
+              <option value="succeeded">Succeeded</option>
+              <option value="failed">Failed</option>
+              <option value="stopped">Stopped</option>
+              <option value="timeout">Timeout</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
+
+          <!-- Limit Filter -->
+          <div>
+            <label for="filter-limit" class="block text-xs text-gray-500 mb-1">Limit</label>
+            <select id="filter-limit" onchange="loadThreads()"
+              class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+
+          <!-- Toggle Advanced Filters Button -->
+          <div class="flex items-end">
+            <button id="toggle-advanced-filters" onclick="toggleAdvancedFilters()"
+              class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors flex items-center">
+              <svg id="filter-icon" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4">
+                </path>
+              </svg>
+              <span id="filter-toggle-text">Advanced Filters</span>
+            </button>
+          </div>
+
+          <!-- Refresh Button -->
+          <div class="flex items-end">
+            <button onclick="loadThreads()"
+              class="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm font-medium transition-colors flex items-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                </path>
+              </svg>
+              Refresh
+            </button>
+          </div>
+
+          <!-- Clear Filters Button -->
+          <div class="flex items-end ml-auto">
+            <button onclick="clearAllFilters()"
+              class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+              Clear All
+            </button>
+          </div>
+        </div>
+
+        <!-- Advanced Filters Section (initially hidden) -->
+        <div id="advanced-filters" class="hidden border-t border-gray-200 pt-4 mt-2">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Name Filter -->
+            <div>
+              <label for="filter-name" class="text-xs text-gray-500 mb-1 block">Name</label>
+              <input type="text" id="filter-name" placeholder="e.g., daily_backup_*"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- User ID Filter -->
+            <div>
+              <label for="filter-user-id" class="text-xs text-gray-500 mb-1 block">User ID</label>
+              <input type="text" id="filter-user-id" placeholder="e.g., user_123"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- App ID Filter -->
+            <div>
+              <label for="filter-app-id" class="text-xs text-gray-500 mb-1 block">App ID</label>
+              <input type="text" id="filter-app-id" placeholder="e.g., app_456"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- Schedule ID Filter -->
+            <div>
+              <label for="filter-schedule-id" class="text-xs text-gray-500 mb-1 block">Schedule ID</label>
+              <input type="text" id="filter-schedule-id" placeholder="e.g., schedule_789"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- Run ID Filter -->
+            <div>
+              <label for="filter-run-id" class="text-xs text-gray-500 mb-1 block">Run ID</label>
+              <input type="text" id="filter-run-id" placeholder="e.g., run_abc"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- Created After Filter -->
+            <div>
+              <label for="filter-created-after" class="text-xs text-gray-500 mb-1 block">Created After</label>
+              <input type="datetime-local" id="filter-created-after"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- Created Before Filter -->
+            <div>
+              <label for="filter-created-before" class="text-xs text-gray-500 mb-1 block">Created Before</label>
+              <input type="datetime-local" id="filter-created-before"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- Started After Filter -->
+            <div>
+              <label for="filter-started-after" class="text-xs text-gray-500 mb-1 block">Started After</label>
+              <input type="datetime-local" id="filter-started-after"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- Finished Before Filter -->
+            <div>
+              <label for="filter-finished-before" class="text-xs text-gray-500 mb-1 block">Finished Before</label>
+              <input type="datetime-local" id="filter-finished-before"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+          </div>
+
+          <!-- Apply Advanced Filters Button -->
+          <div class="mt-4 flex justify-end">
+            <button onclick="loadThreads()"
+              class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+              Apply Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Threads Content -->
+      <div class="p-6">
+        <!-- Loading State -->
+        <div id="loading-state" class="hidden text-center py-12">
+          <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <p class="text-gray-600 mt-4">Loading threads...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden">
+          <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+            <svg class="w-12 h-12 text-red-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <h3 class="text-lg font-semibold text-red-900 mb-2">
+              Error Loading Threads
+            </h3>
+            <p id="error-message" class="text-red-700 mb-4"></p>
+            <button onclick="loadThreads()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
+              Try Again
+            </button>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="hidden">
+          <div class="bg-white rounded-lg shadow-md p-12 text-center">
+            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4">
+              </path>
+            </svg>
+            <h3 class="text-xl font-semibold text-gray-800 mb-2">
+              No Threads Found
+            </h3>
+            <p class="text-gray-600 mb-6">
+              Create your first thread to get started
+            </p>
+            <a href="/ui/threads/create"
+              class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+              </svg>
+              Create Thread
+            </a>
+          </div>
+        </div>
+
+        <!-- Threads Table -->
+        <div id="threads-table-container" class="hidden bg-white rounded-lg shadow-md overflow-hidden fade-in">
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Thread ID
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Task
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Version
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    State
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Started
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Finished
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="threads-table-body" class="bg-white divide-y divide-gray-200">
+                <!-- Rows will be inserted here by JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div id="pagination-container"
+            class="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
+            <div class="text-sm text-gray-700">
+              Showing <span id="pagination-info">0</span> threads
+            </div>
+            <div class="flex space-x-2">
+              <button id="btn-prev-page" onclick="loadPreviousPage()" disabled
+                class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                Previous
+              </button>
+              <button id="btn-next-page" onclick="loadNextPage()" disabled
+                class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- JavaScript -->
+  <script>
+    // Pagination state
+    let currentOffset = 0;
+    let currentLimit = 25;
+    let hasMoreThreads = false;
+
+    // Task filter state
+    let availableTasks = [];
+
+    /**
+     * Initialize the page
+     */
+    document.addEventListener("DOMContentLoaded", function () {
+      console.log("Threads page initialized");
+
+      // Wait for API utilities to load
+      waitForApiUtils().then(() => {
+        // Update connection status
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || "";
+
+        // Check if API key is configured
+        if (!apiKey) {
+          showError(
+            "API Key not configured. Please go to Settings to configure your credentials."
+          );
+          return;
+        }
+
+        // Check for task_id in URL params and populate task filter
+        initializeTaskFilter();
+      });
+    });
+
+    /**
+     * Initialize task filter - check for multi-task mode and populate dropdown
+     */
+    async function initializeTaskFilter() {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || "";
+
+      try {
+        // Try to fetch tasks to see if we're in multi-task mode
+        const response = await fetch('/admin/tasks', {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const responseData = await response.json();
+          // API returns {tasks: [...], total: N, total_versions: N}
+          const tasks = responseData.tasks || [];
+
+          // Flatten tasks with versions into individual task entries
+          availableTasks = [];
+          tasks.forEach(task => {
+            task.versions.forEach(version => {
+              availableTasks.push({
+                task_id: task.task_id,
+                version: version,
+                name: task.name,
+                description: task.description,
+                metadata: {
+                  name: task.name,
+                  description: task.description
+                }
+              });
+            });
+          });
+
+          if (availableTasks.length > 0) {
+            // We're in multi-task mode - populate the task filter
+            populateTaskFilter(availableTasks);
+
+            // Check for task_id in URL params
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskIdParam = urlParams.get('task_id');
+            const versionParam = urlParams.get('task_version');
+
+            if (taskIdParam) {
+              document.getElementById('filter-task').value = taskIdParam;
+              // Populate versions dropdown without triggering loadThreads
+              populateVersionsForTask(taskIdParam);
+
+              if (versionParam) {
+                document.getElementById('filter-version').value = versionParam;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Not in multi-task mode or tasks not available:', error.message);
+      }
+
+      // Load threads after task filter is initialized
+      loadThreads();
+    }
+
+    /**
+     * Populate task filter dropdown
+     */
+    function populateTaskFilter(tasks) {
+      const taskSelect = document.getElementById('filter-task');
+
+      // Group tasks by task_id
+      const taskGroups = {};
+      tasks.forEach(task => {
+        if (!taskGroups[task.task_id]) {
+          taskGroups[task.task_id] = {
+            task_id: task.task_id,
+            name: task.metadata?.name || task.task_id,
+            versions: []
+          };
+        }
+        taskGroups[task.task_id].versions.push(task);
+      });
+
+      // Sort groups by name
+      const sortedGroups = Object.values(taskGroups).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+
+      // Populate dropdown
+      taskSelect.innerHTML = '<option value="">All Tasks</option>';
+      sortedGroups.forEach(group => {
+        const option = document.createElement('option');
+        option.value = group.task_id;
+        option.textContent = `${group.name} (${group.versions.length}v)`;
+        taskSelect.appendChild(option);
+      });
+    }
+
+    /**
+     * Populate versions dropdown for a given task (without triggering loadThreads)
+     */
+    function populateVersionsForTask(taskId) {
+      const versionSelect = document.getElementById('filter-version');
+
+      if (!taskId) {
+        versionSelect.innerHTML = '<option value="">All Versions</option>';
+        return;
+      }
+
+      // Get versions for selected task
+      const taskVersions = availableTasks.filter(t => t.task_id === taskId)
+        .sort((a, b) => {
+          // Sort by version descending
+          const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+          const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+          for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+            const aVal = aParts[i] || 0;
+            const bVal = bParts[i] || 0;
+            if (bVal !== aVal) return bVal - aVal;
+          }
+          return 0;
+        });
+
+      // Populate version dropdown
+      versionSelect.innerHTML = '<option value="">All Versions</option>';
+      taskVersions.forEach((task, index) => {
+        const option = document.createElement('option');
+        option.value = task.version;
+        option.textContent = `v${task.version}${index === 0 ? ' (latest)' : ''}`;
+        versionSelect.appendChild(option);
+      });
+    }
+
+    /**
+     * Handle task filter change - populate versions dropdown
+     */
+    function onTaskFilterChange() {
+      const taskId = document.getElementById('filter-task').value;
+
+      if (!taskId) {
+        // No task selected - reset version filter
+        document.getElementById('filter-version').innerHTML = '<option value="">All Versions</option>';
+        updateUrlParams();
+        loadThreads();
+        return;
+      }
+
+      // Populate versions
+      populateVersionsForTask(taskId);
+
+      // Update URL params
+      updateUrlParams();
+
+      // Reload threads
+      loadThreads();
+    }
+
+    /**
+     * Update URL params with current filter state
+     */
+    function updateUrlParams() {
+      const taskId = document.getElementById('filter-task').value;
+      const version = document.getElementById('filter-version').value;
+
+      const url = new URL(window.location);
+
+      if (taskId) {
+        url.searchParams.set('task_id', taskId);
+      } else {
+        url.searchParams.delete('task_id');
+      }
+
+      if (version) {
+        url.searchParams.set('task_version', version);
+      } else {
+        url.searchParams.delete('task_version');
+      }
+
+      // Update URL without reloading page
+      window.history.replaceState({}, '', url);
+    }
+
+    /**
+     * Wait for API utilities to be loaded
+     */
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof apiFetch !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof apiFetch !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    /**
+     * Toggle advanced filters visibility
+     */
+    function toggleAdvancedFilters() {
+      const advancedFilters = document.getElementById("advanced-filters");
+      const toggleText = document.getElementById("filter-toggle-text");
+
+      if (advancedFilters.classList.contains("hidden")) {
+        advancedFilters.classList.remove("hidden");
+        toggleText.textContent = "Hide Advanced Filters";
+      } else {
+        advancedFilters.classList.add("hidden");
+        toggleText.textContent = "Advanced Filters";
+      }
+    }
+
+    /**
+     * Clear all filters
+     */
+    function clearAllFilters() {
+      // Clear task filters
+      const taskFilter = document.getElementById("filter-task");
+      if (taskFilter) taskFilter.value = "";
+      const versionFilter = document.getElementById("filter-version");
+      if (versionFilter) {
+        versionFilter.value = "";
+        versionFilter.innerHTML = '<option value="">All Versions</option>';
+      }
+
+      // Clear basic filters
+      document.getElementById("filter-state").value = "";
+      document.getElementById("filter-limit").value = "25";
+
+      // Clear advanced filters
+      document.getElementById("filter-name").value = "";
+      document.getElementById("filter-user-id").value = "";
+      document.getElementById("filter-app-id").value = "";
+      document.getElementById("filter-schedule-id").value = "";
+      document.getElementById("filter-run-id").value = "";
+      document.getElementById("filter-created-after").value = "";
+      document.getElementById("filter-created-before").value = "";
+      document.getElementById("filter-started-after").value = "";
+      document.getElementById("filter-finished-before").value = "";
+
+      // Reset pagination
+      currentOffset = 0;
+
+      // Update URL params
+      updateUrlParams();
+
+      // Reload threads
+      loadThreads();
+    }
+
+    /**
+     * Helper function to check if a string value is not empty (ignoring whitespace)
+     */
+    function isNotEmpty(value) {
+      return value && value.trim() !== "";
+    }
+
+    /**
+     * Helper function to convert datetime-local input to ISO 8601 format
+     */
+    function formatDateTimeForAPI(dateTimeValue) {
+      if (!dateTimeValue) return null;
+      // datetime-local format: "YYYY-MM-DDTHH:mm"
+      // Convert to ISO 8601: "YYYY-MM-DDTHH:mm:ssZ"
+      return new Date(dateTimeValue).toISOString();
+    }
+
+    /**
+     * Load threads from API
+     */
+    async function loadThreads() {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      if (!apiKey) {
+        showError("API Key not configured");
+        return;
+      }
+
+      // Show loading state
+      showLoading();
+
+      // Get basic filter values
+      const state = document.getElementById("filter-state").value;
+      currentLimit = parseInt(document.getElementById("filter-limit").value);
+
+      // Get advanced filter values
+      // Get advanced filter values
+      const filterName = document.getElementById("filter-name").value;
+      const filterUserId = document.getElementById("filter-user-id").value;
+      const filterAppId = document.getElementById("filter-app-id").value;
+      const filterScheduleId =
+        document.getElementById("filter-schedule-id").value;
+      const filterRunId = document.getElementById("filter-run-id").value;
+      const filterCreatedAfter = document.getElementById(
+        "filter-created-after"
+      ).value;
+      const filterCreatedBefore = document.getElementById(
+        "filter-created-before"
+      ).value;
+      const filterStartedAfter = document.getElementById(
+        "filter-started-after"
+      ).value;
+      const filterFinishedBefore = document.getElementById(
+        "filter-finished-before"
+      ).value;
+
+      // Get task filter values
+      const filterTaskId = document.getElementById("filter-task")?.value || "";
+      const filterVersion = document.getElementById("filter-version")?.value || "";
+
+      // Build query parameters
+      const params = new URLSearchParams();
+
+      // Add task filters (for multi-task mode)
+      if (isNotEmpty(filterTaskId)) {
+        params.append("task_id", filterTaskId.trim());
+      }
+      if (isNotEmpty(filterVersion)) {
+        params.append("task_version", filterVersion.trim());
+      }
+
+      // Add basic filters
+      if (isNotEmpty(state)) params.append("state", state);
+      params.append("limit", currentLimit.toString());
+      params.append("offset", currentOffset.toString());
+
+      // Add advanced filters (only if not empty)
+      // Add advanced filters (only if not empty)
+      if (isNotEmpty(filterName))
+        params.append("name", filterName.trim());
+      if (isNotEmpty(filterUserId))
+        params.append("user_id", filterUserId.trim());
+      if (isNotEmpty(filterAppId))
+        params.append("app_id", filterAppId.trim());
+      if (isNotEmpty(filterScheduleId))
+        params.append("schedule_id", filterScheduleId.trim());
+      if (isNotEmpty(filterRunId))
+        params.append("run_id", filterRunId.trim());
+
+      // Add date filters (convert to ISO 8601 format)
+      if (isNotEmpty(filterCreatedAfter)) {
+        const isoDate = formatDateTimeForAPI(filterCreatedAfter);
+        if (isoDate) params.append("created_after", isoDate);
+      }
+      if (isNotEmpty(filterCreatedBefore)) {
+        const isoDate = formatDateTimeForAPI(filterCreatedBefore);
+        if (isoDate) params.append("created_before", isoDate);
+      }
+      if (isNotEmpty(filterStartedAfter)) {
+        const isoDate = formatDateTimeForAPI(filterStartedAfter);
+        if (isoDate) params.append("started_after", isoDate);
+      }
+      if (isNotEmpty(filterFinishedBefore)) {
+        const isoDate = formatDateTimeForAPI(filterFinishedBefore);
+        if (isoDate) params.append("finished_before", isoDate);
+      }
+
+      try {
+        const response = await apiFetch(`/threads?${params.toString()}`);
+        const data = await response.json();
+        displayThreads(data);
+      } catch (error) {
+        console.error("Error loading threads:", error);
+        showError(error.message);
+      }
+    }
+
+    /**
+     * Display threads in table
+     */
+    function displayThreads(data) {
+      const threads = data.items || [];
+      const pagination = data.pagination || {};
+
+      if (threads.length === 0) {
+        showEmpty();
+        return;
+      }
+
+      // Update pagination state
+      hasMoreThreads = pagination.has_more || false;
+
+      // Show table
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document
+        .getElementById("threads-table-container")
+        .classList.remove("hidden");
+
+      // Populate table
+      const tbody = document.getElementById("threads-table-body");
+      tbody.innerHTML = threads
+        .map((thread) => createThreadRow(thread))
+        .join("");
+
+      // Update pagination info
+      const total = pagination.total || threads.length;
+      const showing = Math.min(currentOffset + threads.length, total);
+      document.getElementById("pagination-info").textContent = `${currentOffset + 1
+        }-${showing} of ${total}`;
+
+      // Update pagination buttons
+      document.getElementById("btn-prev-page").disabled = currentOffset === 0;
+      document.getElementById("btn-next-page").disabled = !hasMoreThreads;
+    }
+
+    /**
+     * Create a table row for a thread
+     */
+    function createThreadRow(thread) {
+      const stateClass = `state-${thread.state}`;
+      const stateBadge = `<span class="px-2 py-1 text-xs font-semibold text-white rounded ${stateClass}">${thread.state}</span>`;
+
+      // Extract task_id and task_version from metadata
+      const taskId = thread.metadata?.task_id || null;
+      const taskVersion = thread.metadata?.task_version || null;
+
+      // Create task link if task_id exists
+      const taskCell = taskId
+        ? `<a href="/ui/tasks/${encodeURIComponent(taskId)}/${encodeURIComponent(taskVersion || 'latest')}" 
+                  class="text-blue-600 hover:text-blue-800 font-medium">
+                  ${escapeHtml(taskId)}
+              </a>`
+        : '<span class="text-gray-400">-</span>';
+
+      // Version badge
+      const versionCell = taskVersion
+        ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">v${escapeHtml(taskVersion)}</span>`
+        : '<span class="text-gray-400">-</span>';
+
+      return `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${thread.name
+          ? `<div>
+                               <a href="/ui/threads/${thread.id}" class="text-blue-600 hover:text-blue-800 font-medium block">
+                                 ${escapeHtml(thread.name)}
+                               </a>
+                               <div class="text-xs text-gray-500 font-mono mt-0.5">${thread.id}</div>
+                             </div>`
+          : `<a href="/ui/threads/${thread.id}" class="text-blue-600 hover:text-blue-800 font-medium">
+                               ${thread.id}
+                             </a>`
+        }
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        ${taskCell}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        ${versionCell}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${stateBadge}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        ${formatDateTime(thread.created_at)}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        ${formatDateTime(thread.started_at)}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        ${formatDateTime(thread.finished_at)}${thread.finished_at ? ` <span class="text-gray-400 font-mono">(${formatDuration(thread.started_at, thread.finished_at)})</span>` : ''}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <a href="/ui/threads/${thread.id}" 
+                           class="text-blue-600 hover:text-blue-800 font-medium mr-3">
+                            View
+                        </a>
+                        ${thread.state === "running"
+          ? `<button onclick="stopThread('${thread.id}')" class="text-red-600 hover:text-red-800 font-medium">Stop</button>`
+          : ""
+        }
+                    </td>
+                </tr>
+            `;
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    /**
+     * Format date/time for display
+     */
+    function formatDateTime(dateString) {
+      if (!dateString) return "-";
+      const date = new Date(dateString);
+      return date.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    /**
+     * Format duration between two timestamps
+     */
+    function formatDuration(startedAt, finishedAt) {
+      if (!startedAt) return "-";
+      if (!finishedAt) return "running...";
+
+      const start = new Date(startedAt);
+      const end = new Date(finishedAt);
+      const durationMs = end - start;
+
+      if (durationMs < 0) return "-";
+
+      // Less than a second
+      if (durationMs < 1000) {
+        return `${durationMs}ms`;
+      }
+
+      // Less than a minute
+      if (durationMs < 60000) {
+        return `${(durationMs / 1000).toFixed(2)}s`;
+      }
+
+      // Less than an hour
+      if (durationMs < 3600000) {
+        const mins = Math.floor(durationMs / 60000);
+        const secs = Math.floor((durationMs % 60000) / 1000);
+        return `${mins}m ${secs}s`;
+      }
+
+      // Hours and minutes
+      const hours = Math.floor(durationMs / 3600000);
+      const mins = Math.floor((durationMs % 3600000) / 60000);
+      return `${hours}h ${mins}m`;
+    }
+
+    /**
+     * Stop a running thread
+     */
+    async function stopThread(threadId) {
+      if (!confirm(`Are you sure you want to stop thread ${threadId}?`)) {
+        return;
+      }
+
+      try {
+        const response = await apiFetch(`/threads/${threadId}:stop`, {
+          method: "POST",
+        });
+
+        console.log("Thread stopped:", threadId);
+
+        // Reload threads
+        await loadThreads();
+      } catch (error) {
+        console.error("Error stopping thread:", error);
+        alert(`Failed to stop thread: ${error.message}`);
+      }
+    }
+
+    /**
+     * Pagination functions
+     */
+    function loadPreviousPage() {
+      currentOffset = Math.max(0, currentOffset - currentLimit);
+      loadThreads();
+    }
+
+    function loadNextPage() {
+      currentOffset += currentLimit;
+      loadThreads();
+    }
+
+    /**
+     * UI state functions
+     */
+    function showLoading() {
+      document.getElementById("loading-state").classList.remove("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document
+        .getElementById("threads-table-container")
+        .classList.add("hidden");
+    }
+
+    function showError(message) {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.remove("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document
+        .getElementById("threads-table-container")
+        .classList.add("hidden");
+      document.getElementById("error-message").textContent = message;
+    }
+
+    function showEmpty() {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.remove("hidden");
+      document
+        .getElementById("threads-table-container")
+        .classList.add("hidden");
+    }
+  </script>
+</body>
+
+</html>

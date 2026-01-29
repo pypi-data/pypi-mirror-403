@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schedule Details - Task Framework</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+
+    .state-active {
+      background-color: #22c55e;
+    }
+
+    .state-paused {
+      background-color: #eab308;
+    }
+
+    .state-canceled {
+      background-color: #6b7280;
+    }
+
+    .modal-overlay {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <!-- API Utilities (loaded via htmx) -->
+  <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto">
+      <!-- Breadcrumb -->
+      <div class="bg-white shadow-sm border-b border-gray-200">
+        <div class="px-6 py-3">
+          <div class="flex items-center text-sm text-gray-600">
+            <a href="/ui/schedules" class="hover:text-blue-600">Schedules</a>
+            <svg class="w-4 h-4 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <span id="schedule-id-breadcrumb">Loading...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="flex items-center justify-center py-12">
+        <div class="text-center">
+          <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none"
+            viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <p class="mt-2 text-sm text-gray-600">Loading schedule...</p>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="hidden px-6 py-12">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div class="flex">
+            <svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clip-rule="evenodd" />
+            </svg>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-red-800">Error Loading Schedule</h3>
+              <p id="error-message" class="mt-1 text-sm text-red-700"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Schedule Details -->
+      <div id="schedule-details" class="hidden">
+        <!-- Header -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div class="flex justify-between items-start">
+            <div class="flex-1">
+              <h1 class="text-2xl font-bold text-gray-900">Schedule Details</h1>
+              <p id="schedule-cron-display" class="mt-1 text-sm text-gray-500"></p>
+            </div>
+            <div class="flex gap-2">
+              <button id="toggle-schedule-btn" onclick="toggleSchedule()"
+                class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                <span id="toggle-schedule-text">Pause</span>
+              </button>
+              <a id="edit-schedule-link" class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                Edit
+              </a>
+              <button onclick="cancelScheduleFromDetails()"
+                class="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg">
+                Cancel Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schedule Information -->
+        <div class="px-6 py-6">
+          <!-- Overview -->
+          <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Overview</h2>
+            <dl class="grid grid-cols-2 gap-4">
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Schedule ID</dt>
+                <dd id="schedule-id" class="mt-1 text-sm text-gray-900"></dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">State</dt>
+                <dd id="schedule-state" class="mt-1"></dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Cron Expression</dt>
+                <dd id="schedule-cron" class="mt-1 text-sm text-gray-900 font-mono"></dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Timezone</dt>
+                <dd id="schedule-timezone" class="mt-1 text-sm text-gray-900"></dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Concurrency Policy</dt>
+                <dd id="schedule-concurrency" class="mt-1 text-sm text-gray-900"></dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Max Attempts</dt>
+                <dd id="schedule-max-attempts" class="mt-1 text-sm text-gray-900"></dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Created At</dt>
+                <dd id="schedule-created-at" class="mt-1 text-sm text-gray-900"></dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Updated At</dt>
+                <dd id="schedule-updated-at" class="mt-1 text-sm text-gray-900"></dd>
+              </div>
+            </dl>
+          </div>
+
+          <!-- Input Template -->
+          <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Input Artifacts Template</h2>
+            <div id="schedule-inputs" class="text-sm text-gray-600"></div>
+          </div>
+
+          <!-- Webhooks -->
+          <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Webhooks</h2>
+            <div id="schedule-webhooks" class="text-sm text-gray-600"></div>
+          </div>
+
+          <!-- Parameters -->
+          <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Task Parameters</h2>
+            <pre id="schedule-params" class="text-sm text-gray-900 bg-gray-50 p-4 rounded-lg overflow-auto"></pre>
+          </div>
+
+          <!-- Metadata -->
+          <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Metadata</h2>
+            <pre id="schedule-metadata" class="text-sm text-gray-900 bg-gray-50 p-4 rounded-lg overflow-auto"></pre>
+          </div>
+
+          <!-- Runs Table -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Schedule Runs</h2>
+            <div id="runs-table-container" hx-get="/ui/components/runs-table.html" hx-trigger="load"
+              hx-swap="innerHTML">
+              <div class="text-center py-4 text-gray-500">Loading runs...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Confirmation Modal -->
+  <div id="cancel-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+      <div class="modal-overlay fixed inset-0" onclick="closeCancelModal()"></div>
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative z-10">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Cancel Schedule</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Are you sure you want to cancel this schedule? This action cannot be undone and will stop all future
+          executions.
+        </p>
+        <div class="flex justify-end gap-3">
+          <button onclick="closeCancelModal()"
+            class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+            No, keep it
+          </button>
+          <button onclick="confirmCancel()"
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium">
+            Yes, cancel schedule
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // STORAGE_KEYS is now defined in api-utils.html
+
+    let currentSchedule = null;
+
+    /**
+     * Load schedule details
+     */
+    async function loadSchedule() {
+      const pathParts = window.location.pathname.split("/");
+      const scheduleId = pathParts[pathParts.length - 1];
+
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+      const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+      if (!apiKey) {
+        showError("API Key not configured. Please go to Settings.");
+        return;
+      }
+
+      try {
+        const response = await apiFetch(`/schedules/${scheduleId}`);
+
+        currentSchedule = await response.json();
+        displaySchedule(currentSchedule);
+      } catch (error) {
+        console.error("Error loading schedule:", error);
+        showError(error.message);
+      }
+    }
+
+    /**
+     * Display schedule details
+     */
+    function displaySchedule(schedule) {
+      // Show schedule details
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("schedule-details").classList.remove("hidden");
+
+      // Update breadcrumb
+      document.getElementById("schedule-id-breadcrumb").textContent = schedule.id;
+
+      // Populate fields
+      document.getElementById("schedule-id").textContent = schedule.id;
+      document.getElementById("schedule-cron").textContent = schedule.cron;
+      document.getElementById("schedule-cron-display").textContent = `${schedule.cron} (${schedule.timezone})`;
+      document.getElementById("schedule-timezone").textContent = schedule.timezone;
+      document.getElementById("schedule-concurrency").textContent = schedule.concurrency_policy || "allow";
+      document.getElementById("schedule-max-attempts").textContent = schedule.max_attempts || 1;
+      document.getElementById("schedule-created-at").textContent = formatDateTime(schedule.created_at);
+      document.getElementById("schedule-updated-at").textContent = formatDateTime(schedule.updated_at);
+
+      // State badge
+      const stateClass = `state-${schedule.state}`;
+      document.getElementById("schedule-state").innerHTML = `
+          <span class="${stateClass} px-2 py-1 text-xs font-semibold text-white rounded">
+            ${schedule.state}
+          </span>
+        `;
+
+      // Toggle button
+      if (schedule.state === "active") {
+        document.getElementById("toggle-schedule-text").textContent = "Pause";
+      } else if (schedule.state === "paused") {
+        document.getElementById("toggle-schedule-text").textContent = "Activate";
+      } else {
+        document.getElementById("toggle-schedule-btn").disabled = true;
+        document.getElementById("toggle-schedule-btn").classList.add("opacity-50", "cursor-not-allowed");
+      }
+
+      // Edit link
+      document.getElementById("edit-schedule-link").href = `/ui/schedules/edit/${schedule.id}`;
+
+      // Inputs
+      const inputsDiv = document.getElementById("schedule-inputs");
+      if (schedule.inputs_template && schedule.inputs_template.length > 0) {
+        let html = '<div class="space-y-2">';
+        schedule.inputs_template.forEach((input, idx) => {
+          html += `
+              <div class="border border-gray-200 rounded p-3">
+                <div class="font-medium">Input ${idx + 1}: ${input.kind}</div>
+                ${input.ref ? `<div class="text-xs text-gray-500">Ref: ${escapeHtml(input.ref)}</div>` : ""}
+                ${input.explain ? `<div class="text-xs text-gray-500">${escapeHtml(input.explain)}</div>` : ""}
+              </div>
+            `;
+        });
+        html += '</div>';
+        inputsDiv.innerHTML = html;
+      } else {
+        inputsDiv.innerHTML = '<p class="text-gray-500">No input artifacts defined</p>';
+      }
+
+      // Webhooks
+      const webhooksDiv = document.getElementById("schedule-webhooks");
+      if (schedule.webhooks && schedule.webhooks.length > 0) {
+        let html = '<div class="space-y-2">';
+        schedule.webhooks.forEach((webhook, idx) => {
+          const events = webhook.events ? webhook.events.join(", ") : "All events";
+          html += `
+              <div class="border border-gray-200 rounded p-3">
+                <div class="font-medium flex justify-between">
+                    <span>Webhook ${idx + 1}</span>
+                    <span class="text-xs text-gray-400 font-mono">${escapeHtml(webhook.callback_url)}</span>
+                </div>
+                <div class="text-xs text-gray-500 mt-1">Events: ${escapeHtml(events)}</div>
+                ${webhook.api_key ? `<div class="text-xs text-gray-500">Auth: API Key configured</div>` : `<div class="text-xs text-gray-500">Auth: None</div>`}
+              </div>
+            `;
+        });
+        html += '</div>';
+        webhooksDiv.innerHTML = html;
+      } else {
+        webhooksDiv.innerHTML = '<p class="text-gray-500">No webhooks configured</p>';
+      }
+
+      // Parameters
+      if (schedule.params && Object.keys(schedule.params).length > 0) {
+        document.getElementById("schedule-params").textContent = JSON.stringify(schedule.params, null, 2);
+      } else {
+        document.getElementById("schedule-params").textContent = "{}";
+      }
+
+      // Metadata
+      if (schedule.metadata && Object.keys(schedule.metadata).length > 0) {
+        document.getElementById("schedule-metadata").textContent = JSON.stringify(schedule.metadata, null, 2);
+      } else {
+        document.getElementById("schedule-metadata").textContent = "{}";
+      }
+
+      // Initialize runs table with schedule ID and task info
+      if (window.initRunsTable) {
+        window.initRunsTable(schedule.id, schedule.task_id, schedule.task_version);
+      } else {
+        // Wait for the runs table component to load
+        setTimeout(() => {
+          if (window.initRunsTable) {
+            window.initRunsTable(schedule.id, schedule.task_id, schedule.task_version);
+          }
+        }, 500);
+      }
+    }
+
+    /**
+     * Toggle schedule state (active/paused)
+     */
+    async function toggleSchedule() {
+      if (!currentSchedule) return;
+
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+      const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+      const newState = currentSchedule.state === "active" ? "paused" : "active";
+
+      try {
+        const response = await apiFetch(`/schedules/${currentSchedule.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ state: newState }),
+        });
+
+        currentSchedule = await response.json();
+        displaySchedule(currentSchedule);
+      } catch (error) {
+        console.error("Error toggling schedule:", error);
+        alert(`Error: ${error.message}`);
+      }
+    }
+
+    /**
+     * Cancel schedule from details page
+     */
+    function cancelScheduleFromDetails() {
+      document.getElementById("cancel-modal").classList.remove("hidden");
+    }
+
+    /**
+     * Close cancel modal
+     */
+    function closeCancelModal() {
+      document.getElementById("cancel-modal").classList.add("hidden");
+    }
+
+    /**
+     * Confirm cancel
+     */
+    async function confirmCancel() {
+      if (!currentSchedule) return;
+
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+      const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+      try {
+        const response = await apiFetch(`/schedules/${currentSchedule.id}:cancel`, {
+          method: "POST",
+        });
+
+        closeCancelModal();
+        window.location.href = "/ui/schedules";
+      } catch (error) {
+        console.error("Error canceling schedule:", error);
+        alert(`Error: ${error.message}`);
+      }
+    }
+
+    /**
+     * UI state management
+     */
+    function showError(message) {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.remove("hidden");
+      document.getElementById("schedule-details").classList.add("hidden");
+      document.getElementById("error-message").textContent = message;
+    }
+
+    /**
+     * Utility functions
+     */
+    function formatDateTime(dateString) {
+      if (!dateString) return "-";
+      const date = new Date(dateString);
+      return date.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    /**
+     * Wait for API utilities to be loaded
+     */
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof apiFetch !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof apiFetch !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", async function () {
+      await waitForApiUtils();
+      loadSchedule();
+    });
+  </script>
+</body>
+
+</html>

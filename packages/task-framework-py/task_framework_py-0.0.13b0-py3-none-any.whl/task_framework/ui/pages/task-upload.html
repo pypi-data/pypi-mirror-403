@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload Task - Task Framework</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+      .nav-item {
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-item:hover {
+        transform: translateX(4px);
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      .drop-zone {
+        transition: all 0.2s ease-in-out;
+      }
+      .drop-zone.drag-over {
+        border-color: #3b82f6;
+        background-color: #eff6ff;
+      }
+      .drop-zone.has-file {
+        border-color: #22c55e;
+        background-color: #f0fdf4;
+      }
+      @keyframes pulse-border {
+        0%, 100% { border-color: #3b82f6; }
+        50% { border-color: #93c5fd; }
+      }
+      .uploading {
+        animation: pulse-border 1.5s ease-in-out infinite;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div
+      hx-get="/ui/components/api-utils.html"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    ></div>
+
+    <div class="flex h-screen overflow-hidden">
+      <!-- Sidebar -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content -->
+      <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div class="flex items-center gap-4">
+            <a
+              href="/ui/tasks"
+              class="text-gray-500 hover:text-gray-700"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </a>
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900">Upload Task Definition</h1>
+              <p class="mt-1 text-sm text-gray-500">
+                Deploy a new task definition to the server
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload Form -->
+        <div class="p-6">
+          <div class="max-w-2xl mx-auto">
+            <!-- Instructions -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div class="flex">
+                <svg class="w-5 h-5 text-blue-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                </svg>
+                <div class="ml-3">
+                  <h3 class="text-sm font-medium text-blue-800">Task Package Requirements</h3>
+                  <div class="mt-2 text-sm text-blue-700">
+                    <p>Your zip file must contain:</p>
+                    <ul class="list-disc list-inside mt-1 space-y-1">
+                      <li><code class="bg-blue-100 px-1 rounded">task_metadata.json</code> - Task metadata (name, version, entry_point)</li>
+                      <li><code class="bg-blue-100 px-1 rounded">pyproject.toml</code> - Dependencies (optional)</li>
+                      <li>Your task module (e.g., <code class="bg-blue-100 px-1 rounded">task.py</code>)</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <form id="upload-form" class="space-y-6">
+              <!-- Task ID (optional - extracted from zip, shown for verification) -->
+              <div>
+                <label for="task-id" class="block text-sm font-medium text-gray-700">
+                  Task ID <span class="text-gray-400 text-xs">(auto-detected from zip)</span>
+                </label>
+                <input
+                  type="text"
+                  id="task-id"
+                  name="task_id"
+                  pattern="[a-zA-Z0-9_-]+"
+                  placeholder="Will be extracted from zip file"
+                  disabled
+                  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm bg-gray-50 text-gray-500"
+                />
+                <p class="mt-1 text-xs text-gray-500">Extracted from pyproject.toml [project] name</p>
+              </div>
+
+              <!-- Version (optional - extracted from zip, shown for verification) -->
+              <div>
+                <label for="task-version" class="block text-sm font-medium text-gray-700">
+                  Version <span class="text-gray-400 text-xs">(auto-detected from zip)</span>
+                </label>
+                <input
+                  type="text"
+                  id="task-version"
+                  name="version"
+                  pattern="[0-9]+\.[0-9]+\.[0-9]+.*"
+                  placeholder="Will be extracted from zip file"
+                  disabled
+                  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm bg-gray-50 text-gray-500"
+                />
+                <p class="mt-1 text-xs text-gray-500">Extracted from pyproject.toml [project] version</p>
+              </div>
+
+              <!-- File Drop Zone -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Task Package <span class="text-red-500">*</span>
+                </label>
+                <div
+                  id="drop-zone"
+                  class="drop-zone border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-gray-400"
+                  onclick="document.getElementById('file-input').click()"
+                >
+                  <input
+                    type="file"
+                    id="file-input"
+                    name="file"
+                    accept=".zip"
+                    class="hidden"
+                    onchange="handleFileSelect(event)"
+                  />
+                  <div id="drop-zone-content">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p class="mt-2 text-sm text-gray-600">
+                      <span class="font-medium text-blue-600 hover:text-blue-500">Click to upload</span>
+                      or drag and drop
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500">ZIP file only</p>
+                  </div>
+                  <div id="file-info" class="hidden">
+                    <svg class="mx-auto h-12 w-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p id="file-name" class="mt-2 text-sm font-medium text-gray-900"></p>
+                    <p id="file-size" class="mt-1 text-xs text-gray-500"></p>
+                    <button
+                      type="button"
+                      onclick="clearFile(event)"
+                      class="mt-2 text-sm text-red-600 hover:text-red-800"
+                    >
+                      Remove file
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Force Redeploy -->
+              <div class="flex items-center">
+                <input
+                  type="checkbox"
+                  id="force-redeploy"
+                  name="force_redeploy"
+                  class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label for="force-redeploy" class="ml-2 block text-sm text-gray-700">
+                  Force redeploy (overwrite if already exists)
+                </label>
+              </div>
+
+              <!-- Error Message -->
+              <div id="error-container" class="hidden">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div class="flex">
+                    <svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                    </svg>
+                    <div class="ml-3">
+                      <h3 class="text-sm font-medium text-red-800">Upload Failed</h3>
+                      <p id="error-message" class="text-sm text-red-700 mt-1"></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Success Message -->
+              <div id="success-container" class="hidden">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div class="flex">
+                    <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <div class="ml-3">
+                      <h3 class="text-sm font-medium text-green-800">Task Deployed Successfully</h3>
+                      <p id="success-message" class="text-sm text-green-700 mt-1"></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Progress Bar -->
+              <div id="progress-container" class="hidden">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm font-medium text-blue-700">Uploading...</span>
+                  <span id="progress-percent" class="text-sm font-medium text-blue-700">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                  <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+              </div>
+
+              <!-- Submit Button -->
+              <div class="flex justify-end gap-3">
+                <a
+                  href="/ui/tasks"
+                  class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                >
+                  Cancel
+                </a>
+                <button
+                  type="submit"
+                  id="submit-btn"
+                  class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg class="w-5 h-5 inline-block -mt-0.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Upload & Deploy
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Wait for API utils to load
+      function waitForApiUtils() {
+        return new Promise((resolve) => {
+          if (typeof STORAGE_KEYS !== "undefined") {
+            resolve();
+          } else {
+            const checkInterval = setInterval(() => {
+              if (typeof STORAGE_KEYS !== "undefined") {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 50);
+          }
+        });
+      }
+
+      // State
+      let selectedFile = null;
+
+      // Drag and drop handlers
+      const dropZone = document.getElementById('drop-zone');
+
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+      });
+
+      dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          handleFile(files[0]);
+        }
+      });
+
+      // File selection handler
+      function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+          handleFile(file);
+        }
+      }
+
+      function handleFile(file) {
+        // Validate file type
+        if (!file.name.endsWith('.zip')) {
+          showError('Please select a ZIP file');
+          return;
+        }
+
+        selectedFile = file;
+
+        // Update UI
+        dropZone.classList.add('has-file');
+        document.getElementById('drop-zone-content').classList.add('hidden');
+        document.getElementById('file-info').classList.remove('hidden');
+        document.getElementById('file-name').textContent = file.name;
+        document.getElementById('file-size').textContent = formatFileSize(file.size);
+
+        // Try to extract task ID and version from filename for display
+        // (actual values will be extracted from zip metadata by the API)
+        const match = file.name.match(/^([a-zA-Z0-9_-]+)-(\d+\.\d+\.\d+[^.]*)?\.zip$/);
+        if (match) {
+          const taskIdInput = document.getElementById('task-id');
+          const versionInput = document.getElementById('task-version');
+          taskIdInput.value = match[1];
+          if (match[2]) {
+            versionInput.value = match[2];
+          } else {
+            versionInput.value = '(will be extracted from zip)';
+          }
+        } else {
+          document.getElementById('task-id').value = '(will be extracted from zip)';
+          document.getElementById('task-version').value = '(will be extracted from zip)';
+        }
+
+        hideMessages();
+      }
+
+      function clearFile(event) {
+        event.stopPropagation();
+        selectedFile = null;
+        document.getElementById('file-input').value = '';
+        dropZone.classList.remove('has-file');
+        document.getElementById('drop-zone-content').classList.remove('hidden');
+        document.getElementById('file-info').classList.add('hidden');
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      }
+
+      // Form submission
+      document.getElementById('upload-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // Wait for API utils to be loaded
+        await waitForApiUtils();
+
+        if (!selectedFile) {
+          showError('Please select a file to upload');
+          return;
+        }
+
+        // Get API key - try admin key first, then regular API key
+        // For admin endpoints, we need an admin key (or a regular key that's configured as admin)
+        const adminKey = localStorage.getItem(STORAGE_KEYS.ADMIN_API_KEY) || '';
+        const apiKey = adminKey || localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
+        
+        if (!apiKey) {
+          showError('API Key not configured. Please go to Settings and configure your API key.');
+          return;
+        }
+
+        const forceRedeploy = document.getElementById('force-redeploy').checked;
+
+        // Show progress
+        hideMessages();
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+        const submitBtn = document.getElementById('submit-btn');
+
+        progressContainer.classList.remove('hidden');
+        submitBtn.disabled = true;
+        dropZone.classList.add('uploading');
+
+        try {
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+
+          // Use the correct endpoint - task_id and version are extracted from zip file metadata
+          const url = `/admin/tasks${forceRedeploy ? '?force=true' : ''}`;
+
+          // Use XMLHttpRequest for progress tracking
+          const xhr = new XMLHttpRequest();
+
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              const percent = Math.round((e.loaded / e.total) * 100);
+              progressBar.style.width = percent + '%';
+              progressPercent.textContent = percent + '%';
+            }
+          });
+
+          xhr.addEventListener('load', () => {
+            progressContainer.classList.add('hidden');
+            submitBtn.disabled = false;
+            dropZone.classList.remove('uploading');
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const response = JSON.parse(xhr.responseText);
+              showSuccess(`Task "${response.task_id}:${response.version}" deployed successfully!`);
+              
+              // Redirect to task details after short delay
+              setTimeout(() => {
+                window.location.href = `/ui/tasks/${encodeURIComponent(response.task_id)}/${encodeURIComponent(response.version)}`;
+              }, 1500);
+            } else {
+              let errorMsg = `Upload failed: HTTP ${xhr.status}`;
+              try {
+                const errorResponse = JSON.parse(xhr.responseText);
+                errorMsg = errorResponse.detail || errorResponse.message || errorMsg;
+              } catch (e) {
+                // Ignore JSON parse errors
+              }
+              showError(errorMsg);
+            }
+          });
+
+          xhr.addEventListener('error', () => {
+            progressContainer.classList.add('hidden');
+            submitBtn.disabled = false;
+            dropZone.classList.remove('uploading');
+            showError('Network error occurred. Please try again.');
+          });
+
+          xhr.open('POST', url);
+          // Use X-API-Key header (admin endpoints check if the key is in admin_api_keys list)
+          xhr.setRequestHeader('X-API-Key', apiKey);
+          xhr.send(formData);
+
+        } catch (error) {
+          progressContainer.classList.add('hidden');
+          submitBtn.disabled = false;
+          dropZone.classList.remove('uploading');
+          showError('Error: ' + error.message);
+        }
+      });
+
+      // Message helpers
+      function showError(message) {
+        hideMessages();
+        document.getElementById('error-container').classList.remove('hidden');
+        document.getElementById('error-message').textContent = message;
+      }
+
+      function showSuccess(message) {
+        hideMessages();
+        document.getElementById('success-container').classList.remove('hidden');
+        document.getElementById('success-message').textContent = message;
+      }
+
+      function hideMessages() {
+        document.getElementById('error-container').classList.add('hidden');
+        document.getElementById('success-container').classList.add('hidden');
+      }
+    </script>
+  </body>
+</html>
+

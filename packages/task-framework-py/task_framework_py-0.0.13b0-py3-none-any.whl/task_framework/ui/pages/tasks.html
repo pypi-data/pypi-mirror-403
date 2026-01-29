@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tasks - Task Framework</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .nav-item:hover {
+      transform: translateX(4px);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+
+    .state-deployed {
+      background-color: #22c55e;
+    }
+
+    .state-pending {
+      background-color: #eab308;
+    }
+
+    .state-deploying {
+      background-color: #3b82f6;
+    }
+
+    .state-failed {
+      background-color: #ef4444;
+    }
+
+    .state-deleting {
+      background-color: #f97316;
+    }
+
+    .modal-overlay {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <!-- API Utilities (loaded via htmx) -->
+  <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto">
+      <!-- Header -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="flex justify-between items-center">
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900">Task Definitions</h1>
+            <p class="mt-1 text-sm text-gray-500">
+              Manage deployed task definitions and versions
+            </p>
+          </div>
+          <a href="/ui/tasks/upload" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+            <svg class="w-5 h-5 inline-block -mt-1 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Upload Task
+          </a>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="flex gap-4 items-end">
+          <div class="flex-1">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+            <input type="text" id="filter-search" placeholder="Search by task ID or name..."
+              oninput="debounceLoadTasks()"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+          <div class="w-40">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select id="filter-status" onchange="loadTasks()"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="">All Status</option>
+              <option value="deployed">Deployed</option>
+              <option value="pending">Pending</option>
+              <option value="deploying">Deploying</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+          <button onclick="loadTasks()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="flex items-center justify-center py-12">
+        <div class="text-center">
+          <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none"
+            viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <p class="mt-2 text-sm text-gray-600">Loading tasks...</p>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="hidden px-6 py-12">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div class="flex">
+            <svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clip-rule="evenodd" />
+            </svg>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-red-800">
+                Error Loading Tasks
+              </h3>
+              <p id="error-message" class="text-sm text-red-700 mt-1"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden px-6 py-12">
+        <div class="text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No tasks</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Get started by uploading a task definition.
+          </p>
+          <div class="mt-6">
+            <a href="/ui/tasks/upload"
+              class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Upload Task
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Task List -->
+      <div id="tasks-container" class="hidden p-6">
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Task
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Version
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Entry Point
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  SDK Version
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Deployed At
+                </th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody id="tasks-tbody" class="bg-white divide-y divide-gray-200">
+              <!-- Tasks will be rendered here -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Stats Summary -->
+        <div id="tasks-stats" class="mt-4 text-sm text-gray-500 text-right">
+          <!-- Stats will be rendered here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+      <div class="fixed inset-0 modal-overlay" onclick="closeDeleteModal()"></div>
+      <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h3 class="text-lg font-medium text-gray-900">Delete Task Definition</h3>
+        <p class="mt-2 text-sm text-gray-500">
+          Are you sure you want to delete <strong id="delete-task-name"></strong>?
+          This action cannot be undone and will remove all associated data.
+        </p>
+        <div class="mt-4 flex justify-end gap-3">
+          <button onclick="closeDeleteModal()"
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">
+            Cancel
+          </button>
+          <button id="delete-confirm-btn" onclick="confirmDelete()"
+            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Wait for API utils to load
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof STORAGE_KEYS !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof STORAGE_KEYS !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    // Get API key for admin endpoints
+    function getAdminApiKey() {
+      return localStorage.getItem(STORAGE_KEYS?.ADMIN_API_KEY) ||
+        localStorage.getItem(STORAGE_KEYS?.API_KEY) ||
+        '';
+    }
+
+    // State
+    let allTasks = [];
+    let debounceTimer = null;
+    let deleteTaskId = null;
+    let deleteTaskVersion = null;
+
+    // Debounce search
+    function debounceLoadTasks() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(loadTasks, 300);
+    }
+
+    // Load tasks from API
+    async function loadTasks() {
+      await waitForApiUtils();
+
+      const loadingEl = document.getElementById('loading-state');
+      const errorEl = document.getElementById('error-state');
+      const emptyEl = document.getElementById('empty-state');
+      const containerEl = document.getElementById('tasks-container');
+
+      loadingEl.classList.remove('hidden');
+      errorEl.classList.add('hidden');
+      emptyEl.classList.add('hidden');
+      containerEl.classList.add('hidden');
+
+      try {
+        const apiKey = getAdminApiKey();
+        if (!apiKey) {
+          throw new Error('API Key not configured. Please go to Settings and configure your API key.');
+        }
+
+        const response = await fetch('/admin/tasks', {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const responseData = await response.json();
+        // API returns {tasks: [...], total: N, total_versions: N}
+        const tasksData = responseData.tasks || [];
+        const tasks = [];
+
+        // Fetch version details for each task to get entry_point and deployed_at for all versions
+        for (const task of tasksData) {
+          if (task.versions && Array.isArray(task.versions)) {
+            try {
+              // Fetch full version details
+              const versionsResponse = await fetch(`/admin/tasks/${encodeURIComponent(task.task_id)}/versions`, {
+                headers: {
+                  'X-API-Key': apiKey,
+                  'Content-Type': 'application/json'
+                }
+              });
+
+              if (versionsResponse.ok) {
+                const versionsData = await versionsResponse.json();
+                versionsData.forEach(versionInfo => {
+                  const isLatest = versionInfo.version === task.latest_version;
+                  tasks.push({
+                    task_id: versionInfo.task_id,
+                    version: versionInfo.version,
+                    name: versionInfo.name,
+                    description: versionInfo.description,
+                    metadata: {
+                      name: versionInfo.name,
+                      description: versionInfo.description,
+                      entry_point: versionInfo.entry_point
+                    },
+                    status: 'deployed',
+                    deployed_at: versionInfo.deployed_at,
+                    sdk_version: versionInfo.sdk_version,
+                    is_latest: isLatest
+                  });
+                });
+              } else {
+                // Fallback to basic version info if details fetch fails
+                task.versions.forEach(version => {
+                  const isLatest = version === task.latest_version;
+                  tasks.push({
+                    task_id: task.task_id,
+                    version: version,
+                    name: task.name,
+                    description: task.description,
+                    metadata: {
+                      name: task.name,
+                      description: task.description,
+                      entry_point: isLatest ? task.entry_point : '-'
+                    },
+                    status: 'deployed',
+                    deployed_at: isLatest ? task.deployed_at : null,
+                    sdk_version: isLatest ? task.sdk_version : null,
+                    is_latest: isLatest
+                  });
+                });
+              }
+            } catch (versionError) {
+              console.warn('Error fetching version details:', versionError);
+            }
+          }
+        }
+
+        allTasks = tasks;
+
+        // Apply filters
+        let filteredTasks = filterTasks(tasks);
+
+        loadingEl.classList.add('hidden');
+
+        if (filteredTasks.length === 0) {
+          if (tasks.length === 0) {
+            emptyEl.classList.remove('hidden');
+          } else {
+            // Has tasks but none match filters
+            renderTasks([]);
+            containerEl.classList.remove('hidden');
+          }
+        } else {
+          renderTasks(filteredTasks);
+          containerEl.classList.remove('hidden');
+        }
+
+      } catch (error) {
+        console.error('Error loading tasks:', error);
+        loadingEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
+        document.getElementById('error-message').textContent = error.message;
+      }
+    }
+
+    // Filter tasks based on search and status
+    function filterTasks(tasks) {
+      const searchTerm = document.getElementById('filter-search').value.toLowerCase();
+      const statusFilter = document.getElementById('filter-status').value;
+
+      return tasks.filter(task => {
+        // Search filter
+        const matchesSearch = !searchTerm ||
+          task.task_id.toLowerCase().includes(searchTerm) ||
+          (task.metadata?.name || '').toLowerCase().includes(searchTerm) ||
+          (task.metadata?.description || '').toLowerCase().includes(searchTerm);
+
+        // Status filter - map to deployment status if available
+        const taskStatus = task.status || 'deployed';
+        const matchesStatus = !statusFilter || taskStatus === statusFilter;
+
+        return matchesSearch && matchesStatus;
+      });
+    }
+
+    // Render tasks table
+    function renderTasks(tasks) {
+      const tbody = document.getElementById('tasks-tbody');
+      const statsEl = document.getElementById('tasks-stats');
+
+      if (tasks.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+              <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                No tasks match your filters.
+              </td>
+            </tr>
+          `;
+        statsEl.textContent = '0 tasks';
+        return;
+      }
+
+      tbody.innerHTML = tasks.map(task => {
+        const status = task.status || 'deployed';
+        const statusClass = `state-${status}`;
+        const deployedAt = task.deployed_at
+          ? new Date(task.deployed_at).toLocaleString()
+          : '-';
+
+        return `
+            <tr class="hover:bg-gray-50 fade-in">
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                  </div>
+                  <div class="ml-4">
+                    <div class="text-sm font-medium text-gray-900">
+                      <a href="/ui/tasks/${encodeURIComponent(task.task_id)}/${encodeURIComponent(task.version)}" class="hover:text-blue-600">
+                        ${escapeHtml(task.metadata?.name || task.task_id)}
+                      </a>
+                    </div>
+                    <div class="text-sm text-gray-500">${escapeHtml(task.task_id)}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                  v${escapeHtml(task.version)}
+                </span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${statusClass}">
+                  ${status.charAt(0).toUpperCase() + status.slice(1)}
+                </span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <code class="bg-gray-100 px-2 py-1 rounded text-xs">${escapeHtml(task.metadata?.entry_point || '-')}</code>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm">
+                ${task.sdk_version
+            ? `<code class="bg-purple-100 text-purple-800 px-2 py-1 rounded text-xs">${escapeHtml(task.sdk_version)}</code>`
+            : '<span class="text-gray-400">-</span>'
+          }
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                ${deployedAt}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <a href="/ui/tasks/${encodeURIComponent(task.task_id)}/${encodeURIComponent(task.version)}" class="text-blue-600 hover:text-blue-900 mr-3">View</a>
+                <a href="/ui/threads?task_id=${encodeURIComponent(task.task_id)}&task_version=${encodeURIComponent(task.version)}" class="text-green-600 hover:text-green-900 mr-3">Threads</a>
+                <button onclick="downloadTask('${escapeHtml(task.task_id)}', '${escapeHtml(task.version)}')" class="text-purple-600 hover:text-purple-900 mr-3">Download</button>
+                <button onclick="openDeleteModal('${escapeHtml(task.task_id)}', '${escapeHtml(task.version)}')" class="text-red-600 hover:text-red-900">Delete</button>
+              </td>
+            </tr>
+          `;
+      }).join('');
+
+      // Update stats
+      const deployedCount = tasks.filter(t => (t.status || 'deployed') === 'deployed').length;
+      statsEl.textContent = `${tasks.length} task${tasks.length !== 1 ? 's' : ''} (${deployedCount} deployed)`;
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    // Delete modal functions
+    function openDeleteModal(taskId, version) {
+      deleteTaskId = taskId;
+      deleteTaskVersion = version;
+      document.getElementById('delete-task-name').textContent = `${taskId}:${version}`;
+      document.getElementById('delete-modal').classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('delete-modal').classList.add('hidden');
+      deleteTaskId = null;
+      deleteTaskVersion = null;
+    }
+
+    // Download task function
+    async function downloadTask(taskId, version) {
+      await waitForApiUtils();
+
+      const apiKey = getAdminApiKey();
+      if (!apiKey) {
+        alert('API Key not configured. Please go to Settings and configure your API key.');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/admin/tasks/${encodeURIComponent(taskId)}/versions/${encodeURIComponent(version)}/download`, {
+          headers: {
+            'X-API-Key': apiKey
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        // Get filename from Content-Disposition header or use default
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `${taskId}-${version}.zip`;
+        if (contentDisposition) {
+          const match = contentDisposition.match(/filename="(.+)"/);
+          if (match) {
+            filename = match[1];
+          }
+        }
+
+        // Create blob and trigger download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+      } catch (error) {
+        console.error('Error downloading task:', error);
+        alert('Failed to download task: ' + error.message);
+      }
+    }
+
+    async function confirmDelete() {
+      if (!deleteTaskId || !deleteTaskVersion) return;
+
+      await waitForApiUtils();
+
+      const btn = document.getElementById('delete-confirm-btn');
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+
+      try {
+        const apiKey = getAdminApiKey();
+        if (!apiKey) {
+          throw new Error('API Key not configured.');
+        }
+
+        const response = await fetch(`/admin/tasks/${encodeURIComponent(deleteTaskId)}/versions/${encodeURIComponent(deleteTaskVersion)}`, {
+          method: 'DELETE',
+          headers: {
+            'X-API-Key': apiKey
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        closeDeleteModal();
+        loadTasks(); // Reload the list
+
+      } catch (error) {
+        console.error('Error deleting task:', error);
+        alert('Failed to delete task: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      await waitForApiUtils();
+      loadTasks();
+    });
+  </script>
+</body>
+
+</html>

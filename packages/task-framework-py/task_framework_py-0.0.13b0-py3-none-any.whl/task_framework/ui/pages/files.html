@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Files - Task Framework</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <style>
+      .nav-item {
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-item:hover {
+        transform: translateX(4px);
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .fade-in {
+        animation: fadeIn 0.3s ease-out;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div
+      hx-get="/ui/components/api-utils.html"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    ></div>
+
+    <div class="flex h-screen overflow-hidden">
+      <!-- Sidebar (loaded via htmx) -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content -->
+      <main class="flex-1 overflow-y-auto">
+        <!-- Header -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900">Files</h1>
+              <p class="mt-1 text-sm text-gray-500">
+                Upload and manage files for use in artifacts
+              </p>
+            </div>
+            <a
+              href="/ui/files/upload"
+              class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <svg
+                class="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              Upload File
+            </a>
+          </div>
+        </div>
+
+        <!-- Content Container -->
+        <div class="p-6">
+          <!-- Info Banner -->
+          <div
+            class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-start"
+          >
+            <svg
+              class="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div class="text-sm text-blue-800">
+              <p class="font-semibold mb-1">About File Management</p>
+              <p>
+                Files uploaded here can be referenced in artifacts using their
+                <code class="bg-blue-100 px-1 rounded">file_ref</code>. 
+                This page displays all files from the storage backend. You can copy 
+                file references and download files directly.
+              </p>
+            </div>
+          </div>
+
+          <!-- Files List -->
+          <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h2 class="text-lg font-semibold text-gray-900">
+                Uploaded Files
+              </h2>
+              <p class="mt-1 text-sm text-gray-500">
+                All files stored in the storage backend
+              </p>
+            </div>
+
+            <!-- Files List -->
+            <div id="files-container" class="divide-y divide-gray-200">
+              <!-- Loading State -->
+              <div
+                id="loading-state"
+                class="px-6 py-12 text-center text-gray-500 hidden"
+              >
+                <svg
+                  class="animate-spin w-16 h-16 mx-auto text-blue-600 mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                <p class="text-sm font-medium">Loading files...</p>
+              </div>
+              <!-- Empty State -->
+              <div
+                id="empty-state"
+                class="px-6 py-12 text-center text-gray-500"
+              >
+                <svg
+                  class="w-16 h-16 mx-auto text-gray-400 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+                <p class="text-sm font-medium">No files uploaded yet</p>
+                <p class="text-xs mt-1">Upload a file to get started</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // STORAGE_KEYS is now defined in api-utils.html
+
+      /**
+       * Wait for API utilities to be loaded
+       */
+      function waitForApiUtils() {
+        return new Promise((resolve) => {
+          if (typeof apiFetch !== "undefined") {
+            resolve();
+          } else {
+            const checkInterval = setInterval(() => {
+              if (typeof apiFetch !== "undefined") {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 50);
+          }
+        });
+      }
+
+      /**
+       * Initialize page
+       */
+      document.addEventListener("DOMContentLoaded", async function () {
+        await waitForApiUtils();
+        loadUploadedFiles();
+      });
+
+      /**
+       * Load uploaded files from sessionStorage or API
+       * Always validates against API to ensure files actually exist
+       */
+      async function loadUploadedFiles() {
+        const loadingState = document.getElementById("loading-state");
+        const emptyState = document.getElementById("empty-state");
+        const container = document.getElementById("files-container");
+
+        // Show loading state
+        if (loadingState) loadingState.classList.remove("hidden");
+        if (emptyState) emptyState.classList.add("hidden");
+        container.innerHTML = "";
+
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        if (!apiKey) {
+          console.warn("No API key configured, cannot fetch file artifacts");
+          if (loadingState) loadingState.classList.add("hidden");
+          if (emptyState) emptyState.classList.remove("hidden");
+          return;
+        }
+
+        let files = [];
+        let sessionFiles = [];
+
+        // Load sessionStorage files for potential validation
+        const filesJson = sessionStorage.getItem("uploaded_files");
+        if (filesJson) {
+          try {
+            sessionFiles = JSON.parse(filesJson) || [];
+          } catch (error) {
+            console.error("Error parsing sessionStorage files:", error);
+            // Clear invalid sessionStorage
+            sessionStorage.removeItem("uploaded_files");
+          }
+        }
+
+        try {
+          // Fetch files from /files endpoint (lists all files from storage)
+          try {
+            const filesResponse = await apiFetch("/files");
+
+            if (filesResponse.ok) {
+              const filesData = await filesResponse.json();
+              if (filesData.items && Array.isArray(filesData.items)) {
+                // Transform to expected format
+                files = filesData.items.map(item => ({
+                  file_ref: item.file_ref,
+                  filename: item.filename || null,
+                  media_type: item.media_type || "application/octet-stream",
+                  size: item.size || null,
+                  sha256: item.sha256 || null,
+                  created_at: item.created_at || null,
+                  status: "uploaded",
+                }));
+              }
+            }
+          } catch (error) {
+            console.warn("Failed to fetch from /files endpoint, falling back to artifacts:", error);
+          }
+
+          // If /files endpoint didn't return files, fall back to artifacts endpoint
+          if (files.length === 0) {
+            files = await fetchFileArtifactsFromAPI();
+          }
+
+          // Merge with sessionStorage files (for files just uploaded that might not be in storage yet)
+          if (sessionFiles.length > 0) {
+            const validSessionFiles = [];
+            for (const sessionFile of sessionFiles) {
+              // Check if file exists in API results
+              const existsInAPI = files.some(f => f.file_ref === sessionFile.file_ref);
+              
+              if (existsInAPI) {
+                // File already in API, skip (API takes precedence)
+                continue;
+              }
+              
+              // Validate file exists on disk via HEAD request
+              const existsOnDisk = await validateFileExists(sessionFile.file_ref, apiKey);
+              
+              if (existsOnDisk) {
+                validSessionFiles.push(sessionFile);
+              }
+            }
+
+            // Update sessionStorage with only valid files
+            if (validSessionFiles.length > 0) {
+              sessionStorage.setItem("uploaded_files", JSON.stringify(validSessionFiles));
+            } else if (files.length === 0) {
+              sessionStorage.removeItem("uploaded_files");
+            }
+
+            // Add sessionStorage files that aren't in API
+            const apiFileRefs = new Set(files.map(f => f.file_ref));
+            for (const sessionFile of validSessionFiles) {
+              if (!apiFileRefs.has(sessionFile.file_ref)) {
+                files.push(sessionFile);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching files:", error);
+          if (loadingState) loadingState.classList.add("hidden");
+          if (emptyState) emptyState.classList.remove("hidden");
+          return;
+        }
+
+        // Sort files by created date DESC (newest first)
+        files.sort((a, b) => {
+          const dateA = new Date(a.created_at || 0);
+          const dateB = new Date(b.created_at || 0);
+          return dateB - dateA; // DESC order
+        });
+
+        // Render the files list
+        renderFilesList(files);
+      }
+
+      /**
+       * Validate that a file exists on disk by checking HEAD request
+       */
+      async function validateFileExists(fileRef, apiKey) {
+        try {
+          const response = await apiFetch(`/files/${fileRef}`, {
+            method: "HEAD",
+          });
+          return response.ok; // 200 OK means file exists, 404 means it doesn't
+        } catch (error) {
+          console.warn(`Error validating file ${fileRef}:`, error);
+          return false; // Assume doesn't exist on error
+        }
+      }
+
+      /**
+       * Fetch file artifacts from the API with pagination support
+       */
+      async function fetchFileArtifactsFromAPI() {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        // If no API key, fall back to server-side UI endpoint that provides file list
+        if (!apiKey) {
+          try {
+            const response = await fetch("/ui/files/list", { method: "GET" });
+            if (!response.ok) {
+              console.warn("UI file list endpoint returned:", response.status);
+              return [];
+            }
+            const data = await response.json();
+            const artifacts = data.items || [];
+            const files = artifacts
+              .filter(artifact => artifact.kind === "file" && artifact.file_ref)
+              .map(artifact => ({
+                file_ref: artifact.file_ref,
+                filename: artifact.filename || null,
+                media_type: artifact.media_type || "application/octet-stream",
+                size: artifact.size || null,
+                sha256: artifact.sha256 || null,
+                created_at: artifact.created_at || null,
+                status: "uploaded",
+              }));
+            return files;
+          } catch (err) {
+            console.error("Failed to fetch UI file list fallback:", err);
+            return [];
+          }
+        }
+
+        try {
+          const allFiles = [];
+          let cursor = null;
+          let hasMore = true;
+          const limit = 100; // Fetch in batches of 100
+
+          // Fetch all file artifacts with pagination
+          while (hasMore) {
+            const params = new URLSearchParams({
+              kind: "file",
+              limit: limit.toString(),
+            });
+            if (cursor) {
+              params.append("cursor", cursor);
+            }
+
+            const response = await apiFetch(`/artifacts?${params.toString()}`);
+
+            const data = await response.json();
+            const artifacts = data.items || [];
+            const pagination = data.pagination || {};
+
+            // Transform artifacts to the format expected by the UI
+            const files = artifacts
+              .filter(artifact => artifact.kind === "file" && artifact.file_ref)
+              .map(artifact => ({
+                file_ref: artifact.file_ref,
+                filename: null, // Will be enriched later
+                media_type: artifact.media_type || "application/octet-stream",
+                size: artifact.size || null,
+                sha256: artifact.sha256 || null,
+                created_at: artifact.created_at || null,
+                status: "uploaded", // All artifacts from API are already uploaded
+              }));
+
+            allFiles.push(...files);
+
+            // Check if there are more pages
+            hasMore = pagination.has_more === true && pagination.cursor;
+            cursor = pagination.cursor || null;
+
+            // Safety limit: stop after 10 pages (1000 files max)
+            if (allFiles.length >= 1000) {
+              console.warn("Reached maximum file limit (1000), stopping pagination");
+              break;
+            }
+          }
+
+          return allFiles;
+        } catch (error) {
+          console.error("Error fetching file artifacts:", error);
+          return [];
+        }
+      }
+
+      /**
+       * Render files list
+       */
+      function renderFilesList(files) {
+        const container = document.getElementById("files-container");
+        const loadingState = document.getElementById("loading-state");
+        const emptyState = document.getElementById("empty-state");
+
+        if (!container) {
+          console.error("files-container element not found");
+          return;
+        }
+
+        // Hide loading state
+        if (loadingState) loadingState.classList.add("hidden");
+
+        if (!files || files.length === 0) {
+          // Show empty state
+          if (emptyState) emptyState.classList.remove("hidden");
+          // Remove any existing file items
+          const fileItems = container.querySelectorAll('.file-item');
+          fileItems.forEach(item => item.remove());
+          return;
+        }
+
+        // Hide empty state
+        if (emptyState) emptyState.classList.add("hidden");
+
+        // Remove existing file items (but keep loading/empty state elements)
+        const existingFileItems = container.querySelectorAll('.file-item');
+        existingFileItems.forEach(item => item.remove());
+
+        // Create and append new file items
+        const filesHTML = files
+          .map(
+            (file) => `
+          <div class="file-item px-6 py-4 hover:bg-gray-50 transition-colors fade-in">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center flex-1 min-w-0">
+                <svg
+                  class="w-10 h-10 text-gray-400 mr-4 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <p class="text-sm font-medium text-gray-900">
+                      ${escapeHtml(file.filename || file.file_ref)}
+                    </p>
+                    ${
+                      file.status === "pending_upload"
+                        ? '<span class="px-2 py-0.5 text-xs font-semibold text-yellow-800 bg-yellow-100 rounded">Pending Upload</span>'
+                        : '<span class="px-2 py-0.5 text-xs font-semibold text-green-800 bg-green-100 rounded">Uploaded</span>'
+                    }
+                  </div>
+                  ${
+                    file.filename
+                      ? `<p class="text-xs text-gray-500 mt-1 font-mono">Ref: ${escapeHtml(file.file_ref)}</p>`
+                      : ""
+                  }
+                  <div class="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                    <span>${escapeHtml(file.media_type || "Unknown")}</span>
+                    <span>${formatSize(file.size || 0)}</span>
+                    <span>${formatDateTime(file.created_at)}</span>
+                  </div>
+                  ${
+                    file.sha256
+                      ? `<p class="text-xs text-gray-400 mt-1 font-mono">SHA256: ${file.sha256.substring(
+                          0,
+                          16
+                        )}...</p>`
+                      : ""
+                  }
+                </div>
+              </div>
+              <div class="flex items-center gap-2 ml-4">
+                <button
+                  onclick="copyFileRef('${escapeHtml(file.file_ref)}')"
+                  class="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                  title="Copy file reference"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                </button>
+                ${
+                  file.status !== "pending_upload"
+                    ? `
+                <button
+                  onclick="downloadFile('${escapeHtml(file.file_ref)}')"
+                  class="p-2 text-gray-400 hover:text-green-600 transition-colors"
+                  title="Download file"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
+                  </svg>
+                </button>
+                `
+                    : ""
+                }
+              </div>
+            </div>
+          </div>
+        `
+          )
+          .join("");
+        
+        // Insert files HTML after empty-state element (or at the end if empty-state doesn't exist)
+        if (emptyState) {
+          emptyState.insertAdjacentHTML('afterend', filesHTML);
+        } else {
+          container.insertAdjacentHTML('beforeend', filesHTML);
+        }
+      }
+
+      /**
+       * Copy file reference
+       */
+      function copyFileRef(fileRef) {
+        navigator.clipboard.writeText(fileRef).then(() => {
+          showSuccess("File reference copied to clipboard!");
+        });
+      }
+
+      /**
+       * Extract filename from Content-Disposition header
+       */
+      function getFilenameFromContentDisposition(contentDisposition) {
+        if (!contentDisposition) return null;
+
+        // Try filename*=UTF-8'' format first (RFC 6266)
+        const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8Match && utf8Match[1]) {
+          try {
+            return decodeURIComponent(utf8Match[1]);
+          } catch (e) {
+            console.warn("Failed to decode UTF-8 filename:", e);
+          }
+        }
+
+        // Fallback to filename="" format
+        const asciiMatch = contentDisposition.match(/filename="([^"]+)"/i);
+        if (asciiMatch && asciiMatch[1]) {
+          return asciiMatch[1];
+        }
+
+        // Fallback to filename= format (without quotes)
+        const simpleMatch = contentDisposition.match(/filename=([^;]+)/i);
+        if (simpleMatch && simpleMatch[1]) {
+          return simpleMatch[1].trim();
+        }
+
+        return null;
+      }
+
+      /**
+       * Download file
+       */
+      async function downloadFile(fileRef) {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        if (!apiKey) {
+          alert("API Key not configured. Please go to Settings.");
+          return;
+        }
+
+        try {
+          // Fetch with API key header (follow redirects to get actual file)
+          const downloadResponse = await apiFetch(`/files/${fileRef}`);
+
+          // Extract filename from Content-Disposition header
+          const contentDisposition = downloadResponse.headers.get("Content-Disposition");
+          let filename = getFilenameFromContentDisposition(contentDisposition);
+          
+          // Fallback to file_ref if no filename in header
+          if (!filename) {
+            filename = fileRef;
+          }
+
+          // Get the blob and create a download link
+          const blob = await downloadResponse.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename; // ✅ Use filename from Content-Disposition header
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } catch (error) {
+          console.error("Download error:", error);
+          alert(`Failed to download file: ${error.message}`);
+        }
+      }
+
+      /**
+       * Show success message
+       */
+      function showSuccess(message) {
+        const notification = document.createElement("div");
+        notification.className =
+          "fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 fade-in";
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          notification.remove();
+        }, 3000);
+      }
+
+      /**
+       * Format file size
+       */
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+        if (bytes < 1024 * 1024 * 1024)
+          return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+      }
+
+      /**
+       * Format date/time
+       */
+      function formatDateTime(dateString) {
+        if (!dateString) return "-";
+        const date = new Date(dateString);
+        return date.toLocaleString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      /**
+       * Escape HTML
+       */
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+    </script>
+  </body>
+</html>

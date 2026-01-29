@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Thread - Task Framework</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- htmx via CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles -->
+    <style>
+        .nav-item {
+            transition: all 0.2s ease-in-out;
+        }
+
+        .nav-item:hover {
+            transform: translateX(4px);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+    </style>
+</head>
+
+<body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+    <div class="flex h-screen overflow-hidden">
+        <!-- Left Sidebar (loaded via htmx) -->
+        <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+            <!-- Loading placeholder -->
+            <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+                <div class="text-gray-400 text-sm">Loading...</div>
+            </aside>
+        </div>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto">
+            <!-- Top Bar -->
+            <div class="bg-white shadow-sm border-b border-gray-200">
+                <div class="px-6 py-4">
+                    <div class="flex items-center text-sm text-gray-600 mb-2">
+                        <a href="/ui/threads" class="hover:text-blue-600">Threads</a>
+                        <svg class="w-4 h-4 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7">
+                            </path>
+                        </svg>
+                        <span>Create Thread</span>
+                    </div>
+                    <h2 class="text-2xl font-semibold text-gray-800">Create New Thread</h2>
+                    <p class="text-sm text-gray-600 mt-1">
+                        Configure and execute a new task thread
+                    </p>
+                </div>
+            </div>
+
+            <!-- Create Thread Form -->
+            <div class="p-6">
+                <div class="max-w-3xl mx-auto fade-in">
+                    <!-- Info Banner -->
+                    <div class="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex items-start">
+                            <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <div>
+                                <h4 class="text-sm font-semibold text-blue-900 mb-1">About Thread Creation</h4>
+                                <p class="text-sm text-blue-800">
+                                    Threads represent task execution instances. Choose <strong>async</strong> mode for
+                                    long-running tasks (returns immediately) or <strong>sync</strong> mode to wait for
+                                    completion. Your configured <strong>user_id</strong> and <strong>app_id</strong>
+                                    will be automatically included in the metadata.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- API Headers Card -->
+                    <div class="bg-white rounded-lg shadow-md mb-6">
+                        <div class="border-b border-gray-200 px-6 py-4">
+                            <h3 class="text-lg font-semibold text-gray-800">API Headers</h3>
+                            <p class="text-sm text-gray-600 mt-1">Authentication and filtering headers (auto-populated
+                                from Settings)</p>
+                        </div>
+
+                        <div class="px-6 py-6 space-y-4">
+                            <!-- X-API-Key -->
+                            <div>
+                                <label for="header-api-key" class="block text-sm font-medium text-gray-700 mb-2">
+                                    X-API-Key <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="header-api-key" placeholder="Enter API Key" required
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" />
+                                <p class="mt-1 text-xs text-gray-500">Required for API authentication</p>
+                            </div>
+
+                            <!-- X-User-ID -->
+                            <div>
+                                <label for="header-user-id" class="block text-sm font-medium text-gray-700 mb-2">
+                                    X-User-ID
+                                </label>
+                                <input type="text" id="header-user-id" placeholder="Enter User ID (optional)"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" />
+                                <p class="mt-1 text-xs text-gray-500">Optional user identifier for filtering</p>
+                            </div>
+
+                            <!-- X-App-ID -->
+                            <div>
+                                <label for="header-app-id" class="block text-sm font-medium text-gray-700 mb-2">
+                                    X-App-ID
+                                </label>
+                                <input type="text" id="header-app-id" placeholder="Enter App ID (optional)"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm" />
+                                <p class="mt-1 text-xs text-gray-500">Optional application identifier for filtering</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Task Selection Card (Multi-task mode only) -->
+                    <div id="task-selection-card" class="bg-white rounded-lg shadow-md mb-6" style="display: none;">
+                        <div class="border-b border-gray-200 px-6 py-4">
+                            <h3 class="text-lg font-semibold text-gray-800">Task Selection</h3>
+                            <p class="text-sm text-gray-600 mt-1">Select the task definition to execute</p>
+                        </div>
+
+                        <div class="px-6 py-6 space-y-4">
+                            <!-- Task Dropdown -->
+                            <div>
+                                <label for="task-select" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Task <span class="text-red-500">*</span>
+                                </label>
+                                <select id="task-select" onchange="onTaskSelectChange()"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Select a task...</option>
+                                </select>
+                                <p class="mt-1 text-xs text-gray-500">Choose the task definition to run</p>
+                            </div>
+
+                            <!-- Version Dropdown -->
+                            <div id="version-select-container" style="display: none;">
+                                <label for="version-select" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Version
+                                </label>
+                                <select id="version-select" onchange="onVersionSelectChange()"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Select task first...</option>
+                                </select>
+                                <p class="mt-1 text-xs text-gray-500">Specific version to run (defaults to latest)</p>
+                            </div>
+
+                            <!-- Task Info -->
+                            <div id="selected-task-info" class="hidden p-4 bg-gray-50 rounded-lg">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div id="task-info-name" class="text-sm font-medium text-gray-900"></div>
+                                        <div id="task-info-description" class="text-xs text-gray-500"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Form Card -->
+                    <div class="bg-white rounded-lg shadow-md">
+                        <div class="border-b border-gray-200 px-6 py-4">
+                            <h3 class="text-lg font-semibold text-gray-800">Thread Configuration</h3>
+                        </div>
+
+                        <form id="create-thread-form" class="px-6 py-6 space-y-6">
+                            <!-- Execution Mode -->
+                            <div>
+                                <label for="thread-mode" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Execution Mode <span class="text-red-500">*</span>
+                                </label>
+                                <select id="thread-mode" name="mode" required
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="async">Async (Background Execution)</option>
+                                    <option value="sync">Sync (Wait for Completion)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <strong>Async:</strong> Returns immediately with 202 Accepted. Use for long-running
+                                    tasks.<br>
+                                    <strong>Sync:</strong> Waits for task completion and returns 201 Created. Use for
+                                    quick tasks.
+                                </p>
+                            </div>
+
+                            <!-- Thread Name -->
+                            <div>
+                                <label for="thread-name" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Thread Name
+                                </label>
+                                <input type="text" id="thread-name" name="name"
+                                    placeholder="e.g., daily_report_generation"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                                <p class="mt-2 text-xs text-gray-500">
+                                    Optional name for identifying and searching threads.
+                                </p>
+                            </div>
+
+                            <!-- Input Section -->
+                            <div class="border-t border-gray-200 pt-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h4 class="text-md font-semibold text-gray-800">Input Artifacts <span
+                                            class="text-red-500">*</span></h4>
+                                    <button type="button" onclick="addInputArtifact()"
+                                        class="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 4v16m8-8H4"></path>
+                                        </svg>
+                                        Add Artifact
+                                    </button>
+                                </div>
+
+                                <!-- Schema info banner (populated dynamically) -->
+                                <div id="schema-info-banner"
+                                    class="hidden mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                    <div class="flex items-start">
+                                        <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" fill="none"
+                                            stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                        <div>
+                                            <p class="text-xs font-semibold text-blue-900 mb-1">Task Input Requirements
+                                            </p>
+                                            <p id="schema-info-text" class="text-xs text-blue-800"></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <p class="text-xs text-gray-500 mb-4">
+                                    At least one input artifact is required. Available types are determined by the task
+                                    configuration.
+                                </p>
+
+                                <!-- Input Artifacts Container -->
+                                <div id="input-artifacts-container" class="space-y-4">
+                                    <!-- Default text artifact -->
+                                    <div class="input-artifact-item border border-gray-300 rounded-lg p-4 bg-gray-50">
+                                        <div class="flex items-center justify-between mb-3">
+                                            <h5 class="text-sm font-semibold text-gray-700">Artifact #1</h5>
+                                            <button type="button" onclick="removeInputArtifact(this)"
+                                                class="text-sm text-red-600 hover:text-red-700">
+                                                Remove
+                                            </button>
+                                        </div>
+
+                                        <div class="space-y-3">
+                                            <!-- Artifact Kind -->
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-700 mb-1">
+                                                    Kind <span class="text-red-500">*</span>
+                                                </label>
+                                                <select
+                                                    class="artifact-kind w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    onchange="updateArtifactFields(this)" required>
+                                                    <option value="text">text - Plain text content</option>
+                                                    <option value="json">json - JSON data</option>
+                                                    <option value="url">url - URL reference</option>
+                                                    <option value="rich_text">rich_text - Markdown/formatted text
+                                                    </option>
+                                                </select>
+                                            </div>
+
+                                            <!-- Artifact Ref -->
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-700 mb-1">
+                                                    Reference (optional)
+                                                </label>
+                                                <input type="text"
+                                                    class="artifact-ref w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="e.g., input:data, input:config" />
+                                                <p class="mt-1 text-xs text-gray-500">Stable reference name (unique
+                                                    within thread)</p>
+                                            </div>
+
+                                            <!-- Artifact Content Fields (dynamic based on kind) -->
+                                            <div class="artifact-content-fields">
+                                                <!-- Text Field (default) -->
+                                                <div class="artifact-field-text">
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">
+                                                        Text Content <span class="text-red-500">*</span>
+                                                    </label>
+                                                    <textarea
+                                                        class="artifact-text w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                        rows="4" placeholder="Enter text content..."
+                                                        required></textarea>
+                                                </div>
+                                            </div>
+
+                                            <!-- Media Type (optional) -->
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-700 mb-1">
+                                                    Media Type (optional)
+                                                </label>
+                                                <input type="text"
+                                                    class="artifact-media-type w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="e.g., text/plain, application/json" />
+                                            </div>
+
+                                            <!-- Explain (optional) -->
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-700 mb-1">
+                                                    Description (optional)
+                                                </label>
+                                                <input type="text"
+                                                    class="artifact-explain w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Human-readable description" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Task Parameters Section -->
+                            <div class="border-t border-gray-200 pt-6">
+                                <h4 class="text-md font-semibold text-gray-800 mb-4">Task Parameters (Optional)</h4>
+
+                                <div>
+                                    <label for="thread-params" class="block text-sm font-medium text-gray-700 mb-2">
+                                        Parameters (JSON)
+                                    </label>
+                                    <textarea id="thread-params" name="params" rows="4"
+                                        placeholder='{&#10;  "model": "gpt-4",&#10;  "temperature": 0.7,&#10;  "max_tokens": 1000&#10;}'
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"></textarea>
+                                    <p class="mt-2 text-xs text-gray-500">
+                                        Optional task-specific parameters as valid JSON. These are passed directly to
+                                        your task function.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Metadata Section -->
+                            <div class="border-t border-gray-200 pt-6">
+                                <h4 class="text-md font-semibold text-gray-800 mb-4">Metadata (Optional)</h4>
+
+                                <div>
+                                    <label for="thread-metadata" class="block text-sm font-medium text-gray-700 mb-2">
+                                        Custom Metadata (JSON)
+                                    </label>
+                                    <textarea id="thread-metadata" name="metadata" rows="4"
+                                        placeholder='{&#10;  "custom_key": "custom_value",&#10;  "priority": "high",&#10;  "category": "processing"&#10;}'
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"></textarea>
+                                    <p class="mt-2 text-xs text-gray-500">
+                                        Optional additional metadata as valid JSON. The <code>user_id</code> and
+                                        <code>app_id</code>
+                                        from your settings will be automatically added to the metadata.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Advanced Options (Collapsed by default) -->
+                            <div class="border-t border-gray-200 pt-6">
+                                <button type="button" onclick="toggleAdvancedOptions()"
+                                    class="flex items-center text-sm font-medium text-gray-700 hover:text-gray-900">
+                                    <svg id="advanced-icon" class="w-5 h-5 mr-2 transform transition-transform"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                    Advanced Options
+                                </button>
+
+                                <div id="advanced-options" class="hidden mt-4 space-y-4">
+                                    <!-- Timeout Configuration -->
+                                    <div>
+                                        <label for="timeout-seconds"
+                                            class="block text-sm font-medium text-gray-700 mb-2">
+                                            Execution Timeout (seconds)
+                                        </label>
+                                        <input type="number" id="timeout-seconds" name="timeout_seconds" min="1"
+                                            placeholder="e.g., 300 (5 minutes)"
+                                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                                        <p class="mt-2 text-xs text-gray-500">
+                                            Optional execution timeout in seconds (minimum: 1). If the thread doesn't
+                                            complete
+                                            within this time, it will be marked as timeout.
+                                        </p>
+                                    </div>
+
+                                    <!-- Idempotency Key -->
+                                    <div>
+                                        <label for="idempotency-key"
+                                            class="block text-sm font-medium text-gray-700 mb-2">
+                                            Idempotency Key
+                                        </label>
+                                        <input type="text" id="idempotency-key" name="idempotency_key"
+                                            placeholder="e.g., request_123456"
+                                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                                        <p class="mt-2 text-xs text-gray-500">
+                                            Optional key to prevent duplicate thread creation. If a thread with the same
+                                            key exists,
+                                            the API will return 409 Conflict with the existing thread.
+                                        </p>
+                                    </div>
+
+                                    <!-- Webhook Configuration -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="block text-sm font-medium text-gray-700">
+                                                Webhook Callbacks
+                                            </label>
+                                            <button type="button" onclick="addWebhook()"
+                                                class="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center">
+                                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor"
+                                                    viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                                </svg>
+                                                Add Webhook
+                                            </button>
+                                        </div>
+                                        <p class="text-xs text-gray-500 mb-3">
+                                            Optional webhook URLs to receive notifications when thread state changes.
+                                        </p>
+
+                                        <!-- Webhooks Container -->
+                                        <div id="webhooks-container" class="space-y-3">
+                                            <!-- Webhooks will be added here dynamically -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+                                <a href="/ui/threads"
+                                    class="px-6 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                                    Cancel
+                                </a>
+                                <button type="submit"
+                                    class="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center">
+                                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                    </svg>
+                                    Create Thread
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Help Section -->
+                    <div class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-2">💡 Tips</h4>
+                        <ul class="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                            <li>Use <strong>async mode</strong> for tasks that take more than a few seconds</li>
+                            <li>At least one <strong>input artifact</strong> is required - add text, JSON, or URL inputs
+                            </li>
+                            <li>Use <strong>params</strong> for task-specific configuration (model settings, thresholds,
+                                etc.)</li>
+                            <li>Add custom <strong>metadata</strong> to organize and filter threads</li>
+                            <li>Set a <strong>timeout</strong> to prevent threads from running indefinitely</li>
+                            <li>Use <strong>idempotency keys</strong> to prevent accidental duplicate submissions</li>
+                            <li>Configure <strong>webhooks</strong> to receive real-time notifications about thread
+                                state changes</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // Artifact counter for unique IDs
+        let artifactCounter = 1;
+        let webhookCounter = 0;
+        let taskMetadata = null; // Store task metadata for schema validation
+
+        /**
+         * Wait for API utilities to be loaded
+         */
+        function waitForApiUtils() {
+            return new Promise((resolve) => {
+                if (typeof apiFetch !== "undefined") {
+                    resolve();
+                } else {
+                    const checkInterval = setInterval(() => {
+                        if (typeof apiFetch !== "undefined") {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 50);
+                }
+            });
+        }
+
+        /**
+         * Initialize the page
+         */
+        // Task selection state
+        let availableTasks = [];
+        let isMultiTaskMode = false;
+
+        document.addEventListener('DOMContentLoaded', async function () {
+            console.log('Thread create page initialized');
+
+            // Wait for API utilities to load
+            await waitForApiUtils();
+
+            // Load values from localStorage
+            const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
+            const userId = localStorage.getItem(STORAGE_KEYS.USER_ID) || '';
+            const appId = localStorage.getItem(STORAGE_KEYS.APP_ID) || '';
+
+            // Populate header fields
+            document.getElementById('header-api-key').value = apiKey;
+            document.getElementById('header-user-id').value = userId;
+            document.getElementById('header-app-id').value = appId;
+
+            // Check for multi-task mode and initialize task selector
+            await initializeTaskSelector();
+
+            // Fetch task metadata to get allowed artifact schemas
+            // Check if task_id and version are in URL params
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskIdParam = urlParams.get('task_id');
+            const versionParam = urlParams.get('task_version');
+
+            if (isMultiTaskMode && taskIdParam) {
+                // Load metadata for the specified task
+                await loadTaskMetadata(taskIdParam, versionParam);
+            } else if (!isMultiTaskMode) {
+                // Single-task mode - load metadata without parameters
+                await loadTaskMetadata();
+            }
+
+            // Setup form submit handler
+            document.getElementById('create-thread-form').addEventListener('submit', createThread);
+        });
+
+        /**
+         * Initialize task selector for multi-task mode
+         */
+        async function initializeTaskSelector() {
+            const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
+
+            try {
+                // Try to fetch tasks to see if we're in multi-task mode
+                const response = await fetch('/admin/tasks', {
+                    headers: {
+                        'X-API-Key': apiKey,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const responseData = await response.json();
+                    // API returns {tasks: [...], total: N, total_versions: N}
+                    // Each task has a versions array, so we need to flatten it
+                    const tasksData = responseData.tasks || [];
+                    const tasks = [];
+                    tasksData.forEach(task => {
+                        if (task.versions && Array.isArray(task.versions)) {
+                            task.versions.forEach(version => {
+                                tasks.push({
+                                    task_id: task.task_id,
+                                    version: version,
+                                    name: task.name,
+                                    description: task.description,
+                                    metadata: {
+                                        name: task.name,
+                                        description: task.description
+                                    }
+                                });
+                            });
+                        }
+                    });
+
+                    availableTasks = tasks;
+
+                    if (tasks.length > 0) {
+                        isMultiTaskMode = true;
+                        populateTaskDropdown(tasks);
+                        document.getElementById('task-selection-card').style.display = 'block';
+
+                        // Check for task_id in URL params
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const taskIdParam = urlParams.get('task_id');
+                        const versionParam = urlParams.get('task_version');
+
+                        if (taskIdParam) {
+                            document.getElementById('task-select').value = taskIdParam;
+                            onTaskSelectChange();
+
+                            if (versionParam) {
+                                document.getElementById('version-select').value = versionParam;
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log('Not in multi-task mode or tasks not available:', error.message);
+            }
+        }
+
+        /**
+         * Populate task dropdown with available tasks
+         */
+        function populateTaskDropdown(tasks) {
+            const taskSelect = document.getElementById('task-select');
+
+            // Group tasks by task_id
+            const taskGroups = {};
+            tasks.forEach(task => {
+                if (!taskGroups[task.task_id]) {
+                    taskGroups[task.task_id] = {
+                        task_id: task.task_id,
+                        name: task.metadata?.name || task.task_id,
+                        description: task.metadata?.description || '',
+                        versions: []
+                    };
+                }
+                taskGroups[task.task_id].versions.push(task);
+            });
+
+            // Sort groups by name
+            const sortedGroups = Object.values(taskGroups).sort((a, b) =>
+                a.name.localeCompare(b.name)
+            );
+
+            // Populate dropdown
+            taskSelect.innerHTML = '<option value="">Select a task...</option>';
+            sortedGroups.forEach(group => {
+                const option = document.createElement('option');
+                option.value = group.task_id;
+                option.textContent = `${group.name} (${group.versions.length} version${group.versions.length !== 1 ? 's' : ''})`;
+                taskSelect.appendChild(option);
+            });
+        }
+
+        /**
+         * Handle task selection change
+         */
+        function onTaskSelectChange() {
+            const taskId = document.getElementById('task-select').value;
+            const versionContainer = document.getElementById('version-select-container');
+            const versionSelect = document.getElementById('version-select');
+            const taskInfo = document.getElementById('selected-task-info');
+
+            if (!taskId) {
+                // No task selected - hide version filter and task info
+                versionContainer.style.display = 'none';
+                versionSelect.innerHTML = '<option value="">Select task first...</option>';
+                taskInfo.classList.add('hidden');
+                return;
+            }
+
+            // Get versions for selected task
+            const taskVersions = availableTasks.filter(t => t.task_id === taskId)
+                .sort((a, b) => {
+                    // Sort by version descending (latest first)
+                    const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+                    const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+                    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+                        const aVal = aParts[i] || 0;
+                        const bVal = bParts[i] || 0;
+                        if (bVal !== aVal) return bVal - aVal;
+                    }
+                    return 0;
+                });
+
+            if (taskVersions.length === 0) {
+                return;
+            }
+
+            // Populate version dropdown
+            versionSelect.innerHTML = taskVersions.map((task, index) => {
+                const isLatest = index === 0;
+                return `<option value="${escapeHtml(task.version)}" ${isLatest ? 'selected' : ''}>
+                    v${escapeHtml(task.version)}${isLatest ? ' (latest)' : ''}
+                </option>`;
+            }).join('');
+
+            // Show version filter
+            versionContainer.style.display = 'block';
+
+            // Show task info
+            const latestTask = taskVersions[0];
+            document.getElementById('task-info-name').textContent = latestTask.metadata?.name || latestTask.task_id;
+            document.getElementById('task-info-description').textContent = latestTask.metadata?.description || 'No description';
+            taskInfo.classList.remove('hidden');
+
+            // Load metadata for the selected task (use latest version by default)
+            const selectedVersion = versionSelect.value || latestTask.version;
+            loadTaskMetadata(taskId, selectedVersion);
+        }
+
+        /**
+         * Handle version selection change - reload metadata
+         */
+        function onVersionSelectChange() {
+            const taskId = document.getElementById('task-select').value;
+            const version = document.getElementById('version-select').value;
+
+            if (taskId && version) {
+                loadTaskMetadata(taskId, version);
+            }
+        }
+
+        /**
+         * Escape HTML for safe insertion
+         */
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        /**
+         * Load task metadata to get input schemas
+         * Note: Metadata is always fetched directly, not through proxy
+         * @param {string} taskId - Optional task ID (required in multi-task mode)
+         * @param {string} version - Optional task version (optional, defaults to latest)
+         */
+        async function loadTaskMetadata(taskId = null, version = null) {
+            try {
+                // In proxy mode, metadata is not available, skip loading
+                if (isProxyMode()) {
+                    console.log('Proxy mode detected, skipping task metadata load');
+                    return;
+                }
+
+                // Build URL with query parameters if in multi-task mode
+                let url = '/task/metadata';
+                if (isMultiTaskMode && taskId) {
+                    url += `?task_id=${encodeURIComponent(taskId)}`;
+                    if (version) {
+                        url += `&version=${encodeURIComponent(version)}`;
+                    }
+                }
+
+                const response = await fetch(url);
+                if (response.ok) {
+                    taskMetadata = await response.json();
+                    console.log('Task metadata loaded:', taskMetadata);
+
+                    // Update the first artifact kind dropdown if schemas are defined
+                    if (taskMetadata.input_schemas && taskMetadata.input_schemas.length > 0) {
+                        updateArtifactKindOptions();
+                    }
+                } else {
+                    console.warn('Could not load task metadata, using default artifact kinds');
+                }
+            } catch (error) {
+                console.warn('Error loading task metadata:', error);
+                // Continue without metadata - use default artifact kinds
+            }
+        }
+
+        /**
+         * Update artifact kind dropdown options based on task metadata schemas
+         */
+        function updateArtifactKindOptions() {
+            if (!taskMetadata || !taskMetadata.input_schemas || taskMetadata.input_schemas.length === 0) {
+                return; // No schemas defined, keep default options
+            }
+
+            // Show schema info banner
+            const infoBanner = document.getElementById('schema-info-banner');
+            const infoText = document.getElementById('schema-info-text');
+            if (infoBanner && infoText) {
+                const allowedKinds = taskMetadata.input_schemas.map(s => `<strong>${s.kind}</strong>`).join(', ');
+                infoText.innerHTML = `This task accepts the following input artifact types: ${allowedKinds}. Only these types will appear in the dropdown below.`;
+                infoBanner.classList.remove('hidden');
+            }
+
+            // Get all artifact kind selects
+            const kindSelects = document.querySelectorAll('.artifact-kind');
+
+            kindSelects.forEach(select => {
+                // Clear existing options
+                select.innerHTML = '';
+
+                // Add options based on input schemas
+                taskMetadata.input_schemas.forEach(schema => {
+                    const option = document.createElement('option');
+                    option.value = schema.kind;
+
+                    // Create descriptive label
+                    let label = schema.kind;
+                    if (schema.description) {
+                        label += ` - ${schema.description}`;
+                    } else {
+                        // Default descriptions
+                        switch (schema.kind) {
+                            case 'text': label += ' - Plain text content'; break;
+                            case 'json': label += ' - JSON data'; break;
+                            case 'url': label += ' - URL reference'; break;
+                            case 'rich_text': label += ' - Markdown/formatted text'; break;
+                            case 'file': label += ' - File reference'; break;
+                            default: label += ` - ${schema.kind} artifact`;
+                        }
+                    }
+
+                    option.textContent = label;
+                    select.appendChild(option);
+                });
+
+                // Trigger field update for the first option
+                if (select.options.length > 0) {
+                    updateArtifactFields(select);
+                }
+            });
+        }
+
+        /**
+         * Toggle advanced options section
+         */
+        function toggleAdvancedOptions() {
+            const section = document.getElementById('advanced-options');
+            const icon = document.getElementById('advanced-icon');
+
+            if (section.classList.contains('hidden')) {
+                section.classList.remove('hidden');
+                icon.classList.add('rotate-90');
+            } else {
+                section.classList.add('hidden');
+                icon.classList.remove('rotate-90');
+            }
+        }
+
+        /**
+         * Add a new input artifact
+         */
+        function addInputArtifact() {
+            artifactCounter++;
+            const container = document.getElementById('input-artifacts-container');
+
+            // Generate kind options HTML based on task metadata or defaults
+            let kindOptionsHtml = '';
+            if (taskMetadata && taskMetadata.input_schemas && taskMetadata.input_schemas.length > 0) {
+                // Use schemas from task metadata
+                taskMetadata.input_schemas.forEach(schema => {
+                    let label = schema.kind;
+                    if (schema.description) {
+                        label += ` - ${schema.description}`;
+                    } else {
+                        switch (schema.kind) {
+                            case 'text': label += ' - Plain text content'; break;
+                            case 'json': label += ' - JSON data'; break;
+                            case 'url': label += ' - URL reference'; break;
+                            case 'rich_text': label += ' - Markdown/formatted text'; break;
+                            case 'file': label += ' - File reference'; break;
+                            default: label += ` - ${schema.kind} artifact`;
+                        }
+                    }
+                    kindOptionsHtml += `<option value="${schema.kind}">${label}</option>`;
+                });
+            } else {
+                // Default options if no metadata available
+                kindOptionsHtml = `
+                    <option value="text">text - Plain text content</option>
+                    <option value="json">json - JSON data</option>
+                    <option value="url">url - URL reference</option>
+                    <option value="rich_text">rich_text - Markdown/formatted text</option>
+                `;
+            }
+
+            const artifactHtml = `
+                <div class="input-artifact-item border border-gray-300 rounded-lg p-4 bg-gray-50">
+                    <div class="flex items-center justify-between mb-3">
+                        <h5 class="text-sm font-semibold text-gray-700">Artifact #${artifactCounter}</h5>
+                        <button 
+                            type="button" 
+                            onclick="removeInputArtifact(this)"
+                            class="text-sm text-red-600 hover:text-red-700">
+                            Remove
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <!-- Artifact Kind -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Kind <span class="text-red-500">*</span>
+                            </label>
+                            <select 
+                                class="artifact-kind w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                onchange="updateArtifactFields(this)"
+                                required>
+                                ${kindOptionsHtml}
+                            </select>
+                        </div>
+                        
+                        <!-- Artifact Ref -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Reference (optional)
+                            </label>
+                            <input 
+                                type="text" 
+                                class="artifact-ref w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="e.g., input:data, input:config"
+                            />
+                            <p class="mt-1 text-xs text-gray-500">Stable reference name (unique within thread)</p>
+                        </div>
+                        
+                        <!-- Artifact Content Fields (dynamic based on kind) -->
+                        <div class="artifact-content-fields">
+                            <!-- Text Field (default) -->
+                            <div class="artifact-field-text">
+                                <label class="block text-xs font-medium text-gray-700 mb-1">
+                                    Text Content <span class="text-red-500">*</span>
+                                </label>
+                                <textarea 
+                                    class="artifact-text w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    rows="4"
+                                    placeholder="Enter text content..."
+                                    required></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Media Type (optional) -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Media Type (optional)
+                            </label>
+                            <input 
+                                type="text" 
+                                class="artifact-media-type w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="e.g., text/plain, application/json"
+                            />
+                        </div>
+                        
+                        <!-- Explain (optional) -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Description (optional)
+                            </label>
+                            <input 
+                                type="text" 
+                                class="artifact-explain w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Human-readable description"
+                            />
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.insertAdjacentHTML('beforeend', artifactHtml);
+
+            // Trigger field update for the newly added artifact based on its kind
+            const newArtifact = container.lastElementChild;
+            const kindSelect = newArtifact.querySelector('.artifact-kind');
+            if (kindSelect) {
+                updateArtifactFields(kindSelect);
+            }
+        }
+
+        /**
+         * Remove an input artifact
+         */
+        function removeInputArtifact(button) {
+            const container = document.getElementById('input-artifacts-container');
+            const items = container.querySelectorAll('.input-artifact-item');
+
+            // Prevent removing the last artifact
+            if (items.length <= 1) {
+                alert('At least one input artifact is required.');
+                return;
+            }
+
+            button.closest('.input-artifact-item').remove();
+        }
+
+        /**
+         * Update artifact content fields based on selected kind
+         */
+        function updateArtifactFields(selectElement) {
+            const kind = selectElement.value;
+            const artifactItem = selectElement.closest('.input-artifact-item');
+            const contentFields = artifactItem.querySelector('.artifact-content-fields');
+
+            let fieldsHtml = '';
+
+            switch (kind) {
+                case 'text':
+                case 'rich_text':
+                    fieldsHtml = `
+                        <div class="artifact-field-text">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Text Content <span class="text-red-500">*</span>
+                            </label>
+                            <textarea 
+                                class="artifact-text w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                rows="4"
+                                placeholder="${kind === 'rich_text' ? 'Enter markdown content...' : 'Enter text content...'}"
+                                required></textarea>
+                        </div>
+                    `;
+                    break;
+
+                case 'json':
+                    fieldsHtml = `
+                        <div class="artifact-field-json">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                JSON Value <span class="text-red-500">*</span>
+                            </label>
+                            <textarea 
+                                class="artifact-value w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                                rows="4"
+                                placeholder='{"key": "value", "number": 123}'
+                                required></textarea>
+                            <p class="mt-1 text-xs text-gray-500">Must be valid JSON</p>
+                        </div>
+                    `;
+                    break;
+
+                case 'url':
+                    fieldsHtml = `
+                        <div class="artifact-field-url">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                URL <span class="text-red-500">*</span>
+                            </label>
+                            <input 
+                                type="url"
+                                class="artifact-url w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="https://example.com/resource"
+                                required
+                            />
+                        </div>
+                    `;
+                    break;
+
+                case 'file':
+                case 'binary':
+                    fieldsHtml = `
+                        <div class="artifact-field-file">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                File Reference <span class="text-red-500">*</span>
+                            </label>
+                            <input 
+                                type="text"
+                                class="artifact-file-ref w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                                placeholder="file_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                required
+                            />
+                            <p class="mt-1 text-xs text-gray-500">Enter the file_ref from a previously uploaded file (via Files page)</p>
+                        </div>
+                    `;
+                    break;
+            }
+
+            contentFields.innerHTML = fieldsHtml;
+        }
+
+        /**
+         * Add a new webhook
+         */
+        function addWebhook() {
+            webhookCounter++;
+            const container = document.getElementById('webhooks-container');
+
+            const webhookHtml = `
+                <div class="webhook-item border border-gray-300 rounded-lg p-3 bg-white">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold text-gray-700">Webhook #${webhookCounter}</span>
+                        <button 
+                            type="button" 
+                            onclick="removeWebhook(this)"
+                            class="text-xs text-red-600 hover:text-red-700">
+                            Remove
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Callback URL <span class="text-red-500">*</span>
+                            </label>
+                            <input 
+                                type="url" 
+                                class="webhook-url w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="https://example.com/webhook"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Events (optional, defaults to succeeded/failed/stopped)
+                            </label>
+                            <input 
+                                type="text" 
+                                class="webhook-events w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="thread.succeeded, thread.failed"
+                            />
+                            <p class="mt-1 text-xs text-gray-500">Comma-separated event names</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Webhook API Key (optional)
+                            </label>
+                            <input 
+                                type="password" 
+                                class="webhook-api-key w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="X-API-Key for webhook endpoint"
+                            />
+                            <p class="mt-1 text-xs text-gray-500">If the webhook endpoint requires authentication, provide the X-API-Key header value</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.insertAdjacentHTML('beforeend', webhookHtml);
+        }
+
+        /**
+         * Remove a webhook
+         */
+        function removeWebhook(button) {
+            button.closest('.webhook-item').remove();
+        }
+
+        /**
+         * Collect input artifacts from form
+         */
+        function collectInputArtifacts() {
+            const artifacts = [];
+            const items = document.querySelectorAll('.input-artifact-item');
+
+            items.forEach((item, index) => {
+                const kind = item.querySelector('.artifact-kind').value;
+                const ref = item.querySelector('.artifact-ref').value.trim();
+                const mediaType = item.querySelector('.artifact-media-type').value.trim();
+                const explain = item.querySelector('.artifact-explain').value.trim();
+
+                const artifact = { kind };
+
+                // Add optional fields
+                if (ref) artifact.ref = ref;
+                if (mediaType) artifact.media_type = mediaType;
+                if (explain) artifact.explain = explain;
+
+                // Add content based on kind
+                switch (kind) {
+                    case 'text':
+                    case 'rich_text':
+                        const text = item.querySelector('.artifact-text').value.trim();
+                        if (!text) {
+                            throw new Error(`Artifact #${index + 1}: Text content is required`);
+                        }
+                        artifact.text = text;
+                        break;
+
+                    case 'json':
+                        const jsonStr = item.querySelector('.artifact-value').value.trim();
+                        if (!jsonStr) {
+                            throw new Error(`Artifact #${index + 1}: JSON value is required`);
+                        }
+                        try {
+                            artifact.value = JSON.parse(jsonStr);
+                        } catch (e) {
+                            throw new Error(`Artifact #${index + 1}: Invalid JSON - ${e.message}`);
+                        }
+                        break;
+
+                    case 'url':
+                        const url = item.querySelector('.artifact-url').value.trim();
+                        if (!url) {
+                            throw new Error(`Artifact #${index + 1}: URL is required`);
+                        }
+                        artifact.url = url;
+                        break;
+
+                    case 'file':
+                    case 'binary':
+                        const fileRef = item.querySelector('.artifact-file-ref').value.trim();
+                        if (!fileRef) {
+                            throw new Error(`Artifact #${index + 1}: File reference is required`);
+                        }
+                        artifact.file_ref = fileRef;
+                        break;
+                }
+
+                artifacts.push(artifact);
+            });
+
+            if (artifacts.length === 0) {
+                throw new Error('At least one input artifact is required');
+            }
+
+            return artifacts;
+        }
+
+        /**
+         * Collect webhooks from form
+         */
+        function collectWebhooks() {
+            const webhooks = [];
+            const items = document.querySelectorAll('.webhook-item');
+
+            items.forEach(item => {
+                const url = item.querySelector('.webhook-url').value.trim();
+                const eventsStr = item.querySelector('.webhook-events').value.trim();
+                const apiKey = item.querySelector('.webhook-api-key').value.trim();
+
+                if (url) {
+                    const webhook = { callback_url: url };
+
+                    if (eventsStr) {
+                        webhook.events = eventsStr.split(',').map(e => e.trim()).filter(e => e);
+                    } else {
+                        webhook.events = ['thread.succeeded', 'thread.failed', 'thread.stopped'];
+                    }
+
+                    // Add optional API key if provided
+                    if (apiKey) {
+                        webhook.api_key = apiKey;
+                    }
+
+                    webhooks.push(webhook);
+                }
+            });
+
+            return webhooks;
+        }
+
+        /**
+         * Create a new thread
+         */
+        async function createThread(event) {
+            event.preventDefault();
+
+            // Get header values from form
+            const apiKey = document.getElementById('header-api-key').value.trim();
+            const userId = document.getElementById('header-user-id').value.trim();
+            const appId = document.getElementById('header-app-id').value.trim();
+
+            // Validate API key
+            if (!apiKey) {
+                alert('API Key is required. Please enter your API key.');
+                return;
+            }
+
+            try {
+                // Get form values
+                const mode = document.getElementById('thread-mode').value;
+                const name = document.getElementById('thread-name').value.trim();
+                const paramsStr = document.getElementById('thread-params').value.trim();
+                const metadataStr = document.getElementById('thread-metadata').value.trim();
+                const timeoutSeconds = document.getElementById('timeout-seconds').value.trim();
+                const idempotencyKey = document.getElementById('idempotency-key').value.trim();
+
+                // Build request body
+                const body = {
+                    mode: mode,
+                    inputs: collectInputArtifacts()
+                };
+
+                // Add name if provided
+                if (name) {
+                    body.name = name;
+                }
+
+                // Add params if provided
+                if (paramsStr) {
+                    try {
+                        body.params = JSON.parse(paramsStr);
+                    } catch (error) {
+                        throw new Error('Invalid JSON in params field. Please check your syntax.');
+                    }
+                }
+
+                // Add metadata
+                const metadata = {};
+                if (appId) metadata.app_id = appId;
+                if (userId) metadata.user_id = userId;
+
+                // Parse and merge custom metadata
+                if (metadataStr) {
+                    try {
+                        const customMeta = JSON.parse(metadataStr);
+                        Object.assign(metadata, customMeta);
+                    } catch (error) {
+                        throw new Error('Invalid JSON in metadata field. Please check your syntax.');
+                    }
+                }
+
+                if (Object.keys(metadata).length > 0) {
+                    body.metadata = metadata;
+                }
+
+                // Add timeout if provided
+                if (timeoutSeconds) {
+                    const timeout = parseInt(timeoutSeconds, 10);
+                    if (isNaN(timeout) || timeout < 1) {
+                        throw new Error('Timeout must be a positive integer (minimum: 1 second).');
+                    }
+                    body.timeout_seconds = timeout;
+                }
+
+                // Add idempotency key if provided
+                if (idempotencyKey) {
+                    body.idempotency_key = idempotencyKey;
+                }
+
+                // Add webhooks if configured
+                const webhooks = collectWebhooks();
+                if (webhooks.length > 0) {
+                    body.webhooks = webhooks;
+                }
+
+                // Disable submit button and show loading
+                const submitBtn = event.target.querySelector('button[type="submit"]');
+                const originalBtnText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = `
+                    <svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Creating...
+                `;
+
+                console.log('Creating thread with body:', body);
+
+                // Build URL with task_id and task_version if in multi-task mode
+                let url = '/threads';
+                if (isMultiTaskMode) {
+                    const taskId = document.getElementById('task-select')?.value || '';
+                    const version = document.getElementById('version-select')?.value || '';
+
+                    if (taskId) {
+                        const params = new URLSearchParams();
+                        params.append('task_id', taskId);
+                        if (version) {
+                            params.append('task_version', version);
+                        }
+                        url = `/threads?${params.toString()}`;
+                    }
+                }
+
+                // Use apiFetch() for automatic proxy routing and auth headers
+                const response = await apiFetch(url, {
+                    method: 'POST',
+                    body: JSON.stringify(body)
+                });
+
+                console.log('Response status:', response.status);
+
+                const thread = await response.json();
+                console.log('Thread created:', thread);
+
+                // Navigate to thread detail page
+                window.location.href = `/ui/threads/${thread.id}`;
+
+            } catch (error) {
+                console.error('Error creating thread:', error);
+                alert(`Failed to create thread: ${error.message}`);
+
+                // Re-enable submit button
+                const submitBtn = event.target.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = `
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        Create Thread
+                    `;
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>

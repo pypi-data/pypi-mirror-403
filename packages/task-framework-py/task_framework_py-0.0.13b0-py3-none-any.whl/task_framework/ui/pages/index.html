@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Framework - Web Interface</title>
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- htmx via CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Custom styles for better UI -->
+    <style>
+        /* Smooth transitions for interactive elements */
+        .nav-item {
+            transition: all 0.2s ease-in-out;
+        }
+        .nav-item:hover {
+            transform: translateX(4px);
+        }
+        
+        /* Custom scrollbar for sidebar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+    </style>
+</head>
+<body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div
+      hx-get="/ui/components/api-utils.html"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    ></div>
+
+    <div class="flex h-screen overflow-hidden">
+        <!-- Left Sidebar (loaded via htmx) -->
+        <div 
+            hx-get="/ui/components/sidebar.html" 
+            hx-trigger="load"
+            hx-swap="outerHTML">
+            <!-- Loading placeholder -->
+            <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+                <div class="text-gray-400 text-sm">Loading...</div>
+            </aside>
+        </div>
+        
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto">
+            <!-- Top Bar -->
+            <div class="bg-white shadow-sm border-b border-gray-200">
+                <div class="px-6 py-4">
+                    <h2 id="page-title" class="text-2xl font-semibold text-gray-800">Welcome</h2>
+                    <p id="page-subtitle" class="text-sm text-gray-600 mt-1">
+                        Configure your settings to get started
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Content Container - This will be dynamically loaded by htmx -->
+            <div id="main-content" class="p-6">
+                <!-- Welcome Screen -->
+                <div class="max-w-4xl mx-auto">
+                    <div class="bg-white rounded-lg shadow-md p-8">
+                        <div class="text-center">
+                            <!-- Welcome Icon -->
+                            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                          d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                </svg>
+                            </div>
+                            
+                            <h3 class="text-2xl font-bold text-gray-800 mb-2">
+                                Welcome to Task Framework
+                            </h3>
+                            <p class="text-gray-600 mb-6">
+                                A powerful web interface for managing threads, artifacts, and task execution.
+                            </p>
+                            
+                            <!-- Getting Started Steps -->
+                            <div class="bg-gray-50 rounded-lg p-6 text-left">
+                                <h4 class="font-semibold text-gray-800 mb-4">Getting Started:</h4>
+                                <ol class="space-y-3 text-gray-700">
+                                    <li class="flex items-start">
+                                        <span class="inline-flex items-center justify-center w-6 h-6 bg-blue-600 text-white rounded-full text-sm font-bold mr-3 flex-shrink-0">1</span>
+                                        <span>Click <strong>Settings</strong> in the left menu to configure your API credentials (X-API-Key, X-App-ID, X-User-ID)</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <span class="inline-flex items-center justify-center w-6 h-6 bg-blue-600 text-white rounded-full text-sm font-bold mr-3 flex-shrink-0">2</span>
+                                        <span>Navigate to <strong>Threads</strong> to view and manage your task threads</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <span class="inline-flex items-center justify-center w-6 h-6 bg-blue-600 text-white rounded-full text-sm font-bold mr-3 flex-shrink-0">3</span>
+                                        <span>Create new threads, view artifacts, and monitor task execution</span>
+                                    </li>
+                                </ol>
+                            </div>
+                            
+                            <!-- Quick Action Button -->
+                            <div class="mt-6">
+                                <a href="/ui/settings" 
+                                   class="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+                                    Configure Settings
+                                    <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- System Health Cards -->
+                    <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- Database Status -->
+                        <div id="database-card" class="bg-white rounded-lg shadow-md p-6">
+                            <div class="flex items-center">
+                                <div id="database-icon-bg" class="p-3 bg-gray-100 rounded-lg">
+                                    <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-4">
+                                    <h4 class="text-sm font-medium text-gray-500">Database</h4>
+                                    <p id="database-status" class="text-lg font-semibold text-gray-800">Loading...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- File Storage Status -->
+                        <div id="storage-card" class="bg-white rounded-lg shadow-md p-6">
+                            <div class="flex items-center">
+                                <div id="storage-icon-bg" class="p-3 bg-gray-100 rounded-lg">
+                                    <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-4">
+                                    <h4 class="text-sm font-medium text-gray-500">File Storage</h4>
+                                    <p id="storage-status" class="text-lg font-semibold text-gray-800">Loading...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Scheduler Status -->
+                        <div id="scheduler-card" class="bg-white rounded-lg shadow-md p-6">
+                            <div class="flex items-center">
+                                <div id="scheduler-icon-bg" class="p-3 bg-gray-100 rounded-lg">
+                                    <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-4">
+                                    <h4 class="text-sm font-medium text-gray-500">Scheduler</h4>
+                                    <p id="scheduler-status" class="text-lg font-semibold text-gray-800">Loading...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- JavaScript for localStorage and navigation -->
+    <script>
+        /**
+         * Settings management using localStorage
+         * STORAGE_KEYS is now defined in api-utils.html
+         */
+        
+        /**
+         * Initialize settings from localStorage on page load
+         */
+        function initSettings() {
+            const settings = {
+                apiKey: localStorage.getItem(STORAGE_KEYS.API_KEY) || '',
+                appId: localStorage.getItem(STORAGE_KEYS.APP_ID) || '',
+                userId: localStorage.getItem(STORAGE_KEYS.USER_ID) || ''
+            };
+            
+            return settings;
+        }
+        
+        /**
+         * Fetch and update health status for dashboard cards
+         * Note: Sidebar handles its own health/connection status
+         */
+        async function updateHealthStatus() {
+            try {
+                const response = await fetch('/health');
+                const health = await response.json();
+                
+                // Update component status cards (page-specific)
+                updateComponentStatus('database', health.database);
+                updateComponentStatus('storage', health.file_storage);
+                updateComponentStatus('scheduler', health.scheduler);
+                
+            } catch (error) {
+                console.error('Error fetching health status for dashboard:', error);
+            }
+        }
+        
+        /**
+         * Update individual component status card
+         */
+        function updateComponentStatus(component, status) {
+            const statusEl = document.getElementById(`${component}-status`);
+            const iconBgEl = document.getElementById(`${component}-icon-bg`);
+            
+            // Define status configurations
+            const statusConfig = {
+                'available': { 
+                    text: 'Available', 
+                    color: 'text-green-600', 
+                    bg: 'bg-green-100' 
+                },
+                'running': { 
+                    text: 'Running', 
+                    color: 'text-green-600', 
+                    bg: 'bg-green-100' 
+                },
+                'stopped': { 
+                    text: 'Stopped', 
+                    color: 'text-yellow-600', 
+                    bg: 'bg-yellow-100' 
+                },
+                'unavailable': { 
+                    text: 'Unavailable', 
+                    color: 'text-red-600', 
+                    bg: 'bg-red-100' 
+                },
+                'timeout': { 
+                    text: 'Timeout', 
+                    color: 'text-orange-600', 
+                    bg: 'bg-orange-100' 
+                },
+                'not_configured': { 
+                    text: 'Not Configured', 
+                    color: 'text-gray-600', 
+                    bg: 'bg-gray-100' 
+                }
+            };
+            
+            const config = statusConfig[status] || statusConfig['unavailable'];
+            
+            // Update status text
+            statusEl.textContent = config.text;
+            statusEl.className = `text-lg font-semibold ${config.color}`;
+            
+            // Update icon background
+            iconBgEl.className = `p-3 ${config.bg} rounded-lg`;
+            
+            // Update icon color
+            const iconEl = iconBgEl.querySelector('svg');
+            if (iconEl) {
+                iconEl.className = `w-6 h-6 ${config.color}`;
+            }
+        }
+        
+        /**
+         * Configure htmx to include auth headers in all requests
+         * This will automatically add the headers to all htmx AJAX requests
+         */
+        document.body.addEventListener('htmx:configRequest', function(event) {
+            const settings = initSettings();
+            
+            // Add headers only if they are set
+            if (settings.apiKey) {
+                event.detail.headers['X-API-Key'] = settings.apiKey;
+            }
+            if (settings.appId) {
+                event.detail.headers['X-App-ID'] = settings.appId;
+            }
+            if (settings.userId) {
+                event.detail.headers['X-User-ID'] = settings.userId;
+            }
+        });
+        
+        /**
+         * Wait for API utilities to be loaded
+         */
+        function waitForApiUtils() {
+            return new Promise((resolve) => {
+                if (typeof apiFetch !== "undefined") {
+                    resolve();
+                } else {
+                    const checkInterval = setInterval(() => {
+                        if (typeof apiFetch !== "undefined") {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 50);
+                }
+            });
+        }
+
+        /**
+         * Initialize the application
+         */
+        document.addEventListener('DOMContentLoaded', async function() {
+            await waitForApiUtils();
+            console.log('Task Framework UI initialized');
+            
+            // Load settings from localStorage
+            const settings = initSettings();
+            console.log('Settings loaded:', {
+                hasApiKey: !!settings.apiKey,
+                hasAppId: !!settings.appId,
+                hasUserId: !!settings.userId
+            });
+            
+            // Fetch and display health status
+            updateHealthStatus();
+            
+            // Refresh health status every 30 seconds
+            setInterval(updateHealthStatus, 30000);
+            
+            // Log htmx version for debugging
+            console.log('htmx version:', htmx.version);
+        });
+    </script>
+</body>
+</html>
+

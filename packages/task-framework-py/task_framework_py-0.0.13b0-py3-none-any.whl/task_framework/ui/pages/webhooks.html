@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Webhooks - Task Framework</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- htmx via CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+  <!-- Custom styles -->
+  <style>
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .nav-item:hover {
+      transform: translateX(4px);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #6b7280;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Modal backdrop */
+    .modal-backdrop {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <!-- API Utilities (loaded via htmx) -->
+  <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto">
+      <!-- Header -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="flex justify-between items-center">
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900">Webhooks</h1>
+            <p class="mt-1 text-sm text-gray-500">
+              Manage webhook subscriptions and delivery history
+            </p>
+          </div>
+          <a href="/ui/webhooks/create"
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-block">
+            <svg class="inline-block w-5 h-5 mr-2 -mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Create Webhook
+          </a>
+        </div>
+      </div>
+
+      <!-- Filters Section -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <!-- Task Filter -->
+          <div>
+            <select id="filter-task"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onchange="onTaskFilterChange()">
+              <option value="">All Tasks</option>
+            </select>
+          </div>
+
+          <!-- Version Filter -->
+          <div>
+            <select id="filter-version"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onchange="resetAndLoadWebhooks()">
+              <option value="">All Versions</option>
+            </select>
+          </div>
+
+          <!-- Enabled Filter -->
+          <div>
+            <select id="filter-enabled"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onchange="resetAndLoadWebhooks()">
+              <option value="">All Status</option>
+              <option value="true">Enabled Only</option>
+              <option value="false">Disabled Only</option>
+            </select>
+          </div>
+
+          <!-- Source Filter -->
+          <div>
+            <select id="filter-source"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onchange="resetAndLoadWebhooks()">
+              <option value="">All Sources</option>
+              <option value="manual">Manual (API)</option>
+              <option value="thread">Thread (Ad-hoc)</option>
+              <option value="schedule">Schedule</option>
+            </select>
+          </div>
+
+          <!-- Show Limit -->
+          <div>
+            <select id="filter-limit"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onchange="resetAndLoadWebhooks()">
+              <option value="10">Show 10</option>
+              <option value="25" selected>Show 25</option>
+              <option value="50">Show 50</option>
+              <option value="100">Show 100</option>
+            </select>
+          </div>
+
+          <!-- Reset Filters -->
+          <div class="flex items-center">
+            <button onclick="resetFilters()"
+              class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50">
+              Reset Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="flex items-center justify-center py-12">
+        <div class="text-center">
+          <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none"
+            viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <p class="mt-2 text-sm text-gray-500">Loading webhooks...</p>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="hidden px-6 py-12">
+        <div class="max-w-md mx-auto text-center">
+          <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h3 class="mt-2 text-lg font-medium text-gray-900">
+            Error Loading Webhooks
+          </h3>
+          <p id="error-message" class="mt-1 text-sm text-gray-500"></p>
+          <button onclick="loadWebhooks()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            Retry
+          </button>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden px-6 py-12">
+        <div class="max-w-md mx-auto text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <h3 class="mt-2 text-lg font-medium text-gray-900">
+            No webhooks found
+          </h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Get started by creating a new webhook.
+          </p>
+          <a href="/ui/webhooks/create"
+            class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-block">
+            Create Webhook
+          </a>
+        </div>
+      </div>
+
+      <!-- Webhooks Table -->
+      <div id="webhooks-table-container" class="hidden px-6 py-4">
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  URL
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Task
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Source
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Events
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Scope
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Created
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody id="webhooks-table-body" class="bg-white divide-y divide-gray-200">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="mt-4 flex items-center justify-between">
+          <div class="text-sm text-gray-700">
+            <span id="pagination-info">0-0 of 0</span>
+          </div>
+          <div class="flex gap-2">
+            <button id="btn-prev-page" onclick="loadPreviousPage()" disabled
+              class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+              Previous
+            </button>
+            <button id="btn-next-page" onclick="loadNextPage()" disabled
+              class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto modal-backdrop" onclick="closeDeleteModal()">
+    <div class="flex items-center justify-center min-h-screen px-4">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onclick="event.stopPropagation()">
+        <div class="text-center">
+          <svg class="mx-auto h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <h3 class="mt-4 text-lg font-medium text-gray-900">
+            Delete Webhook
+          </h3>
+          <p class="mt-2 text-sm text-gray-500">
+            Are you sure you want to delete this webhook? This action cannot
+            be undone and all delivery history will be lost.
+          </p>
+        </div>
+        <div class="mt-6 flex gap-3">
+          <button onclick="closeDeleteModal()"
+            class="flex-1 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50">
+            Cancel
+          </button>
+          <button onclick="confirmDelete()"
+            class="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // STORAGE_KEYS is now defined in api-utils.html
+
+    // Pagination state
+    let currentOffset = 0;
+    let currentLimit = 25;
+    let hasMoreWebhooks = false;
+    let webhooksCache = [];
+
+    // Task filter state
+    let availableTasks = [];
+
+    // Modal state
+    let deletingWebhookId = null;
+
+    /**
+     * Wait for API utilities to be loaded
+     */
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof apiFetch !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof apiFetch !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    /**
+     * Initialize page
+     */
+    document.addEventListener("DOMContentLoaded", async function () {
+      await waitForApiUtils();
+      await loadAvailableTasks();
+      loadWebhooks();
+    });
+
+    /**
+     * Load available tasks for filter
+     */
+    async function loadAvailableTasks() {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      if (!apiKey) return;
+
+      try {
+        const response = await fetch('/admin/tasks', {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const responseData = await response.json();
+          const tasks = responseData.tasks || [];
+
+          // Flatten tasks with versions
+          availableTasks = [];
+          tasks.forEach(task => {
+            task.versions.forEach(version => {
+              availableTasks.push({
+                task_id: task.task_id,
+                version: version,
+                name: task.name
+              });
+            });
+          });
+
+          // Populate task filter
+          populateTaskFilter(tasks);
+        }
+      } catch (error) {
+        console.log('Could not load tasks:', error.message);
+      }
+    }
+
+    /**
+     * Populate task filter dropdown
+     */
+    function populateTaskFilter(tasks) {
+      const taskSelect = document.getElementById('filter-task');
+      taskSelect.innerHTML = '<option value="">All Tasks</option>';
+
+      tasks.forEach(task => {
+        const option = document.createElement('option');
+        option.value = task.task_id;
+        option.textContent = `${task.name || task.task_id}`;
+        taskSelect.appendChild(option);
+      });
+    }
+
+    /**
+     * Handle task filter change
+     */
+    function onTaskFilterChange() {
+      const taskId = document.getElementById('filter-task').value;
+      const versionSelect = document.getElementById('filter-version');
+
+      versionSelect.innerHTML = '<option value="">All Versions</option>';
+
+      if (taskId) {
+        // Get versions for selected task
+        const taskVersions = availableTasks
+          .filter(t => t.task_id === taskId)
+          .sort((a, b) => {
+            const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+            const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+            for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+              if ((bParts[i] || 0) !== (aParts[i] || 0)) return (bParts[i] || 0) - (aParts[i] || 0);
+            }
+            return 0;
+          });
+
+        taskVersions.forEach((task, index) => {
+          const option = document.createElement('option');
+          option.value = task.version;
+          option.textContent = `v${task.version}${index === 0 ? ' (latest)' : ''}`;
+          versionSelect.appendChild(option);
+        });
+      }
+
+      resetAndLoadWebhooks();
+    }
+
+    /**
+     * Load webhooks from API
+     */
+    async function loadWebhooks() {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+      const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+      if (!apiKey) {
+        showError("API Key not configured");
+        return;
+      }
+
+      // Show loading state
+      showLoading();
+
+      // Get filter values
+      const enabledFilter = document.getElementById("filter-enabled").value;
+      const taskFilter = document.getElementById("filter-task").value;
+      const versionFilter = document.getElementById("filter-version").value;
+      const limit = parseInt(document.getElementById("filter-limit").value);
+
+      // Update current limit
+      currentLimit = limit;
+
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (enabledFilter) params.append("is_enabled", enabledFilter);
+      if (taskFilter) params.append("task_id", taskFilter);
+      if (versionFilter) params.append("task_version", versionFilter);
+      params.append("limit", limit.toString());
+      params.append("offset", currentOffset.toString());
+
+      try {
+        const response = await apiFetch(`/webhooks?${params.toString()}`);
+
+        const data = await response.json();
+        displayWebhooks(data);
+      } catch (error) {
+        console.error("Error loading webhooks:", error);
+        showError(error.message);
+      }
+    }
+
+    /**
+     * Display webhooks
+     */
+    function displayWebhooks(data) {
+      const webhooks = data.items || [];
+      const pagination = data.pagination || {};
+
+      if (webhooks.length === 0) {
+        showEmpty();
+        return;
+      }
+
+      // Update pagination state
+      hasMoreWebhooks = pagination.has_more || false;
+      const total = pagination.total;
+
+      if (typeof total === "number") {
+        hasMoreWebhooks = currentOffset + currentLimit < total;
+      }
+
+      webhooksCache = webhooks;
+
+      // Show webhooks container
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document
+        .getElementById("webhooks-table-container")
+        .classList.remove("hidden");
+
+      // Update pagination info
+      const showing = webhooks.length;
+      const startItem = currentOffset + 1;
+      const endItem = currentOffset + showing;
+
+      if (typeof total === "number") {
+        document.getElementById(
+          "pagination-info"
+        ).textContent = `${startItem}-${endItem} of ${total}`;
+      } else {
+        document.getElementById(
+          "pagination-info"
+        ).textContent = `${startItem}-${endItem}`;
+      }
+
+      // Populate webhooks table
+      const tableBodyEl = document.getElementById("webhooks-table-body");
+      tableBodyEl.innerHTML = webhooks
+        .map((webhook) => createWebhookRow(webhook))
+        .join("");
+
+      // Update pagination buttons
+      document.getElementById("btn-prev-page").disabled = currentOffset === 0;
+      document.getElementById("btn-next-page").disabled = !hasMoreWebhooks;
+    }
+
+    /**
+     * Create a webhook table row HTML
+     */
+    function createWebhookRow(webhook) {
+      const statusBadge = webhook.enabled
+        ? `<span class="px-2 py-1 text-xs font-semibold text-white bg-green-600 rounded">Enabled</span>`
+        : `<span class="px-2 py-1 text-xs font-semibold text-white bg-gray-600 rounded">Disabled</span>`;
+
+      // Extract events display
+      let eventsDisplay = "All events";
+      if (webhook.events) {
+        if (webhook.events.include) {
+          eventsDisplay = `${webhook.events.include.length} included`;
+        } else if (webhook.events.exclude) {
+          eventsDisplay = `${webhook.events.exclude.length} excluded`;
+        }
+      }
+
+      // Extract scope display
+      let scopeDisplay = "Global";
+      if (webhook.scope) {
+        const parts = [];
+        if (webhook.scope.thread_id)
+          parts.push(
+            `Thread: ${webhook.scope.thread_id.substring(0, 12)}...`
+          );
+        if (webhook.scope.user_id)
+          parts.push(`User: ${webhook.scope.user_id}`);
+        if (webhook.scope.app_id) parts.push(`App: ${webhook.scope.app_id}`);
+        if (webhook.scope.tenant_id)
+          parts.push(`Tenant: ${webhook.scope.tenant_id}`);
+        scopeDisplay = parts.length > 0 ? parts.join(", ") : "Global";
+      }
+
+      // Format created date
+      const createdAt = new Date(webhook.created_at).toLocaleString();
+
+      // Task display
+      let taskDisplay = '-';
+      if (webhook.task_id) {
+        taskDisplay = webhook.task_id;
+        if (webhook.task_version) {
+          taskDisplay += ` v${webhook.task_version}`;
+        }
+      }
+
+      return `
+          <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 text-sm">
+              <div class="text-gray-900 font-medium truncate max-w-xs" title="${escapeHtml(
+        webhook.url
+      )}">
+                ${escapeHtml(webhook.url)}
+              </div>
+              <div class="text-gray-500 text-xs mt-1">${webhook.id}</div>
+            </td>
+            <td class="px-6 py-4 text-sm">
+              ${webhook.task_id ? `
+                <a href="/ui/tasks/${encodeURIComponent(webhook.task_id)}/${encodeURIComponent(webhook.task_version || 'latest')}" class="text-blue-600 hover:text-blue-800">
+                  ${escapeHtml(webhook.task_id)}
+                </a>
+                ${webhook.task_version ? `<span class="ml-1 px-2 py-0.5 text-xs bg-gray-100 rounded">v${escapeHtml(webhook.task_version)}</span>` : ''}
+              ` : '<span class="text-gray-400">-</span>'}
+            </td>
+            <td class="px-6 py-4 text-sm">
+              ${statusBadge}
+            </td>
+            <td class="px-6 py-4 text-sm">
+              ${getSourceBadge(webhook.source)}
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-700">
+              ${escapeHtml(eventsDisplay)}
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-700">
+              <div class="truncate max-w-xs" title="${escapeHtml(
+        scopeDisplay
+      )}">
+                ${escapeHtml(scopeDisplay)}
+              </div>
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-500">
+              ${createdAt}
+            </td>
+            <td class="px-6 py-4 text-sm">
+              <div class="flex gap-2">
+                <button
+                  onclick="viewWebhook('${webhook.id}')"
+                  class="text-blue-600 hover:text-blue-800"
+                  title="View details"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                </button>
+                <a
+                  href="/ui/webhooks/edit/${webhook.id}"
+                  class="text-yellow-600 hover:text-yellow-800"
+                  title="Edit"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </a>
+                <button
+                  onclick="deleteWebhook('${webhook.id}')"
+                  class="text-red-600 hover:text-red-800"
+                  title="Delete"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+    }
+
+    /**
+     * Get source badge HTML
+     */
+    function getSourceBadge(source) {
+      switch (source) {
+        case 'manual':
+          return `<span class="px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded">Manual</span>`;
+        case 'thread':
+          return `<span class="px-2 py-1 text-xs font-semibold text-purple-800 bg-purple-100 rounded">Thread</span>`;
+        case 'schedule':
+          return `<span class="px-2 py-1 text-xs font-semibold text-orange-800 bg-orange-100 rounded">Schedule</span>`;
+        default:
+          return `<span class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 rounded">${source || 'Unknown'}</span>`;
+      }
+    }
+
+    /**
+     * Show loading state
+     */
+    function showLoading() {
+      document.getElementById("loading-state").classList.remove("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document
+        .getElementById("webhooks-table-container")
+        .classList.add("hidden");
+    }
+
+    /**
+     * Show error state
+     */
+    function showError(message) {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.remove("hidden");
+      document.getElementById("empty-state").classList.add("hidden");
+      document
+        .getElementById("webhooks-table-container")
+        .classList.add("hidden");
+      document.getElementById("error-message").textContent = message;
+    }
+
+    /**
+     * Show empty state
+     */
+    function showEmpty() {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("empty-state").classList.remove("hidden");
+      document
+        .getElementById("webhooks-table-container")
+        .classList.add("hidden");
+    }
+
+    /**
+     * Reset filters and load webhooks
+     */
+    function resetFilters() {
+      document.getElementById("filter-task").value = "";
+      document.getElementById("filter-version").value = "";
+      document.getElementById("filter-version").innerHTML = '<option value="">All Versions</option>';
+      document.getElementById("filter-enabled").value = "";
+      document.getElementById("filter-limit").value = "25";
+      currentOffset = 0;
+      currentLimit = 25;
+      loadWebhooks();
+    }
+
+    /**
+     * Reset offset and load webhooks
+     */
+    function resetAndLoadWebhooks() {
+      currentOffset = 0;
+      currentLimit = parseInt(document.getElementById("filter-limit").value);
+      loadWebhooks();
+    }
+
+    /**
+     * Pagination navigation
+     */
+    function loadPreviousPage() {
+      if (currentOffset > 0) {
+        currentOffset = Math.max(0, currentOffset - currentLimit);
+        loadWebhooks();
+      }
+    }
+
+    function loadNextPage() {
+      if (hasMoreWebhooks) {
+        currentOffset += currentLimit;
+        loadWebhooks();
+      }
+    }
+
+    /**
+     * View webhook details
+     */
+    function viewWebhook(webhookId) {
+      window.location.href = `/ui/webhooks/${webhookId}`;
+    }
+
+    /**
+     * Delete webhook
+     */
+    function deleteWebhook(webhookId) {
+      deletingWebhookId = webhookId;
+      document.getElementById("delete-modal").classList.remove("hidden");
+    }
+
+    /**
+     * Confirm delete
+     */
+    async function confirmDelete() {
+      const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+      const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+      const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+      try {
+        const response = await apiFetch(`/webhooks/${deletingWebhookId}`, {
+          method: "DELETE",
+        });
+
+        closeDeleteModal();
+        loadWebhooks();
+      } catch (error) {
+        console.error("Error deleting webhook:", error);
+        alert("Failed to delete webhook: " + error.message);
+      }
+    }
+
+    /**
+     * Close delete modal
+     */
+    function closeDeleteModal() {
+      document.getElementById("delete-modal").classList.add("hidden");
+      deletingWebhookId = null;
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+
+</html>

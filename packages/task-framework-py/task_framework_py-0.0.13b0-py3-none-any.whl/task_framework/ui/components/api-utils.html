@@ -1,0 +1,200 @@
+<!-- API Utilities Component -->
+<!-- This component provides shared JavaScript utilities for API communication -->
+<!-- Include this in pages that need to make API calls -->
+
+<script>
+  /**
+   * localStorage keys for Task Framework UI
+   */
+  const STORAGE_KEYS = {
+    // Direct Mode Keys
+    API_KEY: "tf_api_key",
+    APP_ID: "tf_app_id",
+    USER_ID: "tf_user_id",
+    
+    // Proxy Mode Keys
+    PROXY_MODE: "tf_proxy_mode",
+    ADMIN_API_KEY: "tf_admin_api_key",
+    SELECTED_SERVER: "tf_selected_server",
+  };
+
+  /**
+   * Check if UI is in proxy mode
+   */
+  function isProxyMode() {
+    return localStorage.getItem(STORAGE_KEYS.PROXY_MODE) === "true";
+  }
+
+  /**
+   * Build API URL based on current mode
+   * 
+   * @param {string} endpoint - API endpoint (e.g., "/threads")
+   * @returns {string} - Full API URL
+   * 
+   * Direct Mode: /threads
+   * Proxy Mode: /servers/{server_id}/threads
+   */
+  function buildApiUrl(endpoint) {
+    if (!isProxyMode()) {
+      // Direct mode: use endpoint as-is
+      return endpoint;
+    }
+    
+    // Proxy mode: prepend server path
+    const serverId = localStorage.getItem(STORAGE_KEYS.SELECTED_SERVER);
+    
+    if (!serverId) {
+      throw new Error(
+        "No server selected. Please select a server from the dropdown in the sidebar."
+      );
+    }
+    
+    // Ensure endpoint starts with /
+    const normalizedEndpoint = endpoint.startsWith("/") 
+      ? endpoint 
+      : `/${endpoint}`;
+    
+    return `/servers/${serverId}${normalizedEndpoint}`;
+  }
+
+  /**
+   * Build authentication headers for client API requests
+   */
+  function buildAuthHeaders() {
+    const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+    const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+    const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+    
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    
+    if (apiKey) headers["X-API-Key"] = apiKey;
+    if (appId) headers["X-App-ID"] = appId;
+    if (userId) headers["X-User-ID"] = userId;
+    
+    return headers;
+  }
+
+  /**
+   * Build authentication headers for admin API requests (proxy only)
+   */
+  function buildAdminHeaders() {
+    const adminKey = localStorage.getItem(STORAGE_KEYS.ADMIN_API_KEY);
+    
+    if (!adminKey) {
+      throw new Error(
+        "Admin API key not configured. Please set it in Settings."
+      );
+    }
+    
+    return {
+      "Content-Type": "application/json",
+      "X-Admin-API-Key": adminKey,
+    };
+  }
+
+  /**
+   * Handle API error responses
+   * 
+   * @param {Response} response - Fetch response object
+   * @throws {Error} - Error with user-friendly message
+   */
+  async function handleApiError(response) {
+    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    
+    try {
+      const contentType = response.headers.get("content-type");
+      
+      // Problem+JSON format (proxy errors)
+      if (contentType?.includes("application/problem+json")) {
+        const problem = await response.json();
+        errorMessage = problem.detail || problem.title || errorMessage;
+        
+        // Log additional context
+        console.error("API Error (Problem+JSON):", {
+          type: problem.type,
+          title: problem.title,
+          status: problem.status,
+          detail: problem.detail,
+          code: problem.code,
+        });
+      }
+      // Standard JSON error
+      else if (contentType?.includes("application/json")) {
+        const error = await response.json();
+        errorMessage = error.detail || error.message || errorMessage;
+      }
+    } catch (e) {
+      // Failed to parse error body, use default message
+      console.error("Failed to parse error response:", e);
+    }
+    
+    throw new Error(errorMessage);
+  }
+
+  /**
+   * Unified fetch wrapper for client API requests
+   * 
+   * @param {string} endpoint - API endpoint
+   * @param {object} options - Fetch options
+   * @returns {Promise<Response>} - Fetch response
+   * 
+   * Usage:
+   *   const response = await apiFetch("/threads", { method: "POST", body: JSON.stringify(data) });
+   *   const data = await response.json();
+   */
+  async function apiFetch(endpoint, options = {}) {
+    const url = buildApiUrl(endpoint);
+    const headers = {
+      ...buildAuthHeaders(),
+      ...options.headers,
+    };
+    
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+    
+    if (!response.ok) {
+      await handleApiError(response);
+    }
+    
+    return response;
+  }
+
+  /**
+   * Admin API fetch wrapper (proxy only)
+   * 
+   * @param {string} endpoint - Admin API endpoint
+   * @param {object} options - Fetch options
+   * @returns {Promise<Response>} - Fetch response
+   * 
+   * Note: Admin endpoints are NOT proxied - they go directly to proxy
+   * 
+   * Usage:
+   *   const response = await adminFetch("/admin/servers", { method: "POST", body: JSON.stringify(data) });
+   *   const server = await response.json();
+   */
+  async function adminFetch(endpoint, options = {}) {
+    // Admin endpoints are NOT proxied - they go directly to proxy
+    const headers = {
+      ...buildAdminHeaders(),
+      ...options.headers,
+    };
+    
+    const response = await fetch(endpoint, {
+      ...options,
+      headers,
+    });
+    
+    if (!response.ok) {
+      await handleApiError(response);
+    }
+    
+    return response;
+  }
+
+  console.log("API utilities loaded");
+</script>
+

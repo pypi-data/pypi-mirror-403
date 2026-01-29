@@ -1,0 +1,599 @@
+<div id="runs-table-component">
+  <style>
+    .state-pending {
+      background-color: #eab308;
+    }
+    .state-running {
+      background-color: #3b82f6;
+    }
+    .state-succeeded {
+      background-color: #22c55e;
+    }
+    .state-failed {
+      background-color: #ef4444;
+    }
+    .state-stopped {
+      background-color: #6b7280;
+    }
+    .state-timeout {
+      background-color: #f97316;
+    }
+    .state-skipped {
+      background-color: #9ca3af;
+    }
+    .runs-modal-overlay {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+  </style>
+
+  <!-- Filters -->
+  <div class="flex gap-4 items-end mb-4">
+    <div class="flex-1">
+      <select
+        id="runs-filter-state"
+        onchange="resetAndLoadRuns()"
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      >
+        <option value="">All States</option>
+        <option value="pending">Pending</option>
+        <option value="running">Running</option>
+        <option value="succeeded">Succeeded</option>
+        <option value="failed">Failed</option>
+        <option value="stopped">Stopped</option>
+        <option value="timeout">Timeout</option>
+        <option value="skipped">Skipped</option>
+      </select>
+    </div>
+    <div class="w-32">
+      <select
+        id="runs-limit-select"
+        onchange="resetAndLoadRuns()"
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      >
+        <option value="10">Show 10</option>
+        <option value="25" selected>Show 25</option>
+        <option value="50">Show 50</option>
+        <option value="100">Show 100</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="runs-loading-state" class="text-center py-8">
+    <svg
+      class="animate-spin h-6 w-6 text-blue-600 mx-auto"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle
+        class="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        stroke-width="4"
+      ></circle>
+      <path
+        class="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      ></path>
+    </svg>
+    <p class="mt-2 text-sm text-gray-600">Loading runs...</p>
+  </div>
+
+  <!-- Error State -->
+  <div id="runs-error-state" class="hidden">
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div class="flex">
+        <svg
+          class="w-5 h-5 text-red-400"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <div class="ml-3">
+          <h3 class="text-sm font-medium text-red-800">Error Loading Runs</h3>
+          <p id="runs-error-message" class="mt-1 text-sm text-red-700"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div id="runs-empty-state" class="hidden text-center py-8">
+    <svg
+      class="mx-auto h-12 w-12 text-gray-400"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+      />
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No runs found</h3>
+    <p class="mt-1 text-sm text-gray-500">
+      This schedule hasn't executed yet.
+    </p>
+  </div>
+
+  <!-- Runs Table -->
+  <div id="runs-table-content" class="hidden">
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Run ID
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              State
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Scheduled For (Local)
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Attempt
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Threads
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody id="runs-tbody" class="bg-white divide-y divide-gray-200">
+          <!-- Runs will be inserted here -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="mt-4 flex items-center justify-between">
+      <div class="text-sm text-gray-700">
+        <span id="runs-pagination-info">Showing runs</span>
+      </div>
+      <div class="flex gap-2">
+        <button
+          id="runs-btn-prev-page"
+          onclick="loadRunsPreviousPage()"
+          class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        <button
+          id="runs-btn-next-page"
+          onclick="loadRunsNextPage()"
+          class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Run Details Modal -->
+  <div id="run-details-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+      <div class="runs-modal-overlay fixed inset-0" onclick="closeRunDetailsModal()"></div>
+      <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full p-6 relative z-10 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-4">
+          <h3 class="text-lg font-medium text-gray-900">Run Details</h3>
+          <button
+            onclick="closeRunDetailsModal()"
+            class="text-gray-400 hover:text-gray-600"
+          >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div id="run-details-content">
+          <!-- Run details will be inserted here -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    let currentScheduleId = null;
+    let currentTaskId = null;
+    let currentTaskVersion = null;
+    let currentRunsOffset = 0;
+    let currentRunsLimit = 25;
+    let hasMoreRuns = false;
+
+    /**
+     * Wait for API utilities to be available
+     */
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof apiFetch !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof apiFetch !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    /**
+     * Initialize runs table with schedule ID and optional task info
+     */
+    window.initRunsTable = async function (scheduleId, taskId, taskVersion) {
+      currentScheduleId = scheduleId;
+      currentTaskId = taskId || null;
+      currentTaskVersion = taskVersion || null;
+      await waitForApiUtils();
+      loadRuns();
+    };
+
+    /**
+     * Load runs for the schedule
+     */
+    async function loadRuns() {
+      if (!currentScheduleId) return;
+
+      const apiKey = localStorage.getItem("tf_api_key");
+      const appId = localStorage.getItem("tf_app_id");
+      const userId = localStorage.getItem("tf_user_id");
+
+      if (!apiKey) {
+        showRunsError("API Key not configured");
+        return;
+      }
+
+      showRunsLoading();
+
+      try {
+        const state = document.getElementById("runs-filter-state").value;
+        currentRunsLimit = parseInt(document.getElementById("runs-limit-select").value);
+
+        const params = new URLSearchParams();
+        if (state) params.append("state", state);
+        params.append("limit", currentRunsLimit);
+        params.append("offset", currentRunsOffset);
+        // Add task_id and version if available (for multi-task mode)
+        if (currentTaskId) {
+          params.append("task_id", currentTaskId);
+        }
+        if (currentTaskVersion) {
+          params.append("version", currentTaskVersion);
+        }
+
+        const response = await apiFetch(`/schedules/${currentScheduleId}/runs?${params.toString()}`);
+
+        const data = await response.json();
+        displayRuns(data);
+      } catch (error) {
+        console.error("Error loading runs:", error);
+        showRunsError(error.message);
+      }
+    }
+
+    window.loadRuns = loadRuns; // Expose globally
+
+    /**
+     * Display runs in table
+     */
+    function displayRuns(data) {
+      const runs = data.items || [];
+      const pagination = data.pagination || {};
+
+      if (runs.length === 0 && currentRunsOffset === 0) {
+        showRunsEmpty();
+        return;
+      }
+
+      const tbody = document.getElementById("runs-tbody");
+      tbody.innerHTML = "";
+
+      runs.forEach((run) => {
+        tbody.appendChild(createRunRow(run));
+      });
+
+      // Update pagination
+      hasMoreRuns = pagination.has_more || false;
+      const total = pagination.total;
+      const start = currentRunsOffset + 1;
+      const end = currentRunsOffset + runs.length;
+
+      if (total !== null && total !== undefined) {
+        document.getElementById("runs-pagination-info").textContent =
+          `Showing ${start}-${end} of ${total} runs`;
+      } else {
+        document.getElementById("runs-pagination-info").textContent =
+          `Showing ${start}-${end} runs`;
+      }
+
+      document.getElementById("runs-btn-prev-page").disabled = currentRunsOffset === 0;
+      document.getElementById("runs-btn-next-page").disabled = !hasMoreRuns;
+
+      showRunsContent();
+    }
+
+    /**
+     * Create table row for a run
+     */
+    function createRunRow(run) {
+      const row = document.createElement("tr");
+      row.className = "hover:bg-gray-50";
+
+      // Run ID
+      const idCell = document.createElement("td");
+      idCell.className = "px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-900";
+      idCell.textContent = run.run_id;
+
+      // State
+      const stateCell = document.createElement("td");
+      stateCell.className = "px-4 py-3 whitespace-nowrap";
+      const stateClass = `state-${run.state}`;
+      stateCell.innerHTML = `
+        <span class="${stateClass} px-2 py-1 text-xs font-semibold text-white rounded">
+          ${run.state}
+        </span>
+      `;
+
+      // Scheduled For
+      const scheduledCell = document.createElement("td");
+      scheduledCell.className = "px-4 py-3 whitespace-nowrap text-sm text-gray-600";
+      scheduledCell.textContent = formatDateTime(run.scheduled_for_local);
+
+      // Attempt
+      const attemptCell = document.createElement("td");
+      attemptCell.className = "px-4 py-3 whitespace-nowrap text-sm text-gray-900";
+      attemptCell.textContent = `${run.attempt} / ${run.max_attempts}`;
+
+      // Threads
+      const threadsCell = document.createElement("td");
+      threadsCell.className = "px-4 py-3 whitespace-nowrap text-sm text-gray-600";
+      if (run.threads && run.threads.length > 0) {
+        threadsCell.innerHTML = run.threads.map(threadId => 
+          `<a href="/ui/threads/${threadId}" class="text-blue-600 hover:text-blue-900 block">${threadId}</a>`
+        ).join('');
+      } else {
+        threadsCell.textContent = "-";
+      }
+
+      // Actions
+      const actionsCell = document.createElement("td");
+      actionsCell.className = "px-4 py-3 whitespace-nowrap text-sm font-medium";
+      actionsCell.innerHTML = `
+        <button
+          onclick="viewRunDetails('${run.run_id}')"
+          class="text-blue-600 hover:text-blue-900"
+          title="View Details"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        </button>
+      `;
+
+      row.appendChild(idCell);
+      row.appendChild(stateCell);
+      row.appendChild(scheduledCell);
+      row.appendChild(attemptCell);
+      row.appendChild(threadsCell);
+      row.appendChild(actionsCell);
+
+      return row;
+    }
+
+    /**
+     * View run details
+     */
+    window.viewRunDetails = async function (runId) {
+      const apiKey = localStorage.getItem("tf_api_key");
+      const appId = localStorage.getItem("tf_app_id");
+      const userId = localStorage.getItem("tf_user_id");
+
+      try {
+        const params = new URLSearchParams();
+        // Add task_id and version if available (for multi-task mode)
+        if (currentTaskId) {
+          params.append("task_id", currentTaskId);
+        }
+        if (currentTaskVersion) {
+          params.append("version", currentTaskVersion);
+        }
+        
+        const url = `/schedules/${currentScheduleId}/runs/${runId}${params.toString() ? '?' + params.toString() : ''}`;
+        const response = await apiFetch(url);
+
+        const run = await response.json();
+        displayRunDetails(run);
+        document.getElementById("run-details-modal").classList.remove("hidden");
+      } catch (error) {
+        console.error("Error loading run details:", error);
+        alert(`Error: ${error.message}`);
+      }
+    };
+
+    /**
+     * Display run details in modal
+     */
+    function displayRunDetails(run) {
+      const stateClass = `state-${run.state}`;
+      
+      let html = `
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Run ID</dt>
+              <dd class="mt-1 text-sm text-gray-900 font-mono">${escapeHtml(run.run_id)}</dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">State</dt>
+              <dd class="mt-1">
+                <span class="${stateClass} px-2 py-1 text-xs font-semibold text-white rounded">
+                  ${run.state}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Scheduled For (Local)</dt>
+              <dd class="mt-1 text-sm text-gray-900">${formatDateTime(run.scheduled_for_local)}</dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Scheduled For (UTC)</dt>
+              <dd class="mt-1 text-sm text-gray-900">${formatDateTime(run.scheduled_for_utc)}</dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Attempt</dt>
+              <dd class="mt-1 text-sm text-gray-900">${run.attempt} / ${run.max_attempts}</dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Created At</dt>
+              <dd class="mt-1 text-sm text-gray-900">${formatDateTime(run.created_at)}</dd>
+            </div>
+            ${run.started_at ? `
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Started At</dt>
+              <dd class="mt-1 text-sm text-gray-900">${formatDateTime(run.started_at)}</dd>
+            </div>
+            ` : ''}
+            ${run.finished_at ? `
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Finished At</dt>
+              <dd class="mt-1 text-sm text-gray-900">${formatDateTime(run.finished_at)}</dd>
+            </div>
+            ` : ''}
+          </div>
+
+          ${run.threads && run.threads.length > 0 ? `
+          <div>
+            <h4 class="text-sm font-medium text-gray-900 mb-2">Threads</h4>
+            <div class="space-y-1">
+              ${run.threads.map(threadId => 
+                `<a href="/ui/threads/${threadId}" class="block text-sm text-blue-600 hover:text-blue-900 font-mono">${threadId}</a>`
+              ).join('')}
+            </div>
+          </div>
+          ` : ''}
+
+          ${run.labels && Object.keys(run.labels).length > 0 ? `
+          <div>
+            <h4 class="text-sm font-medium text-gray-900 mb-2">Labels</h4>
+            <pre class="text-xs text-gray-900 bg-gray-50 p-3 rounded-lg overflow-auto">${JSON.stringify(run.labels, null, 2)}</pre>
+          </div>
+          ` : ''}
+
+          ${run.metrics && Object.keys(run.metrics).length > 0 ? `
+          <div>
+            <h4 class="text-sm font-medium text-gray-900 mb-2">Metrics</h4>
+            <pre class="text-xs text-gray-900 bg-gray-50 p-3 rounded-lg overflow-auto">${JSON.stringify(run.metrics, null, 2)}</pre>
+          </div>
+          ` : ''}
+        </div>
+      `;
+
+      document.getElementById("run-details-content").innerHTML = html;
+    }
+
+    /**
+     * Close run details modal
+     */
+    window.closeRunDetailsModal = function () {
+      document.getElementById("run-details-modal").classList.add("hidden");
+    };
+
+    /**
+     * Reset and reload runs
+     */
+    window.resetAndLoadRuns = function () {
+      currentRunsOffset = 0;
+      loadRuns();
+    };
+
+    /**
+     * Pagination
+     */
+    window.loadRunsPreviousPage = function () {
+      if (currentRunsOffset > 0) {
+        currentRunsOffset = Math.max(0, currentRunsOffset - currentRunsLimit);
+        loadRuns();
+      }
+    };
+
+    window.loadRunsNextPage = function () {
+      if (hasMoreRuns) {
+        currentRunsOffset += currentRunsLimit;
+        loadRuns();
+      }
+    };
+
+    /**
+     * UI state management
+     */
+    function showRunsLoading() {
+      document.getElementById("runs-loading-state").classList.remove("hidden");
+      document.getElementById("runs-error-state").classList.add("hidden");
+      document.getElementById("runs-empty-state").classList.add("hidden");
+      document.getElementById("runs-table-content").classList.add("hidden");
+    }
+
+    function showRunsError(message) {
+      document.getElementById("runs-loading-state").classList.add("hidden");
+      document.getElementById("runs-error-state").classList.remove("hidden");
+      document.getElementById("runs-empty-state").classList.add("hidden");
+      document.getElementById("runs-table-content").classList.add("hidden");
+      document.getElementById("runs-error-message").textContent = message;
+    }
+
+    function showRunsEmpty() {
+      document.getElementById("runs-loading-state").classList.add("hidden");
+      document.getElementById("runs-error-state").classList.add("hidden");
+      document.getElementById("runs-empty-state").classList.remove("hidden");
+      document.getElementById("runs-table-content").classList.add("hidden");
+    }
+
+    function showRunsContent() {
+      document.getElementById("runs-loading-state").classList.add("hidden");
+      document.getElementById("runs-error-state").classList.add("hidden");
+      document.getElementById("runs-empty-state").classList.add("hidden");
+      document.getElementById("runs-table-content").classList.remove("hidden");
+    }
+
+    /**
+     * Utility functions
+     */
+    function formatDateTime(dateString) {
+      if (!dateString) return "-";
+      const date = new Date(dateString);
+      return date.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  })();
+</script>
+

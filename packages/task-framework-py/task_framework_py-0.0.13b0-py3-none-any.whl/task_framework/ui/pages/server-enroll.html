@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enroll Server - Task Framework</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- htmx via CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles -->
+    <style>
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <div class="flex h-screen overflow-hidden">
+      <!-- Left Sidebar -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content -->
+      <main class="flex-1 overflow-y-auto">
+        <!-- Top Bar -->
+        <div class="bg-white shadow-sm border-b border-gray-200">
+          <div class="px-6 py-4">
+            <div class="flex items-center text-sm text-gray-500 mb-2">
+              <a href="/ui/servers" class="hover:text-gray-700">Servers</a>
+              <span class="mx-2">/</span>
+              <span id="breadcrumb-action" class="text-gray-900">Enroll</span>
+            </div>
+            <h2 id="page-title" class="text-2xl font-semibold text-gray-800">
+              Enroll Server
+            </h2>
+            <p class="text-sm text-gray-600 mt-1">
+              Register a new task server with the proxy
+            </p>
+          </div>
+        </div>
+
+        <!-- Form -->
+        <div class="p-6">
+          <div class="max-w-3xl mx-auto">
+            <!-- Success Message -->
+            <div id="success-message" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div class="flex items-center">
+                <svg class="w-5 h-5 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <p id="success-text" class="text-green-800 font-medium"></p>
+              </div>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error-message" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div class="flex items-center">
+                <svg class="w-5 h-5 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <p id="error-text" class="text-red-800"></p>
+              </div>
+            </div>
+
+            <!-- Form Card -->
+            <div class="bg-white rounded-lg shadow-sm p-6">
+              <form id="server-form" onsubmit="saveServer(event)">
+                <!-- Server ID -->
+                <div class="mb-6">
+                  <label for="server-id" class="block text-sm font-medium text-gray-700 mb-2">
+                    Server ID <span class="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="server-id"
+                    required
+                    pattern="[a-zA-Z0-9\-]+"
+                    placeholder="e.g., task-server-1"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                  />
+                  <p class="text-sm text-gray-500 mt-1">
+                    Unique identifier (alphanumeric and hyphens only)
+                  </p>
+                </div>
+
+                <!-- Name -->
+                <div class="mb-6">
+                  <label for="server-name" class="block text-sm font-medium text-gray-700 mb-2">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    id="server-name"
+                    placeholder="e.g., Task Server 1"
+                    maxlength="100"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p class="text-sm text-gray-500 mt-1">
+                    Human-readable name (optional, defaults to Server ID)
+                  </p>
+                </div>
+
+                <!-- Base URL -->
+                <div class="mb-6">
+                  <label for="base-url" class="block text-sm font-medium text-gray-700 mb-2">
+                    Base URL <span class="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="url"
+                    id="base-url"
+                    required
+                    placeholder="e.g., http://localhost:3001"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                  />
+                  <p class="text-sm text-gray-500 mt-1">
+                    Full base URL including protocol (http:// or https://)
+                  </p>
+                </div>
+
+                <!-- Task Types -->
+                <div class="mb-6">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Task Types <span class="text-red-600">*</span>
+                  </label>
+                  <div class="space-y-2">
+                    <label class="flex items-center">
+                      <input type="checkbox" name="task-type" value="thread" class="mr-2" />
+                      <span class="text-sm">thread</span>
+                    </label>
+                    <label class="flex items-center">
+                      <input type="checkbox" name="task-type" value="file" class="mr-2" />
+                      <span class="text-sm">file</span>
+                    </label>
+                    <label class="flex items-center">
+                      <input type="checkbox" name="task-type" value="webhook" class="mr-2" />
+                      <span class="text-sm">webhook</span>
+                    </label>
+                    <label class="flex items-center">
+                      <input type="checkbox" name="task-type" value="schedule" class="mr-2" />
+                      <span class="text-sm">schedule</span>
+                    </label>
+                    <label class="flex items-center">
+                      <input type="checkbox" name="task-type" value="artifact" class="mr-2" />
+                      <span class="text-sm">artifact</span>
+                    </label>
+                  </div>
+                  <div class="mt-2">
+                    <label class="block text-sm text-gray-600 mb-1">Or enter custom types (comma-separated):</label>
+                    <input
+                      type="text"
+                      id="custom-task-types"
+                      placeholder="e.g., custom-task-1, custom-task-2"
+                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    />
+                  </div>
+                  <p class="text-sm text-gray-500 mt-1">
+                    Select at least one task type that this server supports
+                  </p>
+                </div>
+
+                <!-- Weight -->
+                <div class="mb-6">
+                  <label for="weight" class="block text-sm font-medium text-gray-700 mb-2">
+                    Weight
+                  </label>
+                  <input
+                    type="number"
+                    id="weight"
+                    min="1"
+                    value="10"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p class="text-sm text-gray-500 mt-1">
+                    Load balancing weight (default: 10, higher = more traffic)
+                  </p>
+                </div>
+
+                <!-- Max Concurrent -->
+                <div class="mb-6">
+                  <label for="max-concurrent" class="block text-sm font-medium text-gray-700 mb-2">
+                    Max Concurrent Tasks
+                  </label>
+                  <input
+                    type="number"
+                    id="max-concurrent"
+                    min="1"
+                    value="100"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p class="text-sm text-gray-500 mt-1">
+                    Maximum number of concurrent tasks (default: 100)
+                  </p>
+                </div>
+
+                <!-- Metadata (JSON) -->
+                <div class="mb-6">
+                  <label for="metadata" class="block text-sm font-medium text-gray-700 mb-2">
+                    Metadata (JSON)
+                  </label>
+                  <textarea
+                    id="metadata"
+                    rows="6"
+                    placeholder='{"region": "us-east-1", "environment": "production"}'
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                  ></textarea>
+                  <p class="text-sm text-gray-500 mt-1">
+                    Optional JSON metadata (must be valid JSON object)
+                  </p>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex justify-end gap-4 pt-6 border-t border-gray-200">
+                  <a
+                    href="/ui/servers"
+                    class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </a>
+                  <button
+                    type="submit"
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  >
+                    <span id="submit-text">Enroll Server</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+      const STORAGE_KEYS = {
+        ADMIN_API_KEY: "tf_admin_api_key",
+      };
+
+      let isEditMode = false;
+      let editingServerId = null;
+
+      /**
+       * Initialize page
+       */
+      document.addEventListener("DOMContentLoaded", function () {
+        detectMode();
+      });
+
+      /**
+       * Detect if we're in edit mode
+       */
+      function detectMode() {
+        const path = window.location.pathname;
+        const editMatch = path.match(/\/ui\/servers\/edit\/([^\/]+)/);
+
+        if (editMatch) {
+          isEditMode = true;
+          editingServerId = editMatch[1];
+          updateUIForEditMode();
+          loadServerForEdit(editingServerId);
+        }
+      }
+
+      /**
+       * Update UI for edit mode
+       */
+      function updateUIForEditMode() {
+        document.getElementById("page-title").textContent = "Edit Server";
+        document.getElementById("breadcrumb-action").textContent = "Edit";
+        document.getElementById("submit-text").textContent = "Update Server";
+
+        // Disable server ID field in edit mode
+        const serverIdInput = document.getElementById("server-id");
+        serverIdInput.disabled = true;
+        serverIdInput.classList.add("bg-gray-100", "cursor-not-allowed");
+      }
+
+      /**
+       * Build admin headers
+       */
+      function buildAdminHeaders() {
+        const adminKey = localStorage.getItem(STORAGE_KEYS.ADMIN_API_KEY);
+        if (!adminKey) {
+          throw new Error("Admin API key not configured. Please set it in Settings.");
+        }
+        return {
+          "Content-Type": "application/json",
+          "X-Admin-API-Key": adminKey,
+        };
+      }
+
+      /**
+       * Load server data for editing
+       */
+      async function loadServerForEdit(serverId) {
+        try {
+          const response = await fetch(`/admin/servers/${serverId}`, {
+            headers: buildAdminHeaders(),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const server = await response.json();
+          populateForm(server);
+        } catch (error) {
+          console.error("Error loading server:", error);
+          showError(`Failed to load server: ${error.message}`);
+        }
+      }
+
+      /**
+       * Populate form with server data
+       */
+      function populateForm(server) {
+        document.getElementById("server-id").value = server.id;
+        document.getElementById("server-name").value = server.name || "";
+        document.getElementById("base-url").value = server.base_url;
+        document.getElementById("weight").value = server.weight || 10;
+        document.getElementById("max-concurrent").value = server.max_concurrent || 100;
+
+        // Task types - check checkboxes
+        const taskTypes = server.task_types || [];
+        const checkboxes = document.querySelectorAll('input[name="task-type"]');
+        checkboxes.forEach((cb) => {
+          cb.checked = taskTypes.includes(cb.value);
+        });
+
+        // Metadata
+        if (server.metadata && Object.keys(server.metadata).length > 0) {
+          document.getElementById("metadata").value = JSON.stringify(server.metadata, null, 2);
+        }
+      }
+
+      /**
+       * Save server (create or update)
+       */
+      async function saveServer(event) {
+        event.preventDefault();
+
+        try {
+          // Validate form
+          const serverData = collectFormData();
+          validateFormData(serverData);
+
+          // Determine endpoint and method
+          const method = isEditMode ? "PUT" : "POST";
+          const endpoint = isEditMode ? `/admin/servers/${editingServerId}` : "/admin/servers";
+
+          const response = await fetch(endpoint, {
+            method: method,
+            headers: buildAdminHeaders(),
+            body: JSON.stringify(serverData),
+          });
+
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+
+          showSuccess(
+            isEditMode
+              ? `Server "${result.name || result.id}" updated successfully!`
+              : `Server "${result.name || result.id}" enrolled successfully!`
+          );
+
+          // Redirect after 1.5 seconds
+          setTimeout(() => {
+            window.location.href = "/ui/servers";
+          }, 1500);
+        } catch (error) {
+          console.error("Error saving server:", error);
+          showError(error.message);
+        }
+      }
+
+      /**
+       * Collect form data
+       */
+      function collectFormData() {
+        const serverId = document.getElementById("server-id").value.trim();
+        const serverName = document.getElementById("server-name").value.trim();
+        const baseUrl = document.getElementById("base-url").value.trim();
+        const weight = parseInt(document.getElementById("weight").value);
+        const maxConcurrent = parseInt(document.getElementById("max-concurrent").value);
+
+        // Collect task types from checkboxes
+        const taskTypes = [];
+        document.querySelectorAll('input[name="task-type"]:checked').forEach((cb) => {
+          taskTypes.push(cb.value);
+        });
+
+        // Add custom task types
+        const customTypes = document.getElementById("custom-task-types").value.trim();
+        if (customTypes) {
+          customTypes.split(",").forEach((type) => {
+            const trimmed = type.trim();
+            if (trimmed && !taskTypes.includes(trimmed)) {
+              taskTypes.push(trimmed);
+            }
+          });
+        }
+
+        // Parse metadata
+        let metadata = {};
+        const metadataText = document.getElementById("metadata").value.trim();
+        if (metadataText) {
+          try {
+            metadata = JSON.parse(metadataText);
+          } catch (e) {
+            throw new Error("Metadata is not valid JSON");
+          }
+        }
+
+        return {
+          id: serverId,
+          name: serverName || serverId,
+          base_url: baseUrl,
+          task_types: taskTypes,
+          weight: weight,
+          max_concurrent: maxConcurrent,
+          metadata: metadata,
+        };
+      }
+
+      /**
+       * Validate form data
+       */
+      function validateFormData(data) {
+        // Server ID validation
+        if (!data.id || !/^[a-zA-Z0-9\-]+$/.test(data.id)) {
+          throw new Error("Server ID must contain only alphanumeric characters and hyphens");
+        }
+
+        // Base URL validation
+        if (!data.base_url.startsWith("http://") && !data.base_url.startsWith("https://")) {
+          throw new Error("Base URL must start with http:// or https://");
+        }
+
+        // Task types validation
+        if (data.task_types.length === 0) {
+          throw new Error("At least one task type must be selected");
+        }
+
+        // Weight validation
+        if (data.weight < 1) {
+          throw new Error("Weight must be at least 1");
+        }
+
+        // Max concurrent validation
+        if (data.max_concurrent < 1) {
+          throw new Error("Max concurrent tasks must be at least 1");
+        }
+
+        // Metadata validation (must be object)
+        if (typeof data.metadata !== "object" || Array.isArray(data.metadata)) {
+          throw new Error("Metadata must be a JSON object");
+        }
+      }
+
+      /**
+       * Show success message
+       */
+      function showSuccess(message) {
+        document.getElementById("success-text").textContent = message;
+        document.getElementById("success-message").classList.remove("hidden");
+        document.getElementById("error-message").classList.add("hidden");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      /**
+       * Show error message
+       */
+      function showError(message) {
+        document.getElementById("error-text").textContent = message;
+        document.getElementById("error-message").classList.remove("hidden");
+        document.getElementById("success-message").classList.add("hidden");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    </script>
+  </body>
+</html>
+

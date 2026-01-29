@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload Files - Task Framework</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <style>
+      .nav-item {
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-item:hover {
+        transform: translateX(4px);
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      .upload-zone {
+        transition: all 0.3s ease;
+      }
+      .upload-zone.drag-over {
+        border-color: #3b82f6;
+        background-color: #eff6ff;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div
+      hx-get="/ui/components/api-utils.html"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    ></div>
+
+    <div class="flex h-screen overflow-hidden">
+      <!-- Sidebar (loaded via htmx) -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content -->
+      <main class="flex-1 overflow-y-auto">
+        <!-- Header -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <!-- Breadcrumb -->
+              <nav class="flex items-center text-sm text-gray-500 mb-2">
+                <a href="/ui/files" class="hover:text-gray-700">Files</a>
+                <svg
+                  class="w-4 h-4 mx-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+                <span class="text-gray-900 font-medium">Upload</span>
+              </nav>
+              <h1 class="text-2xl font-bold text-gray-900">Upload Files</h1>
+              <p class="mt-1 text-sm text-gray-500">
+                Upload one or multiple files for use in artifacts
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Content Container -->
+        <div class="p-6">
+          <div class="max-w-4xl mx-auto">
+            <!-- Upload Method Selection -->
+            <div class="bg-white rounded-lg shadow p-6 mb-6">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                Upload Method
+              </h2>
+              <div class="flex gap-4">
+                <button
+                  id="btn-direct-upload"
+                  onclick="selectUploadMethod('direct')"
+                  class="flex-1 px-4 py-3 border-2 border-blue-600 bg-blue-50 text-blue-700 rounded-lg font-medium"
+                >
+                  Direct Upload
+                </button>
+                <button
+                  id="btn-presigned-upload"
+                  onclick="selectUploadMethod('presigned')"
+                  class="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:border-gray-400"
+                >
+                  Pre-signed URL
+                </button>
+              </div>
+            </div>
+
+            <!-- Direct Upload Form -->
+            <div id="direct-upload-form" class="bg-white rounded-lg shadow p-6">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                Direct Upload
+              </h2>
+              <p class="text-sm text-gray-600 mb-4">
+                Upload multiple files directly. Supports drag and drop.
+              </p>
+
+              <!-- Drop Zone -->
+              <div
+                id="drop-zone"
+                class="upload-zone border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 mb-4"
+                onclick="document.getElementById('file-input').click()"
+              >
+                <svg
+                  class="w-12 h-12 mx-auto text-gray-400 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                <p class="text-sm text-gray-600 mb-1">
+                  <span class="font-semibold text-blue-600"
+                    >Click to upload</span
+                  >
+                  or drag and drop
+                </p>
+                <p class="text-xs text-gray-500">Select multiple files (any type supported)</p>
+                <input
+                  type="file"
+                  id="file-input"
+                  class="hidden"
+                  multiple
+                  onchange="handleFileSelect(event)"
+                />
+              </div>
+
+              <!-- Selected Files Info -->
+              <div id="file-info" class="hidden mb-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="text-sm font-semibold text-gray-900">
+                    Selected Files (<span id="file-count">0</span>)
+                  </h3>
+                  <button
+                    onclick="clearFileSelection()"
+                    class="text-sm text-red-600 hover:text-red-700 font-medium"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div id="file-list" class="space-y-2 max-h-64 overflow-y-auto">
+                  <!-- Files will be listed here -->
+                </div>
+              </div>
+
+              <!-- Upload Progress -->
+              <div id="upload-progress" class="hidden mb-4">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm font-medium text-gray-700">
+                    <span id="upload-status">Uploading...</span>
+                    <span id="upload-file-progress" class="text-gray-500"></span>
+                  </span>
+                  <span
+                    id="upload-percent"
+                    class="text-sm font-medium text-blue-600"
+                    >0%</span
+                  >
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    id="upload-progress-bar"
+                    class="bg-blue-600 h-2 rounded-full transition-all"
+                    style="width: 0%"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex justify-end gap-3">
+                <a
+                  href="/ui/files"
+                  class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </a>
+                <button
+                  id="btn-upload-direct"
+                  onclick="uploadFilesDirect()"
+                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                >
+                  <span id="upload-button-text">Upload Files</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Pre-signed Upload Form -->
+            <div id="presigned-upload-form" class="hidden bg-white rounded-lg shadow p-6">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                Pre-signed URL Upload
+              </h2>
+              <p class="text-sm text-gray-600 mb-4">
+                Generate a pre-signed URL for uploading a file. Useful for
+                large files or external integrations.
+              </p>
+
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Filename <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="presigned-filename"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., document.pdf"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Media Type <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="presigned-media-type"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., application/pdf"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">
+                    File Size (bytes) <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="presigned-size"
+                    min="1"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 1024000"
+                  />
+                </div>
+
+                <!-- Generated Upload URL -->
+                <div id="presigned-url-container" class="hidden">
+                  <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Upload URL Generated
+                  </label>
+                  <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p class="text-sm text-green-800 mb-2">
+                      <strong>File Reference:</strong>
+                      <code
+                        id="presigned-file-ref"
+                        class="bg-green-100 px-1 rounded"
+                      ></code>
+                    </p>
+                    <p class="text-sm text-green-800 mb-2">
+                      <strong>Upload URL:</strong>
+                    </p>
+                    <textarea
+                      id="presigned-upload-url"
+                      readonly
+                      class="w-full px-3 py-2 bg-white border border-green-300 rounded text-xs font-mono"
+                      rows="3"
+                    ></textarea>
+                    <p class="text-xs text-green-700 mt-2">
+                      Use this URL to PUT your file. The URL will expire in the
+                      configured time.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex justify-end gap-3 mt-6">
+                <a
+                  href="/ui/files"
+                  class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </a>
+                <button
+                  id="btn-generate-url"
+                  onclick="generatePresignedUrl()"
+                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                >
+                  Generate URL
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // STORAGE_KEYS is now defined in api-utils.html
+
+      let selectedFiles = [];
+      let currentUploadMethod = "direct";
+
+      /**
+       * Initialize page
+       */
+      /**
+       * Wait for API utilities to be loaded
+       */
+      function waitForApiUtils() {
+        return new Promise((resolve) => {
+          if (typeof apiFetch !== "undefined") {
+            resolve();
+          } else {
+            const checkInterval = setInterval(() => {
+              if (typeof apiFetch !== "undefined") {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 50);
+          }
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", async function () {
+        await waitForApiUtils();
+        setupDragAndDrop();
+        setupPresignedFormListeners();
+      });
+
+      /**
+       * Setup drag and drop
+       */
+      function setupDragAndDrop() {
+        const dropZone = document.getElementById("drop-zone");
+        if (!dropZone) return;
+
+        dropZone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dropZone.classList.add("drag-over");
+        });
+
+        dropZone.addEventListener("dragleave", () => {
+          dropZone.classList.remove("drag-over");
+        });
+
+        dropZone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dropZone.classList.remove("drag-over");
+
+          const files = e.dataTransfer.files;
+          if (files.length > 0) {
+            handleFileSelect({ target: { files } });
+          }
+        });
+      }
+
+      /**
+       * Setup presigned form listeners
+       */
+      function setupPresignedFormListeners() {
+        ["presigned-filename", "presigned-media-type", "presigned-size"].forEach(
+          (id) => {
+            const el = document.getElementById(id);
+            if (el) {
+              el.addEventListener("input", updatePresignedButton);
+            }
+          }
+        );
+      }
+
+      /**
+       * Select upload method
+       */
+      function selectUploadMethod(method) {
+        currentUploadMethod = method;
+
+        const directBtn = document.getElementById("btn-direct-upload");
+        const presignedBtn = document.getElementById("btn-presigned-upload");
+        const directForm = document.getElementById("direct-upload-form");
+        const presignedForm = document.getElementById("presigned-upload-form");
+
+        if (method === "direct") {
+          directBtn.classList.add(
+            "border-blue-600",
+            "bg-blue-50",
+            "text-blue-700"
+          );
+          directBtn.classList.remove("border-gray-300", "text-gray-700");
+          presignedBtn.classList.remove(
+            "border-blue-600",
+            "bg-blue-50",
+            "text-blue-700"
+          );
+          presignedBtn.classList.add("border-gray-300", "text-gray-700");
+          directForm.classList.remove("hidden");
+          presignedForm.classList.add("hidden");
+        } else {
+          presignedBtn.classList.add(
+            "border-blue-600",
+            "bg-blue-50",
+            "text-blue-700"
+          );
+          presignedBtn.classList.remove("border-gray-300", "text-gray-700");
+          directBtn.classList.remove(
+            "border-blue-600",
+            "bg-blue-50",
+            "text-blue-700"
+          );
+          directBtn.classList.add("border-gray-300", "text-gray-700");
+          presignedForm.classList.remove("hidden");
+          directForm.classList.add("hidden");
+        }
+      }
+
+      /**
+       * Handle file selection
+       */
+      function handleFileSelect(event) {
+        const files = Array.from(event.target.files);
+        if (files.length === 0) return;
+
+        selectedFiles = files;
+        renderFileList();
+        
+        document.getElementById("file-info").classList.remove("hidden");
+        document.getElementById("btn-upload-direct").disabled = false;
+        
+        // Update button text
+        const count = files.length;
+        document.getElementById("upload-button-text").textContent = 
+          count === 1 ? "Upload File" : `Upload ${count} Files`;
+      }
+
+      /**
+       * Render the list of selected files
+       */
+      function renderFileList() {
+        const fileList = document.getElementById("file-list");
+        const fileCount = document.getElementById("file-count");
+        
+        fileCount.textContent = selectedFiles.length;
+        
+        fileList.innerHTML = selectedFiles.map((file, index) => `
+          <div class="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
+            <div class="flex items-center flex-1 min-w-0">
+              <svg class="w-6 h-6 text-gray-400 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(file.name)}</p>
+                <p class="text-xs text-gray-500">${formatSize(file.size)}</p>
+              </div>
+            </div>
+            <button 
+              onclick="removeFile(${index})" 
+              class="ml-2 text-gray-400 hover:text-red-600"
+              title="Remove file"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        `).join('');
+      }
+
+      /**
+       * Remove a file from selection
+       */
+      function removeFile(index) {
+        selectedFiles.splice(index, 1);
+        
+        if (selectedFiles.length === 0) {
+          clearFileSelection();
+        } else {
+          renderFileList();
+          const count = selectedFiles.length;
+          document.getElementById("upload-button-text").textContent = 
+            count === 1 ? "Upload File" : `Upload ${count} Files`;
+        }
+      }
+
+      /**
+       * Clear file selection
+       */
+      function clearFileSelection() {
+        selectedFiles = [];
+        document.getElementById("file-input").value = "";
+        document.getElementById("file-info").classList.add("hidden");
+        document.getElementById("upload-progress").classList.add("hidden");
+        document.getElementById("btn-upload-direct").disabled = true;
+        document.getElementById("upload-button-text").textContent = "Upload Files";
+      }
+
+      /**
+       * Update presigned button state
+       */
+      function updatePresignedButton() {
+        const btn = document.getElementById("btn-generate-url");
+        const filename = document
+          .getElementById("presigned-filename")
+          .value.trim();
+        const mediaType = document
+          .getElementById("presigned-media-type")
+          .value.trim();
+        const size = document.getElementById("presigned-size").value;
+        btn.disabled = !(filename && mediaType && size);
+      }
+
+      /**
+       * Upload multiple files directly
+       */
+      async function uploadFilesDirect() {
+        if (selectedFiles.length === 0) return;
+
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        if (!apiKey) {
+          alert("API Key not configured. Please go to Settings.");
+          return;
+        }
+
+        try {
+          // Show progress
+          document.getElementById("upload-progress").classList.remove("hidden");
+          document.getElementById("btn-upload-direct").disabled = true;
+
+          const totalFiles = selectedFiles.length;
+          let uploadedFiles = 0;
+          const uploadResults = [];
+
+          // Upload files sequentially
+          for (let i = 0; i < selectedFiles.length; i++) {
+            const file = selectedFiles[i];
+            
+            // Update status
+            document.getElementById("upload-status").textContent = `Uploading file ${i + 1} of ${totalFiles}...`;
+            document.getElementById("upload-file-progress").textContent = ` (${file.name})`;
+
+            try {
+              const response = await uploadSingleFile(file, apiKey, (percent) => {
+                // Calculate overall progress
+                const overallPercent = Math.round(((uploadedFiles + (percent / 100)) / totalFiles) * 100);
+                document.getElementById("upload-percent").textContent = overallPercent + "%";
+                document.getElementById("upload-progress-bar").style.width = overallPercent + "%";
+              });
+
+              // Add the original filename to the response before saving
+              response.filename = file.name;
+              uploadResults.push(response);
+              uploadedFiles++;
+            } catch (error) {
+              console.error(`Failed to upload ${file.name}:`, error);
+              alert(`Failed to upload ${file.name}: ${error.message}`);
+              // Continue with remaining files
+            }
+          }
+
+          // Save all successfully uploaded files to session storage
+          uploadResults.forEach(result => saveToSessionStorage(result));
+
+          // Show success message and redirect
+          if (uploadResults.length === totalFiles) {
+            document.getElementById("upload-status").textContent = "All files uploaded successfully!";
+          } else {
+            document.getElementById("upload-status").textContent = 
+              `${uploadResults.length} of ${totalFiles} files uploaded successfully.`;
+          }
+
+          setTimeout(() => {
+            window.location.href = "/ui/files";
+          }, 1500);
+        } catch (error) {
+          console.error("Upload error:", error);
+          alert(`Upload failed: ${error.message}`);
+          document.getElementById("upload-progress").classList.add("hidden");
+          document.getElementById("btn-upload-direct").disabled = false;
+        }
+      }
+
+      /**
+       * Upload a single file and return a promise
+       */
+      function uploadSingleFile(file, apiKey, onProgress) {
+        return new Promise((resolve, reject) => {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const xhr = new XMLHttpRequest();
+
+          xhr.upload.addEventListener("progress", (e) => {
+            if (e.lengthComputable) {
+              const percent = Math.round((e.loaded / e.total) * 100);
+              onProgress(percent);
+            }
+          });
+
+          xhr.addEventListener("load", () => {
+            if (xhr.status === 200) {
+              try {
+                const response = JSON.parse(xhr.responseText);
+                resolve(response);
+              } catch (e) {
+                reject(new Error("Failed to parse response"));
+              }
+            } else {
+              reject(new Error(`Upload failed: ${xhr.statusText}`));
+            }
+          });
+
+          xhr.addEventListener("error", () => {
+            reject(new Error("Upload failed"));
+          });
+
+          // Use buildApiUrl to handle proxy routing
+          const url = buildApiUrl("/files");
+          xhr.open("POST", url);
+          xhr.setRequestHeader("X-API-Key", apiKey);
+          
+          // Add App-ID and User-ID headers if available
+          const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+          const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+          if (appId) xhr.setRequestHeader("X-App-ID", appId);
+          if (userId) xhr.setRequestHeader("X-User-ID", userId);
+          
+          xhr.send(formData);
+        });
+      }
+
+      /**
+       * Generate pre-signed upload URL
+       */
+      async function generatePresignedUrl() {
+        const filename = document
+          .getElementById("presigned-filename")
+          .value.trim();
+        const mediaType = document
+          .getElementById("presigned-media-type")
+          .value.trim();
+        const size = parseInt(document.getElementById("presigned-size").value);
+
+        if (!filename || !mediaType || !size) {
+          alert("Please fill in all required fields");
+          return;
+        }
+
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        if (!apiKey) {
+          alert("API Key not configured. Please go to Settings.");
+          return;
+        }
+
+        try {
+          const btn = document.getElementById("btn-generate-url");
+          btn.disabled = true;
+          btn.textContent = "Generating...";
+
+          const payload = {
+            filename,
+            media_type: mediaType,
+            size,
+          };
+          
+          console.log("Generating presigned URL with payload:", payload);
+
+          const response = await apiFetch("/uploads", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+
+          const data = await response.json();
+          console.log("Presigned URL response:", data);
+
+          // Display the upload URL
+          document.getElementById("presigned-file-ref").textContent =
+            data.file_ref;
+          document.getElementById("presigned-upload-url").value =
+            data.upload_url;
+          
+          const container = document.getElementById("presigned-url-container");
+          if (container) {
+            container.classList.remove("hidden");
+          }
+
+          // Save to sessionStorage (pending upload)
+          saveToSessionStorage({
+            file_ref: data.file_ref,
+            filename: filename,
+            media_type: mediaType,
+            size: size,
+            created_at: new Date().toISOString(),
+            status: "pending_upload",
+          });
+
+          showSuccess(
+            "Pre-signed URL generated! Redirecting to files list..."
+          );
+
+          // Redirect to files list after a short delay
+          setTimeout(() => {
+            window.location.href = "/ui/files";
+          }, 2000);
+        } catch (error) {
+          console.error("Error:", error);
+          alert(`Failed to generate URL: ${error.message}`);
+        } finally {
+          const btn = document.getElementById("btn-generate-url");
+          btn.disabled = false;
+          btn.textContent = "Generate URL";
+        }
+      }
+
+      /**
+       * Save file to sessionStorage
+       */
+      function saveToSessionStorage(fileData) {
+        try {
+          const filesJson = sessionStorage.getItem("uploaded_files");
+          let files = filesJson ? JSON.parse(filesJson) : [];
+          files.unshift(fileData);
+          sessionStorage.setItem("uploaded_files", JSON.stringify(files));
+        } catch (error) {
+          console.error("Error saving to sessionStorage:", error);
+        }
+      }
+
+      /**
+       * Show success message
+       */
+      function showSuccess(message) {
+        const notification = document.createElement("div");
+        notification.className =
+          "fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50";
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          notification.remove();
+        }, 3000);
+      }
+
+      /**
+       * Escape HTML to prevent XSS
+       */
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      /**
+       * Format file size for display
+       */
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+        if (bytes < 1024 * 1024 * 1024)
+          return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+      }
+    </script>
+  </body>
+</html>
+

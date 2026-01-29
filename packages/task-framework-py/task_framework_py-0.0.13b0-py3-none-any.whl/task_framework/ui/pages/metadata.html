@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Metadata - Task Framework</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- htmx via CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+  <style>
+    /* Navigation item hover effect */
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .nav-item:hover {
+      transform: translateX(4px);
+    }
+
+    /* Custom scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f3f4f6;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 3px;
+    }
+
+    /* Capability card styling */
+    .capability-card {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .capability-card.enabled {
+      border-color: #22c55e;
+      background-color: #f0fdf4;
+    }
+
+    .capability-card.disabled {
+      border-color: #e5e7eb;
+      background-color: #f9fafb;
+    }
+
+    /* JSON formatter styling */
+    .json-container {
+      background-color: #1f2937;
+      color: #e5e7eb;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+
+    .json-container pre {
+      margin: 0;
+      font-family: "Courier New", monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    .json-key {
+      color: #93c5fd;
+    }
+
+    .json-string {
+      color: #a5f3fc;
+    }
+
+    .json-number {
+      color: #fbbf24;
+    }
+
+    .json-boolean {
+      color: #c084fc;
+    }
+
+    .json-null {
+      color: #f87171;
+    }
+
+    /* Fade-in animation */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar component (loaded via htmx) -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <!-- Loading placeholder -->
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-y-auto custom-scrollbar">
+      <div class="p-8">
+        <!-- Header -->
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold text-gray-900">Task Metadata</h1>
+          <p class="mt-2 text-sm text-gray-600">
+            Runtime-discoverable metadata about the registered task, including
+            capabilities and artifact schemas.
+          </p>
+        </div>
+
+        <!-- Task Selection (for multi-task mode) -->
+        <div id="task-selection-card" class="hidden mb-6 bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Select Task</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label for="task-select" class="block text-sm font-medium text-gray-700 mb-2">
+                Task *
+              </label>
+              <select id="task-select" onchange="onTaskSelectChange()"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="">Select a task...</option>
+              </select>
+              <p class="mt-1 text-xs text-gray-500">Choose the task definition to view metadata</p>
+            </div>
+
+            <!-- Version Dropdown -->
+            <div id="version-select-container" style="display: none;">
+              <label for="version-select" class="block text-sm font-medium text-gray-700 mb-2">
+                Version
+              </label>
+              <select id="version-select" onchange="onVersionSelectChange()"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="">Select task first...</option>
+              </select>
+              <p class="mt-1 text-xs text-gray-500">Specific version to view (defaults to latest)</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loading state -->
+        <div id="loading-state" class="hidden">
+          <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        </div>
+
+        <!-- Error state -->
+        <div id="error-state" class="hidden bg-red-50 border border-red-200 rounded-lg p-6">
+          <div class="flex items-start">
+            <svg class="w-6 h-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div class="ml-3 flex-1">
+              <h3 class="text-sm font-medium text-red-800">
+                Error loading metadata
+              </h3>
+              <p id="error-message" class="mt-2 text-sm text-red-700"></p>
+              <button onclick="retryLoadMetadata()"
+                class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Content -->
+        <div id="content" class="hidden space-y-6">
+          <!-- Overview Card -->
+          <div class="bg-white rounded-lg shadow-md p-6 fade-in">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Overview</h2>
+            <div class="space-y-3">
+              <div class="flex items-baseline">
+                <span class="text-sm font-bold text-gray-700 w-36">Task Name:</span>
+                <span id="task-name" class="text-sm text-gray-900"></span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="text-sm font-bold text-gray-700 w-36">Version:</span>
+                <span id="task-version" class="text-sm text-gray-900"></span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="text-sm font-bold text-gray-700 w-36">Framework Version:</span>
+                <span id="framework-version" class="text-sm text-gray-900"></span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="text-sm font-bold text-gray-700 w-36">API Version:</span>
+                <span id="api-version" class="text-sm text-gray-900"></span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="text-sm font-bold text-gray-700 w-36">Last Updated:</span>
+                <span id="task-timestamp" class="text-sm text-gray-900"></span>
+              </div>
+              <div class="pt-3 border-t border-gray-200">
+                <label class="text-sm font-bold text-gray-700">Description:</label>
+                <p id="task-description" class="mt-2 text-sm text-gray-700 whitespace-pre-wrap"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Schemas Card -->
+          <div class="bg-white rounded-lg shadow-md p-6 fade-in">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-semibold text-gray-900">
+                Input Schemas
+              </h2>
+              <button onclick="copyToClipboard('input-schemas-json')"
+                class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors">
+                Copy JSON
+              </button>
+            </div>
+            <div id="input-schemas-empty" class="text-sm text-gray-500 italic hidden">
+              No input schemas defined
+            </div>
+            <div id="input-schemas-container" class="space-y-4">
+              <!-- Input schemas will be dynamically inserted here -->
+            </div>
+            <div id="input-schemas-json" class="hidden"></div>
+          </div>
+
+          <!-- Output Schemas Card -->
+          <div class="bg-white rounded-lg shadow-md p-6 fade-in">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-semibold text-gray-900">
+                Output Schemas
+              </h2>
+              <button onclick="copyToClipboard('output-schemas-json')"
+                class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors">
+                Copy JSON
+              </button>
+            </div>
+            <div id="output-schemas-empty" class="text-sm text-gray-500 italic hidden">
+              No output schemas defined
+            </div>
+            <div id="output-schemas-container" class="space-y-4">
+              <!-- Output schemas will be dynamically inserted here -->
+            </div>
+            <div id="output-schemas-json" class="hidden"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const STORAGE_KEYS = {
+      API_KEY: "tf_api_key",
+      ADMIN_API_KEY: "tf_admin_api_key",
+      APP_ID: "tf_app_id",
+      USER_ID: "tf_user_id",
+    };
+
+    // State management
+    function showLoading() {
+      document.getElementById("loading-state").classList.remove("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("content").classList.add("hidden");
+    }
+
+    function showError(message) {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.remove("hidden");
+      document.getElementById("content").classList.add("hidden");
+      document.getElementById("error-message").textContent = message;
+    }
+
+    function showContent() {
+      document.getElementById("loading-state").classList.add("hidden");
+      document.getElementById("error-state").classList.add("hidden");
+      document.getElementById("content").classList.remove("hidden");
+    }
+
+    // Format datetime
+    function formatDateTime(dateString) {
+      if (!dateString) return "-";
+      const date = new Date(dateString);
+      return date.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    }
+
+    // Render capabilities
+    function renderCapabilities(capabilities) {
+      const container = document.getElementById("capabilities-container");
+      container.innerHTML = "";
+
+      const capabilityList = [
+        {
+          key: "database",
+          label: "Database",
+          icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
+        },
+        {
+          key: "file_storage",
+          label: "File Storage",
+          icon: "M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z",
+        },
+        {
+          key: "scheduler",
+          label: "Scheduler",
+          icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+        },
+        {
+          key: "webhooks",
+          label: "Webhooks",
+          icon: "M13 10V3L4 14h7v7l9-11h-7z",
+        },
+      ];
+
+      capabilityList.forEach((cap) => {
+        const isEnabled = capabilities[cap.key] === true;
+        const card = document.createElement("div");
+        card.className = `capability-card border-2 rounded-lg p-4 ${isEnabled ? "enabled" : "disabled"
+          }`;
+        card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <svg class="w-6 h-6 ${isEnabled ? "text-green-600" : "text-gray-400"
+          }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${cap.icon
+          }"></path>
+                            </svg>
+                            <span class="ml-3 font-medium ${isEnabled ? "text-gray-900" : "text-gray-500"
+          }">${cap.label}</span>
+                        </div>
+                        <div class="flex items-center">
+                            ${isEnabled
+            ? '<svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>'
+            : '<svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>'
+          }
+                        </div>
+                    </div>
+                `;
+        container.appendChild(card);
+      });
+    }
+
+    // Format JSON with syntax highlighting
+    function formatJSON(obj) {
+      const json = JSON.stringify(obj, null, 2);
+      return json
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
+        .replace(/: (\d+)/g, ': <span class="json-number">$1</span>')
+        .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
+        .replace(/: null/g, ': <span class="json-null">null</span>');
+    }
+
+    // Render schemas
+    function renderSchemas(schemas, containerId, emptyId, jsonId) {
+      const container = document.getElementById(containerId);
+      const emptyEl = document.getElementById(emptyId);
+      const jsonEl = document.getElementById(jsonId);
+
+      if (!schemas || schemas.length === 0) {
+        container.innerHTML = "";
+        emptyEl.classList.remove("hidden");
+        jsonEl.textContent = JSON.stringify([], null, 2);
+        return;
+      }
+
+      emptyEl.classList.add("hidden");
+      container.innerHTML = "";
+      jsonEl.textContent = JSON.stringify(schemas, null, 2);
+
+      schemas.forEach((schema, index) => {
+        const schemaCard = document.createElement("div");
+        schemaCard.className = "border border-gray-200 rounded-lg p-4";
+
+        // Schema header with kind badge and description
+        const header = document.createElement("div");
+        header.className = "flex items-center justify-between mb-3";
+        header.innerHTML = `
+                    <div>
+                        <span class="inline-block px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-100 rounded">
+                            ${schema.kind || 'Schema ' + (index + 1)}
+                        </span>
+                        ${schema.media_type
+            ? `<span class="ml-2 inline-block px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded">${schema.media_type}</span>`
+            : ""
+          }
+                        ${schema.required !== undefined
+            ? `<span class="ml-2 inline-block px-2 py-1 text-xs font-medium ${schema.required ? 'text-red-600 bg-red-100' : 'text-gray-500 bg-gray-100'} rounded">${schema.required ? 'Required' : 'Optional'}</span>`
+            : ""
+          }
+                    </div>
+                `;
+        schemaCard.appendChild(header);
+
+        // Description if available
+        if (schema.description) {
+          const descEl = document.createElement("p");
+          descEl.className = "text-sm text-gray-600 mb-3";
+          descEl.textContent = schema.description;
+          schemaCard.appendChild(descEl);
+        }
+
+        // Fields table (if available)
+        if (schema.fields && schema.fields.length > 0) {
+          const fieldsTitle = document.createElement("h4");
+          fieldsTitle.className = "text-sm font-semibold text-gray-900 mb-2";
+          fieldsTitle.textContent = "Fields";
+          schemaCard.appendChild(fieldsTitle);
+
+          const table = document.createElement("table");
+          table.className =
+            "min-w-full divide-y divide-gray-200 text-sm mb-3";
+          table.innerHTML = `
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Required</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${schema.fields
+              .map(
+                (field) => `
+                                <tr>
+                                    <td class="px-3 py-2 font-mono text-xs text-gray-900">${field.name
+                  }</td>
+                                    <td class="px-3 py-2 text-xs text-gray-600">${field.type
+                  }</td>
+                                    <td class="px-3 py-2 text-xs">
+                                        ${field.required
+                    ? '<span class="text-red-600 font-semibold">Yes</span>'
+                    : '<span class="text-gray-400">No</span>'
+                  }
+                                    </td>
+                                    <td class="px-3 py-2 text-xs text-gray-600">${field.description || "-"
+                  }</td>
+                                </tr>
+                            `
+              )
+              .join("")}
+                        </tbody>
+                    `;
+          schemaCard.appendChild(table);
+        }
+
+        // JSON Schema (if available)
+        if (schema.json_schema) {
+          const jsonTitle = document.createElement("h4");
+          jsonTitle.className = "text-sm font-semibold text-gray-900 mb-2";
+          jsonTitle.textContent = "JSON Schema";
+          schemaCard.appendChild(jsonTitle);
+
+          const jsonContainer = document.createElement("div");
+          jsonContainer.className = "json-container";
+          jsonContainer.innerHTML = `<pre>${formatJSON(
+            schema.json_schema
+          )}</pre>`;
+          schemaCard.appendChild(jsonContainer);
+        }
+
+        // Always show full schema JSON for complete visibility
+        const fullJsonTitle = document.createElement("h4");
+        fullJsonTitle.className = "text-sm font-semibold text-gray-900 mb-2 mt-3";
+        fullJsonTitle.textContent = "Full Definition";
+        schemaCard.appendChild(fullJsonTitle);
+
+        const fullJsonContainer = document.createElement("div");
+        fullJsonContainer.className = "json-container";
+        fullJsonContainer.innerHTML = `<pre>${formatJSON(schema)}</pre>`;
+        schemaCard.appendChild(fullJsonContainer);
+
+        container.appendChild(schemaCard);
+      });
+    }
+
+    // Copy to clipboard
+    async function copyToClipboard(elementId) {
+      const element = document.getElementById(elementId);
+      const text = element.textContent;
+
+      try {
+        await navigator.clipboard.writeText(text);
+        // Show success feedback
+        const button = event.target;
+        const originalText = button.textContent;
+        button.textContent = "Copied!";
+        button.classList.add("bg-green-100", "text-green-700");
+        button.classList.remove("bg-gray-100", "text-gray-700");
+
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.classList.remove("bg-green-100", "text-green-700");
+          button.classList.add("bg-gray-100", "text-gray-700");
+        }, 2000);
+      } catch (err) {
+        console.error("Failed to copy:", err);
+        alert("Failed to copy to clipboard");
+      }
+    }
+
+    // Global state
+    let isMultiTaskMode = false;
+    let availableTasks = [];
+    let selectedTaskId = null;
+    let selectedVersion = null;
+
+    // Initialize task selector for multi-task mode
+    async function initializeTaskSelector() {
+      try {
+        // First, try to detect multi-task mode by calling metadata endpoint without task_id
+        // If it returns 400, we're in multi-task mode
+        const metadataTestResponse = await fetch('/task/metadata', {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (metadataTestResponse.status === 400) {
+          // We're in multi-task mode - show task selector
+          isMultiTaskMode = true;
+          document.getElementById('task-selection-card').classList.remove('hidden');
+
+          // Try to fetch tasks to populate the dropdown
+          const adminKey = localStorage.getItem(STORAGE_KEYS.ADMIN_API_KEY) ||
+            localStorage.getItem(STORAGE_KEYS.API_KEY) ||
+            localStorage.getItem('adminApiKey') ||
+            localStorage.getItem('apiKey') || '';
+          const response = await fetch('/admin/tasks', {
+            headers: {
+              'X-API-Key': adminKey,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const responseData = await response.json();
+            const tasksData = responseData.tasks || [];
+
+            // Flatten tasks to include version directly
+            const tasks = [];
+            tasksData.forEach(task => {
+              if (task.versions && Array.isArray(task.versions)) {
+                task.versions.forEach(version => {
+                  tasks.push({
+                    task_id: task.task_id,
+                    version: version,
+                    name: task.name,
+                    description: task.description,
+                    latest_version: task.latest_version,
+                    total_versions: task.total_versions,
+                  });
+                });
+              }
+            });
+
+            availableTasks = tasks;
+
+            if (tasks.length > 0) {
+              populateTaskDropdown(tasks);
+
+              // Check for task_id in URL params
+              const urlParams = new URLSearchParams(window.location.search);
+              const taskIdParam = urlParams.get('task_id');
+              const versionParam = urlParams.get('version');
+
+              if (taskIdParam) {
+                // Set dropdown values
+                document.getElementById('task-select').value = taskIdParam;
+                // Populate version dropdown first
+                const taskVersions = tasks.filter(t => t.task_id === taskIdParam)
+                  .sort((a, b) => {
+                    const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+                    const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+                    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+                      const aVal = aParts[i] || 0;
+                      const bVal = bParts[i] || 0;
+                      if (bVal !== aVal) return bVal - aVal;
+                    }
+                    return 0;
+                  });
+
+                const versionSelect = document.getElementById('version-select');
+                versionSelect.innerHTML = taskVersions.map((task, index) => {
+                  const isLatest = index === 0;
+                  const isSelected = versionParam ? task.version === versionParam : isLatest;
+                  return `<option value="${task.version}" ${isSelected ? 'selected' : ''}>
+                      v${task.version}${isLatest ? ' (latest)' : ''}
+                    </option>`;
+                }).join('');
+
+                document.getElementById('version-select-container').style.display = 'block';
+
+                // Load metadata directly with URL params
+                loadMetadata(taskIdParam, versionParam || null);
+              } else {
+                // Multi-task mode but no task selected - just show the selector, don't show error
+                document.getElementById('loading-state').classList.add('hidden');
+                document.getElementById('error-state').classList.add('hidden');
+                document.getElementById('content').classList.add('hidden');
+              }
+            } else {
+              // No tasks found but we're in multi-task mode - just show selector
+              document.getElementById('loading-state').classList.add('hidden');
+              document.getElementById('error-state').classList.add('hidden');
+              document.getElementById('content').classList.add('hidden');
+            }
+          } else {
+            // API call failed - show message but keep selector visible
+            console.log('Failed to fetch tasks, might need API key configuration');
+            document.getElementById('loading-state').classList.add('hidden');
+            // Don't show error - just let user select task manually or configure API key
+          }
+        } else {
+          // Not in multi-task mode - try single-task mode
+          isMultiTaskMode = false;
+          loadMetadata();
+        }
+      } catch (error) {
+        console.log('Error detecting task mode:', error.message);
+        // Try single-task mode as fallback
+        isMultiTaskMode = false;
+        try {
+          await loadMetadata();
+        } catch (err) {
+          // If that also fails, we might be in multi-task mode
+          if (err.message && err.message.includes('400')) {
+            isMultiTaskMode = true;
+            document.getElementById('task-selection-card').classList.remove('hidden');
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('error-state').classList.add('hidden');
+          } else {
+            showError(err.message);
+          }
+        }
+      }
+    }
+
+    // Populate task dropdown
+    function populateTaskDropdown(tasks) {
+      const taskSelect = document.getElementById('task-select');
+
+      // Group tasks by task_id
+      const taskGroups = {};
+      tasks.forEach(task => {
+        if (!taskGroups[task.task_id]) {
+          taskGroups[task.task_id] = {
+            task_id: task.task_id,
+            name: task.name,
+            versions: []
+          };
+        }
+        taskGroups[task.task_id].versions.push(task);
+      });
+
+      // Sort groups by name
+      const sortedGroups = Object.values(taskGroups).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+
+      // Populate dropdown
+      sortedGroups.forEach(group => {
+        const versionCount = group.versions.length;
+        const option = document.createElement('option');
+        option.value = group.task_id;
+        option.textContent = `${group.name} (${versionCount} version${versionCount !== 1 ? 's' : ''})`;
+        taskSelect.appendChild(option);
+      });
+    }
+
+    // Handle task selection change
+    function onTaskSelectChange() {
+      const taskId = document.getElementById('task-select').value;
+      const versionContainer = document.getElementById('version-select-container');
+      const versionSelect = document.getElementById('version-select');
+
+      if (!taskId) {
+        versionContainer.style.display = 'none';
+        versionSelect.innerHTML = '<option value="">Select task first...</option>';
+        selectedTaskId = null;
+        selectedVersion = null;
+        return;
+      }
+
+      // Get versions for selected task
+      const taskVersions = availableTasks.filter(t => t.task_id === taskId)
+        .sort((a, b) => {
+          // Sort by version descending (latest first)
+          const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+          const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+          for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+            const aVal = aParts[i] || 0;
+            const bVal = bParts[i] || 0;
+            if (bVal !== aVal) return bVal - aVal;
+          }
+          return 0;
+        });
+
+      if (taskVersions.length === 0) {
+        return;
+      }
+
+      // Populate version dropdown
+      versionSelect.innerHTML = taskVersions.map((task, index) => {
+        const isLatest = index === 0;
+        return `<option value="${task.version}" ${isLatest ? 'selected' : ''}>
+            v${task.version}${isLatest ? ' (latest)' : ''}
+          </option>`;
+      }).join('');
+
+      // Show version filter
+      versionContainer.style.display = 'block';
+
+      // Load metadata for the selected task (use latest version by default)
+      const versionToLoad = versionSelect.value || taskVersions[0].version;
+      selectedTaskId = taskId;
+      selectedVersion = versionToLoad;
+      loadMetadata(taskId, versionToLoad);
+    }
+
+    // Handle version selection change
+    function onVersionSelectChange() {
+      const taskId = document.getElementById('task-select').value;
+      const version = document.getElementById('version-select').value;
+
+      if (taskId && version) {
+        selectedTaskId = taskId;
+        selectedVersion = version;
+        loadMetadata(taskId, version);
+      }
+    }
+
+    // Load metadata
+    async function loadMetadata(taskId = null, version = null) {
+      showLoading();
+
+      try {
+        // Build URL with query parameters if in multi-task mode
+        let url = '/task/metadata';
+        if (isMultiTaskMode && taskId) {
+          url += `?task_id=${encodeURIComponent(taskId)}`;
+          if (version) {
+            url += `&version=${encodeURIComponent(version)}`;
+          }
+        } else if (isMultiTaskMode && !taskId) {
+          // In multi-task mode but no task selected - don't show error, just return
+          // The task selector should be visible for the user to select a task
+          document.getElementById('loading-state').classList.add('hidden');
+          return;
+        }
+
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          if (response.status === 503) {
+            throw new Error(
+              "Task function not registered. Please ensure the task is running."
+            );
+          }
+          if (response.status === 400) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail?.detail || `HTTP ${response.status}: ${response.statusText}`);
+          }
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const metadata = await response.json();
+
+        // Populate overview
+        document.getElementById("task-name").textContent =
+          metadata.name || "-";
+        document.getElementById("task-version").textContent =
+          metadata.version || "-";
+        document.getElementById("task-description").textContent =
+          metadata.description || "No description available";
+        document.getElementById("framework-version").textContent =
+          metadata.framework_version || "-";
+        document.getElementById("api-version").textContent =
+          metadata.api_version || "-";
+        document.getElementById("task-timestamp").textContent =
+          formatDateTime(metadata.timestamp);
+
+        // Render input schemas
+        renderSchemas(
+          metadata.input_schemas,
+          "input-schemas-container",
+          "input-schemas-empty",
+          "input-schemas-json"
+        );
+
+        // Render output schemas
+        renderSchemas(
+          metadata.output_schemas,
+          "output-schemas-container",
+          "output-schemas-empty",
+          "output-schemas-json"
+        );
+
+        showContent();
+      } catch (error) {
+        console.error("Error loading metadata:", error);
+        showError(error.message);
+      }
+    }
+
+    // Retry loading metadata (used by Try Again button)
+    function retryLoadMetadata() {
+      if (isMultiTaskMode) {
+        const taskId = document.getElementById('task-select').value;
+        const version = document.getElementById('version-select').value;
+        if (taskId) {
+          loadMetadata(taskId, version || null);
+        } else {
+          showError('Please select a task first');
+        }
+      } else {
+        loadMetadata();
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener("DOMContentLoaded", function () {
+      console.log("Metadata page initialized");
+      // Hide error state initially
+      document.getElementById('error-state').classList.add('hidden');
+      document.getElementById('loading-state').classList.add('hidden');
+      document.getElementById('content').classList.add('hidden');
+      // Initialize task selector (which will handle loading metadata)
+      initializeTaskSelector();
+    });
+  </script>
+</body>
+
+</html>
