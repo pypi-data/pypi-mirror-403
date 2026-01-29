@@ -1,0 +1,44 @@
+# Copyright 2026 EcoFuture Technology Services LLC and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import os
+import tempfile
+
+from django.core.management import call_command
+
+import pytest
+
+
+@pytest.fixture(scope='session')
+def django_db_setup(django_db_setup, django_db_blocker) -> None:
+    with django_db_blocker.unblock():
+        call_command('pgtrigger', 'install')
+
+
+@pytest.fixture(scope='function')
+def sample_app():
+    from sample.main import app
+
+    return app
+
+
+@pytest.fixture(scope='session')
+def temp_file():
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        tmp_file.write(b"Hello, this is a test file.")
+        tmp_file_path = tmp_file.name
+
+    yield tmp_file_path
+
+    os.remove(tmp_file_path)
