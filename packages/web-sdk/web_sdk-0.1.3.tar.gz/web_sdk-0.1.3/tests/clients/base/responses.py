@@ -1,0 +1,13 @@
+from tests.clients.base.types import PydanticModel
+
+
+class BaseTestResponse(PydanticModel): ...
+
+
+class BaseTestRequestErrorResponse(BaseTestResponse): ...
+
+
+class BaseTestResponseErrorResponse(BaseTestResponse): ...
+
+
+class BaseTestRetryErrorResponse(BaseTestResponse): ...
