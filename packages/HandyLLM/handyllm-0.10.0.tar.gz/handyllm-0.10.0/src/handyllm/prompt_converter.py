@@ -1,0 +1,253 @@
+from copy import deepcopy
+import json
+import re
+from typing import (
+    IO,
+    Dict,
+    Generator,
+    List,
+    Literal,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    cast,
+)
+
+from .types import PathType, ShortChatChunk, Message
+from ._io import yaml_dump, yaml_load
+
+
+class PromptConverter:
+    role_keys = ["system", "user", "assistant", "tool"]
+
+    def __init__(self):
+        self.substitute_map = {}
+
+    @property
+    def split_pattern(self):
+        # build a regex pattern to split the prompt by role keys
+        return (
+            r"^\$(" + "|".join(self.role_keys) + r")\$[^\S\r\n]*(?:{(.*)})?[^\S\r\n]*$"
+        )
+
+    def detect(self, raw_prompt: str):
+        # detect the role keys in the prompt
+        if re.search(self.split_pattern, raw_prompt, flags=re.MULTILINE):
+            return True
+        return False
+
+    def read_substitute_content(self, path: PathType):
+        # 从文本文件读取所有prompt中需要替换的内容
+        with open(path, "r", encoding="utf-8") as fin:
+            content = fin.read()
+
+        self.substitute_map = {}
+        blocks = re.split(r"(%\w+%)", content)
+        for idx in range(1, len(blocks), 2):
+            key = blocks[idx]
+            value = blocks[idx + 1]
+            self.substitute_map[key] = value.strip()
+
+    def raw2msgs(self, raw_prompt: str) -> List[Message]:
+        # substitute pre-defined variables
+        for key, value in self.substitute_map.items():
+            raw_prompt = raw_prompt.replace(key, value)
+
+        # convert plain text to messages format
+        msgs = []
+        blocks = re.split(self.split_pattern, raw_prompt, flags=re.MULTILINE)
+        for idx in range(1, len(blocks), 3):
+            role = blocks[idx]
+            extra = blocks[idx + 1]
+            content = blocks[idx + 2]
+            obj = self.parse_content(content)
+            msg = {"role": role, **obj}
+            if extra:
+                key_values_pairs = re.findall(
+                    r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')|(?:(?<=\s)|^)(?:(tool)|(array))(?=\s|$)',
+                    extra,
+                )
+                # parse extra properties
+                extra_properties = {}
+                for matches in key_values_pairs:
+                    key, value, tool, array = matches
+                    if tool:
+                        extra_properties["type"] = "tool_calls"
+                    elif array:
+                        extra_properties["type"] = "content_array"
+                    else:
+                        # convert single quoted to double quoted
+                        if value.startswith("'"):
+                            inner = value[1:-1]
+                            inner = inner.replace(r"\'", "'")
+                            inner = inner.replace('"', r"\"")
+                            value = f'"{inner}"'
+                        # decode escaped string
+                        extra_properties[key] = json.loads(value)
+                if "type" in extra_properties:
+                    type_of_msg = extra_properties.pop("type")
+                    if type_of_msg == "tool_calls":
+                        msg["tool_calls"] = yaml_load(content)
+                        msg["content"] = None
+                    elif type_of_msg == "content_array":
+                        # parse content array
+                        msg["content"] = yaml_load(content)
+                for key in extra_properties:
+                    msg[key] = extra_properties[key]
+            msgs.append(msg)
+
+        return msgs
+
+    @staticmethod
+    def parse_content(content: str):
+        content = content.strip()
+        blocks = re.split(
+            r"^\$\$(\w+)\$\$[^\S\r\n]*$",
+            content,
+            flags=re.MULTILINE,
+        )
+        if len(blocks) == 1:
+            return {"content": content}
+        ret: Dict[str, str] = {}
+        for idx in range(1, len(blocks), 2):
+            key = blocks[idx]
+            value = blocks[idx + 1]
+            ret[key] = value.strip()
+        return ret
+
+    def rawfile2msgs(self, raw_prompt_path: PathType):
+        with open(raw_prompt_path, "r", encoding="utf-8") as fin:
+            raw_prompt = fin.read()
+
+        return self.raw2msgs(raw_prompt)
+
+    @staticmethod
+    def msgs2raw(msgs: List[Message]):
+        # convert messages format to plain text
+        messages = []
+        for message in msgs:
+            role = message.get("role")
+            content = message.get("content")
+            reasoning_content = message.get("reasoning_content")
+            tool_calls = message.get("tool_calls")
+            extras = []
+            for key in message:
+                if key not in ["role", "content", "tool_calls", "reasoning_content"]:
+                    escaped = json.dumps(
+                        message[key], ensure_ascii=False
+                    )  # ensure quote/newline escaping
+                    extras.append(f"{key}={escaped}")
+            if tool_calls:
+                extras.append("tool")
+                content = yaml_dump(tool_calls)
+            elif isinstance(content, MutableSequence):
+                extras.append("array")
+                content = yaml_dump(content)
+            if extras:
+                extra = " {" + " ".join(extras) + "}"
+            else:
+                extra = ""
+            content = cast(str, content).strip()
+            if reasoning_content is not None:
+                reasoning_content = reasoning_content.strip()
+                raw = f"${role}${extra}\n$$reasoning_content$$\n{reasoning_content}\n\n$$content$$\n{content}"
+            else:
+                raw = f"${role}${extra}\n{content}"
+            messages.append(raw)
+        raw_prompt = "\n\n".join(messages)
+        return raw_prompt
+
+    @staticmethod
+    def consume_stream2fd(
+        fd: IO[str],
+    ) -> Generator[Optional[ShortChatChunk], ShortChatChunk, None]:
+        # stream response to fd
+        role = ""
+        role_completed = False
+
+        content_state: Literal[0, 1, 2, 3] = 0
+        """
+        0: initial state
+        1: in reasoning text region
+        2: in content text region
+        """
+
+        data = None
+        while True:
+            data = yield data
+            r, text, reasoning_text, tool_call = data
+            if r != role:
+                role = r
+                fd.write(f"${role}$")  # do not add newline
+            if tool_call:
+                if not role_completed:
+                    fd.write(" {tool}\n")
+                    role_completed = True
+                # dump tool calls
+                fd.write(yaml_dump([tool_call]))
+            elif reasoning_text:
+                if not role_completed:
+                    fd.write("\n")
+                    role_completed = True
+                if content_state == 0:
+                    fd.write("$$reasoning_content$$\n")
+                    content_state = 1
+                fd.write(reasoning_text)
+            elif text:
+                if not role_completed:
+                    fd.write("\n")
+                    role_completed = True
+                if content_state == 1:
+                    fd.write("\n\n$$content$$\n")
+                    content_state = 2
+                fd.write(text)
+
+    @classmethod
+    def msgs2rawfile(cls, msgs, raw_prompt_path: PathType):
+        raw_prompt = cls.msgs2raw(msgs)
+        with open(raw_prompt_path, "w", encoding="utf-8") as fout:
+            fout.write(raw_prompt)
+
+    @classmethod
+    def msgs_replace_variables(
+        cls,
+        msgs: List[Message],
+        variable_map: MutableMapping,
+        inplace=False,
+    ):
+        # replace every variable in messages content
+        if inplace:
+            for message in msgs:
+                content = message.get("content")
+                if content:
+                    message["content"] = cls._replace_deep(content, variable_map)  # type: ignore
+            return msgs
+        else:
+            new_msgs = []
+            for message in msgs:
+                new_message = deepcopy(message)
+                new_msgs.append(new_message)
+                content = new_message.get("content")
+                if content:
+                    new_message["content"] = cls._replace_deep(content, variable_map)  # type: ignore
+            return new_msgs
+
+    @classmethod
+    def _replace_deep(cls, content, variable_map: MutableMapping):
+        if isinstance(content, str):
+            for var, value in variable_map.items():
+                if var in content:
+                    content = content.replace(var, value)
+        elif isinstance(content, MutableMapping):
+            for key, value in content.items():
+                content[key] = cls._replace_deep(value, variable_map)
+        elif isinstance(content, MutableSequence):
+            for idx, value in enumerate(content):
+                content[idx] = cls._replace_deep(value, variable_map)
+        return content
+
+    raw2chat = raw2msgs
+    rawfile2chat = rawfile2msgs
+    chat2raw = msgs2raw
+    chat2rawfile = msgs2rawfile
+    chat_replace_variables = msgs_replace_variables
