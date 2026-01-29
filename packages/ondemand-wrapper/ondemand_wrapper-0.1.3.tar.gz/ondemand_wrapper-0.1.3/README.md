@@ -1,0 +1,315 @@
+# OnDemand Python SDK
+
+Async-first, dual-mode (sync + async) client for interacting with On-Demand APIs.
+
+---
+
+## Installation
+
+```bash
+pip install ondemand
+```
+
+Python ≥ 3.9 required.
+
+---
+
+## Environment Variables
+
+| Variable           | Required | Description           |
+| ------------------ | -------- | --------------------- |
+| `ONDEMAND_API_KEY` | ✅        | API key for On-Demand |
+
+---
+
+## Core Concepts
+
+### Client
+
+* Single entrypoint: `OnDemandClient`
+* Manages authentication, HTTP lifecycle, and resources
+
+### Resources
+
+Each API domain is exposed as a resource:
+
+* `sessions` → chat sessions
+* `media` → file uploads
+* `chat` → query + streaming responses
+
+### Execution Modes
+
+* **Sync**: blocking, simple scripts
+* **Async**: non-blocking, scalable services
+
+Both share the **same API surface**.
+
+---
+
+## Quick Start (Sync)
+
+```python
+from ondemand import OnDemandClient
+
+client = OnDemandClient.from_env()
+
+session_id = client.sessions.create(
+    external_user_id="user-1",
+    agents=["agent-123"],
+    context={"role": "admin"},
+)
+
+for event in client.chat.stream(
+    session_id=session_id,
+    query="Hello",
+    agents=["agent-123"],
+    endpoint="predefined-xai-grok4.1-fast",
+):
+    print(event)
+
+client.close()
+```
+
+---
+
+## Quick Start (Async)
+
+```python
+from ondemand import OnDemandClient
+
+async with OnDemandClient.aio() as client:
+    session_id = await client.sessions.create(
+        external_user_id="user-1",
+        agents=["agent-123"],
+        context={"role": "admin"},
+    )
+
+    async for event in client.chat.stream(
+        session_id=session_id,
+        query="Hello",
+        agents=["agent-123"],
+        endpoint="predefined-xai-grok4.1-fast",
+    ):
+        print(event)
+```
+
+---
+
+## Client Lifecycle
+
+### Sync
+
+```python
+client = OnDemandClient.from_env()
+...
+client.close()
+```
+
+### Async
+
+```python
+async with OnDemandClient.aio() as client:
+    ...
+```
+
+Always close the client to release HTTP resources.
+
+---
+
+## Configuration
+
+### `OnDemandConfig`
+
+```python
+from ondemand.config import OnDemandConfig
+
+cfg = OnDemandConfig.from_env()
+```
+
+| Field            | Description            |
+| ---------------- | ---------------------- |
+| `api_key`        | API key (required)     |
+| `chat_base_url`  | Chat API base URL      |
+| `media_base_url` | Media API base URL     |
+| `timeout`        | HTTP timeout (seconds) |
+
+Configuration is **immutable**.
+
+---
+
+## Sessions API
+
+### Create Session
+
+```python
+session_id = client.sessions.create(
+    external_user_id="user-1",
+    agents=["agent-a", "agent-b"],
+    context={"userId": "1", "name": "John"},
+)
+```
+
+**Parameters**
+
+* `external_user_id` *(str)* – caller identity
+* `agents` *(List[str])* – agent/plugin IDs
+* `context` *(Dict[str, str])* – session metadata
+
+**Returns**
+
+* `session_id` *(str)*
+
+---
+
+## Media API
+
+### Upload File
+
+```python
+media = client.media.upload(
+    path="image.png",
+    name="image.png",
+    session_id=session_id,
+    agents=["agent-x"],
+)
+```
+
+**Parameters**
+
+* `path` – local file path
+* `name` – file name exposed to API
+* `session_id` – owning session
+* `agents` – agents allowed to process the file
+
+**Returns**
+
+* dict containing `id`, `url`, metadata
+
+---
+
+## Chat API
+
+### Stream Response (Sync)
+
+```python
+for event in client.chat.stream(
+    session_id=session_id,
+    query="Explain this",
+    agents=["agent-a"],
+    endpoint="predefined-xai-grok4.1-fast",
+):
+    print(event)
+```
+
+### Stream Response (Async)
+
+```python
+async for event in client.chat.stream(...):
+    print(event)
+```
+
+**Event format**
+
+```json
+{
+  "eventType": "fulfillment",
+  "answer": "..."
+}
+```
+
+Streaming ends when `[DONE]` is received.
+
+---
+
+## Error Handling
+
+All SDK errors inherit from `OnDemandError`.
+
+### Common Errors
+
+```python
+from ondemand.errors import HTTPError, ConfigurationError
+```
+
+| Error                | Meaning                  |
+| -------------------- | ------------------------ |
+| `ConfigurationError` | Missing / invalid config |
+| `HTTPError`          | Non-2xx HTTP response    |
+
+### Example
+
+```python
+try:
+    client.sessions.create(...)
+except HTTPError as e:
+    print(e.status_code)
+    print(e.body)
+```
+
+Errors are **never swallowed**.
+
+---
+
+## Thread & Async Safety
+
+* Async client uses `httpx.AsyncClient`
+* Sync client safely bridges async via `anyio`
+* No global state
+* Safe for multi-request workflows
+
+---
+
+## Design Guarantees
+
+* One client → all resources
+* No duplicated logic between sync/async
+* Predictable lifecycle
+* Minimal abstractions
+* Extendable (`client.workflows`, `client.metrics`, etc.)
+
+---
+
+## Non-Goals
+
+* No implicit retries
+* No background threads
+* No hidden state
+* No auto-pagination magic
+
+These can be layered on if needed.
+
+---
+
+## Extending the SDK
+
+Add a new resource:
+
+```python
+client.workflows.execute(...)
+```
+
+Pattern:
+
+* resource file
+* async method
+* exposed via `OnDemandClient`
+
+---
+
+## Versioning & Stability
+
+* Backward-compatible minor releases
+* Breaking changes only in major versions
+* Explicit API surface
+
+---
+
+If you want next:
+
+* **workflow API integration**
+* **retry + backoff policy**
+* **CLI wrapper**
+* **FastAPI dependency injection**
+* **pydantic models**
+
+Say what you want to build on top.
