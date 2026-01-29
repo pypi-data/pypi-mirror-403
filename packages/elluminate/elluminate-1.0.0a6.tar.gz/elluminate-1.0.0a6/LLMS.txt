@@ -1,0 +1,556 @@
+# Instructions: elluminate SDK v1.0
+
+This document helps AI assistants understand the elluminate SDK to assist developers building applications that evaluate LLM prompts.
+
+## What is elluminate?
+
+elluminate is a platform for **prompt evaluation and optimization**. It helps developers:
+- Test prompts against collections of test cases
+- Automatically rate LLM responses against evaluation criteria
+- Compare different prompt versions, LLM configs, or approaches
+- Track experiment results over time
+
+## Core Concepts
+
+### Data Model
+
+```
+Project (root container)
+├── PromptTemplate (versioned templates with {{placeholders}})
+├── TemplateVariablesCollection (test case sets)
+│   └── TemplateVariables (specific input values)
+├── CriterionSet (evaluation rule collections)
+│   └── Criterion (individual yes/no evaluation questions)
+├── Experiment (evaluation run combining template + collection + criteria)
+│   └── PromptResponse (LLM output + ratings)
+└── LLMConfig (provider/model settings)
+```
+
+### Key Workflow
+
+1. **Create a prompt template** with `{{placeholders}}`
+2. **Create test cases** (collection of variable values)
+3. **Define evaluation criteria** (yes/no questions)
+4. **Run an experiment** to generate responses and rate them
+5. **Analyze results** to improve prompts
+
+## SDK v1.0 Patterns
+
+### Client Initialization
+
+The SDK provides both **synchronous** (`Client`) and **asynchronous** (`AsyncClient`) clients:
+
+```python
+from elluminate import Client, AsyncClient
+
+# Synchronous Client
+# Uses ELLUMINATE_API_KEY and ELLUMINATE_BASE_URL env vars
+client = Client()
+
+# Or explicit configuration
+client = Client(
+    api_key="your-api-key",
+    base_url="https://app.elluminate.de",
+    project_id=123,  # Optional: select specific project
+    skip_version_check=True,  # Optional: skip SDK version check
+)
+
+# Asynchronous Client (for concurrent operations)
+async with AsyncClient() as client:
+    # All methods are async - use await
+    template = await client.create_prompt_template(name="...", messages="...")
+    experiment = await client.run_experiment(...)
+
+# Or without context manager
+client = AsyncClient()
+try:
+    template = await client.create_prompt_template(...)
+finally:
+    await client.close()
+```
+
+**When to use AsyncClient:**
+- Running multiple experiments concurrently
+- Integration with async frameworks (FastAPI, aiohttp)
+- Large-scale batch processing with parallel operations
+- Non-blocking I/O in async applications
+- **Real-time streaming** for live progress updates (experiments, batch operations)
+
+### Creating Resources
+
+**Prompt Templates:**
+```python
+# Create new template
+template = client.create_prompt_template(
+    name="My Template",
+    messages="Explain {{concept}} in simple terms.",
+)
+
+# Get or create (idempotent)
+template, created = client.get_or_create_prompt_template(
+    name="My Template",
+    messages="Explain {{concept}} in simple terms.",
+)
+```
+
+**Collections (Test Cases):**
+```python
+# Create collection with test cases
+collection = client.create_collection(
+    name="Test Cases",
+    description="Test inputs for my template",
+)
+collection.add_many(variables=[
+    {"concept": "recursion"},
+    {"concept": "machine learning"},
+    {"concept": "API design"},
+])
+
+# Or get_or_create with defaults
+collection, created = client.get_or_create_collection(
+    name="Test Cases",
+    defaults={
+        "description": "Test inputs",
+        "variables": [{"concept": "recursion"}],
+    },
+)
+```
+
+**Criterion Sets (Evaluation Rules):**
+```python
+# Create criterion set
+criterion_set = client.create_criterion_set(name="Quality Criteria")
+criterion_set.add_criteria([
+    "Is the explanation accurate?",
+    "Is it easy to understand for a beginner?",
+    "Does it include a practical example?",
+])
+
+# Link to template (makes it default for experiments)
+criterion_set.link_template(template)
+
+# Or auto-generate criteria from template
+criteria, generated = template.get_or_generate_criteria()
+```
+
+### Running Experiments
+
+**Simple (recommended):**
+```python
+from elluminate.schemas import RatingMode
+
+# Synchronous
+experiment = client.run_experiment(
+    name="My Experiment",
+    prompt_template=template,
+    collection=collection,
+    criterion_set=criterion_set,  # Optional if linked to template
+    rating_mode=RatingMode.DETAILED,  # Include reasoning
+    n_epochs=1,  # Runs per test case
+)
+
+# Asynchronous (same signature, use await)
+experiment = await client.run_experiment(
+    name="My Experiment",
+    prompt_template=template,
+    collection=collection,
+    criterion_set=criterion_set,
+    rating_mode=RatingMode.DETAILED,
+)
+```
+
+**With inline criteria:**
+```python
+# Pass criteria directly (creates timestamped criterion set)
+experiment = client.run_experiment(
+    name="Quick Test",
+    prompt_template=template,
+    collection=collection,
+    criteria=[  # Creates "Quick Test Criteria (2025-12-19 14:30)"
+        "Is the response helpful?",
+        "Is it factually accurate?",
+    ],
+)
+```
+
+**Two-step (for inspection):**
+```python
+# Create without running
+experiment = client.create_experiment(
+    name="My Experiment",
+    prompt_template=template,
+    collection=collection,
+)
+
+# Inspect configuration, then run
+experiment.run(rating_mode=RatingMode.DETAILED)
+```
+
+**With real-time streaming (AsyncClient only):**
+```python
+from elluminate.streaming import TaskStatus
+
+# Stream real-time progress during execution
+async for event in client.stream_experiment(
+    name="My Experiment",
+    prompt_template=template,
+    collection=collection,
+    criteria=["Is it accurate?", "Is it helpful?"],
+    polling_interval=0.5,  # Poll every 0.5s
+):
+    if event.status == TaskStatus.STARTED:
+        # Live progress updates
+        if event.progress:
+            print(f"Progress: {event.progress.percent_complete:.1%}")
+            print(f"Generated: {event.progress.responses_generated}/{event.progress.total_responses}")
+
+        # Incremental logs
+        if event.logs_delta:
+            print(f"Log: {event.logs_delta}")
+
+    elif event.status == TaskStatus.SUCCESS:
+        experiment = event.result  # Final experiment
+
+    elif event.status == TaskStatus.FAILURE:
+        print(f"Failed: {event.error_msg}")
+```
+
+**When to use streaming:**
+- Experiments with many test cases (>10)
+- Slow models or long-running operations
+- User-facing applications (show progress bar)
+- Real-time debugging (see logs as they occur)
+
+### Accessing Results
+
+```python
+from elluminate.schemas import RatingValue
+
+# Overall metrics
+if experiment.result:
+    print(f"Pass rate: {experiment.result.mean_all_ratings.yes:.1%}")
+
+# Iterate through responses
+for response in experiment.responses():
+    # Get response content (use response_str, NOT messages[-1].content)
+    print(f"Output: {response.response_str[:100]}...")
+
+    # Access ratings
+    for rating in response.ratings:
+        # Use RatingValue enum (NOT string comparison)
+        status = "PASS" if rating.rating == RatingValue.YES else "FAIL"
+        print(f"  [{status}] {rating.criterion.criterion_str}")
+
+        # Reasoning available with RatingMode.DETAILED
+        if rating.reasoning:
+            print(f"    Reason: {rating.reasoning}")
+
+# Calculate pass rate manually
+total = 0
+passed = 0
+for response in experiment.responses():
+    for rating in response.ratings:
+        total += 1
+        if rating.rating == RatingValue.YES:
+            passed += 1
+pass_rate = passed / total if total > 0 else 0
+```
+
+### Evaluating External Agents
+
+For responses from external systems (LangChain, OpenAI Assistants, custom APIs):
+
+```python
+# Create experiment without auto-generation
+experiment = client.create_experiment(
+    name="External Agent Eval",
+    prompt_template=template,
+    collection=collection,
+)
+
+# Get your responses from external system
+template_vars = list(collection.items())
+external_responses = [my_agent(tv.input_values) for tv in template_vars]
+
+# Upload responses and rate them
+experiment.add_responses(
+    responses=external_responses,
+    template_variables=template_vars,
+)
+experiment.rate_responses()
+```
+
+### A/B Testing
+
+Compare different prompt templates:
+
+```python
+# IMPORTANT: Use SAME criterion set for fair comparison
+criterion_set, _ = client.get_or_create_criterion_set(name="Shared Criteria")
+criterion_set.add_criteria([...])
+criterion_set.link_template(template_a)
+criterion_set.link_template(template_b)
+
+# Run both experiments with same collection and criteria
+exp_a = client.run_experiment(
+    name="Style A",
+    prompt_template=template_a,
+    collection=collection,
+    criterion_set=criterion_set,
+)
+
+exp_b = client.run_experiment(
+    name="Style B",
+    prompt_template=template_b,
+    collection=collection,
+    criterion_set=criterion_set,
+)
+
+# Compare pass rates
+rate_a = exp_a.result.mean_all_ratings.yes
+rate_b = exp_b.result.mean_all_ratings.yes
+print(f"A: {rate_a:.1%}, B: {rate_b:.1%}")
+```
+
+### Cloning Experiments
+
+For comparing LLM configs (not templates):
+
+```python
+# Clone allows changing: llm_config, criterion_set, description
+# Clone does NOT allow changing: prompt_template, collection
+new_exp = experiment.clone(
+    name="GPT-4 Turbo Version",
+    llm_config=gpt4_turbo_config,
+)
+new_exp.run()
+```
+
+## Critical Patterns
+
+### DO: Use response_str for Response Content
+
+```python
+# CORRECT
+content = response.response_str
+
+# WRONG - fragile, doesn't handle edge cases
+content = response.messages[-1].content
+content = response.messages[-1]["content"]
+```
+
+### DO: Use RatingValue Enum for Comparisons
+
+```python
+from elluminate.schemas import RatingValue
+
+# CORRECT - type-safe, IDE autocomplete
+if rating.rating == RatingValue.YES:
+    passed += 1
+
+# WRONG - case-sensitive, value is "YES" not "yes"
+if rating.rating.value == "yes":  # Always False!
+    passed += 1
+```
+
+### DO: Use get_or_create for Idempotent Operations
+
+```python
+# CORRECT - safe to run multiple times
+template, created = client.get_or_create_prompt_template(
+    name="My Template",
+    messages="...",
+)
+
+# RISKY - fails if template exists
+template = client.create_prompt_template(name="My Template", messages="...")
+```
+
+### DO: Use Shared Criteria for A/B Tests
+
+```python
+# CORRECT - same criteria for fair comparison
+criterion_set.link_template(template_a)
+criterion_set.link_template(template_b)
+
+# WRONG - auto-generated criteria may differ
+template_a.get_or_generate_criteria()  # Criteria X
+template_b.get_or_generate_criteria()  # Different criteria Y
+```
+
+### DO: Get Models Through the Client
+
+```python
+# CORRECT - model has client binding, rich methods work
+template = client.get_prompt_template(name="My Template")
+template.new_version(new_messages="...")  # Works
+
+# WRONG - manually constructed models lack client binding
+from elluminate.schemas import PromptTemplate
+template = PromptTemplate(id=1, name="Test", ...)
+template.new_version(...)  # Raises ModelNotBoundError
+```
+
+### DO: Check result Before Accessing Metrics
+
+```python
+# CORRECT - handle unrun experiments
+if experiment.result:
+    print(f"Pass rate: {experiment.result.mean_all_ratings.yes:.1%}")
+else:
+    print("Experiment has no results yet")
+
+# WRONG - fails if experiment hasn't been run
+print(experiment.result.mean_all_ratings.yes)  # AttributeError if result is None
+```
+
+## Common Imports
+
+```python
+from elluminate import Client, AsyncClient  # Sync and async clients
+from elluminate.schemas import (
+    RatingMode,      # FAST or DETAILED
+    RatingValue,     # YES or NO
+    GenerationParams,  # temperature, max_tokens, etc.
+)
+from elluminate.exceptions import (
+    ConflictError,      # 409 - Resource already exists
+    NotFoundError,      # 404 - Resource not found
+    AuthenticationError,  # 401 - Invalid API key
+)
+
+# Optional: Type hints for defaults parameters
+from elluminate import (
+    CollectionDefaults,
+    PromptTemplateDefaults,
+    CriterionSetDefaults,
+    LLMConfigDefaults,
+)
+```
+
+## Environment Variables
+
+```bash
+ELLUMINATE_API_KEY=your-api-key
+ELLUMINATE_BASE_URL=https://app.elluminate.de  # or your instance
+```
+
+## Error Handling
+
+The SDK provides specific exception types for different error scenarios:
+
+```python
+from elluminate.exceptions import (
+    ConflictError,      # 409 - Resource already exists
+    NotFoundError,      # 404 - Resource not found
+    AuthenticationError,  # 401 - Invalid API key
+    ValidationError,    # Input validation failed
+    ConfigurationError,  # SDK misconfigured (e.g., missing API key)
+)
+
+# Handle resource conflicts (common with create operations)
+try:
+    template = client.create_prompt_template(name="Existing", messages="...")
+except ConflictError as e:
+    print(f"Template already exists: {e.resource_name}")
+    # Use get_or_create instead to avoid this
+
+# Handle missing resources
+try:
+    template = client.get_prompt_template(name="NonExistent")
+except NotFoundError:
+    print("Template not found")
+
+# Handle authentication issues
+try:
+    client = Client(api_key="invalid-key")
+    client.list_prompt_templates()
+except AuthenticationError:
+    print("Invalid API key")
+```
+
+**Best practice**: Use `get_or_create_*` methods to avoid `ConflictError`:
+
+```python
+# CORRECT - idempotent, no ConflictError
+template, created = client.get_or_create_prompt_template(
+    name="My Template",
+    messages="...",
+)
+
+# RISKY - raises ConflictError if exists
+template = client.create_prompt_template(name="My Template", messages="...")
+```
+
+## Performance Tips
+
+### Skip Fetching Responses When Not Needed
+
+When you only need experiment metadata (not responses), use `fetch_responses=False`:
+
+```python
+# Faster - skips loading all responses
+experiment = client.get_experiment(name="My Experiment", fetch_responses=False)
+print(f"Experiment ID: {experiment.id}")
+
+# Default - loads responses (needed for analysis)
+experiment = client.get_experiment(name="My Experiment")
+for response in experiment.responses():
+    print(response.response_str)
+```
+
+Use `fetch_responses=False` when:
+- Checking if an experiment exists
+- Deleting an experiment
+- Getting experiment metadata only
+
+### Use AsyncClient for Concurrent Operations
+
+When running multiple independent operations, use `AsyncClient` with `asyncio.gather()`:
+
+```python
+import asyncio
+from elluminate import AsyncClient
+
+async def run_concurrent_experiments():
+    async with AsyncClient() as client:
+        # Run 3 experiments concurrently (much faster than sequential)
+        experiments = await asyncio.gather(
+            client.run_experiment(name="Exp 1", ...),
+            client.run_experiment(name="Exp 2", ...),
+            client.run_experiment(name="Exp 3", ...),
+        )
+        return experiments
+
+# Execute
+experiments = asyncio.run(run_concurrent_experiments())
+```
+
+**Async benefits:**
+- **Concurrent execution**: Run multiple experiments simultaneously
+- **Better resource utilization**: Non-blocking I/O operations
+- **Integration**: Works with FastAPI, aiohttp, and other async frameworks
+- **Scalability**: Handle large workloads more efficiently
+
+## Quick Reference
+
+| Task | Sync Method | Async Method |
+|------|-------------|--------------|
+| Create template | `client.create_prompt_template(name, messages)` | `await client.create_prompt_template(name, messages)` |
+| Get or create template | `client.get_or_create_prompt_template(name, messages)` | `await client.get_or_create_prompt_template(name, messages)` |
+| Create collection | `client.create_collection(name)` | `await client.create_collection(name)` |
+| Add test cases | `collection.add_many(variables=[...])` | `await collection.aadd_many(variables=[...])` |
+| Create criteria | `criterion_set.add_criteria([...])` | `await criterion_set.aadd_criteria([...])` |
+| Auto-generate criteria | `template.get_or_generate_criteria()` | `await template.aget_or_generate_criteria()` |
+| Run experiment | `client.run_experiment(name, prompt_template, collection)` | `await client.run_experiment(name, prompt_template, collection)` |
+| Get experiment (fast) | `client.get_experiment(name=..., fetch_responses=False)` | `await client.get_experiment(name=..., fetch_responses=False)` |
+| Get response text | `response.response_str` | `response.response_str` |
+| Check if passed | `rating.rating == RatingValue.YES` | `rating.rating == RatingValue.YES` |
+| Get pass rate | `experiment.result.mean_all_ratings.yes` | `experiment.result.mean_all_ratings.yes` |
+
+**Note**: Rich model methods (on schema objects) use `a` prefix for async (e.g., `aadd_many`, `aget_or_generate_criteria`). AsyncClient public methods do NOT use the `a` prefix.
+
+## Resources
+
+- API Docs: `https://your-instance/api/v0/docs/`
+- SDK Documentation: `https://docs.elluminate.de/`
