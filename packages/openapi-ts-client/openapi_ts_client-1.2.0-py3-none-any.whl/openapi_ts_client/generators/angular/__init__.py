@@ -1,0 +1,1 @@
+"""Angular TypeScript client generator."""
