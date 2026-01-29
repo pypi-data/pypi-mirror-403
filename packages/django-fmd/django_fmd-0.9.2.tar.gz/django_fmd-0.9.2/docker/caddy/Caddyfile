@@ -1,0 +1,31 @@
+# https://caddyserver.com/docs/caddyfile
+
+{
+    # No Let's Encrypt certificates in development environment
+    auto_https off
+
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}
+
+:80 {
+    root * /static
+    file_server
+    reverse_proxy django:8000
+
+    # We don't redirect to HTTPS with:
+    # redir https://{host}:443{uri}
+    # because the app will not accept self-signed certificates!
+}
+
+:443 {
+    root * /static
+    file_server
+    reverse_proxy django:8000
+    tls internal {
+		on_demand
+	}
+}

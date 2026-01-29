@@ -1,0 +1,164 @@
+[project]
+name = "django-fmd"
+dynamic = ["version"]
+description = "Server for 'Find My Device' android app, implemented in Django/Python"
+license = {text = "GPL-3.0-or-later"}
+readme = "README.md"
+authors = [
+    {name = 'Jens Diemer', email = 'git@jensdiemer.de'}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "django",  # https://docs.djangoproject.com
+
+    "colorlog",  # https://github.com/borntyping/python-colorlog
+    "gunicorn",  # https://github.com/benoimyproject.wsgitc/gunicorn
+
+    "django-debug-toolbar",  # http://django-debug-toolbar.readthedocs.io/en/stable/changes.html
+    "bx_py_utils",  # https://github.com/boxine/bx_py_utils
+    "bx_django_utils",  # https://github.com/boxine/bx_django_utils
+
+    "requests",  # https://github.com/psf/requests
+    "pycryptodomex",  # https://github.com/Legrandin/pycryptodome
+    "argon2-cffi",  # https://github.com/hynek/argon2-cffi
+]
+[dependency-groups]
+dev = [
+    "manage_django_project",  # https://github.com/jedie/manage_django_project
+    "beautifulsoup4",  # https://www.crummy.com/software/BeautifulSoup/
+    "uv",  # https://github.com/astral-sh/uv
+    "hatchling",  # https://github.com/pypa/hatch/tree/master/backend
+    "tblib",   # https://github.com/ionelmc/python-tblib
+    "nox",  # https://github.com/wntrblm/nox
+    "coverage",  # https://github.com/nedbat/coveragepy
+    "ruff", # https://github.com/astral-sh/ruff
+    "codespell",  # https://github.com/codespell-project/codespell
+    "EditorConfig",  # https://github.com/editorconfig/editorconfig-core-py
+    "pip-audit",  # https://github.com/pypa/pip-audit
+    "mypy",  # https://github.com/python/mypy
+    "twine",  # https://github.com/pypa/twine
+    "pre-commit",  # https://github.com/pre-commit/pre-commit
+    "typeguard",  # https://github.com/agronholm/typeguard/
+    #
+    "model_bakery",  # https://github.com/model-bakers/model_bakery
+    "requests-mock",
+    "django-override-storage",  # https://github.com/danifus/django-override-storage
+]
+
+[project.urls]
+Documentation = "https://gitlab.com/jedie/django-find-my-device"
+Source = "https://gitlab.com/jedie/django-find-my-device"
+
+
+[project.scripts]
+# Must be set in ./manage.py and PROJECT_SHELL_SCRIPT:
+findmydevice_project = "findmydevice_project.__main__:main"
+
+[manage_django_project]
+module_name="findmydevice_project"
+
+# Django settings used for all commands except test/coverage/tox:
+local_settings='findmydevice_project.settings.local'
+
+# Django settings used for test/coverage/tox commands:
+test_settings='findmydevice_project.settings.tests'
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["findmydevice", "findmydevice_project"]
+
+[tool.hatch.version]
+path = "findmydevice/__init__.py"
+
+
+[tool.cli_base]
+version_module_name = "findmydevice" # Used by "update-readme-history" pre-commit hook
+
+
+[tool.cli_base.pip_audit]
+strict=true
+require_hashes=true
+ignore-vuln=[]
+
+
+[tool.ruff]
+# https://docs.astral.sh/ruff/configuration/
+line-length = 120
+exclude = [
+    ".*/",
+    "*/migrations/*"
+]
+
+[tool.ruff.lint]
+preview = true  # Needed for some of the rules
+extend-select = [
+    "E", # pycodestyle: https://docs.astral.sh/ruff/rules/#error-e
+    "I", # isort: https://docs.astral.sh/ruff/rules/#isort-i
+]
+ignore = [
+    "E402", # https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file/
+    "E731", # https://docs.astral.sh/ruff/rules/lambda-assignment/
+]
+
+[tool.ruff.lint.isort]
+# https://docs.astral.sh/ruff/settings/#lintisort
+lines-after-imports = 2
+
+[tool.ruff.format]
+quote-style = "single"
+
+
+[tool.coverage.run]  # https://coverage.readthedocs.io/en/latest/config.html#run
+branch = true
+parallel = true
+concurrency = ["multiprocessing"]
+source = ['.']
+command_line = '-m findmydevice_project test --shuffle --parallel --buffer'
+
+[tool.coverage.report]
+omit = ['.*', '*/tests/*', '*/migrations/*']
+skip_empty = true
+fail_under = 30
+show_missing = true
+exclude_lines = [
+    'if self.debug:',
+    'pragma: no cover',
+    'raise NotImplementedError',
+    'if __name__ == .__main__.:',
+]
+
+[tool.mypy]
+warn_unused_configs = true
+ignore_missing_imports = true
+allow_redefinition = true  # https://github.com/python/mypy/issues/7165
+show_error_codes = true
+plugins = []
+exclude = ['.venv', 'tests', 'migrations']
+
+
+[manageprojects] # https://github.com/jedie/manageprojects
+initial_revision = "1f3a70e"
+initial_date = 2024-05-21T21:22:39+02:00
+cookiecutter_template = "https://github.com/jedie/cookiecutter_templates/"
+cookiecutter_directory = "managed-django-project"
+applied_migrations = [
+    "ac28103", # 2025-10-25T19:03:33+02:00
+    "ae7c1ba", # 2025-12-16T19:28:11+01:00
+]
+
+[manageprojects.cookiecutter_context.cookiecutter]
+full_name = "Jens Diemer"
+github_username = "jedie"
+author_email = "git@jensdiemer.de"
+project_name = "django-fmd"
+package_name = "findmydevice"
+django_project_name = "findmydevice_project"
+package_version = "0.4.0"
+package_description = "Server for 'Find My Device' android app, implemented in Django/Python"
+package_url = "https://gitlab.com/jedie/django-find-my-device"
+license = "GPL-3.0-or-later"
+_template = "https://github.com/jedie/cookiecutter_templates/"

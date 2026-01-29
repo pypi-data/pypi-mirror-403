@@ -1,0 +1,59 @@
+services:
+    django:
+        build:
+            context: .
+            dockerfile: docker/django/Dockerfile
+        restart: "no"
+        hostname: django
+        ports:
+            - "8000"
+        env_file: ./docker/common.env
+        links:
+            - postgres:postgres
+        depends_on:
+            - postgres
+        volumes:
+            - ./docker/:/django/docker/:ro
+            - ./findmydevice/:/django/findmydevice/:ro
+            - ./findmydevice_project/:/django/findmydevice_project/:ro
+            #
+            - ./volumes/django/venv/:/django/.venv/:rw
+            - ./volumes/django/build/:/django/build/:rw
+            - ./volumes/django/static/:/static/:rw
+            - ./volumes/django/media/:/media/:rw
+            # e.g.: pip cache must be the same value as $XDG_CACHE_HOME !
+            - ./volumes/cache/:/tmp/.cache:rw
+        entrypoint: /django/docker/django/entrypoint.sh
+
+    caddy:
+        image: caddy:2-alpine
+        ports:
+            - "0.0.0.0:8000:80"
+            - "0.0.0.0:443:443"
+        volumes:
+            - ./docker/caddy/:/etc/caddy/:ro
+            - ./volumes/django/static/:/static/:ro
+        depends_on:
+            - django
+
+    postgres:
+        # https://hub.docker.com/_/postgres
+        image: postgres:alpine
+        restart: "no"
+        hostname: postgres
+        ports:
+            - "5432"
+        env_file: ./docker/common.env
+        environment:
+            - POSTGRES_HOST_AUTH_METHOD=trust
+            - USER_ID=${USER_ID}
+        user: "${USER_ID}:${USER_ID}"
+        volumes:
+            - ./docker/postgres/init-user-db.sh:/docker-entrypoint-initdb.d/init-user-db.sh:ro
+            - ./volumes/postgresql:/var/lib/postgresql:rw
+
+#    adminer:
+#      image: adminer
+#      restart: "no"
+#      ports:
+#        - 8080:8080
