@@ -1,0 +1,420 @@
+import asyncio
+import logging
+import re
+from abc import ABC
+from typing import Any, Dict, Optional, Tuple
+
+from fastapi import HTTPException
+
+from src.api.models import App, Service, create_resource, delete_resource, get_resources
+from src.api.schemas import UserSchema
+from src.api.tools.resource import ResourceName
+from src.api.tools.ssh import run_command
+from src.config import Config
+
+available_databases = Config.AVAILABLE_DATABASES
+
+
+def parse_service_info(plugin_name: str, info_str: str) -> Dict:
+    lines = info_str.splitlines()
+    result = {}
+
+    for line in lines[1:]:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip().lower().replace(" ", "_")
+            value = value.strip()
+            result[key] = value
+
+    result["plugin_name"] = plugin_name
+    return result
+
+
+def parse_service_list(text: str):
+    """
+    Extract the list of services from a formatted string.
+    """
+    lines = text.strip().split("\n")
+    services = [
+        line.strip() for line in lines if line.strip() and not line.startswith("=====>")
+    ]
+    return services
+
+
+def get_user_id_from_service(name) -> Optional[int]:
+    id = name.split("_", maxsplit=1)[0]
+
+    try:
+        return int(id)
+    except ValueError:
+        return None
+
+
+def extract_database_uri(text):
+    pattern = re.compile(
+        r"\b(?:[a-z]+)://(?:[^:@\s]+):(?:[^:@\s]+)@(?:[^:@\s]+):\d+/\S+\b",
+        re.IGNORECASE,
+    )
+
+    match = pattern.search(text)
+    return match.group(0) if match else None
+
+
+class DatabaseService(ABC):
+
+    @staticmethod
+    async def list_available_databases() -> Tuple[bool, Any]:
+        return True, available_databases
+
+    @staticmethod
+    async def create_database(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+        available_databases = (await DatabaseService.list_available_databases())[1]
+
+        if plugin_name not in available_databases:
+            raise HTTPException(
+                status_code=404,
+                detail="Plugin not found",
+            )
+
+        _, message = await run_command(f"{plugin_name}:exists {database_name}")
+
+        if f"Service {database_name} exists" in message.lower():
+            raise HTTPException(status_code=403, detail="Database already exists")
+
+        if "does not exist" not in message.lower():
+            raise HTTPException(status_code=404, detail="Plugin does not exist")
+
+        await create_resource(
+            session_user.email, f"{plugin_name}:{database_name}", Service
+        )
+        return await run_command(f"{plugin_name}:create {database_name}")
+
+    @staticmethod
+    async def list_all_databases(
+        session_user: UserSchema, return_info: bool = True
+    ) -> Tuple[bool, Any]:
+        available_databases = (await DatabaseService.list_available_databases())[1]
+        result = {}
+
+        for plugin_name in available_databases:
+            success, data = await DatabaseService.list_databases(
+                session_user, plugin_name, return_info
+            )
+
+            if success and data:
+                result[plugin_name] = data
+
+        return True, result
+
+    @staticmethod
+    async def list_databases(
+        session_user: UserSchema, plugin_name: str, return_info: bool = True
+    ) -> Tuple[bool, Any]:
+        plugins = [
+            plugin
+            for plugin in session_user.services
+            if plugin.startswith(plugin_name + ":")
+        ]
+        databases = [plugin.split(":", maxsplit=1)[1] for plugin in plugins]
+
+        result = {}
+
+        tasks = []
+        database_names = []
+
+        if not return_info:
+            for database_name in databases:
+                database_name = str(
+                    ResourceName(session_user, database_name, Service, from_system=True)
+                )
+                result[database_name] = {}
+            return True, result
+
+        for database_name in databases:
+            database_name = str(
+                ResourceName(session_user, database_name, Service, from_system=True)
+            )
+            database_names.append(database_name)
+            tasks.append(
+                DatabaseService.get_database_info(
+                    session_user, plugin_name, database_name
+                )
+            )
+
+        database_infos = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for name, info in zip(database_names, database_infos):
+            result[name] = {} if isinstance(info, Exception) else info[1]
+
+        return True, result
+
+    @staticmethod
+    async def delete_database(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        system_database_name = ResourceName(
+            session_user, database_name, Service
+        ).for_system()
+
+        if f"{plugin_name}:{system_database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+
+        _, linked_apps = await DatabaseService.get_linked_apps(
+            session_user, plugin_name, database_name
+        )
+
+        for app_name in linked_apps:
+            await DatabaseService.unlink_database(
+                session_user, plugin_name, database_name, app_name
+            )
+
+        await delete_resource(
+            session_user.email, f"{plugin_name}:{system_database_name}", Service
+        )
+        return await run_command(
+            f"--force {plugin_name}:destroy {system_database_name}"
+        )
+
+    @staticmethod
+    async def get_database_info(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+        success, message = await run_command(f"{plugin_name}:info {database_name}")
+        return success, parse_service_info(plugin_name, message) if success else None
+
+    @staticmethod
+    async def get_linked_apps(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+        success, message = await run_command(f"{plugin_name}:links {database_name}")
+        result = (
+            [
+                str(ResourceName(session_user, app, App, from_system=True))
+                for app in message.split("\n")
+                if app
+            ]
+            if success
+            else []
+        )
+
+        return success, result
+
+    @staticmethod
+    async def link_database(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+        app_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+        app_name = ResourceName(session_user, app_name, App).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+        if app_name not in session_user.apps:
+            raise HTTPException(
+                status_code=404,
+                detail="App does not exist",
+            )
+        return await run_command(
+            f"--no-restart {plugin_name}:link {database_name} {app_name}"
+        )
+
+    @staticmethod
+    async def unlink_database(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+        app_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+        app_name = ResourceName(session_user, app_name, App).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+        if app_name not in session_user.apps:
+            raise HTTPException(
+                status_code=404,
+                detail="App does not exist",
+            )
+        return await run_command(
+            f"--no-restart {plugin_name}:unlink {database_name} {app_name}"
+        )
+
+    @staticmethod
+    async def get_database_uri(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+
+        success, message = await run_command(f"{plugin_name}:info {database_name}")
+
+        if not success:
+            return False, None
+
+        return True, extract_database_uri(message)
+
+    @staticmethod
+    async def get_logs(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+        n_lines: int = 2000,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+
+        success, message = await run_command(
+            f"{plugin_name}:logs {database_name} --num {n_lines}"
+        )
+
+        if not success:
+            return False, None
+
+        return True, message
+
+    @staticmethod
+    async def start_database(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+
+        success, message = await run_command(f"{plugin_name}:start {database_name}")
+
+        if not success:
+            return False, None
+
+        return True, message
+
+    @staticmethod
+    async def stop_database(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+
+        success, message = await run_command(f"{plugin_name}:stop {database_name}")
+
+        if not success:
+            return False, None
+
+        return True, message
+
+    @staticmethod
+    async def restart_database(
+        session_user: UserSchema,
+        plugin_name: str,
+        database_name: str,
+    ) -> Tuple[bool, Any]:
+        database_name = ResourceName(session_user, database_name, Service).for_system()
+
+        if f"{plugin_name}:{database_name}" not in session_user.services:
+            raise HTTPException(
+                status_code=404,
+                detail="Database does not exist",
+            )
+
+        success, message = await run_command(f"{plugin_name}:restart {database_name}")
+
+        if not success:
+            return False, None
+
+        return True, message
+
+    @staticmethod
+    async def sync_dokku_with_api_database() -> None:
+        available_databases = (await DatabaseService.list_available_databases())[1]
+        services = {}
+
+        for plugin_name in available_databases:
+            success, message = await run_command(f"{plugin_name}:list", use_log=False)
+
+            if not success:
+                logging.warning(
+                    f"Could not recover {plugin_name} services list to sync with database"
+                )
+                continue
+
+            for name in parse_service_list(message):
+                if get_user_id_from_service(name):
+                    services[f"{plugin_name}:{name}"] = True
+
+        logging.warning("[sync_dokku_w_service_database]::Syncing Dokku...")
+
+        db_services = await get_resources(Service, offset=0, limit=None)
+
+        for service in db_services:
+            services.pop(service["name"], None)
+
+        for service_name in services:
+            plugin_name, service_name = service_name.split(":", maxsplit=1)
+            logging.warning(
+                f"[sync_dokku_w_service_database]:{plugin_name}:{service_name}::Destroying unused service..."
+            )
+            await run_command(
+                f"--force {plugin_name}:destroy {service_name}", use_log=False
+            )
+
+        logging.warning("[sync_dokku_w_service_database]::Sync complete.")
