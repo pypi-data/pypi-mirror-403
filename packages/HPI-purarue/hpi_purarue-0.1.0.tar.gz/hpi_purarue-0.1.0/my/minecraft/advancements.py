@@ -1,0 +1,108 @@
+"""
+Parses achievement data/timestamps from local minecraft worlds
+Copied from the ~/.minecraft directory, one for each world
+Backed up with:
+https://github.com/purarue/HPI-personal/blob/master/scripts/backup_minecraft_advancements
+"""
+
+# see https://github.com/purarue/dotfiles/blob/master/.config/my/my/config/__init__.py for an example
+from my.config import minecraft as user_config  # type: ignore[attr-defined]
+
+from dataclasses import dataclass
+from my.core import Paths
+
+
+@dataclass
+class config(user_config.advancements):
+    # path[s]/glob to the backup directory
+    export_path: Paths
+
+
+import json
+from pathlib import Path
+from typing import NamedTuple, Any
+from collections.abc import Sequence, Iterator
+from datetime import datetime
+from itertools import chain
+
+from my.core import get_files, Stats
+from my.core.structure import match_structure
+
+from more_itertools import unique_everseen
+
+EXPECTED = ("advancements",)
+
+
+def _advancement_json_files(world_dir: Path) -> list[Path]:
+    d = (world_dir / "advancements").absolute()
+    if not d.exists():
+        return []
+    return list(d.rglob("*.json"))
+
+
+def worlds() -> Sequence[Path]:
+    found = []
+    for f in get_files(config.export_path):
+        with match_structure(f, EXPECTED) as match:
+            for m in match:
+                if _advancement_json_files(m):
+                    found.append(m.absolute())
+    return found
+
+
+class Advancement(NamedTuple):
+    advancement_id: str
+    world_name: str
+    dt: datetime
+
+
+Results = Iterator[Advancement]
+
+
+def advancements() -> Results:
+    yield from unique_everseen(chain(*map(_parse_world, worlds())))
+
+
+DATE_REGEX = r"%Y-%m-%d %H:%M:%S %z"
+
+
+def _parse_world(world_dir: Path) -> Results:
+    """
+    An example of a key, val this is trying to parse:
+
+      "minecraft:nether/obtain_crying_obsidian": {
+        "criteria": {
+          "crying_obsidian": "2022-06-17 22:48:18 -0700"
+        },
+        "done": true
+      },
+    """
+
+    for f in _advancement_json_files(world_dir):
+        data = json.loads(f.read_text())
+        for key, val in data.items():
+            # ignore advanced in crafting recipes
+            # and random non-dict values (version numbers etc.)
+            if key.startswith("minecraft:recipes") or not isinstance(val, dict):
+                continue
+            # if just a marker and not 'done', don't include
+            if "done" in val and val["done"] is False:
+                continue
+            possible_date_blobs: list[dict[Any, Any]] = [
+                v for v in val.values() if isinstance(v, dict)
+            ]
+            for blob in possible_date_blobs:
+                for datestr in filter(lambda s: isinstance(s, str), blob.values()):
+                    try:
+                        parsed_date = datetime.strptime(datestr, DATE_REGEX)
+                    except ValueError:
+                        continue
+                    yield Advancement(
+                        advancement_id=key, world_name=world_dir.stem, dt=parsed_date
+                    )
+
+
+def stats() -> Stats:
+    from my.core import stat
+
+    return {**stat(advancements)}

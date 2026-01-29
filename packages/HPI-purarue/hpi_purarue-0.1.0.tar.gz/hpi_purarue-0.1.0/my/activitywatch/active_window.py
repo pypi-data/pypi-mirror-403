@@ -1,0 +1,67 @@
+"""
+Parses history from https://github.com/purarue/aw-watcher-window
+using https://github.com/purarue/active_window
+"""
+
+REQUIRES = [
+    "git+https://github.com/purarue/aw-watcher-window",
+    "git+https://github.com/purarue/active_window",
+]
+
+# see https://github.com/purarue/dotfiles/blob/master/.config/my/my/config/__init__.py for an example
+from my.config import activitywatch as user_config  # type: ignore[attr-defined]
+
+from pathlib import Path
+from typing import Union
+from collections.abc import Iterator, Sequence
+from functools import partial
+from itertools import chain
+
+from dataclasses import dataclass
+from my.core import get_files, Stats, Paths, make_logger, make_config
+
+from more_itertools import unique_everseen
+
+import active_window.parse as AW
+
+logger = make_logger(__name__)
+
+
+@dataclass
+class window_config(user_config.active_window):
+    # path[s]/glob to the backed up aw-window JSON/window_watcher CSV history files
+    export_path: Paths
+    error_policy: AW.ErrorPolicy = "drop"
+
+
+config = make_config(window_config)
+
+
+Result = Union[AW.AWAndroidEvent, AW.AWComputerEvent, AW.AWWindowWatcherEvent]
+Results = Iterator[Result]
+
+
+def inputs() -> Sequence[Path]:
+    return get_files(config.export_path)
+
+
+def history() -> Results:
+    yield from unique_everseen(
+        chain(
+            *map(
+                partial(
+                    AW.parse_window_events,
+                    logger=logger,
+                    error_policy=config.error_policy,
+                ),
+                inputs(),
+            )
+        ),
+        key=lambda e: e.timestamp,
+    )
+
+
+def stats() -> Stats:
+    from my.core import stat
+
+    return {**stat(history)}
