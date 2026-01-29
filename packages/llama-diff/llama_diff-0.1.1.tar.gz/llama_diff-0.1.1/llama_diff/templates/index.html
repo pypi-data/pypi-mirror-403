@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Code Review: {{ source_branch }} → {{ target_branch }}{% endblock %}
+
+{% block header_extra %}
+<div class="stats">
+    <span>{{ file_count }} files</span>
+    <span>{{ total_issues }} issues</span>
+    <span>{{ total_suggestions }} suggestions</span>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+.summary-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+.summary-card h2 {
+    font-size: 1rem;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.summary-card .summary-content {
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+}
+
+.file-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.file-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.file-path {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+    font-size: 0.875rem;
+}
+
+.btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    transition: all 0.15s;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+    text-decoration: none;
+}
+
+.file-summary {
+    padding: 16px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="summary-card">
+    <h2>Overall Summary</h2>
+    <div class="summary-content md-content">{{ overall_summary }}</div>
+</div>
+
+{% for file in files %}
+<div class="file-card">
+    <div class="file-card-header">
+        <div class="file-info">
+            <span class="badge badge-{{ file.change_type|lower }}">{{ file.change_label }}</span>
+            <span class="file-path">{{ file.path }}</span>
+        </div>
+        <a href="/code/{{ file.idx }}" class="btn btn-primary">View Code</a>
+    </div>
+    <div class="file-summary md-content" data-file="{{ file.idx }}">{{ file.summary }}</div>
+    {% if file.issues %}
+    <div class="review-list issues" data-file="{{ file.idx }}">
+        <h4>Issues ({{ file.issues|length }})</h4>
+        <ul>
+            {% for issue in file.issues %}
+            <li class="md-content">{{ issue }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    {% if file.suggestions %}
+    <div class="review-list suggestions" data-file="{{ file.idx }}">
+        <h4>Suggestions ({{ file.suggestions|length }})</h4>
+        <ul>
+            {% for suggestion in file.suggestions %}
+            <li class="md-content">{{ suggestion }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // File paths by index for line reference links
+    const filePaths = {
+        {% for file in files %}
+        {{ file.idx }}: "{{ file.path }}",
+        {% endfor %}
+    };
+    
+    // Render markdown and linkify line references (only within file cards)
+    document.querySelectorAll('.file-card .md-content').forEach(el => {
+        // Get file index from parent file-card's View Code link
+        const fileCard = el.closest('.file-card');
+        let fileIdx = null;
+        if (fileCard) {
+            const link = fileCard.querySelector('a.btn-primary');
+            if (link) {
+                const match = link.href.match(/\/code\/(\d+)/);
+                if (match) fileIdx = match[1];
+            }
+        }
+        if (!fileIdx) return; // Skip if no file context
+        
+        const filePath = filePaths[fileIdx] || '';
+        const fileName = filePath.split('/').pop() || 'file';
+        
+        let html = marked.parse(el.textContent);
+        // Convert Line:X format to file.ext:NUM with link
+        html = html.replace(/Line:(\d+)/gi,
+            (match, num) => `<a href="/code/${fileIdx}#L${num}" class="line-ref">${fileName}:${num}</a>`);
+        // Convert "line 42" or "lines 42" format
+        html = html.replace(/([Ll]ines?\s*)(\d+)/g,
+            (match, prefix, num) => `<a href="/code/${fileIdx}#L${num}" class="line-ref">${fileName}:${num}</a>`);
+        el.innerHTML = html;
+    });
+    
+    // Render markdown in overall summary with smart file detection
+    // Build reverse lookup: filename -> fileIdx
+    const fileNameToIdx = {};
+    for (const [idx, path] of Object.entries(filePaths)) {
+        const name = path.split('/').pop();
+        fileNameToIdx[name] = idx;
+        fileNameToIdx[path] = idx; // Also match full path
+    }
+    
+    document.querySelectorAll('.summary-card .md-content').forEach(el => {
+        let html = marked.parse(el.textContent);
+        
+        // Match "Line:107 in `reviewer.py`" or "Line:23 in llama_diff/reviewer.py"
+        html = html.replace(/Line:(\d+)\s+in\s+(<code>)?([\w\-\.\/]+\.\w+)(<\/code>)?/gi,
+            (match, num, code1, filePath, code2) => {
+                const baseName = filePath.split('/').pop();
+                const idx = fileNameToIdx[baseName] || fileNameToIdx[filePath];
+                if (idx !== undefined) {
+                    return `<a href="/code/${idx}#L${num}" class="line-ref">${baseName}:${num}</a>`;
+                }
+                return match;
+            });
+        // Match "line 23 in file.py" variant  
+        html = html.replace(/[Ll]ines?\s+(\d+)\s+in\s+(<code>)?([\w\-\.\/]+\.\w+)(<\/code>)?/g,
+            (match, num, code1, filePath, code2) => {
+                const baseName = filePath.split('/').pop();
+                const idx = fileNameToIdx[baseName] || fileNameToIdx[filePath];
+                if (idx !== undefined) {
+                    return `<a href="/code/${idx}#L${num}" class="line-ref">${baseName}:${num}</a>`;
+                }
+                return match;
+            });
+        // Match standalone "file.py:23" or "<code>file.py</code>:23" format
+        html = html.replace(/(<code>)?([\w\-\.\/]+\.\w+)(<\/code>)?:(\d+)/g,
+            (match, code1, filePath, code2, num) => {
+                const baseName = filePath.split('/').pop();
+                const idx = fileNameToIdx[baseName] || fileNameToIdx[filePath];
+                if (idx !== undefined) {
+                    return `<a href="/code/${idx}#L${num}" class="line-ref">${baseName}:${num}</a>`;
+                }
+                return match;
+            });
+        
+        // For standalone Line:X, find nearest preceding <code>file.ext</code> mention
+        html = html.replace(/Line:(\d+)/gi, (match, num, offset) => {
+            // Look backwards in the HTML for the nearest file mention
+            const before = html.substring(0, offset);
+            // Find all file mentions and get the last one
+            const allMatches = [...before.matchAll(/<code>([\w\-\.\/]+\.\w+)<\/code>/gi)];
+            if (allMatches.length > 0) {
+                const lastMatch = allMatches[allMatches.length - 1];
+                const filePath = lastMatch[1];
+                const baseName = filePath.split('/').pop();
+                const idx = fileNameToIdx[baseName] || fileNameToIdx[filePath];
+                if (idx !== undefined) {
+                    return `<a href="/code/${idx}#L${num}" class="line-ref">${baseName}:${num}</a>`;
+                }
+            }
+            return `<span class="line-ref">${match}</span>`;
+        });
+        
+        el.innerHTML = html;
+    });
+</script>
+{% endblock %}
