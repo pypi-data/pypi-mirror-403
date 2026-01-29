@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Knowledge Graph</title>
+    <script src="https://unpkg.com/@antv/g6@4.8.24/dist/g6.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #16213e;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #0f3460;
+            flex-shrink: 0;
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 15px 20px;
+            background: #16213e;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 1.3rem;
+            color: #e94560;
+        }
+
+        .content-area {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #graph {
+            width: 100%;
+            height: 100%;
+            background: #1a1a2e;
+        }
+
+        #mainTreeView {
+            width: 100%;
+            height: 100%;
+            background: #1a1a2e;
+            overflow: auto;
+            padding: 20px;
+            display: none;
+        }
+
+        .main-tree-container {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .tree-item:hover {
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .tree-item.directory {
+            color: #f1c40f;
+        }
+
+        .tree-item.file {
+            color: #7ec8e3;
+        }
+
+        .tree-item .icon {
+            margin-right: 8px;
+            font-size: 16px;
+        }
+
+        .tree-item .name {
+            flex: 1;
+        }
+
+        .tree-item .badge {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+        }
+
+        .badge.python { background: #3498db; color: white; }
+        .badge.javascript { background: #f1c40f; color: #333; }
+        .badge.typescript { background: #2980b9; color: white; }
+        .badge.vue { background: #2ecc71; color: white; }
+        .badge.env { background: #9b59b6; color: white; }
+
+        .tree-children {
+            margin-left: 20px;
+            border-left: 1px dashed #0f3460;
+            padding-left: 10px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 0.95rem;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #e94560;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #e94560;
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            background: #ff6b6b;
+        }
+
+        .stats {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1a1a2e;
+            border-radius: 8px;
+        }
+
+        .stats h3 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: #e94560;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #0f3460;
+            font-size: 0.9rem;
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .legend {
+            margin-top: 20px;
+        }
+
+        .legend h3 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: #e94560;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+            font-size: 0.85rem;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .node-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1a1a2e;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .node-info.visible {
+            display: block;
+        }
+
+        .node-info h3 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: #e94560;
+        }
+
+        .node-info p {
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 40px;
+            color: #aaa;
+            background: rgba(26, 26, 46, 0.9);
+            border-radius: 8px;
+            z-index: 10;
+        }
+
+        .loading.visible {
+            display: block;
+        }
+
+        .error {
+            color: #ff6b6b;
+            padding: 10px;
+            margin-top: 10px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 6px;
+            display: none;
+        }
+
+        .error.visible {
+            display: block;
+        }
+
+        .projects-list {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1a1a2e;
+            border-radius: 8px;
+        }
+
+        .projects-list h3 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: #e94560;
+        }
+
+        .project-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #16213e;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .project-item:hover {
+            border-color: #e94560;
+            background: #1a2744;
+        }
+
+        .project-item .project-name {
+            font-weight: 500;
+            color: #eee;
+            margin-bottom: 4px;
+            word-break: break-all;
+        }
+
+        .project-item .project-meta {
+            font-size: 0.8rem;
+            color: #888;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .project-item .project-path {
+            font-size: 0.75rem;
+            color: #666;
+            word-break: break-all;
+            margin-top: 4px;
+        }
+
+        .loading-text {
+            color: #666;
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .no-projects {
+            color: #666;
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            text-align: center;
+            background: #1a1a2e;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: #e94560;
+            border-color: #e94560;
+        }
+
+        .tab:hover:not(.active) {
+            background: #0f3460;
+        }
+
+        #searchBox {
+            flex: 1;
+            max-width: 300px;
+        }
+
+        #searchBox input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 0.9rem;
+        }
+
+        #searchBox input:focus {
+            outline: none;
+            border-color: #e94560;
+        }
+
+        .filter-options {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-left: 15px;
+        }
+
+        .filter-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9rem;
+            color: #eee;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .filter-option input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #e94560;
+        }
+
+        .filter-option label {
+            cursor: pointer;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .empty-state .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .toolbar {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 8px;
+            z-index: 5;
+        }
+
+        .toolbar button {
+            padding: 8px 12px;
+            background: rgba(22, 33, 62, 0.9);
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            color: #eee;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .toolbar button:hover {
+            background: #e94560;
+            border-color: #e94560;
+        }
+
+        /* Logs styles */
+        #logsView {
+            width: 100%;
+            height: 100%;
+            background: #1a1a2e;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logs-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            padding: 15px;
+        }
+
+        .logs-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #16213e;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .logs-toolbar select {
+            padding: 8px 12px;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 0.9rem;
+        }
+
+        .btn-small {
+            padding: 8px 12px;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #eee;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .btn-small:hover {
+            background: #e94560;
+            border-color: #e94560;
+        }
+
+        .logs-content {
+            flex: 1;
+            overflow-y: auto;
+            background: #0d1117;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .log-entry {
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            border-left: 3px solid;
+        }
+
+        .log-entry.DEBUG {
+            background: rgba(52, 152, 219, 0.1);
+            border-color: #3498db;
+        }
+
+        .log-entry.INFO {
+            background: rgba(46, 204, 113, 0.1);
+            border-color: #2ecc71;
+        }
+
+        .log-entry.WARNING {
+            background: rgba(241, 196, 15, 0.1);
+            border-color: #f1c40f;
+        }
+
+        .log-entry.ERROR {
+            background: rgba(231, 76, 60, 0.1);
+            border-color: #e74c3c;
+        }
+
+        .log-entry .log-time {
+            color: #666;
+            font-size: 11px;
+            margin-right: 10px;
+        }
+
+        .log-entry .log-level {
+            font-weight: bold;
+            margin-right: 10px;
+            min-width: 60px;
+            display: inline-block;
+        }
+
+        .log-entry.DEBUG .log-level { color: #3498db; }
+        .log-entry.INFO .log-level { color: #2ecc71; }
+        .log-entry.WARNING .log-level { color: #f1c40f; }
+        .log-entry.ERROR .log-level { color: #e74c3c; }
+
+        .log-entry .log-message {
+            color: #eee;
+            word-break: break-all;
+        }
+
+        .no-logs {
+            color: #666;
+            text-align: center;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="input-group">
+                <label for="projectPath">Project Path</label>
+                <input type="text" id="projectPath" placeholder="D:\your\project\path">
+            </div>
+            <button class="btn btn-primary" onclick="analyzeProject()">Analyze</button>
+
+            <div class="error" id="error"></div>
+
+            <div class="projects-list" id="projectsList">
+                <h3>Recent Projects</h3>
+                <div id="projectsContent">
+                    <div class="loading-text">Loading...</div>
+                </div>
+            </div>
+
+            <div class="stats" id="stats" style="display: none;">
+                <h3>Statistics</h3>
+                <div id="statsContent"></div>
+            </div>
+
+            <div class="legend">
+                <h3>Legend</h3>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #3498db;"></div>
+                    <span>Python</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f1c40f;"></div>
+                    <span>JavaScript</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #2980b9;"></div>
+                    <span>TypeScript</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #2ecc71;"></div>
+                    <span>Vue</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #9b59b6;"></div>
+                    <span>Env</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #95a5a6; border-radius: 50%;"></div>
+                    <span>External</span>
+                </div>
+            </div>
+
+            <div class="node-info" id="nodeInfo">
+                <h3>Node Details</h3>
+                <p id="nodeDetails"></p>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="header">
+                <h1>Code Knowledge Graph</h1>
+                <div class="tabs">
+                    <div class="tab active" data-view="graph" onclick="switchView('graph')">Dependency Graph</div>
+                    <div class="tab" data-view="tree" onclick="switchView('tree')">Directory Tree</div>
+                    <div class="tab" data-view="logs" onclick="switchView('logs')">Parse Logs</div>
+                </div>
+                <div id="searchBox">
+                    <input type="text" id="searchInput" placeholder="Search..." oninput="handleSearch()">
+                </div>
+                <div class="filter-options">
+                    <div class="filter-option">
+                        <input type="checkbox" id="showExternalDeps" checked onchange="toggleExternalDeps()">
+                        <label for="showExternalDeps">Show External Packages</label>
+                    </div>
+                </div>
+            </div>
+            <div class="content-area">
+                <div id="graph">
+                    <div class="toolbar" id="toolbar" style="display: none;">
+                        <button onclick="fitView()">Fit View</button>
+                        <button onclick="resetZoom()">Reset Zoom</button>
+                        <button onclick="togglePhysics()">Toggle Layout</button>
+                    </div>
+                    <div class="empty-state" id="graphEmpty">
+                        <div class="icon">📊</div>
+                        <div>Enter a project path and click Analyze</div>
+                    </div>
+                </div>
+                <div id="mainTreeView">
+                    <div class="main-tree-container" id="mainTreeContent"></div>
+                </div>
+                <div id="logsView" style="display: none;">
+                    <div class="logs-container">
+                        <div class="logs-toolbar">
+                            <select id="logLevel" onchange="loadLogs()">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO">INFO</option>
+                                <option value="WARNING" selected>WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                            </select>
+                            <button class="btn-small" onclick="loadLogs()">Refresh</button>
+                            <button class="btn-small" onclick="clearLogs()">Clear</button>
+                            <span id="logCount" style="margin-left: 10px; color: #888;"></span>
+                        </div>
+                        <div class="logs-content" id="logsContent">
+                            <div class="no-logs">No logs yet. Scan a project to generate logs.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="loading" id="loading">Analyzing project...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let graph = null;
+        let graphData = null;
+        let treeData = null;
+        let currentView = 'graph';
+        let physicsEnabled = true;
+        let showExternalDeps = true;
+
+        const colors = {
+            python: '#3498db',
+            javascript: '#f1c40f',
+            typescript: '#2980b9',
+            vue: '#2ecc71',
+            env: '#9b59b6',
+            external: '#95a5a6'
+        };
+
+        const fileIcons = {
+            python: '🐍',
+            javascript: '📜',
+            typescript: '💠',
+            vue: '💚',
+            env: '⚙️',
+            directory: '📁',
+            default: '📄'
+        };
+
+        async function analyzeProject() {
+            const path = document.getElementById('projectPath').value.trim();
+            if (!path) {
+                showError('Please enter a project path');
+                return;
+            }
+
+            hideError();
+            showLoading(true);
+
+            try {
+                const [graphResponse, treeResponse, statsResponse] = await Promise.all([
+                    fetch(`/api/graph?path=${encodeURIComponent(path)}`),
+                    fetch(`/api/tree?path=${encodeURIComponent(path)}`),
+                    fetch(`/api/stats?path=${encodeURIComponent(path)}`)
+                ]);
+
+                if (!graphResponse.ok) {
+                    const err = await graphResponse.json();
+                    throw new Error(err.detail || 'Failed to analyze project');
+                }
+
+                graphData = await graphResponse.json();
+                treeData = await treeResponse.json();
+                const stats = await statsResponse.json();
+
+                document.getElementById('graphEmpty').style.display = 'none';
+                document.getElementById('toolbar').style.display = 'flex';
+                renderGraph(graphData);
+                renderMainTree(treeData);
+                renderStats(stats);
+
+                document.getElementById('stats').style.display = 'block';
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function renderGraph(data) {
+            const container = document.getElementById('graph');
+
+            // 清除旧实例
+            if (graph) {
+                graph.destroy();
+            }
+
+            // 根据 showExternalDeps 过滤数据
+            let filteredData = { ...data };
+            if (!showExternalDeps) {
+                // 过滤掉 external 类型的节点
+                const externalIds = new Set(
+                    data.nodes.filter(n => n.type === 'external').map(n => n.id)
+                );
+
+                filteredData.nodes = data.nodes.filter(n => n.type !== 'external');
+                // 过滤掉连接到 external 节点的边
+                filteredData.edges = data.edges.filter(e =>
+                    !externalIds.has(e.from) && !externalIds.has(e.to)
+                );
+            }
+
+            // 获取容器尺寸
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // 转换数据格式为 G6
+            const nodes = filteredData.nodes.map(n => ({
+                id: n.id,
+                label: n.label,
+                type: n.type === 'external' ? 'circle' : 'rect',
+                size: n.type === 'external' ? 30 : [n.label.length * 8 + 20, 35],
+                style: {
+                    fill: colors[n.type] || '#666',
+                    stroke: colors[n.type] || '#666',
+                    lineWidth: 2,
+                    shadowColor: 'rgba(0, 0, 0, 0.3)',
+                    shadowBlur: 10
+                },
+                labelCfg: {
+                    style: {
+                        fill: '#fff',
+                        fontSize: 12,
+                        fontWeight: 500
+                    }
+                },
+                // 存储原始数据用于搜索和详情
+                originalData: n
+            }));
+
+            const edges = filteredData.edges.map(e => ({
+                source: e.from,
+                target: e.to,
+                type: e.type === 'dynamic' ? 'line-dash' : 'line',
+                style: {
+                    stroke: '#0f3460',
+                    lineWidth: 2,
+                    endArrow: {
+                        path: G6.Arrow.triangle(8, 10, 0),
+                        fill: '#0f3460'
+                    }
+                }
+            }));
+
+            // 根据节点数量选择布局算法
+            const nodeCount = nodes.length;
+            let layoutConfig;
+
+            if (nodeCount > 200) {
+                // 大型图：使用 dagre 层次布局（静态，不会移动）
+                layoutConfig = {
+                    type: 'dagre',
+                    rankdir: 'LR',  // 从左到右
+                    nodesep: 50,
+                    ranksep: 100,
+                    controlPoints: true
+                };
+            } else if (nodeCount > 100) {
+                // 中型图：使用 grid 网格布局（静态）
+                layoutConfig = {
+                    type: 'grid',
+                    begin: [50, 50],
+                    preventOverlap: true,
+                    nodeSize: 50,
+                    condense: false,
+                    rows: Math.ceil(Math.sqrt(nodeCount)),
+                    cols: Math.ceil(Math.sqrt(nodeCount))
+                };
+            } else {
+                // 小型图：使用优化的力导向布局（会自动停止）
+                layoutConfig = {
+                    type: 'force',
+                    preventOverlap: true,
+                    nodeSpacing: 50,
+                    linkDistance: 150,
+                    nodeStrength: -300,
+                    edgeStrength: 0.6,
+                    collideStrength: 0.8,
+                    // 关键优化：快速收敛
+                    alpha: 0.8,           // 初始能量更高
+                    alphaDecay: 0.05,     // 衰减更快
+                    alphaMin: 0.001,      // 更小的最小值
+                    alphaTarget: 0,       // 目标能量为0
+                    // 迭代次数限制 - 强制在300次迭代后停止
+                    tick: 300,
+                    clustering: false,
+                    clusterNodeStrength: -200,
+                    // GPU 加速（如果支持）
+                    workerEnabled: true,
+                    gpuEnabled: true
+                };
+            }
+
+            // 创建 G6 图实例
+            graph = new G6.Graph({
+                container: 'graph',
+                width,
+                height,
+                renderer: 'canvas',
+                fitView: true,
+                fitViewPadding: [20, 40, 50, 20],
+                modes: {
+                    default: [
+                        'drag-canvas',
+                        'zoom-canvas',
+                        'drag-node',
+                        {
+                            type: 'tooltip',
+                            formatText(model) {
+                                const data = model.originalData;
+                                return `${data.id}\nType: ${data.type}\nSize: ${formatSize(data.size)}`;
+                            }
+                        }
+                    ]
+                },
+                defaultNode: {
+                    labelCfg: {
+                        style: {
+                            fill: '#fff'
+                        }
+                    }
+                },
+                defaultEdge: {
+                    style: {
+                        stroke: '#0f3460',
+                        lineAppendWidth: 3
+                    }
+                },
+                layout: layoutConfig,
+                animate: nodeCount < 100,  // 只有小图才开启动画
+                animateCfg: {
+                    duration: 300,
+                    easing: 'easeLinear'
+                }
+            });
+
+            // 加载数据
+            graph.data({ nodes, edges });
+            graph.render();
+
+            // 显示使用的布局类型
+            console.log(`Using ${layoutConfig.type} layout for ${nodeCount} nodes`);
+
+            // 监听节点点击事件
+            graph.on('node:click', (e) => {
+                const node = e.item;
+                const model = node.getModel();
+                showNodeInfo(model.originalData);
+
+                // 高亮相关节点
+                highlightRelatedNodes(model.id);
+            });
+
+            // 监听画布点击事件（取消高亮）
+            graph.on('canvas:click', () => {
+                hideNodeInfo();
+                clearHighlight();
+            });
+
+            // 监听节点悬停
+            graph.on('node:mouseenter', (e) => {
+                const node = e.item;
+                graph.setItemState(node, 'hover', true);
+            });
+
+            graph.on('node:mouseleave', (e) => {
+                const node = e.item;
+                graph.setItemState(node, 'hover', false);
+            });
+
+            // 定义节点状态样式
+            graph.node(node => {
+                return {
+                    stateStyles: {
+                        hover: {
+                            lineWidth: 3,
+                            shadowBlur: 15
+                        },
+                        highlight: {
+                            fill: '#e94560',
+                            stroke: '#e94560'
+                        },
+                        dim: {
+                            opacity: 0.2
+                        }
+                    }
+                };
+            });
+        }
+
+        function highlightRelatedNodes(nodeId) {
+            // 找出所有相关的边
+            const relatedEdges = graphData.edges.filter(
+                e => e.from === nodeId || e.to === nodeId
+            );
+
+            const relatedNodeIds = new Set([nodeId]);
+            relatedEdges.forEach(e => {
+                relatedNodeIds.add(e.from);
+                relatedNodeIds.add(e.to);
+            });
+
+            // 高亮相关节点，其他节点变暗
+            const nodes = graph.getNodes();
+            nodes.forEach(node => {
+                const model = node.getModel();
+                if (relatedNodeIds.has(model.id)) {
+                    graph.setItemState(node, 'highlight', true);
+                } else {
+                    graph.setItemState(node, 'dim', true);
+                }
+            });
+
+            // 高亮相关边
+            const edges = graph.getEdges();
+            edges.forEach(edge => {
+                const model = edge.getModel();
+                if (model.source === nodeId || model.target === nodeId) {
+                    graph.updateItem(edge, {
+                        style: {
+                            stroke: '#e94560',
+                            lineWidth: 3
+                        }
+                    });
+                } else {
+                    graph.setItemState(edge, 'dim', true);
+                }
+            });
+        }
+
+        function clearHighlight() {
+            if (!graph) return;
+
+            const nodes = graph.getNodes();
+            nodes.forEach(node => {
+                graph.clearItemStates(node);
+            });
+
+            const edges = graph.getEdges();
+            edges.forEach(edge => {
+                graph.clearItemStates(edge);
+                graph.updateItem(edge, {
+                    style: {
+                        stroke: '#0f3460',
+                        lineWidth: 2
+                    }
+                });
+            });
+        }
+
+        function fitView() {
+            if (graph) {
+                graph.fitView(20);
+            }
+        }
+
+        function resetZoom() {
+            if (graph) {
+                graph.zoomTo(1);
+                graph.fitCenter();
+            }
+        }
+
+        function togglePhysics() {
+            if (!graph) return;
+
+            physicsEnabled = !physicsEnabled;
+
+            if (physicsEnabled) {
+                graph.updateLayout({
+                    type: 'force',
+                    preventOverlap: true,
+                    nodeSpacing: 50,
+                    linkDistance: 150,
+                    tick: 300  // 限制迭代次数
+                });
+            } else {
+                // 切换到静态布局
+                graph.updateLayout({
+                    type: 'grid',
+                    preventOverlap: true
+                });
+            }
+        }
+
+        function toggleExternalDeps() {
+            showExternalDeps = document.getElementById('showExternalDeps').checked;
+
+            // 如果已经加载了图数据，重新渲染
+            if (graphData) {
+                renderGraph(graphData);
+            }
+        }
+
+        function renderMainTree(data) {
+            const container = document.getElementById('mainTreeContent');
+            container.innerHTML = buildTreeHTML(data, 0);
+        }
+
+        function buildTreeHTML(node, depth) {
+            const isDir = node.type === 'directory';
+            const icon = isDir ? fileIcons.directory : (fileIcons[node.file_type] || fileIcons.default);
+            const typeClass = isDir ? 'directory' : 'file';
+            const badge = !isDir && node.file_type ? `<span class="badge ${node.file_type}">${node.file_type}</span>` : '';
+            const size = !isDir && node.size ? `<span style="color: #666; font-size: 12px; margin-left: 8px;">${formatSize(node.size)}</span>` : '';
+
+            let html = `
+                <div class="tree-item ${typeClass}" style="padding-left: ${depth * 10}px">
+                    <span class="icon">${icon}</span>
+                    <span class="name">${node.name}</span>
+                    ${badge}
+                    ${size}
+                </div>
+            `;
+
+            if (node.children && node.children.length > 0) {
+                html += `<div class="tree-children">`;
+                for (const child of node.children) {
+                    html += buildTreeHTML(child, depth + 1);
+                }
+                html += `</div>`;
+            }
+
+            return html;
+        }
+
+        function renderStats(stats) {
+            const container = document.getElementById('statsContent');
+            let html = `
+                <div class="stat-item">
+                    <span>Total Files</span>
+                    <span>${stats.total_files}</span>
+                </div>
+                <div class="stat-item">
+                    <span>Total Size</span>
+                    <span>${formatSize(stats.total_size)}</span>
+                </div>
+                <div class="stat-item">
+                    <span>Total Imports</span>
+                    <span>${stats.total_imports}</span>
+                </div>
+            `;
+
+            for (const [type, count] of Object.entries(stats.by_type)) {
+                html += `
+                    <div class="stat-item">
+                        <span>${capitalize(type)} files</span>
+                        <span>${count}</span>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function showNodeInfo(node) {
+            const container = document.getElementById('nodeInfo');
+            const details = document.getElementById('nodeDetails');
+
+            let html = `
+                <p><strong>Path:</strong> ${node.id}</p>
+                <p><strong>Type:</strong> ${node.type}</p>
+                <p><strong>Size:</strong> ${formatSize(node.size)}</p>
+            `;
+
+            if (graphData) {
+                const incoming = graphData.edges.filter(e => e.to === node.id);
+                const outgoing = graphData.edges.filter(e => e.from === node.id);
+
+                if (incoming.length > 0) {
+                    html += `<p><strong>Imported by:</strong> ${incoming.length} file(s)</p>`;
+                }
+                if (outgoing.length > 0) {
+                    html += `<p><strong>Imports:</strong> ${outgoing.length} module(s)</p>`;
+                }
+            }
+
+            details.innerHTML = html;
+            container.classList.add('visible');
+        }
+
+        function hideNodeInfo() {
+            document.getElementById('nodeInfo').classList.remove('visible');
+        }
+
+        function handleSearch() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+
+            if (currentView === 'graph') {
+                searchNodes(query);
+            } else {
+                searchTree(query);
+            }
+        }
+
+        function searchNodes(query) {
+            if (!graph || !graphData) return;
+
+            clearHighlight();
+
+            if (!query) {
+                return;
+            }
+
+            // 查找匹配的节点
+            const nodes = graph.getNodes();
+            const matchedNodes = [];
+
+            nodes.forEach(node => {
+                const model = node.getModel();
+                const data = model.originalData;
+
+                if (data.id.toLowerCase().includes(query) ||
+                    data.label.toLowerCase().includes(query)) {
+                    matchedNodes.push(node);
+                    graph.setItemState(node, 'highlight', true);
+                } else {
+                    graph.setItemState(node, 'dim', true);
+                }
+            });
+
+            // 如果有匹配结果，聚焦第一个
+            if (matchedNodes.length > 0) {
+                graph.focusItem(matchedNodes[0], true, {
+                    easing: 'easeCubic',
+                    duration: 500
+                });
+            }
+        }
+
+        function searchTree(query) {
+            const items = document.querySelectorAll('#mainTreeContent .tree-item');
+            items.forEach(item => {
+                const name = item.querySelector('.name').textContent.toLowerCase();
+                if (!query || name.includes(query)) {
+                    item.style.opacity = '1';
+                    item.style.background = query && name.includes(query) ? 'rgba(233, 69, 96, 0.2)' : '';
+                } else {
+                    item.style.opacity = '0.3';
+                    item.style.background = '';
+                }
+            });
+        }
+
+        function switchView(view) {
+            currentView = view;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.view === view);
+            });
+
+            const graphEl = document.getElementById('graph');
+            const treeEl = document.getElementById('mainTreeView');
+            const logsEl = document.getElementById('logsView');
+            const toolbar = document.getElementById('toolbar');
+
+            graphEl.style.display = 'none';
+            treeEl.style.display = 'none';
+            logsEl.style.display = 'none';
+            toolbar.style.display = 'none';
+
+            if (view === 'tree') {
+                treeEl.style.display = 'block';
+            } else if (view === 'logs') {
+                logsEl.style.display = 'flex';
+                loadLogs();
+            } else {
+                graphEl.style.display = 'block';
+                if (graph) {
+                    toolbar.style.display = 'flex';
+                    // 调整画布大小
+                    const container = document.getElementById('graph');
+                    graph.changeSize(container.clientWidth, container.clientHeight);
+                    graph.fitView(20);
+                }
+            }
+
+            // Clear search
+            document.getElementById('searchInput').value = '';
+            handleSearch();
+        }
+
+        async function loadLogs() {
+            const level = document.getElementById('logLevel').value;
+            const container = document.getElementById('logsContent');
+            const countEl = document.getElementById('logCount');
+            
+            try {
+                const response = await fetch(`/api/logs?level=${level}&limit=500`);
+                const data = await response.json();
+                
+                if (data.logs && data.logs.length > 0) {
+                    container.innerHTML = data.logs.map(log => `
+                        <div class="log-entry ${log.level}">
+                            <span class="log-time">${formatLogTime(log.time)}</span>
+                            <span class="log-level">${log.level}</span>
+                            <span class="log-message">${escapeHtml(log.message)}</span>
+                        </div>
+                    `).join('');
+                    countEl.textContent = `${data.logs.length} entries`;
+                } else {
+                    container.innerHTML = '<div class="no-logs">No logs at this level. Try DEBUG for more details.</div>';
+                    countEl.textContent = '0 entries';
+                }
+            } catch (err) {
+                container.innerHTML = `<div class="no-logs">Failed to load logs: ${err.message}</div>`;
+                countEl.textContent = '';
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logsContent').innerHTML = '<div class="no-logs">Logs cleared. Scan a project to generate new logs.</div>';
+            document.getElementById('logCount').textContent = '0 entries';
+        }
+
+        function formatLogTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('visible', show);
+        }
+
+        function showError(message) {
+            const el = document.getElementById('error');
+            el.textContent = message;
+            el.classList.add('visible');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('visible');
+        }
+
+        function formatSize(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // 窗口大小变化时调整画布
+        window.addEventListener('resize', () => {
+            if (graph && currentView === 'graph') {
+                const container = document.getElementById('graph');
+                graph.changeSize(container.clientWidth, container.clientHeight);
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load recent projects
+            loadProjects();
+            
+            const params = new URLSearchParams(window.location.search);
+            const path = params.get('path');
+            if (path) {
+                document.getElementById('projectPath').value = path;
+                analyzeProject();
+            }
+        });
+
+        async function loadProjects() {
+            const container = document.getElementById('projectsContent');
+            try {
+                const response = await fetch('/api/projects');
+                if (!response.ok) {
+                    throw new Error('Failed to load projects');
+                }
+                const data = await response.json();
+                
+                if (data.projects && data.projects.length > 0) {
+                    // Store projects for click handler
+                    window._projects = data.projects;
+                    container.innerHTML = data.projects.map((p, idx) => `
+                        <div class="project-item" data-index="${idx}">
+                            <div class="project-name">${escapeHtml(p.name)}</div>
+                            <div class="project-meta">
+                                <span>${p.file_count} files</span>
+                                <span>${formatDate(p.last_scanned)}</span>
+                            </div>
+                            <div class="project-path">${escapeHtml(p.path)}</div>
+                        </div>
+                    `).join('');
+                    // Add click handlers
+                    container.querySelectorAll('.project-item').forEach(item => {
+                        item.addEventListener('click', () => {
+                            const idx = parseInt(item.dataset.index);
+                            selectProject(window._projects[idx].path);
+                        });
+                    });
+                } else {
+                    container.innerHTML = '<div class="no-projects">No projects scanned yet</div>';
+                }
+            } catch (err) {
+                container.innerHTML = '<div class="no-projects">Failed to load projects</div>';
+                console.error('Error loading projects:', err);
+            }
+        }
+
+        function selectProject(path) {
+            document.getElementById('projectPath').value = path;
+            loadFromDatabase(path);
+        }
+
+        async function loadFromDatabase(path) {
+            hideError();
+            showLoading(true);
+
+            try {
+                // Load graph from database, tree from filesystem
+                const [graphResponse, treeResponse, statsResponse] = await Promise.all([
+                    fetch(`/api/projects/${encodeURIComponent(path)}/graph`),
+                    fetch(`/api/tree?path=${encodeURIComponent(path)}`),
+                    fetch(`/api/stats?path=${encodeURIComponent(path)}`)
+                ]);
+
+                if (!graphResponse.ok) {
+                    const err = await graphResponse.json();
+                    throw new Error(err.detail || 'Failed to load project from database');
+                }
+
+                graphData = await graphResponse.json();
+                treeData = treeResponse.ok ? await treeResponse.json() : null;
+                const stats = statsResponse.ok ? await statsResponse.json() : null;
+
+                document.getElementById('graphEmpty').style.display = 'none';
+                document.getElementById('toolbar').style.display = 'flex';
+                renderGraph(graphData);
+                
+                if (treeData) {
+                    renderMainTree(treeData);
+                }
+                
+                if (stats) {
+                    renderStats(stats);
+                    document.getElementById('stats').style.display = 'block';
+                }
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+    </script>
+</body>
+</html>
