@@ -1,0 +1,28 @@
+# This file mainly exists to allow python setup.py test to work.
+# flake8: noqa
+import os
+import sys
+
+os.environ['DJANGO_SETTINGS_MODULE'] = 'tests.settings'
+test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+sys.path.insert(0, test_dir)
+
+import django
+from django.test.utils import get_runner
+from django.conf import settings
+
+
+def runtests():
+    # Disable migrations for our app during tests to avoid requiring migration files
+    existing_migration_modules = getattr(settings, 'MIGRATION_MODULES', {}) or {}
+    settings.MIGRATION_MODULES = {**existing_migration_modules, 'jwt_allauth': None}
+    TestRunner = get_runner(settings)
+    test_runner = TestRunner(verbosity=1, interactive=True)
+    if hasattr(django, 'setup'):
+        django.setup()
+    failures = test_runner.run_tests(['tests'])
+    sys.exit(bool(failures))
+
+
+if __name__ == '__main__':
+    runtests()
