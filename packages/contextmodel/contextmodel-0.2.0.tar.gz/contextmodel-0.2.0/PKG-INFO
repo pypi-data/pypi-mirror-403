@@ -1,0 +1,51 @@
+Metadata-Version: 2.4
+Name: contextmodel
+Version: 0.2.0
+Summary: A nice interface to context variables
+License-File: LICENSE
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+
+# contextmodel
+Alternative interface to context variables for practical scenarios.
+
+```pycon
+>>> from contextmodel import context_get, context_set
+>>> from dataclasses import dataclass
+
+>>> @dataclass
+... class Foo:
+...     x: int | None = None
+
+>>> @context_set(Foo(x=1))
+... def f() -> None:
+...     print(context_get(Foo))
+>>> f()
+Foo(x=1)
+
+>>> from contextmodel import WithContextAttribute
+
+>>> @dataclass
+... class Foo(WithContextAttribute):
+...     x: int | None = None
+
+>>> with Foo.context.init(x=2):
+...     print(Foo.context.get())
+Foo(x=2)
+
+>>> @Foo.context.init(x=3)
+... def f() -> None:
+...     print(context_get(Foo))
+>>> f()
+Foo(x=3)
+
+>>> def oops() -> None:
+...     print(context_get(Foo))
+>>> oops()
+Traceback (most recent call last):
+  ...
+LookupError: expected a context_enter(Foo(...)) prior to this call
+
+```
+
+Works with type hints:
