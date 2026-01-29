@@ -1,0 +1,1 @@
+from .area import square, circle, triangle
