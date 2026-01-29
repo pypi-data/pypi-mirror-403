@@ -1,0 +1,334 @@
+from __future__ import annotations
+
+from typing import Any, ClassVar, Dict, List, Optional
+
+import base64
+import datetime
+import gzip
+import html
+import json
+
+import pandas as pd
+
+from .components import Layout, Modal, Page, ReportTreeComponent, Visual
+from .serialization import camel_case_dict, make_dataset_serializable, convert_nan_to_none
+
+DL2_VERSION = "0.2.8"
+
+
+class DL2Report:
+    # These are assigned at module import time to preserve the historical
+    # API surface: DL2Report.Layout, DL2Report.Visual, etc.
+    ReportTreeComponent: ClassVar[type[ReportTreeComponent]]
+    Visual: ClassVar[type[Visual]]
+    Layout: ClassVar[type[Layout]]
+    Page: ClassVar[type[Page]]
+    Modal: ClassVar[type[Modal]]
+
+    def __init__(self, title: str, description: str = "", author: str = "", compress_visuals: bool = True):
+        """
+        Initializes a new DL2Report.
+
+        Args:
+            title (str): The title of the report.
+            description (str, optional): A brief description of the report. Defaults to "".
+            author (str, optional): The author of the report. Defaults to "".
+            compress_visuals (bool, optional): Whether to compress the report data. Defaults to True.
+        """
+
+        self.title = title
+        self.description = description
+        self.author = author
+        self.pages: List[Page] = []
+        self.modals: List[Modal] = []
+        self.datasets: Dict[str, Dict[str, Any]] = {}
+        self.compressed_datasets: Dict[str, str] = {}
+        self.css_url = "https://cdn.jsdelivr.net/gh/kameronbrooks/datalys2-reporting@latest/dist/dl2-style.css"
+        self.js_url = "https://cdn.jsdelivr.net/gh/kameronbrooks/datalys2-reporting@latest/dist/datalys2-reports.min.js"
+        self.meta_tags: Dict[str, str] = {}
+        self.compress_visuals = compress_visuals
+
+    # Compatibility: keep these helpers on DL2Report
+    @staticmethod
+    def _camel_case_dict(d: Dict[str, Any]) -> Dict[str, Any]:
+        """Internal helper to convert dictionary keys to camelCase."""
+        return camel_case_dict(d)
+
+    @staticmethod
+    def _make_dataset_serializable(dataset: Dict[str, Any]) -> Dict[str, Any]:
+        """Internal helper to make a dataset serializable."""
+        return make_dataset_serializable(dataset)
+
+    def get_report(self) -> DL2Report:
+        """
+        Returns the report instance itself.
+        
+        Returns:
+            DL2Report: The current report instance.
+        """
+        return self
+
+    def add_df(
+        self,
+        name: str,
+        df: pd.DataFrame,
+        format: str = "records",
+        compress: bool = False,
+        timestamp_format: str = "iso",
+    ) -> DL2Report:
+        """
+        Adds a pandas DataFrame as a dataset to the report.
+
+        Args:
+            name (str): The unique identifier for the dataset.
+            df (pd.DataFrame): The pandas DataFrame containing the data.
+            format (str, optional): The format to serialize the data ('records' or 'values'). Defaults to "records".
+            compress (bool, optional): Whether to compress the dataset using Gzip. Defaults to False.
+            timestamp_format (str, optional): The format for datetime columns ('iso' or 'epoch'). Defaults to "iso".
+
+        Returns:
+            DL2Report: The report instance for method chaining.
+        """
+        # Make a deep copy of the DataFrame to avoid modifying the original
+        df = df.copy(deep=True)
+
+        columns = df.columns.tolist()
+        
+        # Track which columns are dates BEFORE conversion
+        date_columns = set()
+        
+        # First pass: identify and potentially convert date columns
+        for col in df.columns:
+            # Check if already a datetime type
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                date_columns.add(col)
+            # Check if object type that might contain dates
+            elif df[col].dtype == 'object':
+                # Try to infer if this might be a date column
+                try:
+                    # Sample a few non-null values to see if they're datetime-like
+                    sample = df[col].dropna().head(10)
+                    if len(sample) > 0:
+                        pd.to_datetime(sample)
+                        # If no error, convert the whole column
+                        df[col] = pd.to_datetime(df[col])
+                        date_columns.add(col)
+                except (ValueError, TypeError):
+                    # Not a date column, continue
+                    pass
+        
+        # Capture dtypes BEFORE datetime conversion to serialization format
+        dtypes: List[str] = []
+        for col in df.columns:
+            dtype = df[col].dtype
+
+            if pd.api.types.is_bool_dtype(dtype):
+                dtypes.append("boolean")
+            elif col in date_columns:
+                dtypes.append("date")
+            elif pd.api.types.is_numeric_dtype(dtype):
+                dtypes.append("number")
+            else:
+                dtypes.append("string")
+
+        # Handle datetime formatting for serialization
+        for col in date_columns:
+            # Normalize to UTC so tz-aware and naive datetimes behave consistently.
+            # Naive datetimes are treated as UTC.
+            series_utc = pd.to_datetime(df[col])
+
+            if timestamp_format == "iso":
+                df[col] = series_utc.dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            elif timestamp_format == "epoch":
+                # pandas stores datetimes in ns; convert to whole seconds.
+                df[col] = series_utc.astype("int64") // 1_000_000_000
+            else:
+                raise ValueError("Invalid timestamp_format. Use 'iso' or 'epoch'.")
+
+        if format == "records":
+            data = df.to_dict(orient="records")
+        else:
+            data = df.values.tolist()
+
+        # Convert NaN to None for JSON serialization
+        data = convert_nan_to_none(data)
+
+        dataset_entry: Dict[str, Any] = {
+            "id": name,
+            "format": format,
+            "columns": columns,
+            "dtypes": dtypes,
+            "data": data,
+            "_df": df,  # Store original DataFrame for reference
+        }
+
+        if compress:
+            # Convert data to JSON string, then gzip, then base64
+            json_data = json.dumps(data)
+            compressed = gzip.compress(json_data.encode("utf-8"))
+            b64_data = base64.b64encode(compressed).decode("utf-8")
+
+            script_id = f"compressed-data-{name}"
+            self.compressed_datasets[script_id] = b64_data
+
+            dataset_entry["compression"] = "gzip"
+            dataset_entry["compressedData"] = script_id
+            dataset_entry["data"] = []
+
+            # Enable GC for compressed data
+            self.set_meta("gc-compressed-data", "true")
+
+        self.datasets[name] = dataset_entry
+        return self
+
+    def add_page(self, title: str, description: Optional[str] = None) -> Page:
+        """
+        Adds a new page to the report.
+
+        Args:
+            title (str): The title of the page.
+            description (str, optional): A description for the page. Defaults to None.
+
+        Returns:
+            Page: The newly created Page instance.
+        """
+        page = Page(title, description)
+        page.parent = self
+        self.pages.append(page)
+        return page
+
+    def add_modal(self, id: str, title: str, description: Optional[str] = None) -> Modal:
+        """
+        Adds a modal dialog to the report.
+
+        Args:
+            id (str): A unique identifier for the modal.
+            title (str): The title of the modal.
+            description (str, optional): A description for the modal. Defaults to None.
+
+        Returns:
+            Modal: The newly created Modal instance.
+        """
+        modal = Modal(id, title, description)
+        modal.parent = self
+        self.modals.append(modal)
+        return modal
+
+    def set_meta(self, name: str, content: str) -> DL2Report:
+        """
+        Sets a metadata tag in the report's HTML head.
+
+        Args:
+            name (str): The name attribute of the meta tag.
+            content (str): The content attribute of the meta tag.
+
+        Returns:
+            DL2Report: The report instance for method chaining.
+        """
+        self.meta_tags[name] = content
+        return self
+
+    def compile(self) -> str:
+        """
+        Compiles the report into a complete HTML string.
+
+        Returns:
+            str: The full HTML content of the report.
+        """
+        report_data: Dict[str, Any] = {
+            "pages": [p.to_dict() for p in self.pages],
+            "datasets": {name: self._make_dataset_serializable(ds) for name, ds in self.datasets.items()},
+        }
+        if self.modals:
+            report_data["modals"] = [m.to_dict() for m in self.modals]
+
+        report_data_json = json.dumps(report_data, indent=4)
+
+        meta_html = ""
+        for name, content in self.meta_tags.items():
+            meta_html += f'    <meta name="{name}" content="{content}">\n'
+
+        # Generate compressed scripts for any compressed datasets
+        compressed_scripts = ""
+        for script_id, b64_data in self.compressed_datasets.items():
+            compressed_scripts += f'    <script id="{script_id}" type="text/b64-gzip">{b64_data}</script>\n'
+
+        # Determine the appropriate script type and content for the report data
+        report_data_html = f'<script id="report-data" type="application/json">{report_data_json}</script>'
+        if self.compress_visuals:
+            try:
+                compressed_report_data = gzip.compress(report_data_json.encode("utf-8"))
+                b64_report_data = base64.b64encode(compressed_report_data).decode("utf-8")
+                report_data_html = f'<script id="report-data" type="text/b64-gzip">{b64_report_data}</script>'
+            except Exception as e:
+                print(f"Error compressing report data: {e}")
+                report_data_html = f'<script id="report-data" type="application/json">{report_data_json}</script>'
+
+        compiled_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{self.title}</title>
+    <meta name="dl-version" content="{DL2_VERSION}">
+    <meta name="description" content="{self.description}">
+    <meta name="author" content="{self.author}">
+    <meta name="last-updated" content="{datetime.datetime.now().strftime('%m-%d-%Y %H:%M:%S')}">
+{meta_html}
+    <link rel="stylesheet" href="{self.css_url}">
+</head>
+<body>
+{compressed_scripts}
+    <div id="root"></div>
+    {report_data_html}
+    <script src="{self.js_url}"></script>
+</body>
+</html>"""
+        return compiled_html
+
+    def save(self, filename: str):
+        """
+        Saves the compiled report to a file.
+
+        Args:
+            filename (str): The path where the HTML report should be saved.
+        """
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(self.compile())
+
+    def show(self, height: int = 800):
+        """
+        Displays the report in a Jupyter Notebook environment.
+
+        Args:
+            height (int, optional): The height of the iframe in pixels. Defaults to 800.
+
+        Returns:
+            IPython.display.IFrame: An IFrame containing the report, if IPython is available.
+        """
+        try:
+            from IPython.display import IFrame
+
+            b64_html = base64.b64encode(self.compile().encode("utf-8")).decode("utf-8")
+            data_uri = f"data:text/html;base64,{b64_html}"
+            return IFrame(data_uri, width="100%", height=height)
+        except ImportError:
+            print("IPython not found. Save the report to an HTML file to view it.")
+
+    def _repr_html_(self):
+        """
+        Returns the HTML representation of the report for Jupyter Notebook display.
+
+        Returns:
+            str: An HTML iframe string containing the report.
+        """
+        escaped_html = html.escape(self.compile())
+        return f'<iframe srcdoc="{escaped_html}" width="100%" height="800px" style="border:none;"></iframe>'
+
+
+# Preserve the public API surface area: allow users to access these as DL2Report.Layout, etc.
+DL2Report.ReportTreeComponent = ReportTreeComponent
+DL2Report.Visual = Visual
+DL2Report.Layout = Layout
+DL2Report.Page = Page
+DL2Report.Modal = Modal
