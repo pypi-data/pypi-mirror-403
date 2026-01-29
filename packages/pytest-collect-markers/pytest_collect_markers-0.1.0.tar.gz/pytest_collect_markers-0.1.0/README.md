@@ -1,0 +1,57 @@
+# pytest-collect-markers
+
+A pytest plugin that collects test markers and outputs them to a JSON file.
+
+## Installation
+
+```bash
+pip install pytest-collect-markers
+```
+
+## Usage
+
+Run pytest with the `--collect-markers` flag to collect all markers from your tests:
+
+```bash
+pytest --collect-markers
+```
+
+This will create a `markers.json` file containing a mapping of test node IDs to their markers.
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--collect-markers` | `False` | Enable marker collection |
+| `--markers-output` | `markers.json` | Output file path for collected markers |
+
+### Example
+
+```bash
+pytest --collect-markers --markers-output=my-markers.json
+```
+
+### Output Format
+
+The output JSON file maps test node IDs to their list of markers:
+
+```json
+{
+  "tests/test_example.py::test_slow_operation": ["slow", "integration"],
+  "tests/test_example.py::test_fast_unit": ["unit"]
+}
+```
+
+## Development
+
+```bash
+# Install with uv
+uv sync
+
+# Run tests
+uv run pytest
+```
+
+## License
+
+MIT
