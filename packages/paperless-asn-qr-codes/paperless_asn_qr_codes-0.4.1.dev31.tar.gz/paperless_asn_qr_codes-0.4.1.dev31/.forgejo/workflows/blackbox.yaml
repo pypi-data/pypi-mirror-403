@@ -1,0 +1,34 @@
+name: blackbox
+
+on:
+  push:
+    branches:
+      - main
+  # non-main branches are handled by pull_request
+  pull_request:
+
+jobs:
+  test-blackbox:
+    runs-on: docker
+    container:
+      image: codeberg.org/margau/buildenv-uv:latest@sha256:209521f6759924e787d9887ee06dd48c8e042c96ce66996f02a7aa942eab6b6c
+
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+      - name: create venv
+        run: uv sync --locked
+      - run: mkdir -p out
+      - name: build a PDF
+        run: uv run paperless-asn-qr-code 0 out/l4731_0.pdf
+      - name: check that PDF was created
+        run: test -f out/l4731_0.pdf
+      - name: check that PDF is not empty
+        run: test $(stat -c%s out/l4731_0.pdf) -gt 10000
+        # TODO: In the future, we could do a automated "visual" comarision to a reference sheet here.
+      - name: upload artifact
+        uses: https://code.forgejo.org/forgejo/upload-artifact@cb8afe72b42edc798abfb8fcb556cf660d894245 # v5
+        with:
+          name: pdf-output
+          path: ./out/

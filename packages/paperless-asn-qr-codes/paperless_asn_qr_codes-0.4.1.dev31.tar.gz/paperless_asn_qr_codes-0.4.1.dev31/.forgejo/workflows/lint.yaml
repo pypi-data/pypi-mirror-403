@@ -1,0 +1,27 @@
+name: lint
+
+on:
+  push:
+    branches:
+      - main
+  # non-main branches are handled by pull_request
+  pull_request:
+
+jobs:
+  lint-check:
+    runs-on: docker
+    container:
+      image: codeberg.org/margau/buildenv-uv:latest@sha256:4bfc849446ecfdeffcc3ea493310e79fc01d02250cd8d5e480b78b8b3c12e03d
+
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+      - name: check with ruff
+        run: uv run ruff check paperless_asn_qr_codes 
+      - name: format with ruff
+        run: uv run ruff format --check paperless_asn_qr_codes 
+      - name: check with pylint
+        run: uv run pylint paperless_asn_qr_codes 
