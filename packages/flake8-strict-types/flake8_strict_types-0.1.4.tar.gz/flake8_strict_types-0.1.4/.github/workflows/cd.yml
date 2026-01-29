@@ -1,0 +1,30 @@
+name: CD
+run-name: Deploying ${{ github.sha }}
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+jobs:
+  Deploy-PyPI:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4.2.0
+      - name: Setup Python
+        uses: actions/setup-python@v5.2.0
+        with:
+          python-version: "3.8"
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+      - name: Build
+        run: |
+          python -m uv build
+      - name: Deploy
+        run: |
+          python -m uv publish
