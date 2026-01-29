@@ -1,0 +1,209 @@
+# LANA1028 Cipher
+
+A 1028-bit educational encryption cipher implementation with modern cryptographic features.
+
+## ⚠️ Important Notice
+
+**This is an educational implementation and should NOT be used for production systems or real data protection.** For production use, always rely on established cryptographic libraries like AES-256-GCM, ChaCha20-Poly1305, or similar industry-standard algorithms.
+
+## Features
+
+✔ **Nonlinear S-box table** - AES-style substitution for proper nonlinearity  
+✔ **Byte mixing per round** - Diffusion layer for spreading changes across the block  
+✔ **IV mixing every round** - Proper initialization vector usage  
+✔ **Strict unpad checking** - Protection against padding oracle attacks  
+✔ **64 rounds** - Multiple transformation rounds for security  
+✔ **512-bit block size** - Large block size for reduced block operations  
+
+## Installation
+
+```bash
+pip install lana1028
+```
+
+## Quick Start
+
+```python
+from lana1028.main import generate_lana1028_key, lana1028_encrypt, lana1028_decrypt
+
+# Generate a secure random key
+key = generate_lana1028_key()
+
+# Encrypt a message
+message = "This is a secret message!"
+encrypted = lana1028_encrypt(message, key)
+print(f"Encrypted: {encrypted}")
+
+# Decrypt the message
+decrypted = lana1028_decrypt(encrypted, key)
+print(f"Decrypted: {decrypted}")
+```
+
+## API Reference
+
+### `generate_lana1028_key()`
+
+Generates a cryptographically secure random 1028-bit (129-byte) key.
+
+**Returns:** `bytes` - A 129-byte key
+
+**Example:**
+```python
+key = generate_lana1028_key()
+# Save this key securely - you'll need it to decrypt!
+```
+
+### `lana1028_encrypt(plaintext, key)`
+
+Encrypts plaintext using the LANA1028 cipher.
+
+**Parameters:**
+- `plaintext` (str or bytes) - The message to encrypt
+- `key` (bytes) - A 129-byte key from `generate_lana1028_key()`
+
+**Returns:** `str` - Base64-encoded ciphertext
+
+**Example:**
+```python
+encrypted = lana1028_encrypt("Secret data", key)
+```
+
+### `lana1028_decrypt(ciphertext, key)`
+
+Decrypts ciphertext using the LANA1028 cipher.
+
+**Parameters:**
+- `ciphertext` (str) - Base64-encoded encrypted data
+- `key` (bytes) - The same 129-byte key used for encryption
+
+**Returns:** `str` - Decrypted plaintext
+
+**Raises:** `ValueError` - If padding is invalid (tampered ciphertext)
+
+**Example:**
+```python
+try:
+    decrypted = lana1028_decrypt(encrypted, key)
+except ValueError as e:
+    print(f"Decryption failed: {e}")
+```
+
+## Examples
+
+### Basic Encryption/Decryption
+
+```python
+from lana1028.main import generate_lana1028_key, lana1028_encrypt, lana1028_decrypt
+
+# Generate key
+key = generate_lana1028_key()
+
+# Encrypt
+plaintext = "Hello, World!"
+ciphertext = lana1028_encrypt(plaintext, key)
+
+# Decrypt
+decrypted = lana1028_decrypt(ciphertext, key)
+
+assert plaintext == decrypted  # ✓
+```
+
+### Encrypting Bytes
+
+```python
+# You can encrypt bytes directly
+data = b"Binary data \x00\x01\x02"
+encrypted = lana1028_encrypt(data, key)
+decrypted = lana1028_decrypt(encrypted, key)
+```
+
+### Key Storage
+
+```python
+import os
+
+# Generate and save key
+key = generate_lana1028_key()
+with open("secret.key", "wb") as f:
+    f.write(key)
+
+# Load key later
+with open("secret.key", "rb") as f:
+    loaded_key = f.read()
+
+# Use the loaded key
+message = "Secure message"
+encrypted = lana1028_encrypt(message, loaded_key)
+```
+
+### Error Handling
+
+```python
+from lana1028.main import lana1028_decrypt
+
+try:
+    # Attempt to decrypt with wrong key or tampered data
+    decrypted = lana1028_decrypt(bad_ciphertext, key)
+except ValueError as e:
+    print(f"Decryption failed - data may be corrupted: {e}")
+```
+
+## Security Considerations
+
+### ✅ What This Cipher Does
+
+- Provides confidentiality through encryption
+- Detects tampering via padding validation
+- Uses cryptographically secure random IV generation
+- Implements nonlinear transformations
+
+### ❌ What This Cipher Does NOT Do
+
+- **Not audited** - This is educational code, not reviewed by cryptographers
+- **No authentication** - Doesn't provide authenticated encryption (no MAC/AEAD)
+- **No key derivation** - Use proper KDFs like PBKDF2 if deriving keys from passwords
+- **Not optimized** - Performance is not production-grade
+
+### For Production Use
+
+Use established libraries instead:
+
+```python
+# Use this for real applications:
+from cryptography.fernet import Fernet
+
+# Or for more control:
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+```
+
+## Technical Details
+
+- **Key Size:** 1028 bits (129 bytes)
+- **Block Size:** 512 bits (64 bytes)
+- **Rounds:** 64
+- **IV Size:** 64 bytes (randomly generated per encryption)
+- **Padding:** PKCS7-style
+- **Output Format:** Base64-encoded
+
+## Algorithm Overview
+
+1. **Key Expansion** - Derives 64 round keys using SHA-512
+2. **Padding** - PKCS7 padding to block boundary
+3. **Per Round:**
+   - IV mixing with round-specific transformation
+   - XOR with round key
+   - Nonlinear S-box substitution
+   - Byte mixing (diffusion layer)
+   - Permutation
+
+## License
+
+MIT License - See LICENSE file for details
+
+## Contributing
+
+This is an educational project. If you spot issues or want to suggest improvements for learning purposes, feel free to open an issue or pull request.
+
+## Disclaimer
+
+**EDUCATIONAL USE ONLY.** This cipher is not suitable for protecting real sensitive data. Always use industry-standard cryptographic libraries for production applications.
