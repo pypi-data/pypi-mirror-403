@@ -1,0 +1,263 @@
+# TelegramDatabase
+
+The main interface for interacting with a Telegram-native database.
+
+## Overview
+
+`TelegramDatabase` is the primary class you'll use to store and retrieve data. It manages the connection to Telegram, caching, locking, and all CRUD operations.
+
+## Configuration
+
+```python
+from pyteledb import DatabaseConfig
+
+config = DatabaseConfig(
+    bot_token="YOUR_BOT_TOKEN",
+    chat_id=-100123456789,
+    db_name="my_database",
+    cache_enabled=True,
+    cache_ttl=300.0,
+    cache_max_size=1000,
+    use_locking=True,
+    lock_ttl=30.0,
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `bot_token` | `str` | *required* | Telegram Bot API token |
+| `chat_id` | `int \| str` | *required* | Channel/group ID |
+| `db_name` | `str` | `"pyteledb"` | Human-readable database name |
+| `cache_enabled` | `bool` | `True` | Enable local caching |
+| `cache_ttl` | `float` | `300.0` | Cache TTL in seconds |
+| `cache_max_size` | `int` | `1000` | Maximum cached entries |
+| `use_locking` | `bool` | `True` | Enable soft locking for writes |
+| `lock_ttl` | `float` | `30.0` | Lock timeout in seconds |
+
+## Usage
+
+### Context Manager (Recommended)
+
+```python
+async with TelegramDatabase(config) as db:
+    await db.initialize()
+    # ... use the database
+```
+
+### Manual Lifecycle
+
+```python
+db = TelegramDatabase(config)
+try:
+    await db.initialize()
+    # ... use the database
+finally:
+    await db.close()
+```
+
+## Methods
+
+### `initialize(force=False)`
+
+Initialize the database, creating the root index if needed.
+
+```python
+root = await db.initialize()
+print(f"Database: {root.db_name}")
+print(f"Records: {root.record_count}")
+```
+
+**Parameters:**
+- `force` (`bool`): Overwrite existing root index. Default: `False`
+
+**Returns:** `RootIndex`
+
+**Raises:**
+- `DatabaseAlreadyExistsError`: If database exists and `force=False`
+
+---
+
+### `insert(data, *, record_id=None, tags=None)`
+
+Insert a new record.
+
+```python
+record = await db.insert(
+    {"name": "Alice", "score": 100},
+    tags=["user", "active"],
+)
+print(f"ID: {record.id}")
+print(f"Version: {record.version}")
+```
+
+**Parameters:**
+- `data` (`dict`): Record payload (must be JSON-serializable)
+- `record_id` (`str | None`): Custom record ID. Auto-generated if `None`
+- `tags` (`list[str] | None`): Optional tags for categorization
+
+**Returns:** `Record`
+
+---
+
+### `get(record_id)`
+
+Retrieve a record by ID.
+
+```python
+record = await db.get("abc123...")
+print(record.payload)  # {"name": "Alice", "score": 100}
+```
+
+**Parameters:**
+- `record_id` (`str`): Record ID to fetch
+
+**Returns:** `Record`
+
+**Raises:**
+- `RecordNotFoundError`: If record doesn't exist
+
+---
+
+### `update(record_id, data, *, expected_version=None)`
+
+Update an existing record.
+
+```python
+updated = await db.update(
+    record_id,
+    {"name": "Alice", "score": 150},
+    expected_version=1,  # Optimistic locking
+)
+```
+
+**Parameters:**
+- `record_id` (`str`): Record ID to update
+- `data` (`dict`): New payload data
+- `expected_version` (`int | None`): Expected version for optimistic locking
+
+**Returns:** `Record`
+
+**Raises:**
+- `RecordNotFoundError`: If record doesn't exist
+- `VersionConflictError`: If version doesn't match `expected_version`
+
+---
+
+### `delete(record_id)`
+
+Delete a record.
+
+```python
+success = await db.delete("abc123...")
+```
+
+**Parameters:**
+- `record_id` (`str`): Record ID to delete
+
+**Returns:** `bool`
+
+**Raises:**
+- `RecordNotFoundError`: If record doesn't exist
+
+---
+
+### `count()`
+
+Get the total number of records.
+
+```python
+total = await db.count()
+print(f"Total records: {total}")
+```
+
+**Returns:** `int`
+
+---
+
+### `exists(record_id)`
+
+Check if a record exists.
+
+```python
+if await db.exists("abc123..."):
+    print("Record exists!")
+```
+
+**Parameters:**
+- `record_id` (`str`): Record ID to check
+
+**Returns:** `bool`
+
+---
+
+### `info()`
+
+Get database information and statistics.
+
+```python
+info = await db.info()
+print(info)
+# {
+#     "name": "my_database",
+#     "id": "abc123...",
+#     "record_count": 42,
+#     "cache": {"size": 10, "hit_rate": 0.85},
+#     ...
+# }
+```
+
+**Returns:** `dict`
+
+---
+
+### `close()`
+
+Close the database and release resources.
+
+```python
+await db.close()
+```
+
+## Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `str` | Database name |
+| `is_initialized` | `bool` | Whether database is initialized |
+| `record_count` | `int` | Number of records (0 if not initialized) |
+
+## Record Object
+
+Records returned by database operations have the following structure:
+
+```python
+record.id           # Unique record ID
+record.message_id   # Telegram message ID
+record.version      # Version number
+record.payload      # The actual data (dict)
+record.metadata     # RecordMetadata object
+```
+
+### RecordMetadata
+
+```python
+record.metadata.record_id    # Record ID
+record.metadata.message_id   # Message ID
+record.metadata.version      # RecordVersion object
+record.metadata.checksum     # Data integrity checksum
+record.metadata.prev_id      # Previous record in chain
+record.metadata.next_id      # Next record in chain
+record.metadata.tags         # List of tags
+```
+
+## Exceptions
+
+| Exception | When Raised |
+|-----------|-------------|
+| `DatabaseNotInitializedError` | Operations before `initialize()` |
+| `RecordNotFoundError` | Record doesn't exist |
+| `VersionConflictError` | Optimistic locking failure |
+| `RateLimitError` | Telegram API rate limited |
+| `ConnectionError` | Network issues |

@@ -1,0 +1,170 @@
+# Architecture
+
+This document describes the architectural decisions and data model of pyteledb.
+
+## Core Principle
+
+> **"This is not a database engine. This is a Telegram-native persistence abstraction."**
+
+pyteledb treats Telegram as the source of truth. All data lives in Telegram messages, and local state is purely ephemeral (for caching and performance).
+
+## Data Model
+
+### Record Topology
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Telegram Channel/Group                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  📌 Pinned Message (Root Index)                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ {                                                     │   │
+│  │   "_": "PTDB",                                        │   │
+│  │   "name": "my_database",                              │   │
+│  │   "id": "abc123...",                                  │   │
+│  │   "chain": { "head": {...}, "tail": {...} },          │   │
+│  │   "count": 42                                         │   │
+│  │ }                                                     │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                           │                                  │
+│                           ▼                                  │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐                  │
+│  │ Record  │───▶│ Record  │───▶│ Record  │                  │
+│  │   #1    │◀───│   #2    │◀───│   #3    │                  │
+│  └─────────┘    └─────────┘    └─────────┘                  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Record Structure
+
+Each record is stored as a Telegram message containing JSON:
+
+```json
+{
+  "meta": {
+    "rid": "abc123...",           // Record ID
+    "mid": 12345,                 // Message ID
+    "ver": {"v": 1, "c": ...},    // Version info
+    "chk": "a1b2c3d4",            // Checksum
+    "prev": "xyz789...",          // Previous record
+    "next": null                  // Next record
+  },
+  "data": {
+    "user_id": 12345,
+    "name": "Alice",
+    "score": 100
+  }
+}
+```
+
+## Performance Model
+
+### Hard Constraints
+
+1. **Never scan full chat history** — Only fetch required message IDs
+2. **Cache fetched records** — TTL/LRU eviction
+3. **Prefer `editMessage`** — Over `sendMessage` for updates
+4. **Rate-limit aware** — Respect Telegram API limits
+
+### Caching Strategy
+
+```
+┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+│   Application │────▶│  Local Cache  │────▶│   Telegram    │
+│               │◀────│ (Memory/SQL)  │◀────│   Messages    │
+└───────────────┘     └───────────────┘     └───────────────┘
+                            │
+                      TTL/LRU Eviction
+```
+
+- **Cache Hit**: Return immediately from local cache
+- **Cache Miss**: Fetch from Telegram, cache the result
+- **Write-Through**: Update both cache and Telegram
+
+## Consistency & Safety
+
+Telegram provides **no transactions**. pyteledb implements:
+
+### Optimistic Locking
+
+```python
+# Each record has a version number
+record = await db.get(record_id)
+# version = 1
+
+# Concurrent update attempt
+await db.update(record_id, new_data, expected_version=1)
+# If version changed, raises VersionConflictError
+```
+
+### Soft Locks
+
+For operations requiring exclusive access:
+
+```python
+async with LockContext(lock_manager, "resource_id"):
+    # Only one writer at a time
+    await db.update(...)
+```
+
+### Crash Recovery
+
+All writes are designed to be **idempotent and retry-safe**:
+
+1. Each record has a checksum for corruption detection
+2. Orphaned records can be detected and relinked
+3. RepairTool can reconstruct consistent state
+
+## Module Boundaries
+
+```
+pyteledb/
+├── core/           # Database logic
+│   ├── database.py     → TelegramDatabase (main interface)
+│   ├── record.py       → Record data structure
+│   ├── root.py         → Root index management
+│   ├── pointers.py     → Linked list structure
+│   ├── locks.py        → Soft locking
+│   └── repair.py       → Crash recovery
+│
+├── telegram/       # STRICT Bot API boundary
+│   ├── client.py       → HTTP client for Bot API
+│   ├── messages.py     → Message operations
+│   ├── files.py        → File upload/download
+│   └── pins.py         → Pin management
+│
+├── storage/        # Data encoding
+│   ├── serializer.py   → JSON serialization
+│   ├── checksum.py     → Data integrity
+│   └── versioning.py   → Version tracking
+│
+├── cache/          # Ephemeral state
+│   ├── memory.py       → In-memory LRU cache
+│   └── sqlite.py       → SQLite persistence
+│
+└── ops/            # Operational safety
+    ├── throttling.py   → Rate limiting
+    ├── queue.py        → Write batching
+    └── metrics.py      → Observability
+```
+
+## Limits & Trade-offs
+
+| Aspect | Limit | Notes |
+|--------|-------|-------|
+| Message size | 4096 chars | Use file attachments for larger payloads |
+| Rate limits | ~30 msg/sec | Built-in throttling handles this |
+| Bot access | Channel admin | Bot must be admin to pin/edit |
+| Query capabilities | By ID only | No complex queries |
+
+## Enforcement Rules
+
+Any change that:
+- Breaks Telegram-native assumptions
+- Requires external state
+- Obscures failure modes
+- Violates module boundaries
+
+**Will be rejected.**

@@ -1,0 +1,147 @@
+<div align="center">
+
+![pyteledb](https://graph.org/file/447392c1845a8080329e4.png)
+
+# PyTeleDB
+
+**A Telegram-native embedded database for Telegram bots**
+
+[![PyPI version](https://badge.fury.io/py/pyteledb.svg)](https://badge.fury.io/py/pyteledb)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+</div>
+
+---
+
+## 🧠 What is pyteledb?
+
+pyteledb is a **Telegram-native persistence abstraction** that uses Telegram itself as the storage layer. No external databases required — just your bot and a Telegram channel or group.
+
+### Key Concepts
+
+- **Telegram channel/group** = your database
+- **Pinned message** = root index
+- **Messages** = records
+- **Bot API only** — no MTProto, no user accounts
+
+## ✨ Features
+
+- 🔌 **Zero external dependencies** for storage — Telegram IS the database
+- 🚀 **Async-first** design with `httpx`
+- 💾 **Optional local caching** (memory or SQLite) for performance
+- 🔒 **Soft locking** for write coordination
+- 📦 **Versioned records** with optimistic concurrency
+- 🔧 **Crash-resilient** with repair tools
+- 📊 **Built-in metrics** and observability
+
+## 📦 Installation
+
+```bash
+pip install pyteledb
+
+# With SQLite cache support
+pip install pyteledb[sqlite]
+```
+
+## 🚀 Quick Start
+
+```python
+import asyncio
+from pyteledb import TelegramDatabase, DatabaseConfig
+
+async def main():
+    config = DatabaseConfig(
+        bot_token="YOUR_BOT_TOKEN",
+        chat_id=-100123456789,  # Your channel/group ID
+        db_name="my_database",
+    )
+
+    async with TelegramDatabase(config) as db:
+        # Initialize (creates root index if not exists)
+        await db.initialize()
+
+        # Insert a record
+        record = await db.insert({
+            "user_id": 12345,
+            "name": "Alice",
+            "score": 100,
+        })
+        print(f"Created record: {record.id}")
+
+        # Update
+        await db.update(record.id, {
+            "user_id": 12345,
+            "name": "Alice",
+            "score": 150,  # New high score!
+        })
+
+        # Get database info
+        info = await db.info()
+        print(f"Total records: {info['record_count']}")
+
+asyncio.run(main())
+```
+
+## 📁 Project Structure
+
+```
+pyteledb/
+├── core/       # Database logic (TelegramDatabase, Record, RootIndex)
+├── telegram/   # Bot API client (messages, files, pins)
+├── storage/    # Serialization, checksums, versioning
+├── cache/      # Memory and SQLite caching
+├── ops/        # Rate limiting, write queue, metrics
+└── utils/      # Logging, time, ID generation
+```
+
+## ⚡ Performance Model
+
+pyteledb is designed for **small to medium Telegram bots** with predictable workloads:
+
+- **Never scans full chat history** — fetches only required message IDs
+- **Uses local cache** for frequently accessed records
+- **Rate-limit aware** with automatic throttling
+- **Prefers `editMessage`** over `sendMessage` for updates
+
+## 🛡️ Consistency & Safety
+
+Telegram provides no transactions, so pyteledb implements:
+
+- **Record versioning** for optimistic concurrency
+- **Soft locks** for write coordination
+- **Idempotent, retry-safe writes**
+- **Repair tools** for crash recovery
+
+## 🎯 Target Use Cases
+
+- ✅ Small to medium Telegram bots
+- ✅ Developer tooling
+- ✅ Predictable workloads
+- ✅ Human-inspectable data
+
+## 🚫 Not Designed For
+
+- ❌ High-throughput applications
+- ❌ Complex queries (SQL/NoSQL parity)
+- ❌ Multi-service orchestration
+
+## 📚 Documentation
+
+- [Architecture Guide](docs/architecture.mdx)
+- [API Reference](docs/api/database.mdx)
+- [Contributing Guide](CONTRIBUTING.md)
+
+## 📄 License
+
+This project is licensed under the GPL-3.0 License — see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
+
+---
+
+<div align="center">
+Made with ❤️ for the Telegram bot community
+</div>
