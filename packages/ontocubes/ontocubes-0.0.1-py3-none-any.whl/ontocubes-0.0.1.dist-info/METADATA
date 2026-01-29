@@ -1,0 +1,96 @@
+Metadata-Version: 2.4
+Name: ontocubes
+Version: 0.0.1
+Summary: Universal ontological cube framework - represent any entity as a 5-layer cube (temporal, typology, ontology, causality, individuality)
+Project-URL: Homepage, https://github.com/lifeaitools/ontocubes
+Project-URL: Documentation, https://github.com/lifeaitools/ontocubes#readme
+Project-URL: Repository, https://github.com/lifeaitools/ontocubes
+Project-URL: Issues, https://github.com/lifeaitools/ontocubes/issues
+Author-email: LifeAiTools <dev@lifeaitools.com>
+License-Expression: MIT
+License-File: LICENSE
+Keywords: 5-layer-architecture,cubes,entity-modeling,knowledge-representation,llm,ontology,prompt-engineering,recursive-resolution
+Classifier: Development Status :: 1 - Planning
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.10
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# ontocubes
+
+Universal ontological cube framework for representing any entity as a 5-layer cube.
+
+## Concept
+
+OntoCubes provides a unified model where **any entity in the world** can be represented as a cube with 5 layers:
+
+| Layer | Purpose | Example |
+|-------|---------|---------|
+| **Temporal** | Identity & versioning | `id`, `version`, `timestamp`, `name` |
+| **Typology** | Type hierarchy | `TEXT.PROMPT.LLM` |
+| **Ontology** | Semantic classification | `{"creative/storytelling": 0.95}` |
+| **Causality** | Parent/ancestry chain | Reference to parent cube |
+| **Individuality** | Actual data (delta from type) | `{prompts: {system: "...", user: "..."}}` |
+
+## Key Features
+
+- **Self-referential**: Same schema in → same schema out
+- **Recursive resolution**: `{{ref}}` syntax resolves cubes recursively
+- **Type-aware processors**: Transform data between types (TEXT → PROMPT)
+- **Schema validation**: Root cubes define schemas for their type hierarchy
+- **SQLite persistence**: Fast lookup with YAML as source of truth
+
+## Status
+
+🚧 **Under Development** - API may change
+
+## Installation
+
+```bash
+pip install ontocubes
+```
+
+## Quick Example
+
+```python
+from ontocubes import Storage, Resolver
+
+# Store a cube
+storage = Storage.get()
+storage.store({
+    "name": "greeting",
+    "typology": "TEXT",
+    "individuality": {"content": "Hello, World!"}
+})
+
+# Resolve with refs
+storage.store({
+    "name": "prompt",
+    "typology": "TEXT.PROMPT.LLM",
+    "individuality": {
+        "prompts": {
+            "system": "{{greeting}}",  # Resolves to "Hello, World!"
+            "user": ""
+        }
+    }
+})
+
+resolver = Resolver()
+result = resolver.resolve("prompt")
+print(result["individuality_resolved"]["prompts"]["system"])
+# Output: Hello, World!
+```
+
+## License
+
+MIT
