@@ -1,0 +1,313 @@
+Metadata-Version: 2.4
+Name: pd-money
+Version: 0.1.2
+Summary: A comprehensive pandas extension for financial data cleaning, performance analysis, and valuation.
+Author-email: Ammar Alhajmee <ammar@alhajmee.com>
+License: MIT License
+        
+        Copyright (c) 2026
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://github.com/aalhajmee/pd-money
+Project-URL: Repository, https://github.com/aalhajmee/pd-money
+Project-URL: Issues, https://github.com/aalhajmee/pd-money/issues
+Keywords: pandas,finance,money,cleaning,fintech,analysis
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pandas>=1.0.0
+Requires-Dist: numpy>=1.20.0
+Dynamic: license-file
+
+# pd-money
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/pd-money.svg)](https://badge.fury.io/py/pd-money)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+A comprehensive pandas extension for financial data cleaning, performance analysis, and valuation.
+
+## Installation
+
+```bash
+pip install pd-money
+```
+
+## Quick Start
+
+```python
+import pandas as pd
+import pd_money
+
+df = pd.DataFrame({"Revenue": ["$1,000.00", "(500.00)", "-"]})
+df["Revenue"] = df["Revenue"].money.clean()
+# Result: [1000.0, -500.0, 0.0]
+```
+
+## Features Guide
+
+### 1. Cleaning & Formatting
+
+**Clean**
+Safely convert "dirty" strings (currency symbols, parentheses for negatives, dashes for zero) into floats.
+
+```python
+s = pd.Series(["$1,000.50", "(200.00)", "-", "10%"])
+
+# Standard Clean
+print(s.money.clean())
+# 0    1000.5
+# 1    -200.0
+# 2       0.0
+# 3      10.0
+# dtype: float64
+
+# Clean Percentages
+print(s.money.clean(percent=True))
+# 3    0.10
+```
+
+**Format**
+Convert numbers back into formatted currency strings, supporting accounting notation.
+
+```python
+s = pd.Series([1000.5, -200.0, 0.0])
+
+print(s.money.format(accounting=True))
+# 0      $1,000.50
+# 1      ($200.00)
+# 2          $0.00
+# dtype: string
+```
+
+### 2. Validation
+
+**Lint**
+Scan your data for "Financial Data Smells" like mixed currencies, Excel errors, or precision issues.
+
+```python
+s = pd.Series(["$100", "€50", "#DIV/0!"])
+report = s.money.lint()
+
+print(report)
+# [
+#   "[FAIL] 1 rows contain Excel error strings.",
+#   "[WARN] Mixed currency symbols detected: $, €"
+# ]
+```
+
+### 3. Conversion
+
+**FX Conversion**
+Vectorized currency conversion using a rate table.
+
+```python
+# Input Data
+df = pd.DataFrame({
+    "Date": pd.to_datetime(["2023-01-01", "2023-01-02"]),
+    "Amount_EUR": [100.0, 200.0]
+})
+
+# Rates Table
+rates = {
+    pd.Timestamp("2023-01-01"): 1.05, 
+    pd.Timestamp("2023-01-02"): 1.06
+}
+
+# Run
+df["Amount_USD"] = df["Amount_EUR"].money.convert(
+    to="USD", 
+    rates=rates, 
+    dates=df["Date"]
+)
+
+print(df["Amount_USD"])
+# 0    105.0
+# 1    212.0
+# Name: Amount_USD, dtype: float64
+```
+
+**Unit Scaling**
+Scale values up or down (Thousands, Millions, Billions).
+
+```python
+s = pd.Series([1500000.0])
+
+# To "Millions" formatted string
+print(s.money.to_unit("m"))
+# 0    1.5M
+# dtype: object
+
+# From "Millions" to raw number
+s2 = pd.Series(["1.5"])
+print(s2.money.from_unit("m"))
+# 0    1500000.0
+# dtype: float64
+```
+
+### 4. Analysis & Risk
+
+**CAGR (Compound Annual Growth Rate)**
+Calculate the smooth annual growth rate over a period.
+
+```python
+# Time Series Input
+df = pd.DataFrame({
+    "Date": pd.to_datetime(["2020-01-01", "2022-01-01"]),
+    "Price": [100.0, 121.0]
+}).set_index("Date")
+
+# Run (Auto-infers period from index)
+print(df["Price"].money.cagr())
+# 0.10  (10%)
+```
+
+**Drawdown**
+Calculate the decline from the historical peak.
+
+```python
+s = pd.Series([100, 120, 60, 120])
+
+print(s.money.drawdown())
+# 0    0.0
+# 1    0.0
+# 2   -0.5  (Down 50% from peak of 120)
+# 3    0.0
+# dtype: float64
+```
+
+**Volatility**
+Calculate annualized volatility (default assumes daily data).
+
+```python
+# Daily returns series
+s = pd.Series([100, 101, 99, 100])
+print(s.money.volatility())
+# 0.158... (Annualized Std Dev)
+```
+
+**Beta**
+Calculate systematic risk relative to a benchmark.
+
+```python
+asset = pd.Series([100, 102, 104]) # +2%, +1.96%
+bench = pd.Series([100, 101, 102]) # +1%, +0.99%
+
+print(asset.money.beta(benchmark=bench))
+# 2.0
+```
+
+### 5. Valuation
+
+**XIRR (Internal Rate of Return)**
+Calculate IRR for irregular cash flows. Requires a `DatetimeIndex`.
+
+```python
+df = pd.DataFrame({
+    "Date": pd.to_datetime(["2020-01-01", "2021-01-01"]),
+    "Flow": [-1000.0, 1100.0]
+}).set_index("Date")
+
+print(df["Flow"].money.xirr())
+# 0.10 (10%)
+```
+
+**NPV (Net Present Value)**
+Discount irregular cash flows to today's value.
+
+```python
+print(df["Flow"].money.npv(rate=0.08))
+# 18.51 (Positive NPV at 8% discount rate)
+```
+
+### 6. Allocation
+
+**Allocate**
+Split amounts into components based on weights, handling rounding errors ("penny-perfect").
+
+```python
+s = pd.Series([100.00]) # Split $100 into 3 equal parts
+
+# Run
+splits = s.money.allocate([1, 1, 1])
+
+print(splits)
+#        0      1      2
+# 0  33.34  33.33  33.33
+# (Sum is exactly 100.00)
+```
+
+### 7. Utilities
+
+**Fiscal Year**
+Convert calendar dates to Fiscal Year strings.
+
+```python
+dates = pd.Series(pd.to_datetime(["2023-10-15"]))
+
+# US Government Fiscal Year (Starts Oct 1)
+print(dates.money.fiscal_year(start_month=10))
+# 0    FY2024 Q1
+# dtype: string
+```
+
+**Profile**
+Generate a comprehensive financial summary stats report.
+
+```python
+s = pd.Series([100, 200, -50, 0, None])
+print(s.money.profile())
+
+# count             4.0
+# sum             250.0
+# min             -50.0
+# max             200.0
+# zeros             1.0
+# negatives         1.0
+# nulls             1.0
+# max_drawdown     -1.25
+# cagr             None
+# dtype: float64
+```
+
+## Why pd-money?
+
+Financial data is notoriously messy. Parentheses for negatives, mixed symbols, and rounding errors make standard pandas operations repetitive and fragile. `pd-money` provides a clean, vectorized accessor (`.money`) to handle these edge cases idiomatically.
+
+## Contributing
+
+We welcome contributions! 
+1. Fork the repository.
+2. Install in editable mode: `pip install -e .`
+3. Add your feature and a test.
+4. Submit a Pull Request.
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
