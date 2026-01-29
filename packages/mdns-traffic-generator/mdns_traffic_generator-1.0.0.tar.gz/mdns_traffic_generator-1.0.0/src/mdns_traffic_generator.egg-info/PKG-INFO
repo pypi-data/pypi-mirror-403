@@ -1,0 +1,467 @@
+Metadata-Version: 2.4
+Name: mdns-traffic-generator
+Version: 1.0.0
+Summary: A Python tool for generating mDNS traffic for network testing
+Author: MDNS Generator Team
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/example/mdns-traffic-generator
+Project-URL: Documentation, https://github.com/example/mdns-traffic-generator#readme
+Project-URL: Repository, https://github.com/example/mdns-traffic-generator
+Project-URL: Issues, https://github.com/example/mdns-traffic-generator/issues
+Keywords: mdns,multicast,dns,network,testing,zeroconf
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: System Administrators
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: MacOS
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: System :: Networking
+Classifier: Topic :: Software Development :: Testing
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: zeroconf>=0.131.0
+Requires-Dist: click>=8.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pylint>=3.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
+
+# MDNS Traffic Generator
+
+A Python tool for generating mDNS (Multicast DNS) traffic for network testing. This tool allows you to register, announce, and discover mDNS services across a network, making it ideal for testing network configurations, firewalls, and mDNS-aware applications.
+
+## Features
+
+- **Service Registration**: Register custom mDNS services with configurable properties
+- **Traffic Generation**: Generate continuous mDNS announcements for stress testing
+- **Service Discovery**: Discover and browse mDNS services on the network
+- **INI-Based Configuration**: Persistent configuration stored in an INI file
+- **CLI Configuration Management**: All config changes through CLI commands
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+- **PyPI Ready**: Installable via pip
+
+## Installation
+
+### From PyPI (when published)
+
+```bash
+pip install mdns-traffic-generator
+```
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/example/mdns-traffic-generator.git
+cd mdns-traffic-generator
+
+# Install in development mode
+pip install -e ".[dev]"
+```
+
+### Windows Installation
+
+On Windows, the tool works out of the box but may require additional configuration:
+
+#### 1. Check Platform Requirements
+
+After installation, run the platform check command:
+
+```cmd
+mdns-generator check
+```
+
+This will show your platform status, IP addresses, and any warnings.
+
+#### 2. Configure Windows Firewall
+
+mDNS uses UDP port 5353. You may need to allow this through Windows Firewall.
+
+**Option A: Using PowerShell (Run as Administrator)**
+
+```powershell
+# Allow inbound mDNS traffic
+New-NetFirewallRule -DisplayName "mDNS-In" -Direction Inbound -Protocol UDP -LocalPort 5353 -Action Allow
+
+# Allow outbound mDNS traffic  
+New-NetFirewallRule -DisplayName "mDNS-Out" -Direction Outbound -Protocol UDP -LocalPort 5353 -Action Allow
+```
+
+**Option B: Using the GUI**
+
+1. Open "Windows Defender Firewall with Advanced Security"
+2. Click "Inbound Rules" > "New Rule"
+3. Select "Port" > "UDP" > Specific port: `5353`
+4. Allow the connection
+5. Repeat for "Outbound Rules"
+
+To see detailed firewall instructions:
+
+```cmd
+mdns-generator check --firewall
+```
+
+#### 3. Optional: Install Bonjour (Windows 7/8)
+
+On older Windows versions, you may need Apple's Bonjour service for mDNS support:
+- Download [Bonjour Print Services for Windows](https://support.apple.com/kb/DL999)
+- Or install iTunes (includes Bonjour)
+
+Windows 10/11 have built-in mDNS support and typically don't need Bonjour.
+
+#### 4. Run as Administrator (If Needed)
+
+Some operations may require elevated privileges:
+
+```cmd
+# Right-click Command Prompt or PowerShell
+# Select "Run as Administrator"
+mdns-generator generate --name test-service --duration 60
+```
+
+## Quick Start
+
+### Generate mDNS Traffic
+
+```bash
+# Generate traffic with default settings for 60 seconds
+mdns-generator generate
+
+# Generate with custom service name and duration
+mdns-generator generate --name my-test-service --duration 120
+
+# Generate multiple services
+mdns-generator generate --name load-test --count 10 --duration 300
+```
+
+### Discover Services
+
+```bash
+# Discover HTTP services
+mdns-generator discover
+
+# Discover all common service types
+mdns-generator discover --all --duration 10
+
+# Continuous discovery with live updates
+mdns-generator discover --continuous
+
+# Output as JSON
+mdns-generator discover --json
+```
+
+### Register a Single Service
+
+```bash
+# Register a service and keep it active
+mdns-generator register --name my-webapp --port 8080 --type _http._tcp.local.
+
+# With custom properties
+mdns-generator register --name my-api --port 3000 -P version=2.0 -P env=testing
+```
+
+## Configuration
+
+Configuration is stored in an INI file and can **only** be modified through CLI commands. This ensures consistent and validated configuration.
+
+### Configuration File Location
+
+- **Windows**: `%APPDATA%\mdns-generator\config.ini`
+- **macOS/Linux**: `~/.config/mdns-generator/config.ini`
+
+### View Current Configuration
+
+```bash
+# Show all configuration values
+mdns-generator config show
+
+# Show config file path only
+mdns-generator config show --path
+```
+
+### Set Configuration Values
+
+```bash
+# Set service name
+mdns-generator config set service.name my-service
+
+# Set service port
+mdns-generator config set service.port 9000
+
+# Set broadcast interval
+mdns-generator config set traffic.broadcast_interval 10
+
+# Set logging level
+mdns-generator config set logging.level DEBUG
+```
+
+### Available Configuration Keys
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `service.name` | Service instance name | `test-service` |
+| `service.type` | mDNS service type | `_http._tcp.local.` |
+| `service.port` | Service port (1-65535) | `8080` |
+| `network.interface` | Network interface to bind | `0.0.0.0` |
+| `network.ttl` | mDNS record TTL in seconds | `4500` |
+| `traffic.broadcast_interval` | Announcement interval (seconds) | `5.0` |
+| `traffic.service_count` | Number of services (1-100) | `1` |
+| `logging.level` | Log level | `INFO` |
+| `logging.file` | Log file path (optional) | *(not set)* |
+
+### Initialize or Reset Configuration
+
+```bash
+# Initialize config file with defaults
+mdns-generator config init
+
+# Reset configuration to defaults
+mdns-generator config reset
+
+# Force overwrite existing config
+mdns-generator config init --force
+```
+
+### Edit Configuration Manually
+
+```bash
+# Open config file in default editor
+mdns-generator config edit
+```
+
+## CLI Reference
+
+### Global Options
+
+```bash
+mdns-generator --version          # Show version
+mdns-generator --help             # Show help
+mdns-generator --log-level DEBUG  # Override log level for this session
+```
+
+### Commands
+
+#### `generate` - Generate mDNS Traffic
+
+```bash
+mdns-generator generate [OPTIONS]
+
+Options:
+  -n, --name TEXT        Service name (overrides config)
+  -t, --type TEXT        Service type (overrides config)
+  -p, --port INTEGER     Service port (overrides config)
+  -c, --count INTEGER    Number of services to register (overrides config)
+  -d, --duration FLOAT   Duration in seconds, 0 for indefinite (default: 60)
+  -i, --interval FLOAT   Broadcast interval in seconds (overrides config)
+  -P, --property TEXT    Service property as key=value (repeatable)
+```
+
+#### `discover` - Discover mDNS Services
+
+```bash
+mdns-generator discover [OPTIONS]
+
+Options:
+  -t, --type TEXT        Service type to discover (repeatable)
+  -d, --duration FLOAT   Discovery duration in seconds (default: 5)
+  -a, --all              Discover all common service types
+  -j, --json             Output results as JSON
+  -c, --continuous       Continuously discover and display services
+```
+
+#### `register` - Register a Single Service
+
+```bash
+mdns-generator register [OPTIONS]
+
+Options:
+  -n, --name TEXT        Service name (required)
+  -t, --type TEXT        Service type (default: _http._tcp.local.)
+  -p, --port INTEGER     Service port (required)
+  -P, --property TEXT    Service property as key=value (repeatable)
+```
+
+#### `config` - Manage Configuration
+
+```bash
+mdns-generator config show [--path]           # Show configuration
+mdns-generator config set <key> <value>       # Set a configuration value
+mdns-generator config reset [--yes]           # Reset to defaults
+mdns-generator config init [--force]          # Initialize config file
+mdns-generator config edit                    # Open in editor
+```
+
+#### `list-types` - List Common Service Types
+
+```bash
+mdns-generator list-types
+```
+
+#### `check` - Check Platform Requirements
+
+```bash
+mdns-generator check [OPTIONS]
+
+Options:
+  -f, --firewall    Show firewall configuration instructions
+```
+
+Example output:
+```
+Platform Check
+----------------------------------------
+Platform: Windows
+Python: 3.11.0
+Hostname: DESKTOP-ABC123.local.
+IP Addresses: 192.168.1.100
+----------------------------------------
+Status: Ready
+All mDNS requirements met!
+```
+
+## Programmatic Usage
+
+```python
+from mdns_generator import MDNSGenerator, ServiceConfig, ServiceDiscovery
+
+# Generate traffic
+with MDNSGenerator() as generator:
+    config = ServiceConfig(
+        name="my-service",
+        service_type="_http._tcp.local.",
+        port=8080,
+        properties={"version": "1.0"}
+    )
+    generator.register_service(config)
+    generator.start_broadcasting(interval=5.0)
+    
+    # Keep running...
+    import time
+    time.sleep(60)
+
+# Discover services
+with ServiceDiscovery() as discovery:
+    services = discovery.discover_services(
+        service_types=["_http._tcp.local."],
+        duration=5.0
+    )
+    for service in services:
+        print(f"Found: {service.name} at {service.addresses}:{service.port}")
+```
+
+## Common Service Types
+
+| Service Type | Description |
+|-------------|-------------|
+| `_http._tcp.local.` | HTTP web servers |
+| `_https._tcp.local.` | HTTPS web servers |
+| `_ssh._tcp.local.` | SSH servers |
+| `_ftp._tcp.local.` | FTP servers |
+| `_smb._tcp.local.` | SMB file shares |
+| `_printer._tcp.local.` | Network printers |
+| `_ipp._tcp.local.` | IPP printers |
+| `_airplay._tcp.local.` | Apple AirPlay |
+| `_googlecast._tcp.local.` | Google Cast devices |
+| `_homekit._tcp.local.` | HomeKit devices |
+
+## Development
+
+### Setup Development Environment
+
+```bash
+# Clone and install with dev dependencies
+git clone https://github.com/example/mdns-traffic-generator.git
+cd mdns-traffic-generator
+pip install -e ".[dev]"
+```
+
+### Run Tests
+
+```bash
+# Run all tests with coverage
+pytest
+
+# Run specific test file
+pytest tests/test_generator.py
+
+# Run with verbose output
+pytest -v
+```
+
+### Code Quality
+
+```bash
+# Run linter
+pylint src/mdns_generator
+
+# Format code
+black src tests
+isort src tests
+
+# Type checking
+mypy src/mdns_generator
+```
+
+### Build Package
+
+```bash
+# Build distribution packages
+pip install build
+python -m build
+
+# The packages will be in dist/
+# - mdns_traffic_generator-1.0.0.tar.gz
+# - mdns_traffic_generator-1.0.0-py3-none-any.whl
+```
+
+### Publish to PyPI
+
+```bash
+# Install twine
+pip install twine
+
+# Upload to TestPyPI first
+twine upload --repository testpypi dist/*
+
+# Upload to PyPI
+twine upload dist/*
+```
+
+## Troubleshooting
+
+### Windows: Access Denied
+
+Run Command Prompt or PowerShell as Administrator, or check firewall settings.
+
+### No Services Discovered
+
+1. Ensure mDNS traffic is allowed through the firewall (UDP port 5353)
+2. Check that the network supports multicast
+3. Some corporate networks block mDNS traffic
+
+### Service Registration Fails
+
+1. Verify the port is not already in use
+2. Check that you have permission to bind to the network interface
+3. Try running with elevated privileges
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
