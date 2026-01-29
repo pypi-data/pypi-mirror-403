@@ -1,0 +1,365 @@
+Metadata-Version: 2.4
+Name: cisco-scc-sdk
+Version: 1.0.2
+Summary: Python SDK for Cisco Security Cloud Control Platform Management APIs
+Home-page: https://github.com/CiscoDevNet/cisco-scc-python-sdk
+Author: Cisco Security
+Author-email: cisco-scc-sdk-team@cisco.com
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.25.0
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-cov>=2.10; extra == "dev"
+Requires-Dist: black>=21.0; extra == "dev"
+Requires-Dist: flake8>=3.9; extra == "dev"
+Requires-Dist: mypy>=0.910; extra == "dev"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Cisco Security Cloud Control Python SDK
+
+A Python SDK for interacting with the Cisco Security Cloud Control Platform Management APIs.
+
+## Installation
+
+```bash
+pip3 install cisco-scc-sdk
+```
+
+Or install from source:
+
+```bash
+pip3 install .
+```
+
+Using a virtual environment (recommended):
+
+```bash
+python3 -m venv venv
+source venv/bin/activate && pip install -e .
+```
+
+## Quick Start
+
+```python
+from scc_sdk import Client
+
+# Initialize the client with your access token
+client = Client(access_token="your_bearer_token_here")
+
+# Work with organizations
+organizations = client.organizations.list()
+org = client.organizations.get(org_id="550e8400-e29b-41d4-a716-446655440000")
+new_org = client.organizations.create(name="New Org", region_code="NAM")
+
+# Work with subscriptions
+subscriptions = client.subscriptions.list(org_id="org-uuid")
+subscription = client.subscriptions.get(org_id="org-uuid", subscription_id="sub-uuid")
+
+# Work with groups
+groups = client.groups.list(org_id="org-uuid")
+group = client.groups.get(org_id="org-uuid", group_id="group-uuid")
+```
+
+## Features
+
+- **Simple Authentication**: Just pass your bearer token
+- **Resource-based API**: Organized into logical resource classes
+- **Type Hints**: Full type hint support for better IDE integration
+- **Context Manager Support**: Use with `with` statement for automatic cleanup
+- **Comprehensive Error Handling**: Custom exceptions for different error types
+
+## Configuration
+
+The SDK uses a configurable base URL. By default, it points to `https://api.security.cisco.com/v1`.
+
+To use a different URL:
+
+```python
+client = Client(
+    access_token="your_token",
+    base_url="https://api.security.cisco.com",
+    base_path="v1"
+)
+```
+
+## Usage Examples
+
+### Cisco Live Example
+
+For a complete end-to-end example demonstrating organization setup including subscription claiming, user invitations, group creation, and role assignments, see [`examples/cisco_live_example.py`](examples/cisco_live_example.py).
+
+**To run the Cisco Live example:**
+
+1. **Get your API Access Token**: Generate an API key access token from the Security Cloud Control console
+2. **Create or identify your Organization**: Note the Organization ID you want to configure
+3. **Update the configuration** in `cisco_live_example.py`:
+   - Set `ACCESS_TOKEN` to your API key access token
+   - Set `ORG_ID` to your organization ID
+   - Update `USERS_TO_INVITE` with the users you want to invite
+   - Set `SECURE_ACCESS_CLAIM_CODE` and `FIREWALL_CLAIM_CODE` with your subscription claim codes
+
+4. **Run the script**:
+   ```bash
+   python3 examples/cisco_live_example.py
+   ```
+
+This example demonstrates a complete workflow including:
+- Retrieving organization details
+- Claiming Secure Access and Firewall subscriptions
+- Inviting users to the organization
+- Creating an admin group
+- Assigning product roles to the group
+
+### Using Context Manager
+
+```python
+with Client(access_token="your_token") as client:
+    orgs = client.organizations.list()
+    # Session is automatically closed when exiting the context
+```
+
+### Organizations
+
+```python
+# List organizations with filtering and pagination
+orgs = client.organizations.list(
+    name="Acme",
+    type="STANDALONE",
+    region_code="NAM",
+    max=50,
+    sort_by="name",
+    order="ASC"
+)
+
+# Get a specific organization
+org = client.organizations.get(org_id="550e8400-e29b-41d4-a716-446655440000")
+
+# Create a new organization
+new_org = client.organizations.create(
+    name="New Organization",
+    region_code="NAM",
+    type="STANDALONE"
+)
+
+# Update an organization
+updated_org = client.organizations.update(
+    org_id="550e8400-e29b-41d4-a716-446655440000",
+    name="Updated Name"
+)
+```
+
+### Subscriptions
+
+```python
+org_id = "550e8400-e29b-41d4-a716-446655440000"
+
+# List subscriptions
+subscriptions = client.subscriptions.list(org_id=org_id)
+
+# Get a specific subscription
+subscription = client.subscriptions.get(
+    org_id=org_id,
+    subscription_id="3742d652-6740-489c-b628-143f00690fea"
+)
+
+# Create a subscription with claim code
+new_subscription = client.subscriptions.create(
+    org_id=org_id,
+    claim_code="PHJZ-DWMF-ZBYH-FYMB",
+    type="STANDALONE"
+)
+
+# Read claim code details before creating
+claim_info = client.subscriptions.read_claim_code(
+    org_id=org_id,
+    claim_code="PHJZ-DWMF-ZBYH-FYMB"
+)
+
+# Update subscription (activate/deactivate product)
+updated_sub = client.subscriptions.update(
+    org_id=org_id,
+    subscription_id="sub-uuid",
+    product_id="product-uuid",
+    status=True,
+    region_code="NAM",
+    initial_admin="admin@example.com"
+)
+
+# Patch subscription (update SKU quantities for managed orgs)
+patched_sub = client.subscriptions.patch(
+    org_id=org_id,
+    subscription_id="sub-uuid",
+    skus=[
+        {"name": "E3S-AIDEF-ADV", "quantity": 10},
+        {"name": "CPT-SEC-ADV", "quantity": 50}
+    ]
+)
+```
+
+### Groups
+
+```python
+org_id = "550e8400-e29b-41d4-a716-446655440000"
+
+# List groups
+groups = client.groups.list(org_id=org_id)
+
+# Get a specific group
+group = client.groups.get(
+    org_id=org_id,
+    group_id="e980e881-b61f-11f0-a9b4-06fbd2118f4e"
+)
+
+# Create a new group
+new_group = client.groups.create(
+    org_id=org_id,
+    name="Engineering Team",
+    description="Engineering department group",
+    applies_to="SOME_MANAGED"
+)
+
+# Update a group
+updated_group = client.groups.update(
+    org_id=org_id,
+    group_id="group-uuid",
+    name="Updated Team Name",
+    description="Updated description"
+)
+
+# Delete a group
+client.groups.delete(org_id=org_id, group_id="group-uuid")
+
+# Remove shared group from managed organization
+client.groups.remove_shared_group(org_id=org_id, group_id="group-uuid")
+```
+
+### Token Refresh
+
+```python
+# Refresh access token using refresh token
+new_tokens = client.tokens.refresh(
+    org_id="org-uuid",
+    api_key_id="key-uuid",
+    refresh_token="your_refresh_token"
+)
+
+access_token = new_tokens["access_token"]
+refresh_token = new_tokens["refresh_token"]
+expires_in = new_tokens["expires_in"]
+```
+
+## Error Handling
+
+The SDK provides custom exceptions for different error scenarios:
+
+```python
+from scc_sdk import (
+    Client,
+    SCCError,
+    AuthenticationError,
+    NotFoundError,
+    ValidationError,
+    ForbiddenError,
+    ServerError
+)
+
+try:
+    client = Client(access_token="your_token")
+    org = client.organizations.get(org_id="invalid-uuid")
+except AuthenticationError:
+    print("Invalid access token")
+except NotFoundError:
+    print("Organization not found")
+except ValidationError:
+    print("Invalid request data")
+except ForbiddenError:
+    print("Access forbidden")
+except ServerError:
+    print("Server error occurred")
+except SCCError as e:
+    print(f"API error occurred: {e}")
+```
+
+## API Resources
+
+### Organizations Resource
+- `list()` - List organizations with filtering
+- `get(org_id)` - Get organization by ID
+- `create(name, region_code, type)` - Create new organization
+- `update(org_id, name)` - Update organization name
+
+### Subscriptions Resource
+- `list(org_id, name)` - List subscriptions
+- `get(org_id, subscription_id)` - Get subscription by ID
+- `create(org_id, claim_code, type, products)` - Create subscription
+- `update(org_id, subscription_id, ...)` - Update subscription
+- `patch(org_id, subscription_id, skus, ...)` - Patch subscription SKUs
+- `read_claim_code(org_id, claim_code)` - Validate claim code
+
+### Groups Resource
+- `list(org_id)` - List groups
+- `get(org_id, group_id)` - Get group by ID
+- `create(org_id, name, description, applies_to)` - Create group
+- `update(org_id, group_id, name, description)` - Update group
+- `delete(org_id, group_id)` - Delete group
+- `remove_shared_group(org_id, group_id)` - Remove shared group
+
+### Tokens Resource
+- `refresh(org_id, api_key_id, refresh_token)` - Refresh access token
+
+## Development
+
+### Running Tests
+
+```bash
+pip3 install -e ".[dev]"
+pytest
+```
+
+### Code Formatting
+
+```bash
+black scc_sdk/
+flake8 scc_sdk/
+mypy scc_sdk/
+```
+
+## API Documentation
+
+For full API documentation, refer to the [Cisco Security Cloud Control API Documentation](https://developer.cisco.com/docs/security/).
+
+## Contributing
+
+Thanks for your interest in contributing! There are many ways to contribute to this project. Get started [here](CONTRIBUTING.md).
+
+## Support
+
+For questions, issues, or feedback regarding this SDK, please contact the Cisco SCC SDK Team:
+
+📧 **Email**: [cisco-scc-sdk-team@cisco.com](mailto:cisco-scc-sdk-team@cisco.com)
+
+## License
+
+This library is distributed under the Apache 2.0 license found in the [LICENSE](LICENSE) file.
