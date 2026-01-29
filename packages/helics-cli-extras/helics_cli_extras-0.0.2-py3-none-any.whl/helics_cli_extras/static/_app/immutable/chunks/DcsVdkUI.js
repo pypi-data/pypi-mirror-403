@@ -1,0 +1,1 @@
+import{i as n,o as u}from"./DxqtznRv.js";function a(e,f,t,r,s){var l;n&&u();var i=(l=f.$$slots)==null?void 0:l[t],d=!1;i===!0&&(i=f[t==="default"?"children":t],d=!0),i===void 0?s!==null&&s(e):i(e,d?()=>r:r)}export{a as s};
