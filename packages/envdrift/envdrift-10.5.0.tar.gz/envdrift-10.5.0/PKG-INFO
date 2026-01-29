@@ -1,0 +1,176 @@
+Metadata-Version: 2.4
+Name: envdrift
+Version: 10.5.0
+Summary: Prevent environment variable drift with Pydantic schema validation, pre-commit hooks, and dotenvx encryption
+Project-URL: Homepage, https://github.com/jainal09/envdrift
+Project-URL: Documentation, https://jainal09.github.io/envdrift
+Project-URL: Repository, https://github.com/jainal09/envdrift
+Project-URL: Issues, https://github.com/jainal09/envdrift/issues
+Author-email: Jainal Gosaliya <gosaliya.jainal@gmail.com>
+License-Expression: MIT
+License-File: LICENSE
+Keywords: aws,azure,config,dotenv,dotenvx,drift,encryption,environment,gcp,hashicorp,pre-commit,pydantic,schema,secrets,validation,variables,vault
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Security
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Software Development :: Quality Assurance
+Classifier: Typing :: Typed
+Requires-Python: >=3.11
+Requires-Dist: pydantic-settings>=2.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: rich>=13.0
+Requires-Dist: typer>=0.9
+Provides-Extra: all
+Requires-Dist: azure-identity>=1.15; extra == 'all'
+Requires-Dist: azure-keyvault-secrets>=4.8; extra == 'all'
+Requires-Dist: boto3>=1.34; extra == 'all'
+Requires-Dist: google-cloud-secret-manager>=2.16; extra == 'all'
+Requires-Dist: hvac>=2.0; extra == 'all'
+Requires-Dist: pyyaml>=6.0; extra == 'all'
+Provides-Extra: aws
+Requires-Dist: boto3>=1.34; extra == 'aws'
+Provides-Extra: azure
+Requires-Dist: azure-identity>=1.15; extra == 'azure'
+Requires-Dist: azure-keyvault-secrets>=4.8; extra == 'azure'
+Provides-Extra: dev
+Requires-Dist: bandit>=1.7.0; extra == 'dev'
+Requires-Dist: mkdocs-material>=9.5; extra == 'dev'
+Requires-Dist: pre-commit>=3.0; extra == 'dev'
+Requires-Dist: pyrefly>=0.2.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0; extra == 'dev'
+Requires-Dist: pytest-mock>=3.12; extra == 'dev'
+Requires-Dist: pytest-timeout>=2.3.1; extra == 'dev'
+Requires-Dist: pytest>=8.0; extra == 'dev'
+Requires-Dist: pyyaml>=6.0; extra == 'dev'
+Requires-Dist: ruff>=0.8.0; extra == 'dev'
+Provides-Extra: docs
+Requires-Dist: mkdocs-material>=9.5; extra == 'docs'
+Provides-Extra: gcp
+Requires-Dist: google-cloud-secret-manager>=2.16; extra == 'gcp'
+Provides-Extra: hashicorp
+Requires-Dist: hvac>=2.0; extra == 'hashicorp'
+Provides-Extra: precommit
+Requires-Dist: pyyaml>=6.0; extra == 'precommit'
+Provides-Extra: test-integration
+Requires-Dist: azure-identity>=1.15; extra == 'test-integration'
+Requires-Dist: azure-keyvault-secrets>=4.8; extra == 'test-integration'
+Requires-Dist: bandit>=1.7.0; extra == 'test-integration'
+Requires-Dist: boto3>=1.34; extra == 'test-integration'
+Requires-Dist: docker>=7.0.0; extra == 'test-integration'
+Requires-Dist: google-cloud-secret-manager>=2.16; extra == 'test-integration'
+Requires-Dist: hvac>=2.0; extra == 'test-integration'
+Requires-Dist: mkdocs-material>=9.5; extra == 'test-integration'
+Requires-Dist: pre-commit>=3.0; extra == 'test-integration'
+Requires-Dist: pyrefly>=0.2.0; extra == 'test-integration'
+Requires-Dist: pytest-cov>=4.0; extra == 'test-integration'
+Requires-Dist: pytest-mock>=3.12; extra == 'test-integration'
+Requires-Dist: pytest-timeout>=2.3.1; extra == 'test-integration'
+Requires-Dist: pytest>=8.0; extra == 'test-integration'
+Requires-Dist: pyyaml>=6.0; extra == 'test-integration'
+Requires-Dist: ruff>=0.8.0; extra == 'test-integration'
+Provides-Extra: vault
+Requires-Dist: azure-identity>=1.15; extra == 'vault'
+Requires-Dist: azure-keyvault-secrets>=4.8; extra == 'vault'
+Requires-Dist: boto3>=1.34; extra == 'vault'
+Requires-Dist: google-cloud-secret-manager>=2.16; extra == 'vault'
+Requires-Dist: hvac>=2.0; extra == 'vault'
+Description-Content-Type: text/markdown
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jainal09/envdrift/main/docs/assets/images/env-drift-logo.png" alt="envdrift logo" width="300">
+</p>
+
+# envdrift
+
+[![PyPI version](https://badge.fury.io/py/envdrift.svg)](https://badge.fury.io/py/envdrift)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-blue)](https://jainal09.github.io/envdrift)
+[![codecov](https://codecov.io/gh/jainal09/envdrift/graph/badge.svg)](https://codecov.io/gh/jainal09/envdrift)
+
+Sync environment variables across your team. No more "it works on my machine."
+
+## The Problem
+
+- New developer joins → spends half a day hunting for the right `.env` values
+- Someone updates a secret → nobody else knows until production breaks
+- "Can you send me the latest API keys?" in Slack → security nightmare
+
+**Paid SaaS solutions exist, but do you really want your production secrets on someone else's infrastructure?**
+
+## The Solution
+
+envdrift is an **open-source** CLI that syncs encrypted `.env` files using **your existing cloud vault**.
+No hosted service, no additional servers, no third-party trust.
+
+- **Your infrastructure** — Works with Azure Key Vault, AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager
+- **Zero trust required** — Secrets never leave your cloud
+- **No new servers** — Just a CLI tool, no client-server architecture
+- **Free forever** — MIT licensed, no per-seat pricing
+
+```bash
+# New team member onboarding - one command
+envdrift pull
+
+# That's it. Keys synced from vault, .env files decrypted, ready to code.
+```
+
+## Installation
+
+```bash
+pip install "envdrift[vault]"  # All vault providers
+```
+
+## Quick Start
+
+**1. Encrypt and push to vault (once per project):**
+
+```bash
+envdrift encrypt .env.production
+envdrift vault-push . my-app-key --provider azure --vault-url https://myvault.vault.azure.net/
+```
+
+**2. Team members pull instantly:**
+
+```bash
+envdrift pull --provider azure --vault-url https://myvault.vault.azure.net/
+```
+
+**3. Daily workflow:**
+
+```bash
+envdrift pull   # After git pull - sync keys, decrypt
+envdrift lock   # Before commit - encrypt, verify keys
+```
+
+## Beyond Sync
+
+| Feature | Description |
+|:--------|:------------|
+| **Schema Validation** | Validate .env against Pydantic schemas |
+| **Environment Diffing** | Compare dev vs staging vs production |
+| **Vault Integration** | Azure, AWS, HashiCorp, GCP |
+| **Encryption** | dotenvx and SOPS backends |
+| **CI/CD Mode** | Fail builds on misconfiguration |
+
+```bash
+envdrift validate .env --schema config:Settings
+envdrift diff .env.dev .env.prod
+```
+
+## Documentation
+
+Full documentation: **[jainal09.github.io/envdrift](https://jainal09.github.io/envdrift)**
+
+## License
+
+MIT
