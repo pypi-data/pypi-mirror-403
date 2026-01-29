@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package chatbot;
+
+option go_package = "./chatbot";
+
+///// Serviços de Estado do Usuário /////
+service UserStateService {
+    rpc InsertUpdateUserState(UserState) returns (RequestStatus);
+    rpc SetRoute(RouteRequest) returns (RequestStatus);
+    rpc DeleteUserState(ChatID) returns (RequestStatus);
+    rpc GetUserState(ChatID) returns (UserState);
+    rpc GetAllUserStates(Void) returns (UserStateList);
+}
+
+///// Serviços de Mensagens /////
+service SendMessage {
+    rpc SendMessage(Message) returns (RequestStatus);
+    rpc SendImage(FileMessage) returns (RequestStatus);
+    rpc SendFile(FileMessage) returns (RequestStatus);
+    rpc UploadFile(UploadFileRequest) returns (RequestStatus);
+}
+
+///// Serviços de Transfer /////
+service Transfer {
+    rpc GetAllCampaigns(Void) returns (CampaignsList);
+    rpc GetCampaignID(CampaignName) returns (CampaignDetails);
+    rpc TransferToHuman(TransferToHumanRequest) returns (RequestStatus);
+    rpc TransferToMenu(TransferToMenuRequest) returns (RequestStatus);
+}
+
+///// Serviços de EndChat /////
+service EndChat {
+    rpc GetAllTabulations(Void) returns (TabulationsList);
+    rpc GetTabulationID(TabulationName) returns (TabulationDetails);
+    rpc EndChat(EndChatRequest) returns (RequestStatus);
+}
+
+///// Mensagens Compartilhadas /////
+message Void {}
+
+message RequestStatus {
+    bool status = 1;
+    string message = 2;
+}
+
+message ChatID {
+    string user_id = 1;
+    string company_id = 2;
+}
+///// Mensagens para Estado do Usuário /////
+message UserState {
+    ChatID chat_id = 1;
+    string menu = 2;
+    string route = 3;
+    string protocol = 4;
+    string observation = 5;
+}
+
+message UserStateList {
+    repeated UserState user_states = 1;
+}
+
+message RouteRequest {
+    ChatID chat_id = 1;
+    string route = 2;
+}
+///// Mensagens para Serviços de Mensagens /////
+message TextMessage {
+    string type = 1;
+    string url = 2;
+    string filename = 3;
+    string title = 4;
+    string detail = 5;
+    string caption = 6;
+}
+
+message Button{
+    string type = 1;
+    string title = 2;
+    string detail = 3;
+}
+
+message Message {
+    ChatID chat_id = 1;
+    TextMessage message = 2;
+    repeated Button buttons = 3;
+    Button display_button = 4;
+}
+
+message FileMessage {
+    Message message = 1;
+    string file_id = 2;
+}
+
+message UploadFileRequest {
+  string file_url = 1;
+  string file_type = 2;
+  string file_extension = 3;
+  string expiration = 4;
+  bytes file_content = 5;
+}
+
+///// Mensagens para Serviços de Transfer /////
+message TransferToHumanRequest{
+    ChatID chat_id = 1;
+    string campaign_id = 2;
+    string observation = 3;
+}
+
+message TransferToMenuRequest{
+    ChatID chat_id = 1;
+    string menu = 2;
+    string route = 3;
+    string user_message = 4;
+}
+
+message TabulationName{
+    string name = 1;
+}
+
+message TabulationDetails{
+    string id = 1;
+    string name = 2;
+    string last_update = 3;
+}
+
+message TabulationsList{
+    repeated TabulationDetails tabulations = 1;
+}
+
+///// Serviços de EndChat /////
+message EndChatRequest {
+    ChatID chat_id = 1;
+    string tabulation_id = 2;
+    string observation = 3;
+}
+
+message CampaignName {
+    string name = 1;
+}
+
+message CampaignDetails {
+    string id = 1;
+    string name = 2;
+    string last_update = 3;
+}
+
+message CampaignsList {
+    repeated CampaignDetails campaigns = 1;
+}
