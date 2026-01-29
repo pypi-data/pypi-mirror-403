@@ -1,0 +1,672 @@
+Metadata-Version: 2.4
+Name: qrucible
+Version: 1.0.0
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: Topic :: Office/Business :: Financial :: Investment
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Classifier: Programming Language :: Rust
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Operating System :: OS Independent
+Classifier: License :: OSI Approved :: Apache Software License
+Requires-Dist: numpy>=1.24
+Requires-Dist: pytest>=7.4 ; extra == 'dev'
+Requires-Dist: maturin>=1.4,<2.0 ; extra == 'dev'
+Requires-Dist: pandas>=2.0 ; extra == 'dev'
+Requires-Dist: mkdocs>=1.5 ; extra == 'docs'
+Requires-Dist: mkdocs-material>=9.5 ; extra == 'docs'
+Requires-Dist: mkdocs-section-index>=0.3 ; extra == 'docs'
+Requires-Dist: pandas>=2.0 ; extra == 'easy'
+Provides-Extra: dev
+Provides-Extra: docs
+Provides-Extra: easy
+License-File: LICENSE
+Summary: Qrucible: hybrid stateful backtesting engine with Rust hot path
+Keywords: backtesting,trading,finance,quantitative,rust,python
+Author: Qrucible Contributors
+Maintainer: Charles Freidenreich
+License: Apache-2.0
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: Documentation, https://charlesfreidenreich.github.io/Qrucible/
+Project-URL: Homepage, https://github.com/charlesfreidenreich/Qrucible
+Project-URL: Issues, https://github.com/charlesfreidenreich/Qrucible/issues
+Project-URL: Repository, https://github.com/charlesfreidenreich/Qrucible
+
+# Qrucible
+
+[![CI](https://github.com/charlesfreidenreich/Qrucible/actions/workflows/ci.yml/badge.svg)](https://github.com/charlesfreidenreich/Qrucible/actions/workflows/ci.yml)
+[![Release](https://github.com/charlesfreidenreich/Qrucible/actions/workflows/release.yml/badge.svg)](https://github.com/charlesfreidenreich/Qrucible/actions/workflows/release.yml)
+[![PyPI](https://img.shields.io/pypi/v/qrucible.svg)](https://pypi.org/project/qrucible/)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0A66C2.svg)](https://charlesfreidenreich.github.io/Qrucible/)
+[![Production Ready](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](https://github.com/charlesfreidenreich/Qrucible/releases)
+
+**430x faster** backtesting. Test your trading strategies in seconds, not minutes.
+
+## API Stability Guarantee
+
+**Qrucible v1.0.0+ follows [Semantic Versioning](https://semver.org/).** This means:
+
+- **Patch releases** (1.0.x): Bug fixes only. No breaking changes.
+- **Minor releases** (1.x.0): New features, backwards compatible. Your existing code will continue to work.
+- **Major releases** (x.0.0): Breaking changes. Migration guide will be provided.
+
+**The following public API is stable:**
+
+| API | Stability |
+|-----|-----------|
+| `run_backtest(data, config)` | Stable |
+| `run_backtest_with_signals(data, signals, config)` | Stable |
+| `grid_search(data, configs, metric, top_n)` | Stable |
+| `load_bars(path)`, `load_bars_csv(path)`, `load_bars_parquet(path)` | Stable |
+| `StrategyConfig` and all parameters | Stable |
+| `BacktestResult` and all fields | Stable |
+| Order type configs (`TrailingStopConfig`, `BreakEvenConfig`, etc.) | Stable |
+| `BarData` class | Stable |
+
+**Internal APIs** (names starting with `_`) may change without notice.
+
+## Quick Start (Beginners Start Here!)
+
+**3 lines of code. That's all you need.**
+
+```bash
+pip install qrucible
+```
+
+```python
+import qrucible_easy as ez
+
+# That's it! Runs a backtest with sample data
+result = ez.backtest()
+print(result)
+```
+
+Output:
+```
+  Backtest Results: Great!
+  ────────────────────────────────────────
+  Total Return:        12.34%
+  Total Trades:            47
+  Win Rate:             53.2%
+  Sharpe Ratio:          1.42
+  Max Drawdown:          8.21%
+```
+
+### Use Your Own Data
+
+```python
+# From a CSV file
+result = ez.backtest("my_prices.csv")
+
+# From a pandas DataFrame
+result = ez.backtest(df)
+
+# From a list of prices
+result = ez.backtest([100, 102, 101, 105, 103, 108, 110])
+```
+
+### Try Different Strategies
+
+```python
+# Moving Average Crossover (default)
+result = ez.backtest_ma(fast=10, slow=30)
+
+# RSI - buy oversold, sell overbought
+result = ez.backtest_rsi(period=14, oversold=30, overbought=70)
+
+# MACD crossover
+result = ez.backtest_macd()
+
+# Bollinger Bands
+result = ez.backtest_bollinger()
+
+# Compare all strategies at once
+results = ez.compare_strategies()
+```
+
+### Interactive Demo
+
+```python
+import qrucible_easy as ez
+ez.demo()  # See Qrucible in action!
+```
+
+Or run the quickstart script:
+```bash
+python scripts/quickstart.py
+```
+
+**That's the beginner guide!** The rest of this README covers advanced features.
+
+---
+
+## What is Qrucible?
+
+Hybrid, stateful backtester with a Rust hot path and a clean Python API. Qrucible executes path-dependent logic (position sizing that reacts to wins/losses, stops, and exits) at vectorized speeds by keeping the critical loop in Rust and fanning out parameter grids with `rayon`. Docs: https://charlesfreidenreich.github.io/Qrucible/
+
+**430x faster** than equivalent Python code. 1,000+ configs/second grid search throughput.
+
+## Key Features
+
+### Technical Indicators (20+)
+
+**Moving Averages:**
+- SMA (Simple Moving Average)
+- EMA (Exponential Moving Average)
+- WMA (Weighted Moving Average)
+- DEMA (Double Exponential Moving Average)
+- TEMA (Triple Exponential Moving Average)
+- KAMA (Kaufman Adaptive Moving Average)
+- HMA (Hull Moving Average)
+
+**Momentum:**
+- RSI (Relative Strength Index)
+- MACD (Moving Average Convergence Divergence)
+- Stochastic Oscillator (%K, %D)
+- Williams %R
+- MFI (Money Flow Index)
+- TSI (True Strength Index)
+- ROC (Rate of Change)
+- Ultimate Oscillator
+
+**Volatility:**
+- Bollinger Bands
+- ATR (Average True Range)
+- Keltner Channels
+- Donchian Channels
+
+**Trend:**
+- ADX (Average Directional Index)
+- CCI (Commodity Channel Index)
+- Aroon
+- Ichimoku Cloud
+- SuperTrend
+- Parabolic SAR
+
+**Volume:**
+- OBV (On-Balance Volume)
+- VWAP (Volume Weighted Average Price)
+- A/D Line (Accumulation/Distribution)
+- CMF (Chaikin Money Flow)
+- Force Index
+
+### Advanced Order Types
+
+- **Stop Loss**: Fixed percentage or ATR-based
+- **Take Profit**: Fixed percentage targets
+- **Trailing Stop**: Percentage or ATR-based trailing stops with activation threshold
+- **Break-Even Stop**: Move stop to entry after reaching profit target
+- **Time Stop**: Exit after N bars or specified duration
+- **Partial Exits**: Scale out of positions at profit targets
+- **Pyramiding**: Scale into positions with configurable spacing and sizing
+
+### Risk Management
+
+- **Risk-Per-Trade Sizing**: Position sizing based on stop distance and risk budget
+- **ATR-Based Stops**: Dynamic stops based on volatility
+- **Max Drawdown Exit**: Close all positions when drawdown exceeds threshold
+- **Reduce-After-Loss**: Reduce position size after losing trades
+- **Margin Tracking**: Full margin accounting for short positions
+- **Position Size Limits**: Cap maximum position size as fraction of equity
+
+### Execution Realism
+
+- **Commission**: Fixed per-trade commission
+- **Slippage**: Basis points slippage model
+- **Spread**: Bid-ask spread modeling
+
+### Comprehensive Metrics
+
+- **Returns**: Total Return, Annualized Return, Annualized Volatility
+- **Risk-Adjusted**: Sharpe Ratio, Sortino Ratio, Calmar Ratio
+- **Drawdown**: Maximum Drawdown, Recovery Factor, Ulcer Index
+- **Trade Statistics**: Win Rate, Profit Factor, Payoff Ratio, Expectancy
+- **Risk Metrics**: VaR (95%), CVaR (95%), Kelly Criterion
+- **Trade Analysis**: MAE/MFE, Average Bars Held, Consecutive Wins/Losses
+
+### Performance
+
+| Implementation | Configs | Time (s) | Throughput | Speedup |
+| --- | --- | --- | --- | --- |
+| Python loop | 21 | 8.76 | 2.4 cfg/s | 1.0x |
+| **Rust loop** | 21 | **0.02** | **1,035 cfg/s** | **431.9x** |
+
+*Tested on Apple Silicon (M-series) with 200,000 synthetic OHLCV bars. Results vary by hardware; run `python scripts/benchmark.py` to reproduce on your machine.*
+
+## Install
+
+```bash
+pip install qrucible
+```
+
+For the beginner-friendly API with pandas support:
+```bash
+pip install qrucible[easy]
+```
+
+Prebuilt wheels are published for Linux, macOS, and Windows with Parquet and common compression codecs enabled (brotli, gzip, lz4, snappy, zstd). No Rust toolchain is required when installing from PyPI wheels.
+
+## Prerequisites (for local builds)
+- Python 3.10+
+- Rust toolchain
+
+## Setup (venv + deps)
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+## Build and install (editable)
+```bash
+maturin develop --release
+```
+
+Cargo config forces `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` so builds succeed with CPython 3.13 until PyO3 adds official support.
+
+## One-command setup
+```bash
+make setup
+```
+
+## Core Usage
+
+```python
+import numpy as np
+from qrucible import StrategyConfig, run_backtest, grid_search, load_bars
+
+# bars: rows = time, cols = [ts_epoch_us, asset_id, open, high, low, close, volume]
+ohlcv = np.random.lognormal(mean=0.0, sigma=0.02, size=(50_000, 5)).astype(np.float64)
+ohlcv[:, 2] = np.minimum(ohlcv[:, 0], ohlcv[:, 3])
+ohlcv[:, 1] = np.maximum(ohlcv[:, 0], ohlcv[:, 3])
+timestamps = (np.arange(len(ohlcv), dtype=np.int64) * 1_000_000).astype(np.float64)
+asset_ids = np.zeros(len(ohlcv), dtype=np.float64)
+bars = np.column_stack([timestamps, asset_ids, ohlcv]).astype(np.float64)
+
+config = StrategyConfig(
+    strategy_type="MA_CROSS",
+    fast_window=10,
+    slow_window=30,
+    ma_type="EMA",           # SMA, EMA, WMA, DEMA, TEMA, KAMA, HMA
+    stop_loss=0.02,
+    take_profit=0.04,
+    risk_per_trade=0.01,
+    initial_cash=1_000_000.0,
+    reduce_after_loss=True,
+    loss_size_factor=0.5,
+)
+
+result = run_backtest(bars, config)
+print(result)
+```
+
+## Strategy Types
+
+```python
+# Moving Average Crossover
+config = StrategyConfig(
+    strategy_type="MA_CROSS",
+    fast_window=10,
+    slow_window=30,
+    ma_type="EMA",
+)
+
+# RSI
+config = StrategyConfig(
+    strategy_type="RSI",
+    rsi_period=14,
+    rsi_upper=70.0,
+    rsi_lower=30.0,
+)
+
+# MACD
+config = StrategyConfig(
+    strategy_type="MACD",
+    macd_fast=12,
+    macd_slow=26,
+    macd_signal=9,
+)
+
+# Stochastic
+config = StrategyConfig(
+    strategy_type="STOCHASTIC",
+    stoch_k_period=14,
+    stoch_d_period=3,
+    stoch_upper=80.0,
+    stoch_lower=20.0,
+)
+
+# Bollinger Bands
+config = StrategyConfig(
+    strategy_type="BOLLINGER",
+    bollinger_period=20,
+    bollinger_std=2.0,
+)
+
+# ADX (Trend Following)
+config = StrategyConfig(
+    strategy_type="ADX",
+    adx_period=14,
+    adx_threshold=25.0,    # Only trade when trend is strong
+)
+
+# Ichimoku Cloud
+config = StrategyConfig(
+    strategy_type="ICHIMOKU",
+    ichimoku_tenkan=9,
+    ichimoku_kijun=26,
+    ichimoku_senkou_b=52,
+)
+
+# SuperTrend
+config = StrategyConfig(
+    strategy_type="SUPERTREND",
+    supertrend_period=10,
+    supertrend_mult=3.0,
+)
+
+# VWAP
+config = StrategyConfig(
+    strategy_type="VWAP",
+    vwap_std_mult=2.0,
+)
+
+# OBV (On-Balance Volume)
+config = StrategyConfig(
+    strategy_type="OBV",
+    obv_ma_period=20,
+)
+```
+
+## Advanced Order Types
+
+### Trailing Stops
+
+```python
+from qrucible import StrategyConfig, TrailingStopConfig
+
+config = StrategyConfig(
+    strategy_type="MA_CROSS",
+    fast_window=10,
+    slow_window=30,
+    stop_loss=0.03,
+    trailing_stop=TrailingStopConfig(
+        enabled=True,
+        trail_pct=0.02,           # Trail by 2%
+        activation_pct=0.01,      # Activate after 1% profit
+    ),
+)
+```
+
+### ATR-Based Trailing Stops
+
+```python
+config = StrategyConfig(
+    strategy_type="MA_CROSS",
+    use_atr_stops=True,
+    atr_period=14,
+    atr_multiplier=2.0,
+    trailing_stop=TrailingStopConfig(
+        enabled=True,
+        trail_atr_mult=2.0,       # Trail by 2x ATR
+        activation_pct=0.02,
+    ),
+)
+```
+
+### Break-Even Stops
+
+```python
+from qrucible import BreakEvenConfig
+
+config = StrategyConfig(
+    strategy_type="RSI",
+    rsi_period=14,
+    stop_loss=0.02,
+    break_even=BreakEvenConfig(
+        enabled=True,
+        trigger_pct=0.01,         # Move to break-even after 1% profit
+        offset_pct=0.001,         # Lock in 0.1% profit
+    ),
+)
+```
+
+### Time Stops
+
+```python
+from qrucible import TimeStopConfig
+
+config = StrategyConfig(
+    strategy_type="MACD",
+    stop_loss=0.02,
+    time_stop=TimeStopConfig(
+        enabled=True,
+        max_bars=50,              # Exit after 50 bars max
+    ),
+)
+```
+
+### Partial Exits (Scaling Out)
+
+```python
+from qrucible import PartialExitConfig
+
+config = StrategyConfig(
+    strategy_type="MA_CROSS",
+    stop_loss=0.02,
+    take_profit=0.06,
+    partial_exit=PartialExitConfig(
+        enabled=True,
+        exit_pct=0.5,             # Exit 50% of position
+        trigger_pct=0.02,         # At 2% profit
+        move_stop_to_entry=True,  # Move stop to break-even
+    ),
+)
+```
+
+### Pyramiding (Scaling In)
+
+```python
+from qrucible import PyramidConfig
+
+config = StrategyConfig(
+    strategy_type="ADX",
+    adx_period=14,
+    stop_loss=0.02,
+    pyramid=PyramidConfig(
+        enabled=True,
+        max_entries=3,            # Maximum 3 entries
+        entry_spacing_pct=0.01,   # Add every 1% in profit
+        size_multiplier=0.5,      # Each add is 50% of initial size
+    ),
+)
+```
+
+## Execution Realism
+
+```python
+config = StrategyConfig(
+    strategy_type="RSI",
+    rsi_period=14,
+    stop_loss=0.02,
+    commission=10.0,        # $10 per trade
+    slippage_bps=5.0,       # 5 basis points slippage
+    spread_bps=10.0,        # 10 basis points spread
+)
+
+result = run_backtest(bars, config)
+print(f"Total commission: ${result.total_commission:.2f}")
+print(f"Total slippage: ${result.total_slippage:.2f}")
+print(f"Total spread cost: ${result.total_spread_cost:.2f}")
+```
+
+## Trade Ledger and Equity Curve
+
+```python
+config = StrategyConfig(
+    strategy_type="MA_CROSS",
+    record_trades=True,
+    record_equity_curve=True,
+)
+result = run_backtest(bars, config)
+
+# Individual trades with MAE/MFE analysis
+for trade in result.trade_ledger[:5]:
+    print(f"{trade.side} {trade.qty:.0f} @ {trade.entry_price:.2f} -> {trade.exit_price:.2f}")
+    print(f"  gross: ${trade.gross_pnl:.2f}, net: ${trade.net_pnl:.2f}")
+    print(f"  bars held: {trade.bars_held}, exit reason: {trade.exit_reason}")
+    print(f"  MAE: {trade.mae:.2%}, MFE: {trade.mfe:.2%}")
+
+# Equity curve
+for pt in result.equity_curve[-3:]:
+    print(f"Equity: ${pt.equity:.2f}, Drawdown: {pt.drawdown:.2%}")
+```
+
+## Comprehensive Results
+
+```python
+result = run_backtest(bars, config)
+
+# Returns
+print(f"Total Return: {result.total_return:.2%}")
+print(f"Annualized Return: {result.annualized_return:.2%}")
+print(f"Annualized Volatility: {result.annualized_volatility:.2%}")
+
+# Risk-Adjusted
+print(f"Sharpe: {result.sharpe:.3f}")
+print(f"Sortino: {result.sortino:.3f}")
+print(f"Calmar: {result.calmar:.3f}")
+
+# Drawdown
+print(f"Max Drawdown: {result.max_drawdown:.2%}")
+print(f"Recovery Factor: {result.recovery_factor:.2f}")
+print(f"Ulcer Index: {result.ulcer_index:.2f}")
+
+# Trade Statistics
+print(f"Trades: {result.trades}")
+print(f"Win Rate: {result.win_pct:.2%}")
+print(f"Profit Factor: {result.profit_factor:.2f}")
+print(f"Payoff Ratio: {result.payoff_ratio:.2f}")
+print(f"Expectancy: ${result.expectancy:.2f}")
+print(f"Avg Bars Held: {result.avg_bars_held:.1f}")
+
+# Risk Metrics
+print(f"VaR (95%): {result.var_95:.2%}")
+print(f"CVaR (95%): {result.cvar_95:.2%}")
+print(f"Kelly Criterion: {result.kelly_criterion:.2%}")
+
+# Order Type Analysis
+print(f"Stop Loss Exits: {result.stop_loss_exits}")
+print(f"Take Profit Exits: {result.take_profit_exits}")
+print(f"Trailing Stop Exits: {result.trailing_stop_exits}")
+print(f"Signal Exits: {result.signal_exits}")
+print(f"Partial Exits: {result.partial_exits}")
+print(f"Pyramid Entries: {result.pyramid_entries}")
+```
+
+## External Signal Mode
+
+Bring your own signals (computed in Python/NumPy), and let Qrucible handle sizing, stops, take-profit, and metrics at Rust speed:
+
+```python
+from qrucible import StrategyConfig, run_backtest_with_signals
+import numpy as np
+
+# Compute your own signals: 1=long, -1=short, 0=hold
+close_prices = bars[:, 5]
+sma = np.convolve(close_prices, np.ones(20)/20, mode='same')
+
+signals = np.zeros(len(bars), dtype=np.int8)
+signals[close_prices < sma] = 1
+signals[close_prices > sma] = -1
+
+config = StrategyConfig(
+    strategy_type="EXTERNAL",
+    stop_loss=0.02,
+    take_profit=0.04,
+)
+result = run_backtest_with_signals(bars, signals, config)
+```
+
+## Grid Search
+
+```python
+grid = [
+    StrategyConfig(
+        strategy_type="MA_CROSS",
+        fast_window=f,
+        slow_window=s,
+        ma_type=ma,
+        stop_loss=0.02,
+        take_profit=0.04,
+    )
+    for f in (5, 10, 15, 20)
+    for s in (30, 50, 100, 200)
+    for ma in ("SMA", "EMA", "WMA")
+]
+
+# Sort by Sharpe ratio, get top 10
+top = grid_search(bars, grid, metric="sharpe", top_n=10)
+for r in top:
+    print(f"Sharpe: {r.sharpe:.3f}, Return: {r.total_return:.2%}")
+```
+
+## Multi-Asset Support
+
+```python
+# CSV or Parquet with schema: [ts_epoch_us, asset_id, open, high, low, close, volume]
+bars = load_bars("data/multi_asset_bars.parquet")
+result = run_backtest(bars, config)
+```
+
+## Benchmark
+
+```bash
+python scripts/benchmark.py
+```
+
+Scale the benchmark:
+```bash
+QRUCIBLE_BENCH_MINUTES=200000 QRUCIBLE_BENCH_ASSETS=1 python scripts/benchmark.py
+```
+
+## Real Data Demo
+
+```bash
+python scripts/demo_real_data.py
+```
+
+## Docker
+
+```bash
+docker build -t qrucible:latest .
+docker run --rm qrucible:latest
+```
+
+Dev image:
+```bash
+docker build -f Dockerfile.dev -t qrucible-dev:latest .
+docker run --rm qrucible-dev:latest
+```
+
+## Documentation
+
+- GitHub Pages: https://charlesfreidenreich.github.io/Qrucible/
+- Build locally:
+  ```bash
+  python -m pip install .[docs]
+  mkdocs serve
+  ```
+
+## Contributing
+
+See CONTRIBUTING.md for dev setup and workflow. Changelog entries live in CHANGELOG.md.
+
