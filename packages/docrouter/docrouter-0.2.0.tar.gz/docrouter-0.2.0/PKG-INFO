@@ -1,0 +1,126 @@
+Metadata-Version: 2.4
+Name: docrouter
+Version: 0.2.0
+Summary: Unified document interrogation: retrieve, screenshot, search
+License: MIT
+Keywords: document,docx,extraction,pdf,pptx,search
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.10
+Provides-Extra: all
+Requires-Dist: beautifulsoup4>=4.12; extra == 'all'
+Requires-Dist: lxml>=5.0; extra == 'all'
+Requires-Dist: markdown-it-py>=3.0; extra == 'all'
+Requires-Dist: pymupdf>=1.24; extra == 'all'
+Requires-Dist: python-docx>=1.1; extra == 'all'
+Requires-Dist: python-pptx>=0.6; extra == 'all'
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == 'dev'
+Provides-Extra: docx
+Requires-Dist: python-docx>=1.1; extra == 'docx'
+Provides-Extra: html
+Requires-Dist: beautifulsoup4>=4.12; extra == 'html'
+Requires-Dist: lxml>=5.0; extra == 'html'
+Provides-Extra: md
+Requires-Dist: markdown-it-py>=3.0; extra == 'md'
+Provides-Extra: pdf
+Requires-Dist: pymupdf>=1.24; extra == 'pdf'
+Provides-Extra: pptx
+Requires-Dist: python-pptx>=0.6; extra == 'pptx'
+Description-Content-Type: text/markdown
+
+# docrouter
+
+A swiss army knife for document handling in LLM agents and apps.
+
+docrouter provides a unified API to extract text, search content, and render pages across multiple document formats. It's designed for **rapid prototyping** - when you need to quickly build an agent that can work with PDFs, Word docs, PowerPoints, and more without wrestling with a dozen different libraries.
+
+## What this is
+
+- A single interface for text extraction and search across PDF, DOCX, PPTX, HTML, Markdown, and plain text
+- Built with LLM tool-calling in mind (includes a ready-to-use tool API with document registry)
+- Zero core dependencies - install only what you need
+- Good enough extraction for most prototyping and simple production use cases
+
+## What this isn't
+
+This library doesn't compete with state-of-the-art (often paid, API-based) solutions for individual file types. If you need production-grade PDF extraction with perfect table parsing, OCR, or layout analysis, check out specialized tools like [Datalab](https://datalab.to) - they're excellent at what they do.
+
+docrouter is for when you need to get something working quickly across multiple formats without overthinking it.
+
+## Installation
+
+```bash
+pip install docrouter[all]  # all formats
+pip install docrouter[pdf]  # PDF only
+pip install docrouter       # txt/md only (no deps)
+```
+
+Optional dependencies by format:
+- `pdf` - PyMuPDF
+- `docx` - python-docx
+- `pptx` - python-pptx
+- `html` - BeautifulSoup4, lxml
+
+## Quick start
+
+```python
+from docrouter import open_document
+
+doc = open_document("report.pdf")
+doc.info()              # metadata: pages, title, etc.
+doc.get_text()          # full document text
+doc.search("revenue")   # find text with context
+doc.render_page(0)      # screenshot page as PNG (PDF only)
+```
+
+## Tool API (for LLM agents)
+
+The tool API maintains a document registry, making it easy to integrate with function-calling LLMs:
+
+```python
+from docrouter.tools import (
+    open_document_tool,
+    search_tool,
+    get_text_tool,
+    close_document_tool
+)
+
+# Open and register a document
+result = open_document_tool("quarterly_report.pdf")
+doc_id = result["document_id"]
+
+# Search across the document
+hits = search_tool(doc_id, "operating income", max_hits=5)
+
+# Get full text or specific pages
+text = get_text_tool(doc_id)
+
+# Clean up when done
+close_document_tool(doc_id)
+```
+
+## Supported formats
+
+| Format | Extensions | Unit type | Features |
+|--------|-----------|-----------|----------|
+| PDF | `.pdf` | page | text, search, render |
+| Word | `.docx` | section | text, search, tables |
+| PowerPoint | `.pptx` | slide | text, search, tables, notes |
+| HTML | `.html`, `.htm` | section | text, search |
+| Markdown | `.md` | chunk | text, search |
+| Plain text | `.txt`, `.csv`, `.json`, etc. | chunk | text, search |
+| Code | `.py`, `.js`, `.ts`, etc. | chunk | text, search |
+| Images | `.png`, `.jpg`, etc. | - | metadata only |
+
+## Contributing
+
+Contributions are welcome! If you'd like to extend docrouter with new formats, better extraction for existing ones, or other improvements, please open an issue or PR.
+
+## License
+
+MIT
