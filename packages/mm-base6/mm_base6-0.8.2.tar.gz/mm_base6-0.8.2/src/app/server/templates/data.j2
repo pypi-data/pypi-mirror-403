@@ -1,0 +1,66 @@
+{% extends "inc/base.j2" %}
+{% block content %}
+
+<div class="page-header">
+  <h2>data</h2>
+  <nav>
+    <a href="/api-post/data/generate-one">generate one</a>
+    <a href="/api-post/data/generate-many">generate many</a>
+  </nav>
+  <form>
+    <select name="status">
+      <option value="">status</option>
+      {% for status in statuses %}
+      {{ option(status.value, form.status) }}
+      {% endfor %}
+    </select>
+    <input type="number" placeholder="limit" name="limit" value="{{ form.limit }}">
+    <button type="submit" class="outline">filter</button>
+  </form>
+</div>
+
+<table class="sortable">
+  <thead>
+    <tr>
+      <th>created_at</th>
+      <th>status</th>
+      <th>value</th>
+      <th>inc</th>
+      <th>actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in data_list %}
+    <tr>
+      <td>{{ d.created_at | dt }}</td>
+      <td>{{ d.status | data_status }}</td>
+      <td>{{ d.value | n }}</td>
+      <td>
+        <button class="outline" onclick="dialog('dialog-inc-{{d.id}}')">inc</button>
+        <dialog id="dialog-inc-{{d.id}}" label="inc data id={{d.id}}">
+          <article>
+            <form method="post" action="/data/{{ d.id }}/inc">
+              <fieldset role="group">
+                <input type="number" name="value" value="1" placeholder="value to inc">
+                <button type="submit">inc</button>
+              </fieldset>
+            </form>
+          </article>
+        </dialog>
+      </td>
+      <td>
+        <details class="dropdown">
+          <summary>actions</summary>
+          <ul>
+            <li><a href="/api-post/data/{{ d.id }}/inc?value=2">inc</a></li>
+            <li><a href="/api-delete/data/{{ d.id }}" onclick="return confirm('sure?')">del</a></li>
+            <li><a href="/api/data/{{ d.id }}">view</a></li>
+          </ul>
+        </details>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}
