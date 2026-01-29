@@ -1,0 +1,845 @@
+"""Tests for src/llm.py"""
+
+import os
+
+import pytest
+from llama_index.core.llms import LLM
+from pydantic import ValidationError
+from pytest_mock import MockerFixture
+
+from src.config.models import CustomPrompts
+from src.constants import LLM_TEMPERATURE
+from src.doctypes import DocType
+from src.llm import (
+    MODULE_GENERATION_PROMPT,
+    GenerationConfig,
+    check_drift,
+    fix_doc_incrementally,
+    generate_doc,
+    initialize_llm,
+)
+from src.records import (
+    DocumentationChange,
+    DocumentationDriftCheck,
+    IncrementalDocumentationFix,
+    ModuleDocumentation,
+    ModuleIntent,
+)
+
+# --- Tests for initialize_llm() ---
+
+
+def test_initialize_llm_with_anthropic_key(mocker: MockerFixture) -> None:
+    """Test initialize_llm creates Anthropic client when ANTHROPIC_API_KEY is set."""
+    mocker.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test_api_key"}, clear=True)
+    mock_anthropic = mocker.patch("src.llm.llm.Anthropic")
+
+    llm = initialize_llm()
+
+    mock_anthropic.assert_called_once_with(
+        model="claude-3-5-haiku-20241022", temperature=LLM_TEMPERATURE, max_tokens=8192
+    )
+    assert llm == mock_anthropic.return_value
+
+
+def test_initialize_llm_with_openai_key(mocker: MockerFixture) -> None:
+    """Test initialize_llm creates OpenAI client when OPENAI_API_KEY is set."""
+    mocker.patch.dict(os.environ, {"OPENAI_API_KEY": "test_api_key"}, clear=True)
+    mock_openai = mocker.patch("src.llm.llm.OpenAI")
+
+    llm = initialize_llm()
+
+    mock_openai.assert_called_once_with(
+        model="gpt-4o-mini", temperature=LLM_TEMPERATURE
+    )
+    assert llm == mock_openai.return_value
+
+
+def test_initialize_llm_with_google_key(mocker: MockerFixture) -> None:
+    """Test initialize_llm creates GoogleGenAI client when GOOGLE_API_KEY is set."""
+    mocker.patch.dict(os.environ, {"GOOGLE_API_KEY": "test_api_key"}, clear=True)
+    mock_genai = mocker.patch("src.llm.llm.GoogleGenAI")
+
+    llm = initialize_llm()
+
+    mock_genai.assert_called_once_with(
+        model="gemini-2.5-flash", temperature=LLM_TEMPERATURE
+    )
+    assert llm == mock_genai.return_value
+
+
+def test_initialize_llm_priority_order(mocker: MockerFixture) -> None:
+    """Test initialize_llm prioritizes Anthropic > OpenAI > Google."""
+    # Set all three API keys
+    mocker.patch.dict(
+        os.environ,
+        {
+            "ANTHROPIC_API_KEY": "anthropic_key",
+            "OPENAI_API_KEY": "openai_key",
+            "GOOGLE_API_KEY": "google_key",
+        },
+        clear=True,
+    )
+    mock_anthropic = mocker.patch("src.llm.llm.Anthropic")
+    mock_openai = mocker.patch("src.llm.llm.OpenAI")
+    mock_genai = mocker.patch("src.llm.llm.GoogleGenAI")
+
+    llm = initialize_llm()
+
+    # Should use Anthropic (highest priority)
+    mock_anthropic.assert_called_once()
+    mock_openai.assert_not_called()
+    mock_genai.assert_not_called()
+    assert llm == mock_anthropic.return_value
+
+
+def test_initialize_llm_openai_priority_over_google(mocker: MockerFixture) -> None:
+    """Test initialize_llm prioritizes OpenAI over Google when both keys are set."""
+    mocker.patch.dict(
+        os.environ,
+        {"OPENAI_API_KEY": "openai_key", "GOOGLE_API_KEY": "google_key"},
+        clear=True,
+    )
+    mock_openai = mocker.patch("src.llm.llm.OpenAI")
+    mock_genai = mocker.patch("src.llm.llm.GoogleGenAI")
+
+    llm = initialize_llm()
+
+    # Should use OpenAI (higher priority than Google)
+    mock_openai.assert_called_once()
+    mock_genai.assert_not_called()
+    assert llm == mock_openai.return_value
+
+
+def test_initialize_llm_missing_all_api_keys(mocker: MockerFixture) -> None:
+    """Test initialize_llm raises ValueError when no API keys are set."""
+    mocker.patch.dict(os.environ, {}, clear=True)
+
+    with pytest.raises(
+        ValueError,
+        match=r"No API key found\.",
+    ):
+        initialize_llm()
+
+
+@pytest.mark.parametrize(
+    "env_var,api_key",
+    [
+        ("ANTHROPIC_API_KEY", "sk-ant-api03-test"),
+        ("OPENAI_API_KEY", "sk-test123"),
+        ("GOOGLE_API_KEY", "AIzaSyABC123"),
+    ],
+)
+def test_initialize_llm_with_various_key_formats(
+    mocker: MockerFixture, env_var: str, api_key: str
+) -> None:
+    """Test initialize_llm works with various API key formats."""
+    mocker.patch.dict(os.environ, {env_var: api_key}, clear=True)
+
+    if env_var == "ANTHROPIC_API_KEY":
+        mocker.patch("src.llm.llm.Anthropic")
+    elif env_var == "OPENAI_API_KEY":
+        mocker.patch("src.llm.llm.OpenAI")
+    else:
+        mocker.patch("src.llm.llm.GoogleGenAI")
+
+    llm = initialize_llm()
+    assert llm is not None
+
+
+# --- Tests for check_drift() ---
+
+
+def test_check_drift_calls_llm_with_correct_parameters(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test check_drift calls LLM program with correct parameters."""
+    # Mock the LLM program to return drift detected
+    drift_result = DocumentationDriftCheck(
+        drift_detected=True,
+        rationale="Drift detected",
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = drift_result
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Code and documentation
+    code = "def authenticate_user(): pass"
+    doc = "## Functions\n- create_session() - Creates user sessions"
+
+    # When: Checking drift
+    result = check_drift(llm=mock_llm_client, context=code, current_doc=doc)
+
+    # Then: Should call LLM program with correct parameters
+    mock_program.assert_called_once()
+    call_kwargs = mock_program.call_args.kwargs
+    assert "context" in call_kwargs
+    assert "current_doc" in call_kwargs
+    assert call_kwargs["context"] == code
+    assert call_kwargs["current_doc"] == doc
+
+    # And: Should return the LLM result
+    assert result == drift_result
+
+
+# --- Tests for check_drift with caching ---
+
+
+# --- Tests for generate_doc() ---
+
+
+def test_generate_doc_returns_structured_documentation(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+    sample_component_documentation: ModuleDocumentation,
+) -> None:
+    """Test generate_doc returns structured ModuleDocumentation."""
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = sample_component_documentation
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: A code context for a payment module
+    context = "def process_payment(): pass\ndef validate_payment(): pass"
+
+    # When: Generating documentation
+    result = generate_doc(
+        llm=mock_llm_client,
+        context=context,
+        output_model=ModuleDocumentation,
+        prompt_template=MODULE_GENERATION_PROMPT,
+    )
+
+    # Then: Should return structured documentation
+    assert isinstance(result, ModuleDocumentation)
+    assert result.component_name == "Sample Component"
+    assert result.purpose_and_scope
+    assert result.architecture_overview
+    assert result.key_design_decisions
+
+
+def test_generate_doc_without_human_intent(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+    sample_component_documentation: ModuleDocumentation,
+) -> None:
+    """Test generate_doc works without human intent provided."""
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = sample_component_documentation
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: No human intent (config=None)
+    context = "def authenticate(): pass"
+
+    # When: Generating documentation
+    result = generate_doc(
+        llm=mock_llm_client,
+        context=context,
+        config=None,
+        output_model=ModuleDocumentation,
+        prompt_template=MODULE_GENERATION_PROMPT,
+    )
+
+    # Then: Should still generate valid documentation
+    assert isinstance(result, ModuleDocumentation)
+    assert result.component_name
+    assert result.purpose_and_scope
+
+
+@pytest.mark.parametrize(
+    "context,current_doc",
+    [
+        ("short context", "short doc"),
+        ("a" * 1000, "b" * 1000),
+        ("context with\nnewlines", "doc with\nnewlines"),
+    ],
+)
+def test_check_drift_handles_various_inputs(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+    sample_drift_check_no_drift: DocumentationDriftCheck,
+    context: str,
+    current_doc: str,
+) -> None:
+    """Test check_drift handles various context and documentation inputs."""
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = sample_drift_check_no_drift
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Checking drift with various inputs
+    result = check_drift(llm=mock_llm_client, context=context, current_doc=current_doc)
+
+    # Then: Should return valid drift check result
+    assert isinstance(result, DocumentationDriftCheck)
+    assert isinstance(result.drift_detected, bool)
+    assert isinstance(result.rationale, str)
+
+
+def test_check_drift_handles_none_documentation(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+    sample_drift_check_with_drift: DocumentationDriftCheck,
+) -> None:
+    """Test check_drift handles None for current_doc (no documentation)."""
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = sample_drift_check_with_drift
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Some code context and no existing documentation
+    context = "def new_feature(): pass"
+
+    # When: Checking drift with None for current_doc
+    result = check_drift(llm=mock_llm_client, context=context, current_doc=None)
+
+    # Then: Should return valid drift check result
+    assert isinstance(result, DocumentationDriftCheck)
+    assert isinstance(result.drift_detected, bool)
+    assert isinstance(result.rationale, str)
+
+    # And: The program should have been called with the default message
+    mock_program.assert_called_once()
+    call_kwargs = mock_program.call_args[1]
+    expected_doc = "No existing documentation provided."
+    assert call_kwargs["current_doc"] == expected_doc
+
+
+def test_check_drift_no_drift_for_helper_function_addition(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test that adding helper functions should NOT trigger drift (conservative)."""
+    # Mock the LLM to return no drift (expected conservative behavior)
+    no_drift_result = DocumentationDriftCheck(
+        drift_detected=False,
+        rationale="Documentation accurately reflects the code. Helper function "
+        "_validate_input supports existing authenticate_user functionality.",
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = no_drift_result
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Code with a new private helper function
+    code = """
+def authenticate_user(username, password):
+    _validate_input(username, password)
+    return check_credentials(username, password)
+
+def _validate_input(username, password):
+    if not username or not password:
+        raise ValueError("Invalid input")
+"""
+    # And: Documentation that describes main functionality
+    doc = """## Functions
+- authenticate_user() - Authenticates users with credentials"""
+
+    # When: Checking drift
+    result = check_drift(llm=mock_llm_client, context=code, current_doc=doc)
+
+    # Then: No drift should be detected (helper doesn't change core functionality)
+    assert result.drift_detected is False
+
+
+def test_check_drift_no_drift_for_refactoring(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test that code refactoring should NOT trigger drift (conservative)."""
+    # Mock the LLM to return no drift (expected conservative behavior)
+    no_drift_result = DocumentationDriftCheck(
+        drift_detected=False,
+        rationale="Documentation accurately reflects the code. Refactoring from "
+        "class to functions maintains the same purpose and functionality.",
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = no_drift_result
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Code refactored from class to functions (same purpose)
+    code = """
+def create_payment(amount):
+    return {"amount": amount, "status": "pending"}
+
+def process_payment(payment_id):
+    return {"payment_id": payment_id, "status": "completed"}
+"""
+    # And: Documentation describing the payment system
+    doc = """## Payment Processing
+This module handles payment creation and processing.
+Main functions: create_payment, process_payment."""
+
+    # When: Checking drift
+    result = check_drift(llm=mock_llm_client, context=code, current_doc=doc)
+
+    # Then: No drift should be detected (refactoring doesn't change purpose)
+    assert result.drift_detected is False
+
+
+def test_check_drift_requires_checklist_citation_when_drift_detected(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test that drift rationale cites specific checklist items."""
+    # Mock the LLM to return drift with checklist citation
+    drift_result = DocumentationDriftCheck(
+        drift_detected=True,
+        rationale="Item 3: Missing Key Features - New API endpoint /api/refund "
+        "is implemented but not documented.",
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = drift_result
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Code with new significant feature
+    code = """
+def create_payment(): pass
+def process_payment(): pass
+def refund_payment(): pass  # NEW user-facing feature
+"""
+    # And: Documentation without the new feature
+    doc = "## Features\n- Payment creation\n- Payment processing"
+
+    # When: Checking drift
+    result = check_drift(llm=mock_llm_client, context=code, current_doc=doc)
+
+    # Then: Drift should be detected with checklist reference
+    assert result.drift_detected is True
+    assert "Item 3" in result.rationale or "Missing Key Features" in result.rationale
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        "simple code",
+        "def func():\n    pass",
+        "import os\nimport sys\n\nclass Foo:\n    pass",
+    ],
+)
+def test_generate_doc_handles_various_contexts(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+    sample_component_documentation: ModuleDocumentation,
+    context: str,
+) -> None:
+    """Test generate_doc handles various code contexts."""
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = sample_component_documentation
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Generating docs with various code contexts
+    result = generate_doc(
+        llm=mock_llm_client,
+        context=context,
+        output_model=ModuleDocumentation,
+        prompt_template=MODULE_GENERATION_PROMPT,
+    )
+
+    # Then: Should return valid structured documentation
+    assert isinstance(result, ModuleDocumentation)
+    assert result.component_name
+    assert result.purpose_and_scope
+
+
+def test_generate_doc_with_human_intent(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+    sample_component_documentation: ModuleDocumentation,
+) -> None:
+    """Test generate_doc includes human intent when provided."""
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = sample_component_documentation
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Human intent with specific guidance
+    human_intent = ModuleIntent(
+        problems_solved="Handles user authentication",
+        core_responsibilities="Login and registration",
+        non_responsibilities="Payment processing",
+        system_context="Part of auth system",
+    )
+    config = GenerationConfig(human_intent=human_intent)
+
+    # When: Generating documentation with human intent
+    result = generate_doc(
+        llm=mock_llm_client,
+        context="def authenticate(): pass",
+        config=config,
+        output_model=ModuleDocumentation,
+        prompt_template=MODULE_GENERATION_PROMPT,
+    )
+
+    # Then: Should return valid documentation
+    assert isinstance(result, ModuleDocumentation)
+    assert result.component_name
+    assert result.purpose_and_scope
+
+
+def test_generate_doc_with_partial_human_intent(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+    sample_component_documentation: ModuleDocumentation,
+) -> None:
+    """Test generate_doc handles partial human intent."""
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = sample_component_documentation
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Partial human intent (only some fields provided)
+    human_intent = ModuleIntent(
+        problems_solved="Handles authentication", core_responsibilities="User login"
+    )
+    config = GenerationConfig(human_intent=human_intent)
+
+    # When: Generating documentation
+    result = generate_doc(
+        llm=mock_llm_client,
+        context="def authenticate(): pass",
+        config=config,
+        output_model=ModuleDocumentation,
+        prompt_template=MODULE_GENERATION_PROMPT,
+    )
+
+    # Then: Should return valid documentation
+    assert isinstance(result, ModuleDocumentation)
+    assert result.component_name
+    assert result.purpose_and_scope
+
+
+# --- Tests for fix_doc_incrementally() ---
+
+
+def test_fix_doc_incrementally_returns_structured_fixes(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test fix_doc_incrementally returns IncrementalDocumentationFix with changes."""
+    # Mock the LLM program to return incremental fix
+    incremental_fix = IncrementalDocumentationFix(
+        changes=[
+            DocumentationChange(
+                section="Purpose & Scope",
+                change_type="update",
+                rationale="Updated to reflect new payment processing capabilities",
+                updated_content="Handles payment processing and refunds.",
+            )
+        ],
+        summary="Updated purpose section to include refund functionality",
+        preserved_sections=["Architecture Overview", "Key Design Decisions"],
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = incremental_fix
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Current documentation and code context
+    current_doc = "# Payment Module\n\n## Purpose\nHandles payment processing."
+    context = "def process_payment(): pass\ndef refund_payment(): pass"
+    drift_rationale = "New refund_payment function added but not documented"
+
+    # When: Fixing documentation incrementally
+    result = fix_doc_incrementally(
+        llm=mock_llm_client,
+        context=context,
+        current_doc=current_doc,
+        drift_rationale=drift_rationale,
+    )
+
+    # Then: Should return structured incremental fix
+    assert isinstance(result, IncrementalDocumentationFix)
+    assert len(result.changes) == 1
+    assert result.changes[0].section == "Purpose & Scope"
+    assert result.changes[0].change_type == "update"
+    assert "refund" in result.changes[0].updated_content.lower()
+    assert result.summary
+    assert "Architecture Overview" in result.preserved_sections
+
+
+def test_fix_doc_incrementally_with_custom_prompts(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test fix_doc_incrementally includes custom prompts when provided."""
+    # Mock the LLM program
+    incremental_fix = IncrementalDocumentationFix(
+        changes=[
+            DocumentationChange(
+                section="Functions",
+                change_type="add",
+                rationale="Added new function to documentation",
+                updated_content="- generate_token() - Generates auth tokens",
+            )
+        ],
+        summary="Added generate_token function",
+        preserved_sections=["Purpose & Scope"],
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = incremental_fix
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: Custom prompts configuration
+    custom_prompts = CustomPrompts(
+        module_readme="Focus on security aspects",
+    )
+
+    # When: Fixing documentation with custom prompts
+    result = fix_doc_incrementally(
+        llm=mock_llm_client,
+        context="def generate_token(): pass",
+        current_doc="# Auth Module",
+        drift_rationale="New function added",
+        custom_prompts=custom_prompts,
+        doc_type=DocType.MODULE_README,
+    )
+
+    # Then: Should return valid incremental fix
+    assert isinstance(result, IncrementalDocumentationFix)
+    assert len(result.changes) > 0
+    assert result.summary
+
+    # And: Should have called the program with custom prompts section
+    mock_program.assert_called_once()
+    call_kwargs = mock_program.call_args[1]
+    assert "custom_prompts_section" in call_kwargs
+
+
+def test_fix_doc_incrementally_without_optional_params(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test fix_doc_incrementally works without optional parameters."""
+    # Mock the LLM program
+    incremental_fix = IncrementalDocumentationFix(
+        changes=[
+            DocumentationChange(
+                section="External Dependencies",
+                change_type="update",
+                rationale="Added Redis dependency",
+                updated_content="Redis, PostgreSQL",
+            )
+        ],
+        summary="Updated dependencies",
+        preserved_sections=[],
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = incremental_fix
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # Given: No custom prompts or doc type (minimal parameters)
+    # When: Fixing documentation
+    result = fix_doc_incrementally(
+        llm=mock_llm_client,
+        context="import redis\nimport psycopg2",
+        current_doc="## Dependencies\nPostgreSQL",
+        drift_rationale="Added Redis caching layer",
+    )
+
+    # Then: Should return valid incremental fix
+    assert isinstance(result, IncrementalDocumentationFix)
+    assert len(result.changes) == 1
+    assert result.changes[0].section == "External Dependencies"
+
+
+def test_fix_doc_incrementally_multiple_changes(
+    mocker: MockerFixture,
+    mock_llm_client: LLM,
+) -> None:
+    """Test fix_doc_incrementally handles multiple changes."""
+    # Mock the LLM program
+    incremental_fix = IncrementalDocumentationFix(
+        changes=[
+            DocumentationChange(
+                section="Purpose & Scope",
+                change_type="update",
+                rationale="Updated scope to include new feature",
+                updated_content="Handles user authentication and session management.",
+            ),
+            DocumentationChange(
+                section="Key Design Decisions",
+                change_type="add",
+                rationale="Document JWT decision",
+                updated_content="JWT tokens for stateless authentication.",
+            ),
+            DocumentationChange(
+                section="Deprecated Functions",
+                change_type="remove",
+                rationale="Function was removed from code",
+                updated_content="",
+            ),
+        ],
+        summary="Updated purpose, added design decision, removed deprecated section",
+        preserved_sections=["Architecture Overview", "Control Flow"],
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = incremental_fix
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Fixing documentation with multiple drift issues
+    result = fix_doc_incrementally(
+        llm=mock_llm_client,
+        context="def authenticate(): pass\ndef manage_session(): pass",
+        current_doc="# Auth Module\n\n## Purpose\nHandles authentication.",
+        drift_rationale="Added session management, removed old functions",
+    )
+
+    # Then: Should return fix with multiple changes
+    assert isinstance(result, IncrementalDocumentationFix)
+    assert len(result.changes) == 3
+    assert result.changes[0].change_type == "update"
+    assert result.changes[1].change_type == "add"
+    assert result.changes[2].change_type == "remove"
+
+
+# Tests for error recovery and resilience
+
+
+def test_check_drift_llm_api_error(mocker: MockerFixture, mock_llm_client: LLM) -> None:
+    """Test check_drift handles LLM API errors gracefully."""
+    # Mock LLM program to raise an exception
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.side_effect = Exception("API rate limit exceeded")
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Calling check_drift
+    # Then: Should propagate the exception (caller should handle)
+    with pytest.raises(Exception, match="API rate limit exceeded"):
+        check_drift(
+            llm=mock_llm_client,
+            context="def func(): pass",
+            current_doc="# Docs",
+        )
+
+
+def test_check_drift_with_empty_context(
+    mocker: MockerFixture, mock_llm_client: LLM
+) -> None:
+    """Test check_drift handles empty context."""
+    drift_check = DocumentationDriftCheck(
+        drift_detected=False, rationale="No code to check"
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = drift_check
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Checking drift with empty context
+    result = check_drift(llm=mock_llm_client, context="", current_doc="# Docs")
+
+    # Then: Should still work
+    assert isinstance(result, DocumentationDriftCheck)
+
+
+def test_check_drift_with_very_large_context(
+    mocker: MockerFixture, mock_llm_client: LLM
+) -> None:
+    """Test check_drift handles very large code context."""
+    # Create a large context (simulate large codebase)
+    large_context = "\n".join([f"def function_{i}(): pass" for i in range(1000)])
+
+    drift_check = DocumentationDriftCheck(
+        drift_detected=True, rationale="Many new functions"
+    )
+
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.return_value = drift_check
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Checking drift with large context
+    result = check_drift(
+        llm=mock_llm_client, context=large_context, current_doc="# Docs"
+    )
+
+    # Then: Should handle it
+    assert isinstance(result, DocumentationDriftCheck)
+    # Verify the context was passed
+    assert mock_program.call_count == 1
+
+
+def test_generate_doc_llm_timeout(mocker: MockerFixture, mock_llm_client: LLM) -> None:
+    """Test generate_doc handles LLM timeout errors."""
+    # Mock LLM program to simulate timeout
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.side_effect = TimeoutError("Request timeout")
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Generating documentation
+    # Then: Should propagate timeout error
+    with pytest.raises(TimeoutError, match="Request timeout"):
+        generate_doc(
+            llm=mock_llm_client,
+            context="def func(): pass",
+            output_model=ModuleDocumentation,
+            prompt_template="Generate docs: {context}",
+        )
+
+
+def test_generate_doc_invalid_response_structure(
+    mocker: MockerFixture, mock_llm_client: LLM
+) -> None:
+    """Test generate_doc handles invalid LLM response structure."""
+    # Mock LLM program to return invalid data
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    # Simulate Pydantic validation error
+    mock_program.side_effect = ValidationError.from_exception_data(
+        "ModuleDocumentation",
+        [{"type": "missing", "loc": ("purpose_and_scope",), "input": {}}],
+    )
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Generating documentation with invalid response
+    # Then: Should propagate validation error
+    with pytest.raises(ValidationError):
+        generate_doc(
+            llm=mock_llm_client,
+            context="def func(): pass",
+            output_model=ModuleDocumentation,
+            prompt_template="Generate docs: {context}",
+        )
+
+
+def test_fix_doc_incrementally_llm_error(
+    mocker: MockerFixture, mock_llm_client: LLM
+) -> None:
+    """Test fix_doc_incrementally handles LLM errors."""
+    # Mock LLM program to raise error
+    mock_program_class = mocker.patch("src.llm.llm.LLMTextCompletionProgram")
+    mock_program = mocker.MagicMock()
+    mock_program.side_effect = RuntimeError("LLM service unavailable")
+    mock_program_class.from_defaults.return_value = mock_program
+
+    # When: Fixing documentation
+    # Then: Should propagate the error
+    with pytest.raises(RuntimeError, match="LLM service unavailable"):
+        fix_doc_incrementally(
+            llm=mock_llm_client,
+            context="def func(): pass",
+            current_doc="# Docs",
+            drift_rationale="New function",
+        )
