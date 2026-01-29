@@ -1,0 +1,256 @@
+Metadata-Version: 2.4
+Name: kladml
+Version: 0.6.0
+Summary: KladML SDK - Enterprise-grade MLOps toolkit
+Author-email: KladML Team <marcello@netcaring.com>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/kladml/kladml
+Project-URL: Documentation, https://docs.klad.ml
+Project-URL: Repository, https://github.com/kladml/kladml.git
+Project-URL: Issues, https://github.com/kladml/kladml/issues
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: <3.14,>=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: sqlalchemy>=2.0.0
+Requires-Dist: sqlmodel>=0.0.14
+Requires-Dist: typer[all]>=0.9.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: platformdirs>=3.0.0
+Provides-Extra: train
+Requires-Dist: torch>=2.0.0; extra == "train"
+Requires-Dist: numpy>=1.21.0; extra == "train"
+Requires-Dist: onnx>=1.14.0; extra == "train"
+Requires-Dist: onnxruntime>=1.15.0; extra == "train"
+Requires-Dist: h5py>=3.0.0; extra == "train"
+Requires-Dist: onnxscript>=0.1.0; extra == "train"
+Provides-Extra: tracking
+Requires-Dist: mlflow<4.0.0,>=3.0.0; extra == "tracking"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: build>=1.0.0; extra == "dev"
+Requires-Dist: twine>=4.0.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: kladml[dev,tracking,train]; extra == "all"
+Dynamic: license-file
+
+<div align="center">
+
+<img src="docs/assets/images/logo_full.png" alt="KladML" width="600"/>
+
+**Build ML pipelines with pluggable backends. Simple. Modular. Yours.**
+
+![PyPI - Version](https://img.shields.io/pypi/v/kladml)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/kladml)
+[![License](https://img.shields.io/github/license/kladml/kladml.svg)](https://github.com/kladml/kladml/blob/main/LICENSE)
+
+`⭐ Star us on GitHub to support the project!`
+
+</div>
+
+---
+
+## Why KladML?
+
+| Feature | KladML | MLflow | ClearML |
+|---------|--------|--------|---------|
+| **Interface-based** | ✅ Pluggable | ❌ Hardcoded | ❌ Hardcoded |
+| **Server required** | ❌ No | ⚠️ Optional | ✅ Yes |
+| **Local-first** | ✅ Unified SQLite DB | ✅ Yes | ❌ No |
+| **Learning curve** | 🟢 Minutes | 🟡 Days | 🔴 Weeks |
+| **Hierarchy** | ✅ Workspace/Proj/Fam | ❌ Exp/Run | ❌ Project/task |
+| **User Interface** | ✅ TUI (Terminal) | ⚠️ Web UI | ✅ Web UI |
+| **Custom backends** | ✅ Easy | ⚠️ Complex | ❌ No |
+
+---
+
+## Installation
+
+```bash
+# Core (lightweight, no UI)
+pip install kladml
+
+# Full CLI (for terminal usage with TUI)
+pip install -e ".[all]"
+
+# For Vision support (optional)
+pip install -e ".[vision]"
+```
+
+---
+
+## Workflow
+
+### 1. Initialize Workspace
+```bash
+kladml init
+```
+Creates the standard folder structure (`data/`, `registry/`, `projects/`).
+
+### 2. Interactive Management (TUI)
+```bash
+kladml ui
+```
+Explore projects, runs, and datasets visually in your terminal.
+
+### 3. Training
+```bash
+# Train using a config file
+kladml train --config data/configs/my_config.yaml
+```
+
+---
+
+## Supported Data Types
+
+| Data Type | Pipeline |
+|-----------|----------|
+| **TABULAR** | XGBoost |
+| **TIMESERIES** | Transformer/Gluformer |
+| **IMAGE** | ResNet50 (Coming Soon) |
+
+---
+
+## Architecture
+
+KladML uses **dependency injection** with abstract interfaces. Swap implementations without changing your code:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Your Code                              │
+├─────────────────────────────────────────────────────────────┤
+│                   ExperimentRunner                          │
+├─────────────────────────────────────────────────────────────┤
+│  StorageInterface  │  ConfigInterface  │  TrackerInterface  │
+├─────────────────────────────────────────────────────────────┤
+│  LocalStorage      │  YamlConfig       │  LocalTracker      │
+│  S3Storage         │  EnvConfig        │  MLflowTracker     │
+│  (your impl)       │  (your impl)      │  (your impl)       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implement Custom Backends
+
+```python
+from kladml.interfaces import StorageInterface
+
+class S3Storage(StorageInterface):
+    """Custom S3 implementation."""
+    
+    def upload_file(self, local_path, bucket, key):
+        # Your S3 logic
+        ...
+
+# Plug it in
+runner = ExperimentRunner(storage=S3Storage())
+```
+
+---
+
+## Interfaces
+
+| Interface | Description | Default |
+|-----------|-------------|---------|
+| `StorageInterface` | Object storage (files, artifacts) | `LocalStorage` |
+| `ConfigInterface` | Configuration management | `YamlConfig` |
+| `PublisherInterface` | Real-time metric publishing | `ConsolePublisher` |
+| `TrackerInterface` | Experiment tracking | `LocalTracker` (MLflow + SQLite) |
+
+---
+
+## Configuration
+
+Create `kladml.yaml`:
+
+```yaml
+project:
+  name: my-project
+  version: 0.1.0
+
+training:
+  device: auto  # auto | cpu | cuda | mps
+
+storage:
+  artifacts_dir: ./artifacts
+```
+
+Or use environment variables:
+
+```bash
+export KLADML_TRAINING_DEVICE=cuda
+export KLADML_STORAGE_ARTIFACTS_DIR=/data/artifacts
+```
+
+---
+
+## CLI Commands
+
+```bash
+kladml --help                 # Show all commands
+kladml init                   # Initialize workspace
+kladml version                # Show version
+
+# Training
+kladml train quick ...        # Quick training (no DB setup)
+kladml train single ...       # Full training with project/experiment
+
+# Evaluation
+kladml eval run ...           # Evaluate a model
+kladml eval info              # Show available evaluators
+kladml compare --runs r1,r2   # Compare runs side-by-side
+
+# Data
+kladml data inspect <path>    # Analyze a dataset
+kladml data summary <dir>     # Summary of datasets in directory
+kladml data convert ...       # Convert PKL -> HDF5
+
+# Models
+kladml models export ...      # Export to TorchScript
+
+# Organization
+kladml project list           # List all projects
+kladml family list ...        # List families
+kladml experiment list ...    # List experiments
+```
+
+---
+
+## Contributing
+
+PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+```bash
+git clone https://github.com/kladml/kladml.git
+cd kladml
+pip install -e ".[dev]"
+pytest
+```
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+**[Documentation](https://docs.klad.ml)** · **[PyPI](https://pypi.org/project/kladml/)** · **[GitHub](https://github.com/kladml/kladml)**
+
+Made in 🇮🇹 by the KladML Team
+
+</div>
