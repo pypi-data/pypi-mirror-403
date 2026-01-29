@@ -1,0 +1,99 @@
+[project]
+name = "tide-GPR"
+version = "0.0.10"
+description = "Torch-based Inversion & Development Engine for electromagnetic wave propagation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+authors = [
+    {name = "V.cholerae", email = "v.cholerae1@gmail.com"}
+]
+maintainers = [
+    {name = "V.cholerae", email = "v.cholerae1@gmail.com"}
+]
+keywords = [
+    "pytorch",
+    "electromagnetic",
+    "wave-propagation", 
+    "maxwell-equations",
+    "fdtd",
+    "full-waveform-inversion",
+    "fwi",
+    "geophysics",
+    "inverse-problems",
+    "cuda"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: C",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+]
+dependencies = [
+    "matplotlib>=3.10.7",
+    "numpy>=2.3.5",
+    "scipy>=1.16.3",
+    "torch>=2.9.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+cmake.source-dir = "src/tide/csrc"
+cmake.build-type = "Release"
+wheel.packages = ["src/tide"]
+wheel.install-dir = "tide"
+wheel.py-api = "py3"
+build-dir = "build/{wheel_tag}"
+ninja.make-fallback = true
+
+[tool.cibuildwheel]
+# Build for Python 3.12 only (python-independent wheel)
+build = "cp312-*"
+skip = ["*musllinux*"]
+
+# Use manylinux_2_28 for better glibc and compiler support
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+
+build-verbosity = 1
+archs = ["auto64"]
+
+# Test configuration  
+test-requires = "pytest numpy scipy torch"
+
+[tool.cibuildwheel.linux]
+# Install GCC 13 for better OpenMP SIMD support
+before-all = "dnf install -y gcc-toolset-13"
+environment = { PATH="/opt/rh/gcc-toolset-13/root/usr/bin:$PATH", CC="gcc", CXX="g++" }
+test-command = "pytest {project}/tests"
+# Don't bundle CUDA libraries
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} --exclude libcuda.so.1 --exclude 'libcudart.so.*'"
+before-test = "pip install torch --index-url https://download.pytorch.org/whl/cpu"
+
+[tool.cibuildwheel.windows]
+test-command = "pytest {project}/tests"
+
+[tool.cibuildwheel.macos]
+test-command = "pytest {project}/tests"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
