@@ -1,0 +1,68 @@
+# pybumpit
+
+A CLI tool that mimics `npm version` behavior for Python projects.
+
+## Features
+
+- Read/write version from `pyproject.toml`
+- Bump version (patch/minor/major)
+- Create git commit and tag automatically
+- Interactive mode with beautiful prompts
+- Dirty working directory check (like npm)
+- Zero configuration required
+
+## Installation
+
+```bash
+pip install pybumpit
+```
+
+Or with uv:
+
+```bash
+uv add pybumpit
+```
+
+## Usage
+
+### Interactive Mode
+
+```bash
+pybumpit
+```
+
+Shows a prompt to select version type (patch/minor/major).
+
+### CLI Mode
+
+```bash
+pybumpit patch     # 0.1.0 -> 0.1.1
+pybumpit minor     # 0.1.0 -> 0.2.0
+pybumpit major     # 0.1.0 -> 1.0.0
+```
+
+### Options
+
+- `-f, --force` - Allow bump with uncommitted changes
+
+```bash
+pybumpit patch --force
+```
+
+## Behavior
+
+| Feature | Description |
+|---------|-------------|
+| Dirty check | Fails if uncommitted/untracked files exist |
+| Commit message | `v{version}` (e.g., `v1.0.1`) |
+| Tag format | `v{version}` (annotated tag) |
+| Without git | Just updates pyproject.toml |
+
+## Requirements
+
+- Python >= 3.12
+- `pyproject.toml` with `[project]` section containing `version`
+
+## License
+
+MIT
