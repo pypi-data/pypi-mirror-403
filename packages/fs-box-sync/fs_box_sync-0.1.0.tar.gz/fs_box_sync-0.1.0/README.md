@@ -1,0 +1,141 @@
+# fs-box-sync
+
+Python SDK for Box API with seamless Box Drive integration.
+
+## Installation
+
+```bash
+pip install fs-box-sync
+```
+
+Or with uv:
+
+```bash
+uv add fs-box-sync
+```
+
+## Quick Start
+
+```python
+import asyncio
+from fs_box_sync import box, BoxConfig
+
+# Configure with your credentials
+box.configure(BoxConfig(
+    client_id='your-client-id',
+    client_secret='your-client-secret',
+))
+
+async def main():
+    # List files in root folder
+    files = await box.list_folder_items('0')
+    for f in files:
+        print(f"{f.type}: {f.name} ({f.id})")
+
+    # Upload a file
+    file_id = await box.upload_file('folder-id', './local-file.pdf')
+
+    # Download a file
+    await box.download_file('file-id', './downloaded-file.pdf')
+
+    # Read file content
+    content = await box.get_file_content('file-id')
+
+asyncio.run(main())
+```
+
+## Architecture
+
+The SDK provides a 3-layer architecture:
+
+```
+BoxFS (High-level filesystem API)
+    ↓
+BoxDrive (Sync bridge for local filesystem)
+    ↓
+BoxAPI (Pure REST API wrapper)
+```
+
+- **BoxAPI**: Pure REST API wrapper with token management, retry logic, and chunked uploads
+- **BoxDrive**: Sync bridge for Box Drive local filesystem integration
+- **BoxFS**: High-level filesystem-like API combining both layers
+
+## Authentication
+
+### Tier 1: Developer Token (Quick Testing)
+
+```python
+box.configure(BoxConfig(
+    access_token='your-developer-token',  # Expires in ~1 hour
+))
+```
+
+### Tier 2: OAuth with Refresh Token (Production)
+
+```python
+box.configure(BoxConfig(
+    client_id='your-client-id',
+    client_secret='your-client-secret',
+    refresh_token='your-refresh-token',  # Auto-renewing
+))
+```
+
+### Tier 3: Custom Token Provider (Enterprise)
+
+```python
+async def get_token(callback_url: str) -> str:
+    # Your OAuth automation logic here
+    return authorization_code
+
+box.configure(BoxConfig(
+    client_id='your-client-id',
+    client_secret='your-client-secret',
+    token_provider=get_token,
+))
+```
+
+## Box Drive Integration
+
+If Box Drive is installed, you can access files locally:
+
+```python
+# Get local path for a Box file
+local_path = await box.get_local_path('file-id', 'file')
+
+# Wait for sync and get local path
+local_path = await box.get_local_path_synced('file-id', 'file')
+
+# Check if Box Drive is available
+if box.is_box_drive_available():
+    # Open file locally
+    await box.open_locally('file-id', 'file')
+```
+
+## API Reference
+
+### File Operations
+
+- `upload_file(folder_id, file_path)` - Upload a file
+- `download_file(file_id, dest_path)` - Download a file
+- `get_file_content(file_id)` - Get file content as string
+- `get_file_info(file_id)` - Get file metadata
+- `delete_file(file_id)` - Delete a file
+- `move_file(file_id, to_folder_id)` - Move a file
+
+### Folder Operations
+
+- `list_folder_items(folder_id)` - List folder contents
+- `get_folder_info(folder_id)` - Get folder metadata
+- `create_folder_if_not_exists(parent_id, name)` - Create folder
+- `search(folder_id, query)` - Search for files/folders
+
+### Webhooks
+
+- `get_all_webhooks()` - List all webhooks
+- `create_webhook(folder_id, address)` - Create a webhook
+- `delete_webhook(webhook_id)` - Delete a webhook
+- `delete_all_webhooks()` - Delete all webhooks
+
+## License
+
+MIT
