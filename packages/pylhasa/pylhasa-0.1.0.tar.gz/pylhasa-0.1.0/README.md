@@ -1,0 +1,86 @@
+# pylhasa
+
+`pylhasa` is a cross-platform Python wrapper for the LHA/LZH archive format. It vendors the liblhasa C sources and builds a CPython extension, producing wheels for Linux, macOS, and Windows.
+
+## Install
+
+From a local checkout:
+
+```bash
+pip install .
+```
+
+Wheels are built via GitHub Actions using `cibuildwheel` for CPython 3.9+.
+
+## Releases (PyPI)
+
+Releases are automated on Git tags (for example, `v0.1.0`) and publish to TestPyPI first, then PyPI, using GitHub trusted publishing (OIDC). To enable this, add this repository as a trusted publisher in both the TestPyPI and PyPI project settings.
+
+## Usage
+
+```python
+import pylhasa
+
+archive = pylhasa.open("example.lha")
+for entry in archive:
+    print(entry.raw_path, entry.size)
+
+# Read bytes directly
+payload = archive.read("hello.txt")
+
+# Stream contents
+entry = next(iter(archive))
+with entry.open() as stream:
+    chunk = stream.read(1024)
+
+# Extract safely (default)
+archive.extractall("out")
+archive.close()
+```
+
+## Examples
+
+See `examples/` for runnable scripts:
+
+- `examples/list_entries.py`
+- `examples/extract_all.py`
+- `examples/stream_read.py`
+
+### In-memory / streaming
+
+```python
+import pylhasa
+
+# In-memory bytes
+data = open("example.lha", "rb").read()
+archive = pylhasa.open_bytes(data)
+
+# Streaming file-like object
+with open("example.lha", "rb") as fp:
+    archive = pylhasa.open_fileobj(fp, buffering=131072)
+```
+
+## Safety notes
+
+- Safe extraction is **on by default**. Unsafe paths raise `UnsafePathError`.
+- `Entry.raw_path` preserves the original stored path (best-effort decoding).
+- `Entry.safe_path` contains the sanitized path used for extraction when safe mode is enabled.
+- Path traversal, absolute paths, Windows drive paths, and UNC paths are rejected when `safe=True`.
+
+## Exceptions
+
+- `PylhasaError`: base exception
+- `BadArchiveError`: malformed or unsupported archive
+- `UnsafePathError`: unsafe entry path for extraction
+
+## Compression support
+
+The vendored liblhasa core supports common LHA/LZH compression methods including `-lh1-` through `-lh7-`, `-lhd-`, and LArc `-lz*` variants.
+
+**Warning (experimental):** `-lh2-` and `-lh3-` support is best‑effort and under‑documented. Treat results with caution and validate against trusted tools when possible.
+
+Directory entries (`-lhd-`) and symlinks do not carry file data; `Archive.read()` returns `b\"\"` for those entries.
+
+## Third-party licenses
+
+This project vendors liblhasa. Its license is included at `native/vendor/lhasa/COPYING.md` and applies to the vendored sources.
