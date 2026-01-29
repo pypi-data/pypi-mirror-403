@@ -1,0 +1,941 @@
+{
+  "$defs": {
+    "ArtifactEvidence": {
+      "additionalProperties": false,
+      "description": "Evidence from an artifact or release (package, binary, deployment).\n\nCan reference artifacts via URL, local path, or content hash.\nAt least one of url, local_path, or sha256 must be provided.",
+      "properties": {
+        "type": {
+          "const": "artifact",
+          "default": "artifact",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "local_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local file path (relative to project root)",
+          "title": "Local Path"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-fA-F0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-256 hash of artifact for verification",
+          "title": "Sha256"
+        },
+        "artifact_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Type of artifact (e.g., 'wheel', 'docker', 'pdf')",
+          "title": "Artifact Type"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact description",
+          "title": "Description"
+        }
+      },
+      "title": "ArtifactEvidence",
+      "type": "object"
+    },
+    "ConfidenceLevel": {
+      "description": "Confidence level for metrics and outcomes.",
+      "enum": [
+        "exact",
+        "estimated",
+        "approximate",
+        "order_of_magnitude"
+      ],
+      "title": "ConfidenceLevel",
+      "type": "string"
+    },
+    "DocumentEvidence": {
+      "additionalProperties": false,
+      "description": "Evidence from a document or publication (whitepaper, RFC, etc.).",
+      "properties": {
+        "type": {
+          "const": "document",
+          "default": "document",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "publication_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publication Date"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DocumentEvidence",
+      "type": "object"
+    },
+    "ExperienceLevel": {
+      "description": "Experience level indicators.",
+      "enum": [
+        "entry",
+        "mid",
+        "senior",
+        "staff",
+        "lead",
+        "principal",
+        "executive"
+      ],
+      "title": "ExperienceLevel",
+      "type": "string"
+    },
+    "Framing": {
+      "additionalProperties": false,
+      "description": "Strategic framing guidance for resume presentation.",
+      "properties": {
+        "action_verb": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Verb"
+        },
+        "strategic_context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strategic Context"
+        }
+      },
+      "title": "Framing",
+      "type": "object"
+    },
+    "GitRepoEvidence": {
+      "additionalProperties": false,
+      "description": "Evidence from a code repository (GitHub, GitLab, etc.).",
+      "properties": {
+        "type": {
+          "const": "git_repo",
+          "default": "git_repo",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch"
+        },
+        "commit_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Sha"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "GitRepoEvidence",
+      "type": "object"
+    },
+    "ImpactCategory": {
+      "description": "Category of business impact.",
+      "enum": [
+        "financial",
+        "operational",
+        "talent",
+        "customer",
+        "organizational"
+      ],
+      "title": "ImpactCategory",
+      "type": "string"
+    },
+    "LegacyWorkUnitScope": {
+      "additionalProperties": false,
+      "description": "Legacy scope model for work units (DEPRECATED).\n\nThis model is kept for backwards compatibility with existing YAML files.\nNew work units should use Position.scope instead.\n\nField mapping to unified Scope:\n- budget_managed -> budget\n- revenue_influenced -> revenue\n- geographic_reach -> geography\n- team_size -> team_size (same)",
+      "properties": {
+        "budget_managed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Managed"
+        },
+        "team_size": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Size"
+        },
+        "revenue_influenced": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revenue Influenced"
+        },
+        "geographic_reach": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Geographic Reach"
+        }
+      },
+      "title": "LegacyWorkUnitScope",
+      "type": "object"
+    },
+    "LinkEvidence": {
+      "additionalProperties": false,
+      "description": "Evidence from a generic web link.\n\nUse for any HTTP/HTTPS URL that doesn't fit specific categories\nlike git_repo, metrics, document, or artifact. Preferred over\nOtherEvidence for new work units as it supports a title field\nfor better labeling.\n\nExamples:\n    - Blog posts\n    - News articles\n    - External presentations\n    - Company announcements",
+      "properties": {
+        "type": {
+          "const": "link",
+          "default": "link",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Link title or label",
+          "title": "Title"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Link description",
+          "title": "Description"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "LinkEvidence",
+      "type": "object"
+    },
+    "Metrics": {
+      "additionalProperties": false,
+      "description": "Quantified metrics with baseline and outcome for before/after comparison.",
+      "properties": {
+        "baseline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome"
+        },
+        "percentage_change": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Percentage Change"
+        }
+      },
+      "title": "Metrics",
+      "type": "object"
+    },
+    "MetricsEvidence": {
+      "additionalProperties": false,
+      "description": "Evidence from a metrics dashboard (Grafana, Datadog, etc.).",
+      "properties": {
+        "type": {
+          "const": "metrics",
+          "default": "metrics",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "dashboard_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dashboard Name"
+        },
+        "metric_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Metric Names",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "MetricsEvidence",
+      "type": "object"
+    },
+    "NarrativeEvidence": {
+      "additionalProperties": false,
+      "description": "Evidence based on narrative description only.\n\nUse for internal achievements, verbal feedback, or evidence\nthat cannot be linked externally.",
+      "properties": {
+        "type": {
+          "const": "narrative",
+          "default": "narrative",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "description": "Narrative description of the evidence",
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source of evidence (e.g., 'Manager feedback', 'Internal review')",
+          "title": "Source"
+        },
+        "date_recorded": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the evidence was recorded",
+          "title": "Date Recorded"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "title": "NarrativeEvidence",
+      "type": "object"
+    },
+    "OtherEvidence": {
+      "additionalProperties": false,
+      "description": "Evidence that doesn't fit other categories.\n\nDEPRECATED: Prefer LinkEvidence for generic URLs or NarrativeEvidence\nfor description-only evidence. This type is maintained for backward\ncompatibility with existing work units.",
+      "properties": {
+        "type": {
+          "const": "other",
+          "default": "other",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "OtherEvidence",
+      "type": "object"
+    },
+    "Outcome": {
+      "additionalProperties": false,
+      "description": "Outcome describing the results achieved in a Work Unit.",
+      "properties": {
+        "result": {
+          "minLength": 10,
+          "title": "Result",
+          "type": "string"
+        },
+        "quantified_impact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quantified Impact"
+        },
+        "business_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Business Value"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence Note"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "Outcome",
+      "type": "object"
+    },
+    "Problem": {
+      "additionalProperties": false,
+      "description": "Problem statement describing the challenge addressed in a Work Unit.",
+      "properties": {
+        "statement": {
+          "minLength": 20,
+          "title": "Statement",
+          "type": "string"
+        },
+        "constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context"
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "title": "Problem",
+      "type": "object"
+    },
+    "Skill": {
+      "additionalProperties": false,
+      "description": "Skill demonstrated in a Work Unit with optional O*NET taxonomy mapping.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "onet_element_id": {
+          "anyOf": [
+            {
+              "pattern": "^\\d+\\.\\w+(\\.\\d+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Onet Element Id"
+        },
+        "proficiency_level": {
+          "anyOf": [
+            {
+              "maximum": 7,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proficiency Level"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Skill",
+      "type": "object"
+    },
+    "WorkUnitArchetype": {
+      "description": "Work unit archetype classification for PAR structure patterns.\n\nEach archetype represents a common pattern of professional achievement\nwith distinct problem-action-result structures. The archetype guides\nhow achievements are categorized, validated, and presented on resumes.\n\nValues must match archetype template filenames exactly (lowercase).",
+      "enum": [
+        "greenfield",
+        "migration",
+        "optimization",
+        "incident",
+        "leadership",
+        "strategic",
+        "transformation",
+        "cultural",
+        "minimal"
+      ],
+      "title": "WorkUnitArchetype",
+      "type": "string"
+    },
+    "WorkUnitConfidence": {
+      "description": "Overall confidence in Work Unit accuracy.",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "WorkUnitConfidence",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A documented instance of applied capability (the core resume building block).",
+  "properties": {
+    "id": {
+      "pattern": "^wu-\\d{4}-\\d{2}-\\d{2}-[a-z0-9-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 200,
+      "minLength": 10,
+      "title": "Title",
+      "type": "string"
+    },
+    "problem": {
+      "$ref": "#/$defs/Problem"
+    },
+    "actions": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Actions",
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "archetype": {
+      "$ref": "#/$defs/WorkUnitArchetype",
+      "description": "Archetype classification for PAR structure patterns. Must be one of: greenfield, migration, optimization, incident, leadership, strategic, transformation, cultural, minimal."
+    },
+    "time_started": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time Started"
+    },
+    "time_ended": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time Ended"
+    },
+    "position_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Reference to position in positions.yaml for employer grouping",
+      "title": "Position Id"
+    },
+    "seniority_level": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExperienceLevel"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Seniority level for matching. If not set, inferred from position title."
+    },
+    "skills_demonstrated": {
+      "items": {
+        "$ref": "#/$defs/Skill"
+      },
+      "title": "Skills Demonstrated",
+      "type": "array"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkUnitConfidence"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "evidence": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "artifact": "#/$defs/ArtifactEvidence",
+            "document": "#/$defs/DocumentEvidence",
+            "git_repo": "#/$defs/GitRepoEvidence",
+            "link": "#/$defs/LinkEvidence",
+            "metrics": "#/$defs/MetricsEvidence",
+            "narrative": "#/$defs/NarrativeEvidence",
+            "other": "#/$defs/OtherEvidence"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/GitRepoEvidence"
+          },
+          {
+            "$ref": "#/$defs/MetricsEvidence"
+          },
+          {
+            "$ref": "#/$defs/DocumentEvidence"
+          },
+          {
+            "$ref": "#/$defs/ArtifactEvidence"
+          },
+          {
+            "$ref": "#/$defs/LinkEvidence"
+          },
+          {
+            "$ref": "#/$defs/NarrativeEvidence"
+          },
+          {
+            "$ref": "#/$defs/OtherEvidence"
+          }
+        ]
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LegacyWorkUnitScope"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "impact_category": {
+      "items": {
+        "$ref": "#/$defs/ImpactCategory"
+      },
+      "title": "Impact Category",
+      "type": "array"
+    },
+    "metrics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Metrics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "framing": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Framing"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "default": "4.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "problem",
+    "actions",
+    "outcome",
+    "archetype"
+  ],
+  "title": "WorkUnit",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resume-as-code.dev/schemas/work-unit.schema.json"
+}
