@@ -1,0 +1,117 @@
+# TiMEM MCP Server
+
+[Model Context Protocol](https://modelcontextprotocol.io) server for [TiMEM Engine](https://timem.cloud), providing memory management tools for AI applications.
+
+## Installation
+
+```bash
+pip install timem-mcp
+```
+
+## Usage
+
+### With Claude Desktop
+
+Add to your Claude Desktop configuration (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "TiMEM-MCP": {
+      "command": "uvx",
+      "args": ["timem-mcp"],
+      "env": {
+        "TiMEM_API_KEY": "<your-api-key>",
+        "TiMEM_API_HOST": "https://api.timem.cloud",  // optional
+        "TiMEM_USER_ID": "<your-user-id>"
+      }
+    }
+  }
+}
+```
+
+### Direct Execution
+
+```bash
+# Using uvx (recommended)
+uvx timem-mcp
+
+# Or using Python module
+python -m timem_mcp
+
+# Or directly if installed
+timem-mcp
+```
+
+## Configuration
+
+The server reads configuration from environment variables:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TiMEM_API_KEY` | Yes | - | Your TiMEM Engine API key |
+| `TiMEM_USER_ID` | Yes | - | User identifier for memory operations |
+| `TiMEM_API_HOST` | No | `https://api.timem.cloud` | TiMEM Engine API endpoint |
+
+**Note:** Both `TiMEM_*` and `TIMEM_*` prefixes are supported. `TiMEM_*` takes priority.
+
+## Available Tools
+
+### `create_memory`
+
+Create memories from conversation history.
+
+**Parameters:**
+- `messages` (required): List of message objects with `role` and `content`
+- `session_id` (required): Session identifier
+- `expert_id` (optional): Expert ID, default "default"
+- `domain` (optional): Business domain, default "general"
+
+**Example:**
+```python
+await create_memory(
+    messages=[
+        {"role": "user", "content": "My name is John"},
+        {"role": "assistant", "content": "Hello John!"}
+    ],
+    session_id="sess_123",
+    expert_id="default",
+    domain="general"
+)
+```
+
+### `search_memories`
+
+Search and retrieve stored memories.
+
+**Parameters:**
+- `query` (optional): Search keywords
+- `layer` (optional): Memory layer (L1-L5)
+- `domain` (optional): Business domain
+- `limit` (optional): Result count, default 10
+
+**Example:**
+```python
+await search_memories(query="John", layer="L1", limit=5)
+```
+
+### `ready`
+
+Health check endpoint to verify the server is running.
+
+## Development
+
+```bash
+# Install in development mode
+pip install -e .
+
+# Run tests
+pytest
+
+# Run with MCP Inspector
+npx @modelcontextprotocol/inspector uvx --from <your-local-path> timem-mcp -e TiMEM_API_HOST=http://localhost:8000 -e TiMEM_API_KEY=<your-api-key> -e TiMEM_USER_ID=<your-user-id>
+```
+
+## License
+
+MIT License - see LICENSE file for details.
