@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+import typing
+
+try:
+    import msgpack
+
+    HAS_MSGPACK = True
+except ImportError:
+    HAS_MSGPACK = False
+
+from ..base import BaseCodec, BaseFileIterable
+
+
+class MessagePackIterable(BaseFileIterable):
+    datamode = "binary"
+
+    def __init__(
+        self,
+        filename: str = None,
+        stream: typing.IO = None,
+        codec: BaseCodec = None,
+        mode: str = "r",
+        options: dict = None,
+    ):
+        if options is None:
+            options = {}
+        if not HAS_MSGPACK:
+            raise ImportError("MessagePack support requires 'msgpack' package")
+        super().__init__(filename, stream, codec=codec, binary=True, mode=mode, options=options)
+        self.reset()
+        pass
+
+    def reset(self):
+        """Reset iterable"""
+        super().reset()
+        self.pos = 0
+        if self.mode == "r":
+            self.unpacker = msgpack.Unpacker(self.fobj, raw=False, use_list=True)
+        else:
+            self.packer = msgpack.Packer(use_bin_type=True)
+
+    @staticmethod
+    def id() -> str:
+        return "msgpack"
+
+    @staticmethod
+    def is_flatonly() -> bool:
+        return False
+
+    def read(self) -> dict:
+        """Read single MessagePack record"""
+        try:
+            row = next(self.unpacker)
+            self.pos += 1
+            return row
+        except StopIteration:
+            raise StopIteration from None
+
+    def read_bulk(self, num: int = 10) -> list[dict]:
+        """Read bulk MessagePack records"""
+        chunk = []
+        for _n in range(0, num):
+            try:
+                chunk.append(self.read())
+            except StopIteration:
+                break
+        return chunk
+
+    def write(self, record: dict):
+        """Write single MessagePack record"""
+        self.fobj.write(self.packer.pack(record))
+
+    def write_bulk(self, records: list[dict]):
+        """Write bulk MessagePack records"""
+        for record in records:
+            self.fobj.write(self.packer.pack(record))
