@@ -1,0 +1,246 @@
+# GGMW: Google Gemini Minimal Wrapper
+
+Provides a minimally abstracted way to use the Gemini API.
+
+# Installation
+```bash
+uv add ggmw
+pip install ggmw
+```
+
+# Usage 
+### Text complete response 
+```python
+# main.py
+from google.genai import client as genai_client
+
+from ggmw import Client, Message
+
+client = Client(
+    genai_client.Client(api_key="<API_KEY_HERE>"),
+    model="gemini-2.5-flash"
+)
+
+messages = [
+    Message("system", "Answer in rhyme"),
+    Message("user", "What is recursion")
+]
+ 
+response = client.text_run(messages)
+
+print(response)
+```
+Output: 
+```bash
+❯ uv run main.py                     
+A function starts, a task to do,
+Then deep within, it calls anew.
+Not quite the same, a smaller plight,
+A mirrored problem, day and night.
+
+It solves a piece, then calls once more,
+Until a simple, clear-cut shore,
+A 'base case' known, it needs no aid,
+The final step, no more afraid.
+
+Then upwards climb the answers true,
+From smallest part, right back to you.
+Unwinding logic, sharp and neat,
+Making the complex task complete!
+```
+
+### Text streaming
+```python
+# main.py
+from google.genai import client as genai_client
+
+from ggmw import Client, Message
+
+client = Client(
+    genai_client.Client(api_key="<API_KEY_HERE>"),
+    model="gemini-2.5-flash"
+)
+
+messages = [
+    Message("system", "Answer in rhyme"),
+    Message("user", "What is recursion")
+]
+ 
+for chunk in client.text_stream(messages):
+    print(chunk)
+    print("-"*20)
+```
+Output:
+```bash
+❯ uv run main.py
+It's a curious process, a mystical art,
+Where a function calls itself, playing its part.
+It takes a big problem, and breaks it with care,
+Into smaller versions, floating in air.
+
+Each call then proceeds, with
+--------------------
+ a sub-task so slight,
+Until a "base case" at last comes in sight.
+This simple condition, a must for its plight,
+Ensures it won't loop through the day and the night.
+
+Once that is
+--------------------
+ fulfilled, the process turns 'round,
+The answers unwind, with a satisfying sound.
+From the smallest of pieces, the whole starts to grow,
+A powerful pattern, for all coders to know!
+--------------------
+```
+
+### Structured complete response 
+```python
+# main.py
+from google.genai import client as genai_client
+from pydantic import BaseModel, Field
+
+from ggmw import Client, Message
+
+class Poem(BaseModel):
+    """Represents a poem with 3 stanzas"""
+    first_stanza:  str = Field(description="The first stanza of the poem")
+    second_stanza: str = Field(description="The second stanza of the poem")    
+    third_stanza:  str = Field(description="The third stanza of the poem")
+
+client = Client(
+    genai_client.Client(api_key="<API_KEY_HERE>"),
+    model="gemini-2.5-flash"
+)
+messages = [
+    Message("system", "Answer in rhyme"),
+    Message("user", "What is recursion")
+]
+ 
+response = client.structured_run(messages, Poem)
+
+print(repr(response))
+```
+Output:
+```bash
+❯ uv run main.py
+Poem(first_stanza='A function calling its own name,To solve a problem, light a flame.It does its task, then calls anew,Until a simpler path shines through.', second_stanza='There must be a stop, a base so clear,To quell the endless stack, my dear.If not, it calls, and calls with might,Until memory fades from sight.', third_stanza='For trees and fractals, tasks so grand,It helps to walk throughout the land.A loop unseen, a nested quest,Recursion puts logic to the test.')
+```
+
+### Structured streaming
+```python
+# main.py
+from google.genai import client as genai_client
+from pydantic import BaseModel, Field
+
+from ggmw import Client, Message
+
+class Poem(BaseModel):
+    """Represents a poem with 3 stanzas"""
+    first_stanza:  str = Field(description="The first stanza of the poem")
+    second_stanza: str = Field(description="The second stanza of the poem")    
+    third_stanza:  str = Field(description="The third stanza of the poem")
+
+client = Client(
+    genai_client.Client(api_key="<API_KEY_HERE>"),
+    model="gemini-2.5-flash"
+)
+messages = [
+    Message("system", "Answer in rhyme"),
+    Message("user", "What is recursion")
+]
+ 
+for partial in client.structured_stream(messages, Poem):
+    print(repr(partial))
+    print("-"*20)
+```
+Output:
+```bash
+❯ uv run main.py
+PartialPoem(first_stanza='A puzzle deep, a loop untold,A function brave, both new and old.It calls itself, a clever trick,To solve a problem, oh so quick', second_stanza=None, third_stanza=None)
+--------------------
+PartialPoem(first_stanza='A puzzle deep, a loop untold,A function brave, both new and old.It calls itself, a clever trick,To solve a problem, oh so quick.', second_stanza="But lest it run forever on,A base case waits, till cycle's gone.A simple truth, it must discern,So from its endless path it can turn.", third_stanza='')
+--------------------
+PartialPoem(first_stanza='A puzzle deep, a loop untold,A function brave, both new and old.It calls itself, a clever trick,To solve a problem, oh so quick.', second_stanza="But lest it run forever on,A base case waits, till cycle's gone.A simple truth, it must discern,So from its endless path it can turn.", third_stanza="With each call down, a smaller part,It breaks the task, a work of art.Then builds it back, from finish line,Recursion's power, truly divine.")
+--------------------
+```
+
+## Async client
+You can also use the async client, which has the same interfaces as the above sync one
+```python
+# main.py
+import asyncio
+from google.genai import client as genai_client
+from pydantic import BaseModel, Field
+
+from ggmw import AsyncClient, Message
+
+class Poem(BaseModel):
+    """Represents a poem with 3 stanzas"""
+    first_stanza:  str = Field(description="The first stanza of the poem")
+    second_stanza: str = Field(description="The second stanza of the poem")    
+    third_stanza:  str = Field(description="The third stanza of the poem")
+
+client = AsyncClient(
+    genai_client.Client(api_key="<API_KEY_HERE>"),
+    model="gemini-2.5-flash"
+)
+messages = [
+    Message("system", "Answer in rhyme"),
+    Message("user", "What is recursion")
+]
+
+async def main():
+    async for partial in client.structured_stream(messages, Poem):
+        print(repr(partial))
+        print("-"*20)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+Output:
+```bash
+❯ uv run main.py
+PartialPoem(first_stanza='A curious loop, a self-same call,A function runs, then gives its all,By asking for its own dear name,To play again the very game.', second_stanza=None, third_stanza=None)
+--------------------
+PartialPoem(first_stanza='A curious loop, a self-same call,A function runs, then gives its all,By asking for its own dear name,To play again the very game.', second_stanza='It needs a stop, a simple truth,A base case known from early youth,To break the chain, to end the quest,And put the calling thoughts to rest.', third_stanza='Like mirrors deep')
+--------------------
+PartialPoem(first_stanza='A curious loop, a self-same call,A function runs, then gives its all,By asking for its own dear name,To play again the very game.', second_stanza='It needs a stop, a simple truth,A base case known from early youth,To break the chain, to end the quest,And put the calling thoughts to rest.', third_stanza='Like mirrors deep, reflecting bright,Or Russian dolls, a wondrous sight,It solves a task, then calls again,Until the simplest point is plain.')
+--------------------
+```
+
+# Additional Notes:
+- Some Gemini models have thinking enabled (e.g. `gemini-3-flash-preview`), and you can set the thinking level when running those models
+```python
+response = client.text_run(messages, thinking_level="LOW")
+```
+*The Gemini API also has the ability to return the model thoughts, but it returns the thoughts along side the answer, and I don't know how to separate them effectively so it is disabled (for now)*  
+- In order for the structured output streaming to work, the provided output schema, which is a pydantic model, gets converted to a partial version (same structure but all the fields are set to optional). This behavior is implicit to keep the client simple.
+
+*Maybe in the future, change the interfaces so that the caller must pass in the converted models to be more explicit? For now it is implicit for simplicity*
+
+The conversion function is called `partial_model`, and you can use it yourself
+```python
+# main.py
+from pydantic import BaseModel
+
+from ggmw import partial
+
+class User(BaseModel):
+    name: str   # name, email and age are required 
+    email: str
+    age: int   
+data = {
+    "name": "foo",
+    "email": "foo@example.com"
+    # no age
+}
+
+PartialUser = partial.partial_model(User) # name, email, and age are now optional
+print(PartialUser.model_validate(data))
+```
+Output:
+```bash
+❯ uv run main.py
+name='foo' email='foo@example.com' age=None
+```
