@@ -1,0 +1,76 @@
+# Commit and Push
+
+## Objective
+
+Review the changed files to verify they match the agent's expectations, create a commit with an appropriate message, and push to the remote repository.
+
+## Task
+
+Check the list of changed files against what was modified during this session, ensure they match expectations, then commit and push the changes.
+
+### Process
+
+1. **Get the list of changed files**
+   ```bash
+   git status
+   ```
+   Also run `git diff --stat` to see a summary of changes.
+
+2. **Verify changes match expectations**
+
+   Compare the changed files against what you modified during this session:
+   - Do the modified files match what you edited?
+   - Are there any unexpected new files?
+   - Are there any unexpected deleted files?
+   - Do the line counts seem reasonable for the changes you made?
+
+   If changes match expectations, proceed to commit.
+
+   If there are unexpected changes:
+   - Investigate why (e.g., lint auto-fixes, generated files)
+   - If they're legitimate side effects of your work, include them
+   - If they're unrelated or shouldn't be committed, use `git restore` to discard them
+
+3. **Stage all appropriate changes**
+   ```bash
+   git add -A
+   ```
+   Or stage specific files if some were excluded.
+
+5. **View recent commit messages for style reference**
+   ```bash
+   git log --oneline -10
+   ```
+
+6. **Create the commit**
+
+   Generate an appropriate commit message based on:
+   - The changes made
+   - The style of recent commits
+   - Conventional commit format if the project uses it
+
+   ```bash
+   git commit -m "commit message here"
+   ```
+
+7. **Push to remote**
+   ```bash
+   git push
+   ```
+   If the branch has no upstream, use:
+   ```bash
+   git push -u origin HEAD
+   ```
+
+## Quality Criteria
+
+- Changed files list was reviewed by the agent
+- Files match what was modified during this session (or unexpected changes were investigated and handled)
+- Commit message follows project conventions
+- Commit was created successfully
+- Changes were pushed to remote
+- When all criteria are met, include `<promise>✓ Quality Criteria Met</promise>` in your response
+
+## Context
+
+This is the final step of the commit workflow. The agent verifies that the changed files match its own expectations from the work done during the session, then commits and pushes. This catches unexpected changes while avoiding unnecessary user interruptions.
