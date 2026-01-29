@@ -1,0 +1,244 @@
+Metadata-Version: 2.4
+Name: google-ads-mcp-rw
+Version: 0.1.0
+Summary: MCP server for Google Ads with read AND write capabilities
+Project-URL: Homepage, https://github.com/MaxGhenis/google-ads-mcp-rw
+Project-URL: Repository, https://github.com/MaxGhenis/google-ads-mcp-rw
+Project-URL: Issues, https://github.com/MaxGhenis/google-ads-mcp-rw/issues
+Author-email: Max Ghenis <max@policyengine.org>
+License: MIT
+License-File: LICENSE
+Keywords: advertising,google-ads,mcp,model-context-protocol,ppc
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.10
+Requires-Dist: google-ads>=25.0.0
+Requires-Dist: mcp[cli]>=1.6.0
+Requires-Dist: pyyaml>=6.0
+Provides-Extra: dev
+Requires-Dist: black>=24.0.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.3.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Google Ads MCP Server
+
+A Model Context Protocol (MCP) server for Google Ads with **read AND write capabilities**. Unlike Google's official read-only MCP server, this one lets you actually manage your campaigns.
+
+## Features
+
+### Read operations
+- **`list_accounts`** - List all accessible Google Ads accounts
+- **`execute_query`** - Run GAQL queries for campaigns, ad groups, keywords, metrics, etc.
+
+### Write operations
+- **`create_campaign`** - Create new campaigns (paused by default for safety)
+- **`create_ad_group`** - Create ad groups in a campaign
+- **`add_keywords`** - Add keywords to an ad group
+- **`add_negative_keywords`** - Add negative keywords (campaign or ad group level)
+- **`create_responsive_search_ad`** - Create RSAs with headlines/descriptions
+- **`pause_campaign`** / **`enable_campaign`** - Toggle campaign status
+- **`pause_ad_group`** / **`enable_ad_group`** - Toggle ad group status
+- **`update_ad_group_bid`** - Update CPC bids
+
+### Safety features
+- **Dry run mode** - All write operations support `dry_run=True` to validate without executing
+- **Safe defaults** - New campaigns are created PAUSED
+- **Clear feedback** - All operations return success status and error messages
+
+## Installation
+
+### Using uv (recommended)
+
+```bash
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install the package
+uv pip install google-ads-mcp
+
+# Or install from source
+git clone https://github.com/maxghenis/google-ads-mcp-rw
+cd google-ads-mcp
+uv pip install -e .
+```
+
+### Using pip
+
+```bash
+pip install google-ads-mcp
+```
+
+## Configuration
+
+### 1. Create Google Ads API credentials
+
+1. Go to the [Google Ads API Center](https://ads.google.com/aw/apicenter)
+2. Create a developer token (or use an existing one)
+3. Set up OAuth2 credentials in Google Cloud Console
+4. Generate a refresh token
+
+### 2. Create google-ads.yaml
+
+Create a `google-ads.yaml` file with your credentials:
+
+```yaml
+developer_token: YOUR_DEVELOPER_TOKEN
+client_id: YOUR_CLIENT_ID.apps.googleusercontent.com
+client_secret: YOUR_CLIENT_SECRET
+refresh_token: YOUR_REFRESH_TOKEN
+# MCC account ID if using multiple accounts (digits only, no dashes)
+login_customer_id: "1234567890"
+use_proto_plus: true
+```
+
+See [google-ads.yaml.example](./google-ads.yaml.example) for a template.
+
+### 3. Set the config path (optional)
+
+By default, the server looks for `google-ads.yaml` in the current directory. You can specify a custom location:
+
+```bash
+export GOOGLE_ADS_CONFIG_PATH=/path/to/your/google-ads.yaml
+```
+
+## Usage with Claude Desktop
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "google-ads": {
+      "command": "uv",
+      "args": ["run", "--with", "google-ads-mcp", "google-ads-mcp"],
+      "env": {
+        "GOOGLE_ADS_CONFIG_PATH": "/path/to/your/google-ads.yaml"
+      }
+    }
+  }
+}
+```
+
+Or if installed globally:
+
+```json
+{
+  "mcpServers": {
+    "google-ads": {
+      "command": "google-ads-mcp",
+      "env": {
+        "GOOGLE_ADS_CONFIG_PATH": "/path/to/your/google-ads.yaml"
+      }
+    }
+  }
+}
+```
+
+## Example workflows
+
+### List your accounts
+
+```
+Use list_accounts to show me all my Google Ads accounts
+```
+
+### Query campaign performance
+
+```
+Run this GAQL query for customer ID 1234567890:
+SELECT campaign.name, metrics.clicks, metrics.impressions, metrics.cost_micros
+FROM campaign
+WHERE segments.date DURING LAST_7_DAYS
+ORDER BY metrics.clicks DESC
+```
+
+### Create a new campaign with ad group, keywords, and ad
+
+```
+Create a new search campaign called "Q1 Promo" with a $20/day budget,
+then add an ad group "Product Keywords" with keywords like "buy widgets",
+"widget sale", "best widgets", and create a responsive search ad with
+these headlines: "Buy Widgets Now", "50% Off Widgets", "Free Shipping"
+and descriptions: "Shop our huge selection of widgets. Free shipping on orders over $50.",
+"Premium quality widgets at the best prices. Order today!"
+Final URL: https://example.com/widgets
+```
+
+### Add negative keywords
+
+```
+Add these negative keywords to campaign 19638300165:
+- "free"
+- "cheap"
+- "diy"
+- "tutorial"
+```
+
+### Pause underperforming ad groups
+
+```
+First, show me all ad groups in campaign 19638300165 with their metrics.
+Then pause any ad groups with CTR below 1%.
+```
+
+## API reference
+
+### Budget and bid values
+
+All monetary values use **micros** (1/1,000,000 of the currency unit):
+- `1,000,000 micros = $1.00`
+- `2,500,000 micros = $2.50`
+- `10,000,000 micros = $10.00`
+
+### Match types
+
+Keywords support three match types:
+- **BROAD** - Shows for related searches (default)
+- **PHRASE** - Shows when query contains the phrase
+- **EXACT** - Shows only for exact query match
+
+### Customer IDs
+
+Customer IDs should be digits only, no dashes:
+- Correct: `1234567890`
+- Incorrect: `123-456-7890`
+
+## Development
+
+```bash
+# Clone the repo
+git clone https://github.com/maxghenis/google-ads-mcp-rw
+cd google-ads-mcp
+
+# Install dev dependencies
+uv pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Format code
+black src tests
+ruff check --fix src tests
+```
+
+## License
+
+MIT License - see [LICENSE](./LICENSE) for details.
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+## Related projects
+
+- [Google's official Google Ads MCP](https://github.com/nicholasgriffintn/google-ads-mcp) - Read-only
+- [MCP Protocol](https://modelcontextprotocol.io/) - The underlying protocol
+- [FastMCP](https://github.com/jlowin/fastmcp) - The MCP server framework used
