@@ -1,0 +1,190 @@
+name: API Monitor
+
+on:
+  schedule:
+    # Run daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  check-docs-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_changed: ${{ steps.check.outputs.changed }}
+      sdk_changed: ${{ steps.check.outputs.sdk_changed }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check documentation for changes
+        id: check
+        run: |
+          # URLs to monitor
+          DOCS_URL="https://docs.databricks.com/en/data-governance/unity-catalog/external-lineage.html"
+          SDK_URL="https://api.github.com/repos/databricks/databricks-sdk-py/releases/latest"
+
+          # File to store previous hashes
+          HASH_FILE=".github/api-monitor-hashes.json"
+
+          # Initialize hash file if it doesn't exist
+          if [ ! -f "$HASH_FILE" ]; then
+            echo '{"docs_hash": "", "sdk_version": ""}' > "$HASH_FILE"
+          fi
+
+          # Get current docs page hash
+          CURRENT_DOCS_HASH=$(curl -sL "$DOCS_URL" | sha256sum | cut -d' ' -f1)
+          PREVIOUS_DOCS_HASH=$(jq -r '.docs_hash' "$HASH_FILE")
+
+          # Get current SDK version
+          CURRENT_SDK_VERSION=$(curl -sL "$SDK_URL" | jq -r '.tag_name')
+          PREVIOUS_SDK_VERSION=$(jq -r '.sdk_version' "$HASH_FILE")
+
+          # Check for changes
+          DOCS_CHANGED="false"
+          SDK_CHANGED="false"
+
+          if [ "$CURRENT_DOCS_HASH" != "$PREVIOUS_DOCS_HASH" ] && [ -n "$PREVIOUS_DOCS_HASH" ]; then
+            DOCS_CHANGED="true"
+            echo "Documentation page has changed!"
+          fi
+
+          if [ "$CURRENT_SDK_VERSION" != "$PREVIOUS_SDK_VERSION" ] && [ -n "$PREVIOUS_SDK_VERSION" ]; then
+            SDK_CHANGED="true"
+            echo "SDK version changed: $PREVIOUS_SDK_VERSION -> $CURRENT_SDK_VERSION"
+          fi
+
+          # Update hash file
+          jq --arg docs "$CURRENT_DOCS_HASH" --arg sdk "$CURRENT_SDK_VERSION" \
+            '.docs_hash = $docs | .sdk_version = $sdk' "$HASH_FILE" > tmp.json && mv tmp.json "$HASH_FILE"
+
+          # Output results
+          echo "changed=$DOCS_CHANGED" >> $GITHUB_OUTPUT
+          echo "sdk_changed=$SDK_CHANGED" >> $GITHUB_OUTPUT
+          echo "sdk_version=$CURRENT_SDK_VERSION" >> $GITHUB_OUTPUT
+          echo "prev_sdk_version=$PREVIOUS_SDK_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit hash updates
+        if: always()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .github/api-monitor-hashes.json
+          git diff --staged --quiet || git commit -m "chore: update API monitor hashes [skip ci]"
+          git push || echo "Nothing to push"
+
+  run-integration-tests:
+    runs-on: ubuntu-latest
+    needs: check-docs-changes
+    if: needs.check-docs-changes.outputs.docs_changed == 'true' || needs.check-docs-changes.outputs.sdk_changed == 'true' || github.event_name == 'workflow_dispatch'
+    outputs:
+      tests_passed: ${{ steps.test.outputs.passed }}
+      test_output: ${{ steps.test.outputs.output }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run integration tests
+        id: test
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_CATALOG: ${{ secrets.DATABRICKS_CATALOG }}
+        run: |
+          set +e  # Don't exit on error
+          OUTPUT=$(pytest tests/test_integration.py -v --tb=short 2>&1)
+          EXIT_CODE=$?
+          set -e
+
+          # Save output to file for artifact
+          echo "$OUTPUT" > test-results.txt
+
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Truncate output for GitHub output (max 65536 chars)
+          TRUNCATED=$(echo "$OUTPUT" | tail -c 10000)
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$TRUNCATED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results.txt
+
+  create-issue-on-failure:
+    runs-on: ubuntu-latest
+    needs: [check-docs-changes, run-integration-tests]
+    if: |
+      always() &&
+      (needs.check-docs-changes.outputs.docs_changed == 'true' ||
+       needs.check-docs-changes.outputs.sdk_changed == 'true' ||
+       needs.run-integration-tests.outputs.tests_passed == 'false')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create issue for API changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCS_CHANGED: ${{ needs.check-docs-changes.outputs.docs_changed }}
+          SDK_CHANGED: ${{ needs.check-docs-changes.outputs.sdk_changed }}
+          TESTS_PASSED: ${{ needs.run-integration-tests.outputs.tests_passed }}
+          TEST_OUTPUT: ${{ needs.run-integration-tests.outputs.test_output }}
+        run: |
+          # Build issue body
+          BODY="## API Change Detected\n\n"
+          BODY+="This issue was automatically created by the API Monitor workflow.\n\n"
+
+          if [ "$DOCS_CHANGED" == "true" ]; then
+            BODY+="### Documentation Changed\n"
+            BODY+="The [Unity Catalog External Lineage documentation](https://docs.databricks.com/en/data-governance/unity-catalog/external-lineage.html) has been updated.\n\n"
+            BODY+="**Action Required:** Review the documentation for API changes that may affect this tool.\n\n"
+          fi
+
+          if [ "$SDK_CHANGED" == "true" ]; then
+            BODY+="### SDK Version Changed\n"
+            BODY+="A new version of the [Databricks SDK](https://github.com/databricks/databricks-sdk-py/releases) has been released.\n\n"
+            BODY+="**Action Required:** Review the release notes for breaking changes.\n\n"
+          fi
+
+          if [ "$TESTS_PASSED" == "false" ]; then
+            BODY+="### Integration Tests Failed\n"
+            BODY+="\`\`\`\n"
+            BODY+="$TEST_OUTPUT"
+            BODY+="\n\`\`\`\n\n"
+            BODY+="**Action Required:** Investigate test failures and update code if API has changed.\n"
+          fi
+
+          BODY+="\n---\n"
+          BODY+="Related: #18\n"
+
+          # Check if similar issue already exists (open)
+          EXISTING=$(gh issue list --label "api-change" --state open --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING" ]; then
+            echo "Adding comment to existing issue #$EXISTING"
+            echo -e "$BODY" | gh issue comment "$EXISTING" --body-file -
+          else
+            echo "Creating new issue"
+            TITLE="API Change Detected - $(date +%Y-%m-%d)"
+            echo -e "$BODY" | gh issue create \
+              --title "$TITLE" \
+              --label "bug,api-change,automated" \
+              --body-file -
+          fi

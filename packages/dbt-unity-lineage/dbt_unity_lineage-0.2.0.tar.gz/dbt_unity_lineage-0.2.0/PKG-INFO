@@ -1,0 +1,419 @@
+Metadata-Version: 2.4
+Name: dbt-unity-lineage
+Version: 0.2.0
+Summary: Push dbt lineage to Databricks Unity Catalog
+Project-URL: Homepage, https://github.com/dbt-conceptual/dbt-unity-lineage
+Project-URL: Documentation, https://github.com/dbt-conceptual/dbt-unity-lineage#readme
+Project-URL: Repository, https://github.com/dbt-conceptual/dbt-unity-lineage
+Project-URL: Issues, https://github.com/dbt-conceptual/dbt-unity-lineage/issues
+Author: dbt-unity-lineage contributors
+License-Expression: MIT
+License-File: LICENSE
+Keywords: databricks,dbt,lineage,unity-catalog
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.9
+Requires-Dist: click>=8.0
+Requires-Dist: databricks-sdk>=0.20.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rich>=13.0
+Provides-Extra: dev
+Requires-Dist: black>=23.0; extra == 'dev'
+Requires-Dist: fastapi>=0.100.0; extra == 'dev'
+Requires-Dist: httpx>=0.24.0; extra == 'dev'
+Requires-Dist: mypy>=1.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0; extra == 'dev'
+Requires-Dist: pytest>=7.0; extra == 'dev'
+Requires-Dist: requests>=2.28.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Requires-Dist: uvicorn>=0.22.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/github-banner-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/github-banner-light.svg">
+    <img alt="dbt-unity-lineage" src="docs/assets/github-banner-light.svg" width="600">
+  </picture>
+</p>
+
+<p align="center">
+  <strong>Push dbt lineage to Databricks Unity Catalog</strong>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/dbt-unity-lineage/"><img src="https://img.shields.io/pypi/v/dbt-unity-lineage.svg?cacheSeconds=3600" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/dbt-unity-lineage/"><img src="https://img.shields.io/badge/python-%3E%3D3.9-blue" alt="Python versions"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/dbt-conceptual/dbt-unity-lineage/actions/workflows/ci.yml"><img src="https://github.com/dbt-conceptual/dbt-unity-lineage/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/dbt-conceptual/dbt-unity-lineage"><img src="https://codecov.io/gh/dbt-conceptual/dbt-unity-lineage/branch/main/graph/badge.svg" alt="codecov"></a>
+</p>
+
+---
+
+## The Problem
+
+Unity Catalog automatically captures lineage for transformations that run inside Databricks. But it can't see:
+
+- **Where data comes from** — SAP, Salesforce, PostgreSQL, APIs, etc.
+- **Where data goes** — Power BI dashboards, Tableau reports, applications, etc.
+
+You're left with a gap in your lineage view:
+
+```
+[???] → Bronze → Silver → Gold → [???]
+```
+
+## The Solution
+
+dbt already knows this information:
+
+- **Sources** define upstream systems
+- **Exposures** define downstream consumers
+
+`dbt-unity-lineage` reads your dbt metadata and pushes it to Unity Catalog:
+
+```
+[SAP] → Bronze → Silver → Gold → [Power BI]
+   ↑                                  ↑
+   └── dbt-unity-lineage pushes ──────┘
+```
+
+## Installation
+
+```bash
+pip install dbt-unity-lineage
+```
+
+## Quick Start
+
+### 1. Create a config file
+
+```yaml
+# dbt_unity_lineage.yml
+version: 1
+
+source_systems:
+  sap_ecc:
+    system_type: SAP
+    description: SAP ECC Production
+
+  salesforce_prod:
+    system_type: Salesforce
+    description: Salesforce Sales Cloud
+
+source_paths:
+  - bronze_erp
+  - bronze_crm
+```
+
+### 2. Tag your sources
+
+```yaml
+# models/bronze_erp/_sources.yml
+sources:
+  - name: erp
+    meta:
+      uc_source: sap_ecc      # ← Just this tag
+    tables:
+      - name: gl_accounts
+      - name: cost_centers
+```
+
+### 3. Push to Unity Catalog
+
+```bash
+dbt build
+dbt-unity-lineage push
+```
+
+That's it. Check your lineage in Databricks Catalog Explorer.
+
+## Exposures: Zero Config
+
+Exposures are read directly from `manifest.json`. No additional configuration needed.
+
+```yaml
+# models/marts/exposures.yml
+exposures:
+  - name: executive_dashboard
+    type: dashboard
+    url: https://app.powerbi.com/groups/abc/reports/xyz
+    depends_on:
+      - ref('fct_orders')
+```
+
+The tool automatically:
+- Infers `system_type: POWER_BI` from the URL
+- Creates external metadata in Unity Catalog
+- Links it to your gold tables
+
+## CLI Commands
+
+```bash
+# Push sources and exposures to Unity Catalog
+dbt-unity-lineage push
+
+# Preview changes without executing
+dbt-unity-lineage push --dry-run
+
+# Show current status (local vs remote)
+dbt-unity-lineage status
+
+# Show status in markdown (great for CI/CD)
+dbt-unity-lineage status --format md
+
+# Remove orphaned objects
+dbt-unity-lineage clean
+```
+
+### dbt Cloud Integration
+
+Fetch manifest directly from dbt Cloud instead of requiring a local file:
+
+```bash
+# Using job ID (fetches latest successful run)
+dbt-unity-lineage push \
+  --dbt-cloud \
+  --dbt-cloud-account-id 12345 \
+  --dbt-cloud-job-id 67890
+
+# Using run ID (fetches from specific run)
+dbt-unity-lineage push \
+  --dbt-cloud \
+  --dbt-cloud-run-id 98765
+
+# With environment variables
+export DBT_CLOUD_TOKEN=dbtu_xxx
+export DBT_CLOUD_ACCOUNT_ID=12345
+dbt-unity-lineage push --dbt-cloud --dbt-cloud-job-id 67890
+```
+
+### Global Options
+
+```bash
+--config PATH          # Path to dbt_unity_lineage.yml
+--manifest PATH        # Path to manifest.json
+--project-dir PATH     # Path to dbt project directory
+--profile NAME         # dbt profile name
+--target NAME          # dbt target name
+--verbose              # Enable verbose output
+--quiet                # Suppress non-essential output
+--claude               # Output Claude AI context (CLAUDE.md)
+```
+
+### Claude AI Context
+
+Output version-matched context for Claude AI to understand your dbt-unity-lineage setup:
+
+```bash
+# Append to your project's CLAUDE.md
+dbt-unity-lineage --claude >> CLAUDE.md
+
+# Or to a .claude directory
+dbt-unity-lineage --claude >> .claude/CLAUDE.md
+```
+
+This fetches the `CLAUDE.md` file from GitHub matching your installed version, providing Claude with context about available commands, configuration options, and common patterns.
+
+## Configuration Reference
+
+### `dbt_unity_lineage.yml`
+
+```yaml
+version: 1
+
+# Define your source systems
+source_systems:
+  sap_ecc:
+    system_type: SAP                    # Required: UC system type
+    entity_type: table                  # Optional: defaults to "table"
+    description: SAP ECC Production     # Optional
+    url: https://sap.example.com        # Optional
+    owner: erp-team@example.com         # Optional
+    properties:                         # Optional: custom properties
+      environment: production
+
+# Folders to scan for sources (relative to models/)
+source_paths:
+  - bronze_erp
+  - bronze_crm
+
+# Optional settings
+settings:
+  batch_size: 50                        # API batch size
+  strict: false                         # Error on unmapped sources
+```
+
+### Source Tagging
+
+In your `sources.yml` or `schema.yml`:
+
+```yaml
+sources:
+  - name: erp
+    meta:
+      uc_source: sap_ecc    # References source_systems key
+    tables:
+      - name: gl_accounts
+```
+
+### Exposure Overrides
+
+Exposures work automatically, but you can override the system type:
+
+```yaml
+exposures:
+  - name: my_dashboard
+    type: dashboard
+    url: https://custom-bi-tool.example.com/dashboard/123
+    meta:
+      uc_system_type: CUSTOM    # Override auto-detection
+```
+
+## Supported System Types
+
+The tool normalizes common variations and supports all Unity Catalog system types:
+
+| Input | Normalized |
+|-------|------------|
+| `sap`, `sap_ecc`, `sap_hana` | `SAP` |
+| `salesforce`, `sfdc` | `SALESFORCE` |
+| `postgresql`, `postgres` | `POSTGRESQL` |
+| `sql_server`, `mssql` | `MICROSOFT_SQL_SERVER` |
+| `bigquery`, `bq` | `GOOGLE_BIGQUERY` |
+| `powerbi`, `power_bi` | `POWER_BI` |
+| *(and more...)* | |
+
+Unknown values default to `CUSTOM`.
+
+## URL Auto-Detection
+
+For exposures, system type is automatically detected from URLs:
+
+| URL Contains | System Type |
+|-------------|-------------|
+| `powerbi.com` | `POWER_BI` |
+| `tableau.com` | `TABLEAU` |
+| `looker.com` | `LOOKER` |
+| `salesforce.com` | `SALESFORCE` |
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+- name: Push lineage
+  run: dbt-unity-lineage push --target prod
+  env:
+    DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+- name: Post status to PR
+  run: dbt-unity-lineage status --format md >> $GITHUB_STEP_SUMMARY
+```
+
+### Status Output (Markdown)
+
+```markdown
+## dbt-unity-lineage Status
+
+| Source | System | Status |
+|--------|--------|--------|
+| sap_ecc.gl_accounts | SAP | ✅ In sync |
+| workday.employees | Workday | 🆕 Create |
+
+| Exposure | System | Status |
+|----------|--------|--------|
+| executive_dashboard | Power BI | ✅ In sync |
+```
+
+## How It Works
+
+### Ownership Tracking
+
+Every object created by this tool includes ownership metadata:
+
+```json
+{
+  "properties": {
+    "managed_by": "dbt-unity-lineage",
+    "dbt_project": "my_project"
+  }
+}
+```
+
+This ensures:
+- **Safe updates** — Only modifies objects it created
+- **Multi-project support** — Projects don't interfere with each other
+- **Clean removal** — Orphaned objects are tracked and removable
+
+### Idempotent Pushes
+
+Run `push` as many times as you want:
+- New objects are created
+- Changed objects are updated
+- Removed objects are deleted
+- Objects from other tools/projects are ignored
+
+## Required Permissions
+
+Your Databricks service principal needs:
+
+| Permission | Scope | Purpose |
+|------------|-------|---------|
+| `CREATE EXTERNAL METADATA` | Metastore | Create objects |
+| `MODIFY` | External metadata | Update/delete |
+
+## Important Notes
+
+### Unity Catalog External Lineage is in Public Preview
+
+As of January 2026, this feature is in **Public Preview**. The API may change. We'll track updates and maintain compatibility.
+
+### Profile Configuration
+
+The tool reads connection details from your dbt `profiles.yml`:
+
+```yaml
+my_project:
+  target: prod
+  outputs:
+    prod:
+      type: databricks
+      host: dbc-abc123.cloud.databricks.com
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      catalog: main
+```
+
+## Related Projects
+
+<p>
+  <a href="https://github.com/dbt-conceptual/dbt-conceptual">
+    <img src="docs/assets/badge-dbt-conceptual.svg" alt="dbt-conceptual" height="28">
+  </a>
+  &nbsp;
+  <a href="https://github.com/dbt-conceptual/dbt-source-simulator">
+    <img src="docs/assets/badge-dbt-source-simulator.svg" alt="dbt-source-simulator" height="28">
+  </a>
+</p>
+
+## Contributing
+
+Contributions welcome! Please read our [contributing guidelines](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+<p align="center">
+  <sub>Built with the belief that lineage shouldn't stop at your warehouse boundary.</sub>
+</p>
