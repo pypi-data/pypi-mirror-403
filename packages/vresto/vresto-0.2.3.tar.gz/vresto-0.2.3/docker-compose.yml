@@ -1,0 +1,26 @@
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vresto-dashboard
+    user: root
+    ports:
+      - "8610:8610"
+      - "8611-8620:8611-8620"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./vresto_downloads:/root/vresto_downloads
+    environment:
+      - NICEGUI_WEBSERVER_PORT=8610
+      - NICEGUI_WEBSERVER_HOST=0.0.0.0
+      - TZ=Europe/Brussels
+      - VRESTO_TILE_SERVER_HOST=localhost
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8610"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
