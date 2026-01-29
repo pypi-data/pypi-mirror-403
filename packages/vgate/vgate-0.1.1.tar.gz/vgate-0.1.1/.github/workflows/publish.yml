@@ -1,0 +1,52 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.1.2)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # For trusted publishing (recommended)
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+    
+    - name: Set up Python
+      run: uv python install
+    
+    - name: Install build dependencies
+      run: uv sync --dev
+    
+    - name: Run tests
+      run: uv run pytest --cov --cov-branch
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Publish to PyPI (Trusted Publishing)
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: dist/
+        print-hash: true
+      # Note: Requires trusted publishing setup in PyPI account settings
+      # See: https://docs.pypi.org/trusted-publishers/
+    
+    # Alternative: Use API token (if trusted publishing not set up)
+    # - name: Publish to PyPI (API Token)
+    #   env:
+    #     PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    #   run: |
+    #     uv publish --publish-url https://upload.pypi.org/legacy/ \
+    #       --token $PYPI_API_TOKEN
