@@ -1,0 +1,196 @@
+Metadata-Version: 2.4
+Name: ncti-cad
+Version: 0.1.1
+Summary: CAD modeling API wrapper for NCTI
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: numpy-stl
+Requires-Dist: trimesh
+
+\# ncti-cad-api
+
+一个 \*\*用于 CAD 建模的 Python 库\*\*，  
+
+支持通过 \*\*Python 脚本生成三维模型文件\*\*（STL / AMF / NCTI）。
+
+本库不依赖任何 GUI，不会弹出窗口，适合：
+
+\- 后端服务
+
+\- 自动化建模
+
+\- 批量生成模型
+
+\- 被其他 Python 软件直接 import 调用
+
+---
+
+\## ✨ 功能简介
+
+建模脚本  →  调用 API  →  输出 STL / AMF / NCTI 文件
+
+📦 安装方式
+
+方式一：安装 wheel 文件（推荐）
+
+pip install ncti\_cad\_api-0.1.0-py3-none-any.whl
+
+⚙️ 使用前配置
+
+本库依赖 NCTI 运行环境，需要告诉库 NCTI DLL 所在目录。
+
+from ncti\_cad\_api import configure
+
+configure(
+
+&nbsp;   dll\_dir=r"C:\\path\\to\\ncti\\dll",          # NCTI 的 dll 目录
+
+&nbsp;   # ncti\_python\_dir=r"C:\\path\\to\\ncti\\py"  # 如果 ncti\_python 不在 site-packages，可选
+
+)
+
+一般只需要配置一次
+
+如果 dll 路径不正确，后续建模会失败
+
+
+
+🚀 快速上手示例
+
+1️⃣ 编写建模脚本
+
+\# 这是一个示例建模脚本
+
+\# 脚本中可以直接使用：
+
+\#   - doc   （当前 CAD 文档）
+
+\#   - NCTI  （NCTI Python 接口）
+
+
+
+\# 下面内容请替换成你们自己的建模逻辑
+
+\# 示例（伪代码）：
+
+\# doc.RunCommand("create\_box 10 10 10")
+
+
+
+2️⃣ 调用 API 生成模型
+
+from ncti\_cad\_api import build\_model\_file
+
+
+
+script = """
+
+\# 在这里粘贴或生成你的建模脚本
+
+"""
+
+
+
+result = build\_model\_file(
+
+&nbsp;   script\_code=script,
+
+&nbsp;   out\_path=r"D:\\out\\model.stl",
+
+&nbsp;   fmt="stl"     # 支持：stl / amf / ncti
+
+)
+
+
+
+if result.ok:
+
+&nbsp;   print("生成成功:", result.out\_path)
+
+else:
+
+&nbsp;   print("生成失败:", result.error)
+
+
+
+📂 支持的输出格式
+
+格式	说明
+
+stl	常用三角网格模型，适合打印/仿真
+
+amf	XML 格式网格
+
+ncti	原生 CAD 模型文件
+
+
+
+🧠 API 说明
+
+build\_model\_file(...)
+
+build\_model\_file(
+
+&nbsp;   script\_code: str,          # 建模脚本（Python 字符串）
+
+&nbsp;   out\_path: str,             # 输出文件路径
+
+&nbsp;   fmt: str = "stl",           # 输出格式：stl / amf / ncti
+
+&nbsp;   global\_scope: dict = None   # （可选）注入脚本的变量
+
+)
+
+返回值：
+
+BuildResult(
+
+&nbsp;   ok: bool,          # 是否成功
+
+&nbsp;   out\_path: str,     # 成功时的输出文件路径
+
+&nbsp;   error: str         # 失败时的错误信息
+
+)
+
+❗ 常见问题
+
+Q1：生成失败，提示“模型为空 / 无网格数据”
+
+原因：
+
+建模脚本只创建了几何，但没有生成网格
+
+解决：
+
+在脚本中加入“生成网格 / 离散化”的命令
+
+（具体命令取决于你们的 CAD/NCTI 接口）
+
+Q2：提示找不到 DLL / ncti\_python
+
+解决：
+
+确认 configure(dll\_dir=...) 指向正确的目录
+
+如果 ncti\_python 不在系统 site-packages，配置：
+
+configure(
+
+&nbsp;   dll\_dir=r"...",
+
+&nbsp;   ncti\_python\_dir=r"..."
+
+)
+
+
+
+📌 注意事项
+
+本库 不会打开任何界面
+
+本库默认在当前进程中执行建模脚本
+
+建议在 单进程 / 串行任务 中使用（除非确认底层 CAD 是线程安全的）
+
