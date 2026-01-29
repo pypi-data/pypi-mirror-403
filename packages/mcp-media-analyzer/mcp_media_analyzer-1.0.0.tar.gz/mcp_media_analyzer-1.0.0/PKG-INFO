@@ -1,0 +1,390 @@
+Metadata-Version: 2.4
+Name: mcp-media-analyzer
+Version: 1.0.0
+Summary: 多媒體檔案分析工具 - 支援影片、圖片和音檔的視覺分析、語音轉錄和智慧檔名建議
+Project-URL: Homepage, https://github.com/hsiehchenwei/mcp-media-analyzer
+Project-URL: Repository, https://github.com/hsiehchenwei/mcp-media-analyzer
+Author: Chen Wei Hsieh
+License: MIT
+Keywords: ai,analyzer,audio,image,mcp,media,mlx,transcription,video,vision,whisper
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.10
+Requires-Dist: google-genai>=1.0.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: mcp>=1.0.0
+Requires-Dist: mlx-whisper>=0.4.0; sys_platform == 'darwin' and platform_machine == 'arm64'
+Requires-Dist: python-dotenv>=1.0.0
+Description-Content-Type: text/markdown
+
+# MCP 媒體分析工具
+
+完全本地執行的隱私媒體分析工具 - 支援影片、圖片和音檔的視覺分析、語音轉錄和智慧檔名建議，無需上傳數據到雲端。
+
+## 核心優勢
+
+- 🔐 **完全本地執行**：所有分析在本地完成，無需上傳任何數據
+- 🛡️ **極度隱私保護**：敏感媒體檔案永不離開你的設備
+- ⚡ **離線可用**：無網路亦可正常運作（local 模式）
+- 🎯 **三種工作模式**：
+  - 📌 **預設模式**：本地優先 + 可選雲端 fallback
+  - 🔒 **本地模式**：100% 離線，完全隱私
+  - ☁️ **線上模式**：純雲端（需 Gemini API）
+
+## 功能
+
+- 📹 **影片分析**：視覺內容、metadata、音訊轉錄
+- 🖼️ **圖片分析**：自動轉檔（HEIC→JPG）、視覺識別
+- 🎵 **音檔轉錄**：本地 Whisper（Apple Silicon 最優化）
+- ✨ **智慧檔名**：LLM 生成有意義的檔名建議
+
+---
+
+## 快速開始
+
+### 步驟 1：設定 MCP（只需這步）
+
+將以下內容加入 `~/.cursor/mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "mcp-media-analyzer": {
+      "command": "uvx",
+      "args": ["mcp-media-analyzer"],
+      "env": {
+        "WHISPER_MODEL": "mlx-community/whisper-large-v3-turbo",
+        "WHISPER_LANGUAGE": "zh"
+      }
+    }
+  }
+}
+```
+
+### 步驟 2：預先下載模型（可選）
+
+避免第一次使用時等待：
+
+```bash
+uvx --with huggingface_hub python -c "
+from huggingface_hub import snapshot_download
+print('下載 Whisper 模型中...')
+snapshot_download('mlx-community/whisper-large-v3-turbo')
+print('✓ 完成')
+"
+```
+
+### 步驟 3：開始使用
+
+重啟 Cursor 後，直接對話：
+
+```
+"分析這個影片 /path/to/video.mp4"
+"幫我轉錄這個音檔"
+"這張照片是在哪裡拍的？"
+```
+
+---
+
+## 前提條件
+
+需要先安裝 `uv`（一次性）：
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+以及 `ffmpeg`：
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Linux
+sudo apt-get install ffmpeg
+```
+
+---
+
+## 平台支援
+
+| 平台 | 語音轉錄 | 說明 |
+|------|----------|------|
+| Apple Silicon (M1/M2/M3/M4) | MLX-Whisper | 本地轉錄，快速 |
+| Intel Mac / Linux / Windows | Gemini API | 需設定 GEMINI_API_KEY |
+
+---
+
+## 本地開發
+
+如果你要修改程式碼，使用本地開發模式：
+
+```bash
+cd /path/to/mcp-media-analyzer
+uv sync
+uv run mcp-media-analyzer
+```
+
+對應的 mcp.json：
+
+```json
+{
+  "mcpServers": {
+    "mcp-media-analyzer": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/mcp-media-analyzer", "run", "mcp-media-analyzer"],
+      "env": {
+        "WHISPER_MODEL": "mlx-community/whisper-large-v3-turbo",
+        "WHISPER_LANGUAGE": "zh"
+      }
+    }
+  }
+}
+```
+
+---
+
+## 環境變數說明
+
+| 變數 | 必要 | 預設值 | 說明 |
+|------|------|--------|------|
+| `LM_STUDIO_URL` | ❌ | `http://localhost:1234/v1/chat/completions` | LM Studio API 端點 |
+| `LM_STUDIO_MODEL` | ❌ | `qwen/qwen3-vl-30b` | 視覺分析模型 |
+| `GEMINI_API_KEY` | ❌ | 無 | Google Gemini API key |
+| `WHISPER_MODEL` | ❌ | `mlx-community/whisper-large-v3-turbo` | Whisper 模型 |
+| `WHISPER_LANGUAGE` | ❌ | `zh` | 轉錄語言 |
+
+---
+
+## 使用
+
+### 工具 1：分析單一檔案
+
+```python
+# 預設模式（本地優先 + Gemini fallback）
+{
+  "file_path": "video.mp4",
+  "mode": "default"
+}
+
+# 本地模式（完全離線）
+{
+  "file_path": "video.mp4",
+  "mode": "local"
+}
+
+# 線上模式（直接用 Gemini）
+{
+  "file_path": "audio.mp3",
+  "mode": "online"
+}
+
+# 音檔分析
+{
+  "file_path": "recording.wav",
+  "mode": "default"
+}
+```
+
+### 工具 2：批次分析
+
+```python
+{
+  "directory": "./media",
+  "pattern": "*.mp4",
+  "mode": "default",
+  "output_file": "./report.md"
+}
+```
+
+---
+
+## 模式對比
+
+### 本地模式（Local）- 🏆 完全隱私保護
+✅ **適合機密資料、企業檔案**
+- 視覺分析：LM Studio only（本地）
+- 語音轉錄：Whisper only（本地）
+- 檔名建議：LM Studio only（本地）
+- 所有數據永不離開你的設備
+- 100% 離線可用
+
+### 預設模式（Default）- 推薦
+✅ **本地優先 + 可選雲端**
+- 視覺分析：LM Studio → Gemini fallback
+- 語音轉錄：Whisper → Gemini fallback
+- 檔名建議：LM Studio → Gemini fallback
+- 適合：平衡隱私與質量
+
+### 線上模式（Online）- 🚀 最聰明、最快速
+⚠️ **需要 Gemini API key**
+- 視覺分析：Gemini
+- 語音轉錄：Gemini
+- 檔名建議：Gemini
+- 最高準確度、最快處理速度
+- 適合：質量優先、對隱私要求低
+
+---
+
+## 支援的檔案格式
+
+### 影片
+`.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`, `.m4v`, `.wmv`, `.flv`
+
+### 圖片
+`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.bmp`, `.tiff`, `.heic`, `.heif`
+（自動轉換為 JPG）
+
+### 音檔
+`.mp3`, `.wav`, `.m4a`, `.aac`, `.ogg`, `.flac`, `.wma`, `.aiff`
+
+---
+
+## 輸出範例
+
+### 影片分析結果
+
+```
+## 影片資訊
+- 檔案: IMG_7096.MOV
+- 時長: 0:12
+- 解析度: 3840x2160
+- 拍攝時間: 2025-06-29T22:38:37.000000Z
+- 拍攝地點: 43.7241, 142.5051
+- 模式: 預設（本地優先）
+
+## 視覺分析
+**分析來源**: lm_studio (qwen/qwen3-vl-30b)
+根據提供的圖片...
+
+## 音訊轉錄
+**轉錄來源**: whisper_local (mlx-community/whisper-large-v3-turbo)
+(轉錄內容...)
+
+## 建議檔名
+**來源**: lm_studio
+`7096_202506_日本鄉村_稻田灌溉.MOV`
+
+---
+**報告已儲存**: `IMG_7096.md`
+```
+
+---
+
+## 常見問題
+
+### Q1：Whisper 模型下載很慢怎麼辦？
+
+**A：** 手動預下載或使用較小模型：
+
+```bash
+# 使用 tiny 模型（39MB）
+export WHISPER_MODEL="mlx-community/whisper-tiny"
+```
+
+### Q2：如何加速視覺分析？
+
+**A：** 設定本地 LM Studio 模型：
+- 確保 LM Studio 運行中：`http://localhost:1234`
+- 使用小型模型：`phi-4-mini` 或 `qwen2-7b`
+
+### Q3：HEIC 圖片轉換失敗？
+
+**A：** 確保已安裝轉換工具：
+
+```bash
+# macOS 已內建 sips
+# Linux 安裝 imagemagick
+sudo apt-get install imagemagick
+```
+
+### Q4：報告檔案在哪裡？
+
+**A：** `.md` 檔案儲存在原檔案旁邊：
+- 輸入：`video.mp4`
+- 輸出：`video.md`（只在有分析內容時建立）
+
+---
+
+## 效能優化
+
+### 本地模式最佳化
+
+```bash
+# 預先載入 Whisper 模型
+export WHISPER_MODEL="mlx-community/whisper-large-v3-turbo"
+
+# 預先緩存 LM Studio 連線
+curl http://localhost:1234/v1/models
+```
+
+### 雲端模式最佳化
+
+```json
+"GEMINI_API_KEY": "your-key",  // 使用 quota 充足的 key
+"WHISPER_LANGUAGE": "zh"       // 指定語言加快轉錄
+```
+
+---
+
+## 故障排除
+
+### 連線問題
+
+```bash
+# 檢查 LM Studio
+curl http://localhost:1234/v1/models
+
+# 檢查 Gemini API
+curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"contents":[{"parts":[{"text":"test"}]}]}'
+```
+
+### Whisper 問題
+
+```bash
+# 測試本地轉錄
+uv run python -c "import mlx_whisper; print(mlx_whisper.__version__)"
+
+# 手動檢查模型
+uv run python -c "from huggingface_hub import model_info; print(model_info('mlx-community/whisper-large-v3-turbo'))"
+```
+
+---
+
+## 開發
+
+### 運行測試
+
+```bash
+uv run pytest tests/
+```
+
+### 開發模式
+
+```bash
+# 編輯後自動重載
+uv run python -m mcp_media_analyzer.server
+```
+
+---
+
+## 授權
+
+MIT
+
+---
+
+## 支援
+
+如有問題，請提交 issue 或聯絡開發者。
