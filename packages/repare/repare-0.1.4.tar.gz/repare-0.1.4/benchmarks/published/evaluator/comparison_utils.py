@@ -1,0 +1,68 @@
+import matplotlib.pyplot as plt
+
+from evaluator.pedigree_evaluator import PedigreeEvaluator
+from repare.pedigree import Pedigree
+
+
+def get_mt_colormap(
+    inferred_pedigree: Pedigree, published_pedigree: Pedigree
+) -> dict[str, tuple[float, float, float, float]]:
+    # Build mt_haplogroup color mapping so both plots can use the same colormap
+    inferred_pedigree_mt_haplogroups = set(
+        [
+            inferred_pedigree.get_data(node)["mt_haplogroup"].replace("*", "")
+            for node in inferred_pedigree.node_to_data
+            if not node.isnumeric()
+        ]
+    )
+    published_pedigree_mt_haplogroups = set(
+        [
+            published_pedigree.get_data(node)["mt_haplogroup"].replace("*", "")
+            for node in published_pedigree.node_to_data
+            if not node.isnumeric()
+        ]
+    )
+    mt_haplogroups = sorted(inferred_pedigree_mt_haplogroups | published_pedigree_mt_haplogroups)
+    cmap = plt.get_cmap("tab20")
+    mt_haplogroup_to_color = {haplogroup: cmap(i / len(mt_haplogroups)) for i, haplogroup in enumerate(mt_haplogroups)}
+    return mt_haplogroup_to_color
+
+
+def plot_inferred_pedigree(
+    inferred_pedigree: Pedigree,
+    plot_path: str,
+    mt_haplogroup_to_color: dict[str, str],
+    plot_haplogroups: bool = True,
+    font_size: float | None = None,
+) -> None:
+    inferred_pedigree.plot(
+        path=plot_path,
+        mt_haplogroup_to_color=mt_haplogroup_to_color,
+        plot_haplogroups=plot_haplogroups,
+        font_size=font_size,
+    )
+
+
+def plot_published_pedigree(
+    published_pedigree: Pedigree,
+    plot_path: str,
+    mt_haplogroup_to_color: dict[str, str] | None = None,
+    nodes_to_remove: list[str] | None = None,
+    edges_to_remove: list[tuple[str, str]] | None = None,
+    dotted_edges_to_add: list[tuple[str, str]] | None = None,
+    plot_haplogroups: bool = True,
+    font_size: float | None = None,
+) -> None:
+    published_pedigree.plot(
+        path=plot_path,
+        mt_haplogroup_to_color=mt_haplogroup_to_color,
+        nodes_to_remove=nodes_to_remove,
+        edges_to_remove=edges_to_remove,
+        dotted_edges_to_add=dotted_edges_to_add,
+        plot_haplogroups=plot_haplogroups,
+        font_size=font_size,
+    )
+
+
+def write_relation_differences(evaluator: PedigreeEvaluator, path: str):
+    evaluator.write_relation_differences(path=path)
