@@ -1,0 +1,58 @@
+import builtins
+
+from pydantic import (
+    StrictBool,
+    StrictStr,
+    Field,
+)
+from picle.models import Outputters
+from ..common import ClientRunJobArgs, log_error_or_result, listen_events
+from typing import Optional
+
+
+class WorkflowRunShell(ClientRunJobArgs):
+    workflow: StrictStr = Field(
+        None,
+        description="Workflow to run",
+    )
+    progress: Optional[StrictBool] = Field(
+        True,
+        description="Display progress events",
+        json_schema_extra={"presence": True},
+    )
+
+    class PicleConfig:
+        subshell = True
+        prompt = "nf[workflow-run]#"
+        outputter = Outputters.outputter_nested
+
+    @staticmethod
+    def source_workflow():
+        return ClientRunJobArgs.walk_norfab_files()
+
+    @staticmethod
+    @listen_events
+    def run(uuid, *args, **kwargs):
+        NFCLIENT = builtins.NFCLIENT
+        workers = kwargs.pop("workers", "any")
+        timeout = kwargs.pop("timeout", 600)
+        verbose_result = kwargs.pop("verbose_result", False)
+        nowait = kwargs.pop("nowait", False)
+
+        result = NFCLIENT.run_job(
+            "workflow",
+            "run",
+            workers=workers,
+            args=args,
+            kwargs=kwargs,
+            uuid=uuid,
+            timeout=timeout,
+            nowait=nowait,
+        )
+
+        if nowait:
+            return result, Outputters.outputter_nested
+
+        result = log_error_or_result(result, verbose_result=verbose_result)
+
+        return result
