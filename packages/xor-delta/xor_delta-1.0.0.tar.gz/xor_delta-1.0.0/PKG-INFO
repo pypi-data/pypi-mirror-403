@@ -1,0 +1,216 @@
+Metadata-Version: 2.4
+Name: xor-delta
+Version: 1.0.0
+Summary: Reversible adjacent XOR differencing transform algo
+License: MIT
+Author: DJ Stomp
+Author-email: 85457381+DJStompZone@users.noreply.github.com
+Requires-Python: >=3.10,<4.0
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Dist: tqdm (>=4.67.1,<5.0.0)
+Description-Content-Type: text/markdown
+
+# XOR ∆
+
+A reversible adjacent XOR differencing transform algo
+
+> "To compress, perchance to save..."
+
+## Synopsis
+
+`xor-delta` is a small experimental Python package that explores **XOR-adjacent delta encoding** as a preprocessing transform for compression.
+
+It answers a very specific question:
+
+> Does XORing adjacent values reduce entropy in a way that helps real compressors?
+
+- Short answer: maybe 🤷🏼‍♂️
+- Long answer: Step into my office...
+
+<hr>
+
+## What is XOR-delta?
+
+### For Those in a Hurry...
+
+The core transform used by this project is:
+
+```math
+A_i^{(k+1)} = A_i^{(k)} \oplus A_{i+1}^{(k)} \quad \forall i
+```
+
+Where:
+- $A^{(k)}$ is the original sequence at step $k$
+- $\oplus$ denotes bitwise XOR
+- One endpoint value (the *anchor*) is stored to make the transform reversible
+
+### How Does It Work?
+
+Given a sequence of values:
+
+```
+v0, v1, v2, v3, ...
+```
+
+XOR-delta encoding stores:
+
+- one **anchor** value (first or last)
+- a list of XORs between adjacent values:
+
+```
+v0 ^ v1, v1 ^ v2, v2 ^ v3, ...
+```
+
+This transform is:
+- **lossless**
+- **reversible**
+- **cheap**
+- **not compression by itself**
+
+It’s a *preprocessing* step you can feed into standard compressors like `zlib`, `bz2`, or `lzma`.
+
+## Installation
+
+```bash
+pip install xor-delta
+```
+
+Or
+
+```bash
+git clone https://GitHub.com/DJStompZone/xor_delta
+cd xor_delta
+pip install . # use `--with=dev` if you plan to run tests
+```
+
+## Python API
+
+### Integer sequences
+
+```python
+from xor_delta import xor_delta_encode_ints, xor_delta_decode_ints
+
+data = [10, 11, 12, 13]
+
+encoded = xor_delta_encode_ints(data)
+decoded = xor_delta_decode_ints(encoded)
+
+assert decoded == data
+```
+
+### Byte sequences
+
+```python
+from xor_delta import xor_delta_encode_bytes, xor_delta_decode_bytes
+
+data = b"hello world"
+
+anchor, diffs, side = xor_delta_encode_bytes(data)
+restored = xor_delta_decode_bytes(anchor, diffs, side)
+
+assert restored == data
+```
+
+## CLI Benchmark Tool
+
+`xor-delta` ships with a benchmarking CLI that compares compression **before and after** XOR-delta.
+
+### Run the default benchmark (Shakespeare)
+
+```bash
+xor-delta-bench
+```
+
+This automatically downloads Shakespeare from Project Gutenberg, caches it locally, and benchmarks:
+
+- raw bytes
+- XOR-adjacent bytes
+
+using:
+- `zlib`
+- `bz2`
+- `lzma`
+
+
+```
+corpus_cache/pg100.txt.<hash>
+  RAW      raw=5,638,525  zlib=2,138,296 (0.379x)  bz2=1,586,908 (0.281x)  lzma=1,673,804 (0.297x)
+  XOR      raw=5,638,525  zlib=2,546,436 (0.452x)  bz2=1,708,046 (0.303x)  lzma=1,890,440 (0.335x)
+  xor-vs-raw  zlib +19.09%   bz2 +7.63%   lzma +12.94%
+```
+
+**Interpretation:**  
+XOR-delta made compression *worse* for English text across all tested compressors.
+
+That’s the point — we measured it instead of guessing.
+
+## Benchmark your own files
+
+```bash
+xor-delta-bench myfile.bin
+xor-delta-bench mydir/
+```
+
+### Use a Gutenberg preset
+
+```bash
+xor-delta-bench --gutenberg shakespeare
+# Feel free to send a PR if you want more presets <3
+```
+
+### Or any URL
+
+```bash
+xor-delta-bench --gutenberg-url https://example.com/text.txt
+```
+
+Downloads are cached in `corpus_cache/`.
+
+---
+
+## When does XOR-delta help?
+
+XOR-adjacent transforms *can* help when:
+
+- data has **small local variation**
+- values are **structured**, not textual
+- adjacent samples are **correlated**
+
+Examples:
+- counters
+- timestamps
+- some sensor streams
+- monotonic-ish numeric data
+
+It can *hurt* when:
+- data is already high-entropy
+- compressors already exploit structure better (text + LZ)
+- XOR destroys symbol locality
+
+
+## Development
+
+Run tests:
+
+```bash
+pytest
+# Or if you're using Poetry
+poetry run pytest
+```
+
+## License
+
+MIT
+
+## Credits
+
+Created by [DJ Stomp](https://discord.stomp.zone)
+https://github.com/DJStompZone/xor_delta
+
+Inspired by [spectcow](about:blank)'s original description of the algorithm, full credit for the core concept goes to them.
