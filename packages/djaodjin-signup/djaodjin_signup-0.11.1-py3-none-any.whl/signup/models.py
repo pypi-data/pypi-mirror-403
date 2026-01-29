@@ -1,0 +1,1078 @@
+# Copyright (c) 2026, Djaodjin Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"""
+User Model for the signup app
+"""
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import hashlib, logging, random, re, string
+
+import pyotp
+from django.core.exceptions import ValidationError
+from django.core.validators import (RegexValidator, URLValidator,
+    validate_email as validate_email_base)
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import UserManager
+from django.db import models, router, transaction, IntegrityError
+from django.template.defaultfilters import slugify
+from django.contrib.auth.hashers import check_password, make_password
+from phonenumber_field.modelfields import PhoneNumberField
+from rest_framework.exceptions import ValidationError as DRFValidationError
+
+from . import settings
+from .backends.auth_ldap import is_ldap_user
+from .compat import (gettext_lazy as _, import_string,
+    python_2_unicode_compatible, six)
+from .helpers import datetime_or_now, full_name_natural_split
+from .utils import generate_random_code, generate_random_slug, handle_uniq_error
+from .validators import validate_phone
+
+LOGGER = logging.getLogger(__name__)
+EMAIL_VERIFICATION_RE = re.compile('^%s$' % settings.EMAIL_VERIFICATION_PAT)
+
+
+def _get_extra_field_class():
+    extra_class = settings.EXTRA_FIELD
+    if extra_class is None:
+        extra_class = models.TextField
+    elif isinstance(extra_class, str):
+        extra_class = import_string(extra_class)
+    return extra_class
+
+def _get_encrypted_field_class():
+    encrypted_class = settings.ENCRYPTED_FIELD
+    if encrypted_class is None:
+        encrypted_class = models.CharField
+    elif isinstance(encrypted_class, str):
+        encrypted_class = import_string(encrypted_class)
+    return encrypted_class
+
+
+def domain_name_validator(value):
+    """
+    Validates that the given value contains no whitespaces to prevent common
+    typos.
+    """
+    if not value:
+        return
+    checks = ((s in value) for s in string.whitespace)
+    if any(checks):
+        raise ValidationError(
+            _("The domain name cannot contain any spaces or tabs."),
+            code='invalid',
+        )
+
+
+class ActivatedUserManager(UserManager):
+
+    # `create_user` will also create a `Contact` instance when those
+    # arguments are present in `kwargs`.
+    extra_fields = (
+        'phone',
+        'full_name',
+        'nick_name',
+        'picture',
+        'lang',
+        'extra'
+    )
+
+    @classmethod
+    def normalize_email(cls, email):
+        if email is None:
+            # Overrides `email or ''` in superclass such that we can
+            # create User models with no e-mail address.
+            return email
+        return super(ActivatedUserManager, cls).normalize_email(email)
+
+
+    def create_user(self, username, email=None, password=None, **kwargs):
+        """
+        Create an inactive user with a default username.
+
+        We have a different notion of an active user than Django does.
+        For Django when is_active is False, the user cannot be identified
+        and requests fall back to Anonymous. That's a problem because
+        we want a user who has given us a name and email address to be
+        able to use the site. We only require a password for the second
+        login. Our definition of inactive is thus a user that has an invalid
+        password.
+        """
+        #pylint:disable=too-many-locals
+        uses_sso_provider = False
+        if email:
+            email = email.lower()
+            domain = email.split('@')[-1]
+            # XXX Technically we should do the same for all SSO logins,
+            # even if the SSO workflow wasn't forced on the user.
+            uses_sso_provider = bool(DelegateAuth.objects.filter(
+                domain=domain).exists())
+        if uses_sso_provider:
+            # Prevents `check_has_credentials`, hence `fail_active`
+            # to trigger a re-login when using a SSO provider.
+            # By definition, all users created through a SSO provider
+            # are active.
+            password = "*****"
+        user_kwargs = {}
+        for field_name in self.model._meta.get_fields():
+            val = kwargs.get(field_name)
+            if val:
+                user_kwargs.update({field_name: val})
+        if 'email' in user_kwargs:
+            del user_kwargs['email']
+        if ('first_name' not in user_kwargs or
+            'last_name' not in user_kwargs):
+            full_name = kwargs.get('full_name')
+            if full_name:
+                first_name, _mid, last_name = \
+                    full_name_natural_split(full_name)
+                if 'first_name' not in user_kwargs:
+                    user_kwargs.update({'first_name': first_name})
+                if 'last_name' not in user_kwargs:
+                    user_kwargs.update({'last_name': last_name})
+
+        field = self.model._meta.get_field('username')
+        max_length = field.max_length
+        prefix = 'user_'
+        nb_trials = 1
+        if not username:
+            # If the `username` is not explicitely set, we will try to derive
+            # one from the e-mail address, and default to generate a random one.
+            nb_trials = 10
+            if email:
+                try:
+                    validate_email_base(email)
+                    username = slugify(email.split('@')[0])
+                except ValidationError:
+                    pass
+            if not username:
+                username = generate_random_slug(
+                    length=min(max_length - len(prefix), 40), prefix=prefix)
+            field.run_validators(username)
+
+        err = IntegrityError()
+        trials = 0
+        username_base = username
+        using = self._db or router.db_for_write(self.model)
+        with transaction.atomic(using=using):
+            while trials < nb_trials:
+                try:
+                    with transaction.atomic(using=using):
+                        # Force is_active to `True` (see above definition
+                        # of active user).
+                        user = super(ActivatedUserManager, self).create_user(
+                            username, email=email, password=password,
+                            is_active=True, **user_kwargs)
+                    break
+                except IntegrityError as exp:
+                    err = exp
+                    if len(username_base) + 4 > max_length:
+                        username_base = username_base[:(max_length - 4)]
+                    username = generate_random_slug(
+                        length=len(username_base) + 4,
+                        prefix=username_base + '-',
+                        allowed_chars='0123456789')
+                    trials = trials + 1
+            if trials >= nb_trials:
+                raise err
+            # Connect dangling contacts (i.e. `contact.user is None`)
+            # with email and/or phone to user.
+            Contact.objects.untangle_refs(user, email=email, **kwargs)
+        return user
+
+
+    def find_user(self, username):
+        user_kwargs = {}
+        contact_kwargs = {}
+        username = str(username) # We could have a ``PhoneNumber`` here.
+        try:
+            validate_email_base(username)
+            contact_kwargs = {'email__iexact': username}
+            user_kwargs = {'email__iexact': username}
+        except ValidationError:
+            pass
+        if not contact_kwargs:
+            try:
+                contact_kwargs = {'phone__iexact': validate_phone(username)}
+            except ValidationError:
+                contact_kwargs = {'user__username__iexact': username}
+                user_kwargs = {'username__iexact': username}
+
+        if user_kwargs:
+            try:
+                queryset = self.filter(is_active=True, **user_kwargs)
+                return queryset.get()
+            except self.model.DoesNotExist:
+                pass
+        try:
+            contact = Contact.objects.filter(user__is_active=True,
+                **contact_kwargs).select_related('user').get()
+            return contact.user
+        except Contact.DoesNotExist:
+            pass
+        raise self.model.DoesNotExist()
+
+
+class ContactManager(models.Manager):
+
+    def untangle_refs(self, user, **kwargs):
+        """
+        Connnect dangling contacts (i.e. `contact.user is None`) to user,
+        and synchronize duplicate fields across contacts and user.
+        """
+        phone = kwargs.get('phone')
+        try:
+            if phone is not None:
+                validate_phone(phone)
+        except ValidationError:
+            phone = None
+        email = kwargs.get('email')
+        try:
+            if email is not None:
+                validate_email_base(email)
+        except ValidationError:
+            email = None
+        lang = kwargs.get('lang')
+        extra = kwargs.get('extra')
+        picture = kwargs.get('picture')
+        full_name = kwargs.get('full_name')
+        nick_name = kwargs.get('nick_name')
+
+        # Connect dangling contacts (i.e. `contact.user is None`)
+        # with email and/or phone to user.
+        if phone:
+            Contact.objects.filter(
+                phone=phone, user__isnull=True).update(user=user)
+        if email:
+            Contact.objects.filter(
+                email__iexact=email, user__isnull=True).update(user=user)
+        # If we have extra fields, we must have a Contact to persist them.
+        #pylint:disable=too-many-boolean-expressions
+        if phone or full_name or nick_name or picture or lang or extra:
+            if not full_name:
+                full_name = user.get_full_name()
+            if not nick_name:
+                nick_name = user.first_name
+            contacts = Contact.objects.filter(user=user).order_by('pk')
+            if contacts.exists():
+                email_contact_exists = Contact.objects.filter(
+                    email__iexact=email, user=user).exists()
+                phone_contact_exists = Contact.objects.filter(
+                    phone=phone, user=user).exists()
+                for contact in contacts:
+                    if email and not email_contact_exists:
+                        contact.email = email
+                        email_contact_exists = True
+                    if phone and not phone_contact_exists:
+                        contact.phone = phone
+                        phone_contact_exists = True
+                    if full_name and not contact.full_name:
+                        contact.full_name = full_name
+                    if nick_name and not contact.nick_name:
+                        contact.nick_name = nick_name
+                    if picture and not contact.picture:
+                        contact.picture = picture
+                    if lang and not contact.lang:
+                        contact.lang = lang
+                    if extra and not contact.extra:
+                        contact.extra = extra
+                    contact.save()
+            else:
+                Contact.objects.create(
+                    user=user,
+                    email=email,
+                    phone=phone,
+                    full_name=full_name,
+                    nick_name=nick_name,
+                    picture=picture,
+                    lang=lang,
+                    extra=extra)
+
+
+    def email_verification_required(self, email):
+        assert email is not None
+        queryset = self.filter(
+            email=email, email_verification_required=True)
+        return queryset.exists()
+
+
+    def phone_verification_required(self, phone):
+        assert phone is not None
+        return self.filter(
+            phone=phone, phone_verification_required=True).exists()
+
+
+    def find_by_username_or_comm(self, username):
+        contact_kwargs = {}
+        username = str(username) # We could have a ``PhoneNumber`` here.
+        try:
+            validate_email_base(username)
+            contact_kwargs = {'email__iexact': username}
+        except ValidationError:
+            pass
+        if not contact_kwargs:
+            try:
+                contact_kwargs = {'phone__iexact': validate_phone(username)}
+            except ValidationError:
+                contact_kwargs = {'user__username__iexact': username}
+
+        return self.filter(user__is_active=True,
+            **contact_kwargs).select_related('user')
+
+    def get_token(self, verification_key):
+        """
+        Returns a ``Contact`` where a non-expired ``email_verification_key`` or
+        ``phone_verification_key`` matches ``verification_key``.
+        """
+        if EMAIL_VERIFICATION_RE.search(verification_key):
+            try:
+                at_time = datetime_or_now()
+                email_filter = models.Q(email_verification_key=verification_key)
+                if settings.VERIFICATION_LIFETIME:
+                    email_filter &= models.Q(email_verification_at__gt=at_time
+                        - settings.VERIFICATION_LIFETIME)
+                phone_filter = models.Q(phone_verification_key=verification_key)
+                if settings.VERIFICATION_LIFETIME:
+                    phone_filter &= models.Q(phone_verification_at__gt=at_time
+                        - settings.VERIFICATION_LIFETIME)
+                return self.filter(email_filter | phone_filter).select_related(
+                    'user').get()
+            except Contact.DoesNotExist:
+                pass # We return None instead here.
+        return None
+
+    def prepare_email_verification(self, email, user=None, at_time=None,
+                                   verification_key=None, reason=None,
+                                   uses_sso_provider=False, **kwargs):
+        #pylint:disable=too-many-arguments,too-many-locals
+        at_time = datetime_or_now(at_time)
+        if verification_key is None:
+            random_key = str(random.random()).encode('utf-8')
+            salt = hashlib.sha1(random_key).hexdigest()[:5]
+            verification_key = hashlib.sha1(
+                (salt+email).encode('utf-8')).hexdigest()
+        # XXX The get() needs to be targeted at the write database in order
+        # to avoid potential transaction consistency problems.
+        contact = None
+        try:
+            contact = self.get(email__iexact=email)
+        except self.model.DoesNotExist:
+            pass
+        if not contact and user:
+            contact = self.filter(email__isnull=True, user=user).first()
+            if contact:
+                contact.email = email
+
+        if contact:
+            created = False
+            using = self._db or router.db_for_write(self.model)
+            with transaction.atomic(using=using):
+                # We have to wrap in a transaction.atomic here, otherwise
+                # we end-up with a TransactionManager error when Contact.slug
+                # already exists in db and we generate new one.
+                if uses_sso_provider:
+                    # In case we delegate auth to a SSO provider, we assume
+                    # the e-mail address has already been verified.
+                    contact.email_verified_at = at_time
+                else:
+                    if not contact.email_verification_key:
+                        # If we already have a verification key, let's keep it.
+                        # We want to avoid users clicking multiple times
+                        # on a link that will trigger an activate url, then
+                        # filling the first form that showed up.
+                        contact.email_verification_key = verification_key
+                    if not contact.email_code:
+                        contact.email_code = generate_random_code()
+                        if settings.SKIP_VERIFICATION_CHECK:
+                            # Set `SKIP_VERIFICATION_CHECK` to 6-digit **ONLY**
+                            # in testing because this will enable to enter
+                            # a predictable verification code (which defies
+                            # the purpose of verification codes except
+                            # in testing).
+                            LOGGER.warning("SKIP_VERIFICATION_CHECK enabled:"\
+                                " email_code is predictable.")
+                            contact.email_code = settings.SKIP_VERIFICATION_CHECK
+                    contact.email_verification_at = at_time
+                    # XXX It is possible a 'reason' field would be a better
+                    # implementation.
+                    if reason:
+                        contact.extra = reason
+                contact.save()
+        else:
+            created = True
+            kwargs.update({
+                'user': user,
+                'email': email
+            })
+            full_name = kwargs.get('full_name')
+            if not full_name and user:
+                kwargs.update({'full_name': user.get_full_name()})
+            nick_name = kwargs.get('nick_name')
+            if not nick_name and user:
+                kwargs.update({'nick_name': user.first_name})
+            # In case we delegate auth to a SSO provider, we assume
+            # the e-mail address has already been verified.
+            if uses_sso_provider:
+                # In case we delegate auth to a SSO provider, we assume
+                # the e-mail address has already been verified.
+                kwargs.update({
+                    'email_verified_at': at_time
+                })
+            else:
+                email_code = generate_random_code()
+                if settings.SKIP_VERIFICATION_CHECK:
+                    # Set `SKIP_VERIFICATION_CHECK` to 6-digit **ONLY**
+                    # in testing because this will enable to enter
+                    # a predictable verification code (which defies
+                    # the purpose of verification codes except
+                    # in testing).
+                    LOGGER.warning("SKIP_VERIFICATION_CHECK enabled:"\
+                        " email_code is predictable.")
+                    email_code = settings.SKIP_VERIFICATION_CHECK
+                kwargs.update({
+                    'email_verification_key': verification_key,
+                    'email_code': email_code,
+                    'email_verification_at': at_time
+                })
+                if reason:
+                    # XXX It is possible a 'reason' field would be a better
+                    # implementation.
+                    kwargs.update({'extra': reason})
+            contact = self.create(**kwargs)
+
+        return contact, created
+
+
+    def prepare_phone_verification(self, phone, user=None, at_time=None,
+                                   verification_key=None, reason=None,
+                                   **kwargs):
+        #pylint:disable=too-many-arguments
+        at_time = datetime_or_now(at_time)
+        if verification_key is None:
+            random_key = str(random.random()).encode('utf-8')
+            salt = hashlib.sha1(random_key).hexdigest()[:5]
+            verification_key = hashlib.sha1(
+                (salt+str(phone)).encode('utf-8')).hexdigest()
+        # XXX The get() needs to be targeted at the write database in order
+        # to avoid potential transaction consistency problems.
+        contact = None
+        try:
+            contact = self.get(phone=phone)
+        except self.model.DoesNotExist:
+            pass
+        if not contact and user:
+            contact = self.filter(phone__isnull=True, user=user).first()
+            if contact:
+                contact.phone = phone
+
+        if contact:
+            created = False
+            using = self._db or router.db_for_write(self.model)
+            with transaction.atomic(using=using):
+                # We have to wrap in a transaction.atomic here, otherwise
+                # we end-up with a TransactionManager error when Contact.slug
+                # already exists in db and we generate new one.
+                if not contact.phone_verification_key:
+                    # If we already have a verification key, let's keep it.
+                    # We want to avoid users clicking multiple times on a link
+                    # that will trigger an activate url, then filling the first
+                    # form that showed up.
+                    contact.phone_verification_key = verification_key
+                if not contact.phone_code:
+                    contact.phone_code = generate_random_code()
+                    if settings.SKIP_VERIFICATION_CHECK:
+                        # Set `SKIP_VERIFICATION_CHECK` to 6-digit **ONLY**
+                        # in testing because this will enable to enter
+                        # a predictable verification code (which defies
+                        # the purpose of verification codes except
+                        # in testing).
+                        LOGGER.warning("SKIP_VERIFICATION_CHECK enabled:"\
+                            " phone_code is predictable.")
+                        contact.phone_code = settings.SKIP_VERIFICATION_CHECK
+                contact.phone_verification_at = at_time
+                # XXX It is possible a 'reason' field would be a better
+                # implementation.
+                if reason:
+                    contact.extra = reason
+                contact.save()
+        else:
+            created = True
+            phone_code = generate_random_code()
+            if settings.SKIP_VERIFICATION_CHECK:
+                # Set `SKIP_VERIFICATION_CHECK` to 6-digit **ONLY**
+                # in testing because this will enable to enter
+                # a predictable verification code (which defies
+                # the purpose of verification codes except
+                # in testing).
+                LOGGER.warning("SKIP_VERIFICATION_CHECK enabled:"\
+                    " phone_code is predictable.")
+                phone_code = settings.SKIP_VERIFICATION_CHECK
+            kwargs.update({
+                'user': user,
+                'phone': phone,
+                'phone_verification_key': verification_key,
+                'phone_code': phone_code,
+                'phone_verification_at': at_time
+            })
+            full_name = kwargs.get('full_name')
+            if not full_name and user:
+                kwargs.update({'full_name': user.get_full_name()})
+            nick_name = kwargs.get('nick_name')
+            if not nick_name and user:
+                kwargs.update({'nick_name': user.first_name})
+            if reason:
+                # XXX It is possible a 'reason' field would be a better
+                # implementation.
+                kwargs.update({'extra': reason})
+            contact = self.create(**kwargs)
+        return contact, created
+
+    def finalize_email_verification(self, email, email_code,
+                                    at_time=None, commit=True):
+        """
+        Checks the email_code matches the code that was sent
+        to the email address.
+        """
+        assert email and email_code
+        if not at_time:
+            at_time = datetime_or_now()
+        email_filter = models.Q(email__iexact=email)
+        if isinstance(email_code, str):
+            email_filter &= models.Q(email_verification_key=email_code)
+        else:
+            email_filter &= models.Q(email_code=email_code)
+        if settings.VERIFICATION_LIFETIME:
+            email_filter &= models.Q(email_verification_at__gt=at_time
+                - settings.VERIFICATION_LIFETIME)
+        queryset = self.filter(email_filter).select_related('user')
+        contact = queryset.get()
+        if commit:
+            contact.email_verification_key = None
+            contact.email_verified_at = at_time
+            contact.email_code = None
+            contact.save()
+        return contact
+
+
+    def finalize_phone_verification(self, phone, phone_code,
+                                    at_time=None, commit=True):
+        """
+        Checks the phone_code matches the code that was sent
+        to the phone number.
+        """
+        assert phone and phone_code
+        if not at_time:
+            at_time = datetime_or_now()
+        phone_filter = models.Q(phone=phone)
+        if isinstance(phone_code, str):
+            phone_filter &= models.Q(phone_verification_key=phone_code)
+        else:
+            phone_filter &= models.Q(phone_code=phone_code)
+        if settings.VERIFICATION_LIFETIME:
+            phone_filter &= models.Q(phone_verification_at__gt=at_time
+                - settings.VERIFICATION_LIFETIME)
+        contact = self.filter(phone_filter).select_related('user').get()
+        if commit:
+            contact.phone_verification_key = None
+            contact.phone_verified_at = at_time
+            contact.phone_code = None
+            contact.save()
+        return contact
+
+    def is_email_verified(self, email, at_time=None):
+        """
+        Returns True if the user is reachable by email.
+        """
+        verified_filter = models.Q(email_verified_at__isnull=True)
+        if settings.VERIFIED_LIFETIME:
+            at_time = datetime_or_now(at_time)
+            verified_filter |= models.Q(email_verified_at__lt=at_time
+                - settings.VERIFIED_LIFETIME)
+        queryset = self.filter(email=email).exclude(verified_filter)
+        return queryset.exists()
+
+
+    def is_phone_verified(self, phone, at_time=None):
+        """
+        Returns True if the user is reachable by phone.
+        """
+        verified_filter = models.Q(phone_verified_at__isnull=True)
+        if settings.VERIFIED_LIFETIME:
+            at_time = datetime_or_now(at_time)
+            verified_filter |= models.Q(phone_verified_at__lt=at_time
+                - settings.VERIFIED_LIFETIME)
+        queryset = self.filter(phone=phone).exclude(verified_filter)
+        return queryset.exists()
+
+
+    def is_reachable_by_email(self, user, at_time=None):
+        """
+        Returns True if the user is reachable by email.
+        """
+        verified_filter = models.Q(email_verified_at__isnull=True)
+        if settings.VERIFIED_LIFETIME:
+            at_time = datetime_or_now(at_time)
+            verified_filter |= models.Q(email_verified_at__lt=at_time
+                - settings.VERIFIED_LIFETIME)
+        return self.filter(user=user).exclude(verified_filter).exists()
+
+
+    def is_reachable_by_phone(self, user, at_time=None):
+        """
+        Returns True if the user is reachable by phone.
+        """
+        verified_filter = models.Q(phone_verified_at__isnull=True)
+        if settings.VERIFIED_LIFETIME:
+            at_time = datetime_or_now(at_time)
+            verified_filter |= models.Q(phone_verified_at__lt=at_time
+                - settings.VERIFIED_LIFETIME)
+        return self.filter(user=user).exclude(verified_filter).exists()
+
+
+@python_2_unicode_compatible
+class Contact(models.Model):
+    """
+    Used in workflow to verify the email address of a ``User``.
+    """
+    #pylint:disable=too-many-instance-attributes
+
+    objects = ContactManager()
+
+    slug = models.SlugField(unique=True,
+        help_text=_("Unique identifier shown in the URL bar, effectively"\
+            " the username for profiles with login credentials."))
+    created_at = models.DateTimeField(auto_now_add=True,
+        help_text=_("Date/time of creation (in ISO format)"))
+    email = models.EmailField(_("E-mail address"), unique=True, null=True,
+        help_text=_("E-mail address to contact user"))
+    phone = PhoneNumberField(_("Phone number"), unique=True, null=True,
+        help_text=_("Phone number to contact user"))
+    full_name = models.CharField(_("Full name"), max_length=60, blank=True,
+        help_text=_("Full name (effectively first name followed by last name)"))
+    nick_name = models.CharField(_("Nick name"), max_length=60, blank=True,
+        help_text=_("Short casual name used to address the user"))
+    # 2083 number is used because it is a safe option to choose based
+    # on some older browsers behavior
+    # https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=4&cad=rja&uact=8&ved=2ahUKEwi2hbjPwIPgAhULXCsKHQ-lAj4QFjADegQIBhAL&url=https%3A%2F%2Fstackoverflow.com%2Fquestions%2F417142%2Fwhat-is-the-maximum-length-of-a-url-in-different-browsers&usg=AOvVaw0QgMo_L7jjK0YsXchrJgOQ
+    picture = models.URLField(_("URL to a profile picture"), max_length=2083,
+        null=True, blank=True,
+        help_text=_("URL location of the profile picture"))
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,
+        null=True, on_delete=models.SET_NULL, related_name='contacts')
+    lang = models.CharField(_("Preferred communication language"),
+         default=settings.LANGUAGE_CODE, max_length=8,
+        help_text=_("Two-letter ISO 639 code for the preferred"\
+        " communication language (ex: en)"))
+    extra = _get_extra_field_class()(null=True,
+        help_text=_("Extra meta data (can be stringify JSON)"))
+
+    # key must be unique when used in URLs. IF we use a code,
+    # then it shouldn't be.
+    email_verification_key = models.CharField(_(
+        "Email verification key"),
+         null=True, max_length=40)
+    email_verification_at = models.DateTimeField(null=True,
+        help_text=_("Date/time when the e-mail verification key was sent"))
+    email_code = models.IntegerField(
+        _("Email verification code"), null=True)
+    email_verified_at = models.DateTimeField(null=True,
+        help_text=_("Date/time when the e-mail was last verified"))
+    email_verification_required = models.BooleanField(default=False,
+        help_text=_("Auth requires email verification every time"))
+
+    phone_verification_key = models.CharField(
+        _("Phone verification key"),
+        null=True, max_length=40)
+    phone_verification_at = models.DateTimeField(null=True,
+        help_text=_("Date/time when the phone verification key was sent"))
+    phone_code = models.IntegerField(
+        _("Phone verification code"), null=True)
+    phone_verified_at = models.DateTimeField(null=True,
+        help_text=_("Date/time when the phone number was last verified"))
+    phone_verification_required = models.BooleanField(default=False,
+        help_text=_("Auth requires phone verification every time"))
+
+    one_time_code = models.IntegerField(
+        _("One-time authentication code"), null=True)
+    otc_nb_attempts = models.IntegerField(
+        _("Number of attempts to pass the one-time code"), default=0)
+
+    def __str__(self):
+        return str(self.slug)
+
+    @property
+    def username(self):
+        return self.slug
+
+    @property
+    def date_joined(self):
+        return self.created_at
+
+    @property
+    def printable_name(self):
+        if self.nick_name:
+            return self.nick_name
+        if self.full_name:
+            return self.full_name
+        return self.username
+
+    def get_full_name(self):
+        if self.full_name:
+            return self.full_name
+        if self.user:
+            return ' '.join([self.user.first_name, self.user.last_name]).strip()
+        return ""
+
+    def get_nick_name(self):
+        if self.nick_name:
+            return self.nick_name
+        if self.user:
+            return self.user.first_name
+        return ""
+
+    def get_phone(self):
+        return self.phone
+
+    def get_lang(self):
+        return self.lang
+
+    def save(self, force_insert=False, force_update=False,
+             using=None, update_fields=None):
+        if not self.lang:
+            self.lang = settings.LANGUAGE_CODE
+        if self.slug: # serializer will set created slug to '' instead of None.
+            return super(Contact, self).save(
+                force_insert=force_insert, force_update=force_update,
+                using=using, update_fields=update_fields)
+        max_length = self._meta.get_field('slug').max_length
+        slug_base = None
+        if self.user:
+            slug_base = self.user.username
+        if not slug_base and self.email:
+            # email might be empty
+            slug_base = slugify(self.email.split('@', maxsplit=1)[0])
+        if not slug_base:
+            slug_base = generate_random_slug(15)
+        elif len(slug_base) > max_length:
+            slug_base = slug_base[:max_length]
+        self.slug = slug_base
+        for idx in range(1, 10): #pylint:disable=unused-variable
+            try:
+                try:
+                    with transaction.atomic(using=using):
+                        if self.user:
+                            # pylint:disable=unused-variable
+                            save_user = False
+                            first_name, mid_name, last_name = \
+                                full_name_natural_split(self.full_name)
+                            if not self.user.first_name:
+                                self.user.first_name = first_name
+                                save_user = True
+                            if not self.user.last_name:
+                                self.user.last_name = last_name
+                                save_user = True
+                            if not self.user.email and self.email:
+                                self.user.email = self.email
+                                save_user = True
+                            if save_user:
+                                self.user.save()
+                        return super(Contact, self).save(
+                            force_insert=force_insert,
+                            force_update=force_update,
+                            using=using, update_fields=update_fields)
+                except IntegrityError as err:
+                    if 'uniq' not in str(err).lower():
+                        raise
+                    handle_uniq_error(err) # could also be due to email or phone
+            except DRFValidationError as err:
+                if not 'slug' in err.detail:
+                    raise
+                if len(slug_base) + 8 > max_length:
+                    slug_base = slug_base[:(max_length - 8)]
+                self.slug = generate_random_slug(
+                    length=len(slug_base) + 8, prefix=slug_base + '-')
+        raise DRFValidationError({'slug':
+            _("Unable to create a unique URL slug with a base of '%(base)s'")
+                % {'base': slug_base}})
+
+
+@python_2_unicode_compatible
+class Activity(models.Model):
+    """
+    Activity associated to a contact.
+    """
+    created_at = models.DateTimeField(auto_now_add=True,
+        help_text=_("Date/time of creation (in ISO format)"))
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL,
+        null=True, on_delete=models.SET_NULL,
+        help_text=_("User that created the activity"))
+    contact = models.ForeignKey(Contact, null=True, on_delete=models.CASCADE)
+    text = models.TextField(blank=True,
+        help_text=_("Free form text description of the activity"))
+    account = models.ForeignKey(
+        settings.ACCOUNT_MODEL, null=True, on_delete=models.CASCADE,
+        related_name='activities',
+        help_text=_("Account the activity is associated to"))
+    extra = _get_extra_field_class()(null=True)
+
+    def __str__(self):
+        return "%s-%s" % (self.created_at, self.created_by)
+
+
+@python_2_unicode_compatible
+class Notification(models.Model):
+    """
+    Notification model, represent a single notification type,
+    has a M2M relation with users, which allows to store a user's
+    email notifications preferences
+    """
+    NOTIFICATION_TYPE = settings.NOTIFICATION_TYPE
+
+    slug = models.SlugField(unique=True, choices=NOTIFICATION_TYPE,
+        help_text=_("Unique identifier shown in the URL bar"))
+    title = models.CharField(max_length=100, blank=True,
+        help_text=_("Short description of the notification"))
+    description = models.TextField(null=True, blank=True,
+        help_text=_("Long description of the notification"))
+    users = models.ManyToManyField(settings.AUTH_USER_MODEL,
+        related_name='notifications')
+    extra = _get_extra_field_class()(null=True)
+
+    def __str__(self):
+        return str(self.slug)
+
+
+@python_2_unicode_compatible
+class Credentials(models.Model):
+    """
+    API Credentials to authenticate a `User`.
+    """
+    API_PUB_KEY_LENGTH = 32
+    API_PASSWORD_LENGTH = 32
+
+    title = models.CharField(max_length=100, blank=True,
+        help_text=_("Short description of the notification"))
+    api_pub_key = models.SlugField(unique=True, max_length=API_PUB_KEY_LENGTH,
+        help_text=_("Unique public identifier for the API key"))
+    api_password = models.CharField(max_length=128,
+        help_text=_("Private portion of the API key"))
+    ends_at = models.DateTimeField(null=True, blank=True,
+        help_text=_("Date/time at which the API key expires (in ISO format)"))
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE, related_name='credentials')
+    extra = _get_extra_field_class()(null=True)
+
+    def __str__(self):
+        return str(self.api_pub_key)
+
+    def set_priv_key(self, api_password):
+        #pylint:disable=attribute-defined-outside-init
+        self.api_password = make_password(api_password)
+        self._api_password = api_password
+
+    def check_priv_key(self, raw_api_password):
+        """
+        Return a boolean of whether the raw api_password was correct. Handles
+        hashing formats behind the scenes.
+        """
+        def setter(raw_api_password):
+            #pylint:disable=attribute-defined-outside-init
+            self.set_priv_key(raw_api_password)
+            # Password hash upgrades shouldn't be considered password changes.
+            self._api_password = None
+            self.save(update_fields=["api_password"])
+        return check_password(raw_api_password, self.api_password, setter)
+
+    def is_expired(self):
+        return self.ends_at and self.ends_at < datetime_or_now()
+
+
+class OTPGeneratorManager(models.Manager):
+    """
+    One-time code model manager
+    """
+    def verify(self, user, otp_code):
+        nb_attempts = 1
+        try:
+            nb_attempts = user.otp.nb_attempts
+            if not user.otp.verify(otp_code):
+                if nb_attempts >= settings.MFA_MAX_ATTEMPTS:
+                    user.otp.clear_attempts()
+                else:
+                    user.otp.nb_attempts += 1
+                    user.otp.save()
+                    nb_attempts = user.otp.nb_attempts
+            else:
+                user.otp.clear_attempts()
+                nb_attempts = 0
+        except Exception as err:
+            LOGGER.exception("fetching OTPGenerator: '%s' (%s)",
+                str(err), err.__class__)
+        return nb_attempts
+
+
+class OTPGenerator(models.Model):
+    """
+    Generates OTP one-time code for authentication
+    """
+    objects = OTPGeneratorManager()
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE, related_name='otp')
+    priv_key = _get_encrypted_field_class()(
+        _("Private key for the OTP generator"), max_length=40, null=True)
+    nb_attempts = models.IntegerField(
+        _("Number of attempts to pass the OTP code"), default=0)
+
+    def verify(self, code):
+        totp = pyotp.TOTP(self.priv_key)
+        if settings.SKIP_VERIFICATION_CHECK:
+            # Set `SKIP_VERIFICATION_CHECK` to a 6-digit **ONLY** in testing
+            # because this will enable to enter a predictable OTP code
+            # (which defies the purpose of OTP code except in testing).
+            LOGGER.warning("SKIP_VERIFICATION_CHECK enabled:"\
+                " OTP is predictable.")
+            return totp.verify(code, self.user.date_joined)
+        return totp.verify(code)
+
+    def clear_attempts(self):
+        self.nb_attempts = 0
+        self.save()
+
+    def provisioning_uri(self, issuer_name=None):
+        return pyotp.totp.TOTP(self.priv_key).provisioning_uri(
+            name=self.user.email, issuer_name=issuer_name)
+
+
+class DelegateAuthManager(models.Manager):
+
+    def get_from_email(self, email):
+        domain = email.split('@')[-1]
+        return super(DelegateAuthManager, self).get(domain=domain)
+
+
+@python_2_unicode_compatible
+class DelegateAuth(models.Model):
+    """
+    Authentication for users with e-mail addresses in these domains must be
+    delegated to a SSO provider.
+    """
+    objects = DelegateAuthManager()
+
+    domain = models.CharField(max_length=100, unique=True,
+        validators=[domain_name_validator, RegexValidator(URLValidator.host_re,
+            _("Enter a valid 'domain', ex: example.com"), 'invalid')],
+        help_text=_(
+            _("fully qualified domain name at which the site is available")))
+    provider = models.CharField(max_length=32)
+    created_at = models.DateTimeField(auto_now_add=True,
+        help_text=_("Date/time of creation (in ISO format)"))
+
+    def __str__(self):
+        return "%s/%s" % (self.provider, self.domain)
+
+
+def get_disabled_email_update(user):
+    try:
+        DelegateAuth.objects.get_from_email(user.email)
+        return True
+    except DelegateAuth.DoesNotExist:
+        pass
+    return is_ldap_user(user)
+
+
+def get_user_contact(user):
+    if isinstance(settings.USER_CONTACT_CALLABLE, six.string_types):
+        return import_string(settings.USER_CONTACT_CALLABLE)(user)
+    if user:
+        return Contact.objects.filter(
+            models.Q(slug__iexact=user.username)
+            | models.Q(email__iexact=user.email)).order_by(
+            'slug', 'email').first()
+    return None
+
+
+def get_full_name(obj):
+    full_name = ""
+    if hasattr(obj, 'full_name'):
+        full_name = obj.full_name
+    if full_name:
+        return full_name
+    opk = obj.pk if hasattr(obj, 'pk') else None
+    if opk:
+        contact = obj.contacts.filter(full_name__isnull=False).order_by(
+            'created_at').first()
+        if contact:
+            full_name = contact.full_name
+    if full_name:
+        return full_name
+    return ' '.join([obj.first_name, obj.last_name]).strip()
+
+
+def get_nick_name(obj):
+    if hasattr(obj, 'nick_name'):
+        return obj.nick_name
+    opk = obj.pk if hasattr(obj, 'pk') else None
+    if opk:
+        contact = obj.contacts.filter(nick_name__isnull=False).order_by(
+            'created_at').first()
+        if contact:
+            return contact.nick_name
+    return obj.first_name
+
+
+def get_phone(obj):
+    if hasattr(obj, 'phone'):
+        return obj.phone
+    opk = obj.pk if hasattr(obj, 'pk') else None
+    if opk:
+        contact = obj.contacts.filter(phone__isnull=False).order_by(
+            'created_at').first()
+        if contact:
+            return contact.phone
+    return None
+
+
+def get_lang(obj):
+    if hasattr(obj, 'lang'):
+        return obj.lang
+    opk = obj.pk if hasattr(obj, 'pk') else None
+    if opk:
+        contact = obj.contacts.filter(lang__isnull=False).order_by(
+            'created_at').first()
+        if contact:
+            return contact.lang
+    return settings.LANGUAGE_CODE
+
+
+# Hack to install our create_user method.
+User = get_user_model() #pylint:disable=invalid-name
+User.get_full_name = get_full_name
+User.get_nick_name = get_nick_name
+User.get_phone = get_phone
+User.get_lang = get_lang
+User.objects = ActivatedUserManager()
+User.objects.model = User
+User.objects.contribute_to_class(User, 'objects')
