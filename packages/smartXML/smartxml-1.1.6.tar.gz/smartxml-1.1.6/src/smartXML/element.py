@@ -1,0 +1,511 @@
+from __future__ import annotations
+
+from typing import Union
+
+import warnings
+import re
+
+
+class IllegalOperation(Exception):
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)
+
+
+class ElementBase:
+    def __init__(self, name: str):
+        self._name = name
+        self._sons = []
+        self._parent: "ElementBase|None" = None
+
+    @property
+    def content(self) -> str:
+        """Get the content of the element."""
+        the_content = ""
+        for son in self._sons:
+            if isinstance(son, ContentOnly):
+                the_content = the_content + son._text + "\n"
+        return the_content.rstrip("\n")
+
+    @content.setter
+    def content(self, new_content: str):
+        """Set the content of the element."""
+        if len(self._sons) == 0:
+            self._sons.append(ContentOnly(new_content))
+        else:
+            first_son = self._sons[0]
+            if isinstance(first_son, ContentOnly):
+                first_son.text = new_content
+            else:
+                self._sons.insert(0, ContentOnly(new_content))
+
+    @property
+    def parent(self):
+        """Get the parent of the element."""
+        return self._parent
+
+    @property
+    def name(self) -> str:
+        """Get the name of the element."""
+        return self._name
+
+    @name.setter
+    def name(self, new_name: str):
+        """Set the name of the element."""
+        _XML_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]*$")
+        if not bool(_XML_NAME_RE.match(new_name)):
+            raise ValueError(f"Invalid tag name '{new_name}'")
+
+        self._name = new_name
+
+    def __repr__(self):
+        return f"{self.name}"
+
+    def __str__(self):
+        return self.to_string()
+
+    def is_comment(self) -> bool:
+        """Check if the element is a comment."""
+        return False
+
+    def to_string(self, indentation: str = "\t") -> str:
+        """
+        Convert the XML tree to a string.
+        :param indentation: string used for indentation, default is tab character
+        :return: XML string
+        """
+        return self._to_string(0, indentation)
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        pass
+
+    def _remove_from_parent(self):
+        parent = self._parent
+        if parent is not None:
+            index = self._parent._sons.index(self)
+            del self._parent._sons[index]
+
+    def get_path(self) -> str:
+        """Get the full path of the element
+        returns: the path as a string from the root of the XML tree, separated by |.
+        """
+        elements = []
+        current = self
+        while current is not None:
+            elements.append(current._name)
+            current = current._parent
+        return "|".join(reversed(elements))
+
+    def _insert_into_parent_at_index(self, new_parent: "ElementBase", index: int):
+        if new_parent._is_empty:
+            new_parent._is_empty = False
+
+        self._remove_from_parent()
+
+        self._parent = new_parent
+        new_parent._sons.insert(index, self)
+
+    def add_before(self, sibling: "ElementBase"):
+        """Add this element before the given sibling element."""
+        self._insert_into_parent_at_index(sibling._parent, sibling._parent._sons.index(sibling))
+
+    def add_after(self, sibling: "ElementBase"):
+        """Add this element after the given sibling element."""
+        self._insert_into_parent_at_index(sibling._parent, sibling._parent._sons.index(sibling) + 1)
+
+    def add_as_last_son_of(self, parent: "ElementBase"):
+        """Add this element as the last son of the given parent element."""
+        self._insert_into_parent_at_index(parent, len(parent._sons))
+
+    def add_as_first_son_of(self, parent: "ElementBase"):
+        """Add this element as the first son of the given parent element."""
+        self._insert_into_parent_at_index(parent, 0)
+
+    def set_as_parent_of(self, son: "ElementBase"):
+        """Set this element as the parent of the given son element."""
+        warnings.warn(
+            "set_as_parent_of() is deprecated and will be removed in version 1.1.0 . add_before() or add_after() or add_as_last_son_of instead.",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        self._sons.append(son)
+        son._parent = self
+
+    def remove(self):
+        """Remove this element from its parent's sons."""
+        self._remove_from_parent()
+
+    def _get_index_in_parent(self) -> int:
+        index = 0
+        for son in self._parent._sons:
+            if son == self:
+                return index
+            index += 1
+
+        return -1
+
+    def _get_higher_sibling(self) -> ElementBase | None:
+        index = self._get_index_in_parent()
+        if index > 0:
+            return self._parent._sons[index - 1]
+        else:
+            return None
+
+    def _get_element_above(self) -> ElementBase:
+        """
+        Get the element above this one in the XML tree.
+        NOTE: Ignoring a first child ContentOnly element.
+        :return:
+        """
+        index = self._get_index_in_parent()
+        if index == 1 and isinstance(self._parent._sons[0], ContentOnly):
+            return self._parent
+        if index > 0:
+            return self._parent._sons[index - 1]
+        else:
+            return self.parent
+
+    def _get_lower_sibling(self) -> ElementBase | None:
+        index = self._get_index_in_parent()
+        if index < len(self._parent._sons) - 1:
+            return self._parent._sons[index + 1]
+        else:
+            return None
+
+    def _get_element_below(self) -> ElementBase:
+        index = self._get_index_in_parent()
+        if index < len(self._parent._sons) - 1:
+            return self._parent._sons[index + 1]
+        else:
+            return self._parent
+
+    def _check_name_match(self, names: str, case_sensitive: bool) -> bool:
+        if names:
+            if case_sensitive:
+                if self.name != names:
+                    return False
+            else:
+                if self.name.casefold() != names.casefold():
+                    return False
+        return True
+
+    def _check_content_match(self, with_content: str, case_sensitive: bool) -> bool:
+        if with_content is None:
+            return True
+        if case_sensitive:
+            if self.content == with_content:
+                return True
+        elif self.content.casefold() == with_content.casefold():
+            return True
+
+        return False
+
+    def _find_one_in_sons(
+        self, names_list: list[str], with_content: str = None, case_sensitive: bool = True
+    ) -> ElementBase | None:
+        if not names_list:
+            return self
+        for name in names_list:
+            for son in self._sons:
+                if son._check_name_match(name, case_sensitive):
+                    found = son._find_one_in_sons(names_list[1:], with_content, case_sensitive)
+                    if found:
+                        if found._check_content_match(with_content, case_sensitive):
+                            return found
+        return None
+
+    def _find_one(self, names: str, with_content: str, case_sensitive: bool) -> ElementBase | None:
+
+        if self._check_name_match(names, case_sensitive):
+            if self._check_content_match(with_content, case_sensitive):
+                return self
+
+        names_list = names.split("|")
+
+        if len(names_list) > 1:
+            if self._check_name_match(names_list[0], case_sensitive):
+                found = self._find_one_in_sons(names_list[1:], with_content, case_sensitive)
+                if found:
+                    return found
+
+        for son in self._sons:
+            found = son._find_one(names, with_content, case_sensitive)
+            if found:
+                return found
+        return None
+
+    def _find_all(self, names: str, with_content: str, case_sensitive: bool) -> list[Element]:
+        results = []
+        if self._check_name_match(names=names, case_sensitive=case_sensitive):
+            if self._check_content_match(with_content, case_sensitive):
+                results.extend([self])
+                for son in self._sons:
+                    results.extend(son._find_all(names, with_content, case_sensitive))
+                return results
+
+        names_list = names.split("|")
+
+        if self._check_name_match(names_list[0], case_sensitive):
+            if self._check_content_match(with_content, case_sensitive):
+                sons = []
+                sons.extend(self._sons)
+                match = []
+                for index, name in enumerate(names_list[1:]):
+                    for son in sons:
+                        if son._check_name_match(name, case_sensitive):
+                            if index == len(names_list) - 2:
+                                results.append(son)
+                            else:
+                                match.extend(son._sons)
+                    sons.clear()
+                    sons.extend(match)
+                    match.clear()
+
+        for son in self._sons:
+            results.extend(son._find_all(names, with_content, case_sensitive))
+
+        return results
+
+
+class PlaceHolder(ElementBase):
+    """An element that has been removed from the XML tree."""
+
+    def __init__(self, parent: ElementBase):
+        super().__init__("")
+        self._parent = parent
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        return ""
+
+
+class ContentOnly(ElementBase):
+    """An element that only contains text, not other elements."""
+
+    def __init__(self, text: str):
+        super().__init__("")
+        self._text = text
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        indent = indentation * index
+        if self._get_index_in_parent() == 0:
+            return f"{indent}{self._text}"
+        else:
+            return f"{indent}{self._text}\n"
+
+    def add_before(self, sibling: "ElementBase"):
+        """Add this element before the given sibling element."""
+        super().add_before(sibling)
+
+    def add_as_last_son_of(self, parent: "ElementBase"):
+        """Add this element as the last son of the given parent element."""
+        super().add_as_last_son_of(parent)
+
+    def add_as_first_son_of(self, parent: "ElementBase"):
+        """Add this element as the first son of the given parent element."""
+        super().add_as_first_son_of(parent)
+
+    @property
+    def text(self) -> str:
+        """Get the content of the element."""
+        return self._text
+
+    @text.setter
+    def text(self, text: str):
+        """Set the content of the element."""
+        self._text = text
+
+    def __repr__(self):
+        return f"{self._text}"
+
+
+class TextOnlyComment(ElementBase):
+    """A comment that only contains text, not other elements."""
+
+    def __init__(self, text: str):
+        super().__init__("")
+        self._text = text
+
+    @property
+    def text(self) -> str:
+        """Get the content of the element."""
+        return self._text
+
+    def _check_name_match(self, names: str, case_sensitive: bool) -> bool:
+        if names:
+            if case_sensitive:
+                if self.text != names:
+                    return False
+            else:
+                if self.text.casefold() != names.casefold():
+                    return False
+        return True
+
+    @text.setter
+    def text(self, text: str):
+        """Set the content of the element."""
+        self._text = text
+
+    def is_comment(self) -> bool:
+        return True
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        indent = indentation * index
+        return f"{indent}<!--{self._text}-->\n"
+
+    def __repr__(self):
+        return f"{self.name} text: {self._text}"
+
+
+class CData(ElementBase):
+    """A CDATA section that contains text."""
+
+    def __init__(self, text: str):
+        super().__init__("")
+        self._text = text
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        indent = indentation * index
+        return f"{indent}<![CDATA[{self._text}]]>\n"
+
+    @property
+    def text(self) -> str:
+        """Get the content of the element."""
+        return self._text
+
+    @text.setter
+    def text(self, text: str):
+        """Set the content of the element."""
+        self._text = text
+
+
+class Doctype(ElementBase):
+    """A DOCTYPE declaration."""
+
+    def __init__(self, text: str):
+        super().__init__("")
+        self._text = text
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        indent = indentation * index
+        sons_indent = indentation * (index + 1)
+        children_str = ""
+        for son in self._sons:
+            if isinstance(son, TextOnlyComment):
+                children_str = children_str + son._to_string(index + 1, indentation)
+            else:
+                children_str = children_str + sons_indent + "<" + son.name + ">\n"
+        if children_str:
+            return f"{indent}<{self._text}[\n{children_str}{indent}]>\n"
+        else:
+            return f"{indent}<![CDATA[{self._text}]]>\n"
+
+
+class Element(ElementBase):
+    """An XML element that can contain attributes, content, and child elements."""
+
+    def __init__(self, name: str):
+        super().__init__(name)
+        self.attributes = {}
+        self._is_empty = False  # whether the element is self-closing
+
+    def uncomment(self):
+        if self.parent.is_comment():
+            raise IllegalOperation("Cannot comment out an element whose parent is a comment")
+
+    def comment_out(self):
+        """Convert this element into a comment.
+        raises IllegalOperation, if any parent or any descended is a comment
+        """
+
+        def find_comment_son(element: "ElementBase") -> bool:
+            if element.is_comment():
+                return True
+            for a_son in element._sons:
+                if find_comment_son(a_son):
+                    return True
+            return False
+
+        parent = self.parent
+        while parent:
+            if parent.is_comment():
+                raise IllegalOperation("Cannot comment out an element whose parent is a comment")
+            parent = parent.parent
+
+        for son in self._sons:
+            if find_comment_son(son):
+                raise IllegalOperation("Cannot comment out an element whose descended is a comment")
+
+        self.__class__ = Comment
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        indent = indentation * index
+
+        attributes_str = " ".join(
+            f'{key}="{value}"' for key, value in self.attributes.items()  # f-string formats the pair as key="value"
+        )
+
+        attributes_part = f" {attributes_str}" if attributes_str else ""
+
+        if self._is_empty:
+            result = f"{indent}<{self.name}{attributes_part}/>"
+        else:
+            opening_tag = f"<{self.name}{attributes_part}>"
+            closing_tag = f"</{self.name}>"
+
+            first_content = ""
+            children_str = ""
+            if len(self._sons) > 0:
+                if isinstance(self._sons[0], ContentOnly):
+                    first_content = self._sons[0]._text
+                    children_str = "".join(son._to_string(index + 1, indentation) for son in self._sons[1:])
+                else:
+                    children_str = "".join(son._to_string(index + 1, indentation) for son in self._sons)
+
+            if children_str:
+                result = f"{indent}{opening_tag}{first_content}\n{children_str}{indent}{closing_tag}"
+            else:
+                result = f"{indent}{opening_tag}{first_content}{closing_tag}"
+
+        result += "\n"
+        return result
+
+    def find(
+        self, name: str = "", only_one: bool = True, with_content: str = None, case_sensitive: bool = True
+    ) -> Union["ElementBase", list["ElementBase"], None]:
+        """
+        Find element(s) by name or content or both
+        :param name: name of the element to find, can be nested using |, e.g. "parent|child|subchild"
+        :param only_one: stop at first find or return all found elements
+        :param with_content: filter by content
+        :param case_sensitive: whether the search is case-sensitive, default is True
+        :return: the elements found,
+                if found, return the elements that match the last name in the path,
+                if not found, return None if only_one is True, else return empty list
+        """
+        if only_one:
+            return self._find_one(name, with_content=with_content, case_sensitive=case_sensitive)
+        else:
+            return self._find_all(name, with_content=with_content, case_sensitive=case_sensitive)
+
+
+class Comment(Element):
+    """An XML comment that can contain other elements."""
+
+    def __init__(self, name: str):
+        super().__init__(name)
+
+    def is_comment(self) -> bool:
+        return True
+
+    def uncomment(self):
+        """Convert this comment back into a normal element."""
+        if self.parent.is_comment():
+            raise IllegalOperation("Cannot uncomment an element whose parent is a comment")
+        self.__class__ = Element
+
+    def _to_string(self, index: int, indentation: str) -> str:
+        indent = indentation * index
+        if len(self._sons) == 0 or (len(self._sons) == 1 and isinstance(self._sons[0], ContentOnly)):
+            return f"{indent}<!-- {super()._to_string(0, indentation)[0:-1]} -->\n"
+        else:
+            return f"{indent}<!--\n{super()._to_string(index + 1, indentation)}{indent}-->\n"
