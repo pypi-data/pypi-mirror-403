@@ -1,0 +1,3 @@
+# account
+
+::: tmdbfusion.api.account

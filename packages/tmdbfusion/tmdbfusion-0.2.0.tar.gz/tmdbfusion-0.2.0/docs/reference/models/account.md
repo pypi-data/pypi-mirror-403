@@ -1,0 +1,3 @@
+# account
+
+::: tmdbfusion.models.account

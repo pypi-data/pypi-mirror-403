@@ -1,0 +1,341 @@
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tmdbfusion"
+version = "0.2.0"
+description = "Simple, high-performance Python wrapper for The Movie Database API"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{ name = "xsyncio" }]
+dependencies = ["msgspec>=0.18.0", "httpx>=0.24.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["tmdbfusion"]
+
+[project.scripts]
+tmdbf = "tmdbfusion.cli:main"
+
+
+[project.optional-dependencies]
+dev = [
+    "nox>=2023.4.22",
+    "towncrier>=23.6.0",
+    "numpydoc>=1.6.0",
+    "deptry>=0.12.0",
+    "pre-commit>=3.3.3",
+    "pip-audit>=2.5.6",
+    "bump-my-version>=0.10.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.4.1",
+    "ruff>=0.0.278",
+    "pytest-asyncio>=1.3.0",
+    "respx>=0.22.0",
+]
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-git-revision-date-localized-plugin>=1.2.0",
+    "mkdocs-git-authors-plugin>=0.7.0",
+    "mkdocs-awesome-pages-plugin>=2.9.0",
+    "mkdocs-section-index>=0.3.0",
+    "mkdocs-minify-plugin>=0.7.0",
+    "mkdocs-rss-plugin>=1.9.0",
+    "mkdocs-glightbox>=0.3.0",
+    "mkdocs-mermaid2-plugin>=1.1.0",
+    "mkdocs-macros-plugin>=1.0.0",
+    "pymdown-extensions>=10.7.0",
+]
+cli = ["click>=8.1.0", "rich>=13.0.0"]
+rich = ["rich>=13.0.0"]
+
+[tool.towncrier]
+name = "tmdbfusion"
+package = "tmdbfusion"
+filename = "CHANGELOG.md"
+directory = "changes"
+
+[tool.numpydoc_validation]
+checks = [
+    "all",  # Report on all checks, except the below
+    "SA01", # Exclude: See Also section (not useful for API wrappers)
+    "EX01", # Exclude: Examples section (not needed for every method)
+    "ES01", # Exclude: Extended summary (brief docstrings are fine)
+]
+exclude = [ # Don't check these regexes
+    "\\.venv",
+    "^tests",
+    "^noxfile",
+    "tmdbfusion\\.__init__",
+    "tmdbfusion\\._client",
+    "tmdbfusion\\.api\\.__init__",
+    "tmdbfusion\\.models\\.__init__",
+]
+override_SS05 = [ # Allow summary to start on same line as opening quotes
+    "^Process",
+]
+
+[tool.deptry]
+ignore_notebooks = true
+[tool.deptry.per_rule_ignores]
+DEP001 = ["tmdb"]
+DEP002 = [
+    "towncrier",
+    "numpydoc",
+    "deptry",
+    "pre-commit",
+    "pip-audit",
+    "bump-my-version",
+    "pytest",
+    "pytest-cov",
+    "mypy",
+    "ruff",
+    "nox",
+]
+
+
+[tool.bumpversion]
+current_version = "0.1.0"
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+serialize = ["{major}.{minor}.{patch}"]
+commit = true
+tag = true
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
+
+[tool.ruff]
+# The strictest line length
+line-length = 120
+indent-width = 4
+target-version = "py313"
+exclude = ["tests"]
+
+[tool.ruff.lint]
+# Enable ALL rules
+select = ["ALL"]
+# Only ignore rules that strictly conflict with the formatter or other rules
+ignore = [
+    "PLR2004",
+    "ISC001",   # Implicit string concatenation (conflicts with formatter)
+    "PLC0414",  # Import alias - required by .agent/ import policy
+    "CPY001",   # Copyright notice - not required for this project
+    "PLR6301",  # Method could be static - conflicts with ABC interface design
+    "PLR0913",  # Too many arguments - HTTP requests need multiple params
+    "C901",     # Function complexity - infrastructure handles many cases
+    "DOC501",   # Raised exception docs - TmdbApiError covers subclasses
+    "TRY300",   # Consider else block - not always cleaner
+    "DOC502",   # Raised exception docs - exceptions raised indirectly
+    "ASYNC109", # Timeout param in async - httpx requires it
+    "COM812",   # Trailing comma - conflicts with formatter
+    "PLR0915",  # Too many public methods
+    "DOC",      # Documentation linting (conflicts with numpydoc)
+    "D",        # pydocstyle (conflicts with numpydoc)
+    "NPY",      # NumPy-specific rules (conflicts with numpydoc)
+]
+# Allow fixing of all issues
+fixable = ["ALL"]
+unfixable = []
+# Preview rules are even stricter
+preview = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # assert is common in tests
+    "PLR2004", # Magic value comparison
+]
+"tmdbfusion/api/**/*.py" = [
+    "SLF001",  # Private member access - services need client internals
+    "D417",    # Missing argument descriptions - wrapper methods
+    "DOC201",  # Return not documented - wrapper methods self-explanatory
+    "PLR2004", # Magic values - API version 3/4
+    "PLR0904", # Too many public methods - service classes
+    "B903",    # Could be dataclass - but these are service classes
+]
+"tmdbfusion/models/**/*.py" = [
+    "RUF012", # Mutable default - msgspec Struct handles this
+]
+"tmdbfusion/core/client.py" = [
+    "PLR0904", # Too many public methods
+    "PLR2004", # Magic values
+]
+"tmdbfusion/core/base.py" = [
+    "B903",    # Could be dataclass - but we need methods
+    "PLR2004", # Magic values - HTTP status codes
+]
+"tmdbfusion/core/http.py" = [
+    "DOC201",  # Return not documented - transport methods
+    "PLR2004", # Magic values - HTTP status
+    "PLR0917", # Too many positional args
+    "PLC0415", # Local imports
+]
+"tmdbfusion/utils/discover.py" = [
+    "PLR0904", # Too many public methods - Builder pattern
+]
+"tmdbfusion/utils/images.py" = [
+    "DOC201", # Return not documented - URL methods
+]
+"tmdbfusion/core/sync_client.py" = [
+    "DOC201",  # Return not documented - wrapper methods
+    "PLR2004", # Magic values - HTTP status
+    "ANN401",  # Any - Dynamic response handling
+    "PLR0911", # Too many returns - get() auto-detection
+]
+"tmdbfusion/core/async_client.py" = [
+    "DOC201",  # Return not documented - wrapper methods
+    "PLR2004", # Magic values - HTTP status
+    "ANN401",  # Any - Dynamic response handling
+    "PLC0415", # Local imports
+    "PLR0911", # Too many returns - get() auto-detection
+]
+"tmdbfusion/features/pagination.py" = [
+    "DOC201", # Return not documented
+]
+"tmdbfusion/utils/append.py" = [
+    "DOC201", # Return not documented
+]
+"tmdbfusion/core/cache.py" = [
+    "DOC201", # Return not documented
+    "ANN401", # Any - Cache stores anything
+]
+"tmdbfusion/features/batch.py" = [
+    "DOC201", # Return not documented
+]
+"tmdbfusion/cli/console.py" = [
+    "DOC201",  # Return not documented
+    "PLR2004", # Magic value for tree limit
+]
+"tmdbfusion/cli/commands.py" = [
+    "DOC201",  # Return not documented
+    "ANN401",  # Any - Dynamic dispatch
+    "PLR0912", # Too many branches - CLI dispatch
+    "T201",    # print statements for CLI
+    "PLC0415", # Local imports for conditional loading
+    "E501",    # Line too long in CLI output
+]
+"tmdbfusion/utils/presets.py" = [
+    "DOC201", # Return not documented
+    "DTZ011", # date.today() is intentional
+]
+"tmdbfusion/utils/navigator.py" = [
+    "DOC201",  # Return not documented
+    "SLF001",  # Private member access
+    "A001",    # credits variable shadows builtin
+    "PLR2004", # Magic value for date parsing
+]
+"tmdbfusion/data/dataset.py" = [
+    "DOC201",  # Return not documented
+    "PLC0415", # Local import for csv
+    "S112",    # try-except-continue is intentional
+]
+"tmdbfusion/utils/links.py" = [
+    "DOC201", # Return not documented
+]
+"tmdbfusion/data/download.py" = [
+    "DOC201", # Return not documented
+    "SLF001", # Private member access
+    "FBT001", # Boolean positional arg for internal method
+]
+"tmdbfusion/data/sync.py" = [
+    "DOC201",  # Return not documented
+    "PLC0415", # Local import for httpx
+    "DTZ011",  # date.today() is intentional
+    "PLW2901", # Loop variable overwrite is intentional
+]
+"noxfile.py" = [
+    "D",    # No docstrings needed for automation scripts
+    "ANN",  # No type hints needed for automation scripts
+    "E501", # Long lines allowed in shell commands
+]
+
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+docstring-code-format = true
+
+[tool.ruff.lint.isort]
+force-single-line = true
+lines-after-imports = 2
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 5
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-branches = 10
+max-returns = 5
+max-statements = 25
+
+[tool.mypy]
+# The strictiest mypy config
+files = ["src"]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_subclassing_any = true
+disallow_any_generics = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+strict_concatenate = true
+
+# The forbidden "any" flags (extremely strict)
+disallow_any_unimported = true
+disallow_any_expr = true
+disallow_any_decorated = true
+disallow_any_explicit = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+asyncio_mode = "auto"
+addopts = "-ra -q --strict-markers --strict-config --cov=tmdbfusion --cov-report=term-missing --cov-fail-under=0"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+    "ignore::pytest.PytestRemovedIn9Warning",
+    "ignore::pytest.PytestDeprecationWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["tmdbfusion"]
+
+[tool.coverage.report]
+fail_under = 0
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+
+[dependency-groups]
+dev = [
+    "twine>=6.2.0",
+]

@@ -1,0 +1,233 @@
+/* 
+ * 🎬 CINEMATIC CORE - "The Director's Cut" 
+ * --------------------------------------------------------------------------
+ * Core visual language for the TMDBFusion cinematic documentation experience.
+ * Implements film grain, vignettes, studio lighting, and directed motion.
+ */
+
+:root {
+    /* --- 🎞️ FILM STOCK VARIABLES --- */
+    --cine-grain-opacity: 0.03;
+    /* Subtle organic texture */
+    --cine-grain-size: 140px;
+    /* Pattern repeat size */
+    --cine-mobile-disabled: 1;
+    /* 1 = allow effects, 0 = disable on mobile */
+
+    /* --- 💡 STUDIO LIGHTING (DEFAULT / DARK MODE) --- */
+    --cine-bg-depth: #0a0a0c;
+    /* Deep matte black, not #000 */
+    --cine-bg-surface: #131316;
+    /* Slightly lifted surface */
+    --cine-primary-glow: 247, 85, 144;
+    /* RGB for primary accent glow (TMDB Pink/Red) */
+    --cine-text-bloom: 0px 0px 12px rgba(255, 255, 255, 0.15);
+    --cine-vignette-color: rgba(0, 0, 0, 0.6);
+    --cine-vignette-reach: 85%;
+    /* How far vignette encroaches */
+
+    /* --- ⏱️ TIMING & PACING --- */
+    --cine-ease-out: cubic-bezier(0.2, 0.0, 0.0, 1.0);
+    /* "Decisive" easing */
+    --cine-ease-slow: cubic-bezier(0.4, 0.0, 0.2, 1.0);
+    /* "Dramatic" easing */
+    --cine-trans-fast: 0.3s;
+    --cine-trans-slow: 0.8s;
+    --cine-trans-epic: 1.4s;
+}
+
+/* --- ☀️ DAY MODE / STUDIO LIGHTING --- */
+@media (prefers-color-scheme: light) {
+    [data-md-color-scheme="default"] {
+        /* "High Key" lighting - Controlled, soft studio daylight */
+        --cine-grain-opacity: 0.05;
+        /* Slightly more visible in light to maintain texture */
+        --cine-bg-depth: #f4f4f7;
+        /* Cool off-white */
+        --cine-bg-surface: #ffffff;
+        --cine-text-bloom: 0px 0px 8px rgba(0, 0, 0, 0.05);
+        /* Inverted bloom (shadow/ambience) */
+        --cine-vignette-color: rgba(100, 100, 110, 0.15);
+        /* Cool grey vignette */
+        --cine-primary-glow: 64, 81, 181;
+        /* Indigo for contrast in light */
+    }
+}
+
+/* --- 🎭 SCENE SETTING (GLOBAL) --- */
+body {
+    /* Smooth out rendering */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* --- 🎞️ ARTIFACT: FILM GRAIN OVERLAY --- */
+.cine-grain-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9000;
+    opacity: var(--cine-grain-opacity);
+    /* SVG Noise */
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    background-size: var(--cine-grain-size);
+    mix-blend-mode: overlay;
+    will-change: transform;
+    /* Hint usage */
+}
+
+/* --- 🌑 ARTIFACT: ANAMORPHIC VIGNETTE --- */
+.cine-vignette-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9001;
+    /* Above grain */
+    background: radial-gradient(circle at center,
+            transparent 40%,
+            var(--cine-vignette-color) 120%);
+    mix-blend-mode: multiply;
+    opacity: 0.8;
+}
+
+/* --- 🎬 TYPOGRAPHY: TITLE CARDS --- */
+.md-typeset h1,
+.md-typeset h1.curb-h1 {
+    font-weight: 300 !important;
+    letter-spacing: -0.02em !important;
+    text-shadow: var(--cine-text-bloom);
+    transform-origin: left center;
+    /* Prepare for animation */
+    opacity: 0;
+    transform: translateY(15px);
+    animation: cine-fade-lift var(--cine-trans-slow) var(--cine-ease-out) forwards;
+    animation-delay: 0.1s;
+}
+
+.md-typeset h2 {
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    border-bottom: 0px solid transparent !important;
+    /* Remove generic rules */
+    position: relative;
+    display: inline-block;
+    margin-top: 2em !important;
+}
+
+/* Cinematic Divider/Marker on H2 */
+.md-typeset h2::after {
+    content: "";
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: rgba(var(--cine-primary-glow), 0.5);
+    box-shadow: 0 0 10px rgba(var(--cine-primary-glow), 0.4);
+    transition: width 0.6s var(--cine-ease-out);
+}
+
+.md-typeset h2:hover::after {
+    width: 100%;
+}
+
+/* --- ⏩ MOTION: SCROLL REVEAL UTILITIES --- */
+/* Elements waiting to be revealed */
+.cine-reveal-hidden {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+    transition:
+        opacity var(--cine-trans-slow) var(--cine-ease-slow),
+        transform var(--cine-trans-slow) var(--cine-ease-slow);
+    will-change: opacity, transform;
+}
+
+/* The Action */
+.cine-reveal-active {
+    opacity: 1;
+    transform: translateY(0) scale(1.0);
+}
+
+/* --- ✂️ DIVIDERS: FILM LEADER MARKS --- */
+.md-typeset hr {
+    border: 0;
+    height: 1px;
+    background: transparent;
+    margin: 4em 0;
+    position: relative;
+    overflow: visible;
+}
+
+.md-typeset hr::before {
+    content: "+  +  +  +";
+    /* Technical registration marks */
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--md-default-fg-color--light);
+    font-family: "Roboto Mono", monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1em;
+    opacity: 0.4;
+}
+
+/* --- 🔦 FOCUS PULL: LINKS & INTERACTION --- */
+.md-typeset a {
+    transition: all 0.2s ease;
+}
+
+.md-typeset a:hover {
+    text-shadow: 0 0 8px rgba(var(--cine-primary-glow), 0.4);
+}
+
+/* --- 🧱 REDUCED MOTION --- */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+    }
+}
+
+/* --- 📱 MOBILE OPTIMIZATION --- */
+@media screen and (max-width: 768px) {
+    :root {
+        --cine-grain-size: 80px;
+    }
+
+    .cine-vignette-overlay {
+        opacity: 0.4;
+        /* Reduce intensity on small screens */
+    }
+}
+
+/* --- 🎞️ KEYFRAMES --- */
+@keyframes cine-fade-lift {
+    0% {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes cine-scanline {
+    0% {
+        transform: translateY(-100%);
+    }
+
+    100% {
+        transform: translateY(100%);
+    }
+}

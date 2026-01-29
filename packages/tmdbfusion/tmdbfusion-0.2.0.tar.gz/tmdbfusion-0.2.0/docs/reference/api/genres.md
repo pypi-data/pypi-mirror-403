@@ -1,0 +1,3 @@
+# genres
+
+::: tmdbfusion.api.genres

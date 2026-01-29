@@ -1,0 +1,3 @@
+# configuration
+
+::: tmdbfusion.api.configuration

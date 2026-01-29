@@ -1,0 +1,3 @@
+# trending
+
+::: tmdbfusion.api.trending

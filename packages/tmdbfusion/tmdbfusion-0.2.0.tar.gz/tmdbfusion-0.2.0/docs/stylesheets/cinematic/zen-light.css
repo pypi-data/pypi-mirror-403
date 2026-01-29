@@ -1,0 +1,140 @@
+/* Cinematic Zen Light */
+
+:root {
+    --zen-x: 50%;
+    --zen-y: 50%;
+    --zen-orb-size: 60px;
+}
+
+#zen-container {
+    position: fixed;
+    top: var(--md-header-height, 48px);
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - var(--md-header-height, 48px));
+    z-index: 400;
+    /* Lower than Header (which we'll force to 500) */
+    pointer-events: none;
+    /* Let clicks pass through by default */
+    overflow: hidden;
+    /* Clip the glow/blur so it doesn't bleed up */
+}
+
+/* Force Header above the Zen Light */
+.md-header {
+    z-index: 500 !important;
+    position: relative;
+    /* Ensure z-index applies */
+}
+
+/* 1. THE DARKNESS OVERLAY */
+#zen-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+
+    /* The Spotlight Effect */
+    background: radial-gradient(circle at var(--zen-x) var(--zen-y),
+            transparent 130px,
+            rgba(5, 5, 5, 0.3) 220px,
+            rgba(0, 0, 0, 0.95) 500px);
+
+    opacity: 0;
+    transition: opacity 0.8s ease-in-out;
+    pointer-events: none;
+    /* Always pass through */
+}
+
+/* Active State: Darkness Falls */
+#zen-container.zen-active #zen-overlay {
+    opacity: 1;
+}
+
+
+/* 2. THE DRAGGABLE ORB */
+#zen-orb {
+    position: absolute;
+    top: var(--zen-y);
+    left: var(--zen-x);
+    width: var(--zen-orb-size);
+    height: var(--zen-orb-size);
+    transform: translate(-50%, -50%);
+
+    border-radius: 50%;
+    cursor: grab;
+    pointer-events: auto;
+    /* Catch clicks/drags */
+    z-index: 2;
+
+    /* Beautiful Glassy/Ethereal Look */
+    background: radial-gradient(circle at 30% 30%,
+            rgba(255, 255, 255, 0.9) 0%,
+            rgba(200, 230, 255, 0.6) 30%,
+            rgba(100, 180, 255, 0.3) 60%,
+            rgba(50, 100, 255, 0.1) 100%);
+    box-shadow:
+        0 0 10px rgba(50, 150, 255, 0.5),
+        inset 0 0 15px rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(5px);
+
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#zen-orb:active {
+    cursor: grabbing;
+    transform: translate(-50%, -50%) scale(0.9);
+}
+
+/* Orb Pulse Animation (Idle) */
+@keyframes zen-pulse {
+    0% {
+        box-shadow: 0 0 15px rgba(50, 150, 255, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 35px rgba(50, 150, 255, 0.7), inset 0 0 20px rgba(255, 255, 255, 0.7);
+    }
+
+    100% {
+        box-shadow: 0 0 15px rgba(50, 150, 255, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.4);
+    }
+}
+
+#zen-container:not(.zen-active) #zen-orb {
+    animation: zen-pulse 4s infinite ease-in-out;
+    opacity: 0.6;
+    /* Dim when inactive */
+}
+
+/* Active Orb: Brighter, Steady */
+#zen-container.zen-active #zen-orb {
+    background: radial-gradient(circle at 30% 30%,
+            rgba(255, 255, 255, 1) 0%,
+            rgba(220, 240, 255, 0.8) 40%,
+            rgba(140, 200, 255, 0.4) 100%);
+    box-shadow: 0 0 50px rgba(100, 200, 255, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.8);
+    opacity: 1;
+}
+
+/* Tooltip Hint */
+#zen-orb::after {
+    content: "ZEN";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.7);
+    pointer-events: none;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+#zen-orb:hover::after {
+    opacity: 1;
+}

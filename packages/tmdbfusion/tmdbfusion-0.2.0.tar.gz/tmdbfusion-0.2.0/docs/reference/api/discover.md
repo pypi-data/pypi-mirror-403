@@ -1,0 +1,3 @@
+# discover
+
+::: tmdbfusion.api.discover

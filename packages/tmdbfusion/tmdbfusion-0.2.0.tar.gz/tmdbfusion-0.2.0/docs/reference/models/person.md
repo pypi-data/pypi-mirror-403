@@ -1,0 +1,3 @@
+# person
+
+::: tmdbfusion.models.person

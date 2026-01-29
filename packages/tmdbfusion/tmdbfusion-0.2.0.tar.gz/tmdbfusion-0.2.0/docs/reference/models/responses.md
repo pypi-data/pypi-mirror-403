@@ -1,0 +1,3 @@
+# responses
+
+::: tmdbfusion.models.responses

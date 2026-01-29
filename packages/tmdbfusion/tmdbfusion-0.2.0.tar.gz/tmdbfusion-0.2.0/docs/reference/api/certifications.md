@@ -1,0 +1,3 @@
+# certifications
+
+::: tmdbfusion.api.certifications

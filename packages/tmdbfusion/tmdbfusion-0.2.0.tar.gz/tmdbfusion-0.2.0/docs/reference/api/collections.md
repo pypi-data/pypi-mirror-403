@@ -1,0 +1,3 @@
+# collections
+
+::: tmdbfusion.api.collections

@@ -1,0 +1,3 @@
+# people
+
+::: tmdbfusion.api.people

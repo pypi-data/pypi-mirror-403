@@ -1,0 +1,3 @@
+# movie
+
+::: tmdbfusion.models.movie

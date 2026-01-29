@@ -1,0 +1,3 @@
+# credits
+
+::: tmdbfusion.api.credits
