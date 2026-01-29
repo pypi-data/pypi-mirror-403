@@ -1,0 +1,186 @@
+# ADO CLI
+
+A GitHub CLI (gh) style interface for Azure DevOps Server (ADO). This tool provides a command-line interface to interact with Azure DevOps Server repositories, pull requests, work items, and pipelines.
+
+## Features
+
+- **Authentication**: Secure login/logout with Personal Access Tokens
+- **Repository Management**: List and view repository information
+- **Pull Request Operations**: Create, view, list, checkout, diff, and close pull requests
+- **Work Item Management**: Create, view, and list work items (bugs, tasks, user stories)
+- **Pipeline Management**: View pipeline runs and build status
+- **Git Integration**: Automatically detects current repository from git config
+- **Rich Output**: Beautiful tables and formatted output using Rich library
+
+## Installation
+
+```bash
+uv tool install ado-cli
+```
+
+## Quick Start
+
+1. **Login to Azure DevOps Server**:
+
+   ```bash
+   ado auth login
+   ```
+
+2. **List pull requests**:
+
+   ```bash
+   ado pr list
+   ```
+
+3. **View pull request details**:
+
+   ```bash
+   ado pr view 123
+   ```
+
+## Commands
+
+### Authentication
+
+```bash
+# Login to Azure DevOps Server
+ado auth login
+
+# Check authentication status
+ado auth status
+
+# Logout
+ado auth logout
+```
+
+### Repositories
+
+```bash
+# List repositories in a project
+ado repo list --project MyProject
+
+# View repository details (auto-detects current repo)
+ado repo view
+
+# View specific repository
+ado repo view MyRepo --project MyProject
+
+# Open repository in web browser
+ado repo view --web
+```
+
+### Pull Requests
+
+```bash
+# List active pull requests
+ado pr list
+
+# List all pull requests including completed
+ado pr list --state all
+
+# Limit number of results
+ado pr list -L 10
+
+# View pull request details
+ado pr view 123
+
+# Open pull request in web browser
+ado pr view 123 --web
+
+# Create a pull request
+ado pr create
+
+# Create with options
+ado pr create --title "Fix bug" --base main --head feature-branch
+
+# Checkout pull request branch
+ado pr checkout 123
+
+# Show pull request diff
+ado pr diff 123
+
+# Close pull request
+ado pr close 123
+
+# Show build checks for pull request
+ado pr checks 123
+
+# Add comment to pull request
+ado pr comment 123
+
+# Add comment with inline message
+ado pr comment 123 -m "LGTM! Ready to merge"
+
+# Add comment to PR in specific project/repo
+ado pr comment 123 -m "Please fix the typo" --project MyProject --repo MyRepo
+```
+
+### Work Items
+
+```bash
+# List active work items
+ado issue list
+
+# List all work items
+ado issue list --state all
+
+# Filter by assignee
+ado issue list --assignee "John Doe"
+
+# View work item details
+ado issue view 456
+
+# Open work item in web browser
+ado issue view 456 --web
+
+# Create a work item
+ado issue create
+
+# Create with specific type
+ado issue create --type "User Story" --title "New feature"
+```
+
+### Pipeline Runs
+
+```bash
+# List recent pipeline runs
+ado run list
+
+# Limit number of results
+ado run list -L 20
+
+# View pipeline run details
+ado run view 789
+
+# Open pipeline run in web browser
+ado run view 789 --web
+```
+
+### Configuration
+
+```bash
+# Set default project
+ado config set default_project MyProject
+
+# Get configuration value
+ado config get default_project
+```
+
+## Configuration
+
+The tool stores configuration in `~/.ado/config.json`. Key settings include:
+
+- `server_url`: Azure DevOps Server URL
+- `pat`: Personal Access Token
+- `collection`: Collection name (default: DefaultCollection)
+- `default_project`: Default project for commands
+
+## Git Integration
+
+ADO CLI automatically detects the current repository and project from your git configuration. This means you can run most commands from within a git repository without specifying `--project` and `--repo` options.
+
+The tool parses Azure DevOps remote URLs in the format:
+
+```
+https://server/collection/project/_git/repo
+```
