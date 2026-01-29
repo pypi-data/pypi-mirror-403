@@ -1,0 +1,189 @@
+stages:
+  - test
+  - deploy
+  - publish
+  - cleanup
+
+variables:
+  GIT_STRATEGY: none # we manually handle the source repo in a persistent location
+  GIT_DEPTH: "0"
+  CI_WRK_DIR: "/home/scrd105/s5-runpath/imsi-ci/${CI_PIPELINE_ID}/"
+  CI_JOB_RUN_DIR: "${CI_WRK_DIR}/${CI_JOB_ID}"
+  UV_LINK_MODE: copy
+  UV_PUBLISH_TOKEN: $UV_PUBLISH_TOKEN
+  IMSI_DEPLOYED_PYTHON_VER: "3.12"
+  IMSI_DEPLOY_PATH: "/home/scrd105/canesm_libs/imsi/"
+  UV_BINARY: "/home/scrd102/.local/bin/uv"
+  CANESM_REF_REPO: "/home/scrd102/cccma_libs/canesm/"  # change once we have CD for CanE
+
+
+before_script:
+  - mkdir -p "$CI_JOB_RUN_DIR"
+  - |
+    if [[ -n "$CI_MERGE_REQUEST_SOURCE_PROJECT_URL" ]]; then
+      echo "Cloning fork with CI job token"
+      AUTH_URL=$(echo "$CI_MERGE_REQUEST_SOURCE_PROJECT_URL" \
+        | sed "s#https://#https://gitlab-ci-token:${CI_JOB_TOKEN}@#")
+      git clone "$AUTH_URL" "$CI_JOB_RUN_DIR"
+    else
+      git clone "$CI_REPOSITORY_URL" "$CI_JOB_RUN_DIR"
+    fi
+
+  - cd "$CI_JOB_RUN_DIR"
+  - git fetch --tags origin
+  - git fetch origin "$CI_COMMIT_REF_NAME"
+  - git checkout "${CI_COMMIT_TAG:-$CI_COMMIT_SHA}"
+
+
+after_script:
+  # this only cleans up the single job
+  # leaving behind and empty dir
+  - echo "Cleaning up ${CI_JOB_RUN_DIR}"
+  - rm -rf "${CI_JOB_RUN_DIR}"
+
+  
+.test_job_template: &test_job_template
+  # note that tests will run on the defined branch, repo, model and experiment
+  # in the .env.test file
+  script: |
+    echo "Running the imsi tests..."
+    # setup environment
+    ${UV_BINARY} venv --python=${PYTHON_VERSION}
+    source .venv/bin/activate && ${UV_BINARY} pip install pip
+    pip install --upgrade setuptools
+    pip install $CI_JOB_RUN_DIR[tests]
+
+    # Run tests
+    coverage run -m pytest -x ${CI_JOB_RUN_DIR}/tests/
+    coverage report -m
+    coverage xml -o coverage.xml
+  coverage: '/TOTAL\s+[0-9]+\s+[0-9]+\s+([0-9]+)%/'
+
+.test_trigger_rules: &test_trigger_rules
+  # Only run these rules on gitlab.science.gc.ca
+  - if: '$CI_SERVER_HOST != "gitlab.science.gc.ca"'
+    when: never
+
+  # 1. Skip if MR title starts with "Draft:"
+  - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TITLE =~ /^Draft:/'
+    when: never
+
+  # 2. Run tests for real (non-draft) merge requests
+  - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    when: on_success
+
+  # 3. Run tests only on main branch pushes (but only if no MR)
+  - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+    when: on_success
+
+  # Default
+  - when: never
+
+
+.matrix_job_template: &matrix_job_template
+  <<: *test_job_template
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ['3.12', '3.13']
+
+test:
+  stage: test
+  <<: *matrix_job_template
+  rules: *test_trigger_rules
+
+
+test-cp4c:
+  before_script: [] # override global before before_script
+  after_script: [] # override global after_script
+  stage: test
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ['3.12', '3.13']
+
+  image: ghcr.io/astral-sh/uv:python$PYTHON_VERSION-alpine
+  variables:
+    # IMSI test vars
+    TEST_USER: 'test_user'
+    TEST_EXP: 'cmip6-piControl'
+    TEST_VERSION: 'v5.1_cp4c'
+    TEST_MODEL: 'canesm51_p1'
+    TEST_EXT_REPO: 'https://gitlab.com/cccma/canesm.git'
+    TEST_MACHINE: 'trillium'
+    TEST_SEQ: 'iss'
+    # Vars used in CI/CD
+    BASE_LAYER: alpine
+    UV_LINK_MODE: copy
+  script: 
+    - apk update && apk add git
+    - uv venv
+    - source .venv/bin/activate
+    - pip install --upgrade setuptools
+    - pip install .[tests]
+    - coverage run -m pytest tests/
+  rules:
+    # Only run this job on the EXTERNAL mirror
+    - if: '$CI_SERVER_HOST == "gitlab.com"'
+      when: on_success
+
+    # Fallback: never run internally
+    - when: never
+
+
+deploy:
+  stage: deploy
+  script: |
+    # make the deploy location
+    mkdir -p ${IMSI_DEPLOY_PATH}/latest
+
+    # pass Python version, tag, and deploy path as arguments
+    source tests/deploy_imsi_env.sh "${IMSI_DEPLOYED_PYTHON_VER}" "${CI_COMMIT_TAG}" "${IMSI_DEPLOY_PATH}" "${CANESM_REF_REPO}"
+  rules:
+    # Only run these rules on gitlab.science.gc.ca
+    - if: '$CI_SERVER_HOST != "gitlab.science.gc.ca"'
+      when: never
+
+    - if: $CI_COMMIT_TAG
+
+publish:
+  stage: publish
+  script:
+    - ${UV_BINARY} build
+    - ${UV_BINARY} publish
+  rules:
+    # Only run these rules on gitlab.science.gc.ca
+    - if: '$CI_SERVER_HOST != "gitlab.science.gc.ca"'
+      when: never
+
+    - if: $CI_COMMIT_TAG
+  allow_failure: true
+
+
+cleanup:
+  stage: cleanup
+  script:
+    - echo "Global cleanup for this pipeline workspace only"
+    - rm -rf "${CI_WRK_DIR}"
+  when: always
+  allow_failure: true
+  interruptible: false    # ensure cleanup runs even if pipeline is canceled
+  rules:
+    # Only run these rules on gitlab.science.gc.ca
+    - if: '$CI_SERVER_HOST != "gitlab.science.gc.ca"'
+      when: never
+
+    # Run cleanup for ALL cases where pipeline actually runs useful jobs
+    # 1. Merge requests (draft or not, success or fail)
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: always
+
+    # 2. Main branch push (test rules)
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+      when: always
+
+    # 3. Tag pipelines (deploy + publish paths)
+    - if: '$CI_COMMIT_TAG'
+      when: always
+
+    # 4. Fallback: never
+    - when: never
+
