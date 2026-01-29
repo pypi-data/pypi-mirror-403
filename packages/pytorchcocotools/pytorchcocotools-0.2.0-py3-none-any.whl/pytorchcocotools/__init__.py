@@ -1,0 +1,1 @@
+from pytorchcocotools.__about__ import __version__
