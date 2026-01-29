@@ -1,0 +1,91 @@
+{% set await_ = "await " if is_async and not is_paginated else "" %}
+{% set docstring_prefix = 'r"""' if use_raw_docstring else '"""' %}
+    {{ "async " if is_async and not is_paginated else "" }}def {{ function_name }}(self{% if function_definition|length > 0 %}{{ function_definition }}{% endif %}) -> {{ return_type }}:
+        {{ docstring_prefix }}{{ description }}
+
+        [API documentation: {{ operation_id }}]({{ doc_url }})
+        {% if descriptions|length > 0 %}
+
+        Args:
+        {% for d in descriptions %}
+            {{ d }}
+        {% endfor %}
+        {% endif %}
+
+        {% if return_description %}
+        Returns:
+            {{ return_description }}
+
+        {% endif %}
+        {% if response_example %}
+        Example API response:
+            ```json
+{{ response_example | indent(12, first=True) }}
+            ```
+
+        {% endif %}
+        """
+        {% if assert_blocks|length > 0 %}
+        {% for param, values in assert_blocks %}
+        if {{ param }} is not None:
+            options = {{ values }}
+            assert {{ param }} in options, f'"{{ param }}" cannot be "{{ '{' + param + '}' }}", & must be set to one of: {options}'
+        {% endfor %}
+
+        {% endif %}
+        {% for param in path_params %}
+        {{ param }} = urllib.parse.quote(str({{ param }}), safe='')
+        {% endfor %}
+        path = f'{{ resource }}'
+
+        {% if query_params|length > 0 or has_pagination_params %}
+        params = {}
+        {% for snake, orig in query_params %}
+        if {{ snake }} is not None:
+            params['{{ orig }}'] = {{ snake }}
+        {% endfor %}
+
+        {% endif %}
+        {% if body_params|length > 0 %}
+        payload = {}
+        {% for snake, orig, is_schema, is_list, is_dict in body_params %}
+        if {{ snake }} is not None:
+            {% if is_schema and is_list %}
+            payload['{{ orig }}'] = [item.model_dump(by_alias=True, exclude_none=True) for item in {{ snake }}]
+            {% elif is_schema and is_dict %}
+            payload['{{ orig }}'] = {k: v.model_dump(by_alias=True, exclude_none=True) for k, v in {{ snake }}.items()}
+            {% elif is_schema %}
+            payload['{{ orig }}'] = {{ snake }}.model_dump(by_alias=True, exclude_none=True)
+            {% else %}
+            payload['{{ orig }}'] = {{ snake }}
+            {% endif %}
+        {% endfor %}
+
+        {% endif %}
+        {% if method == "get" %}
+            {% if is_paginated %}
+                {% if has_pagination_params %}
+        return self._session.get_pages(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path, params=params, total_pages=total_pages, direction=direction{% if operation_id == "getNetworkEvents" %}, event_log_end_time=event_log_end_time{% endif %}, item_schema={{ item_schema_name }})
+                {% else %}
+        return self._session.get_pages(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path{% if query_params|length > 0 %}, params=params{% endif %}, item_schema={{ item_schema_name }})
+                {% endif %}
+            {% elif query_params|length > 0 %}
+        return {{ await_ }}self._session.get(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path, params=params{% if response_schema_name %}, response_schema={{ response_schema_name }}{% endif %})
+            {% else %}
+        return {{ await_ }}self._session.get(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path{% if response_schema_name %}, response_schema={{ response_schema_name }}{% endif %})
+            {% endif %}
+        {% elif method == "post" %}
+            {% if body_params|length > 0 %}
+        return {{ await_ }}self._session.post(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path, json=payload{% if response_schema_name %}, response_schema={{ response_schema_name }}{% endif %})
+            {% else %}
+        return {{ await_ }}self._session.post(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path{% if response_schema_name %}, response_schema={{ response_schema_name }}{% endif %})
+            {% endif %}
+        {% elif method == "put" %}
+            {% if body_params|length > 0 %}
+        return {{ await_ }}self._session.put(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path, json=payload{% if response_schema_name %}, response_schema={{ response_schema_name }}{% endif %})
+            {% else %}
+        return {{ await_ }}self._session.put(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path{% if response_schema_name %}, response_schema={{ response_schema_name }}{% endif %})
+            {% endif %}
+        {% elif method == "delete" %}
+        return {{ await_ }}self._session.delete(scope="{{ scope }}", operation_id="{{ operation_id }}", path=path)
+        {% endif %}

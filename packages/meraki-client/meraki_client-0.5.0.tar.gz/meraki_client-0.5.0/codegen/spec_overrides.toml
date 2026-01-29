@@ -1,0 +1,87 @@
+# Override OpenAPI spec issues that need to be reported to Meraki.
+# Codegen logs warnings if these appear fixed in the spec.
+#
+# Available overrides:
+# - force_array_response: Endpoints where spec says object but API returns array
+# - force_paginated: Endpoints missing pagination params but return paginated responses
+# - skip_tests: Endpoints to skip in test generation
+# - [operationId.response]: Field type overrides for response schemas
+# - [operationId.required]: Fields to mark as required (list of field paths)
+
+# Endpoints where spec says object but API returns array
+force_array_response = ["getAdministeredLicensingSubscriptionEntitlements"]
+
+# Endpoints missing pagination params but return paginated responses
+force_paginated = [
+    "getOrganizationApplianceDnsLocalProfiles",
+    "getOrganizationApplianceDnsLocalRecords",
+    "getOrganizationApplianceDnsSplitProfiles",
+    "getOrganizationEarlyAccessFeaturesOptIns",
+    "getOrganizationWebhooksAlertTypes",
+    "getNetworkWirelessRfProfiles",
+    "getOrganizationCellularGatewayEsimsServiceProvidersAccounts",
+]
+
+# Endpoints to skip in test generation
+skip_tests = [
+    # Test data difficult to provide
+    # Requires one of: username, email, mac...
+    "getNetworkPiiPiiKeys",
+    "getNetworkPiiRequests",
+    "getNetworkPiiSmDevicesForKey",
+    "getNetworkPiiSmOwnersForKey",
+    # Please specify either timespan or t0
+    "getNetworkTraffic",
+    "getDeviceWirelessConnectionStats",
+    "getDeviceWirelessLatencyStats",
+    "getNetworkWirelessClientsConnectionStats",
+    "getNetworkWirelessClientsLatencyStats",
+    "getNetworkWirelessConnectionStats",
+    "getNetworkWirelessDevicesConnectionStats",
+    "getNetworkWirelessDevicesLatencyStats",
+    "getNetworkWirelessFailedConnections",
+    "getNetworkWirelessLatencyStats",
+    # Must specify a device or network client
+    "getNetworkWirelessChannelUtilizationHistory",
+    "getNetworkWirelessSignalQualityHistory",
+    "getNetworkWirelessUsageHistory",
+    # productType is required
+    "getNetworkEvents",
+    # Event not found or network not authorized
+    "getNetworkFirmwareUpgradesStagedEvents",
+]
+
+# Field type overrides: [operationId.response] with "field.path" = "python_type"
+[getNetworkClients.response]
+firstSeen = "datetime"
+lastSeen = "datetime"
+
+[getOrganizationClientsBandwidthUsageHistory.response]
+upstream = "float"
+downstream = "float"
+total = "float"
+
+[getNetworkApplianceVlans.response]
+id = "int"
+
+[getNetworkWirelessMeshStatuses.response]
+"latestMeshPerformance.mbps" = "float"
+
+[getNetworkFirmwareUpgrades.response]
+# The field is either a datetime or empty string
+"products.wireless.nextUpgrade.time" = "str"
+
+[getOrganization]
+required = ["id"]
+
+[getOrganizations]
+required = ["id"]
+
+[getNetwork]
+required = ["id", "organizationId"]
+
+[getOrganizationNetworks]
+required = ["id", "organizationId"]
+
+[getOrganizationDevices]
+required = ["serial"]
