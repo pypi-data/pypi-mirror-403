@@ -1,0 +1,164 @@
+import copy
+
+import taichi as ti
+import taichi.math as tm
+import numpy as np
+from numpy.typing import NDArray
+
+from .constants import *
+
+
+ti_complex = ti.types.vector(2, float)
+
+
+def sub_struct_from(parent):
+    """
+    Since inheritance is not supported in ti.dataclass currently, we use this func as
+    a decorator to copy members and bind methods of existing dataclass to current dataclass.
+    Only supporting inheritance of just one generation.
+    TODO:
+    - a usage example
+    - staticmethod
+    """
+    # parent_members = copy.deepcopy(parent.members)
+    # parent_methods = copy.deepcopy(parent.methods)
+    # values of the dict point to address of taichi type object or func, using shallow copy is fine
+    parent_members = copy.copy(parent.members)
+    parent_methods = copy.copy(parent.methods)
+
+    def sub_struct(cls):
+        [parent_members.pop(key) for key in getattr(cls, "removed_members", [])]
+        fields = parent_members
+        fields.update(getattr(cls, "__annotations__", {}))
+
+        substruct_methods = {
+            attr: getattr(cls, attr)
+            for attr in dir(cls)
+            if callable(getattr(cls, attr)) and not attr.startswith("__")
+        }
+        conflict_methods = [k for k in substruct_methods if k in parent_methods]
+        # TODO: can have problem if the parent of parent has already had the method with same name
+        for k in conflict_methods:
+            parent_methods[f"_parent_{k}"] = parent_methods[k]
+        parent_methods.update(substruct_methods)
+        fields["__struct_methods"] = parent_methods
+
+        return ti.types.struct(**fields)
+
+    return sub_struct
+
+
+# def complex_ti_field_to_np_array(
+#     input_field: ti.MatrixField,
+# ) -> NDArray:
+#     np_array = input_field.to_numpy()
+#     return np_array[:, 0] + 1j * np_array[:, 1]
+
+
+# def complex_np_array_to_ti_field(
+#     input_array: NDArray, field_container: ti.MatrixField
+# ) -> None:
+#     field_container.from_numpy(np.vstack([input_array.real, input_array.imag]).T)
+#     return None
+
+
+@ti.dataclass
+class UsefulPowers:
+    third: float
+    two_thirds: float
+    one: float
+    four_thirds: float
+    five_thirds: float
+    two: float
+    seven_thirds: float
+    eight_thirds: float
+    three: float
+    four: float
+    fourth: float
+    three_fourths: float
+    seven_sixths: float
+    log: float
+
+    @ti.pyfunc
+    def update(self, number: float):
+        self.third = number ** (1 / 3)
+        self.two_thirds = self.third * self.third
+        self.one = number
+        self.four_thirds = number * self.third
+        self.five_thirds = number * self.two_thirds
+        self.two = number * number
+        self.seven_thirds = self.two * self.third
+        self.eight_thirds = self.two * self.two_thirds
+        self.three = self.two * number
+        self.four = self.three * number
+        self.fourth = number ** (1 / 4)
+        self.three_fourths = self.fourth**3
+        self.seven_sixths = ti.sqrt(self.seven_thirds)
+        self.log = ti.log(number)
+
+
+@ti.func
+def gauss_elimination(Ab: ti.template()) -> ti.template():
+    """
+    Solving a system of linear equations Ax=b using Gauss elimination. Note the loop
+    unrolling is used here, do not use this function to solve systems with large dimension.
+
+    Parameters
+    ==========
+    Ab:
+        The matrix containing the coefficinet matrix and numbers for the right hand side,
+        having the dimension of (n, n+1).
+
+    Returns
+    =======
+    x:
+        The solution of the system.
+    """
+    for i in ti.static(range(Ab.n)):
+        for j in ti.static(range(i + 1, Ab.n)):
+            scale = Ab[j, i] / Ab[i, i]
+            Ab[j, i] = 0.0
+            for k in ti.static(range(i + 1, Ab.m)):
+                Ab[j, k] -= Ab[i, k] * scale
+    # Back substitution
+    x = ti.Vector.zero(float, Ab.n)
+    for i in ti.static(range(Ab.n - 1, -1, -1)):
+        x[i] = Ab[i, Ab.m - 1]
+        for k in ti.static(range(i + 1, Ab.n)):
+            x[i] -= Ab[i, k] * x[k]
+        x[i] = x[i] / Ab[i, i]
+    return x
+
+
+# def initialize_waveform_container_from_frequencies_array(
+#     frequencies, return_form="polarization", include_tf=True
+# ):
+#     """
+#     Parparing waveform_container of ti.field from frequencies of np.array
+
+#     Parameters:
+#     ===========
+#         frequencies: np.array
+
+#     Returns:
+#     ========
+#         frequency_field: ti.field
+#         waveform_container: ti.Struct.field({'plus': ti_complex, 'cross': ti_complex, 'tf': float})
+#     """
+#     ret_content = {}
+#     if return_form == "polarizations":
+#         ret_content.update({"plus": ti_complex, "cross": ti_complex})
+#     elif return_form == "amplitude_phase":
+#         ret_content.update({"amplitude": float, "phase": float})
+#     if include_tf:
+#         ret_content.update({"tf": float})
+#     waveform_field = ti.Struct.field(ret_content)
+
+#     data_length = len(frequencies)
+#     ti.root.dense(ti.i, data_length).place(waveform_field)
+#     waveform_container = waveform_field
+
+#     frequency_field = ti.field(dtype=float, shape=(data_length,))
+#     frequency_field.from_numpy(frequencies)
+
+#     return frequency_field, waveform_container
