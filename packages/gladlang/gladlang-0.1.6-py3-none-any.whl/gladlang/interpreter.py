@@ -1,0 +1,1217 @@
+import sys
+from .runtime import RTResult, Context, SymbolTable
+from .values import Number, String, Function, Class, List, Dict
+from .nodes import *
+from .errors import RTError
+from .constants import *
+
+
+class Interpreter:
+    def __init__(self):
+        self.dispatch_cache = {}
+
+    def visit(self, node, context):
+        node_type = type(node)
+
+        method = self.dispatch_cache.get(node_type)
+
+        if method is None:
+            method_name = f"visit_{node_type.__name__}"
+            method = getattr(self, method_name, self.no_visit_method)
+            self.dispatch_cache[node_type] = method
+
+        try:
+            result = method(node, context)
+        except RecursionError:
+            return RTResult().failure(
+                RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    "Runtime Error: Expression too complex (maximum recursion depth exceeded)",
+                    context,
+                )
+            )
+
+        if isinstance(result, RTResult) and (
+            result.should_return
+            or result.should_break
+            or result.should_continue
+            or result.error
+        ):
+            return result
+
+        return result
+
+    def no_visit_method(self, node, context):
+        raise Exception(f"No visit_{type(node).__name__} method defined")
+
+    def visit_StatementListNode(self, node, context):
+        res = RTResult()
+        last_value = Number.null
+
+        for statement_node in node.statement_nodes:
+            last_value = res.register(self.visit(statement_node, context))
+
+            if (
+                res.error
+                or res.should_return
+                or res.should_break
+                or res.should_continue
+            ):
+                return res
+
+        return res.success(last_value)
+
+    def visit_NumberNode(self, node, context):
+        return RTResult().success(
+            Number(node.tok.value)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_StringNode(self, node, context):
+        return RTResult().success(
+            String(node.tok.value)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_ListNode(self, node, context):
+        res = RTResult()
+        elements = []
+
+        for element_node in node.element_nodes:
+            elements.append(res.register(self.visit(element_node, context)))
+            if res.error:
+                return res
+
+        return res.success(
+            List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_DictNode(self, node, context):
+        res = RTResult()
+        elements = {}
+
+        for key_node, value_node in node.key_value_pairs:
+            key = res.register(self.visit(key_node, context))
+            if res.error:
+                return res
+
+            value = res.register(self.visit(value_node, context))
+            if res.error:
+                return res
+
+            if isinstance(key, (Number, String)):
+                elements[key.value] = value
+            else:
+                return res.failure(
+                    RTError(
+                        key_node.pos_start,
+                        key_node.pos_end,
+                        "Dictionary key must be a Number or String",
+                        context,
+                    )
+                )
+
+        return res.success(
+            Dict(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_MultiVarAssignNode(self, node, context):
+        res = RTResult()
+
+        list_val = res.register(self.visit(node.value_node, context))
+        if res.error:
+            return res
+
+        if not isinstance(list_val, List):
+            return res.failure(
+                RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Cannot unpack type '{type(list_val).__name__}' (expected List)",
+                    context,
+                )
+            )
+
+        if len(node.var_name_toks) != len(list_val.elements):
+            return res.failure(
+                RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"ValueError: too many/not enough values to unpack (expected {len(node.var_name_toks)}, got {len(list_val.elements)})",
+                    context,
+                )
+            )
+
+        for i, var_name_tok in enumerate(node.var_name_toks):
+            var_name = var_name_tok.value
+
+            if var_name in context.symbol_table.finals:
+                return res.failure(
+                    RTError(
+                        var_name_tok.pos_start,
+                        var_name_tok.pos_end,
+                        f"Cannot reassign constant '{var_name}'",
+                        context,
+                    )
+                )
+
+            val = list_val.elements[i]
+            context.symbol_table.set(var_name, val)
+
+        return res.success(list_val)
+
+    def visit_ListCompNode(self, node, context):
+        res = RTResult()
+        output_list = []
+
+        if node.var_name_tok.value in context.symbol_table.finals:
+            return res.failure(
+                RTError(
+                    node.var_name_tok.pos_start,
+                    node.var_name_tok.pos_end,
+                    f"Cannot use constant '{node.var_name_tok.value}' as comprehension variable",
+                    context,
+                )
+            )
+
+        iterable_val = res.register(self.visit(node.iterable_node, context))
+        if res.error:
+            return res
+
+        if not isinstance(iterable_val, List):
+            return res.failure(
+                RTError(
+                    node.iterable_node.pos_start,
+                    node.iterable_node.pos_end,
+                    "Expected a list",
+                    context,
+                )
+            )
+
+        comp_context = Context("COMPREHENSION", context, node.pos_start)
+        comp_context.symbol_table = SymbolTable(context.symbol_table)
+
+        for element in iterable_val.elements:
+            comp_context.symbol_table.set(node.var_name_tok.value, element)
+
+            value = res.register(self.visit(node.output_expr_node, comp_context))
+            if res.error:
+                return res
+
+            output_list.append(value)
+
+        return res.success(
+            List(output_list).set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_SliceAccessNode(self, node, context):
+        res = RTResult()
+
+        obj = res.register(self.visit(node.node_to_slice, context))
+        if res.error:
+            return res
+
+        start_val = res.register(self.visit(node.start_node, context))
+        if res.error:
+            return res
+
+        end_val = None
+        if node.end_node:
+            end_val = res.register(self.visit(node.end_node, context))
+            if res.error:
+                return res
+
+        if isinstance(obj, (List, String)):
+            if not isinstance(start_val, Number):
+                return res.failure(
+                    RTError(
+                        node.start_node.pos_start,
+                        node.start_node.pos_end,
+                        "Start index must be a number",
+                        context,
+                    )
+                )
+
+            start_idx = int(start_val.value)
+            end_idx = None
+
+            if end_val:
+                if not isinstance(end_val, Number):
+                    return res.failure(
+                        RTError(
+                            node.end_node.pos_start,
+                            node.end_node.pos_end,
+                            "End index must be a number",
+                            context,
+                        )
+                    )
+                end_idx = int(end_val.value)
+
+            if isinstance(obj, List):
+                new_elements = obj.elements[start_idx:end_idx]
+                return res.success(
+                    List(new_elements)
+                    .set_context(context)
+                    .set_pos(node.pos_start, node.pos_end)
+                )
+
+            elif isinstance(obj, String):
+                new_str = obj.value[start_idx:end_idx]
+                return res.success(
+                    String(new_str)
+                    .set_context(context)
+                    .set_pos(node.pos_start, node.pos_end)
+                )
+
+        return res.failure(
+            RTError(
+                node.pos_start,
+                node.pos_end,
+                f"Type {type(obj).__name__} is not sliceable",
+                context,
+            )
+        )
+
+    def visit_VarAccessNode(self, node, context):
+        res = RTResult()
+        var_name = node.var_name_tok.value
+        value = context.symbol_table.get(var_name)
+
+        if not value:
+            return res.failure(
+                RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'{var_name}' is not defined",
+                    context,
+                )
+            )
+
+        value = value.set_pos(node.pos_start, node.pos_end)
+
+        return res.success(value)
+
+    def visit_VarAssignNode(self, node, context):
+        res = RTResult()
+        var_name = node.var_name_tok.value
+        value = res.register(self.visit(node.value_node, context))
+        if res.error:
+            return res
+
+        visibility = getattr(node, "target_visibility", "PUBLIC")
+
+        if node.is_declaration:
+            if var_name in context.symbol_table.finals:
+                return res.failure(
+                    RTError(
+                        node.var_name_tok.pos_start,
+                        node.var_name_tok.pos_end,
+                        f"Cannot reassign constant '{var_name}'",
+                        context,
+                    )
+                )
+            context.symbol_table.set(var_name, value, visibility=visibility)
+        else:
+            err = context.symbol_table.update(var_name, value)
+            if err:
+                return res.failure(RTError(node.pos_start, node.pos_end, err, context))
+
+        return res.success(value)
+
+    def visit_PrintNode(self, node, context):
+        res = RTResult()
+        value = res.register(self.visit(node.node_to_print, context))
+        if res.error:
+            return res
+
+        sys.stdout.write(str(value) + "\n")
+
+        return res.success(Number.null)
+
+    def visit_IfNode(self, node, context):
+        res = RTResult()
+
+        for condition, body in node.cases:
+            condition_value = res.register(self.visit(condition, context))
+            if res.error:
+                return res
+
+            if condition_value.is_true():
+                expr_value = res.register(self.visit(body, context))
+                if res.error:
+                    return res
+
+                if res.should_return or res.should_break or res.should_continue:
+                    return res
+
+                return res.success(expr_value)
+
+        if node.else_case:
+            expr_value = res.register(self.visit(node.else_case, context))
+            if res.error:
+                return res
+
+            if res.should_return or res.should_break or res.should_continue:
+                return res
+
+            return res.success(expr_value)
+
+        return res.success(Number.null)
+
+    def visit_ForNode(self, node, context):
+        res = RTResult()
+
+        if node.var_name_tok.value in context.symbol_table.finals:
+            return res.failure(
+                RTError(
+                    node.var_name_tok.pos_start,
+                    node.var_name_tok.pos_end,
+                    f"Cannot use constant '{node.var_name_tok.value}' as for loop variable",
+                    context,
+                )
+            )
+
+        iterable_value = res.register(self.visit(node.iterable_node, context))
+        if res.error:
+            return res
+
+        if not isinstance(iterable_value, List):
+            return res.failure(
+                RTError(
+                    node.iterable_node.pos_start,
+                    node.iterable_node.pos_end,
+                    "Iterable must be a List",
+                    context,
+                )
+            )
+
+        for element in iterable_value.elements:
+            loop_context = Context("FOR", context, node.pos_start)
+            loop_context.symbol_table = SymbolTable(context.symbol_table)
+
+            loop_context.symbol_table.set(node.var_name_tok.value, element)
+
+            value = res.register(self.visit(node.body_node, loop_context))
+            if res.error:
+                return res
+
+            if res.should_continue:
+                res.should_continue = False
+                continue
+
+            if res.should_break:
+                res.should_break = False
+                break
+
+            if res.should_return:
+                return res
+
+        return res.success(Number.null)
+
+    def visit_WhileNode(self, node, context):
+        res = RTResult()
+
+        while True:
+            condition_value = res.register(self.visit(node.condition_node, context))
+            if res.error:
+                return res
+
+            if not condition_value.is_true():
+                break
+
+            value = res.register(self.visit(node.body_node, context))
+            if res.error:
+                return res
+
+            if res.should_continue:
+                res.should_continue = False
+                continue
+
+            if res.should_break:
+                res.should_break = False
+                break
+
+            if res.should_return:
+                return res
+
+        return res.success(Number.null)
+
+    def visit_BreakNode(self, node, context):
+        return RTResult().success_break()
+
+    def visit_ContinueNode(self, node, context):
+        return RTResult().success_continue()
+
+    def visit_FunDefNode(self, node, context):
+        res = RTResult()
+
+        func_name = node.var_name_tok.value if node.var_name_tok else None
+        body_node = node.body_node
+
+        func = Function(func_name, body_node, node.arg_name_toks, context)
+
+        if func_name:
+            context.symbol_table.set(func_name, func)
+
+        return res.success(
+            func.set_pos(node.pos_start, node.pos_end).set_context(context)
+        )
+
+    def visit_CallNode(self, node, context):
+        res = RTResult()
+        args = []
+
+        value_to_call = res.register(self.visit(node.node_to_call, context))
+        if res.error:
+            return res
+
+        value_to_call = value_to_call.copy().set_pos(node.pos_start, node.pos_end)
+
+        for arg_node in node.arg_nodes:
+            args.append(res.register(self.visit(arg_node, context)))
+            if res.error:
+                return res
+
+        return_value = res.register(value_to_call.execute(args, self))
+        if res.error:
+            return res
+
+        return res.success(return_value)
+
+    def visit_ReturnNode(self, node, context):
+        res = RTResult()
+
+        value = res.register(self.visit(node.node_to_return, context))
+        if res.error:
+            return res
+
+        return res.success_return(value)
+
+    def visit_ClassNode(self, node, context):
+        res = RTResult()
+
+        class_name = node.class_name_tok.value
+
+        superclass = None
+        if node.superclass_node:
+            superclass = res.register(self.visit(node.superclass_node, context))
+            if res.error:
+                return res
+
+            if not isinstance(superclass, Class):
+                return res.failure(
+                    RTError(
+                        node.superclass_node.pos_start,
+                        node.superclass_node.pos_end,
+                        "A class can only inherit from another class",
+                        context,
+                    )
+                )
+
+            if superclass.name == class_name:
+                return res.failure(
+                    RTError(
+                        node.superclass_node.pos_start,
+                        node.superclass_node.pos_end,
+                        f"Class '{class_name}' cannot inherit from itself",
+                        context,
+                    )
+                )
+
+            curr = superclass
+            while curr:
+                if curr.name == class_name:
+                    return res.failure(
+                        RTError(
+                            node.superclass_node.pos_start,
+                            node.superclass_node.pos_end,
+                            f"Circular inheritance detected: '{class_name}' cannot inherit from itself (indirectly)",
+                            context,
+                        )
+                    )
+                curr = curr.superclass
+
+        static_table = SymbolTable(parent=context.symbol_table)
+
+        class_value = Class(class_name, superclass, {}, static_table)
+        class_value.set_context(context).set_pos(node.pos_start, node.pos_end)
+
+        class_ctx = Context(f"<class {class_name}>", context, node.pos_start)
+        class_ctx.symbol_table = static_table
+
+        for field_node in node.static_field_nodes:
+            res.register(self.visit(field_node, class_ctx))
+            if res.error:
+                return res
+
+        static_table.parent = None
+
+        methods = {}
+        for method_node in node.method_nodes:
+            method_name = method_node.var_name_tok.value
+
+            method_value = Function(
+                method_name,
+                method_node.body_node,
+                method_node.arg_name_toks,
+                context,
+                getattr(method_node, "visibility", "PUBLIC"),
+                class_value,
+                getattr(method_node, "is_static", False),
+            ).set_pos(method_node.pos_start, method_node.pos_end)
+
+            if superclass:
+                curr = superclass
+                parent_method = None
+                while curr:
+                    if method_name in curr.methods:
+                        parent_method = curr.methods[method_name]
+                        break
+                    curr = curr.superclass
+
+                if parent_method:
+                    vis_levels = {"PUBLIC": 3, "PROTECTED": 2, "PRIVATE": 1}
+                    parent_vis_score = vis_levels.get(parent_method.visibility, 3)
+                    child_vis_score = vis_levels.get(method_value.visibility, 3)
+
+                    if child_vis_score < parent_vis_score:
+                        return res.failure(
+                            RTError(
+                                method_node.pos_start,
+                                method_node.pos_end,
+                                f"Method '{method_name}' cannot be more restrictive than parent method (LSP Violation)",
+                                context,
+                            )
+                        )
+
+            methods[method_name] = method_value
+
+        class_value.methods = methods
+
+        context.symbol_table.set(class_name, class_value)
+        return res.success(class_value)
+
+    def visit_VisibilityStmtNode(self, node, context):
+        res = RTResult()
+
+        target_vis = getattr(node, "target_visibility", node.visibility)
+        if target_vis == "FINAL":
+            target_vis = "PUBLIC"
+
+        if isinstance(node.assign_node, SetAttrNode):
+            object_node = node.assign_node.object_node
+            attr_name = node.assign_node.attr_name_tok
+            value_node = node.assign_node.value_node
+
+            obj = res.register(self.visit(object_node, context))
+            if res.error:
+                return res
+
+            val = res.register(self.visit(value_node, context))
+            if res.error:
+                return res
+
+            _, error = obj.set_attr(attr_name, val, context, visibility=node.visibility)
+            if error:
+                return res.failure(error)
+
+            return res.success(val)
+
+        elif isinstance(node.assign_node, VarAssignNode):
+            var_name = node.assign_node.var_name_tok.value
+
+            val = res.register(self.visit(node.assign_node.value_node, context))
+            if res.error:
+                return res
+
+            if node.visibility == "FINAL":
+                if var_name in context.symbol_table.symbols:
+                    return res.failure(
+                        RTError(
+                            node.pos_start,
+                            node.pos_end,
+                            f"Variable '{var_name}' is already defined",
+                            context,
+                        )
+                    )
+                vis_to_use = getattr(node, "target_visibility", "PUBLIC")
+                context.symbol_table.set(
+                    var_name, val, visibility=vis_to_use, as_final=True
+                )
+                return res.success(val)
+
+            context.symbol_table.set(var_name, val, visibility=node.visibility)
+            return res.success(val)
+
+        return res.failure(
+            RTError(
+                node.pos_start, node.pos_end, "Invalid visibility statement", context
+            )
+        )
+
+    def visit_NewInstanceNode(self, node, context):
+        res = RTResult()
+
+        class_name = node.class_name_tok.value
+        class_value = context.symbol_table.get(class_name)
+
+        if not class_value:
+            return res.failure(
+                RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Class '{class_name}' is not defined",
+                    context,
+                )
+            )
+
+        if not isinstance(class_value, Class):
+            return res.failure(
+                RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'{class_name}' is not a class",
+                    context,
+                )
+            )
+
+        args = []
+        for arg_node in node.arg_nodes:
+            args.append(res.register(self.visit(arg_node, context)))
+            if res.error:
+                return res
+
+        instance = res.register(
+            class_value.instantiate(args, context, interpreter=self)
+        )
+        if res.error:
+            return res
+
+        return res.success(instance.set_pos(node.pos_start, node.pos_end))
+
+    def visit_GetAttrNode(self, node, context):
+        res = RTResult()
+
+        object = res.register(self.visit(node.object_node, context))
+        if res.error:
+            return res
+
+        value, error = object.get_attr(node.attr_name_tok, context)
+        if error:
+            return res.failure(error)
+
+        return res.success(value.set_pos(node.pos_start, node.pos_end))
+
+    def visit_SetAttrNode(self, node, context):
+        res = RTResult()
+
+        object = res.register(self.visit(node.object_node, context))
+        if res.error:
+            return res
+
+        value = res.register(self.visit(node.value_node, context))
+        if res.error:
+            return res
+
+        new_value, error = object.set_attr(node.attr_name_tok, value, context)
+        if error:
+            return res.failure(error)
+
+        return res.success(new_value)
+
+    def visit_ListAccessNode(self, node, context):
+        res = RTResult()
+
+        list_val = res.register(self.visit(node.list_node, context))
+        if res.error:
+            return res
+
+        index_val = res.register(self.visit(node.index_node, context))
+        if res.error:
+            return res
+
+        element, error = list_val.get_element_at(index_val)
+        if error:
+            return res.failure(error)
+
+        return res.success(element.copy().set_pos(node.pos_start, node.pos_end))
+
+    def visit_ListSetNode(self, node, context):
+        res = RTResult()
+
+        list_val = res.register(self.visit(node.list_node, context))
+        if res.error:
+            return res
+
+        index_val = res.register(self.visit(node.index_node, context))
+        if res.error:
+            return res
+
+        value_to_set = res.register(self.visit(node.value_node, context))
+        if res.error:
+            return res
+
+        new_value, error = list_val.set_element_at(index_val, value_to_set)
+        if error:
+            return res.failure(error)
+
+        return res.success(new_value)
+
+    def visit_BinOpNode(self, node, context):
+        res = RTResult()
+        left = res.register(self.visit(node.left_node, context))
+        if res.error:
+            return res
+
+        if node.op_tok.matches(GL_KEYWORD, "AND") or node.op_tok.matches(
+            GL_KEYWORD, "and"
+        ):
+            if not left.is_true():
+                return res.success(Number.false)
+
+            right = res.register(self.visit(node.right_node, context))
+            if res.error:
+                return res
+            result, error = left.anded_by(right)
+            if error:
+                return res.failure(error)
+            return res.success(result.set_pos(node.pos_start, node.pos_end))
+
+        elif node.op_tok.matches(GL_KEYWORD, "OR") or node.op_tok.matches(
+            GL_KEYWORD, "or"
+        ):
+            if left.is_true():
+                return res.success(Number.true)
+
+            right = res.register(self.visit(node.right_node, context))
+            if res.error:
+                return res
+            result, error = left.ored_by(right)
+            if error:
+                return res.failure(error)
+            return res.success(result.set_pos(node.pos_start, node.pos_end))
+
+        right = res.register(self.visit(node.right_node, context))
+        if res.error:
+            return res
+
+        if node.op_tok.type == GL_PLUS:
+            result, error = left.added_to(right)
+        elif node.op_tok.type == GL_MINUS:
+            result, error = left.subbed_by(right)
+        elif node.op_tok.type == GL_MUL:
+            result, error = left.multed_by(right)
+        elif node.op_tok.type == GL_DIV:
+            result, error = left.dived_by(right)
+        elif node.op_tok.type == GL_MOD:
+            result, error = left.modded_by(right)
+        elif node.op_tok.type == GL_FLOORDIV:
+            result, error = left.floordived_by(right)
+        elif node.op_tok.type == GL_POW:
+            result, error = left.powed_by(right)
+        elif node.op_tok.type == GL_EE:
+            result, error = left.get_comparison_eq(right)
+        elif node.op_tok.type == GL_NE:
+            result, error = left.get_comparison_ne(right)
+        elif node.op_tok.type == GL_LT:
+            result, error = left.get_comparison_lt(right)
+        elif node.op_tok.type == GL_GT:
+            result, error = left.get_comparison_gt(right)
+        elif node.op_tok.type == GL_LTE:
+            result, error = left.get_comparison_lte(right)
+        elif node.op_tok.type == GL_GTE:
+            result, error = left.get_comparison_gte(right)
+        elif node.op_tok.matches(GL_KEYWORD, "IS") or node.op_tok.matches(
+            GL_KEYWORD, "is"
+        ):
+            result, error = left.get_comparison_is(right)
+        elif node.op_tok.type == GL_BIT_AND:
+            result, error = left.bitted_and_by(right)
+        elif node.op_tok.type == GL_BIT_OR:
+            result, error = left.bitted_or_by(right)
+        elif node.op_tok.type == GL_BIT_XOR:
+            result, error = left.bitted_xor_by(right)
+        elif node.op_tok.type == GL_LSHIFT:
+            result, error = left.lshifted_by(right)
+        elif node.op_tok.type == GL_RSHIFT:
+            result, error = left.rshifted_by(right)
+
+        if error:
+            return res.failure(error)
+        else:
+            return res.success(result.set_pos(node.pos_start, node.pos_end))
+
+    def visit_ChainedCompNode(self, node, context):
+        res = RTResult()
+
+        left_val = res.register(self.visit(node.left_node, context))
+        if res.error:
+            return res
+
+        for op_tok, right_node in node.ops_and_exprs:
+            right_val = res.register(self.visit(right_node, context))
+            if res.error:
+                return res
+
+            result = None
+            error = None
+
+            if op_tok.type == GL_EE:
+                result, error = left_val.get_comparison_eq(right_val)
+            elif op_tok.type == GL_NE:
+                result, error = left_val.get_comparison_ne(right_val)
+            elif op_tok.type == GL_LT:
+                result, error = left_val.get_comparison_lt(right_val)
+            elif op_tok.type == GL_GT:
+                result, error = left_val.get_comparison_gt(right_val)
+            elif op_tok.type == GL_LTE:
+                result, error = left_val.get_comparison_lte(right_val)
+            elif op_tok.type == GL_GTE:
+                result, error = left_val.get_comparison_gte(right_val)
+            elif op_tok.matches(GL_KEYWORD, "IS") or op_tok.matches(GL_KEYWORD, "is"):
+                result, error = left_val.get_comparison_is(right_val)
+
+            if error:
+                return res.failure(error)
+
+            if not result.is_true():
+                return res.success(Number.false)
+
+            left_val = right_val
+
+        return res.success(Number.true)
+
+    def visit_UnaryOpNode(self, node, context):
+        res = RTResult()
+
+        if node.op_tok.type in (GL_PLUSPLUS, GL_MINUSMINUS):
+            target_node = node.node
+
+            if isinstance(target_node, VarAccessNode):
+                var_name = target_node.var_name_tok.value
+                value = context.symbol_table.get(var_name)
+                if not value:
+                    return res.failure(
+                        RTError(
+                            target_node.pos_start,
+                            target_node.pos_end,
+                            f"'{var_name}' is not defined",
+                            context,
+                        )
+                    )
+
+            elif isinstance(target_node, GetAttrNode):
+                obj = res.register(self.visit(target_node.object_node, context))
+                if res.error:
+                    return res
+                value, error = obj.get_attr(target_node.attr_name_tok)
+                if error:
+                    return res.failure(error)
+
+            elif isinstance(target_node, ListAccessNode):
+                list_val = res.register(self.visit(target_node.list_node, context))
+                if res.error:
+                    return res
+                index_val = res.register(self.visit(target_node.index_node, context))
+                if res.error:
+                    return res
+                value, error = list_val.get_element_at(index_val)
+                if error:
+                    return res.failure(error)
+
+            else:
+                return res.failure(
+                    RTError(
+                        target_node.pos_start,
+                        target_node.pos_end,
+                        "Invalid target for increment/decrement",
+                        context,
+                    )
+                )
+
+            if not isinstance(value, Number):
+                return res.failure(
+                    RTError(
+                        target_node.pos_start,
+                        target_node.pos_end,
+                        "Operand must be a number",
+                        context,
+                    )
+                )
+
+            if node.op_tok.type == GL_PLUSPLUS:
+                new_value, error = value.added_to(Number(1))
+            else:
+                new_value, error = value.subbed_by(Number(1))
+
+            if error:
+                return res.failure(error)
+
+            if isinstance(target_node, VarAccessNode):
+                err = context.symbol_table.update(var_name, new_value)
+                if err:
+                    return res.failure(
+                        RTError(
+                            target_node.pos_start, target_node.pos_end, err, context
+                        )
+                    )
+
+            elif isinstance(target_node, GetAttrNode):
+                _, error = obj.set_attr(target_node.attr_name_tok, new_value)
+                if error:
+                    return res.failure(error)
+
+            elif isinstance(target_node, ListAccessNode):
+                _, error = list_val.set_element_at(index_val, new_value)
+                if error:
+                    return res.failure(error)
+
+            return res.success(new_value.copy().set_pos(node.pos_start, node.pos_end))
+
+        number = res.register(self.visit(node.node, context))
+        if res.error:
+            return res
+
+        number = number.copy()
+
+        error = None
+        if node.op_tok.type == GL_MINUS:
+            if isinstance(number, Number):
+                number, error = number.multed_by(Number(-1))
+            else:
+                error = RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    "Unary '-' can only be applied to numbers",
+                    context,
+                )
+        elif node.op_tok.matches(GL_KEYWORD, "NOT"):
+            number, error = number.notted()
+
+        elif node.op_tok.type == GL_BIT_NOT:
+            number, error = number.bitted_not()
+
+        if error:
+            return res.failure(error)
+        else:
+            return res.success(number.set_pos(node.pos_start, node.pos_end))
+
+    def visit_PostOpNode(self, node, context):
+        res = RTResult()
+        target_node = node.node
+
+        if isinstance(target_node, VarAccessNode):
+            var_name = target_node.var_name_tok.value
+            old_value = context.symbol_table.get(var_name)
+            if not old_value:
+                return res.failure(
+                    RTError(
+                        target_node.pos_start,
+                        target_node.pos_end,
+                        f"'{var_name}' is not defined",
+                        context,
+                    )
+                )
+
+        elif isinstance(target_node, GetAttrNode):
+            obj = res.register(self.visit(target_node.object_node, context))
+            if res.error:
+                return res
+            old_value, error = obj.get_attr(target_node.attr_name_tok)
+            if error:
+                return res.failure(error)
+
+        elif isinstance(target_node, ListAccessNode):
+            list_val = res.register(self.visit(target_node.list_node, context))
+            if res.error:
+                return res
+            index_val = res.register(self.visit(target_node.index_node, context))
+            if res.error:
+                return res
+            old_value, error = list_val.get_element_at(index_val)
+            if error:
+                return res.failure(error)
+
+        else:
+            return res.failure(
+                RTError(
+                    target_node.pos_start,
+                    target_node.pos_end,
+                    "Invalid target for increment/decrement",
+                    context,
+                )
+            )
+
+        if not isinstance(old_value, Number):
+            return res.failure(
+                RTError(
+                    target_node.pos_start,
+                    target_node.pos_end,
+                    "Operand must be a number",
+                    context,
+                )
+            )
+
+        if node.op_tok.type == GL_PLUSPLUS:
+            new_value, error = old_value.added_to(Number(1))
+        else:
+            new_value, error = old_value.subbed_by(Number(1))
+
+        if error:
+            return res.failure(error)
+
+        if isinstance(target_node, VarAccessNode):
+            err = context.symbol_table.update(var_name, new_value)
+            if err:
+                return res.failure(
+                    RTError(target_node.pos_start, target_node.pos_end, err, context)
+                )
+
+        elif isinstance(target_node, GetAttrNode):
+            _, error = obj.set_attr(target_node.attr_name_tok, new_value)
+            if error:
+                return res.failure(error)
+
+        elif isinstance(target_node, ListAccessNode):
+            _, error = list_val.set_element_at(index_val, new_value)
+            if error:
+                return res.failure(error)
+
+        return res.success(old_value.copy().set_pos(node.pos_start, node.pos_end))
+
+    def visit_TryCatchNode(self, node, context):
+        res = RTResult()
+
+        try_res = self.visit(node.try_body_node, context)
+
+        if try_res.error:
+            if node.catch_body_node:
+                catch_context = Context("CATCH", context, node.pos_start)
+                catch_context.symbol_table = SymbolTable(context.symbol_table)
+
+                if node.catch_var_node:
+                    error_msg = try_res.error.details
+                    val_to_assign = getattr(try_res.error, "thrown_value", None)
+                    if val_to_assign is None:
+                        val_to_assign = String(error_msg)
+                    catch_context.symbol_table.set(
+                        node.catch_var_node.value, val_to_assign
+                    )
+
+                catch_res = res.register(
+                    self.visit(node.catch_body_node, catch_context)
+                )
+
+                if res.error:
+                    if node.finally_body_node:
+                        fin_res = self.visit(node.finally_body_node, context)
+                        if fin_res.error:
+                            return res.failure(fin_res.error)
+
+                    return res
+
+            else:
+                if node.finally_body_node:
+                    fin_res = self.visit(node.finally_body_node, context)
+                    if fin_res.error:
+                        return fin_res
+                return try_res
+        else:
+            res.register(try_res)
+            if res.should_return or res.should_break or res.should_continue:
+                if node.finally_body_node:
+                    self.visit(node.finally_body_node, context)
+                return res
+
+        if node.finally_body_node:
+            fin_res = res.register(self.visit(node.finally_body_node, context))
+            if res.error:
+                return res
+
+        return res.success(Number.null)
+
+    def visit_ThrowNode(self, node, context):
+        res = RTResult()
+
+        value = res.register(self.visit(node.node_to_throw, context))
+        if res.error:
+            return res
+
+        error_message = str(value)
+
+        return res.failure(
+            RTError(
+                node.pos_start, node.pos_end, error_message, context, thrown_value=value
+            )
+        )
+
+    def visit_FinalVarAssignNode(self, node, context):
+        res = RTResult()
+        var_name = node.var_name_tok.value
+
+        if var_name in context.symbol_table.symbols:
+            return res.failure(
+                RTError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Variable '{var_name}' is already defined",
+                    context,
+                )
+            )
+
+        value = res.register(self.visit(node.value_node, context))
+        if res.error:
+            return res
+
+        context.symbol_table.set(var_name, value, as_final=True)
+        return res.success(value)
+
+    def visit_SwitchNode(self, node, context):
+        res = RTResult()
+
+        switch_val = res.register(self.visit(node.switch_value_node, context))
+        if res.error:
+            return res
+
+        for case_conditions, body_node in node.cases:
+            should_execute = False
+
+            for cond_node in case_conditions:
+                case_val = res.register(self.visit(cond_node, context))
+                if res.error:
+                    return res
+
+                is_eq, error = switch_val.get_comparison_eq(case_val)
+                if error:
+                    return res.failure(error)
+
+                if is_eq.is_true():
+                    should_execute = True
+                    break
+
+            if should_execute:
+                val = res.register(self.visit(body_node, context))
+                if (
+                    res.error
+                    or res.should_return
+                    or res.should_break
+                    or res.should_continue
+                ):
+                    return res
+                return res.success(val)
+
+        if node.default_case:
+            val = res.register(self.visit(node.default_case, context))
+            if (
+                res.error
+                or res.should_return
+                or res.should_break
+                or res.should_continue
+            ):
+                return res
+            return res.success(val)
+
+        return res.success(Number.null)
