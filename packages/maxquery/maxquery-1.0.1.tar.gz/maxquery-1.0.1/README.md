@@ -1,0 +1,653 @@
+# 🚀 MaxQuery - MaxCompute SQL Query Runner
+
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+**MaxQuery** is a powerful, user-friendly command-line tool that makes it easy to execute SQL queries on Alibaba Cloud's MaxCompute (ODPS) platform. No more complex configurations or scripting—just run queries from your terminal!
+
+---
+
+## 📋 Table of Contents
+
+1. [Features](#-features)
+2. [Installation](#-installation)
+3. [Quick Start](#-quick-start)
+4. [Configuration](#-configuration)
+5. [Commands Reference](#-commands-reference)
+6. [Usage Examples](#-usage-examples)
+7. [Output Formats](#-output-formats)
+8. [Project Structure](#-project-structure)
+9. [Troubleshooting](#-troubleshooting)
+10. [Contributing](#-contributing)
+11. [License](#-license)
+12. [Author](#-author)
+
+---
+
+## ✨ Features
+
+- ✅ **Easy Setup** - One-time credential configuration
+- ✅ **Multiple Output Formats** - CSV (default) or Parquet
+- ✅ **Flexible Query Execution** - Single or batch queries
+- ✅ **Custom Output Paths** - Save results anywhere
+- ✅ **Interactive CLI** - User-friendly command-line interface
+- ✅ **Credential Management** - Secure local credential storage
+- ✅ **Batch Processing** - Run multiple queries at once
+- ✅ **Cross-Platform** - Works on Linux, macOS, and Windows
+
+---
+
+## 📦 Installation
+
+### Option 1: From PyPI (Recommended)
+```bash
+pip install maxquery
+```
+
+### Option 2: From Source (Development)
+```bash
+git clone https://github.com/chethanpatel/maxquery.git
+cd maxquery
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e .
+```
+
+### Requirements
+- Python 3.8 or higher
+- pip (Python package manager)
+
+---
+
+## 🎯 Quick Start
+
+### 1. First-Time Setup (Interactive)
+```bash
+maxquery config --setup
+```
+
+You'll be prompted to enter:
+- **Access ID** - Your Alibaba Cloud MaxCompute access ID
+- **Access Key** - Your Alibaba Cloud MaxCompute access key
+- **Project Name** - Your MaxCompute project name
+- **Endpoint** - API endpoint (default provided)
+- **Region** - Your region (default: ap-southeast-5)
+
+Your credentials are saved securely in `~/.maxquery/credentials.json`
+
+### 2. Run Your First Query
+```bash
+maxquery run queries/my_query.sql
+```
+
+Results are saved to `outputs/` by default as CSV format.
+
+### 3. Check Configuration
+```bash
+maxquery info
+```
+
+Shows your current credentials and configuration.
+
+---
+
+## 🔐 Configuration
+
+### Managing Credentials
+
+**Show current credentials:**
+```bash
+maxquery config --show
+```
+
+**Update credentials (interactive setup):**
+```bash
+maxquery config --setup
+```
+
+**Delete saved credentials:**
+```bash
+maxquery config --delete
+```
+
+### Credentials Location
+Credentials are stored in: `~/.maxquery/credentials.json`
+
+⚠️ **Security Note:** Never commit credentials to version control. The `.maxquery/` directory is kept locally on your machine.
+
+---
+
+## 📚 Commands Reference
+
+### `maxquery run` - Execute Queries
+
+**Basic syntax:**
+```bash
+maxquery run <sql_file> [sql_file2 ...] [OPTIONS]
+```
+
+**Options:**
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--format` | - | `1` | Output format: `1`=CSV, `2`=Parquet |
+| `--output` | `-o` | `outputs` | Output directory for results |
+| `--no-download` | - | - | Run query but don't save files |
+| `--help` | - | - | Show command help |
+
+---
+
+### `maxquery config` - Manage Credentials
+
+**Basic syntax:**
+```bash
+maxquery config [OPTIONS]
+```
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--setup` | Interactive credential setup |
+| `--show` | Display current credentials |
+| `--delete` | Delete saved credentials |
+| `--help` | Show command help |
+
+---
+
+### `maxquery info` - Show Configuration
+
+**Display current setup:**
+```bash
+maxquery info
+```
+
+Shows:
+- Saved credentials location
+- Current project and region
+- Environment variables (if set)
+
+---
+
+### `maxquery --version` - Check Version
+
+```bash
+maxquery --version
+```
+
+---
+
+## 💡 Usage Examples
+
+### Example 1: Simple Query Execution
+```bash
+# Run a single query, save as CSV in outputs/
+maxquery run queries/user_analysis.sql
+```
+
+**Output:**
+```
+📊 Running 1 query(ies)
+   Format: CSV
+============================================================
+✅ Connected to ODPS Project: my_project
+
+📄 user_analysis...
+   ✅ 10500 records → outputs/user_analysis.csv
+
+============================================================
+✅ Completed: 1/1 queries
+📊 Total records: 10500
+💾 Results saved to: outputs/
+```
+
+---
+
+### Example 2: Run Multiple Queries at Once
+```bash
+# Run all SQL files in a directory
+maxquery run queries/production/*.sql
+
+# Run specific queries
+maxquery run queries/sales.sql queries/inventory.sql queries/customers.sql
+```
+
+---
+
+### Example 3: Save as Parquet Format
+```bash
+# Parquet format (better for large datasets)
+maxquery run queries/large_dataset.sql --format 2
+```
+
+**Output:**
+```
+📄 large_dataset...
+   ✅ 5000000 records → outputs/large_dataset.parquet
+```
+
+---
+
+### Example 4: Custom Output Directory
+```bash
+# Save results to a specific folder
+maxquery run queries/monthly_report.sql -o reports/2026/
+
+# Absolute path
+maxquery run queries/analysis.sql -o /home/user/data/exports/
+
+# Current directory
+maxquery run queries/test.sql -o .
+```
+
+---
+
+### Example 5: Run Without Saving Files
+```bash
+# Execute query but keep results in memory only
+# Useful for testing or piping to other tools
+maxquery run queries/validation.sql --no-download
+```
+
+---
+
+### Example 6: Batch Processing with Different Formats
+```bash
+# Run local test queries as CSV
+maxquery run queries/local/*.sql --format 1 -o results/local/
+
+# Run production queries as Parquet
+maxquery run queries/production/*.sql --format 2 -o results/production/
+```
+
+---
+
+### Example 7: Complex Workflow
+```bash
+# 1. Setup credentials (first time only)
+maxquery config --setup
+
+# 2. Check configuration
+maxquery info
+
+# 3. Run test query
+maxquery run queries/test_connection.sql
+
+# 4. Run monthly reports
+maxquery run queries/reports/monthly/*.sql --format 2 -o reports/2026-01/
+
+# 5. Run analytics queries
+maxquery run queries/analytics/user_metrics.sql -o analytics/ --format 2
+```
+
+---
+
+## 📊 Output Formats
+
+### CSV Format (Default - Format 1)
+```bash
+maxquery run queries/data.sql --format 1
+```
+
+**Pros:**
+- Human-readable
+- Works in spreadsheet applications (Excel, Google Sheets)
+- Good for small to medium datasets
+
+**Cons:**
+- Larger file size for big data
+- Slower to read/write
+
+---
+
+### Parquet Format (Format 2)
+```bash
+maxquery run queries/data.sql --format 2
+```
+
+**Pros:**
+- Highly compressed (smaller file size)
+- Faster read/write performance
+- Better for big data processing
+- Preserves data types
+
+**Cons:**
+- Requires specialized tools to read
+- Not directly readable in Excel
+
+**Reading Parquet files in Python:**
+```python
+import pandas as pd
+
+df = pd.read_parquet('outputs/data.parquet')
+print(df.head())
+```
+
+---
+
+## 📁 Project Structure
+
+```
+maxquery/
+├── maxquery/                    # Main package
+│   ├── __init__.py             # Package initialization
+│   ├── cli.py                  # Command-line interface
+│   ├── core.py                 # Query execution logic
+│   └── credentials.py          # Credential management
+├── queries/                     # SQL query files
+│   ├── local/                  # Test/development queries
+│   │   └── test_connection.sql
+│   ├── production/             # Production queries
+│   │   └── analytics.sql
+│   └── schema/                 # Schema definitions
+├── outputs/                     # Query results (auto-created)
+├── setup.py                     # Package setup configuration
+├── pyproject.toml              # Project metadata
+├── requirements.txt            # Python dependencies
+├── README.md                   # This file
+└── LICENSE                     # MIT License
+```
+
+---
+
+## 🗂️ Query Organization Best Practices
+
+### Recommended Folder Structure
+```
+queries/
+├── local/                       # For testing/development
+│   ├── test_connection.sql
+│   └── data_validation.sql
+├── production/                  # For live queries
+│   ├── daily/
+│   │   ├── user_metrics.sql
+│   │   └── sales_summary.sql
+│   ├── weekly/
+│   │   └── trend_analysis.sql
+│   └── monthly/
+│       └── business_report.sql
+└── schema/                      # Table definitions & documentation
+    ├── users_table.sql
+    ├── orders_table.sql
+    └── products_table.sql
+```
+
+### Query File Naming Conventions
+- Use **snake_case** for file names: `user_analysis.sql` ✅
+- Be **descriptive**: `daily_sales_report.sql` instead of `report.sql` ✅
+- Group by **frequency/type**: `daily_`, `weekly_`, etc. ✅
+
+---
+
+## 🔧 Advanced Usage
+
+### Running Queries from a Cron Job (Scheduled Execution)
+
+**Create a script** `run_daily_reports.sh`:
+```bash
+#!/bin/bash
+source ~/.maxquery_env/bin/activate
+maxquery run /queries/production/daily/*.sql -o /data/reports/daily/
+```
+
+**Add to crontab** (runs daily at 2 AM):
+```bash
+0 2 * * * /home/user/scripts/run_daily_reports.sh
+```
+
+---
+
+### Processing Large Datasets
+
+For very large results:
+```bash
+# Use Parquet format for better performance
+maxquery run queries/huge_dataset.sql --format 2 -o big_data/
+
+# Process with Python
+import pandas as pd
+df = pd.read_parquet('big_data/huge_dataset.parquet')
+# Work with chunks for memory efficiency
+for chunk in pd.read_parquet('big_data/huge_dataset.parquet', chunksize=10000):
+    process(chunk)
+```
+
+---
+
+### Piping Output to Other Tools
+
+```bash
+# Convert results to JSON
+maxquery run queries/data.sql --no-download | jq .
+
+# Process with awk
+maxquery run queries/data.sql -o - | awk '{print $1}'
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Issue 1: "No credentials configured"
+```
+❌ Error: No credentials configured
+   Run: maxquery config --setup
+```
+
+**Solution:**
+```bash
+maxquery config --setup
+```
+
+---
+
+### Issue 2: "Invalid URL" or Connection Errors
+```
+❌ Error: Invalid URL 'hello/tenants': No scheme supplied
+```
+
+**Causes & Solutions:**
+- Endpoint format is wrong → Use full URL: `https://service.ap-southeast-5.maxcompute.aliyun.com/api`
+- Credentials are incorrect → Verify with `maxquery config --show`
+- Network issue → Check internet connection
+
+**Fix:**
+```bash
+maxquery config --setup
+# Re-enter correct credentials
+```
+
+---
+
+### Issue 3: "SQL file not found"
+```
+❌ Error: SQL file not found
+```
+
+**Solution:**
+```bash
+# Verify file exists
+ls queries/my_query.sql
+
+# Use correct path
+maxquery run queries/my_query.sql  # ✅ Correct
+maxquery run my_query.sql          # ❌ Wrong (file not in current dir)
+```
+
+---
+
+### Issue 4: "Permission denied" when saving results
+```
+❌ Error: Permission denied when writing to outputs/
+```
+
+**Solution:**
+```bash
+# Check directory permissions
+ls -la outputs/
+
+# Create directory if needed
+mkdir -p outputs/
+
+# Use writable directory
+maxquery run queries/data.sql -o ~/Downloads/results/
+```
+
+---
+
+### Issue 5: Out of Memory with Large Results
+
+**Solution 1: Use no-download mode**
+```bash
+maxquery run queries/huge_query.sql --no-download
+```
+
+**Solution 2: Use Parquet format (more efficient)**
+```bash
+maxquery run queries/huge_query.sql --format 2
+```
+
+**Solution 3: Process in chunks (Python)**
+```python
+import pandas as pd
+
+# Read in chunks
+for chunk in pd.read_parquet('outputs/huge_data.parquet', chunksize=50000):
+    process_chunk(chunk)
+```
+
+---
+
+## 📖 Getting Help
+
+**View all commands:**
+```bash
+maxquery --help
+```
+
+**Get help for specific command:**
+```bash
+maxquery run --help
+maxquery config --help
+maxquery info --help
+```
+
+**Check version:**
+```bash
+maxquery --version
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to contribute:
+
+1. **Fork the repository**
+   ```bash
+   git clone https://github.com/Chethanpatel/maxquery.git
+   cd maxquery
+   ```
+
+2. **Create a branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+3. **Make changes** and test
+   ```bash
+   python -m pytest tests/
+   ```
+
+4. **Commit and push**
+   ```bash
+   git add .
+   git commit -m "Add your feature description"
+   git push origin feature/your-feature-name
+   ```
+
+5. **Open a Pull Request** on GitHub
+
+---
+
+## 🚀 Publishing to PyPI
+
+To publish a new version:
+
+1. **Update version** in `setup.py` and `pyproject.toml`
+2. **Build package:**
+   ```bash
+   pip install build twine
+   python -m build
+   ```
+3. **Upload to PyPI:**
+   ```bash
+   python -m twine upload dist/*
+   ```
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 👨‍💻 Author
+
+**Chethan Patel**
+- Email: [chethanpatel100@gmail.com](mailto:chethanpatel100@gmail.com)
+- GitHub: [@chethanpatel](https://github.com/Chethanpatel)
+- LinkedIn: [Chethan Patel](https://linkedin.com/in/chethanpatelpn)
+
+---
+
+## 🙏 Acknowledgments
+
+- Built for [Alibaba Cloud MaxCompute](https://www.alibabacloud.com/product/maxcompute) users
+- Inspired by the need for simple, efficient data query tools
+- Thanks to the Python community for excellent libraries
+
+---
+
+## 📞 Support
+
+For issues, questions, or suggestions:
+
+1. **Check existing issues** on [GitHub Issues](https://github.com/Chethanpatel/maxquery/issues)
+2. **Create a new issue** with:
+   - Detailed description of the problem
+   - Steps to reproduce
+   - Error messages
+   - Your environment info (OS, Python version)
+3. **Email:** [chethanpatel100@gmail.com](mailto:chethanpatel100@gmail.com)
+
+---
+
+## 📊 Usage Statistics
+
+Track your query usage:
+```bash
+# Count total queries run
+ls -la outputs/ | wc -l
+
+# Check latest results
+ls -lt outputs/ | head -10
+```
+
+---
+
+## 🎓 Learning Resources
+
+### MaxCompute/ODPS Documentation
+- [Alibaba Cloud MaxCompute Docs](https://www.alibabacloud.com/help/product/27804.htm)
+- [ODPS SQL Reference](https://www.alibabacloud.com/help/doc-detail/27860.htm)
+
+### Python & SQL Learning
+- [Python Official Docs](https://docs.python.org/3/)
+- [SQL Tutorial](https://www.w3schools.com/sql/)
+- [Pandas Documentation](https://pandas.pydata.org/docs/)
+
+---
+
+**Happy Querying! 🎉**
+
+For the latest updates, visit: https://github.com/chethanpatel/maxquery
