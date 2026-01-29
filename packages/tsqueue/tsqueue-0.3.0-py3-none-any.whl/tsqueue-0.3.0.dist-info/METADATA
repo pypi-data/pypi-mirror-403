@@ -1,0 +1,387 @@
+Metadata-Version: 2.4
+Name: tsqueue
+Version: 0.3.0
+Summary: Thread-safe queue ultra simple pour Python
+Author: Nytrox
+License: MIT
+Project-URL: Homepage, https://github.com/Nytrox-d3v/tsqueue
+Keywords: thread-safe,queue,python,tsqueue
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
+
+# TSQueue
+
+<div align="center">
+
+![PyPI - Version](https://img.shields.io/pypi/v/tsqueue?style=for-the-badge&logo=pypi&logoColor=white)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/tsqueue?style=for-the-badge&logo=python&logoColor=white)
+![PyPI - License](https://img.shields.io/pypi/l/tsqueue?style=for-the-badge)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/tsqueue?style=for-the-badge&logo=pypi&logoColor=white)
+
+**Une collection de queues thread-safe ultra simples mais puissantes pour Python**
+
+[Installation](#installation) •
+[Queues Disponibles](#-queues-disponibles) •
+[Exemples](#-exemples) •
+[API](#-api-complète) •
+[Contribuer](#-contribuer)
+
+</div>
+
+---
+
+## 🎯 Pourquoi TSQueue ?
+
+TSQueue est une bibliothèque de queues thread-safe conçue pour être **simple à utiliser** mais **incroyablement puissante**. Que tu aies besoin d'une queue basique, asynchrone, persistante ou avec priorités, TSQueue a ce qu'il te faut.
+
+### ✨ Caractéristiques
+
+- 🔒 **Thread-safe par défaut** - Aucune gestion manuelle des locks
+- 🪶 **Ultra léger** - Zéro dépendance externe
+- 🚀 **4 types de queues** - Choisir celle qui correspond à tes besoins
+- 📞 **Système de callbacks** - Réagir aux événements de la queue
+- 💾 **Persistance** - Sauvegarder et charger tes queues
+- ⚡ **Support asyncio** - Pour les applications asynchrones
+- 🎯 **Priorités** - Gérer l'ordre de traitement
+- 🔄 **Itérateurs** - Parcourir facilement les queues
+
+---
+
+## 📦 Installation
+
+```bash
+pip install tsqueue
+```
+
+**Prérequis:** Python ≥ 3.9
+
+---
+
+## 🗂️ Queues Disponibles
+
+### 1. **TSQueue** - La Queue Classique 🔵
+Queue thread-safe de base avec callbacks et méthodes utiles.
+
+```python
+from tsqueue import TSQueue
+
+q = TSQueue()
+q.push("hello")
+print(q.pop())  # "hello"
+```
+
+### 2. **AsyncQueue** - Pour Asyncio ⚡
+Queue asynchrone parfaite pour les applications async/await.
+
+```python
+from tsqueue import AsyncQueue
+import asyncio
+
+async def main():
+    q = AsyncQueue()
+    await q.push("async hello")
+    print(await q.pop())
+
+asyncio.run(main())
+```
+
+### 3. **PersistentQueue** - Sauvegarde Automatique 💾
+Queue qui persiste sur disque (JSON ou Pickle).
+
+```python
+from tsqueue import PersistentQueue
+
+# Sauvegarde automatique
+q = PersistentQueue("data.json", auto_save=True)
+q.push({"user": "Alice", "score": 100})
+# Automatiquement sauvegardé dans data.json !
+```
+
+### 4. **PriorityQueue** - Gestion des Priorités 🎯
+Queue avec système de priorités (plus petit = plus prioritaire).
+
+```python
+from tsqueue import PriorityQueue
+
+q = PriorityQueue()
+q.push("normal", priority=5)
+q.push("urgent!", priority=1)
+q.push("basse", priority=10)
+
+print(q.pop())  # "urgent!" (priorité 1)
+```
+
+---
+
+## 🚀 Exemples
+
+### Exemple 1: Callbacks sur TSQueue
+
+```python
+from tsqueue import TSQueue
+
+def on_item_added(item):
+    print(f"✅ Nouvel item: {item}")
+
+q = TSQueue()
+q.on_push(on_item_added)
+
+q.push("Hello")    # Affiche: ✅ Nouvel item: Hello
+q.push("World")    # Affiche: ✅ Nouvel item: World
+```
+
+### Exemple 2: AsyncQueue avec Callbacks Async
+
+```python
+from tsqueue import AsyncQueue
+import asyncio
+
+async def log_async(item):
+    await asyncio.sleep(0.1)  # Traitement async
+    print(f"📦 Traité: {item}")
+
+async def main():
+    q = AsyncQueue()
+    q.on_push(log_async)
+    
+    await q.push("Task 1")
+    await q.push("Task 2")
+    
+    # Itérateur asynchrone
+    async for item in q:
+        print(f"Récupéré: {item}")
+
+asyncio.run(main())
+```
+
+### Exemple 3: PersistentQueue - Reprendre après un Crash
+
+```python
+from tsqueue import PersistentQueue
+
+# Premier run
+q = PersistentQueue("tasks.json", format="json")
+q.push({"task": "finish_project", "priority": "high"})
+q.push({"task": "write_tests", "priority": "medium"})
+q.save()
+
+# Après redémarrage de l'app...
+q2 = PersistentQueue("tasks.json")
+# La queue est automatiquement rechargée !
+print(q2.pop())  # {"task": "finish_project", ...}
+```
+
+### Exemple 4: PriorityQueue - System de Tâches
+
+```python
+from tsqueue import PriorityQueue
+import threading
+
+def worker(q):
+    while True:
+        try:
+            task, priority = q.pop_with_priority(timeout=1.0)
+            print(f"🔨 Traitement (priorité {priority}): {task}")
+        except:
+            break
+
+q = PriorityQueue()
+
+# Ajouter des tâches avec différentes priorités
+q.push("Email marketing", priority=10)
+q.push("Bug critique production", priority=1)
+q.push("Mise à jour docs", priority=5)
+q.push("Security patch", priority=2)
+
+# Les workers traiteront dans l'ordre: bug critique, security, docs, email
+threads = [threading.Thread(target=worker, args=(q,)) for _ in range(2)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+```
+
+### Exemple 5: Peek et Itération
+
+```python
+from tsqueue import TSQueue
+
+q = TSQueue()
+q.push(1)
+q.push(2)
+q.push(3)
+
+# Regarder sans retirer
+print(q.peek())  # 1
+print(q.size())  # 3 (toujours là)
+
+# Itération (consomme la queue)
+for item in q:
+    print(item)  # 1, 2, 3
+
+print(q.empty())  # True
+```
+
+### Exemple 6: Context Manager avec PersistentQueue
+
+```python
+from tsqueue import PersistentQueue
+
+# Sauvegarde automatique à la sortie
+with PersistentQueue("data.pkl", format="pickle") as q:
+    q.push({"data": "important"})
+    q.push([1, 2, 3, 4])
+    # Automatiquement sauvegardé en sortant du with !
+```
+
+---
+
+## 📖 API Complète
+
+### TSQueue
+
+#### Méthodes de Base
+- `push(item)` - Ajoute un élément
+- `pop(block=True, timeout=None)` - Récupère un élément
+- `peek(block=True, timeout=None)` - Regarde sans retirer
+- `empty()` - Vérifie si vide
+- `size()` - Nombre d'éléments
+- `clear()` - Vide la queue
+
+#### Callbacks
+- `on_push(callback)` - Enregistre un callback
+- `remove_callback(callback)` - Retire un callback
+- `clear_callbacks()` - Retire tous les callbacks
+
+#### Magic Methods
+- `__iter__()` - Support de l'itération
+- `__len__()` - Support de `len(q)`
+- `__bool__()` - Support de `if q:`
+
+### AsyncQueue
+
+Mêmes méthodes que TSQueue mais en async:
+- `await push(item)`
+- `await pop(timeout=None)`
+- `await peek()`
+- `await clear()`
+- `async for item in queue:` - Itération async
+
+### PersistentQueue
+
+Hérite de TSQueue + méthodes de persistance:
+- `__init__(filepath, maxsize=0, format="json", auto_save=False, auto_save_interval=10)`
+- `save()` - Sauvegarde manuelle
+- `load()` - Charge depuis le fichier
+- `delete_file()` - Supprime le fichier de sauvegarde
+
+**Formats supportés:** `"json"` ou `"pickle"`
+
+### PriorityQueue
+
+- `push(item, priority=5)` - Ajoute avec priorité
+- `pop()` - Récupère l'item le plus prioritaire
+- `pop_with_priority()` - Récupère `(item, priority)`
+- `peek_with_priority()` - Regarde avec priorité
+- Callbacks reçoivent `(item, priority)`
+
+---
+
+## 🧪 Tests
+
+Pour tester localement:
+
+```bash
+python test.py
+```
+
+---
+
+## 🤝 Contribuer
+
+Les contributions sont les bienvenues ! N'hésite pas à:
+
+1. Fork le projet
+2. Créer une branche (`git checkout -b feature/amelioration`)
+3. Commit tes changements (`git commit -m 'Ajout fonctionnalité'`)
+4. Push sur la branche (`git push origin feature/amelioration`)
+5. Ouvrir une Pull Request
+
+---
+
+## 📝 Changelog
+
+### v0.3.0
+- ✨ Ajout de `AsyncQueue` pour asyncio
+- ✨ Ajout de `PersistentQueue` avec sauvegarde JSON/Pickle
+- ✨ Ajout de `PriorityQueue` avec système de priorités
+- 🎯 Système de callbacks pour toutes les queues
+- 🔄 Support des itérateurs
+- 📚 Documentation complète avec exemples
+
+### v0.2.0
+- Amélioration de la documentation
+- Ajout d'exemples d'utilisation
+
+### v0.1.0
+- Version initiale
+- Fonctionnalités de base: push, pop, empty, size
+
+---
+
+## 💡 Cas d'Usage
+
+### Web Scraping
+```python
+q = PersistentQueue("urls.json", auto_save=True)
+# Continue le scraping même après un crash
+```
+
+### Task Queue avec Priorités
+```python
+q = PriorityQueue()
+q.push("critical_bug", priority=1)
+q.push("feature_request", priority=10)
+```
+
+### Async Workers
+```python
+queue = AsyncQueue()
+# Parfait pour FastAPI, aiohttp, etc.
+```
+
+### Event Processing
+```python
+q = TSQueue()
+q.on_push(lambda event: logging.info(f"Event: {event}"))
+```
+
+---
+
+## 📄 Licence
+
+Ce projet est sous licence MIT - voir le fichier [LICENSE](LICENSE) pour plus de détails.
+
+---
+
+## 🔗 Liens
+
+- **GitHub**: [Nytrox-d3v/tsqueue](https://github.com/Nytrox-d3v/tsqueue)
+- **PyPI**: [pypi.org/project/tsqueue](https://pypi.org/project/tsqueue/)
+- **Issues**: [GitHub Issues](https://github.com/Nytrox-d3v/tsqueue/issues)
+- **Documentation**: [Voir README](https://github.com/Nytrox-d3v/tsqueue#readme)
+
+---
+
+<div align="center">
+
+Fait avec ❤️ par [Nytrox](https://github.com/Nytrox-d3v)
+
+⭐ **N'oublie pas de star le repo si tu trouves ce projet utile !** ⭐
+
+</div>
