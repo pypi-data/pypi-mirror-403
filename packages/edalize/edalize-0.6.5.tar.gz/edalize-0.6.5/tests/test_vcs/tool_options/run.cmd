@@ -1,0 +1,1 @@
+-l vcs.log +plusarg_bool +plusarg_int=42 +plusarg_str=hello -licqueue
