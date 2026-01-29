@@ -1,0 +1,276 @@
+# GitLab CI/CD Pipeline for FDP Bundle Workflows
+
+stages:
+  - validate
+  - deploy
+
+variables:
+  PYTHON_VERSION: "3.10"
+
+# Job Templates
+.bundle_job_template: &bundle_job
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - pip install --quiet fdpbundle
+    - apt-get update && apt-get install -y git
+
+# Helper script to get changed bundle JSON files
+.get_changed_bundles: &get_changed_bundles |
+  get_changed_bundle_files() {
+    if [ -n "$CI_MERGE_REQUEST_DIFF_BASE_SHA" ]; then
+      CHANGED=$(git diff --name-only "$CI_MERGE_REQUEST_DIFF_BASE_SHA" HEAD -- 'bundles/**/*.json' 2>/dev/null || echo "")
+    elif [ -n "$CI_COMMIT_BEFORE_SHA" ] && [ "$CI_COMMIT_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+      CHANGED=$(git diff --name-only "$CI_COMMIT_BEFORE_SHA" "$CI_COMMIT_SHA" -- 'bundles/**/*.json' 2>/dev/null || echo "")
+    else
+      CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'bundles/**/*.json' 2>/dev/null || find bundles -name "*.json" -type f 2>/dev/null || echo "")
+    fi
+    echo "$CHANGED"
+  }
+
+# VALIDATE STAGE
+validate:changed-bundles:
+  <<: *bundle_job
+  stage: validate
+  tags:
+    - dev
+  script:
+    - *get_changed_bundles
+    - |
+      echo "  VALIDATING CHANGED BUNDLE FILES"
+      echo ""
+      
+      CHANGED_FILES=$(get_changed_bundle_files)
+      
+      if [ -z "$CHANGED_FILES" ]; then
+        echo "No bundle JSON files changed. Skipping validation."
+        exit 0
+      fi
+      
+      echo "Changed bundle files:"
+      echo "$CHANGED_FILES"
+      echo ""
+      
+      FAILED=0
+      VALIDATED=0
+      
+      for bundle_file in $CHANGED_FILES; do
+        if [ -f "$bundle_file" ]; then
+          echo ""
+          echo ">>> Validating: $bundle_file"
+          
+          if fdpbundle --api-url "${WORKFLOW_ENGINE_URL_DEV}" \
+            --session "${WORKFLOW_ENGINE_SESSION_DEV}" \
+            validate "$bundle_file"; then
+            echo "$bundle_file - PASSED"
+            VALIDATED=$((VALIDATED + 1))
+          else
+            echo "$bundle_file - FAILED"
+            FAILED=1
+          fi
+        else
+          echo ">>> Skipping (file removed): $bundle_file"
+        fi
+      done
+      
+      echo ""
+      echo "  Validated: $VALIDATED file(s)"
+      if [ $FAILED -eq 0 ]; then
+        echo "  All validations PASSED"
+      else
+        echo "  Some validations FAILED"
+        exit 1
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(dev|stg|main)$/'
+
+# DEPLOY STAGE - DEV
+deploy:dev:
+  <<: *bundle_job
+  stage: deploy
+  tags:
+    - dev
+  environment:
+    name: development
+    url: $WORKFLOW_ENGINE_URL_DEV
+  script:
+    - *get_changed_bundles
+    - |
+      echo "  DEPLOYING TO DEV"
+      echo ""
+      
+      CHANGED_FILES=$(get_changed_bundle_files)
+      
+      if [ -z "$CHANGED_FILES" ]; then
+        echo "No bundle JSON files changed. Skipping deployment."
+        exit 0
+      fi
+      
+      echo "Changed bundle files to deploy:"
+      echo "$CHANGED_FILES"
+      echo ""
+      
+      FAILED=0
+      DEPLOYED=0
+      
+      for bundle_file in $CHANGED_FILES; do
+        if [ -f "$bundle_file" ]; then
+          echo ""
+          echo ">>> Deploying: $bundle_file"
+          
+          if fdpbundle --api-url "${WORKFLOW_ENGINE_URL_DEV}" \
+            --session "${WORKFLOW_ENGINE_SESSION_DEV}" \
+            deploy "$bundle_file" --env dev; then
+            echo "$bundle_file - DEPLOYED"
+            DEPLOYED=$((DEPLOYED + 1))
+          else
+            echo "$bundle_file - FAILED"
+            FAILED=1
+          fi
+        else
+          echo ">>> Skipping (file removed): $bundle_file"
+        fi
+      done
+      
+      echo ""
+      echo "  Deployed: $DEPLOYED file(s)"
+      if [ $FAILED -ne 0 ]; then
+        echo "Some deployments failed!"
+        exit 1
+      fi
+      echo ""
+      echo "  DEV Deployment Complete!"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v.*-dev$/'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "dev"'
+      when: on_success
+  needs:
+    - validate:changed-bundles
+
+# DEPLOY STAGE - STAGING
+deploy:stg:
+  <<: *bundle_job
+  stage: deploy
+  environment:
+    name: staging
+    url: $WORKFLOW_ENGINE_URL_STG
+  script:
+    - *get_changed_bundles
+    - |
+      echo "  DEPLOYING TO STAGING"
+      echo ""
+      
+      CHANGED_FILES=$(get_changed_bundle_files)
+      
+      if [ -z "$CHANGED_FILES" ]; then
+        echo "No bundle JSON files changed. Skipping deployment."
+        exit 0
+      fi
+      
+      echo "Changed bundle files to deploy:"
+      echo "$CHANGED_FILES"
+      echo ""
+      
+      FAILED=0
+      DEPLOYED=0
+      
+      for bundle_file in $CHANGED_FILES; do
+        if [ -f "$bundle_file" ]; then
+          echo ""
+          echo ">>> Deploying: $bundle_file"
+          
+          if fdpbundle --api-url "${WORKFLOW_ENGINE_URL_STG}" \
+            --session "${WORKFLOW_ENGINE_SESSION_STG}" \
+            deploy "$bundle_file" --env stg; then
+            echo "$bundle_file - DEPLOYED"
+            DEPLOYED=$((DEPLOYED + 1))
+          else
+            echo "$bundle_file - FAILED"
+            FAILED=1
+          fi
+        else
+          echo ">>> Skipping (file removed): $bundle_file"
+        fi
+      done
+      
+      echo ""
+      echo "  Deployed: $DEPLOYED file(s)"
+      if [ $FAILED -ne 0 ]; then
+        echo "Some deployments failed!"
+        exit 1
+      fi
+      
+      echo ""
+      echo "  STAGING Deployment Complete!"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v.*-stg$/'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "stg"'
+      when: on_success
+  needs:
+    - validate:changed-bundles
+
+# DEPLOY STAGE - PRODUCTION
+deploy:prod:
+  <<: *bundle_job
+  stage: deploy
+  environment:
+    name: production
+    url: $WORKFLOW_ENGINE_URL_PROD
+  script:
+    - *get_changed_bundles
+    - |
+      echo "  DEPLOYING TO PRODUCTION"
+      echo ""
+      
+      CHANGED_FILES=$(get_changed_bundle_files)
+      
+      if [ -z "$CHANGED_FILES" ]; then
+        echo "No bundle JSON files changed. Skipping deployment."
+        exit 0
+      fi
+      
+      echo "Changed bundle files to deploy:"
+      echo "$CHANGED_FILES"
+      echo ""
+      
+      FAILED=0
+      DEPLOYED=0
+      
+      for bundle_file in $CHANGED_FILES; do
+        if [ -f "$bundle_file" ]; then
+          echo ""
+          echo ">>> Deploying: $bundle_file"
+          
+          if fdpbundle --api-url "${WORKFLOW_ENGINE_URL_PROD}" \
+            --session "${WORKFLOW_ENGINE_SESSION_PROD}" \
+            deploy "$bundle_file" --env prod; then
+            echo "$bundle_file - DEPLOYED"
+            DEPLOYED=$((DEPLOYED + 1))
+          else
+            echo "$bundle_file - FAILED"
+            FAILED=1
+          fi
+        else
+          echo ">>> Skipping (file removed): $bundle_file"
+        fi
+      done
+      
+      echo ""
+      echo "  Deployed: $DEPLOYED file(s)"
+      if [ $FAILED -ne 0 ]; then
+        echo "Some deployments failed!"
+        exit 1
+      fi
+      
+      echo ""
+      echo "  PRODUCTION Deployment Complete!"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+(-prod)?$/'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+  allow_failure: false
+  needs:
+    - validate:changed-bundles
