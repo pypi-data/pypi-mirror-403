@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from collections.abc import AsyncIterable, MutableMapping, MutableSequence
+from typing import Any, cast
+
+from typing_extensions import Self
+
+from streamflow.core.context import StreamFlowContext
+from streamflow.core.persistence import DatabaseLoadingContext
+from streamflow.core.utils import get_tag
+from streamflow.core.workflow import Token
+from streamflow.cwl.workflow import CWLWorkflow
+from streamflow.workflow.combinator import DotProductCombinator
+from streamflow.workflow.token import IterationTerminationToken, ListToken
+
+
+def _flatten_token_list(outputs: MutableSequence[Token]):
+    flattened_list = []
+    for token in sorted(outputs, key=lambda t: int(t.tag.split(".")[-1])):
+        if isinstance(token, ListToken):
+            flattened_list.extend(_flatten_token_list(token.value))
+        else:
+            flattened_list.append(token)
+    return flattened_list
+
+
+class ListMergeCombinator(DotProductCombinator):
+    def __init__(
+        self,
+        name: str,
+        workflow: CWLWorkflow,
+        input_names: MutableSequence[str],
+        output_name: str,
+        flatten: bool = False,
+    ):
+        super().__init__(name, workflow)
+        self.flatten: bool = flatten
+        self.input_names: MutableSequence[str] = input_names
+        self.output_name: str = output_name
+
+    @classmethod
+    async def _load(
+        cls,
+        context: StreamFlowContext,
+        row: MutableMapping[str, Any],
+        loading_context: DatabaseLoadingContext,
+    ) -> Self:
+        return cls(
+            name=row["name"],
+            workflow=cast(
+                CWLWorkflow,
+                await loading_context.load_workflow(context, row["workflow"]),
+            ),
+            input_names=row["input_names"],
+            output_name=row["output_name"],
+            flatten=row["flatten"],
+        )
+
+    async def _save_additional_params(
+        self, context: StreamFlowContext
+    ) -> MutableMapping[str, Any]:
+        return cast(dict[str, Any], await super()._save_additional_params(context)) | {
+            "input_names": self.input_names,
+            "output_name": self.output_name,
+            "flatten": self.flatten,
+        }
+
+    async def combine(
+        self, port_name: str, token: Token
+    ) -> AsyncIterable[MutableMapping[str, Token]]:
+        if not isinstance(token, IterationTerminationToken):
+            async for schema in super().combine(port_name, token):
+                # If there is only one input, merge its value
+                if len(self.input_names) == 1:
+                    if isinstance(
+                        outputs := schema[self.input_names[0]]["token"], ListToken
+                    ):
+                        outputs = outputs.value
+                    else:
+                        outputs = [outputs]
+                    tag = schema[self.input_names[0]]["token"].tag
+                    input_token_ids = schema[self.input_names[0]]["input_ids"]
+                # Otherwise, merge multiple inputs in a single list
+                else:
+                    outputs = [schema[name]["token"] for name in self.input_names]
+                    input_token_ids = [
+                        id
+                        for name in self.input_names
+                        for id in schema[name]["input_ids"]
+                    ]
+                    tag = get_tag(outputs)
+                # Flatten if needed
+                if self.flatten:
+                    outputs = _flatten_token_list(outputs)
+                yield {
+                    self.output_name: {
+                        "token": ListToken(value=outputs, tag=tag),
+                        "input_ids": input_token_ids,
+                    }
+                }
