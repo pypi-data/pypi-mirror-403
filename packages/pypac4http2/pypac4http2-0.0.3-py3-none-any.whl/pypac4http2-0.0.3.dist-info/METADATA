@@ -1,0 +1,74 @@
+Metadata-Version: 2.4
+Name: pypac4http2
+Version: 0.0.3
+Summary: Python package which builds on pypac to add pac file support for httplib2 Http
+Author-email: Mike Moore <z_z_zebra@yahoo.com>
+License-Expression: Apache-2.0
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httplib2>=0.22.0
+Requires-Dist: pypac>=0.17.0
+Requires-Dist: PySocks>=1.7.1
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: tox>=4.0; extra == "dev"
+Requires-Dist: black>=23.0; extra == "dev"
+Dynamic: license-file
+
+# pypac4http2
+Python package which builds on pypac to add pac file support for httplib2 Http
+
+This package adds proxy auto configure pac support to the [httplib2](https://github.com/httplib2/httplib2) library Http classby sub-classing the class and adding a new constructor parameter for a resolver class. 
+
+## Installation
+
+```bash
+pip install pypac4http2
+```
+
+## Usage
+
+### HttpPac Class
+
+The `HttpPac` class extends `httplib2.Http` and automatically resolves the proxy for each request using a PAC file.
+
+```python
+from pypac4http2 import HttpPac
+
+# Automatically discover PAC using OS settings or WPAD
+http = HttpPac()
+response, content = http.request("http://example.org")
+
+# Or specify a PAC URL
+http = HttpPac(pac_url="http://internal.corp/proxy.pac")
+response, content = http.request("http://example.org")
+```
+
+### CLI Tool
+
+The package includes a CLI tool `pypac4http2` to resolve proxies for a given URL.
+
+```bash
+# Resolve proxy using OS auto-discovery
+pypac4http2 https://google.com
+
+# Resolve proxy using a specific PAC URL
+pypac4http2 --pac-url http://example.com/proxy.pac https://google.com
+```
+
+**Output Example:**
+```json
+Proxy choice: PROXY proxy.example.com:8080
+{
+  "target_url": "https://google.com",
+  "pac_result": "PROXY proxy.example.com:8080",
+  "proxy_info": {
+    "proxy_type": "HTTP",
+    "proxy_host": "proxy.example.com",
+    "proxy_port": 8080
+  }
+}
+```
+
