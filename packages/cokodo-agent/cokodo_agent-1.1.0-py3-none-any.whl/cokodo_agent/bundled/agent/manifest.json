@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "agent-protocol",
+  "version": "2.1.0",
+  "description": "AI Agent Collaboration Protocol - Standardized Digital Asset",
+  
+  "directory_name": ".agent",
+  "directory_name_comment": "Protocol directory name, documents use $AGENT_DIR placeholder",
+  
+  "loading_strategy": {
+    "layers": {
+      "essential": {
+        "description": "Core required files, must load every session",
+        "load": "always",
+        "token_budget": 3000,
+        "files": [
+          "start-here.md",
+          "quick-reference.md",
+          "core/core-rules.md"
+        ]
+      },
+      "context": {
+        "description": "Project context, load at session start",
+        "load": "session_start",
+        "token_budget": 2000,
+        "files": [
+          "core/instructions.md",
+          "project/context.md",
+          "project/tech-stack.md",
+          "project/known-issues.md"
+        ]
+      },
+      "stack_specs": {
+        "description": "Tech stack specs, load based on project stack",
+        "load": "on_demand",
+        "selector": "project.primary_stack",
+        "options": {
+          "python": ["core/stack-specs/python.md"],
+          "rust": ["core/stack-specs/rust.md"],
+          "qt": ["core/stack-specs/qt.md"],
+          "mixed": [
+            "core/stack-specs/python.md",
+            "core/stack-specs/rust.md"
+          ]
+        }
+      },
+      "workflows": {
+        "description": "Workflow specs, load by task type",
+        "load": "on_demand",
+        "trigger": "task_type",
+        "mappings": {
+          "coding": ["core/workflows/bug-prevention.md", "core/workflows/design-principles.md"],
+          "testing": ["core/workflows/testing.md"],
+          "documentation": ["core/workflows/documentation.md"],
+          "review": ["core/workflows/review-process.md", "core/workflows/quality-assurance.md"],
+          "planning": ["core/workflows/pre-task-checklist.md", "core/workflows/ai-boundaries.md"]
+        }
+      },
+      "skills": {
+        "description": "Skill modules, load on demand",
+        "load": "on_demand",
+        "trigger": "skill_request",
+        "modules": {
+          "interface": {
+            "entry": "skills/skill-interface.md",
+            "description": "Skill development interface spec"
+          },
+          "guardian": {
+            "entry": "skills/guardian/SKILL.md",
+            "description": "Code/doc quality check"
+          },
+          "ai-integration": {
+            "entry": "skills/ai-integration/llm-client.md",
+            "files": [
+              "skills/ai-integration/llm-client.md",
+              "skills/ai-integration/prompt-engineering.md",
+              "skills/ai-integration/domain-adaptation.md"
+            ],
+            "description": "AI/LLM integration development"
+          },
+          "agent-governance": {
+            "entry": "skills/agent-governance/SKILL.md",
+            "description": "Protocol health check"
+          }
+        }
+      },
+      "reference": {
+        "description": "Reference docs, load when consulting",
+        "load": "on_demand",
+        "files": [
+          "core/conventions.md",
+          "core/stack-specs/git.md",
+          "core/security.md",
+          "core/examples.md",
+          "meta/protocol-adr.md"
+        ]
+      }
+    },
+    
+    "task_profiles": {
+      "code_review": {
+        "description": "Code review task",
+        "layers": ["essential", "context", "stack_specs"],
+        "workflows": ["review"],
+        "skills": ["guardian"]
+      },
+      "feature_development": {
+        "description": "Feature development task",
+        "layers": ["essential", "context", "stack_specs"],
+        "workflows": ["coding", "testing"],
+        "skills": []
+      },
+      "bug_fix": {
+        "description": "Bug fix task",
+        "layers": ["essential", "context", "stack_specs"],
+        "workflows": ["coding"],
+        "skills": ["guardian"]
+      },
+      "documentation": {
+        "description": "Documentation task",
+        "layers": ["essential", "context"],
+        "workflows": ["documentation"],
+        "skills": []
+      },
+      "ai_integration": {
+        "description": "AI integration development task",
+        "layers": ["essential", "context", "stack_specs"],
+        "workflows": ["coding", "testing"],
+        "skills": ["ai-integration"]
+      }
+    }
+  },
+  
+  "required_files": [
+    "start-here.md",
+    "index.md",
+    "core/core-rules.md",
+    "core/instructions.md",
+    "core/conventions.md",
+    "project/context.md",
+    "project/tech-stack.md",
+    "meta/protocol-adr.md"
+  ],
+  
+  "naming_conventions": {
+    "markdown_files": "^[a-z0-9]+(-[a-z0-9]+)*\\.md$",
+    "directories": "^[a-z0-9]+(-[a-z0-9]+)*$",
+    "exceptions": ["MANIFEST.json", "VERSION", "SKILL.md"]
+  },
+  
+  "compatibility": {
+    "min_version": "2.0.0",
+    "breaking_changes": [
+      {
+        "version": "2.0.0",
+        "description": "Protocol unified merge, directory structure changed"
+      }
+    ]
+  },
+  
+  "metadata": {
+    "created": "2026-01-23",
+    "updated": "2026-01-23",
+    "maintainer": "AI Agent Protocol Team"
+  }
+}
