@@ -1,0 +1,557 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamflow.di.unito.it/schemas/config/v1.0/config_schema.json",
+  "type": "object",
+  "$defs": {
+    "binding": {
+      "title": "Binding",
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "Step binding",
+          "description": "Step-deployment association that specifies where the execution of a specific step should be offloaded",
+          "properties": {
+            "step": {
+              "type": "string",
+              "title": "Step",
+              "description": "Posix-like path that uniquely identified the target step"
+            },
+            "target": {
+              "title": "Target",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "title": "Single",
+                  "$ref": "#/$defs/target"
+                },
+                {
+                  "type": "array",
+                  "title": "Multiple",
+                  "items": {
+                    "type": "object",
+                    "$ref": "#/$defs/target"
+                  }
+                }
+              ]
+            },
+            "filters": {
+              "type": "array",
+              "title": "Filters",
+              "description": "The filters used to manipulate the targets associated with this binding",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "step",
+            "target"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "title": "Port target",
+          "description": "Port-deployment association that specifies where the data tokens of a specific port reside",
+          "properties": {
+            "port": {
+              "type": "string",
+              "title": "Port",
+              "description": "Posix-like path that uniquely identified the target port"
+            },
+            "target": {
+              "type": "object",
+              "title": "Target",
+              "$ref": "#/$defs/target"
+            }
+          },
+          "required": [
+            "port",
+            "target"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "bindingFilter": {
+      "type": "object",
+      "$defs": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type"
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ]
+    },
+    "checkpointManager": {
+      "type": "object",
+      "$defs": {},
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Enabled",
+          "description": "Enable checkpointing service",
+          "default": false
+        },
+        "type": {
+          "type": "string",
+          "title": "Type"
+        }
+      },
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "type",
+          "config"
+        ]
+      }
+    },
+    "cwl": {
+      "type": "object",
+      "docker": {
+        "type": "object",
+        "$defs": {},
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "wrapper": {
+            "type": "boolean",
+            "description": "If true, the Docker target wraps the original target bound to the step. If false, it overrides it.",
+            "default": true
+          }
+        },
+        "required": [
+          "type",
+          "config"
+        ]
+      }
+    },
+    "database": {
+      "type": "object",
+      "$defs": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "default": "default"
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ]
+    },
+    "dataManager": {
+      "type": "object",
+      "$defs": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "default": "default"
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ]
+    },
+    "deployment": {
+      "type": "object",
+      "$defs": {},
+      "properties": {
+        "external": {
+          "type": "boolean",
+          "title": "External",
+          "description": "If set, StreamFlow does not manage the lifecycle of the execution environment. This means that all required services must be up and running when the workflow starts",
+          "default": false
+        },
+        "lazy": {
+          "type": "boolean",
+          "title": "Lazy",
+          "description": "If true, a model is deployed only when it becomes necessary for transfers or executions. If false, a DeployStep will deploy its related model as soon as it becomes fireable",
+          "default": true
+        },
+        "scheduling_policy": {
+          "type": "string",
+          "title": "Scheduling policy",
+          "description": "The scheduling policy to be used with this deployment.",
+          "default": "data_locality"
+        },
+        "type": {
+          "type": "string",
+          "title": "Type"
+        },
+        "workdir": {
+          "type": "string",
+          "title": "Working directory",
+          "description": "Path to the working directory."
+        },
+        "wraps": {
+          "oneOf": [
+            {
+              "type": "string",
+              "title": "External"
+            },
+            {
+              "type": "object",
+              "title": "Inline",
+              "properties": {
+                "deployment": {
+                  "type": "string",
+                  "title": "Deployment"
+                },
+                "service": {
+                  "type": "string",
+                  "title": "Service"
+                }
+              },
+              "required": [
+                "deployment"
+              ]
+            }
+          ],
+          "title": "Wrapped deployment",
+          "description": "The name of the deployment wrapped by this configuration."
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ]
+    },
+    "deploymentManager": {
+      "type": "object",
+      "$defs": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "default": "default"
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ]
+    },
+    "failureManager": {
+      "type": "object",
+      "$defs": {},
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Enabled",
+          "description": "Enable fault tolerance service",
+          "default": false
+        },
+        "type": {
+          "type": "string",
+          "title": "Type"
+        }
+      },
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "type",
+          "config"
+        ]
+      }
+    },
+    "policy": {
+      "type": "object",
+      "title": "Scheduling policy",
+      "$defs": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type"
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ]
+    },
+    "scheduler": {
+      "type": "object",
+      "title": "Scheduler",
+      "description": "Implements all the StreamFlow scheduling infrastructure, including data structures to store the global current allocation status.",
+      "$defs": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "default": "default"
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "title": "Target",
+      "description": "The target execution environment",
+      "properties": {
+        "deployment": {
+          "type": "string",
+          "title": "Deployment"
+        },
+        "model": {
+          "deprecated": true,
+          "type": "string",
+          "description": "(**Deprecated.** Use deployment.)",
+          "title": "Model"
+        },
+        "resources": {
+          "type": "integer",
+          "title": "Resources",
+          "deprecated": true,
+          "description": "(**Deprecated.** Use locations.) If greater than one, the STREAMFLOW_HOSTS variable contains the comma-separated list of nodes allocated for the task",
+          "default": 1
+        },
+        "locations": {
+          "type": "integer",
+          "title": "Locations",
+          "description": "If greater than one, the STREAMFLOW_HOSTS variable contains the comma-separated list of nodes allocated for the task",
+          "default": 1
+        },
+        "service": {
+          "type": "string",
+          "title": "Service"
+        },
+        "workdir": {
+          "type": "string",
+          "title": "Working directory",
+          "description": "Path to the working directory. It overrides the deployment-level setting."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "deployment"
+          ]
+        },
+        {
+          "required": [
+            "model"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "workflow": {
+      "type": "object",
+      "title": "Workflow",
+      "$defs": {
+        "cwl": {
+          "type": "object",
+          "title": "CWL",
+          "description": "Common Workflow Language",
+          "properties": {
+            "file": {
+              "type": "string",
+              "title": "Process file",
+              "description": "The CommandLineTool, ExpressionTool, or Workflow description to run."
+            },
+            "settings": {
+              "type": "string",
+              "title": "Job file",
+              "description": "The input job document."
+            },
+            "docker": {
+              "type": "array",
+              "title": "Docker Requirement",
+              "description": "How CWL Docker Requirement definitions should be mapped onto container-based connectors.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string"
+                  },
+                  "deployment": {
+                    "type": "object",
+                    "title": "Deployment",
+                    "$ref": "#/$defs/cwl/docker"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "step",
+                  "deployment"
+                ]
+              }
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": [
+            "cwl"
+          ]
+        },
+        "bindings": {
+          "type": "array",
+          "title": "Bindings",
+          "items": {
+            "type": "object",
+            "$ref": "#/$defs/binding"
+          },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "cwl"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "type": "object",
+                "$ref": "#/$defs/workflow/$defs/cwl"
+              }
+            }
+          }
+        }
+      ],
+      "required": [
+        "type",
+        "config"
+      ]
+    }
+  },
+  "properties": {
+    "bindingFilters": {
+      "type": "object",
+      "title": "Binding filters",
+      "patternProperties": {
+        "^[a-z][a-zA-Z0-9._-]*$": {
+          "$ref": "#/$defs/bindingFilter"
+        }
+      }
+    },
+    "checkpointManager": {
+      "type": "object",
+      "title": "Checkpoint manager",
+      "$ref": "#/$defs/checkpointManager"
+    },
+    "database": {
+      "type": "object",
+      "title": "Database",
+      "description": "Stores all the metadata regarding a workflow execution, which are used for fault tolerance, provenance collection, and reporting",
+      "$ref": "#/$defs/database"
+    },
+    "dataManager": {
+      "type": "object",
+      "description": "Performs data transfers to and from remote execution locations and, for each file, keeps track of its replicas across the distributed environment",
+      "title": "Data manager",
+      "$ref": "#/$defs/dataManager"
+    },
+    "deployments": {
+      "type": "object",
+      "title": "Deployments",
+      "description": "A dictionary of uniquely named execution environments",
+      "patternProperties": {
+        "^[a-z][a-zA-Z0-9._-]*$": {
+          "$ref": "#/$defs/deployment"
+        }
+      },
+      "additionalProperties": false
+    },
+    "deploymentManager": {
+      "type": "object",
+      "title": "Deployment manager",
+      "description": "Instantiates and manages Connector instances for each Deployment object",
+      "$ref": "#/$defs/deploymentManager"
+    },
+    "failureManager": {
+      "type": "object",
+      "title": "Failure manager",
+      "$ref": "#/$defs/failureManager"
+    },
+    "scheduling": {
+      "type": "object",
+      "title": "Scheduling",
+      "description": "StreamFlow scheduling infrastructure",
+      "properties": {
+        "scheduler": {
+          "type": "object",
+          "title": "Scheduler",
+          "$ref": "#/$defs/scheduler"
+        },
+        "policies": {
+          "type": "object",
+          "title": "Scheduling policies",
+          "description": "Implement specific placement strategies to map jobs onto available locations",
+          "patternProperties": {
+            "^[a-z][a-zA-Z0-9._-]*$": {
+              "$ref": "#/$defs/policy"
+            }
+          }
+        }
+      }
+    },
+    "models": {
+      "type": "object",
+      "title": "Models",
+      "description": "(**Deprecated.** Use deployments.) A dictionary of uniquely named execution environments",
+      "deprecated": true,
+      "patternProperties": {
+        "^[a-z][a-zA-Z0-9._-]*$": {
+          "$ref": "#/$defs/deployment"
+        }
+      },
+      "additionalProperties": false
+    },
+    "version": {
+      "type": "string"
+    },
+    "workflows": {
+      "type": "object",
+      "title": "Workflows",
+      "description": "A dictionary of uniquely named workflows to be executed",
+      "patternProperties": {
+        "^[a-z][a-zA-Z0-9._-]*$": {
+          "$ref": "#/$defs/workflow"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "additionalProperties": false
+}
