@@ -1,0 +1,168 @@
+# Compile wheels
+# Reference: https://nanobind.readthedocs.io/en/latest/packaging.html#step-6-build-wheels-in-the-cloud
+name: Wheels
+
+# Only on manual trigger
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run mode (no real execution)"
+        type: boolean
+        default: true
+
+# Publish Release need write permissions
+permissions:
+  contents: write
+
+jobs:
+  build_sdist:
+    name: Build SDist
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Build SDist
+      run: pipx run build --sdist
+
+    - name: Check metadata
+      run: pipx run twine check dist/*
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dist-sdist
+        path: dist/*.tar.gz
+
+  build_wheels:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux_x86_64
+            runner: ubuntu-latest
+            env_arch_key: CIBW_ARCHS_LINUX
+            arch: x86_64
+          - name: linux_aarch64
+            runner: ubuntu-latest
+            env_arch_key: CIBW_ARCHS_LINUX
+            arch: aarch64
+          - name: windows_amd64
+            runner: windows-latest
+            env_arch_key: CIBW_ARCHS_WINDOWS
+            arch: AMD64
+          - name: macos_arm64
+            runner: macos-14
+            env_arch_key: CIBW_ARCHS_MACOS
+            arch: arm64
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Set up QEMU (Linux aarch64 only)
+      if: startsWith(matrix.name, 'linux') && matrix.arch == 'aarch64'
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Build wheels via cibuildwheel
+      uses: pypa/cibuildwheel@v2.22
+      env:
+        ${{ matrix.env_arch_key }}: ${{ matrix.arch }}
+        # Set the manylinux standard for aarch64
+        CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+
+    - name: Verify clean directory
+      run: git diff --exit-code
+      shell: bash
+
+    - name: Upload wheels
+      uses: actions/upload-artifact@v4
+      with:
+        path: wheelhouse/*.whl
+        name: dist-${{ matrix.name }}
+
+  get_version:
+    name: Read VERSION
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        shell: bash
+        run: |
+          if [ ! -f VERSION ]; then
+            echo "VERSION file missing" >&2; exit 1
+          fi
+          v=$(tr -d ' \t\r\n' < VERSION)   # Remove whitespace/newline/CRLF
+          if [ -z "$v" ]; then
+            echo "Empty VERSION" >&2; exit 1
+          fi
+          # Allow VERSION to have or not have prefix v
+          if [[ "$v" == v* ]]; then
+            tag="$v"; version="${v#v}"
+          else
+            tag="v${v}"; version="$v"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  # release to Github
+  release:
+    name: Publish to GitHub Release
+    needs: [get_version, build_sdist, build_wheels]
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        path: dist
+        pattern: dist-*
+        merge-multiple: true
+
+    - name: Generate checksums
+      run: |
+        cd dist
+        sha256sum * > SHA256SUMS.txt
+
+    - uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+          dist/SHA256SUMS.txt
+        tag_name: ${{ needs.get_version.outputs.tag }}
+        target_commitish: ${{ github.sha }}
+        generate_release_notes: true
+        draft: ${{ inputs.dry_run == true }}
+        prerelease: false
+
+  # publish wheels to PyPI
+  publish_wheels:
+    name: Publish Wheels
+    if: inputs.dry_run != true
+    needs: [build_sdist, build_wheels]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # IMPORTANT: this permission is mandatory for Trusted Publishing
+      id-token: write
+    steps:
+    - uses: actions/setup-python@v5
+
+    - uses: actions/download-artifact@v4
+      with:
+        path: dist
+        pattern: dist-*
+        merge-multiple: true
+
+    - uses: pypa/gh-action-pypi-publish@release/v1
