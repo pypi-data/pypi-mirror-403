@@ -1,0 +1,134 @@
+Metadata-Version: 2.4
+Name: air-markdown
+Version: 0.5.0
+Summary: Air Tags + Markdown
+Author-email: Daniel Roy Greenfeld <daniel@feldroy.com>, Audrey Roy Greenfeld <audrey@feldroy.com>
+Maintainer-email: Daniel Roy Greenfeld <daniel@feldroy.com>, Audrey Roy Greenfeld <audrey@feldroy.com>
+License: MIT
+Project-URL: bugs, https://github.com/feldroy/air_markdown/issues
+Project-URL: changelog, https://github.com/feldroy/air_markdown/blob/master/changelog.md
+Project-URL: homepage, https://github.com/feldroy/air_markdown
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python
+Classifier: Topic :: Internet
+Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Software Development
+Classifier: Typing :: Typed
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Web Environment
+Classifier: Framework :: FastAPI
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: air>=0.45.0
+Requires-Dist: mistletoe>=1.4.0
+Provides-Extra: dev
+Requires-Dist: rust-just; extra == "dev"
+Provides-Extra: test
+Requires-Dist: coverage; extra == "test"
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: ruff; extra == "test"
+Requires-Dist: ty; extra == "test"
+Requires-Dist: ipdb; extra == "test"
+Dynamic: license-file
+
+# air-markdown
+
+![PyPI version](https://img.shields.io/pypi/v/air_markdown.svg)
+
+Markdown = Air Tags + Mistletoe
+
+* Free software: MIT License
+* Documentation: https://air-markdown.readthedocs.io.
+
+## Features
+
+* Handy `Markdown()` Air Tag that renders Markdown into HTML.
+* Powerful `AirMarkdown()` Air Tag that renders Markdown into HTML, including rendering of Air Tags inside ````air-live``` blocks. For example, if you have:
+
+```air-live
+air.H2("Heading 2")
+```
+
+it will render as `<h2>Heading 2</h2>`.
+
+
+## Installation
+
+Via uv:
+
+```sh
+uv add air-markdown
+```
+
+Or pip:
+
+```sh
+pip install air-markdown
+```
+
+## Usage
+
+```python
+from air_markdown import Markdown
+
+Markdown('# Hello, world')
+```
+
+Renders as:
+
+```html
+<h1>Hello, world.</h1>
+```
+
+## Customizing the rendered HTML
+
+Mistletoe allows for customization of the renderer through overloading of the `Markdown.html_renderer` property. 
+
+```python
+from air_markdown import Markdown
+import mistletoe
+
+class SupermanRenderer(mistletoe.HtmlRenderer):
+    def render_strong(self, token: mistletoe.span_token.Strong) -> str:
+        template = '<strong class="superman">{}</strong>'
+        return template.format(self.render_inner(token))  
+
+Markdown.html_renderer = SupermanRenderer
+```
+
+Now `Markdown("**Look in the sky!**")` renders
+
+```html
+<p><strong class="superman">Look in the sky!</strong></p>\n
+```
+
+## Wrapping Markdown output
+
+If you need to wrap Markdown output, just override the `Markdown.wrapper`. So if you need all content to be wrapped by a `section` tag:
+
+```python
+Markdown.wrapper = lambda self, x: f'<section>{x}</section>'   
+
+assert Markdown('# Big').render() == '<section><h1>Big</h1>\n</section>'
+```
+
+## TailwindTypographyMarkdown()
+
+Useful for when using Tailwind Typography, it wraps content in an `<article class="prose">` tag.
+
+```python
+html = TailwindTypographyMarkdown('# Tailwind support').render()
+assert html == '<article class="prose"><h1>Tailwind support</h1>\n</article>'
+```
+
+## Credits
+
+This package was created with [Cookiecutter](https://github.com/audreyfeldroy/cookiecutter) and the [audreyfeldroy/cookiecutter-pypackage](https://github.com/audreyfeldroy/cookiecutter-pypackage) project template.
+
