@@ -1,0 +1,171 @@
+# claude-mux-iterm
+
+MCP server enabling communication between Claude Code sessions in iTerm2 panes.
+
+**Primary use case**: Notify other sessions when PR is merged to main so they can pull latest changes.
+
+## Installation
+
+```bash
+pip install claude-mux-iterm
+```
+
+Or with uv:
+
+```bash
+uv pip install claude-mux-iterm
+```
+
+## Configuration
+
+Add to your Claude Code MCP settings (`~/.claude/settings.json` or project-level):
+
+```json
+{
+  "mcpServers": {
+    "claude-mux-iterm": {
+      "command": "uvx",
+      "args": ["claude-mux-iterm"]
+    }
+  }
+}
+```
+
+Or if installed with pip:
+
+```json
+{
+  "mcpServers": {
+    "claude-mux-iterm": {
+      "command": "claude-mux-iterm"
+    }
+  }
+}
+```
+
+## Tools
+
+### `register_session(task_id)`
+
+Register the current iTerm2 session with a task ID. This allows other sessions to find and communicate with this session.
+
+```
+register_session("task-a")
+```
+
+### `list_sessions()`
+
+List all registered active sessions.
+
+```
+list_sessions()
+```
+
+### `send_message(target_task_id, content, source_task_id)`
+
+Send a message to a specific session.
+
+```
+send_message("task-b", "PR merged to main, please pull latest", "task-a")
+```
+
+### `broadcast_message(content, source_task_id)`
+
+Send a message to all other active sessions.
+
+```
+broadcast_message("PR #123 merged to main, please pull latest", "task-a")
+```
+
+### `list_messages(current_task_id, unread_only)`
+
+List messages received by this session.
+
+```
+list_messages("task-a", unread_only=True)
+```
+
+### `acknowledge_message(message_id, current_task_id)`
+
+Mark a message as read/acknowledged.
+
+```
+acknowledge_message("msg_abc123", "task-a")
+```
+
+## Usage Example
+
+### Pane 1 (working on feature branch):
+
+```
+# Register this session
+register_session("feature-auth")
+
+# Check for messages periodically
+list_messages("feature-auth", unread_only=True)
+```
+
+### Pane 2 (just merged a PR):
+
+```
+# Register this session
+register_session("main-work")
+
+# Notify all other sessions about the merge
+broadcast_message("PR #42 merged to main with auth changes - please pull latest", "main-work")
+```
+
+### Message Format
+
+Messages are injected into sessions using a wire format:
+
+```
+[CLAUDE-MUX-ITERM-MESSAGE]{"message_id":"msg_abc123",...}[/CLAUDE-MUX-ITERM-MESSAGE]
+```
+
+Claude Code sessions can parse this format to extract the message content.
+
+## Storage
+
+Session registrations and messages are stored in:
+
+```
+~/.claude-mux-iterm/
+├── sessions/
+│   └── {task_id}.json           # Session registrations
+└── messages/
+    └── {task_id}/
+        ├── inbox/               # Received messages
+        ├── outbox/              # Sent messages
+        └── delivered/           # Acknowledged messages
+```
+
+## Requirements
+
+- macOS (uses iTerm2 AppleScript)
+- iTerm2 running
+- Python 3.10+
+
+## Development
+
+```bash
+# Clone the repo
+git clone https://github.com/GrigoriLab/claude-mux-iterm
+cd claude-mux-iterm
+
+# Install with dev dependencies
+uv pip install -e ".[dev]"
+
+# Run tests
+uv run pytest
+
+# Run type checking
+uv run mypy src
+
+# Run linting
+uv run ruff check src tests
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file.
