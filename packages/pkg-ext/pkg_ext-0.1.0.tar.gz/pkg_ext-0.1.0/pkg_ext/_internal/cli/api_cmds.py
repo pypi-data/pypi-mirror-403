@@ -1,0 +1,65 @@
+"""API inspection and comparison commands: dump_api, diff_api."""
+
+import logging
+from pathlib import Path
+
+import typer
+from model_lib import dump, parse
+from zero_3rdparty.file_utils import ensure_parents_write_text
+
+from pkg_ext._internal import api_diff
+from pkg_ext._internal.cli.options import option_dev_mode, option_output_file
+from pkg_ext._internal.cli.workflows import create_api_dump, write_api_dump
+from pkg_ext._internal.git_usage import git_show_file
+from pkg_ext._internal.models.api_dump import PublicApiDump
+from pkg_ext._internal.settings import PkgSettings
+
+logger = logging.getLogger(__name__)
+
+
+def dump_api(
+    ctx: typer.Context,
+    output: Path | None = option_output_file,
+    dev: bool = option_dev_mode,
+):
+    """Dump public API to YAML for diffing and breaking change detection."""
+    settings: PkgSettings = ctx.obj
+    if output is None:
+        write_api_dump(settings, dev_mode=dev)
+    else:
+        api_dump = create_api_dump(settings)
+        yaml_text = dump.dump_as_str(api_dump.model_dump(exclude_none=True), "yaml")
+        ensure_parents_write_text(output, yaml_text)
+        logger.info(f"API dump written to {output}")
+
+
+def diff_api(
+    ctx: typer.Context,
+    baseline_ref: str | None = typer.Option(
+        None,
+        "--baseline",
+        help="Git tag/ref to compare against (default: {pkg}.api.yaml file)",
+    ),
+):
+    """Show API changes between baseline and dev dump."""
+    settings: PkgSettings = ctx.obj
+    dev_path = settings.api_dump_dev_path
+    baseline_path = settings.api_dump_baseline_path
+
+    write_api_dump(settings, dev_mode=True)
+    dev_dump = parse.parse_model(dev_path, t=PublicApiDump)
+
+    baseline: PublicApiDump | None = None
+    if baseline_ref:
+        content = git_show_file(settings.repo_root, baseline_ref, baseline_path)
+        if content is None:
+            logger.info(f"No baseline found at {baseline_ref}:{baseline_path.name}")
+        else:
+            baseline = parse.parse_model(content, t=PublicApiDump)
+    elif baseline_path.exists():
+        baseline = parse.parse_model(baseline_path, t=PublicApiDump)
+    else:
+        logger.info("No baseline found (first release)")
+
+    results = api_diff.compare_api_dumps(baseline, dev_dump)
+    typer.echo(api_diff.format_diff_results(results))
