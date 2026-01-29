@@ -1,0 +1,1 @@
+"use strict";(globalThis.webpackChunk_atoti_branding_app_extension=globalThis.webpackChunk_atoti_branding_app_extension||[]).push([["272"],{83:function(a,n,t){t.r(n),t.d(n,{default:()=>i});let i={async activate(a){a.applicationName="_ATOTI_TITLE_PLACEHOLDER"}}}}]);

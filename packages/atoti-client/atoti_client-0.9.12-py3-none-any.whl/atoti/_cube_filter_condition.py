@@ -1,0 +1,5 @@
+from typing import TypeAlias
+
+from ._scalar_constant_column_condition import ScalarConstantColumnCondition
+
+CubeFilterCondition: TypeAlias = ScalarConstantColumnCondition
