@@ -1,0 +1,486 @@
+# =============================================================================
+# CASE CONFIGURATION - Argus
+# =============================================================================
+#
+# Defines how cases are displayed and managed for the Argus pipeline.
+# Each journal entry with anomalies is tracked as an individual case for async HITL review.
+#
+# =============================================================================
+
+identity:
+  # Each journal entry gets its own case ID
+  # Format: ARGUS-{journal_id}
+  prefix: "ARGUS"
+  uniqueness: "journal_id"  # Uses journal_id from debit entry in current_journal
+
+# =============================================================================
+# LIST VIEW - Case List Display (Tabbed View)
+# =============================================================================
+#
+# Defines pipeline-specific fields and column order for the Argus pipeline tab.
+#
+# Common fields (always available, don't need to define):
+#   - case_id, pipeline_id, status, hitl_gate_title, hitl_description,
+#     hitl_status, hitl_decision, responded_by, created_at, updated_at, actions
+#
+# When "ALL" tab is selected: Only common fields are shown (default order)
+# When "Argus" tab is selected: Columns are shown in the order specified in
+#   column_order, mixing common fields and pipeline-specific fields
+
+list_view:
+  # Define pipeline-specific fields (extracted from upstream context)
+  pipeline_fields:
+    - key: "transaction_id"
+      field: "current_journal.transaction_id"
+      label: "Transaction ID"
+      type: text
+    - key: "company_code"
+      field: "current_journal.company_code"
+      label: "Company Code"
+      type: text
+    - key: "gl_account"
+      field: "current_journal.gl_account"
+      label: "GL Account"
+      type: text
+    - key: "business_area"
+      field: "current_journal.business_area"
+      label: "Business Area"
+      type: text
+    - key: "credit_gl_account"
+      field: "current_journal.credit_gl_account"
+      label: "Credit GL Account"
+      type: text
+    - key: "assignment"
+      field: "current_journal.assignment"
+      label: "Assignment"
+      type: text
+    - key: "amount"
+      field: "current_journal.amount"
+      label: "Amount"
+      type: number
+    - key: "anomaly_type"
+      field: "argus_anomaly_detector.anomaly_type"
+      label: "Anomaly Type"
+      type: text
+      value_mapping:
+        "capital_revenue_misclassification": "CAPITAL/REVENUE MISCLASSIFICATION"
+        "lease_rou_misclassification": "LEASE/ROU MISCLASSIFICATION"
+        "CAPITAL_REVENUE_MISCLASSIFICATION": "CAPITAL/REVENUE MISCLASSIFICATION"
+        "LEASE_ROU_MISCLASSIFICATION": "LEASE/ROU MISCLASSIFICATION"
+    - key: "status"
+      field: "current_journal.status"
+      label: "Status"
+      type: text
+  
+  # Column order for Argus pipeline tab
+  # Mix common field keys (case_id, status, etc.) and pipeline field keys (journal_id, transaction_id, etc.)
+  # Only columns listed here will be shown on the pipeline tab
+  column_order:
+    - "case_id"           # Common field (contains journal_id: ARGUS-{journal_id})
+    - "transaction_id"    # Pipeline field
+    - "company_code"      # Pipeline field
+    - "gl_account"        # Pipeline field
+    - "business_area"     # Pipeline field
+    - "credit_gl_account" # Pipeline field
+    - "assignment"        # Pipeline field
+    - "amount"            # Pipeline field
+    - "anomaly_type"       # Pipeline field
+    - "status"            # Common field
+    - "hitl_status"       # Common field
+    - "created_at"        # Common field
+    - "updated_at"        # Common field
+    - "actions"           # Common field (action buttons)
+
+# =============================================================================
+# DOCUMENTS - Case Documents Tab
+# =============================================================================
+#
+# Defines which documents to display in the Documents tab.
+# For journal entries, there are no document files to display.
+
+documents: []
+
+# =============================================================================
+# DETAIL VIEW - Case Detail Display
+# =============================================================================
+
+detail_view:
+  sections:
+    - name: "Transaction Information"
+      fields:
+        - field: "argus_journal_extractor.extracted_entry.transaction_id"
+          label: "Transaction ID"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.company_code"
+          label: "Company Code"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.posting_date"
+          label: "Posting Date"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.document_date"
+          label: "Document Date"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.header_text"
+          label: "Header Text"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.reference"
+          label: "Reference"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.amount"
+          label: "Transaction Amount"
+          type: number
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.document_currency"
+          label: "Document Currency"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.local_currency"
+          label: "Local Currency"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+    
+    - name: "Debit Entry"
+      fields:
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.journal_id"
+          label: "Journal ID"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.gl_account"
+          label: "GL Account"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.posting_key"
+          label: "Posting Key"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.amount"
+          label: "Amount"
+          type: number
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.business_area"
+          label: "Business Area"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.tax_code"
+          label: "Tax Code"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.profit_center"
+          label: "Profit Center"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.cost_center"
+          label: "Cost Center"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.plant"
+          label: "Plant"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.order"
+          label: "Order"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.debit_entry.wbs_element"
+          label: "WBS Element"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.debit_entry IS NOT NULL"
+    
+    - name: "Credit Entry"
+      fields:
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.journal_id"
+          label: "Journal ID"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.gl_account"
+          label: "GL Account"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.posting_key"
+          label: "Posting Key"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.amount"
+          label: "Amount"
+          type: number
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.business_area"
+          label: "Business Area"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.tax_code"
+          label: "Tax Code"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.profit_center"
+          label: "Profit Center"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.cost_center"
+          label: "Cost Center"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.plant"
+          label: "Plant"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.order"
+          label: "Order"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+        - field: "argus_journal_extractor.extracted_entry.credit_entry.wbs_element"
+          label: "WBS Element"
+          type: text
+          condition: "argus_journal_extractor.extracted_entry.credit_entry IS NOT NULL"
+    
+    - name: "Anomaly Detection Results"
+      fields:
+        - field: "argus_anomaly_detector.anomaly_detected"
+          label: "Anomaly Detected"
+          type: boolean
+        - field: "argus_anomaly_detector.anomaly_type"
+          label: "Anomaly Type"
+          type: text
+          value_mapping:
+            "capital_revenue_misclassification": "CAPITAL/REVENUE MISCLASSIFICATION"
+            "lease_rou_misclassification": "LEASE/ROU MISCLASSIFICATION"
+            "CAPITAL_REVENUE_MISCLASSIFICATION": "CAPITAL/REVENUE MISCLASSIFICATION"
+            "LEASE_ROU_MISCLASSIFICATION": "LEASE/ROU MISCLASSIFICATION"
+        - field: "argus_anomaly_detector.reasoning"
+          label: "Detection Reasoning"
+          type: markdown
+        - field: "argus_anomaly_detector.confidence_score"
+          label: "Confidence Score"
+          type: number
+    
+    - name: "Correction Suggestions"
+      fields:
+        - field: "argus_correction_suggester.corrected_entry"
+          label: "Corrected Entry"
+          type: json
+          condition: "argus_correction_suggester IS NOT NULL"
+        - field: "argus_correction_suggester.correction_reasoning"
+          label: "Correction Reasoning"
+          type: markdown
+          condition: "argus_correction_suggester IS NOT NULL"
+        - field: "argus_correction_suggester.impact_analysis"
+          label: "Impact Analysis"
+          type: markdown
+          condition: "argus_correction_suggester IS NOT NULL"
+    
+    - name: "Extracted Entry Details"
+      fields:
+        - field: "argus_journal_extractor.extracted_entry"
+          label: "Extracted Entry"
+          type: json
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_journal_extractor.confidence_score"
+          label: "Extraction Confidence Score"
+          type: number
+          condition: "argus_journal_extractor.confidence_score IS NOT NULL"
+
+# =============================================================================
+# REVIEW RESPONSE OUTCOME - Post-HITL Response Results
+# =============================================================================
+#
+# Defines which fields to display in the "Review Response Outcome" tab.
+# This tab is only shown after a HITL response has been submitted and the
+# pipeline has resumed execution. It displays the results of actions taken
+# based on the HITL decision.
+#
+# For Argus, this typically shows:
+# - Final processing status
+# - Database status updates
+# - Any corrections or modifications applied
+# - Final decision and rationale
+
+review_response_outcome:
+  sections:
+    - name: "Processing Results"
+      fields:
+        - field: "argus_review.decision"
+          label: "Human Review Decision"
+          type: text
+          condition: "argus_review.decision IS NOT NULL"
+        - field: "argus_anomaly_detector.anomaly_detected"
+          label: "Anomaly Detected"
+          type: boolean
+          condition: "argus_anomaly_detector IS NOT NULL"
+        - field: "argus_anomaly_detector.anomaly_type"
+          label: "Anomaly Type"
+          type: text
+          condition: "argus_anomaly_detector.anomaly_type IS NOT NULL"
+          value_mapping:
+            "capital_revenue_misclassification": "CAPITAL/REVENUE MISCLASSIFICATION"
+            "lease_rou_misclassification": "LEASE/ROU MISCLASSIFICATION"
+            "CAPITAL_REVENUE_MISCLASSIFICATION": "CAPITAL/REVENUE MISCLASSIFICATION"
+            "LEASE_ROU_MISCLASSIFICATION": "LEASE/ROU MISCLASSIFICATION"
+        - field: "argus_anomaly_detector.reasoning"
+          label: "Detection Reasoning"
+          type: markdown
+          condition: "argus_anomaly_detector.reasoning IS NOT NULL"
+        - field: "argus_results_recorder.recorded"
+          label: "Results Recorded"
+          type: boolean
+          condition: "argus_results_recorder IS NOT NULL"
+    
+    - name: "Journal Entry Status"
+      fields:
+        - field: "current_journal.status"
+          label: "Journal Entry Status"
+          type: text
+          condition: "current_journal.status IS NOT NULL"
+        - field: "current_journal.transaction_id"
+          label: "Transaction ID"
+          type: text
+          condition: "current_journal.transaction_id IS NOT NULL"
+    
+    - name: "Entry Comparison"
+      condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+      fields:
+        - field: "entry_comparison"
+          label: "Original vs Processed Entry"
+          type: entry_comparison
+          original_field: "argus_journal_extractor.extracted_entry"
+          corrected_field: "argus_correction_applier.corrected_entry OR argus_correction_suggester.corrected_entry OR argus_journal_extractor.extracted_entry"
+          condition: "argus_journal_extractor.extracted_entry IS NOT NULL"
+        - field: "argus_correction_suggester.correction_reasoning"
+          label: "Correction Reasoning"
+          type: markdown
+          condition: "argus_correction_suggester.correction_reasoning IS NOT NULL"
+        - field: "argus_correction_suggester.impact_analysis"
+          label: "Impact Analysis"
+          type: markdown
+          condition: "argus_correction_suggester.impact_analysis IS NOT NULL"
+        - field: "argus_correction_applier.original_transaction_id"
+          label: "Original Transaction ID"
+          type: text
+          condition: "argus_correction_applier.original_transaction_id IS NOT NULL"
+        - field: "argus_correction_applier.corrected_transaction_id"
+          label: "Corrected Transaction ID"
+          type: text
+          condition: "argus_correction_applier.corrected_transaction_id IS NOT NULL"
+    
+    - name: "Anomaly Detection Details"
+      fields:
+        - field: "argus_anomaly_detector.confidence_score"
+          label: "Confidence Score"
+          type: number
+          condition: "argus_anomaly_detector.confidence_score IS NOT NULL"
+        - field: "argus_anomaly_detector"
+          label: "Full Anomaly Detection Results"
+          type: json
+          condition: "argus_anomaly_detector IS NOT NULL"
+    
+    - name: "Correction Details"
+      condition: "argus_correction_suggester IS NOT NULL"
+      fields:
+        - field: "argus_correction_suggester"
+          label: "Correction Suggestions"
+          type: json
+          condition: "argus_correction_suggester IS NOT NULL"
+
+# =============================================================================
+# DASHBOARD - Pipeline-Specific Analytics Cards
+# =============================================================================
+#
+# Defines analytics cards to display in the Operations dashboard for this pipeline.
+# Cards are filtered by the same criteria as the list view (pipeline, time range, status, search).
+#
+# Card Types:
+#   - metric: Numeric metric (count, sum, avg, min, max)
+#   - percentage: Percentage with numerator/denominator
+#   - donut: Distribution chart grouped by field value
+#   - bar: Bar chart (same as donut, different visualization)
+#   - timeline: Time-based distribution
+#
+# Field paths use dot notation to access case_data fields (e.g., "agent_id.field").
+# Special fields: "status", "created_at", "total"
+
+dashboard:
+  # Enable dashboard for this pipeline
+  enabled: true
+  
+  # Cards to display (order matters)
+  cards:
+    # Card 1: Anomaly Detection Rate
+    - type: "percentage"
+      title: "Anomaly Detection Rate"
+      icon: "AlertTriangle"
+      numerator:
+        field: "argus_anomaly_detector.anomaly_detected"
+        filter: true
+      denominator:
+        field: "total"
+      color: "amber"
+      show_breakdown: true
+      footer:
+        type: "text"
+        content: "Based on {{totalCases}} processed cases"
+    
+    # Card 2: Average Confidence Score
+    - type: "metric"
+      title: "Average Confidence Score"
+      icon: "TrendingUp"
+      field: "argus_anomaly_detector.confidence_score"
+      aggregation: "avg"
+      format: "number"
+      decimals: 2
+      color: "blue"
+      suffix: "/ 1.0"
+      visualization: "gauge"  # Circular gauge perfect for 0-1 score scale
+      footer:
+        type: "legend"
+        items:
+          - label: "Score Range"
+            value: "0.0 - 1.0"
+          - label: "Cases"
+            value: "{{totalCases}}"
+          - label: "Target"
+            value: "≥ 0.90"
+            color: "green"
+    
+    # Card 3: Total Transaction Amount
+    - type: "metric"
+      title: "Total Transaction Amount"
+      icon: "DollarSign"
+      field: "current_journal.amount"
+      aggregation: "sum"
+      format: "currency"
+      color: "green"
+      visualization: "none"  # Clean display for cumulative amounts without max value
+      footer:
+        - label: "Cases"
+          value: "{{totalCases}}"
+        - label: "Currency"
+          value: "GBP"
+    
+    # Card 4: Anomaly Types Distribution
+    - type: "donut"
+      title: "Anomaly Types"
+      icon: "PieChart"
+      field: "argus_anomaly_detector.anomaly_type"
+      show_legend: true
+      show_percentages: true
+      colors:
+        "capital_revenue_misclassification": "red"
+        "lease_rou_misclassification": "amber"
+        "CAPITAL_REVENUE_MISCLASSIFICATION": "red"
+        "LEASE_ROU_MISCLASSIFICATION": "amber"
+    
+    # Card 5: Cases Timeline (uses full timeline component like "All" tab)
+    - type: "timeline"
+      title: "Cases Timeline"
+      icon: "Calendar"
+      # When type is timeline, cases are passed directly - no field needed
+    
+    # Card 6: Response Method (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "response_method"
+      title: "Response Method"

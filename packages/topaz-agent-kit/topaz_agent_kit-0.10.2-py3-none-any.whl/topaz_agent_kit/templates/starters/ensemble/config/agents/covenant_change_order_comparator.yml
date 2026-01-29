@@ -1,0 +1,40 @@
+# =============================================================================
+# CHANGE ORDER COMPARATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent compares change order against signed SOW and identifies modified terms.
+#
+# =============================================================================
+id: covenant_change_order_comparator
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_change_order_comparator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_change_order_comparator.jinja
+  inputs:
+    inline: |
+      Contract ID: {{covenant_orchestrator.contract_id}}
+      Change Order Data: {{covenant_change_order_extractor.extracted_data}}
+      Project Directory: {{project_dir}}

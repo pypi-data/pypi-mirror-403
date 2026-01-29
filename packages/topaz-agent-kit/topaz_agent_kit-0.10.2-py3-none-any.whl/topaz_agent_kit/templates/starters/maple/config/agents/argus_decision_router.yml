@@ -1,0 +1,34 @@
+# =============================================================================
+# DECISION ROUTER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent determines the routing path based on anomaly detection results.
+# It generates dynamic HITL gate options based on anomaly types and provides
+# recommendations for which action to take. For straight-through entries, it
+# routes directly to results recording.
+#
+# =============================================================================
+id: argus_decision_router
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/argus_decision_router
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/argus_decision_router.jinja
+  inputs:
+    inline: |
+      - Current Journal Transaction: {{current_journal}}
+      - Anomaly Detection Results: {{argus_anomaly_detector}}
+      - Correction Suggestions: {% if argus_correction_suggester %}{{argus_correction_suggester}}{% else %}None{% endif %}

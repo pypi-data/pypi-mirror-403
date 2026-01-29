@@ -1,0 +1,136 @@
+# =============================================================================
+# PIPELINE CONFIGURATION - Math Batch Solver
+# =============================================================================
+#
+# A batch processing pipeline that solves multiple math problems in sequence.
+# Uses async HITL for complex problems while continuing to process other problems.
+#
+# =============================================================================
+
+name: "Math Batch Solver"
+description: "A batch processing pipeline that solves multiple math problems from a list. Complex problems requiring review are queued for async HITL while the pipeline continues processing remaining problems."
+
+# =============================================================================
+# EXECUTION SETTINGS - Async HITL Configuration
+# =============================================================================
+
+execution_settings:
+  hitl_mode: "async"              # Enable async HITL for this pipeline
+  checkpoint_expiry_days: 7       # Checkpoints expire after 7 days
+
+# =============================================================================
+# CASE MANAGEMENT CONFIGURATION
+# =============================================================================
+# Reference to external case configuration file that defines:
+# - Case identification (how to extract case ID)
+# - Display fields for list/detail views
+# - HITL preview fields
+#
+# tracking_variables (optional): Configure variable names for case tracking in loops
+#   - hitl_queued: Variable name for tracking HITL-queued cases (default: "hitl_queued_cases")
+#   - completed: Variable name for tracking completed cases (default: "completed_cases")
+#   These variables are automatically created by LoopRunner when async HITL is enabled
+#   and case management is configured. They are available to downstream agents (e.g., summary reporters).
+# =============================================================================
+
+case_management:
+  config_file: "cases/math_batch_solver.yml"
+  tracking_variables:
+    hitl_queued: "hitl_queued_cases"
+    completed: "completed_cases"
+
+# =============================================================================
+# PIPELINES REGISTRY - Sub-pipelines that can be used as nodes
+# =============================================================================
+
+pipelines:
+  - id: math_compass
+    pipeline_file: "pipelines/math_compass.yml"
+
+# =============================================================================
+# NODES REGISTRY
+# =============================================================================
+
+nodes:
+  - id: batch_problem_parser
+    config_file: "agents/batch_problem_parser.yml"
+  - id: batch_summary_reporter
+    config_file: "agents/batch_summary_reporter.yml"
+
+# =============================================================================
+# PIPELINE PATTERN
+# =============================================================================
+
+pattern:
+  type: sequential
+  name: "Batch Math Problem Solving Flow"
+  description: |
+    ## Batch Math Problem Solving
+    
+    This pipeline processes multiple math problems in batch:
+    1. **Problem Parser** extracts individual problems from user input
+    2. **Processing Loop** iterates through each problem
+    3. **Math Compass Pipeline** (reused) solves each problem:
+       - Strategizes the solution approach
+       - Calculates the result
+       - Conditionally requires approval for complex problems (>4 steps)
+       - Audits and validates the solution
+    4. **Summary Reporter** generates final batch processing summary
+    
+    Complex problems are queued for async review while processing continues.
+    This demonstrates pipeline reuse - math_compass is used as a node within math_batch_solver.
+  steps:
+    - node: batch_problem_parser
+    - type: loop
+      name: "Problem Processing Loop"
+      description: |
+        ## Sequential Problem Processing
+        
+        Iterates through each math problem from the parsed list:
+        - Processes each problem through the full workflow
+        - Complex problems (>4 steps) trigger async HITL
+        - Pipeline continues to next problem while HITL is pending
+      iterate_over: "batch_problem_parser.problems"
+      loop_item_key: "current_problem"
+      loop_context_key: "problem_loop"
+      accumulate_results: true
+      termination:
+        max_iterations: 20  # Safety limit
+      body:
+        type: sequential
+        name: "Single Problem Workflow"
+        description: |
+          ## Individual Problem Processing
+          
+          Reuses the math_compass pipeline to solve each problem:
+          - Maps the current problem expression to math_compass input
+          - math_compass handles strategizing, calculation, conditional HITL, and auditing
+          - Results are stored in nested structure for batch summary
+        steps:
+          - pipeline: math_compass
+            input_mapping:
+              user_text: "{{ current_problem.expression if current_problem else '' }}"
+    - node: batch_summary_reporter
+
+# =============================================================================
+# HITL GATES
+# =============================================================================
+# Note: HITL gates are now handled by the math_compass sub-pipeline
+# The approve_auditor gate is defined in math_compass.yml
+
+# =============================================================================
+# OUTPUTS CONFIGURATION
+# =============================================================================
+
+outputs:
+  final:
+    transform: |
+      ## Batch Processing Summary
+      
+      {{ results.batch_summary_reporter.summary | default('Processing complete') }}
+      
+      ### Statistics
+      - Total Problems: {{ results.batch_summary_reporter.statistics.total_problems | default(0) }}
+      - Completed: {{ results.batch_summary_reporter.statistics.completed | default(0) }}
+      - Pending Review: {{ results.batch_summary_reporter.statistics.pending_review | default(0) }}
+      - Failed: {{ results.batch_summary_reporter.statistics.failed | default(0) }}

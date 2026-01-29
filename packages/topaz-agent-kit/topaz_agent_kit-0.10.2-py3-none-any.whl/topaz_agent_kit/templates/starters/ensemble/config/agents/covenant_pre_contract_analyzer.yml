@@ -1,0 +1,54 @@
+# =============================================================================
+# PRE-CONTRACT ANALYZER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent analyzes individual pre-contract artifacts (emails, meeting notes, docs)
+# and extracts key information from each document.
+#
+# =============================================================================
+id: covenant_pre_contract_analyzer
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_pre_contract_analyzer
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+#
+# MCP tools for document extraction
+#
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["doc_extract"]
+      tools: ["doc_extract.*"]
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_pre_contract_analyzer.jinja
+  inputs:
+    inline: |
+      Contract ID: {{covenant_orchestrator.contract_id}}
+      File Paths: {{covenant_orchestrator.file_paths}}
+      Project Directory: {{project_dir}}

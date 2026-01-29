@@ -1,0 +1,261 @@
+# =============================================================================
+# PIPELINE CONFIGURATION - Aegis
+# =============================================================================
+#
+# Aegis is an automated invoice processing pipeline that acts as
+# a protective shield for invoice validation. Like the mythological aegis that
+# protected the gods, this pipeline scans for pending invoices, extracts structured
+# data from invoices and evidence documents, validates against rate cards and
+# commercial terms, detects exceptions (missing evidence, rate violations,
+# retention/LD issues, milestone caps), and routes invoices to straight-through
+# processing or async human review for exceptions. Async human reviews can be
+# viewed and acted upon in the Operations Center, ensuring only valid invoices
+# proceed while catching anomalies before they impact the business.
+#
+# =============================================================================
+
+name: "Aegis"
+description: "Aegis is an automated invoice processing pipeline that acts as a protective shield for invoice validation. Like the mythological aegis that protected the gods, this pipeline scans for pending invoices, extracts structured data from invoices and evidence documents, validates against rate cards and commercial terms, detects exceptions (missing evidence, rate violations, retention/LD issues, milestone caps), and routes invoices to straight-through processing or async human review for exceptions. Async human reviews can be viewed and acted upon in the Operations Center, ensuring only valid invoices proceed while catching anomalies before they impact the business."
+
+# =============================================================================
+# EXECUTION SETTINGS - Async HITL Configuration
+# =============================================================================
+
+execution_settings:
+  hitl_mode: "async"              # Enable async HITL for this pipeline
+  checkpoint_expiry_days: 7       # Checkpoints expire after 7 days
+
+# =============================================================================
+# CASE MANAGEMENT CONFIGURATION
+# =============================================================================
+# Reference to external case configuration file that defines:
+# - Case identification (how to extract case ID)
+# - Display fields for list/detail views
+# - HITL preview fields
+#
+# tracking_variables (optional): Configure variable names for case tracking in loops
+#   - hitl_queued: Variable name for tracking HITL-queued cases (default: "hitl_queued_cases")
+#   - completed: Variable name for tracking completed cases (default: "completed_cases")
+#   These variables are automatically created by LoopRunner when async HITL is enabled
+#   and case management is configured. They are available to downstream agents (e.g., summary reporters).
+# =============================================================================
+
+case_management:
+  config_file: "cases/aegis.yml"
+  tracking_variables:
+    hitl_queued: "hitl_queued_cases"
+    completed: "completed_cases"
+
+# =============================================================================
+# NODES REGISTRY
+# =============================================================================
+
+nodes:
+  - id: aegis_pending_invoice_scanner
+    config_file: "agents/aegis_pending_invoice_scanner.yml"
+  - id: aegis_invoice_extractor
+    config_file: "agents/aegis_invoice_extractor.yml"
+  - id: aegis_translator
+    config_file: "agents/aegis_translator.yml"
+  - id: aegis_rate_card_validator
+    config_file: "agents/aegis_rate_card_validator.yml"
+  - id: aegis_retention_validator
+    config_file: "agents/aegis_retention_validator.yml"
+  - id: aegis_ld_validator
+    config_file: "agents/aegis_ld_validator.yml"
+  - id: aegis_wbs_budget_validator
+    config_file: "agents/aegis_wbs_budget_validator.yml"
+  - id: aegis_evidence_validator
+    config_file: "agents/aegis_evidence_validator.yml"
+  - id: aegis_anomaly_validator
+    config_file: "agents/aegis_anomaly_validator.yml"
+  - id: aegis_exception_detector
+    config_file: "agents/aegis_exception_detector.yml"
+  - id: aegis_decision_router
+    config_file: "agents/aegis_decision_router.yml"
+  - id: aegis_results_recorder
+    config_file: "agents/aegis_results_recorder.yml"
+  - id: aegis_summary_reporter
+    config_file: "agents/aegis_summary_reporter.yml"
+
+# =============================================================================
+# PIPELINE PATTERN
+# =============================================================================
+
+pattern:
+  type: sequential
+  name: "Aegis Processing Flow"
+  description: |
+    ## Aegis Processing Flow
+    
+    This pipeline processes invoices through a comprehensive validation workflow:
+    1. **Pending Invoice Scanner** scans database for pending invoices
+    2. **Processing Loop** iterates through each invoice
+    3. **Invoice Extractor** extracts structured data from invoice PDFs and evidence documents
+    4. **Translation Agent** (conditional) translates non-English data to English if needed
+    5. **Parallel Validators** run all 6 validators concurrently for efficiency (Evidence Validator validates pre-extracted evidence)
+    6. **Exception Detector** aggregates validation results and identifies exceptions
+    7. **Decision Router** determines routing path and prepares dynamic HITL options
+    8. **Conditional Routing** branches to async HITL for exceptions or straight-through path
+    9. **Results Recorder** saves processing results to database
+    10. **Summary Reporter** generates final processing summary with saved reports
+    
+    Invoices with exceptions are queued for async human review in Operations Center,
+    while straight-through invoices proceed automatically.
+  steps:
+    - node: aegis_pending_invoice_scanner
+    - type: loop
+      name: "Invoice Processing Loop"
+      description: |
+        ## Invoice Processing Loop
+        
+        Iterates through each pending invoice from the scanner:
+        - Processes each invoice through extraction, validation, and routing
+        - Invoices with exceptions trigger async HITL review
+        - Pipeline continues processing remaining invoices while HITL is pending
+        - Results are accumulated for final summary
+        
+        {% if aegis_pending_invoice_scanner.pending_invoices and aegis_pending_invoice_scanner.pending_invoices | length > 0 %}
+        ## Pending Invoices Summary
+        
+        | Invoice ID | Invoice File | Status | Submitted At | Evidence Count | Language |
+        |------------|--------------|--------|--------------|----------------|----------|
+        {%- for invoice in aegis_pending_invoice_scanner.pending_invoices %}
+        | {{ invoice.invoice_id }} | {%- if invoice.invoice_file_path %}{{ invoice.invoice_file_path.split('/') | last }}{%- else %}N/A{%- endif %} | {{ invoice.status or 'pending' }} | {%- if invoice.submitted_at %}{{ invoice.submitted_at }}{%- else %}N/A{%- endif %} | {%- if invoice.evidence_documents %}{{ invoice.evidence_documents | length }}{%- else %}0{%- endif %} | {%- if invoice.document_language %}{{ invoice.document_language }}{%- else %}N/A{%- endif %} |
+        {%- endfor %}
+        {% endif %}
+      iterate_over: "aegis_pending_invoice_scanner.pending_invoices"
+      loop_item_key: "current_invoice"
+      accumulate_results: true
+      termination:
+        max_iterations: 100  # Safety limit
+      body:
+        type: sequential
+        name: "Single Invoice Workflow"
+        description: |
+          ## Individual Invoice Processing
+          
+          Processes a single invoice through the complete workflow:
+          - Extracts invoice data and evidence documents
+          - Translates non-English data to English (if needed)
+          - Validates against rate cards, commercial terms, and evidence requirements
+          - Detects exceptions and routes accordingly
+          - Saves results to database
+          
+          {% if current_invoice %}
+          ## Current Invoice Details
+          
+          | Field | Value |
+          |-------|-------|
+          | Invoice ID | {{ current_invoice.invoice_id }} |
+          {%- if current_invoice.invoice_file_path %}
+          | Invoice File | {{ current_invoice.invoice_file_path.split('/') | last }} |
+          {%- endif %}
+          {%- if current_invoice.status %}
+          | Status | {{ current_invoice.status }} |
+          {%- endif %}
+          {%- if current_invoice.submitted_at %}
+          | Submitted At | {{ current_invoice.submitted_at }} |
+          {%- endif %}
+          {%- if current_invoice.created_at %}
+          | Created At | {{ current_invoice.created_at }} |
+          {%- endif %}
+          {%- if current_invoice.document_language %}
+          | Invoice Language | {{ current_invoice.document_language }} |
+          {%- endif %}
+          {%- if current_invoice.evidence_documents and current_invoice.evidence_documents | length > 0 %}
+          | Evidence Documents | {{ current_invoice.evidence_documents | length }} document(s) |
+          {%- for evidence in current_invoice.evidence_documents %}
+          |   - {{ evidence.evidence_type or 'Unknown' }} | {%- if evidence.evidence_file_path %}{{ evidence.evidence_file_path.split('/') | last }}{%- else %}N/A{%- endif %} |
+          {%- endfor %}
+          {%- else %}
+          | Evidence Documents | No evidence documents attached |
+          {%- endif %}
+          {% endif %}
+        steps:
+          - node: aegis_invoice_extractor
+          - node: aegis_translator
+            condition: "aegis_invoice_extractor.extracted_data.needs_translation == true"
+            on_false: continue
+          - type: switch(aegis_invoice_extractor.extracted_data.invoice_type)
+            name: "Conditional Validation by Invoice Type"
+            description: |
+              ## Conditional Validation
+              
+              Validators run based on invoice type:
+              - **Labor Invoices**: Anomaly, Evidence, Rate Card (WBS+Role+Rate budget)
+              - **Material Invoices**: Anomaly, Evidence, WBS Budget
+              - **Proforma Invoices**: All 6 validators (Anomaly, Evidence, LD, WBS Budget, Rate Card, Retention)
+              
+              **Invalid Invoice Types**: If invoice type doesn't match any case, no validators run.
+              Pipeline continues to exception detector which will handle the invalid invoice type scenario.
+            cases:
+              LABOR:
+                - type: parallel
+                  name: "Labor Invoice Validation"
+                  steps:
+                    - node: aegis_anomaly_validator
+                    - node: aegis_evidence_validator
+                    - node: aegis_rate_card_validator
+              MATERIAL:
+                - type: parallel
+                  name: "Material Invoice Validation"
+                  steps:
+                    - node: aegis_anomaly_validator
+                    - node: aegis_evidence_validator
+                    - node: aegis_wbs_budget_validator
+              PROFORMA:
+                - type: parallel
+                  name: "Proforma Invoice Validation"
+                  steps:
+                    - node: aegis_anomaly_validator
+                    - node: aegis_evidence_validator
+                    - node: aegis_rate_card_validator
+                    - node: aegis_retention_validator
+                    - node: aegis_ld_validator
+                    - node: aegis_wbs_budget_validator
+            # Note: No default case - if invoice type doesn't match LABOR, MATERIAL, or PROFORMA,
+            # no validators will run and the pipeline will continue to exception detector,
+            # which will handle the invalid invoice type scenario.
+          - node: aegis_exception_detector
+          - node: aegis_decision_router
+          - gate: aegis_exception_review
+            condition: "aegis_exception_detector.has_exceptions == true"
+            on_approve: continue
+            on_reject: continue
+            on_request_clarification: continue
+            on_apply_retention: continue
+            on_apply_ld: continue
+          - node: aegis_results_recorder
+    - node: aegis_summary_reporter
+
+# =============================================================================
+# HITL SECTION - Human-in-the-loop gates
+# =============================================================================
+
+gates:
+  - id: aegis_exception_review
+    type: selection
+    title: "Review Invoice Exception"
+    description:
+      jinja: "hitl/aegis_exception_review.jinja"
+    options_source: "aegis_decision_router.dynamic_options"
+    default: "{{ aegis_decision_router.recommended_action }}"
+    context_key: "exception_review_decision"
+    timeout_ms: 300000
+    on_timeout: default
+
+# =============================================================================
+# OUTPUTS SECTION - Intermediate and Final Outputs
+# =============================================================================
+
+outputs:
+  final:
+    node: aegis_summary_reporter
+    selectors:
+      - summary_report
+      - summary_report_path
+      - individual_report_paths
+      - statistics
+      - error
+    transform: "{{ summary_report if summary_report else 'No summary available' }}"

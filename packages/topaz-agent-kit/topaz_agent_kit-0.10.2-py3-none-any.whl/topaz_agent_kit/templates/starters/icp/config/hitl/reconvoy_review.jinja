@@ -1,0 +1,146 @@
+{# =============================================================================
+   HITL TEMPLATE - ReconVoy Review
+   =============================================================================
+   
+   This template renders the HITL review gate for intercompany open items
+   that require human approval before journal posting.
+   
+   Displayed when: |FX variance| > £100
+   
+   ============================================================================= #}
+
+**ReconVoy Case ID:** {{ case_id }}
+
+## BlackLine Item Overview
+
+{% if current_blackline_item %}
+| Field | Value |
+|-------|-------|
+| Item ID | {{ current_blackline_item.item_id }} |
+| Source | {{ current_blackline_item.source | default('N/A') }} |
+| System ID | {{ current_blackline_item.system_id | default('N/A') }} |
+| Transaction Date | {{ current_blackline_item.trans_date | default('N/A') }} |
+| Document Number | {{ current_blackline_item.document_number | default('N/A') }} |
+| Currency | {{ current_blackline_item.currency }} |
+| Amount (Foreign) | {{ (current_blackline_item.amount_foreign | round(2)) if current_blackline_item.amount_foreign is not none else 'N/A' }} |
+| Amount (GBP) | {{ (current_blackline_item.amount_local_gbp | round(2)) if current_blackline_item.amount_local_gbp is not none else 'N/A' }} |
+| Reference/Description | {{ current_blackline_item.reference_description | default('N/A') }} |
+{% else %}
+No BlackLine item information available.
+{% endif %}
+
+---
+
+## Case Items
+
+{% if reconvoy_sop_matcher and reconvoy_sop_matcher.case_items %}
+This case includes the following BlackLine items:
+
+| Item ID | Book | Currency | Amount (Foreign) | Amount (GBP) | Reference |
+|---------|------|----------|------------------|--------------|-----------|
+{%- for item in reconvoy_sop_matcher.case_items %}
+| {{ item.item_id }} | {{ item.book | default('UK') }} | {{ item.currency }} | {{ (item.amount_foreign | round(2)) if item.amount_foreign is not none else 'N/A' }} | {{ (item.amount_local_gbp | round(2)) if item.amount_local_gbp is not none else 'N/A' }} | {{ item.reference_description | default('N/A') }} |
+{%- endfor %}
+{% else %}
+No case items available.
+{% endif %}
+
+---
+
+## Matched Items
+
+{% if reconvoy_sop_matcher and reconvoy_sop_matcher.matched_items %}
+| Entry ID | Company | Currency | Amount | Document # |
+|----------|---------|----------|--------|------------|
+{%- for item in reconvoy_sop_matcher.matched_items %}
+| {{ item.entry_id | default('N/A') }} | {{ item.company_code | default('N/A') }} | {{ item.document_currency | default(item.currency, 'N/A') }} | {{ (item.amount_document_currency | round(2)) if item.amount_document_currency is not none else (item.amount_foreign | round(2) if item.amount_foreign is not none else 'N/A') }} | {{ item.document_number | default('N/A') }} |
+{%- endfor %}
+{% else %}
+No matched items found.
+{% endif %}
+
+---
+
+## Foreign Book Mappings
+
+{% if reconvoy_sop_matcher and reconvoy_sop_matcher.foreign_book_mappings %}
+{% if reconvoy_sop_matcher.foreign_book_mappings.get("US") and reconvoy_sop_matcher.foreign_book_mappings["US"] | length > 0 %}
+**US Book Entries:**
+
+| Book | Company Code | Entry ID | Document # | Reference | Amount | Currency |
+|------|--------------|----------|-----------|-----------|--------|----------|
+{%- for entry in reconvoy_sop_matcher.foreign_book_mappings["US"] %}
+| {{ entry.book | default('US') }} | {{ entry.company_code }} | {{ entry.entry_id }} | {{ entry.document_number }} | {{ entry.reference | default('N/A') }} | {{ (entry.amount_document_currency | round(2)) if entry.amount_document_currency is not none else 'N/A' }} | {{ entry.document_currency }} |
+{%- endfor %}
+{% endif %}
+
+{% if reconvoy_sop_matcher.foreign_book_mappings.get("FR") and reconvoy_sop_matcher.foreign_book_mappings["FR"] | length > 0 %}
+**FR Book Entries:**
+
+| Book | Company Code | Entry ID | Document # | Reference | Amount | Currency |
+|------|--------------|----------|-----------|-----------|--------|----------|
+{%- for entry in reconvoy_sop_matcher.foreign_book_mappings["FR"] %}
+| {{ entry.book | default('FR') }} | {{ entry.company_code }} | {{ entry.entry_id }} | {{ entry.document_number }} | {{ entry.reference | default('N/A') }} | {{ (entry.amount_document_currency | round(2)) if entry.amount_document_currency is not none else 'N/A' }} | {{ entry.document_currency }} |
+{%- endfor %}
+{% endif %}
+
+{% if (not reconvoy_sop_matcher.foreign_book_mappings.get("US") or reconvoy_sop_matcher.foreign_book_mappings["US"] | length == 0) and (not reconvoy_sop_matcher.foreign_book_mappings.get("FR") or reconvoy_sop_matcher.foreign_book_mappings["FR"] | length == 0) %}
+No foreign book mappings available.
+{% endif %}
+{% else %}
+No foreign book mappings available.
+{% endif %}
+
+---
+
+## FX & Variance Analysis
+
+{% if reconvoy_sop_matcher %}
+**Total BlackLine GBP:** {{ (reconvoy_sop_matcher.total_blackline_gbp | round(2)) if reconvoy_sop_matcher.total_blackline_gbp is not none else 'N/A' }}  
+**Total Matched GBP:** {{ (reconvoy_sop_matcher.total_matched_gbp | round(2)) if reconvoy_sop_matcher.total_matched_gbp is not none else 'N/A' }}  
+**Variance GBP:** {{ (reconvoy_sop_matcher.variance_gbp | round(2)) if reconvoy_sop_matcher.variance_gbp is not none else 'N/A' }}  
+**Variance %:** {{ (reconvoy_sop_matcher.variance_percent | round(2)) if reconvoy_sop_matcher.variance_percent is not none else 'N/A' }}%  
+**Is Straight-Through:** {{ reconvoy_sop_matcher.is_straight_through }}
+
+{% set var_amount = (reconvoy_sop_matcher.variance_gbp | abs) if reconvoy_sop_matcher.variance_gbp is not none else 0 %}
+{% if var_amount > 500 %}
+> ⚠️ **High Variance Alert**: FX variance exceeds £500. Please review carefully.
+{% elif var_amount > 250 %}
+> ⚡ **Moderate Variance**: FX variance between £250-£500.
+{% else %}
+> ℹ️ **Low Variance**: FX variance between £100-£250.
+{% endif %}
+
+{% else %}
+No FX variance analysis is available for this case.
+{% endif %}
+
+---
+
+## Proposed UK Journal Entries
+
+{% if reconvoy_sop_matcher and reconvoy_sop_matcher.proposed_journals and reconvoy_sop_matcher.proposed_journals | length > 0 %}
+The following 4-row journal entry is proposed to clear this intercompany item:
+
+| Entry ID | GL Account | Company | Amount (GBP) | Remarks | Reference | Header Text | Assignment | Trading Partner | Profit Center | Cost Center |
+|----------|------------|---------|--------------|---------|-----------|-------------|------------|-----------------|---------------|-------------|
+{%- for journal in reconvoy_sop_matcher.proposed_journals %}
+| {{ journal.entry_id | default('N/A') }} | {{ journal.gl_account | default('N/A') }} | {{ journal.company_code | default('UK01') }} | {{ (journal.amount_local_gbp | round(2)) if journal.amount_local_gbp is not none else 'N/A' }} | {{ journal.remarks | default('N/A') }} | {{ journal.reference | default('N/A') }} | {{ journal.header_text | default('N/A') }} | {{ journal.assignment | default('N/A') }} | {{ journal.trading_partner | default('N/A') }} | {{ journal.profit_center | default('N/A') }} | {{ journal.cost_center | default('N/A') }} |
+{%- endfor %}
+
+**Total Debits**: £{{ reconvoy_sop_matcher.proposed_journals | selectattr('remarks', 'equalto', 'Debit') | map(attribute='amount_local_gbp') | sum | default(0) | round(2) }}  
+**Total Credits**: £{{ reconvoy_sop_matcher.proposed_journals | selectattr('remarks', 'equalto', 'Credit') | map(attribute='amount_local_gbp') | sum | default(0) | round(2) }}
+
+{% if reconvoy_sop_matcher.match_summary %}
+### Match Summary
+
+{{ reconvoy_sop_matcher.match_summary }}
+{% endif %}
+
+{% else %}
+No journal proposal has been generated for this case.
+{% endif %}
+
+---
+
+Review the context, FX analysis, foreign book mappings, and proposed journals above, then select the appropriate action for this ReconVoy case.

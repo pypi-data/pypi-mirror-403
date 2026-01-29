@@ -1,0 +1,142 @@
+**Invoice ID:** {{ current_invoice.invoice_id }}
+
+## Invoice Summary
+
+| Field | Value |
+|-------|-------|
+| Invoice Number | {{ aegis_translator.translated_data.invoice_data.invoice_number if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.invoice_number }} |
+| Invoice Type | {{ aegis_invoice_extractor.extracted_data.invoice_type }} |
+| Vendor Name | {{ aegis_translator.translated_data.invoice_data.vendor_name if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.vendor_name }} |
+| Invoice Date | {{ aegis_translator.translated_data.invoice_data.invoice_date if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.invoice_date }} |
+| Total Amount | {{ aegis_translator.translated_data.invoice_data.total_amount if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.total_amount }} {{ aegis_translator.translated_data.invoice_data.currency if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.currency }} |
+| PO Reference | {{ aegis_translator.translated_data.invoice_data.po_reference if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.po_reference }} |
+| SOW Reference | {{ aegis_translator.translated_data.invoice_data.sow_reference if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.sow_reference }} |
+| Project Reference | {{ aegis_translator.translated_data.invoice_data.project_reference if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.project_reference }} |
+
+## Detected Exceptions
+
+{%- if aegis_exception_detector.has_exceptions %}
+**Exception Count:** {{ aegis_exception_detector.exception_count }}
+
+**Exception Types:**
+{%- for exception_type in aegis_exception_detector.exception_types %}
+- {{ exception_type }}
+{%- endfor %}
+
+**Exception Details:**
+{%- if aegis_exception_detector.exception_details.missing_evidence.detected %}
+- **Missing Evidence:** {{ aegis_exception_detector.exception_details.missing_evidence.details }}
+{%- endif %}
+{%- if aegis_exception_detector.exception_details.rate_violation.detected %}
+- **Rate Violation:** {{ aegis_exception_detector.exception_details.rate_violation.details }}
+{%- endif %}
+{%- if aegis_exception_detector.exception_details.retention_not_applied.detected %}
+- **Retention Not Applied:** {{ aegis_exception_detector.exception_details.retention_not_applied.details }}
+{%- endif %}
+{%- if aegis_exception_detector.exception_details.ld_not_applied.detected %}
+- **LD Not Applied:** {{ aegis_exception_detector.exception_details.ld_not_applied.details }}
+{%- endif %}
+{%- if aegis_exception_detector.exception_details.wbs_budget_exceeded.detected %}
+- **WBS Budget Exceeded:** {{ aegis_exception_detector.exception_details.wbs_budget_exceeded.details }}
+{%- endif %}
+{%- if aegis_exception_detector.exception_details.abnormal_spike.detected %}
+- **Abnormal Spike:** {{ aegis_exception_detector.exception_details.abnormal_spike.details }}
+{%- endif %}
+{%- else %}
+**No exceptions detected** - Invoice passed all validations.
+{%- endif %}
+
+## Validation Results
+
+{%- set invoice_type = aegis_invoice_extractor.extracted_data.invoice_type %}
+
+{# Anomaly Validator - runs for all invoice types #}
+{%- if aegis_anomaly_validator %}
+<details>
+<summary><strong>📊 Anomaly Validator</strong> ({%- if aegis_anomaly_validator.validation_result.validation_passed %}<span style="color: #28a745;">✓ PASSED</span>{%- else %}<span style="color: #dc3545;">✗ FAILED</span>{%- endif %})</summary>
+
+{% if aegis_anomaly_validator.validation_result.checks_table %}
+{{ aegis_anomaly_validator.validation_result.checks_table }}
+{% endif %}
+</details>
+{%- endif %}
+
+{# Evidence Validator - runs for all invoice types #}
+{%- if aegis_evidence_validator %}
+<details>
+<summary><strong>📄 Evidence Validator</strong> ({%- if aegis_evidence_validator.validation_result.validation_passed %}<span style="color: #28a745;">✓ PASSED</span>{%- else %}<span style="color: #dc3545;">✗ FAILED</span>{%- endif %})</summary>
+
+{% if aegis_evidence_validator.validation_result.checks_table %}
+{{ aegis_evidence_validator.validation_result.checks_table }}
+{% endif %}
+</details>
+{%- endif %}
+
+{# Rate Card Validator - runs for LABOR and PROFORMA #}
+{%- if aegis_rate_card_validator and (invoice_type == "LABOR" or invoice_type == "PROFORMA") %}
+<details>
+<summary><strong>💰 Rate Card Validator</strong> ({%- if aegis_rate_card_validator.validation_result.validation_passed %}<span style="color: #28a745;">✓ PASSED</span>{%- else %}<span style="color: #dc3545;">✗ FAILED</span>{%- endif %})</summary>
+
+{% if aegis_rate_card_validator.validation_result.checks_table %}
+{{ aegis_rate_card_validator.validation_result.checks_table }}
+{% endif %}
+</details>
+{%- endif %}
+
+{# WBS Budget Validator - runs for MATERIAL and PROFORMA #}
+{%- if aegis_wbs_budget_validator and (invoice_type == "MATERIAL" or invoice_type == "PROFORMA") %}
+<details>
+<summary><strong>🎯 WBS Budget Validator</strong> ({%- if aegis_wbs_budget_validator.validation_result.validation_passed %}<span style="color: #28a745;">✓ PASSED</span>{%- else %}<span style="color: #dc3545;">✗ FAILED</span>{%- endif %})</summary>
+
+{% if aegis_wbs_budget_validator.validation_result.checks_table %}
+{{ aegis_wbs_budget_validator.validation_result.checks_table }}
+{% endif %}
+</details>
+{%- endif %}
+
+{# Retention Validator - runs for PROFORMA only #}
+{%- if aegis_retention_validator and invoice_type == "PROFORMA" %}
+<details>
+<summary><strong>🔒 Retention Validator</strong> ({%- if aegis_retention_validator.validation_result.validation_passed %}<span style="color: #28a745;">✓ PASSED</span>{%- else %}<span style="color: #dc3545;">✗ FAILED</span>{%- endif %})</summary>
+
+{% if aegis_retention_validator.validation_result.checks_table %}
+{{ aegis_retention_validator.validation_result.checks_table }}
+{% endif %}
+</details>
+{%- endif %}
+
+{# LD Validator - runs for PROFORMA only #}
+{%- if aegis_ld_validator and invoice_type == "PROFORMA" %}
+<details>
+<summary><strong>⚖️ LD Validator</strong> ({%- if aegis_ld_validator.validation_result.validation_passed %}<span style="color: #28a745;">✓ PASSED</span>{%- else %}<span style="color: #dc3545;">✗ FAILED</span>{%- endif %})</summary>
+
+{% if aegis_ld_validator.validation_result.checks_table %}
+{{ aegis_ld_validator.validation_result.checks_table }}
+{% endif %}
+</details>
+{%- endif %}
+
+## Recommended Action
+
+{%- if aegis_decision_router.recommended_action %}
+**Recommended:** <span style="color: #3b82f6; font-weight: bold;">{{ aegis_decision_router.recommended_action }}</span>
+
+**Reasoning:** Based on the exception types detected, the system recommends this action to address the identified issues.
+{%- else %}
+**No recommendation available**
+{%- endif %}
+
+## Historical Context
+
+{%- if current_invoice.historical_invoices %}
+**Previous Invoices from Same Vendor:**
+{%- for hist_inv in current_invoice.historical_invoices %}
+- Invoice {{ hist_inv.invoice_number }}: {{ hist_inv.final_status }} ({{ hist_inv.exceptions_detected }})
+{%- endfor %}
+{%- else %}
+**No historical data available**
+{%- endif %}
+
+---
+
+Review all findings above and select the appropriate action for this invoice.

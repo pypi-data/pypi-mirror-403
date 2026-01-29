@@ -1,0 +1,43 @@
+# =============================================================================
+# WBS BUDGET VALIDATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent validates that invoice amounts do not exceed WBS (Work Breakdown Structure)
+# budget allocations. It checks budget at WBS id level by inheriting WBS from PO line items.
+# Runs for Material and Proforma invoices only.
+#
+# =============================================================================
+id: aegis_wbs_budget_validator
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_wbs_budget_validator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.aegis.aegis_tools
+  toolkits: ["aegis"]
+  tools: ["aegis.get_po_line_item", "aegis.get_wbs_budget_info"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_wbs_budget_validator.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Extracted Invoice Data: {{aegis_translator.translated_data.invoice_data if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data}}
+      - Database Path: {{aegis_pending_invoice_scanner.database_path}}
+      - Project Directory: {{project_dir}}

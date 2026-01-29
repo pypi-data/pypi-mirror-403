@@ -1,0 +1,40 @@
+# =============================================================================
+# BLACKLINE SCANNER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent queries the BlackLine unmatched items table for the next item
+# to process (status='UNMATCHED', processing_status IS NULL, source='GL (SAP)').
+#
+# =============================================================================
+id: reconvoy_blackline_scanner
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/reconvoy_blackline_scanner
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.reconvoy.reconvoy_tools
+  toolkits: ["reconvoy"]
+  tools: ["reconvoy.get_blackline_unmatched_items"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_blackline_scanner.jinja
+  inputs:
+    inline: |
+      - User Request: {{user_text}}
+      - Project Directory: {{project_dir}}

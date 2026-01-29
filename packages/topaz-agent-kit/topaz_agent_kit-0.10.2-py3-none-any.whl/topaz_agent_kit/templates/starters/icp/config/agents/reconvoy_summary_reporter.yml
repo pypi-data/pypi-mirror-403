@@ -1,0 +1,31 @@
+id: reconvoy_summary_reporter
+type: oak
+model: azure_openai
+run_mode: local
+
+# Ensure this agent only runs when the processing loop has completed for this run
+resume_behavior: "run_only_when_complete"
+
+remote:
+  url: http://127.0.0.1:8100/reconvoy_summary_reporter
+  timeout: 30000
+  retry_attempts: 3
+
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["sqlite", "filesystem", "reconvoy"]
+      tools: ["sqlite.*", "fs_*", "reconvoy.*"]
+
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_summary_reporter.jinja
+  inputs:
+    inline: |
+      - Pipeline Run ID: {{run_id}}
+      - Pipeline ID: {{pipeline_id}}
+      - ReconVoy Run ID: {{reconvoy_blackline_scanner.run_id}}
+      - Total Unmatched Items: {{reconvoy_blackline_scanner.total_unmatched}}
+      - Database Path: {{reconvoy_blackline_scanner.database_path}}
+      - Project Directory: {{project_dir}}
+

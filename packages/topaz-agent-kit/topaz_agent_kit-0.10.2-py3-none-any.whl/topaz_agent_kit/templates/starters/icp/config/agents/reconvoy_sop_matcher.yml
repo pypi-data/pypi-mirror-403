@@ -1,0 +1,81 @@
+# =============================================================================
+# RECONVOY MATCHER AGENT CONFIGURATION (SOP-Driven)
+# =============================================================================
+#
+# The SOP-Driven Matcher is the core agent of the ReconVoy pipeline.
+# It follows Standard Operating Procedures (SOPs) loaded dynamically via
+# MCP tools to handle:
+#   - Foreign book identification
+#   - Matching entry discovery
+#   - Related item discovery (recursive)
+#   - FX variance calculation
+#   - Journal entry proposal
+#   - Straight-through eligibility determination
+#
+# The SOP files are located in config/sop/reconvoy/sop_matcher/
+#
+# =============================================================================
+id: reconvoy_sop_matcher
+type: oak
+model: azure_openai
+run_mode: local
+
+# SOP configuration - points to the manifest for this agent
+sop: "config/sop/reconvoy/sop_matcher/manifest.yml"
+
+# Increase max_turns for complex SOP-driven workflow (default is 10)
+# This agent needs more turns to:
+# - Read SOP sections via MCP tools
+# - Execute multiple steps (identify book, find match, recursive discovery, FX analysis, journal proposal)
+# - Make multiple tool calls per step
+max_turns: 50
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/reconvoy_sop_matcher
+  timeout: 60000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP TOOLS CONFIGURATION (SOP reading)
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["sop"]
+      tools: ["sop_initialize", "sop_get_section", "sop_get_example", "sop_get_troubleshooting", "sop_list_sections", "sop_get_glossary_term", "sop_list_glossary_terms"]
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION (business operations)
+# =============================================================================
+local_tools:
+  modules:
+    - tools.reconvoy.reconvoy_tools
+  toolkits: ["reconvoy"]
+  tools:
+    - "reconvoy.find_foreign_book_match"
+    - "reconvoy.get_foreign_book_entries_by_document"
+    - "reconvoy.update_blackline_match_status"
+    - "reconvoy.update_blackline_processing_status"
+    - "reconvoy.update_blackline_status"
+    - "reconvoy.get_blackline_item_by_id"
+    - "reconvoy.find_related_blackline_items"
+    - "reconvoy.get_related_items_to_process"
+    - "reconvoy.get_case_item_foreign_book_mappings"
+    - "reconvoy.calculate_case_fx_variance"
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_sop_matcher.jinja
+  inputs:
+    inline: |
+      - Project Directory: {{project_dir}}
+      - SOP Path: {{sop}}
+      - Database Path: {{reconvoy_blackline_scanner.database_path}}
+      - Run ID: {{reconvoy_blackline_scanner.run_id}}
+      - Current BlackLine Item: {{current_blackline_item}}

@@ -1,0 +1,53 @@
+# =============================================================================
+# DRAFT EXTRACTOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent extracts structured data from draft contract PDF files.
+#
+# =============================================================================
+id: covenant_draft_extractor
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_draft_extractor
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+#
+# MCP tools for PDF extraction
+#
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["doc_extract"]
+      tools: ["doc_extract.*"]
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_draft_extractor.jinja
+  inputs:
+    inline: |
+      Contract ID: {{covenant_orchestrator.contract_id}}
+      Draft PDF Path: {{covenant_orchestrator.draft_pdf_path}}
+      Project Directory: {{project_dir}}

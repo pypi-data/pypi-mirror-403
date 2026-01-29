@@ -1,0 +1,41 @@
+# =============================================================================
+# WBS ANALYZER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent analyzes signed contract summary to identify WBS requirements
+# and deliverables.
+#
+# =============================================================================
+id: covenant_wbs_analyzer
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_wbs_analyzer
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_wbs_analyzer.jinja
+  inputs:
+    inline: |
+      Contract ID: {{covenant_orchestrator.contract_id}}
+      Signed Contract Summary: {{covenant_signed_analyzer.signed_contract_summary}}
+      Project Directory: {{project_dir}}

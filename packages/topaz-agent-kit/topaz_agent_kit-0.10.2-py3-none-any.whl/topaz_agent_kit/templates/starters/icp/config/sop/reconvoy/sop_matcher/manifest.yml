@@ -1,0 +1,151 @@
+# SOP Manifest: ReconVoy Matcher Agent
+# This manifest defines the Standard Operating Procedure for the SOP-driven matcher agent
+
+sop_id: reconvoy_sop_matcher
+version: "1.0.0"
+description: "Standard Operating Procedure for ReconVoy Matcher Agent - handles discovery, matching, FX analysis, and journal proposal for intercompany open items"
+author: "Finance Ops Team"
+last_updated: "2026-01-22"
+
+settings:
+  require_sop_read_before_step: true
+  cache_sections: true
+
+sections:
+  # =============================================================================
+  # OVERVIEW
+  # =============================================================================
+  - id: overview
+    file: overview.md
+    type: reference
+    description: "High-level workflow, goals, and your role as the matcher agent"
+    read_at: start
+
+  # =============================================================================
+  # PROCEDURAL STEPS
+  # =============================================================================
+  - id: step_01_identify_foreign_book
+    file: steps/step_01_identify_foreign_book.md
+    type: procedure
+    description: "Determine target foreign book (US or FR) based on currency"
+    read_at: on_demand
+    depends_on: []
+    outputs:
+      - foreign_book_type
+    tools_used:
+      - reconvoy.get_blackline_item_by_id
+
+  - id: step_02_find_match
+    file: steps/step_02_find_match.md
+    type: procedure
+    description: "Find matching entry in foreign book using reference correlation"
+    read_at: on_demand
+    depends_on:
+      - step_01_identify_foreign_book
+    outputs:
+      - matched_entry
+      - document_number
+      - match_status
+    tools_used:
+      - reconvoy.find_foreign_book_match
+      - reconvoy.update_blackline_match_status
+      - reconvoy.update_blackline_processing_status
+
+  - id: step_03_find_initial_related_items
+    file: steps/step_03_find_initial_related_items.md
+    type: procedure
+    description: "Find initial related BlackLine items from foreign book entries"
+    read_at: on_demand
+    depends_on:
+      - step_02_find_match
+    outputs:
+      - related_entries
+      - related_blackline_items
+      - related_items_mappings
+    tools_used:
+      - reconvoy.get_foreign_book_entries_by_document
+      - reconvoy.find_related_blackline_items
+      - reconvoy.update_blackline_match_status
+      - reconvoy.update_blackline_processing_status
+
+  - id: step_04_recursive_discovery
+    file: steps/step_04_recursive_discovery.md
+    type: procedure
+    description: "Process need_to_process items to find three-way matches in other foreign book"
+    read_at: on_demand
+    depends_on:
+      - step_03_find_initial_related_items
+    outputs:
+      - item_discovery_results
+      - related_items_discovery_results
+      - case_items
+    tools_used:
+      - reconvoy.get_related_items_to_process
+      - reconvoy.find_foreign_book_match
+      - reconvoy.get_foreign_book_entries_by_document
+      - reconvoy.find_related_blackline_items
+      - reconvoy.update_blackline_match_status
+      - reconvoy.update_blackline_processing_status
+
+  - id: step_05_fx_analysis
+    file: steps/step_05_fx_analysis.md
+    type: procedure
+    description: "Calculate FX variance and determine routing (straight-through vs HITL)"
+    read_at: on_demand
+    depends_on:
+      - step_04_recursive_discovery
+    outputs:
+      - variance_gbp
+      - variance_percent
+      - is_straight_through
+      - foreign_book_mappings
+      - total_blackline_gbp
+      - total_matched_gbp
+    tools_used:
+      - reconvoy.get_case_item_foreign_book_mappings
+      - reconvoy.calculate_case_fx_variance
+      - reconvoy.get_foreign_book_entries_by_document
+
+  - id: step_06_journal_proposal
+    file: steps/step_06_journal_proposal.md
+    type: procedure
+    description: "Generate UK journal entries based on matches and scenario type"
+    read_at: on_demand
+    depends_on:
+      - step_05_fx_analysis
+    outputs:
+      - proposed_journals
+      - scenario_type
+      - impact_analysis
+    tools_used: []  # Pure reasoning, no tools
+
+  # =============================================================================
+  # SCENARIOS / EXAMPLES
+  # =============================================================================
+  - id: scenario_two_way_match
+    file: scenarios/two_way_match.md
+    type: example
+    description: "Example: Simple two-way USD or EUR match (UK-US or UK-FR)"
+    read_at: on_demand
+
+  - id: scenario_three_way_match
+    file: scenarios/three_way_match.md
+    type: example
+    description: "Example: Triangular UK-US-FR settlement with three-way matching"
+    read_at: on_demand
+
+  # =============================================================================
+  # TROUBLESHOOTING
+  # =============================================================================
+  - id: troubleshooting
+    file: troubleshooting.md
+    type: troubleshooting
+    description: "Common issues and resolutions for matching problems"
+    read_at: on_demand
+
+  # =============================================================================
+  # GLOSSARY (Pipeline-specific)
+  # =============================================================================
+  # Note: Glossary is accessed via sop_get_glossary_term() and sop_list_glossary_terms()
+  # tools, not via sop_get_section(). The glossary file is located at:
+  # config/sop/reconvoy/glossary.md

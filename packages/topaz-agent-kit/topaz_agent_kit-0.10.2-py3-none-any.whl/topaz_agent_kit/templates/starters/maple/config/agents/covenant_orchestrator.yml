@@ -1,0 +1,44 @@
+# =============================================================================
+# COVENANT ORCHESTRATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent analyzes user requests or file events, extracts contract_id,
+# collects all relevant files in the directory, and routes to the appropriate branch.
+#
+# =============================================================================
+id: covenant_orchestrator
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_orchestrator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+#
+# Local tools for contract context management
+#
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_orchestrator.jinja
+  inputs:
+    inline: |
+      User Request: {{user_text}}
+      Project Directory: {{project_dir}}

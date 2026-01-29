@@ -1,0 +1,42 @@
+# =============================================================================
+# CHANGE ORDER RISK ASSESSOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent assesses the risk level of modified terms in change orders
+# and provides recommendations.
+#
+# =============================================================================
+id: covenant_change_order_risk_assessor
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_change_order_risk_assessor
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_change_order_risk_assessor.jinja
+  inputs:
+    inline: |
+      Contract ID: {{covenant_orchestrator.contract_id}}
+      Comparison Results: {{covenant_change_order_comparator.comparison_results}}
+      Modified Terms: {{covenant_change_order_comparator.modified_terms}}
+      Project Directory: {{project_dir}}

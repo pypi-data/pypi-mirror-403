@@ -1,0 +1,30 @@
+id: reconvoy_journal_applier
+type: oak
+model: azure_openai
+run_mode: local
+
+remote:
+  url: http://127.0.0.1:8100/reconvoy_journal_applier
+  timeout: 30000
+  retry_attempts: 3
+
+local_tools:
+  modules:
+    - tools.reconvoy.reconvoy_tools
+  toolkits: ["reconvoy"]
+  tools:
+    - "reconvoy.post_uk_journal_entries"
+    - "reconvoy.update_blackline_status"
+
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_journal_applier.jinja
+  inputs:
+    inline: |
+      - Project Directory: {{project_dir}}
+      - Database Path: {{reconvoy_blackline_scanner.database_path}}
+      - Case Items: {{reconvoy_sop_matcher.case_items}}
+      - Proposed Journals: {{reconvoy_sop_matcher.proposed_journals}}
+      - Is Straight-Through: {{reconvoy_sop_matcher.is_straight_through}}
+      - Review Decision: {{reconvoy_review.decision}}
+

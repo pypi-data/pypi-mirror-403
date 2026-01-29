@@ -1,0 +1,43 @@
+# =============================================================================
+# JOURNAL EXTRACTOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent extracts and normalizes structured data from journal entries.
+# It processes the current journal transaction (debit/credit pair) and extracts
+# all relevant fields including transaction details, account information,
+# amounts, dates, and supporting financial data.
+#
+# =============================================================================
+id: argus_journal_extractor
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/argus_journal_extractor
+  timeout: 60000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["sqlite"]
+      tools: ["sqlite.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/argus_journal_extractor.jinja
+  inputs:
+    inline: |
+      - Current Journal Transaction: {{current_journal}}
+      - Database Path: {{argus_pending_journal_scanner.database_path}}
+      - Project Directory: {{project_dir}}

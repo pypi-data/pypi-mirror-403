@@ -1,0 +1,29 @@
+id: reconvoy_related_items_discovery
+type: oak
+model: azure_openai
+run_mode: local
+
+remote:
+  url: http://127.0.0.1:8100/reconvoy_related_items_discovery
+  timeout: 30000
+  retry_attempts: 3
+
+local_tools:
+  modules:
+    - tools.reconvoy.reconvoy_tools
+  toolkits: ["reconvoy"]
+  tools:
+    - "reconvoy.find_related_blackline_items"
+    - "reconvoy.update_blackline_match_status"
+    - "reconvoy.update_blackline_processing_status"
+
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_related_items_discovery.jinja
+  inputs:
+    inline: |
+      - Project Directory: {{project_dir}}
+      - Database Path: {{reconvoy_blackline_scanner.database_path}}
+      - Run ID: {{reconvoy_blackline_scanner.run_id}}
+      - Item Discovery Results: {{reconvoy_item_discovery}}
+      - **Note**: If this is a recursive call, `reconvoy_item_discovery` is an accumulated list. Use `reconvoy_item_discovery.related_entries` to access the most recent iteration's related_entries (framework handles list extraction automatically).
