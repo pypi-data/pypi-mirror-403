@@ -1,0 +1,574 @@
+# manim-voiceover-qwen3-tts
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Manim](https://img.shields.io/badge/manim-0.18+-green.svg)](https://www.manim.community/)
+
+**High-quality text-to-speech for Manim animations using Qwen3-TTS**
+
+A [manim-voiceover](https://github.com/ManimCommunity/manim-voiceover) plugin that integrates Alibaba's state-of-the-art [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) models, bringing natural-sounding voiceovers to your mathematical animations.
+
+---
+
+## Features
+
+| Feature                 | Description                                                           |
+|-------------------------|-----------------------------------------------------------------------|
+| **Voice Cloning**       | Clone any voice from a 3+ second audio sample                         |
+| **Voice Design**        | Create custom voices from natural language descriptions               |
+| **Preset Voices**       | 9 premium built-in voices with emotion/style control                  |
+| **Multi-language**      | Support for 10 languages including English, Chinese, Japanese, Korean |
+| **Caching**             | Automatic audio caching for fast re-renders                           |
+| **Multiple Characters** | Easy voice switching for dialogue scenes                              |
+
+---
+
+## Installation
+
+### Option 1: Add to Existing Manim Project
+
+If you already have manim and manim-voiceover installed:
+
+```bash
+pip install manim-voiceover-qwen3-tts
+```
+
+### Option 2: Fresh Install with UV (Linux)
+
+Set up a complete environment from scratch using [UV](https://docs.astral.sh/uv/):
+
+```bash
+# Install UV if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install system dependencies for manim (Ubuntu/Debian)
+sudo apt-get install -y libcairo2-dev libpango1.0-dev ffmpeg libsndfile1
+
+# Create project directory
+mkdir my-manim-project && cd my-manim-project
+
+# Initialize UV project
+uv init
+
+# Add all dependencies
+uv add manim manim-voiceover manim-voiceover-qwen3-tts
+
+# Copy the Quick Start example from the README (Option 1: Preset Voices section below)
+# and save it as scene.py, then run:
+uv run manim -pql scene.py QuickStart
+```
+
+### Option 3: From Source
+
+```bash
+git clone https://github.com/DurhamSmith/manim-voiceover-qwen3-tts.git
+cd manim-voiceover-qwen3-tts
+pip install -e .
+```
+
+### Optional: FlashAttention 2
+
+For faster inference (requires compatible GPU):
+
+```bash
+pip install flash-attn --no-build-isolation
+```
+
+### Requirements
+
+- Python 3.10+
+- CUDA-capable GPU (recommended, ~4GB VRAM for 1.7B models)
+- [manim](https://www.manim.community/) >= 0.18.0
+- [manim-voiceover](https://github.com/ManimCommunity/manim-voiceover) >= 0.3.0
+
+### System Dependencies
+
+Manim requires some system libraries. On Ubuntu/Debian:
+
+```bash
+sudo apt-get install -y libcairo2-dev libpango1.0-dev ffmpeg libsndfile1
+```
+
+On macOS:
+
+```bash
+brew install cairo pango ffmpeg libsndfile
+```
+
+---
+
+## Quick Start
+
+### Option 1: Preset Voices (Easiest)
+
+Use Qwen3's built-in premium voices - no setup required:
+
+```python
+from manim import *
+from manim_voiceover import VoiceoverScene
+from manim_voiceover_qwen3_tts import Qwen3PresetVoiceService
+
+class QuickStart(VoiceoverScene):
+    def construct(self):
+        self.set_speech_service(
+            Qwen3PresetVoiceService(
+                speaker="Ryan",
+                language="English",
+            )
+        )
+
+        circle = Circle(color=BLUE)
+        with self.voiceover(text="Let's draw a circle!") as tracker:
+            self.play(Create(circle), run_time=tracker.duration)
+```
+
+**Available Preset Speakers:**
+
+| Language | Speakers |
+|----------|----------|
+| English | `Ryan`, `Aiden` |
+| Chinese | `Vivian`, `Serena`, `Uncle_Fu`, `Dylan`, `Eric` |
+| Japanese | `Ono_Anna` |
+| Korean | `Sohee` |
+
+### Option 2: Voice Design
+
+Create any voice by describing it in natural language:
+
+```python
+from manim import *
+from manim_voiceover import VoiceoverScene
+from manim_voiceover_qwen3_tts import Qwen3VoiceDesignService
+
+class VoiceDesignDemo(VoiceoverScene):
+    def construct(self):
+        self.set_speech_service(
+            Qwen3VoiceDesignService(
+                voice_description="A warm, friendly female voice with a slight "
+                                  "British accent, speaking clearly and professionally.",
+                language="English",
+            )
+        )
+
+        title = Text("Welcome!")
+        with self.voiceover(text="Welcome to our tutorial!") as tracker:
+            self.play(Write(title), run_time=tracker.duration)
+```
+
+### Option 3: Voice Cloning
+
+Clone any voice from a short audio sample (3+ seconds):
+
+```python
+from manim import *
+from manim_voiceover import VoiceoverScene
+from manim_voiceover_qwen3_tts import Qwen3VoiceCloningService, VoiceProfile
+
+# Define a voice profile
+narrator = VoiceProfile(
+    name="narrator",
+    ref_audio="voices/narrator_sample.wav",  # Your audio file
+    ref_text="This is a sample of the narrator speaking clearly.",  # Transcript
+    language="English",
+)
+
+class VoiceCloneDemo(VoiceoverScene):
+    def construct(self):
+        self.set_speech_service(
+            Qwen3VoiceCloningService(
+                voices=[narrator],
+                default_voice="narrator",
+            )
+        )
+
+        with self.voiceover(text="Hello! My voice was cloned from a short sample.") as tracker:
+            self.wait(tracker.duration)
+```
+
+---
+
+## Multi-Character Dialogue
+
+Perfect for educational videos with multiple speakers:
+
+```python
+from manim import *
+from manim_voiceover import VoiceoverScene
+from manim_voiceover_qwen3_tts import Qwen3VoiceCloningService, VoiceProfile
+
+# Define character voices
+alice = VoiceProfile(
+    name="alice",
+    ref_audio="voices/alice.wav",
+    ref_text="Hi, I'm Alice and I love explaining math concepts!",
+)
+
+bob = VoiceProfile(
+    name="bob",
+    ref_audio="voices/bob.wav",
+    ref_text="Hey there, I'm Bob. Let me ask you a question.",
+)
+
+class DialogueScene(VoiceoverScene):
+    def construct(self):
+        self.set_speech_service(Qwen3VoiceCloningService(voices=[alice, bob]))
+
+        # Visual setup
+        alice_label = Text("Alice", color=BLUE).to_edge(LEFT)
+        bob_label = Text("Bob", color=RED).to_edge(RIGHT)
+        self.add(alice_label, bob_label)
+
+        # Dialogue
+        with self.voiceover(text="Hi Bob! Want to learn about vectors?", voice="alice"):
+            self.play(Indicate(alice_label))
+
+        with self.voiceover(text="Sure Alice! That sounds interesting.", voice="bob"):
+            self.play(Indicate(bob_label))
+
+        with self.voiceover(text="Great! A vector has both magnitude and direction.", voice="alice"):
+            arrow = Arrow(LEFT, RIGHT, color=YELLOW)
+            self.play(Create(arrow))
+```
+
+---
+
+## API Reference
+
+### Services
+
+#### `Qwen3PresetVoiceService`
+
+Use Qwen3's premium preset voices with optional emotion/style control.
+
+```python
+Qwen3PresetVoiceService(
+    speaker="Ryan",                                      # Preset speaker name
+    language="English",                                  # Language for synthesis
+    instruct="Speak with enthusiasm",                    # Optional: style instruction
+    model="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",       # Model ID
+    device="cuda:0",                                     # Device (cuda:0, cpu)
+    dtype="bfloat16",                                    # Weight dtype
+    use_flash_attention=True,                            # Use FlashAttention 2
+    output_format="mp3",                                 # Output format (mp3/wav)
+)
+```
+
+#### `Qwen3VoiceDesignService`
+
+Create custom voices from natural language descriptions.
+
+```python
+Qwen3VoiceDesignService(
+    voice_description="Description of desired voice characteristics",
+    language="English",
+    model="Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    device="cuda:0",
+    dtype="bfloat16",
+    use_flash_attention=True,
+    output_format="mp3",
+)
+```
+
+#### `Qwen3VoiceCloningService`
+
+Clone voices from reference audio samples.
+
+```python
+Qwen3VoiceCloningService(
+    voices=[voice_profile1, voice_profile2],            # List of VoiceProfile objects
+    default_voice="narrator",                            # Default voice name
+    model="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    device="cuda:0",
+    dtype="bfloat16",
+    use_flash_attention=True,
+    output_format="mp3",
+)
+```
+
+### Classes
+
+#### `VoiceProfile`
+
+Define a voice for cloning.
+
+```python
+VoiceProfile(
+    name="character_name",           # Unique identifier for this voice
+    ref_audio="path/to/audio.wav",   # Reference audio file (3+ seconds)
+    ref_text="Transcript of audio",  # Exact transcript of the reference audio
+    language="Auto",                 # Language ("Auto" for auto-detection)
+)
+```
+
+### Per-Voiceover Overrides
+
+Override any setting for individual voiceover calls:
+
+```python
+# Override speaker
+with self.voiceover(text="Hello!", speaker="Aiden") as tracker:
+    ...
+
+# Override voice (for cloning service)
+with self.voiceover(text="Hello!", voice="bob") as tracker:
+    ...
+
+# Override style instruction
+with self.voiceover(text="Wow!", instruct="Speak with excitement") as tracker:
+    ...
+
+# Override language
+with self.voiceover(text="Bonjour!", language="French") as tracker:
+    ...
+```
+
+---
+
+## Available Models
+
+| Model | Parameters | Use Case | VRAM |
+|-------|------------|----------|------|
+| `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | 1.7B | Preset voices | ~4GB |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | 1.7B | Voice design | ~4GB |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | 1.7B | Voice cloning | ~4GB |
+| `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | 0.6B | Lightweight preset | ~2GB |
+| `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | 0.6B | Lightweight cloning | ~2GB |
+
+---
+
+## Supported Languages
+
+All services support 10 languages:
+
+- English
+- Chinese (Mandarin)
+- Japanese
+- Korean
+- German
+- French
+- Russian
+- Portuguese
+- Spanish
+- Italian
+
+---
+
+## Performance Tips
+
+### 1. Enable FlashAttention 2
+
+Significantly faster inference on compatible GPUs:
+
+```bash
+pip install flash-attn --no-build-isolation
+```
+
+### 2. Use Smaller Models
+
+For faster generation with acceptable quality:
+
+```python
+Qwen3PresetVoiceService(
+    model="Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+    ...
+)
+```
+
+### 3. Leverage Caching
+
+manim-voiceover automatically caches generated audio. Re-renders with unchanged text are instant.
+
+### 4. Voice Prompt Caching
+
+For voice cloning, the service automatically caches voice prompts. The first generation with a new voice takes longer, but subsequent uses are fast.
+
+---
+
+## Troubleshooting
+
+### CUDA Out of Memory
+
+**Option 1:** Use a smaller model:
+```python
+Qwen3PresetVoiceService(
+    model="Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+)
+```
+
+**Option 2:** Run on CPU (slower):
+```python
+Qwen3PresetVoiceService(
+    device="cpu",
+    dtype="float32",
+    use_flash_attention=False,
+)
+```
+
+### FlashAttention Not Available
+
+Disable it explicitly:
+```python
+Qwen3PresetVoiceService(
+    use_flash_attention=False,
+)
+```
+
+### Audio Quality Issues
+
+- Ensure reference audio is **at least 3 seconds** long for voice cloning
+- Use high-quality reference audio (clear speech, minimal background noise)
+- Verify the transcript exactly matches the reference audio
+
+### Model Download Issues
+
+Models are downloaded from HuggingFace on first use. Ensure you have:
+- Stable internet connection
+- Sufficient disk space (~7GB for 1.7B models)
+
+### Known Warnings
+
+You may see deprecation warnings when running. These come from **upstream dependencies**, not this package:
+
+```
+UserWarning: pkg_resources is deprecated as an API...
+FutureWarning: librosa.core.audio.__audioread_load Deprecated...
+UserWarning: PySoundFile failed. Trying audioread instead.
+```
+
+| Warning | Source | Status |
+|---------|--------|--------|
+| `pkg_resources` deprecated | manim-voiceover | Upstream issue - awaiting fix |
+| `librosa.__audioread_load` deprecated | qwen-tts → librosa | Upstream issue - awaiting fix |
+| `PySoundFile failed` | qwen-tts → librosa | Install `libsndfile` (see below) |
+
+**To reduce warnings:**
+
+1. Install system audio library:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install libsndfile1
+
+   # macOS
+   brew install libsndfile
+   ```
+
+2. Suppress warnings in your script (optional):
+   ```python
+   import warnings
+   warnings.filterwarnings("ignore", category=DeprecationWarning)
+   warnings.filterwarnings("ignore", category=FutureWarning)
+   ```
+
+These warnings don't affect functionality - your videos will render correctly.
+
+---
+
+## Voice Cloning Best Practices
+
+### Reference Audio Guidelines
+
+1. **Duration**: 3-10 seconds is ideal
+2. **Quality**: Clear audio without background noise
+3. **Content**: Natural speech, not whispered or shouted
+4. **Format**: WAV or MP3 supported
+
+### Transcript Accuracy
+
+The transcript must **exactly** match what's said in the reference audio. This helps the model understand the voice characteristics.
+
+### Organizing Voice Profiles
+
+For projects with multiple characters, organize your voices:
+
+```
+project/
+├── voices/
+│   ├── narrator/
+│   │   ├── sample.wav
+│   │   └── metadata.json
+│   ├── teacher/
+│   │   ├── sample.wav
+│   │   └── metadata.json
+│   └── student/
+│       ├── sample.wav
+│       └── metadata.json
+├── scenes/
+│   └── my_scene.py
+```
+
+---
+
+## Examples
+
+See the [`examples/`](examples/) directory for complete working examples:
+
+| Example | Service | Description |
+|---------|---------|-------------|
+| `preset_voices.py` | `Qwen3PresetVoiceService` | **Preset speakers + languages** — switches between built-in voices (Ryan, Vivian, Ono_Anna, Sohee) across English, Chinese, Japanese, Korean |
+| `emotion_showcase.py` | `Qwen3PresetVoiceService` | **One voice, many emotions** — same speaker (Ryan), varying `instruct` per line (happy, sad, angry, excited, calm, etc.) |
+| `voice_design.py` | `Qwen3VoiceDesignService` | **Many designed voices** — same content delivered by 4 different voices created from text descriptions |
+| `storytelling_scene.py` | `Qwen3VoiceDesignService` | **Multi-character story** — narrator, hero, mentor, villain each with unique designed voices |
+| `voice_cloning.py` | `Qwen3VoiceCloningService` | **Clone from audio** — clone voices from reference .wav files, switch between multiple cloned voices |
+
+> **Note:** `voice_cloning.py` includes a sample narrator voice (`voices/narrator.wav`). To add your own voices, create additional `VoiceProfile` entries with:
+> - `ref_audio`: path to your .wav file (3+ seconds of clear speech)
+> - `ref_text`: exact transcript of what's spoken in the audio
+
+### Running Examples
+
+```bash
+# Preset voices (built-in speakers, multiple languages)
+manim -pql examples/preset_voices.py PresetVoicesDemo
+
+# Emotion control (same voice, different emotions via instruct)
+manim -pql examples/emotion_showcase.py EmotionShowcase
+
+# Voice design (create voices from descriptions)
+manim -pql examples/voice_design.py VoiceDesignDemo
+
+# Storytelling (multi-character with designed voices)
+manim -pql examples/storytelling_scene.py StorytellingScene
+
+# Voice cloning (requires your own .wav files)
+manim -pql examples/voice_cloning.py VoiceCloningDemo
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgments
+
+- [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) - The underlying TTS model by Alibaba
+- [manim-voiceover](https://github.com/ManimCommunity/manim-voiceover) - The voiceover framework this plugin extends
+- [Manim Community](https://www.manim.community/) - The amazing animation library
+
+---
+
+## Citation
+
+If you use this project in your research or videos, please consider citing:
+
+```bibtex
+@software{manim_voiceover_qwen3_tts,
+  title = {manim-voiceover-qwen3-tts: Qwen3-TTS Integration for Manim},
+  url = {https://github.com/DurhamSmith/manim-voiceover-qwen3-tts},
+  year = {2026}
+}
+```
