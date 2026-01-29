@@ -1,0 +1,119 @@
+Metadata-Version: 2.4
+Name: veto2
+Version: 0.1.2
+Summary: Real-time governance and human-in-the-loop approval for AI agents.
+Author-email: Veto Team <hello@veto.sh>
+Project-URL: Homepage, https://vetoback-production.up.railway.app
+Project-URL: Bug Tracker, https://github.com/veto-sh/veto/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Intended Audience :: Developers
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: requests>=2.25.0
+
+# Veto SDK (`veto2`)
+
+🛡️ **Real-time governance and human-in-the-loop approval for AI agents.**
+
+Veto allows you to secure your AI agent's tool calls by intercepting them and verifying them against a central policy engine. It supports blocking, monitoring, data masking, and human-in-the-loop approvals.
+
+## Installation
+
+```bash
+pip install veto2
+```
+
+## Quick Start
+
+### 1. Initialize the SDK
+Initialize Veto at the start of your application. You can provide credentials directly or use environment variables.
+
+```python
+import veto2 as sdk
+
+sdk.init(
+    api_key="your_api_key_here",
+    agent_name="SupportAgent-01"
+)
+```
+
+**Environment Variables:**
+- `GOVERNANCE_API_KEY`: Your Veto API Key.
+- `GOVERNANCE_AGENT_NAME`: Default agent name for this instance.
+- `GOVERNANCE_BASE_URL`: Custom backend URL (optional).
+
+### 2. Protect Your Tools
+Use the `@sdk.guard()` decorator on any function (tool) you want to monitor or control.
+
+```python
+@sdk.guard()
+def process_payment(amount: float, currency: str):
+    # This code only runs if Veto policy allows it
+    print(f"Processing {amount} {currency}")
+    return True
+```
+
+## How It Works
+
+When a `@sdk.guard()` protected function is called:
+1.  **Intercept**: The SDK captures the function name and all arguments.
+2.  **Verify**: It sends this data to the Veto backend for policy evaluation.
+3.  **Action**: Based on the policy set in the Veto Dashboard:
+    *   **APPROVED**: The original function executes immediately.
+    *   **BLOCKED**: Raises a `PermissionDeniedError` with an optional feedback message.
+    *   **PAUSE (Human-in-the-loop)**: The SDK pauses execution and polls the backend until a manager approves or rejects the request via the Dashboard.
+
+## Core API
+
+### `sdk.init(api_key, agent_name, base_url=None)`
+Initializes the global governance client.
+- `api_key`: (Required) Found in your Veto Dashboard settings.
+- `agent_name`: (Optional) Descriptors for your agent. Defaults to "DefaultAgent".
+- `base_url`: (Optional) The API endpoint of your Veto backend.
+
+### `@sdk.guard(name=None)`
+The primary decorator for tool protection.
+- `name`: (Optional) Override the tool name sent to the dashboard. Defaults to the function's name.
+
+### `sdk.ping()`
+Utility function to verify the connection to the Veto backend and validate the API key.
+
+## Policy Modes (Configured via Dashboard)
+
+Veto is designed to be "Code-First, Policy-Second". You wrap your functions once, and manage behavior from the UI:
+
+| Mode | Behavior |
+| :--- | :--- |
+| **BLOCK** | Denies the request immediately. |
+| **SHADOW** | Allows the request but logs it as a warning for monitoring. |
+| **HUMAN_APPROVAL**| Pauses execution until a person clicks "Approve" in the Dashboard. |
+| **MASKING** | Redacts sensitive parameters from logs while allowing the original call. |
+| **FEEDBACK** | Blocks the call and returns a specific hint/instruction to the LLM. |
+| **RULES** | Dynamically chooses a mode based on argument values (e.g., `amount > 1000`). |
+
+## Error Handling
+
+Veto uses specific exceptions to help you manage governance violations:
+
+```python
+from veto2 import PermissionDeniedError
+
+try:
+    sensitive_operation()
+except PermissionDeniedError as e:
+    # Log the violation or inform the user/LLM
+    print(f"Action blocked by governance: {e}")
+```
+
+## Plan-Based Timeouts (Human Approval)
+
+When an action is paused for human review, the SDK will poll for a decision:
+- **Basic Plan**: Polls for up to 3 hours.
+- **Pro Plan**: Polls for up to 7 days.
+
+---
+
+Built for secure AI agent deployment. [Get your API key](https://vetohq.com)
