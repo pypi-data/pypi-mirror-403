@@ -1,0 +1,187 @@
+{
+    "workflow": {
+        "steps": {
+            // Étape n°1 : création pyramide
+            "pyramide": {
+                "actions": [
+                    {
+                        // On crée une exécution de traitement
+                        "type": "processing-execution",
+                        "body_parameters": {
+                            // On récupère l'id du traitement nommé "Calcul ou mise à jour de pyramide raster"
+                            "processing": "{store_entity.processing.infos._id [INFOS(name=Calcul ou mise à jour de pyramide raster)]}",
+                            "inputs": {
+                                "upload": [
+                                    // On récupère l'id de la Livraison associée grâce à son nom
+                                    "{store_entity.upload.infos._id [INFOS(name=EXAMPLE_DATASET_RASTER)]}"
+                                ]
+                            },
+                            "output": {
+                                "stored_data": {
+                                    "name": "{user.last_name}__pyramide",
+                                    "storage_tags": ["PYRAMIDE"]
+                                }
+                            },
+                            "parameters": {
+                                "parallelization": 4,
+                                "top": "0",
+                                "bottom": "18",
+                                "tms": "PM",
+                                "compression": "jpg",
+                                "interpolation": "bicubic"
+                            }
+                        },
+                        // Liste des commentaires ajoutés à la Donnée Stockée en sortie de l'exécution du traitement
+                        "comments": [
+                            "Tutoriel raster : mise en place d'une pyramide raster."
+                        ],
+                        // Liste des tags ajoutés à la Donnée Stockée en sortie de l'exécution du traitement
+                        "tags": {
+                            "tuto": "oui",
+                            "tuto_name": "raster"
+                        }
+                    }
+                ],
+                "parents": []
+            },
+            // Étape n°A.2 : configuration WMTS de la pyramide
+            "configuration-WMTS":{
+                "actions": [
+                    {
+                        "type": "configuration",
+                        "body_parameters": {
+                            "type": "WMTS-TMS",
+                            "name": "{user.last_name} raster WMTS",
+                            "layer_name": "{user.last_name}__raster_wmts",
+                            "metadata": [
+                                {
+                                    "format": "application/xml",
+                                    "url": "https://geoservices.ign.fr/sites/default/files/2022-10/IGNF_BDORTHOr_2-0.xml",
+                                    "type": "ISO19115:2003"
+                                }
+                            ],
+                            "type_infos": {
+                                "title": "{user.last_name} -- raster -- ortho - WMTS",
+                                "abstract": "Exemple de flux à visualiser",
+                                "keywords": ["Tutoriel", "Raster", "pyramide"],
+                                "used_data": [
+                                    {
+                                        // On récupère l'id de la Donnée Stockée créée à l'étape précédente grâce à son nom, son type et l'un de ses tags
+                                        "stored_data": "{store_entity.stored_data.infos._id [INFOS(name={user.last_name}__pyramide), TAGS(tuto=oui)]}",
+                                        "bottom_level": "18",
+                                        "top_level": "0"
+                                    }
+                                ]
+                            },
+                            "getfeatureinfo": {
+                                "stored_data": true
+                            }
+                        },
+                        // Liste des commentaires ajoutés à la Configuration
+                        "comments": [
+                            "Tutoriel raster : configuration de WMTS la pyramide"
+                        ],
+                        // Liste des tags ajoutés à la Configuration
+                        "tags": {
+                            "tuto": "oui",
+                            "tuto_name": "raster"
+                        }
+                    }
+                ],
+                "parents": [
+                    "pyramide"
+                ]
+
+            },
+            // Étape n°A.3 : Publication WMTS de la pyramide
+            "publication-WMTS": {
+                "actions": [
+                    {
+                        "type": "offering",
+                        "url_parameters": {
+                            // On récupère l'id de la Configuration créée à l'étape précédente grâce à son nom et l'un de ses tags
+                            "configuration": "{store_entity.configuration.infos._id [INFOS(name={user.last_name} raster WMTS), TAGS(tuto=oui)]}"
+                        },
+                        "body_parameters": {
+                            // Endpoint de type WMTS-TMS (id trouvé en récupérant les informations de l'entrepôt)
+                            "endpoint": "{store_entity.endpoint.infos._id [INFOS(technical_name=gpf-rok4-server-wmts-tms)]}",
+                            "open": true
+                        }
+                    }
+                ],
+                "parents": [
+                    "configuration-WMTS"
+                ]
+            },
+            // Étape n°B.2 : configuration WMTS de la pyramide
+            "configuration-WMS" :{
+                "actions": [
+                    {
+                        "type": "configuration",
+                        "body_parameters": {
+                            "type": "WMS-RASTER",
+                            "name": "{user.last_name} raster WMS",
+                            "layer_name": "{user.last_name}__raster_wms",
+                            "metadata": [
+                                {
+                                    "format": "application/xml",
+                                    "url": "https://geoservices.ign.fr/sites/default/files/2022-10/IGNF_BDORTHOr_2-0.xml",
+                                    "type": "ISO19115:2003"
+                                }
+                            ],
+                            "type_infos": {
+                                "title": "{user.last_name} -- raster -- ortho - WMS",
+                                "abstract": "Exemple de flux à visualiser",
+                                "keywords": ["Tutoriel", "Raster", "pyramide"],
+                                "interpolation": "NEAREST-NEIGHBOUR",
+                                "used_data": [
+                                    {
+                                        // On récupère l'id de la Donnée Stockée créée à l'étape précédente grâce à son nom, son type et l'un de ses tags
+                                        "stored_data": "{store_entity.stored_data.infos._id [INFOS(name={user.last_name}__pyramide), TAGS(tuto=oui)]}",
+                                        "bottom_level": "18",
+                                        "top_level": "0"
+                                    }
+                                ]
+                            },
+                            "getfeatureinfo": {
+                                "stored_data": true
+                            }
+                        },
+                        // Liste des commentaires ajoutés à la Configuration
+                        "comments": [
+                            "Tutoriel raster : configuration WMS de la pyramide"
+                        ],
+                        // Liste des tags ajoutés à la Configuration
+                        "tags": {
+                            "tuto": "oui",
+                            "tuto_name": "raster"
+                        }
+                    }
+                ],
+                "parents": [
+                    "pyramide"
+                ]
+            },
+            // Étape n°B.3 : Publication WMTS de la pyramide
+            "publication-WMS": {
+                "actions": [
+                    {
+                        "type": "offering",
+                        "url_parameters": {
+                            // On récupère l'id de la Configuration créée à l'étape précédente grâce à son nom et l'un de ses tags
+                            "configuration": "{store_entity.configuration.infos._id [INFOS(name={user.last_name} raster WMS), TAGS(tuto=oui)]}"
+                        },
+                        "body_parameters": {
+                            // Endpoint de type WMS-R (id trouvé en récupérant les informations de l'entrepôt)
+                            "endpoint": "{store_entity.endpoint.infos._id [INFOS(technical_name=gpf-rok4-server-wms-r)]}",
+                            "open": true
+                        }
+                    }
+                ],
+                "parents": [
+                    "configuration-WMS"
+                ]
+            }
+        }
+    }
+}
