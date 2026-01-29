@@ -1,0 +1,88 @@
+Metadata-Version: 2.4
+Name: veracityLabAuthZ
+Version: 0.1.0
+Summary: Shared Cedar authorization helpers for Veracity services.
+Author: Veracity Lab
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Provides-Extra: cedarpy
+Requires-Dist: cedarpy<5.0,>=4.8; extra == "cedarpy"
+
+# veracityLabAuthZ
+
+Shared Cedar authorization helpers for Veracity services.
+
+## Local development
+
+```bash
+pip install -e packages/veracityLabAuthZ
+```
+
+## Cedar evaluation (cedarpy)
+
+```bash
+pip install -e "packages/veracityLabAuthZ[cedarpy]"
+```
+
+```python
+from veracity_authz import CedarClient, CedarPyConfig, CedarPyEngine
+from veracity_authz.context_builder import build_request
+
+policies = """permit(principal, action, resource);"""
+entities = []
+
+engine = CedarPyEngine(CedarPyConfig(policies=policies, entities=entities))
+client = CedarClient(engine)
+
+request = build_request(
+  principal={"type": "User", "id": "user-1"},
+  action={"type": "Action", "id": "workspace:read"},
+  resource={"type": "Workspace", "id": "ws-1"},
+)
+
+decision = client.evaluate(request)
+print(decision.allowed)
+```
+
+## Tests
+
+```bash
+python -m unittest discover -s packages/veracityLabAuthZ/tests
+```
+
+## Publishing (GitHub Packages)
+
+Manual publish from the repo root:
+
+```bash
+# optional: clean old artifacts
+rm -rf packages/veracityLabAuthZ/dist
+
+# build tooling
+python -m pip install --upgrade pip build twine
+
+# optional: run tests
+python -m unittest discover -s packages/veracityLabAuthZ/tests
+
+# build
+python -m build packages/veracityLabAuthZ
+
+# publish (GitHub Packages API endpoint)
+export TWINE_USERNAME="<your-github-username>"
+# load PAT from .env (adjust var name if different)
+set -a
+source .env
+set +a
+export TWINE_PASSWORD="${PACKAGES_PAT}"
+
+python -m twine upload \
+  --repository-url https://api.github.com/orgs/<owner>/packages/pypi/upload \
+  packages/veracityLabAuthZ/dist/*
+```
+
+Notes:
+- For a user-owned package, replace `orgs` with `users` in the upload URL.
+- Each publish must use a new version; bump `version` in `packages/veracityLabAuthZ/pyproject.toml` before rebuilding.
+- For CI, add `PACKAGES_PAT` as a GitHub Actions secret with `write:packages`.
