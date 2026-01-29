@@ -1,0 +1,591 @@
+<!-- Deliveries Table Component -->
+<!-- This component displays webhook deliveries with pagination and filtering -->
+
+<style>
+  /* Status badge colors */
+  .status-success {
+    background-color: #10b981;
+  }
+  .status-failed {
+    background-color: #ef4444;
+  }
+</style>
+
+<div id="deliveries-section">
+  <!-- Filters -->
+  <div class="bg-white border-b border-gray-200 px-6 py-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- Status Filter -->
+      <div>
+        <select
+          id="delivery-filter-status"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          onchange="resetAndLoadDeliveries()"
+        >
+          <option value="">All Status</option>
+          <option value="success">Success Only</option>
+          <option value="failed">Failed Only</option>
+        </select>
+      </div>
+
+      <!-- Thread ID Filter -->
+      <div>
+        <input
+          type="text"
+          id="delivery-filter-thread"
+          placeholder="Filter by Thread ID"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          onkeyup="debounceLoadDeliveries()"
+        />
+      </div>
+
+      <!-- Show Limit -->
+      <div>
+        <select
+          id="delivery-filter-limit"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          onchange="resetAndLoadDeliveries()"
+        >
+          <option value="10">Show 10</option>
+          <option value="25" selected>Show 25</option>
+          <option value="50">Show 50</option>
+          <option value="100">Show 100</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="deliveries-loading" class="flex items-center justify-center py-12">
+    <div class="text-center">
+      <svg
+        class="animate-spin h-8 w-8 text-blue-600 mx-auto"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
+      </svg>
+      <p class="mt-2 text-sm text-gray-500">Loading deliveries...</p>
+    </div>
+  </div>
+
+  <!-- Error State -->
+  <div id="deliveries-error" class="hidden px-6 py-12">
+    <div class="max-w-md mx-auto text-center">
+      <svg
+        class="mx-auto h-12 w-12 text-red-400"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
+      </svg>
+      <h3 class="mt-2 text-lg font-medium text-gray-900">Error Loading Deliveries</h3>
+      <p id="deliveries-error-message" class="mt-1 text-sm text-gray-500"></p>
+      <button
+        onclick="loadDeliveries()"
+        class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      >
+        Retry
+      </button>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div id="deliveries-empty" class="hidden px-6 py-12">
+    <div class="max-w-md mx-auto text-center">
+      <svg
+        class="mx-auto h-12 w-12 text-gray-400"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+        />
+      </svg>
+      <h3 class="mt-2 text-lg font-medium text-gray-900">No deliveries found</h3>
+      <p class="mt-1 text-sm text-gray-500">No delivery records match your filters.</p>
+    </div>
+  </div>
+
+  <!-- Deliveries Table -->
+  <div id="deliveries-table-container" class="hidden px-6 py-4">
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Status
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Event Type
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Thread ID
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Status Code
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Response Time
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Timestamp
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody id="deliveries-table-body" class="bg-white divide-y divide-gray-200">
+          <!-- Populated by JavaScript -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="mt-4 flex items-center justify-between">
+      <div class="text-sm text-gray-700">
+        <span id="deliveries-pagination-info">0-0 of 0</span>
+      </div>
+      <div class="flex gap-2">
+        <button
+          id="deliveries-btn-prev"
+          onclick="loadDeliveriesPreviousPage()"
+          disabled
+          class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        <button
+          id="deliveries-btn-next"
+          onclick="loadDeliveriesNextPage()"
+          disabled
+          class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delivery Details Modal -->
+<div id="delivery-modal" class="hidden fixed inset-0 z-50 overflow-y-auto modal-backdrop" onclick="closeDeliveryModalOnBackdrop(event)">
+  <div class="flex items-center justify-center min-h-screen px-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-start mb-4">
+        <h2 class="text-xl font-bold text-gray-900">Delivery Details</h2>
+        <button onclick="closeDeliveryModal()" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div id="delivery-details-content" class="space-y-4">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Deliveries pagination state
+  let deliveriesOffset = 0;
+  let deliveriesLimit = 25;
+  let hasMoreDeliveries = false;
+  let currentWebhookId = null;
+
+  // Debounce timer
+  let deliveriesDebounceTimer = null;
+
+  /**
+   * Wait for API utilities to be available
+   */
+  function waitForApiUtils() {
+    return new Promise((resolve) => {
+      if (typeof apiFetch !== "undefined") {
+        resolve();
+      } else {
+        const checkInterval = setInterval(() => {
+          if (typeof apiFetch !== "undefined") {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 50);
+      }
+    });
+  }
+
+  /**
+   * Initialize deliveries table with webhook ID
+   */
+  async function initDeliveriesTable(webhookId) {
+    currentWebhookId = webhookId;
+    deliveriesOffset = 0;
+    deliveriesLimit = 25;
+    
+    // Wait for API utilities before loading
+    await waitForApiUtils();
+    loadDeliveries();
+  }
+
+  /**
+   * Load deliveries from API
+   */
+  async function loadDeliveries() {
+    if (!currentWebhookId) {
+      console.error("No webhook ID set for deliveries table");
+      return;
+    }
+
+    const apiKey = localStorage.getItem("tf_api_key");
+    const appId = localStorage.getItem("tf_app_id");
+    const userId = localStorage.getItem("tf_user_id");
+
+    if (!apiKey) {
+      showDeliveriesError("API Key not configured");
+      return;
+    }
+
+    // Show loading state
+    showDeliveriesLoading();
+
+    // Get filter values
+    const statusFilter = document.getElementById("delivery-filter-status").value;
+    const threadFilter = document.getElementById("delivery-filter-thread").value.trim();
+    const limit = parseInt(document.getElementById("delivery-filter-limit").value);
+
+    // Update current limit
+    deliveriesLimit = limit;
+
+    // Build query parameters
+    const params = new URLSearchParams();
+    if (statusFilter) params.append("status", statusFilter);
+    if (threadFilter) params.append("thread_id", threadFilter);
+    params.append("limit", limit.toString());
+    params.append("offset", deliveriesOffset.toString());
+
+    try {
+      const response = await apiFetch(`/webhooks/${currentWebhookId}/deliveries?${params.toString()}`);
+
+      const data = await response.json();
+      displayDeliveries(data);
+    } catch (error) {
+      console.error("Error loading deliveries:", error);
+      showDeliveriesError(error.message);
+    }
+  }
+
+  /**
+   * Display deliveries
+   */
+  function displayDeliveries(data) {
+    const deliveries = data.items || [];
+    const pagination = data.pagination || {};
+
+    if (deliveries.length === 0) {
+      showDeliveriesEmpty();
+      return;
+    }
+
+    // Update pagination state
+    hasMoreDeliveries = pagination.has_more || false;
+    const total = pagination.total;
+    
+    if (typeof total === 'number') {
+      hasMoreDeliveries = (deliveriesOffset + deliveriesLimit) < total;
+    }
+
+    // Show deliveries container
+    document.getElementById("deliveries-loading").classList.add("hidden");
+    document.getElementById("deliveries-error").classList.add("hidden");
+    document.getElementById("deliveries-empty").classList.add("hidden");
+    document.getElementById("deliveries-table-container").classList.remove("hidden");
+
+    // Update pagination info
+    const showing = deliveries.length;
+    const startItem = deliveriesOffset + 1;
+    const endItem = deliveriesOffset + showing;
+    
+    if (typeof total === 'number') {
+      document.getElementById("deliveries-pagination-info").textContent = 
+        `${startItem}-${endItem} of ${total}`;
+    } else {
+      document.getElementById("deliveries-pagination-info").textContent = 
+        `${startItem}-${endItem}`;
+    }
+
+    // Populate deliveries table
+    const tableBodyEl = document.getElementById("deliveries-table-body");
+    tableBodyEl.innerHTML = deliveries
+      .map((delivery) => createDeliveryRow(delivery))
+      .join("");
+
+    // Update pagination buttons
+    document.getElementById("deliveries-btn-prev").disabled = deliveriesOffset === 0;
+    document.getElementById("deliveries-btn-next").disabled = !hasMoreDeliveries;
+  }
+
+  /**
+   * Create a delivery table row HTML
+   */
+  function createDeliveryRow(delivery) {
+    const statusClass = delivery.status === "success" ? "status-success" : "status-failed";
+    const statusBadge = `<span class="px-2 py-1 text-xs font-semibold text-white ${statusClass} rounded">${delivery.status}</span>`;
+    
+    const threadLink = delivery.thread_id
+      ? `<a href="/ui/threads/${delivery.thread_id}" class="text-blue-600 hover:underline">
+          ${delivery.thread_id.substring(0, 12)}...
+        </a>`
+      : `<span class="text-gray-400">-</span>`;
+    
+    const responseTime = delivery.response_time_ms !== null 
+      ? `${delivery.response_time_ms}ms`
+      : "-";
+    
+    const statusCode = delivery.status_code !== null 
+      ? delivery.status_code
+      : "-";
+    
+    const timestamp = new Date(delivery.timestamp).toLocaleString();
+
+    return `
+      <tr class="hover:bg-gray-50">
+        <td class="px-6 py-4 text-sm">
+          ${statusBadge}
+        </td>
+        <td class="px-6 py-4 text-sm text-gray-700">
+          ${escapeHtml(delivery.event_type)}
+        </td>
+        <td class="px-6 py-4 text-sm">
+          ${threadLink}
+        </td>
+        <td class="px-6 py-4 text-sm text-gray-700">
+          ${statusCode}
+        </td>
+        <td class="px-6 py-4 text-sm text-gray-700">
+          ${responseTime}
+        </td>
+        <td class="px-6 py-4 text-sm text-gray-500">
+          ${timestamp}
+        </td>
+        <td class="px-6 py-4 text-sm">
+          <button
+            onclick="viewDeliveryDetails('${delivery.id}')"
+            class="text-blue-600 hover:text-blue-800"
+            title="View details"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+        </td>
+      </tr>
+    `;
+  }
+
+  /**
+   * View delivery details
+   */
+  async function viewDeliveryDetails(deliveryId) {
+    const apiKey = localStorage.getItem("tf_api_key");
+    const appId = localStorage.getItem("tf_app_id");
+    const userId = localStorage.getItem("tf_user_id");
+
+    try {
+      const response = await apiFetch(`/webhooks/${currentWebhookId}/deliveries/${deliveryId}`);
+
+      const delivery = await response.json();
+      displayDeliveryDetails(delivery);
+    } catch (error) {
+      console.error("Error loading delivery details:", error);
+      alert("Failed to load delivery details: " + error.message);
+    }
+  }
+
+  /**
+   * Display delivery details in modal
+   */
+  function displayDeliveryDetails(delivery) {
+    const statusClass = delivery.status === "success" ? "status-success" : "status-failed";
+    const statusBadge = `<span class="px-2 py-1 text-xs font-semibold text-white ${statusClass} rounded">${delivery.status}</span>`;
+    
+    const errorSection = delivery.error
+      ? `<div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Error</label>
+          <div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+            ${escapeHtml(delivery.error)}
+          </div>
+        </div>`
+      : "";
+
+    const html = `
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Delivery ID</label>
+          <div class="text-sm text-gray-900">${delivery.id}</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <div>${statusBadge}</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Event Type</label>
+          <div class="text-sm text-gray-900">${escapeHtml(delivery.event_type)}</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Timestamp</label>
+          <div class="text-sm text-gray-900">${new Date(delivery.timestamp).toLocaleString()}</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Status Code</label>
+          <div class="text-sm text-gray-900">${delivery.status_code !== null ? delivery.status_code : "-"}</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Response Time</label>
+          <div class="text-sm text-gray-900">${delivery.response_time_ms !== null ? `${delivery.response_time_ms}ms` : "-"}</div>
+        </div>
+        <div class="col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Delivery URL</label>
+          <div class="text-sm text-gray-900 break-all">${escapeHtml(delivery.delivery_url)}</div>
+        </div>
+        ${delivery.thread_id ? `
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Thread ID</label>
+          <a href="/ui/threads/${delivery.thread_id}" class="text-sm text-blue-600 hover:underline">
+            ${delivery.thread_id}
+          </a>
+        </div>
+        ` : ""}
+        ${delivery.run_id ? `
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Run ID</label>
+          <div class="text-sm text-gray-900">${delivery.run_id}</div>
+        </div>
+        ` : ""}
+      </div>
+      
+      ${errorSection}
+      
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Event Payload</label>
+        <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-auto max-h-96">${JSON.stringify(delivery.event_payload, null, 2)}</pre>
+      </div>
+    `;
+
+    document.getElementById("delivery-details-content").innerHTML = html;
+    document.getElementById("delivery-modal").classList.remove("hidden");
+  }
+
+  /**
+   * Show deliveries loading state
+   */
+  function showDeliveriesLoading() {
+    document.getElementById("deliveries-loading").classList.remove("hidden");
+    document.getElementById("deliveries-error").classList.add("hidden");
+    document.getElementById("deliveries-empty").classList.add("hidden");
+    document.getElementById("deliveries-table-container").classList.add("hidden");
+  }
+
+  /**
+   * Show deliveries error state
+   */
+  function showDeliveriesError(message) {
+    document.getElementById("deliveries-loading").classList.add("hidden");
+    document.getElementById("deliveries-error").classList.remove("hidden");
+    document.getElementById("deliveries-empty").classList.add("hidden");
+    document.getElementById("deliveries-table-container").classList.add("hidden");
+    document.getElementById("deliveries-error-message").textContent = message;
+  }
+
+  /**
+   * Show deliveries empty state
+   */
+  function showDeliveriesEmpty() {
+    document.getElementById("deliveries-loading").classList.add("hidden");
+    document.getElementById("deliveries-error").classList.add("hidden");
+    document.getElementById("deliveries-empty").classList.remove("hidden");
+    document.getElementById("deliveries-table-container").classList.add("hidden");
+  }
+
+  /**
+   * Reset deliveries offset and load
+   */
+  function resetAndLoadDeliveries() {
+    deliveriesOffset = 0;
+    deliveriesLimit = parseInt(document.getElementById("delivery-filter-limit").value);
+    loadDeliveries();
+  }
+
+  /**
+   * Debounce deliveries load
+   */
+  function debounceLoadDeliveries() {
+    clearTimeout(deliveriesDebounceTimer);
+    deliveriesDebounceTimer = setTimeout(() => {
+      deliveriesOffset = 0;
+      loadDeliveries();
+    }, 500);
+  }
+
+  /**
+   * Deliveries pagination navigation
+   */
+  function loadDeliveriesPreviousPage() {
+    if (deliveriesOffset > 0) {
+      deliveriesOffset = Math.max(0, deliveriesOffset - deliveriesLimit);
+      loadDeliveries();
+    }
+  }
+
+  function loadDeliveriesNextPage() {
+    if (hasMoreDeliveries) {
+      deliveriesOffset += deliveriesLimit;
+      loadDeliveries();
+    }
+  }
+
+  /**
+   * Close delivery modal
+   */
+  function closeDeliveryModal() {
+    document.getElementById("delivery-modal").classList.add("hidden");
+  }
+
+  /**
+   * Close delivery modal on backdrop click
+   */
+  function closeDeliveryModalOnBackdrop(event) {
+    if (event.target === event.currentTarget) {
+      closeDeliveryModal();
+    }
+  }
+
+  /**
+   * Escape HTML to prevent XSS
+   */
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+</script>
+

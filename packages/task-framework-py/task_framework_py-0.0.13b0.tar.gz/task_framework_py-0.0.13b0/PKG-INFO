@@ -1,0 +1,247 @@
+Metadata-Version: 2.4
+Name: task-framework-py
+Version: 0.0.13b0
+Summary: A Python library for building task-based workflows with scheduling, webhooks, artifact management, and observability
+Project-URL: Documentation, https://github.com/Cinco-AI/task-framework-new#readme
+Project-URL: Repository, https://github.com/Cinco-AI/task-framework-new
+Project-URL: Issues, https://github.com/Cinco-AI/task-framework-new/issues
+Project-URL: Changelog, https://github.com/Cinco-AI/task-framework-new/blob/main/CHANGELOG.md
+Author: Task Framework Contributors
+License: MIT
+Keywords: artifacts,async,fastapi,observability,scheduling,task,webhooks,workflow
+Classifier: Development Status :: 4 - Beta
+Classifier: Framework :: FastAPI
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Distributed Computing
+Classifier: Typing :: Typed
+Requires-Python: >=3.13
+Requires-Dist: aiofiles>=24.1.0
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: anthropic>=0.39.0
+Requires-Dist: apscheduler>=3.11.0
+Requires-Dist: beautifulsoup4>=4.12.0
+Requires-Dist: cryptography>=43.0.0
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: fastmcp==2.11.0
+Requires-Dist: google-generativeai>=0.8.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: jsonschema>=4.23.0
+Requires-Dist: markdown>=3.10
+Requires-Dist: matplotlib>=3.10.7
+Requires-Dist: neo4j>=6.0.3
+Requires-Dist: networkx>=3.6
+Requires-Dist: openai-agents>=0.5.1
+Requires-Dist: openai>=1.54.0
+Requires-Dist: openpyxl>=3.1.0
+Requires-Dist: pdfplumber>=0.10.0
+Requires-Dist: prometheus-client>=0.21.0
+Requires-Dist: pydantic>=2.10.0
+Requires-Dist: python-docx>=1.1.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: pyyaml>=6.0.3
+Requires-Dist: scipy>=1.11.0
+Requires-Dist: structlog>=24.4.0
+Requires-Dist: uvicorn[standard]>=0.32.0
+Requires-Dist: xhtml2pdf>=0.2.17
+Provides-Extra: dev
+Requires-Dist: black>=24.8.0; extra == 'dev'
+Requires-Dist: httpx>=0.27.0; extra == 'dev'
+Requires-Dist: mypy>=1.13.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.24.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.1.0; extra == 'dev'
+Requires-Dist: pytest>=8.3.0; extra == 'dev'
+Requires-Dist: requests>=2.32.0; extra == 'dev'
+Requires-Dist: ruff>=0.8.0; extra == 'dev'
+Provides-Extra: elasticsearch
+Requires-Dist: elasticsearch[async]>=9.0.0; extra == 'elasticsearch'
+Provides-Extra: remote
+Requires-Dist: aiobotocore>=2.11.0; extra == 'remote'
+Requires-Dist: boto3>=1.34.0; extra == 'remote'
+Requires-Dist: elasticsearch[async]>=9.0.0; extra == 'remote'
+Provides-Extra: s3
+Requires-Dist: aiobotocore>=2.11.0; extra == 's3'
+Requires-Dist: boto3>=1.34.0; extra == 's3'
+Provides-Extra: test
+Requires-Dist: httpx>=0.27.0; extra == 'test'
+Requires-Dist: playwright>=1.40.0; extra == 'test'
+Requires-Dist: pytest-asyncio>=0.24.0; extra == 'test'
+Requires-Dist: pytest-cov>=4.1.0; extra == 'test'
+Requires-Dist: pytest-playwright>=0.4.0; extra == 'test'
+Requires-Dist: pytest>=8.3.0; extra == 'test'
+Description-Content-Type: text/markdown
+
+# Task Framework
+
+A Python library for building and executing task-based workflows with built-in support for scheduling, webhooks, artifact management, and observability.
+
+## Features
+
+- **Multi-Task Server**: Deploy multiple task definitions to a single server, each with isolated execution environments
+- **Thread Execution**: Run tasks synchronously or asynchronously with full state management
+- **Artifact Management**: Track inputs and outputs with support for JSON, text, and file artifacts
+- **File Storage**: Pluggable file storage interface with local filesystem and pre-signed URL support
+- **Scheduling**: Cron-based scheduling with APScheduler integration
+- **Webhooks**: Event-driven notifications with automatic retry and delivery tracking
+- **Observability**: Built-in Prometheus metrics and structured logging
+- **OpenAPI 3.1.0**: Auto-generated API documentation at `/docs`
+
+## Installation
+
+```bash
+pip install task-framework-py
+```
+
+Or with uv:
+
+```bash
+uv add task-framework-py
+```
+
+## Quick Start
+
+### Multi-Task Server
+
+The Task Framework runs as a server that can host multiple task definitions. Each task is packaged as a zip file with its code and metadata.
+
+**Start a task server:**
+
+```bash
+# Start server with auto-discovery from task_definitions/ directory
+task-framework serve --host 0.0.0.0 --port 3000
+
+# Or for development, load a task from source
+task-framework serve --dev-task /path/to/my-task/
+```
+
+**Deploy a task via API:**
+
+```bash
+curl -X POST http://localhost:3000/admin/tasks \
+  -H "X-API-Key: your-admin-key" \
+  -F "file=@my-task-1.0.0.zip"
+```
+
+**Task Zip Structure:**
+
+```
+my-task-1.0.0.zip/
+  task_metadata.json    # Task metadata and schemas
+  task.py              # Task implementation
+  pyproject.toml       # Dependencies (optional)
+```
+
+**Example Task Function:**
+
+```python
+async def my_task(context):
+    # Get input artifacts
+    inputs = await context.get_input_artifacts()
+    
+    # Process inputs
+    result = {"message": "Task completed", "input_count": len(inputs)}
+    
+    # Publish output
+    from task_framework.models.artifact import Artifact
+    await context.publish_output_artifacts([
+        Artifact(kind="json", value=result, media_type="application/json")
+    ])
+
+## API Usage
+
+### Create a Thread (Execute Task)
+
+```bash
+curl -X POST http://localhost:3000/threads \
+  -H "X-API-Key: your-api-key" \
+  -H "X-User-Id: user123" \
+  -H "X-App-Id: app456" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mode": "sync",
+    "inputs": [{"kind": "json", "value": {"data": "test"}}]
+  }'
+```
+
+In multi-task mode, add `?task_id=my-task&version=1.0.0` query parameters.
+
+### List Threads
+
+```bash
+curl http://localhost:3000/threads \
+  -H "X-API-Key: your-api-key" \
+  -H "X-User-Id: user123" \
+  -H "X-App-Id: app456"
+```
+
+### Health Check
+
+```bash
+curl http://localhost:3000/health
+```
+
+## Task Package Format
+
+A task package is a zip file containing:
+
+```
+my-task-1.0.0.zip/
+  task_metadata.json    # Task metadata
+  task.py              # Task implementation
+  pyproject.toml       # Dependencies
+```
+
+Example `task_metadata.json`:
+
+```json
+{
+  "name": "my-task",
+  "version": "1.0.0",
+  "description": "My task description",
+  "entry_point": "task:my_task_function",
+  "input_schemas": [
+    {"kind": "json", "media_type": "application/json", "required": true}
+  ],
+  "output_schemas": [
+    {"kind": "json", "media_type": "application/json"}
+  ]
+}
+```
+
+## Documentation
+
+- **API Documentation**: Start the server and visit `/docs` for interactive Swagger UI
+- **User Guide**: See `docs/user/` for getting started guides
+- **Architecture**: See `docs/architecture/` for system design documentation
+- **Feature Documentation**: See `docs/features/` for detailed feature documentation
+
+## Authentication
+
+The framework uses API key authentication via the `X-API-Key` header:
+
+- **Regular API Keys**: Require `user_id` and `app_id` metadata for access control
+- **Admin API Keys**: Full access to all endpoints including `/admin/*` routes
+
+Public endpoints (no authentication required):
+- `GET /health` - Health check
+- `GET /metrics` - Prometheus metrics
+- `GET /task/metadata` - Task metadata discovery
+
+## Requirements
+
+- Python 3.13+
+- FastAPI
+- Pydantic 2.x
+- uvicorn
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please see the development documentation in `docs/developer/` for setup instructions.

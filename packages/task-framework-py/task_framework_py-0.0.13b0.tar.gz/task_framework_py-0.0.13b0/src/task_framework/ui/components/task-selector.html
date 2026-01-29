@@ -1,0 +1,403 @@
+<!-- Task Selector Component -->
+<!-- 
+  This component provides a reusable task selector dropdown.
+  
+  Usage: Include in your page and call initTaskSelector(containerId, options) with:
+    - containerId: ID of the container element
+    - options: {
+        showVersionSelector: boolean (default: true),
+        onTaskChange: function(taskId, version) callback,
+        initialTaskId: string (optional),
+        initialVersion: string (optional),
+        required: boolean (default: false)
+      }
+  
+  The component will render:
+    - Task dropdown showing all available tasks
+    - Version dropdown (if showVersionSelector is true)
+    - Automatically updates versions when task changes
+-->
+
+<template id="task-selector-template">
+  <div class="task-selector-container">
+    <div class="task-selector-fields">
+      <!-- Task ID Dropdown -->
+      <div class="task-id-field">
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          Task
+          <span class="task-required text-red-500 hidden">*</span>
+        </label>
+        <select class="task-id-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <option value="">Select a task...</option>
+        </select>
+        <p class="task-id-hint mt-1 text-xs text-gray-500">Select the task to execute</p>
+      </div>
+      
+      <!-- Version Dropdown -->
+      <div class="version-field">
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          Version
+        </label>
+        <select class="version-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" disabled>
+          <option value="">Select task first...</option>
+        </select>
+        <p class="version-hint mt-1 text-xs text-gray-500">Select the version to use (latest selected by default)</p>
+      </div>
+    </div>
+    
+    <!-- Task Info (shown when task is selected) -->
+    <div class="task-info hidden mt-3 p-3 bg-gray-50 rounded-lg">
+      <div class="flex items-center gap-3">
+        <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+          <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+        </div>
+        <div>
+          <div class="task-info-name text-sm font-medium text-gray-900"></div>
+          <div class="task-info-description text-xs text-gray-500"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Loading indicator -->
+    <div class="task-loading hidden mt-2">
+      <div class="flex items-center gap-2 text-sm text-gray-500">
+        <svg class="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Loading tasks...</span>
+      </div>
+    </div>
+    
+    <!-- Error message -->
+    <div class="task-error hidden mt-2 text-sm text-red-600"></div>
+  </div>
+</template>
+
+<script>
+  // Task selector state management
+  const TaskSelectorState = {
+    instances: {},
+    tasksCache: null,
+    tasksCacheTime: null,
+    cacheValidDuration: 60000 // 1 minute cache
+  };
+
+  /**
+   * Initialize a task selector in a container
+   * @param {string} containerId - ID of the container element
+   * @param {Object} options - Configuration options
+   */
+  async function initTaskSelector(containerId, options = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+      console.error(`Task selector container not found: ${containerId}`);
+      return;
+    }
+
+    const config = {
+      showVersionSelector: options.showVersionSelector !== false,
+      onTaskChange: options.onTaskChange || function() {},
+      initialTaskId: options.initialTaskId || '',
+      initialVersion: options.initialVersion || '',
+      required: options.required || false
+    };
+
+    // Clone template
+    const template = document.getElementById('task-selector-template');
+    const content = template.content.cloneNode(true);
+    
+    container.innerHTML = '';
+    container.appendChild(content);
+
+    // Get elements
+    const taskSelect = container.querySelector('.task-id-select');
+    const versionSelect = container.querySelector('.version-select');
+    const versionField = container.querySelector('.version-field');
+    const taskInfo = container.querySelector('.task-info');
+    const loadingEl = container.querySelector('.task-loading');
+    const errorEl = container.querySelector('.task-error');
+    const requiredEl = container.querySelector('.task-required');
+
+    // Show required indicator
+    if (config.required) {
+      requiredEl.classList.remove('hidden');
+    }
+
+    // Hide version selector if not needed
+    if (!config.showVersionSelector) {
+      versionField.classList.add('hidden');
+    }
+
+    // Store instance state
+    TaskSelectorState.instances[containerId] = {
+      config,
+      taskSelect,
+      versionSelect,
+      versionField,
+      taskInfo,
+      loadingEl,
+      errorEl,
+      tasks: [],
+      selectedTask: null
+    };
+
+    // Load tasks
+    await loadTasksForSelector(containerId);
+
+    // Set up event listeners
+    taskSelect.addEventListener('change', () => onTaskSelectChange(containerId));
+    versionSelect.addEventListener('change', () => onVersionSelectChange(containerId));
+
+    // Set initial values if provided
+    if (config.initialTaskId) {
+      taskSelect.value = config.initialTaskId;
+      await onTaskSelectChange(containerId);
+      
+      if (config.initialVersion && config.showVersionSelector) {
+        versionSelect.value = config.initialVersion;
+        onVersionSelectChange(containerId);
+      }
+    }
+
+    return {
+      getSelectedTask: () => getSelectedTask(containerId),
+      refresh: () => loadTasksForSelector(containerId, true)
+    };
+  }
+
+  /**
+   * Load tasks from API for a selector
+   */
+  async function loadTasksForSelector(containerId, forceRefresh = false) {
+    const instance = TaskSelectorState.instances[containerId];
+    if (!instance) return;
+
+    const { taskSelect, loadingEl, errorEl } = instance;
+
+    // Check cache
+    if (!forceRefresh && TaskSelectorState.tasksCache && 
+        (Date.now() - TaskSelectorState.tasksCacheTime) < TaskSelectorState.cacheValidDuration) {
+      instance.tasks = TaskSelectorState.tasksCache;
+      renderTaskOptions(containerId);
+      return;
+    }
+
+    loadingEl.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+
+    try {
+      // Get API key - try admin key first, then regular API key
+      // Support both new (STORAGE_KEYS) and old (direct) formats
+      const adminKey = typeof STORAGE_KEYS !== 'undefined' 
+        ? localStorage.getItem(STORAGE_KEYS.ADMIN_API_KEY) || localStorage.getItem(STORAGE_KEYS.API_KEY) || ''
+        : localStorage.getItem('tf_admin_api_key') || localStorage.getItem('tf_api_key') || localStorage.getItem('apiKey') || '';
+      
+      if (!adminKey) {
+        console.warn('API Key not configured for task selector');
+        throw new Error('API Key not configured');
+      }
+      
+      const response = await fetch('/admin/tasks', {
+        headers: {
+          'X-API-Key': adminKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      // API returns {tasks: [...], total: N, total_versions: N}
+      const tasksData = responseData.tasks || [];
+      
+      // Flatten tasks with versions into individual task entries
+      const tasks = [];
+      tasksData.forEach(task => {
+        task.versions.forEach(version => {
+          tasks.push({
+            task_id: task.task_id,
+            version: version,
+            name: task.name,
+            description: task.description,
+            metadata: {
+              name: task.name,
+              description: task.description
+            }
+          });
+        });
+      });
+      
+      // Cache the results
+      TaskSelectorState.tasksCache = tasks;
+      TaskSelectorState.tasksCacheTime = Date.now();
+      
+      instance.tasks = tasks;
+      renderTaskOptions(containerId);
+
+    } catch (error) {
+      console.error('Error loading tasks:', error);
+      errorEl.textContent = 'Failed to load tasks. Please check your API key.';
+      errorEl.classList.remove('hidden');
+    } finally {
+      loadingEl.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Render task options in the dropdown
+   */
+  function renderTaskOptions(containerId) {
+    const instance = TaskSelectorState.instances[containerId];
+    if (!instance) return;
+
+    const { taskSelect, tasks } = instance;
+
+    // Group tasks by task_id
+    const taskGroups = {};
+    tasks.forEach(task => {
+      if (!taskGroups[task.task_id]) {
+        taskGroups[task.task_id] = {
+          task_id: task.task_id,
+          name: task.metadata?.name || task.task_id,
+          versions: []
+        };
+      }
+      taskGroups[task.task_id].versions.push(task);
+    });
+
+    // Sort groups by name
+    const sortedGroups = Object.values(taskGroups).sort((a, b) => 
+      a.name.localeCompare(b.name)
+    );
+
+    // Render options
+    taskSelect.innerHTML = '<option value="">Select a task...</option>';
+    sortedGroups.forEach(group => {
+      const option = document.createElement('option');
+      option.value = group.task_id;
+      option.textContent = `${group.name} (${group.versions.length} version${group.versions.length !== 1 ? 's' : ''})`;
+      taskSelect.appendChild(option);
+    });
+  }
+
+  /**
+   * Handle task selection change
+   */
+  async function onTaskSelectChange(containerId) {
+    const instance = TaskSelectorState.instances[containerId];
+    if (!instance) return;
+
+    const { config, taskSelect, versionSelect, taskInfo, tasks } = instance;
+    const selectedTaskId = taskSelect.value;
+
+    if (!selectedTaskId) {
+      // Reset state
+      versionSelect.innerHTML = '<option value="">Select task first...</option>';
+      versionSelect.disabled = true;
+      taskInfo.classList.add('hidden');
+      instance.selectedTask = null;
+      config.onTaskChange('', '');
+      return;
+    }
+
+    // Get all versions for this task
+    const taskVersions = tasks.filter(t => t.task_id === selectedTaskId)
+      .sort((a, b) => {
+        // Sort by version descending (latest first)
+        const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+        const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+        for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+          const aVal = aParts[i] || 0;
+          const bVal = bParts[i] || 0;
+          if (bVal !== aVal) return bVal - aVal;
+        }
+        return 0;
+      });
+
+    if (taskVersions.length === 0) {
+      versionSelect.innerHTML = '<option value="">No versions available</option>';
+      versionSelect.disabled = true;
+      return;
+    }
+
+    // Populate version dropdown
+    versionSelect.innerHTML = taskVersions.map((task, index) => {
+      const isLatest = index === 0;
+      return `<option value="${escapeHtmlAttr(task.version)}" ${isLatest ? 'selected' : ''}>
+        v${escapeHtmlAttr(task.version)}${isLatest ? ' (latest)' : ''}
+      </option>`;
+    }).join('');
+    versionSelect.disabled = false;
+
+    // Select latest version by default
+    const latestTask = taskVersions[0];
+    instance.selectedTask = latestTask;
+
+    // Update task info
+    taskInfo.querySelector('.task-info-name').textContent = 
+      latestTask.metadata?.name || latestTask.task_id;
+    taskInfo.querySelector('.task-info-description').textContent = 
+      latestTask.metadata?.description || 'No description';
+    taskInfo.classList.remove('hidden');
+
+    // Notify callback
+    config.onTaskChange(latestTask.task_id, latestTask.version);
+  }
+
+  /**
+   * Handle version selection change
+   */
+  function onVersionSelectChange(containerId) {
+    const instance = TaskSelectorState.instances[containerId];
+    if (!instance) return;
+
+    const { config, taskSelect, versionSelect, taskInfo, tasks } = instance;
+    const selectedTaskId = taskSelect.value;
+    const selectedVersion = versionSelect.value;
+
+    if (!selectedTaskId || !selectedVersion) return;
+
+    // Find the specific task version
+    const task = tasks.find(t => t.task_id === selectedTaskId && t.version === selectedVersion);
+    if (task) {
+      instance.selectedTask = task;
+      
+      // Update task info
+      taskInfo.querySelector('.task-info-name').textContent = 
+        task.metadata?.name || task.task_id;
+      taskInfo.querySelector('.task-info-description').textContent = 
+        task.metadata?.description || 'No description';
+    }
+
+    // Notify callback
+    config.onTaskChange(selectedTaskId, selectedVersion);
+  }
+
+  /**
+   * Get the currently selected task
+   */
+  function getSelectedTask(containerId) {
+    const instance = TaskSelectorState.instances[containerId];
+    if (!instance) return null;
+
+    return instance.selectedTask;
+  }
+
+  /**
+   * Escape HTML attribute value
+   */
+  function escapeHtmlAttr(text) {
+    return (text || '').toString()
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+</script>
+

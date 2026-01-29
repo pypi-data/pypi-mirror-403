@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings - Task Framework</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- htmx via CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles for better UI -->
+    <style>
+      /* Smooth transitions for interactive elements */
+      .nav-item {
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-item:hover {
+        transform: translateX(4px);
+      }
+
+      /* Custom scrollbar for sidebar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #6b7280;
+      }
+
+      /* Fade in animation */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .fade-in {
+        animation: fadeIn 0.3s ease-out;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <div class="flex h-screen overflow-hidden">
+      <!-- Left Sidebar (loaded via htmx) -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <!-- Loading placeholder -->
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content Area -->
+      <main class="flex-1 overflow-y-auto">
+        <!-- Top Bar -->
+        <div class="bg-white shadow-sm border-b border-gray-200">
+          <div class="px-6 py-4">
+            <h2 class="text-2xl font-semibold text-gray-800">Settings</h2>
+            <p class="text-sm text-gray-600 mt-1">
+              Configure your API credentials and application settings
+            </p>
+          </div>
+        </div>
+
+        <!-- Settings Content -->
+        <div class="p-6">
+          <div class="max-w-3xl mx-auto fade-in">
+            <!-- Alert/Success Message (Hidden by default) -->
+            <div
+              id="alert-success"
+              class="hidden mb-6 bg-green-50 border border-green-200 rounded-lg p-4"
+            >
+              <div class="flex items-center">
+                <svg
+                  class="w-5 h-5 text-green-600 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
+                </svg>
+                <span class="text-green-800 font-medium"
+                  >Settings saved successfully!</span
+                >
+              </div>
+            </div>
+
+            <!-- Settings Card -->
+            <div class="bg-white rounded-lg shadow-md">
+              <!-- Card Header -->
+              <div class="border-b border-gray-200 px-6 py-4">
+                <h3 class="text-lg font-semibold text-gray-800">
+                  API Credentials
+                </h3>
+                <p class="text-sm text-gray-600 mt-1">
+                  These credentials will be used as HTTP headers when making API
+                  requests. All values are stored securely in your browser's
+                  localStorage.
+                </p>
+              </div>
+
+              <!-- Settings Form -->
+              <form id="settings-form" class="px-6 py-6 space-y-6">
+                <!-- API Key Field -->
+                <div>
+                  <label
+                    for="api-key"
+                    class="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    X-API-Key
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="api-key"
+                    name="api-key"
+                    placeholder="Enter your API key"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                  />
+                  <div class="mt-2 flex items-start">
+                    <label class="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="show-api-key"
+                        class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span class="ml-2 text-sm text-gray-600"
+                        >Show API key</span
+                      >
+                    </label>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500">
+                    Required for authenticating API requests. Get your API key
+                    from your administrator.
+                  </p>
+                </div>
+
+                <!-- App ID Field -->
+                <div>
+                  <label
+                    for="app-id"
+                    class="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    X-App-ID
+                  </label>
+                  <input
+                    type="text"
+                    id="app-id"
+                    name="app-id"
+                    placeholder="Enter your application ID (optional)"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                  />
+                  <p class="mt-2 text-xs text-gray-500">
+                    Optional. Used to filter threads and artifacts by
+                    application.
+                  </p>
+                </div>
+
+                <!-- User ID Field -->
+                <div>
+                  <label
+                    for="user-id"
+                    class="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    X-User-ID
+                  </label>
+                  <input
+                    type="text"
+                    id="user-id"
+                    name="user-id"
+                    placeholder="Enter your user ID (optional)"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                  />
+                  <p class="mt-2 text-xs text-gray-500">
+                    Optional. Used to filter threads and artifacts by user.
+                  </p>
+                </div>
+
+                <!-- Divider -->
+                <div class="pt-4 border-t border-gray-200"></div>
+
+                <!-- Proxy Mode Section -->
+                <div>
+                  <div class="flex items-start">
+                    <div class="flex items-center h-5">
+                      <input
+                        type="checkbox"
+                        id="proxy-mode-toggle"
+                        class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                    </div>
+                    <div class="ml-3">
+                      <label
+                        for="proxy-mode-toggle"
+                        class="block text-sm font-medium text-gray-700 cursor-pointer"
+                      >
+                        Enable Proxy Mode
+                      </label>
+                      <p class="text-xs text-gray-500 mt-1">
+                        Connect to Task Framework Proxy instead of direct task server.
+                        Page will reload after mode change.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Admin API Key Field (Visible only in Proxy Mode) -->
+                <div id="admin-key-section" style="display: none;">
+                  <label
+                    for="admin-api-key"
+                    class="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    X-Admin-API-Key
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="admin-api-key"
+                    name="admin-api-key"
+                    placeholder="Enter your admin API key"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                  />
+                  <div class="mt-2 flex items-start">
+                    <label class="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="show-admin-key"
+                        class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span class="ml-2 text-sm text-gray-600"
+                        >Show admin key</span
+                      >
+                    </label>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500">
+                    Required for proxy server management (enrolling, updating, deleting servers).
+                  </p>
+                </div>
+
+                <!-- Action Buttons -->
+                <div
+                  class="flex items-center justify-between pt-4 border-t border-gray-200"
+                >
+                  <button
+                    type="button"
+                    onclick="clearSettings()"
+                    class="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    Clear All Settings
+                  </button>
+                  <div class="flex space-x-3">
+                    <a
+                      href="/ui"
+                      class="px-6 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </a>
+                    <button
+                      type="submit"
+                      class="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                    >
+                      Save Settings
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            <!-- Help Section -->
+            <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div class="flex items-start">
+                <svg
+                  class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
+                </svg>
+                <div>
+                  <h4 class="text-sm font-semibold text-blue-900 mb-1">
+                    About API Credentials
+                  </h4>
+                  <p class="text-sm text-blue-800">
+                    Your API credentials are stored locally in your browser and
+                    are never sent to any server except when making
+                    authenticated API requests. The
+                    <strong>X-API-Key</strong> is required for most operations.
+                    The <strong>X-App-ID</strong> and
+                    <strong>X-User-ID</strong> are optional metadata fields used
+                    for filtering and access control.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- JavaScript for settings management -->
+    <script>
+      /**
+       * Storage keys for localStorage
+       */
+      const STORAGE_KEYS = {
+        API_KEY: "tf_api_key",
+        APP_ID: "tf_app_id",
+        USER_ID: "tf_user_id",
+        PROXY_MODE: "tf_proxy_mode",
+        ADMIN_API_KEY: "tf_admin_api_key",
+        SELECTED_SERVER: "tf_selected_server",
+      };
+
+      /**
+       * Check if proxy mode is enabled
+       */
+      function isProxyMode() {
+        return localStorage.getItem(STORAGE_KEYS.PROXY_MODE) === "true";
+      }
+
+      /**
+       * Load settings from localStorage and populate form
+       */
+      function loadSettings() {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || "";
+        const appId = localStorage.getItem(STORAGE_KEYS.APP_ID) || "";
+        const userId = localStorage.getItem(STORAGE_KEYS.USER_ID) || "";
+        const proxyMode = isProxyMode();
+        const adminKey = localStorage.getItem(STORAGE_KEYS.ADMIN_API_KEY) || "";
+
+        // Populate form fields
+        document.getElementById("api-key").value = apiKey;
+        document.getElementById("app-id").value = appId;
+        document.getElementById("user-id").value = userId;
+        document.getElementById("proxy-mode-toggle").checked = proxyMode;
+        document.getElementById("admin-api-key").value = adminKey;
+
+        // Store initial proxy mode state for comparison
+        document.getElementById("proxy-mode-toggle").dataset.previousValue = proxyMode.toString();
+
+        // Show/hide admin key section based on proxy mode
+        toggleAdminKeySection(proxyMode);
+
+        console.log("Settings loaded from localStorage", {
+          hasApiKey: !!apiKey,
+          proxyMode: proxyMode,
+          hasAdminKey: !!adminKey,
+        });
+      }
+
+      /**
+       * Toggle admin key section visibility
+       */
+      function toggleAdminKeySection(show) {
+        const section = document.getElementById("admin-key-section");
+        section.style.display = show ? "block" : "none";
+      }
+
+      /**
+       * Save settings to localStorage
+       */
+      function saveSettings(event) {
+        event.preventDefault();
+
+        // Get form values
+        const apiKey = document.getElementById("api-key").value.trim();
+        const appId = document.getElementById("app-id").value.trim();
+        const userId = document.getElementById("user-id").value.trim();
+        const proxyMode = document.getElementById("proxy-mode-toggle").checked;
+        const adminKey = document.getElementById("admin-api-key").value.trim();
+
+        // Validate API key (required)
+        if (!apiKey) {
+          alert("API Key is required!");
+          document.getElementById("api-key").focus();
+          return;
+        }
+
+        // Validate admin key if proxy mode is enabled
+        if (proxyMode && !adminKey) {
+          alert("Admin API Key is required when Proxy Mode is enabled!");
+          document.getElementById("admin-api-key").focus();
+          return;
+        }
+
+        // Check if proxy mode changed
+        const previousProxyMode = document.getElementById("proxy-mode-toggle").dataset.previousValue === "true";
+        const modeChanged = previousProxyMode !== proxyMode;
+
+        // Save to localStorage
+        localStorage.setItem(STORAGE_KEYS.API_KEY, apiKey);
+        localStorage.setItem(STORAGE_KEYS.APP_ID, appId);
+        localStorage.setItem(STORAGE_KEYS.USER_ID, userId);
+        localStorage.setItem(STORAGE_KEYS.PROXY_MODE, proxyMode.toString());
+
+        if (proxyMode) {
+          localStorage.setItem(STORAGE_KEYS.ADMIN_API_KEY, adminKey);
+        } else {
+          // Clear proxy-specific settings when disabling proxy mode
+          localStorage.removeItem(STORAGE_KEYS.ADMIN_API_KEY);
+          localStorage.removeItem(STORAGE_KEYS.SELECTED_SERVER);
+        }
+
+        console.log("Settings saved to localStorage:", {
+          hasApiKey: !!apiKey,
+          hasAppId: !!appId,
+          hasUserId: !!userId,
+          proxyMode: proxyMode,
+          hasAdminKey: !!adminKey,
+          modeChanged: modeChanged,
+        });
+
+        // Show success message
+        showSuccessMessage();
+
+        // Reload page if mode changed
+        if (modeChanged) {
+          setTimeout(() => {
+            const message = proxyMode
+              ? "Proxy Mode enabled. Page will reload..."
+              : "Proxy Mode disabled. Page will reload...";
+            alert(message);
+            window.location.reload();
+          }, 500);
+        }
+      }
+
+      /**
+       * Clear all settings from localStorage
+       */
+      function clearSettings() {
+        if (
+          !confirm(
+            "Are you sure you want to clear all settings? This action cannot be undone."
+          )
+        ) {
+          return;
+        }
+
+        // Clear localStorage
+        localStorage.removeItem(STORAGE_KEYS.API_KEY);
+        localStorage.removeItem(STORAGE_KEYS.APP_ID);
+        localStorage.removeItem(STORAGE_KEYS.USER_ID);
+        localStorage.removeItem(STORAGE_KEYS.PROXY_MODE);
+        localStorage.removeItem(STORAGE_KEYS.ADMIN_API_KEY);
+        localStorage.removeItem(STORAGE_KEYS.SELECTED_SERVER);
+
+        // Clear form fields
+        document.getElementById("api-key").value = "";
+        document.getElementById("app-id").value = "";
+        document.getElementById("user-id").value = "";
+        document.getElementById("proxy-mode-toggle").checked = false;
+        document.getElementById("admin-api-key").value = "";
+
+        // Hide admin key section
+        toggleAdminKeySection(false);
+
+        // Hide success message
+        document.getElementById("alert-success").classList.add("hidden");
+
+        console.log("Settings cleared");
+      }
+
+      /**
+       * Toggle API key visibility
+       */
+      function toggleApiKeyVisibility() {
+        const apiKeyInput = document.getElementById("api-key");
+        const showCheckbox = document.getElementById("show-api-key");
+
+        if (showCheckbox.checked) {
+          apiKeyInput.type = "text";
+        } else {
+          apiKeyInput.type = "password";
+        }
+      }
+
+      /**
+       * Toggle admin key visibility
+       */
+      function toggleAdminKeyVisibility() {
+        const adminKeyInput = document.getElementById("admin-api-key");
+        const showCheckbox = document.getElementById("show-admin-key");
+
+        if (showCheckbox.checked) {
+          adminKeyInput.type = "text";
+        } else {
+          adminKeyInput.type = "password";
+        }
+      }
+
+      /**
+       * Handle proxy mode toggle change
+       */
+      function onProxyModeToggle() {
+        const proxyMode = document.getElementById("proxy-mode-toggle").checked;
+        toggleAdminKeySection(proxyMode);
+      }
+
+      /**
+       * Show success message with auto-hide
+       */
+      function showSuccessMessage() {
+        const alertEl = document.getElementById("alert-success");
+        alertEl.classList.remove("hidden");
+
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          alertEl.classList.add("hidden");
+        }, 3000);
+      }
+
+      /**
+       * Initialize the page
+       */
+      document.addEventListener("DOMContentLoaded", function () {
+        console.log("Settings page initialized");
+
+        // Load settings from localStorage
+        loadSettings();
+
+        // Attach form submit handler
+        document
+          .getElementById("settings-form")
+          .addEventListener("submit", saveSettings);
+
+        // Attach show/hide API key toggle
+        document
+          .getElementById("show-api-key")
+          .addEventListener("change", toggleApiKeyVisibility);
+
+        // Attach show/hide admin key toggle
+        document
+          .getElementById("show-admin-key")
+          .addEventListener("change", toggleAdminKeyVisibility);
+
+        // Attach proxy mode toggle handler
+        document
+          .getElementById("proxy-mode-toggle")
+          .addEventListener("change", onProxyModeToggle);
+      });
+
+      /**
+       * Configure htmx to include auth headers in all requests
+       */
+      document.body.addEventListener("htmx:configRequest", function (event) {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || "";
+        const appId = localStorage.getItem(STORAGE_KEYS.APP_ID) || "";
+        const userId = localStorage.getItem(STORAGE_KEYS.USER_ID) || "";
+
+        // Add headers only if they are set
+        if (apiKey) {
+          event.detail.headers["X-API-Key"] = apiKey;
+        }
+        if (appId) {
+          event.detail.headers["X-App-ID"] = appId;
+        }
+        if (userId) {
+          event.detail.headers["X-User-ID"] = userId;
+        }
+      });
+    </script>
+  </body>
+</html>

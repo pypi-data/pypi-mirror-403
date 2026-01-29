@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Versions - Task Framework</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .nav-item:hover {
+      transform: translateX(4px);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+
+    .state-deployed {
+      background-color: #22c55e;
+    }
+
+    .state-pending {
+      background-color: #eab308;
+    }
+
+    .state-deploying {
+      background-color: #3b82f6;
+    }
+
+    .state-failed {
+      background-color: #ef4444;
+    }
+
+    .modal-overlay {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <!-- API Utilities (loaded via htmx) -->
+  <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto">
+      <!-- Header -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <a href="/ui/tasks" class="text-gray-500 hover:text-gray-700">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </a>
+            <div>
+              <h1 id="page-title" class="text-2xl font-bold text-gray-900">Task Versions</h1>
+              <p id="page-subtitle" class="mt-1 text-sm text-gray-500">Loading...</p>
+            </div>
+          </div>
+          <a href="/ui/tasks/upload" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+            <svg class="w-5 h-5 inline-block -mt-0.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Upload New Version
+          </a>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="flex items-center justify-center py-12">
+        <div class="text-center">
+          <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none"
+            viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <p class="mt-2 text-sm text-gray-600">Loading versions...</p>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="hidden px-6 py-12">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div class="flex">
+            <svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clip-rule="evenodd" />
+            </svg>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-red-800">
+                Error Loading Versions
+              </h3>
+              <p id="error-message" class="text-sm text-red-700 mt-1"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden px-6 py-12">
+        <div class="text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No versions found</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            This task has no versions deployed.
+          </p>
+          <div class="mt-6">
+            <a href="/ui/tasks/upload"
+              class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Upload Version
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Versions List -->
+      <div id="versions-container" class="hidden p-6">
+        <div class="max-w-4xl mx-auto">
+          <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div id="versions-list" class="divide-y divide-gray-200">
+              <!-- Versions will be rendered here -->
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div id="versions-stats" class="mt-4 text-sm text-gray-500 text-right">
+            <!-- Stats will be rendered here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+      <div class="fixed inset-0 modal-overlay" onclick="closeDeleteModal()"></div>
+      <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h3 class="text-lg font-medium text-gray-900">Delete Task Version</h3>
+        <p class="mt-2 text-sm text-gray-500">
+          Are you sure you want to delete <strong id="delete-version-name"></strong>?
+          This action cannot be undone and will remove all associated data.
+        </p>
+        <div class="mt-4 flex justify-end gap-3">
+          <button onclick="closeDeleteModal()"
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">
+            Cancel
+          </button>
+          <button id="delete-confirm-btn" onclick="confirmDelete()"
+            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Wait for API utils to load
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof STORAGE_KEYS !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof STORAGE_KEYS !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    // Get API key for admin endpoints
+    function getAdminApiKey() {
+      return localStorage.getItem(STORAGE_KEYS?.ADMIN_API_KEY) ||
+        localStorage.getItem(STORAGE_KEYS?.API_KEY) ||
+        '';
+    }
+
+    // State
+    let taskId = null;
+    let deleteVersion = null;
+
+    // Get task_id from URL
+    function getTaskIdFromUrl() {
+      const path = window.location.pathname;
+      const match = path.match(/\/ui\/tasks\/([^/]+)\/versions/);
+      if (match) {
+        return decodeURIComponent(match[1]);
+      }
+      return null;
+    }
+
+    // Load versions
+    async function loadVersions() {
+      await waitForApiUtils();
+
+      taskId = getTaskIdFromUrl();
+      if (!taskId) {
+        showError('Invalid task URL');
+        return;
+      }
+
+      // Update page title
+      document.getElementById('page-title').textContent = `${taskId} Versions`;
+      document.getElementById('page-subtitle').textContent = `All deployed versions of ${taskId}`;
+
+      const loadingEl = document.getElementById('loading-state');
+      const errorEl = document.getElementById('error-state');
+      const emptyEl = document.getElementById('empty-state');
+      const containerEl = document.getElementById('versions-container');
+
+      loadingEl.classList.remove('hidden');
+      errorEl.classList.add('hidden');
+      emptyEl.classList.add('hidden');
+      containerEl.classList.add('hidden');
+
+      try {
+        const apiKey = getAdminApiKey();
+        if (!apiKey) {
+          throw new Error('API Key not configured. Please go to Settings and configure your API key.');
+        }
+
+        // Use the versions endpoint for the specific task
+        const response = await fetch(`/admin/tasks/${encodeURIComponent(taskId)}/versions`, {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const responseData = await response.json();
+        // API returns array directly: [{task_id, version, name, description, entry_point, deployed_at, ...}]
+        const versions = (Array.isArray(responseData) ? responseData : []).map(v => ({
+          task_id: v.task_id,
+          version: v.version,
+          name: v.name,
+          description: v.description,
+          status: v.status || 'deployed',
+          deployed_at: v.deployed_at,
+          entry_point: v.entry_point,
+          metadata: {
+            entry_point: v.entry_point,
+            description: v.description
+          }
+        }));
+
+        loadingEl.classList.add('hidden');
+
+        if (versions.length === 0) {
+          emptyEl.classList.remove('hidden');
+        } else {
+          renderVersions(versions);
+          containerEl.classList.remove('hidden');
+        }
+
+      } catch (error) {
+        console.error('Error loading versions:', error);
+        loadingEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
+        document.getElementById('error-message').textContent = error.message;
+      }
+    }
+
+    // Render versions
+    function renderVersions(versions) {
+      // Sort by version (descending, assuming semantic versioning)
+      versions.sort((a, b) => {
+        const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+        const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+        for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+          const aVal = aParts[i] || 0;
+          const bVal = bParts[i] || 0;
+          if (bVal !== aVal) return bVal - aVal;
+        }
+        return 0;
+      });
+
+      const listEl = document.getElementById('versions-list');
+      listEl.innerHTML = versions.map((task, index) => {
+        const status = task.status || 'deployed';
+        const deployedAt = task.deployed_at
+          ? new Date(task.deployed_at).toLocaleString()
+          : '-';
+        const isLatest = index === 0;
+
+        return `
+            <div class="p-6 hover:bg-gray-50 fade-in">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                  <div class="flex-shrink-0 h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <span class="text-blue-600 font-bold text-sm">v${escapeHtml(task.version.split('.')[0])}</span>
+                  </div>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <a href="/ui/tasks/${encodeURIComponent(task.task_id)}/${encodeURIComponent(task.version)}"
+                         class="text-lg font-medium text-gray-900 hover:text-blue-600">
+                        Version ${escapeHtml(task.version)}
+                      </a>
+                      ${isLatest ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Latest</span>' : ''}
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white state-${status}">
+                        ${status.charAt(0).toUpperCase() + status.slice(1)}
+                      </span>
+                    </div>
+                    <div class="mt-1 text-sm text-gray-500">
+                      ${task.metadata?.description || 'No description'}
+                    </div>
+                    <div class="mt-1 text-xs text-gray-400">
+                      Deployed: ${deployedAt}
+                      ${task.metadata?.entry_point ? ` • Entry: <code class="bg-gray-100 px-1 rounded">${escapeHtml(task.metadata.entry_point)}</code>` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <a href="/ui/threads?task_id=${encodeURIComponent(task.task_id)}&task_version=${encodeURIComponent(task.version)}"
+                     class="px-3 py-1.5 text-sm font-medium text-green-700 bg-green-100 hover:bg-green-200 rounded-lg">
+                    Threads
+                  </a>
+                  <a href="/ui/tasks/${encodeURIComponent(task.task_id)}/${encodeURIComponent(task.version)}"
+                     class="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg">
+                    Details
+                  </a>
+                  <button
+                    onclick="openDeleteModal('${escapeHtml(task.version)}')"
+                    class="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+      }).join('');
+
+      // Update stats
+      const deployedCount = versions.filter(v => (v.status || 'deployed') === 'deployed').length;
+      document.getElementById('versions-stats').textContent =
+        `${versions.length} version${versions.length !== 1 ? 's' : ''} (${deployedCount} deployed)`;
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    // Show error
+    function showError(message) {
+      document.getElementById('loading-state').classList.add('hidden');
+      document.getElementById('error-state').classList.remove('hidden');
+      document.getElementById('error-message').textContent = message;
+    }
+
+    // Delete modal functions
+    function openDeleteModal(version) {
+      deleteVersion = version;
+      document.getElementById('delete-version-name').textContent = `${taskId}:${version}`;
+      document.getElementById('delete-modal').classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('delete-modal').classList.add('hidden');
+      deleteVersion = null;
+    }
+
+    async function confirmDelete() {
+      if (!taskId || !deleteVersion) return;
+
+      await waitForApiUtils();
+
+      const btn = document.getElementById('delete-confirm-btn');
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+
+      try {
+        const apiKey = getAdminApiKey();
+        if (!apiKey) {
+          throw new Error('API Key not configured.');
+        }
+
+        const response = await fetch(`/admin/tasks/${encodeURIComponent(taskId)}/${encodeURIComponent(deleteVersion)}`, {
+          method: 'DELETE',
+          headers: {
+            'X-API-Key': apiKey
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        closeDeleteModal();
+        loadVersions(); // Reload the list
+
+      } catch (error) {
+        console.error('Error deleting version:', error);
+        alert('Failed to delete version: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      await waitForApiUtils();
+      loadVersions();
+    });
+  </script>
+</body>
+
+</html>

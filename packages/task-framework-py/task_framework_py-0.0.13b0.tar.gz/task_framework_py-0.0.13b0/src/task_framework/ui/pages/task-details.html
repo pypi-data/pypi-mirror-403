@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Details - Task Framework</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    .nav-item {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .nav-item:hover {
+      transform: translateX(4px);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 3px;
+    }
+
+    .state-deployed {
+      background-color: #22c55e;
+    }
+
+    .state-pending {
+      background-color: #eab308;
+    }
+
+    .state-deploying {
+      background-color: #3b82f6;
+    }
+
+    .state-failed {
+      background-color: #ef4444;
+    }
+
+    .modal-overlay {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* JSON formatter styling (dark background) */
+    .json-container {
+      background-color: #1f2937;
+      color: #e5e7eb;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+
+    .json-container pre {
+      margin: 0;
+      font-family: "Courier New", monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    .json-key {
+      color: #93c5fd;
+    }
+
+    .json-string {
+      color: #a5f3fc;
+    }
+
+    .json-number {
+      color: #fbbf24;
+    }
+
+    .json-boolean {
+      color: #c084fc;
+    }
+
+    .json-null {
+      color: #f87171;
+    }
+  </style>
+</head>
+
+<body class="h-full bg-gray-50">
+  <!-- API Utilities (loaded via htmx) -->
+  <div hx-get="/ui/components/api-utils.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <div hx-get="/ui/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML">
+      <aside class="w-64 bg-gray-800 text-white flex items-center justify-center">
+        <div class="text-gray-400 text-sm">Loading...</div>
+      </aside>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto">
+      <!-- Header -->
+      <div class="bg-white border-b border-gray-200 px-6 py-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <a href="/ui/tasks" class="text-gray-500 hover:text-gray-700">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </a>
+            <div>
+              <h1 id="task-title" class="text-2xl font-bold text-gray-900">Task Details</h1>
+              <p id="task-subtitle" class="mt-1 text-sm text-gray-500">Loading...</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <a id="threads-link" href="#"
+              class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
+              <svg class="w-5 h-5 inline-block -mt-0.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              View Threads
+            </a>
+            <a id="create-thread-link" href="#"
+              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+              <svg class="w-5 h-5 inline-block -mt-0.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Create Thread
+            </a>
+            <a id="config-link" href="#"
+              class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium">
+              <svg class="w-5 h-5 inline-block -mt-0.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              Configure
+            </a>
+            <button id="delete-btn" onclick="openDeleteModal()"
+              class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
+              <svg class="w-5 h-5 inline-block -mt-0.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="flex items-center justify-center py-12">
+        <div class="text-center">
+          <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none"
+            viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <p class="mt-2 text-sm text-gray-600">Loading task details...</p>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="hidden px-6 py-12">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div class="flex">
+            <svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clip-rule="evenodd" />
+            </svg>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-red-800">
+                Error Loading Task
+              </h3>
+              <p id="error-message" class="text-sm text-red-700 mt-1"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Task Details Content -->
+      <div id="task-content" class="hidden p-6">
+        <div class="max-w-4xl mx-auto space-y-6">
+          <!-- Overview Card -->
+          <div class="bg-white rounded-lg shadow overflow-hidden fade-in">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h2 class="text-lg font-medium text-gray-900">Overview</h2>
+            </div>
+            <div class="p-6">
+              <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Task ID</dt>
+                  <dd id="detail-task-id" class="mt-1 text-sm text-gray-900 font-mono"></dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Version</dt>
+                  <dd id="detail-version" class="mt-1">
+                    <span
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"></span>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Name</dt>
+                  <dd id="detail-name" class="mt-1 text-sm text-gray-900"></dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Status</dt>
+                  <dd id="detail-status" class="mt-1">
+                    <span
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"></span>
+                  </dd>
+                </div>
+                <div class="md:col-span-2">
+                  <dt class="text-sm font-medium text-gray-500">Description</dt>
+                  <dd id="detail-description" class="mt-1 text-sm text-gray-900"></dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Entry Point</dt>
+                  <dd id="detail-entry-point" class="mt-1">
+                    <code class="bg-gray-100 px-2 py-1 rounded text-sm text-gray-800"></code>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Deployed At</dt>
+                  <dd id="detail-deployed-at" class="mt-1 text-sm text-gray-900"></dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">SDK Version</dt>
+                  <dd id="detail-sdk-version" class="mt-1">
+                    <code class="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm"></code>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+
+          <!-- Paths Card -->
+          <div class="bg-white rounded-lg shadow overflow-hidden fade-in">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h2 class="text-lg font-medium text-gray-900">Deployment Paths</h2>
+            </div>
+            <div class="p-6">
+              <dl class="space-y-4">
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Deployment Path</dt>
+                  <dd id="detail-deployment-path" class="mt-1">
+                    <code class="bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 break-all"></code>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Virtual Environment</dt>
+                  <dd id="detail-venv-path" class="mt-1">
+                    <code class="bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 break-all"></code>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Data Storage</dt>
+                  <dd id="detail-data-path" class="mt-1">
+                    <code class="bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 break-all"></code>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">File Storage</dt>
+                  <dd id="detail-file-storage-path" class="mt-1">
+                    <code class="bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 break-all"></code>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input Schemas Card -->
+        <div id="input-schemas-card" class="hidden bg-white rounded-lg shadow overflow-hidden fade-in">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 class="text-lg font-medium text-gray-900">Input Schemas</h2>
+          </div>
+          <div id="input-schemas-content" class="p-6">
+            <!-- Input schemas will be rendered here -->
+          </div>
+        </div>
+
+        <!-- Output Schemas Card -->
+        <div id="output-schemas-card" class="hidden bg-white rounded-lg shadow overflow-hidden fade-in">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 class="text-lg font-medium text-gray-900">Output Schemas</h2>
+          </div>
+          <div id="output-schemas-content" class="p-6">
+            <!-- Output schemas will be rendered here -->
+          </div>
+        </div>
+
+        <!-- Custom Metadata Card -->
+        <div id="custom-metadata-card" class="hidden bg-white rounded-lg shadow overflow-hidden fade-in">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 class="text-lg font-medium text-gray-900">Custom Metadata</h2>
+          </div>
+          <div id="custom-metadata-content" class="p-6">
+            <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm"></pre>
+          </div>
+        </div>
+
+        <!-- Other Versions Card -->
+        <div id="versions-card" class="hidden bg-white rounded-lg shadow overflow-hidden fade-in">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+            <h2 class="text-lg font-medium text-gray-900">Other Versions</h2>
+            <a id="all-versions-link" href="#" class="text-sm text-blue-600 hover:text-blue-800">
+              View All Versions
+            </a>
+          </div>
+          <div id="versions-content" class="p-6">
+            <div class="space-y-2">
+              <!-- Other versions will be rendered here -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+      <div class="fixed inset-0 modal-overlay" onclick="closeDeleteModal()"></div>
+      <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h3 class="text-lg font-medium text-gray-900">Delete Task Definition</h3>
+        <p class="mt-2 text-sm text-gray-500">
+          Are you sure you want to delete <strong id="delete-task-name"></strong>?
+          This action cannot be undone and will remove all associated data.
+        </p>
+        <div class="mt-4 flex justify-end gap-3">
+          <button onclick="closeDeleteModal()"
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">
+            Cancel
+          </button>
+          <button id="delete-confirm-btn" onclick="confirmDelete()"
+            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Wait for API utils to load
+    function waitForApiUtils() {
+      return new Promise((resolve) => {
+        if (typeof STORAGE_KEYS !== "undefined") {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (typeof STORAGE_KEYS !== "undefined") {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 50);
+        }
+      });
+    }
+
+    // Get API key for admin endpoints
+    function getAdminApiKey() {
+      return localStorage.getItem(STORAGE_KEYS?.ADMIN_API_KEY) ||
+        localStorage.getItem(STORAGE_KEYS?.API_KEY) ||
+        '';
+    }
+
+    // State
+    let currentTask = null;
+
+    // Get task_id and version from URL
+    function getTaskFromUrl() {
+      const path = window.location.pathname;
+      const match = path.match(/\/ui\/tasks\/([^/]+)\/([^/]+)/);
+      if (match) {
+        return {
+          taskId: decodeURIComponent(match[1]),
+          version: decodeURIComponent(match[2])
+        };
+      }
+      return null;
+    }
+
+    // Load task details
+    async function loadTask() {
+      await waitForApiUtils();
+
+      const params = getTaskFromUrl();
+      if (!params) {
+        showError('Invalid task URL');
+        return;
+      }
+
+      const loadingEl = document.getElementById('loading-state');
+      const errorEl = document.getElementById('error-state');
+      const contentEl = document.getElementById('task-content');
+
+      loadingEl.classList.remove('hidden');
+      errorEl.classList.add('hidden');
+      contentEl.classList.add('hidden');
+
+      try {
+        const apiKey = getAdminApiKey();
+        if (!apiKey) {
+          throw new Error('API Key not configured. Please go to Settings and configure your API key.');
+        }
+
+        const response = await fetch(`/admin/tasks/${encodeURIComponent(params.taskId)}/versions/${encodeURIComponent(params.version)}`, {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const task = await response.json();
+        currentTask = task;
+
+        renderTask(task);
+        loadingEl.classList.add('hidden');
+        contentEl.classList.remove('hidden');
+
+        // Load other versions
+        loadOtherVersions(params.taskId, params.version);
+
+      } catch (error) {
+        console.error('Error loading task:', error);
+        loadingEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
+        document.getElementById('error-message').textContent = error.message;
+      }
+    }
+
+    // Render task details
+    function renderTask(task) {
+      // API returns fields directly on task object (TaskVersionInfo model)
+      // Not nested in metadata
+
+      // Update header
+      document.getElementById('task-title').textContent = task.name || task.task_id;
+      document.getElementById('task-subtitle').textContent = `${task.task_id}:${task.version}`;
+
+      // Update links
+      document.getElementById('threads-link').href = `/ui/threads?task_id=${encodeURIComponent(task.task_id)}&task_version=${encodeURIComponent(task.version)}`;
+      document.getElementById('create-thread-link').href = `/ui/threads/create?task_id=${encodeURIComponent(task.task_id)}&task_version=${encodeURIComponent(task.version)}`;
+      document.getElementById('config-link').href = `/ui/tasks/${encodeURIComponent(task.task_id)}/${encodeURIComponent(task.version)}/config`;
+      document.getElementById('all-versions-link').href = `/ui/tasks/${encodeURIComponent(task.task_id)}/versions`;
+
+      // Update overview
+      document.getElementById('detail-task-id').textContent = task.task_id;
+      document.getElementById('detail-version').querySelector('span').textContent = `v${task.version}`;
+      document.getElementById('detail-name').textContent = task.name || '-';
+
+      const status = task.status || 'deployed';
+      const statusEl = document.getElementById('detail-status').querySelector('span');
+      statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+      statusEl.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white state-${status}`;
+
+      document.getElementById('detail-description').textContent = task.description || 'No description provided';
+      document.getElementById('detail-entry-point').querySelector('code').textContent = task.entry_point || '-';
+      document.getElementById('detail-deployed-at').textContent = task.deployed_at
+        ? new Date(task.deployed_at).toLocaleString()
+        : '-';
+
+      // SDK Version
+      const sdkVersionEl = document.getElementById('detail-sdk-version').querySelector('code');
+      sdkVersionEl.textContent = task.sdk_version || 'Not specified';
+      if (!task.sdk_version) {
+        sdkVersionEl.className = 'bg-gray-100 text-gray-500 px-2 py-1 rounded text-sm';
+      }
+
+      // Update paths - base_path is the primary deployment path from API
+      document.getElementById('detail-deployment-path').querySelector('code').textContent = task.base_path || '-';
+      document.getElementById('detail-venv-path').querySelector('code').textContent = task.venv_path || '-';
+      document.getElementById('detail-data-path').querySelector('code').textContent = task.data_path || '-';
+      document.getElementById('detail-file-storage-path').querySelector('code').textContent = task.file_storage_path || task.zip_path || '-';
+
+
+      // Render input schemas (directly on task object)
+      if (task.input_schemas && task.input_schemas.length > 0) {
+        document.getElementById('input-schemas-card').classList.remove('hidden');
+        document.getElementById('input-schemas-content').innerHTML = renderSchemas(task.input_schemas);
+      }
+
+      // Render output schemas (directly on task object)
+      if (task.output_schemas && task.output_schemas.length > 0) {
+        document.getElementById('output-schemas-card').classList.remove('hidden');
+        document.getElementById('output-schemas-content').innerHTML = renderSchemas(task.output_schemas);
+      }
+
+      // Render custom metadata if present
+      if (task.custom_metadata && Object.keys(task.custom_metadata).length > 0) {
+        document.getElementById('custom-metadata-card').classList.remove('hidden');
+        document.getElementById('custom-metadata-content').querySelector('pre').textContent =
+          JSON.stringify(task.custom_metadata, null, 2);
+      }
+    }
+
+    // Format JSON with syntax highlighting
+    function formatJSON(obj) {
+      const json = JSON.stringify(obj, null, 2);
+      return json
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
+        .replace(/: (\d+)/g, ': <span class="json-number">$1</span>')
+        .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
+        .replace(/: null/g, ': <span class="json-null">null</span>');
+    }
+
+    // Render schemas
+    function renderSchemas(schemas) {
+      return schemas.map((schema, index) => `
+          <div class="border border-gray-200 rounded-lg p-4 ${index > 0 ? 'mt-4' : ''}">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="inline-block px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-100 rounded">${escapeHtml(schema.kind || 'Schema ' + (index + 1))}</span>
+              ${schema.media_type ? `<span class="inline-block px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded">${escapeHtml(schema.media_type)}</span>` : ''}
+              ${schema.required !== undefined ? `<span class="inline-block px-2 py-1 text-xs font-medium ${schema.required ? 'text-red-600 bg-red-100' : 'text-gray-500 bg-gray-100'} rounded">${schema.required ? 'Required' : 'Optional'}</span>` : ''}
+            </div>
+            ${schema.description ? `<p class="text-sm text-gray-600 mb-3">${escapeHtml(schema.description)}</p>` : ''}
+            <h4 class="text-sm font-semibold text-gray-900 mb-2">Full Definition</h4>
+            <div class="json-container"><pre>${formatJSON(schema)}</pre></div>
+          </div>
+        `).join('');
+    }
+
+    // Load other versions
+    async function loadOtherVersions(taskId, currentVersion) {
+      try {
+        const apiKey = getAdminApiKey();
+        if (!apiKey) return;
+
+        // Use the versions endpoint for the specific task
+        const response = await fetch(`/admin/tasks/${encodeURIComponent(taskId)}/versions`, {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) return;
+
+        const responseData = await response.json();
+        // API returns array directly: [{task_id, version, name, description, entry_point, deployed_at, ...}]
+        const allVersions = (Array.isArray(responseData) ? responseData : []).map(v => ({
+          task_id: v.task_id,
+          version: v.version,
+          name: v.name,
+          description: v.description,
+          status: v.status || 'deployed',
+          metadata: {
+            name: v.name,
+            description: v.description
+          }
+        }));
+
+        const otherVersions = allVersions.filter(t => t.version !== currentVersion);
+
+        if (otherVersions.length > 0) {
+          document.getElementById('versions-card').classList.remove('hidden');
+          document.getElementById('versions-content').innerHTML = `
+              <div class="space-y-2">
+                ${otherVersions.map(t => `
+                  <a href="/ui/tasks/${encodeURIComponent(t.task_id)}/${encodeURIComponent(t.version)}"
+                     class="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg">
+                    <div class="flex items-center gap-2">
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">v${escapeHtml(t.version)}</span>
+                      <span class="text-sm text-gray-600">${escapeHtml(t.metadata?.name || t.task_id)}</span>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white state-${t.status || 'deployed'}">
+                      ${(t.status || 'deployed').charAt(0).toUpperCase() + (t.status || 'deployed').slice(1)}
+                    </span>
+                  </a>
+                `).join('')}
+              </div>
+            `;
+        }
+
+      } catch (error) {
+        console.error('Error loading other versions:', error);
+      }
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    // Show error
+    function showError(message) {
+      document.getElementById('loading-state').classList.add('hidden');
+      document.getElementById('error-state').classList.remove('hidden');
+      document.getElementById('error-message').textContent = message;
+    }
+
+    // Delete modal functions
+    function openDeleteModal() {
+      if (!currentTask) return;
+      document.getElementById('delete-task-name').textContent = `${currentTask.task_id}:${currentTask.version}`;
+      document.getElementById('delete-modal').classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('delete-modal').classList.add('hidden');
+    }
+
+    async function confirmDelete() {
+      if (!currentTask) return;
+
+      await waitForApiUtils();
+
+      const btn = document.getElementById('delete-confirm-btn');
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+
+      try {
+        const apiKey = getAdminApiKey();
+        if (!apiKey) {
+          throw new Error('API Key not configured.');
+        }
+
+        const response = await fetch(`/admin/tasks/${encodeURIComponent(currentTask.task_id)}/versions/${encodeURIComponent(currentTask.version)}`, {
+          method: 'DELETE',
+          headers: {
+            'X-API-Key': apiKey
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        // Redirect to tasks list
+        window.location.href = '/ui/tasks';
+
+      } catch (error) {
+        console.error('Error deleting task:', error);
+        alert('Failed to delete task: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      await waitForApiUtils();
+      loadTask();
+    });
+  </script>
+</body>
+
+</html>

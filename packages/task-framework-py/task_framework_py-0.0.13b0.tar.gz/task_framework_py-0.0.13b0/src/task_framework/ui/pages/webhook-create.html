@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create/Edit Webhook - Task Framework</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- htmx via CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles -->
+    <style>
+      .nav-item {
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-item:hover {
+        transform: translateX(4px);
+      }
+
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #6b7280;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div
+      hx-get="/ui/components/api-utils.html"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    ></div>
+
+    <div class="flex h-screen overflow-hidden">
+      <!-- Sidebar -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content -->
+      <div class="flex-1 overflow-auto">
+        <!-- Breadcrumb -->
+        <div class="bg-white shadow-sm border-b border-gray-200">
+          <div class="px-6 py-3">
+            <div class="flex items-center text-sm text-gray-600">
+              <a href="/ui/webhooks" class="hover:text-blue-600">Webhooks</a>
+              <svg
+                class="w-4 h-4 mx-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 5l7 7-7 7"
+                ></path>
+              </svg>
+              <span id="breadcrumb-action">Create</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Header -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div>
+            <h1 id="page-title" class="text-2xl font-bold text-gray-900">
+              Create Webhook
+            </h1>
+            <p class="mt-1 text-sm text-gray-500">
+              Configure webhook subscription for event notifications
+            </p>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div
+          id="loading-state"
+          class="hidden flex items-center justify-center py-12"
+        >
+          <div class="text-center">
+            <svg
+              class="animate-spin h-8 w-8 text-blue-600 mx-auto"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <p class="mt-2 text-sm text-gray-500">Loading webhook...</p>
+          </div>
+        </div>
+
+        <!-- Form -->
+        <div id="form-container" class="px-6 py-6">
+          <div class="max-w-3xl mx-auto">
+            <form
+              id="webhook-form"
+              onsubmit="saveWebhook(event)"
+              class="bg-white rounded-lg shadow p-6 space-y-6"
+            >
+              <!-- URL -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Webhook URL <span class="text-red-500">*</span>
+                </label>
+                <input
+                  type="url"
+                  id="webhook-url"
+                  required
+                  placeholder="https://example.com/webhook"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p class="mt-1 text-xs text-gray-500">
+                  Must start with http:// or https://
+                </p>
+              </div>
+
+              <!-- Enabled -->
+              <div class="flex items-center">
+                <input
+                  type="checkbox"
+                  id="webhook-enabled"
+                  checked
+                  class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label for="webhook-enabled" class="ml-2 text-sm text-gray-700">
+                  Enable webhook immediately after creation
+                </label>
+              </div>
+
+              <!-- Timeout -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Timeout (seconds)
+                </label>
+                <input
+                  type="number"
+                  id="webhook-timeout"
+                  min="1"
+                  max="60"
+                  value="10"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p class="mt-1 text-xs text-gray-500">
+                  How long to wait for a response (1-60 seconds)
+                </p>
+              </div>
+
+              <!-- Event Filters -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Event Filters (optional)
+                </label>
+                <select
+                  id="webhook-event-type"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-2"
+                >
+                  <option value="">All Events</option>
+                  <option value="include">Include Specific Events</option>
+                  <option value="exclude">Exclude Specific Events</option>
+                </select>
+                <textarea
+                  id="webhook-events"
+                  placeholder="Enter event types (one per line)&#10;e.g., thread.succeeded&#10;thread.failed&#10;thread.stopped"
+                  rows="4"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hidden"
+                ></textarea>
+                <p class="mt-1 text-xs text-gray-500">
+                  Leave empty to receive all events
+                </p>
+              </div>
+
+              <!-- Task Definition -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Task Definition (optional)
+                </label>
+                <p class="text-xs text-gray-500 mb-3">
+                  Link this webhook to a specific task definition and version.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1">Task</label>
+                    <select
+                      id="webhook-task-id"
+                      onchange="onTaskIdChange()"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">All Tasks</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1">Version</label>
+                    <select
+                      id="webhook-task-version"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">All Versions</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Scope -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Scope (optional)
+                </label>
+                <p class="text-xs text-gray-500 mb-3">
+                  Limit webhook to specific resources. Leave all fields empty
+                  for global scope.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1"
+                      >User ID</label
+                    >
+                    <input
+                      type="text"
+                      id="webhook-scope-user"
+                      placeholder="user_123"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1"
+                      >App ID</label
+                    >
+                    <input
+                      type="text"
+                      id="webhook-scope-app"
+                      placeholder="app_123"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1"
+                      >Tenant ID</label
+                    >
+                    <input
+                      type="text"
+                      id="webhook-scope-tenant"
+                      placeholder="tenant_123"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex justify-end gap-3 pt-4 border-t">
+                <a
+                  href="/ui/webhooks"
+                  class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </a>
+                <button
+                  type="submit"
+                  id="submit-button"
+                  class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span id="submit-button-text">Create Webhook</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // STORAGE_KEYS is now defined in api-utils.html
+
+      // State
+      let editingWebhookId = null;
+      let availableTasks = [];
+
+      /**
+       * Wait for API utilities to be loaded
+       */
+      function waitForApiUtils() {
+        return new Promise((resolve) => {
+          if (typeof apiFetch !== "undefined") {
+            resolve();
+          } else {
+            const checkInterval = setInterval(() => {
+              if (typeof apiFetch !== "undefined") {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 50);
+          }
+        });
+      }
+
+      /**
+       * Initialize page
+       */
+      document.addEventListener("DOMContentLoaded", async function () {
+        await waitForApiUtils();
+        
+        // Load available tasks for task selector
+        await loadAvailableTasks();
+        
+        // Check if editing (webhook ID in URL)
+        const pathParts = window.location.pathname.split("/");
+        const lastPart = pathParts[pathParts.length - 1];
+
+        if (
+          lastPart &&
+          lastPart !== "create" &&
+          lastPart.startsWith("webhook_")
+        ) {
+          editingWebhookId = lastPart;
+          document.getElementById("page-title").textContent = "Edit Webhook";
+          document.getElementById("breadcrumb-action").textContent = "Edit";
+          document.getElementById("submit-button-text").textContent =
+            "Update Webhook";
+          loadWebhookForEdit();
+        }
+
+        // Show/hide event filter textarea
+        document
+          .getElementById("webhook-event-type")
+          .addEventListener("change", function () {
+            const textarea = document.getElementById("webhook-events");
+            if (this.value === "include" || this.value === "exclude") {
+              textarea.classList.remove("hidden");
+            } else {
+              textarea.classList.add("hidden");
+            }
+          });
+      });
+
+      /**
+       * Load available tasks for task selector
+       */
+      async function loadAvailableTasks() {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        if (!apiKey) return;
+
+        try {
+          const response = await fetch('/admin/tasks', {
+            headers: {
+              'X-API-Key': apiKey,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const responseData = await response.json();
+            const tasks = responseData.tasks || [];
+            
+            // Flatten tasks with versions
+            availableTasks = [];
+            tasks.forEach(task => {
+              task.versions.forEach(version => {
+                availableTasks.push({
+                  task_id: task.task_id,
+                  version: version,
+                  name: task.name
+                });
+              });
+            });
+
+            // Populate task selector
+            populateTaskSelector(tasks);
+          }
+        } catch (error) {
+          console.log('Could not load tasks:', error.message);
+        }
+      }
+
+      /**
+       * Populate task selector dropdown
+       */
+      function populateTaskSelector(tasks) {
+        const taskSelect = document.getElementById('webhook-task-id');
+        taskSelect.innerHTML = '<option value="">All Tasks</option>';
+        
+        tasks.forEach(task => {
+          const option = document.createElement('option');
+          option.value = task.task_id;
+          option.textContent = `${task.name || task.task_id} (${task.versions.length} versions)`;
+          taskSelect.appendChild(option);
+        });
+      }
+
+      /**
+       * Handle task selection change
+       */
+      function onTaskIdChange() {
+        const taskId = document.getElementById('webhook-task-id').value;
+        const versionSelect = document.getElementById('webhook-task-version');
+        
+        versionSelect.innerHTML = '<option value="">All Versions</option>';
+        
+        if (!taskId) return;
+        
+        // Get versions for selected task
+        const taskVersions = availableTasks
+          .filter(t => t.task_id === taskId)
+          .sort((a, b) => {
+            const aParts = a.version.split('.').map(n => parseInt(n, 10) || 0);
+            const bParts = b.version.split('.').map(n => parseInt(n, 10) || 0);
+            for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+              if ((bParts[i] || 0) !== (aParts[i] || 0)) return (bParts[i] || 0) - (aParts[i] || 0);
+            }
+            return 0;
+          });
+        
+        taskVersions.forEach((task, index) => {
+          const option = document.createElement('option');
+          option.value = task.version;
+          option.textContent = `v${task.version}${index === 0 ? ' (latest)' : ''}`;
+          versionSelect.appendChild(option);
+        });
+      }
+
+      /**
+       * Load webhook for editing
+       */
+      async function loadWebhookForEdit() {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+        const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+        if (!apiKey) {
+          alert("API Key not configured");
+          window.location.href = "/ui/settings";
+          return;
+        }
+
+        // Show loading state
+        document.getElementById("loading-state").classList.remove("hidden");
+        document.getElementById("form-container").classList.add("hidden");
+
+        try {
+          const response = await apiFetch(`/webhooks/${editingWebhookId}`);
+
+          const webhook = await response.json();
+
+          // Populate form
+          document.getElementById("webhook-url").value = webhook.url;
+          document.getElementById("webhook-enabled").checked = webhook.enabled;
+          document.getElementById("webhook-timeout").value =
+            webhook.timeout_seconds;
+
+          // Event filters
+          if (webhook.events) {
+            if (webhook.events.include) {
+              document.getElementById("webhook-event-type").value = "include";
+              document.getElementById("webhook-events").value =
+                webhook.events.include.join("\n");
+              document
+                .getElementById("webhook-events")
+                .classList.remove("hidden");
+            } else if (webhook.events.exclude) {
+              document.getElementById("webhook-event-type").value = "exclude";
+              document.getElementById("webhook-events").value =
+                webhook.events.exclude.join("\n");
+              document
+                .getElementById("webhook-events")
+                .classList.remove("hidden");
+            }
+          }
+
+          // Scope
+          if (webhook.scope) {
+            document.getElementById("webhook-scope-user").value =
+              webhook.scope.user_id || "";
+            document.getElementById("webhook-scope-app").value =
+              webhook.scope.app_id || "";
+            document.getElementById("webhook-scope-tenant").value =
+              webhook.scope.tenant_id || "";
+          }
+
+          // Task definition
+          if (webhook.task_id) {
+            document.getElementById("webhook-task-id").value = webhook.task_id;
+            onTaskIdChange();
+            if (webhook.task_version) {
+              document.getElementById("webhook-task-version").value = webhook.task_version;
+            }
+          }
+
+          // Show form
+          document.getElementById("loading-state").classList.add("hidden");
+          document.getElementById("form-container").classList.remove("hidden");
+        } catch (error) {
+          console.error("Error loading webhook:", error);
+          alert("Failed to load webhook: " + error.message);
+          window.location.href = "/ui/webhooks";
+        }
+      }
+
+      /**
+       * Save webhook (create or update)
+       */
+      async function saveWebhook(event) {
+        event.preventDefault();
+
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+        const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+        if (!apiKey) {
+          alert("API Key not configured");
+          window.location.href = "/ui/settings";
+          return;
+        }
+
+        // Disable submit button
+        const submitButton = document.getElementById("submit-button");
+        submitButton.disabled = true;
+        document.getElementById("submit-button-text").textContent =
+          editingWebhookId ? "Updating..." : "Creating...";
+
+        // Build request payload
+        const payload = {
+          url: document.getElementById("webhook-url").value.trim(),
+          enabled: document.getElementById("webhook-enabled").checked,
+          timeout_seconds: parseInt(
+            document.getElementById("webhook-timeout").value
+          ),
+        };
+
+        // Task definition
+        const taskId = document.getElementById("webhook-task-id").value.trim();
+        const taskVersion = document.getElementById("webhook-task-version").value.trim();
+        if (taskId) {
+          payload.task_id = taskId;
+        }
+        if (taskVersion) {
+          payload.task_version = taskVersion;
+        }
+
+        // Event filters
+        const eventType = document.getElementById("webhook-event-type").value;
+        if (eventType) {
+          const eventsText = document
+            .getElementById("webhook-events")
+            .value.trim();
+          if (eventsText) {
+            const eventsList = eventsText
+              .split("\n")
+              .map((e) => e.trim())
+              .filter((e) => e);
+            if (eventsList.length > 0) {
+              payload.events = {};
+              payload.events[eventType] = eventsList;
+            }
+          }
+        }
+
+        // Scope
+        const userId_scope = document
+          .getElementById("webhook-scope-user")
+          .value.trim();
+        const appId_scope = document
+          .getElementById("webhook-scope-app")
+          .value.trim();
+        const tenantId = document
+          .getElementById("webhook-scope-tenant")
+          .value.trim();
+
+        if (userId_scope || appId_scope || tenantId) {
+          payload.scope = {};
+          if (userId_scope) payload.scope.user_id = userId_scope;
+          if (appId_scope) payload.scope.app_id = appId_scope;
+          if (tenantId) payload.scope.tenant_id = tenantId;
+        }
+
+        try {
+          const url = editingWebhookId
+            ? `/webhooks/${editingWebhookId}`
+            : "/webhooks";
+          const method = editingWebhookId ? "PATCH" : "POST";
+
+          const response = await apiFetch(url, {
+            method: method,
+            body: JSON.stringify(payload),
+          });
+
+          // Redirect to webhooks list
+          window.location.href = "/ui/webhooks";
+        } catch (error) {
+          console.error("Error saving webhook:", error);
+          alert("Failed to save webhook: " + error.message);
+
+          // Re-enable submit button
+          submitButton.disabled = false;
+          document.getElementById("submit-button-text").textContent =
+            editingWebhookId ? "Update Webhook" : "Create Webhook";
+        }
+      }
+    </script>
+  </body>
+</html>

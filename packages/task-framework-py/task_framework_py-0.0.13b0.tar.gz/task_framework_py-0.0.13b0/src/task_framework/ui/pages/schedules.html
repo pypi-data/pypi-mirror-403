@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Schedules - Task Framework</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+      .nav-item {
+        transition: all 0.2s ease-in-out;
+      }
+      .nav-item:hover {
+        transform: translateX(4px);
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      .state-active {
+        background-color: #22c55e;
+      }
+      .state-paused {
+        background-color: #eab308;
+      }
+      .state-canceled {
+        background-color: #6b7280;
+      }
+      .modal-overlay {
+        background-color: rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50">
+    <!-- API Utilities (loaded via htmx) -->
+    <div
+      hx-get="/ui/components/api-utils.html"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    ></div>
+
+    <div class="flex h-screen overflow-hidden">
+      <!-- Sidebar -->
+      <div
+        hx-get="/ui/components/sidebar.html"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <aside
+          class="w-64 bg-gray-800 text-white flex items-center justify-center"
+        >
+          <div class="text-gray-400 text-sm">Loading...</div>
+        </aside>
+      </div>
+
+      <!-- Main Content -->
+      <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900">Schedules</h1>
+              <p class="mt-1 text-sm text-gray-500">
+                Manage cron-based task schedules
+              </p>
+            </div>
+            <a
+              href="/ui/schedules/create"
+              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+            >
+              <svg class="w-5 h-5 inline-block -mt-1 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Create Schedule
+            </a>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="bg-white border-b border-gray-200 px-6 py-4">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <select
+                id="filter-state"
+                onchange="resetAndLoadSchedules()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All States</option>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="canceled">Canceled</option>
+              </select>
+            </div>
+            <div>
+              <select
+                id="filter-task"
+                onchange="onTaskFilterChange()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All Tasks</option>
+              </select>
+            </div>
+            <div>
+              <select
+                id="filter-version"
+                onchange="resetAndLoadSchedules()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All Versions</option>
+              </select>
+            </div>
+            <div>
+              <select
+                id="limit-select"
+                onchange="resetAndLoadSchedules()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="10">Show 10</option>
+                <option value="25" selected>Show 25</option>
+                <option value="50">Show 50</option>
+                <option value="100">Show 100</option>
+              </select>
+            </div>
+            <div>
+              <button
+                onclick="resetFilters()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                Reset Filters
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="flex items-center justify-center py-12">
+          <div class="text-center">
+            <svg
+              class="animate-spin h-8 w-8 text-blue-600 mx-auto"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <p class="mt-2 text-sm text-gray-600">Loading schedules...</p>
+          </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden px-6 py-12">
+          <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div class="flex">
+              <svg
+                class="w-5 h-5 text-red-400"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              <div class="ml-3">
+                <h3 class="text-sm font-medium text-red-800">
+                  Error Loading Schedules
+                </h3>
+                <p id="error-message" class="mt-1 text-sm text-red-700"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="hidden px-6 py-12">
+          <div class="text-center">
+            <svg
+              class="mx-auto h-12 w-12 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No schedules</h3>
+            <p class="mt-1 text-sm text-gray-500">
+              Get started by creating a new schedule.
+            </p>
+            <div class="mt-6">
+              <a
+                href="/ui/schedules/create"
+                class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Create Schedule
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schedules Table -->
+        <div id="schedules-table" class="hidden px-6 py-4">
+          <div class="bg-white rounded-lg shadow overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cron / ID
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Task Definition
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    State
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Timezone
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Concurrency
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="schedules-tbody" class="bg-white divide-y divide-gray-200">
+                <!-- Schedules will be inserted here -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="mt-4 flex items-center justify-between">
+            <div class="text-sm text-gray-700">
+              <span id="pagination-info">Showing schedules</span>
+            </div>
+            <div class="flex gap-2">
+              <button
+                id="btn-prev-page"
+                onclick="loadPreviousPage()"
+                class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                id="btn-next-page"
+                onclick="loadNextPage()"
+                class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cancel Confirmation Modal -->
+    <div id="cancel-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+      <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="modal-overlay fixed inset-0" onclick="closeCancelModal()"></div>
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative z-10">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Cancel Schedule</h3>
+          <p class="text-sm text-gray-600 mb-6">
+            Are you sure you want to cancel this schedule? This action cannot be undone and will stop all future executions.
+          </p>
+          <div class="flex justify-end gap-3">
+            <button
+              onclick="closeCancelModal()"
+              class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              No, keep it
+            </button>
+            <button
+              onclick="confirmCancel()"
+              class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium"
+            >
+              Yes, cancel schedule
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // STORAGE_KEYS is now defined in api-utils.html
+
+      let currentOffset = 0;
+      let currentLimit = 25;
+      let hasMoreSchedules = false;
+      let scheduleToCancel = null;
+      let availableTasks = [];
+
+      /**
+       * Load schedules with filters and pagination
+       */
+      async function loadSchedules() {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+        const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+        if (!apiKey) {
+          showError("API Key not configured. Please go to Settings.");
+          return;
+        }
+
+        showLoading();
+
+        try {
+          const state = document.getElementById("filter-state").value;
+          const taskId = document.getElementById("filter-task").value;
+          const taskVersion = document.getElementById("filter-version").value;
+          currentLimit = parseInt(document.getElementById("limit-select").value);
+
+          const params = new URLSearchParams();
+          if (state) params.append("state", state);
+          if (taskId) params.append("task_id", taskId);
+          if (taskVersion) params.append("task_version", taskVersion);
+          params.append("limit", currentLimit);
+          params.append("offset", currentOffset);
+
+          const response = await apiFetch(`/schedules?${params.toString()}`);
+
+          const data = await response.json();
+          displaySchedules(data);
+        } catch (error) {
+          console.error("Error loading schedules:", error);
+          showError(error.message);
+        }
+      }
+
+      /**
+       * Display schedules in table
+       */
+      function displaySchedules(data) {
+        const schedules = data.items || [];
+        const pagination = data.pagination || {};
+
+        if (schedules.length === 0 && currentOffset === 0) {
+          showEmpty();
+          return;
+        }
+
+        const tbody = document.getElementById("schedules-tbody");
+        tbody.innerHTML = "";
+
+        schedules.forEach((schedule) => {
+          tbody.appendChild(createScheduleRow(schedule));
+        });
+
+        // Update pagination
+        hasMoreSchedules = pagination.has_more || false;
+        const total = pagination.total;
+        const start = currentOffset + 1;
+        const end = currentOffset + schedules.length;
+
+        if (total !== null && total !== undefined) {
+          document.getElementById("pagination-info").textContent =
+            `Showing ${start}-${end} of ${total} schedules`;
+        } else {
+          document.getElementById("pagination-info").textContent =
+            `Showing ${start}-${end} schedules`;
+        }
+
+        document.getElementById("btn-prev-page").disabled = currentOffset === 0;
+        document.getElementById("btn-next-page").disabled = !hasMoreSchedules;
+
+        showContent();
+      }
+
+      /**
+       * Create table row for a schedule
+       */
+      function createScheduleRow(schedule) {
+        const row = document.createElement("tr");
+        row.className = "hover:bg-gray-50";
+
+        // Cron / ID
+        const cronCell = document.createElement("td");
+        cronCell.className = "px-6 py-4 whitespace-nowrap";
+        cronCell.innerHTML = `
+          <div class="text-sm font-medium text-gray-900">${escapeHtml(schedule.cron)}</div>
+          <div class="text-xs text-gray-500">${escapeHtml(schedule.id)}</div>
+        `;
+
+        // Task Definition
+        const taskCell = document.createElement("td");
+        taskCell.className = "px-6 py-4 whitespace-nowrap";
+        if (schedule.task_id) {
+          const taskLink = schedule.task_version 
+            ? `/ui/tasks/${encodeURIComponent(schedule.task_id)}/versions/${encodeURIComponent(schedule.task_version)}`
+            : `/ui/tasks/${encodeURIComponent(schedule.task_id)}`;
+          taskCell.innerHTML = `
+            <a href="${taskLink}" class="text-blue-600 hover:text-blue-800">
+              <div class="text-sm font-medium">${escapeHtml(schedule.task_id)}</div>
+              ${schedule.task_version ? `<div class="text-xs text-gray-500">${escapeHtml(schedule.task_version)}</div>` : ''}
+            </a>
+          `;
+        } else {
+          taskCell.innerHTML = `<span class="text-gray-400 text-sm">-</span>`;
+        }
+
+        // State
+        const stateCell = document.createElement("td");
+        stateCell.className = "px-6 py-4 whitespace-nowrap";
+        const stateClass = `state-${schedule.state}`;
+        stateCell.innerHTML = `
+          <span class="${stateClass} px-2 py-1 text-xs font-semibold text-white rounded">
+            ${schedule.state}
+          </span>
+        `;
+
+        // Timezone
+        const timezoneCell = document.createElement("td");
+        timezoneCell.className = "px-6 py-4 whitespace-nowrap text-sm text-gray-900";
+        timezoneCell.textContent = schedule.timezone;
+
+        // Concurrency
+        const concurrencyCell = document.createElement("td");
+        concurrencyCell.className = "px-6 py-4 whitespace-nowrap text-sm text-gray-600";
+        concurrencyCell.textContent = schedule.concurrency_policy || "allow";
+
+        // Created
+        const createdCell = document.createElement("td");
+        createdCell.className = "px-6 py-4 whitespace-nowrap text-sm text-gray-600";
+        createdCell.textContent = formatDateTime(schedule.created_at);
+
+        // Actions
+        const actionsCell = document.createElement("td");
+        actionsCell.className = "px-6 py-4 whitespace-nowrap text-sm font-medium";
+        actionsCell.innerHTML = `
+          <div class="flex gap-2">
+            <a
+              href="/ui/schedules/${schedule.id}"
+              class="text-blue-600 hover:text-blue-900"
+              title="View Details"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </a>
+            <a
+              href="/ui/schedules/edit/${schedule.id}"
+              class="text-green-600 hover:text-green-900"
+              title="Edit"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </a>
+            <button
+              onclick="cancelSchedule('${schedule.id}')"
+              class="text-red-600 hover:text-red-900"
+              title="Cancel"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        `;
+
+        row.appendChild(cronCell);
+        row.appendChild(taskCell);
+        row.appendChild(stateCell);
+        row.appendChild(timezoneCell);
+        row.appendChild(concurrencyCell);
+        row.appendChild(createdCell);
+        row.appendChild(actionsCell);
+
+        return row;
+      }
+
+      /**
+       * Cancel schedule (show confirmation)
+       */
+      function cancelSchedule(scheduleId) {
+        scheduleToCancel = scheduleId;
+        document.getElementById("cancel-modal").classList.remove("hidden");
+      }
+
+      /**
+       * Close cancel modal
+       */
+      function closeCancelModal() {
+        scheduleToCancel = null;
+        document.getElementById("cancel-modal").classList.add("hidden");
+      }
+
+      /**
+       * Confirm schedule cancellation
+       */
+      async function confirmCancel() {
+        if (!scheduleToCancel) return;
+
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        const appId = localStorage.getItem(STORAGE_KEYS.APP_ID);
+        const userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+
+        try {
+          const response = await apiFetch(`/schedules/${scheduleToCancel}:cancel`, {
+            method: "POST",
+          });
+
+          closeCancelModal();
+          loadSchedules();
+        } catch (error) {
+          console.error("Error canceling schedule:", error);
+          alert(`Error: ${error.message}`);
+        }
+      }
+
+      /**
+       * Reset pagination and reload
+       */
+      function resetAndLoadSchedules() {
+        currentOffset = 0;
+        loadSchedules();
+      }
+
+      /**
+       * Load previous page
+       */
+      function loadPreviousPage() {
+        if (currentOffset > 0) {
+          currentOffset = Math.max(0, currentOffset - currentLimit);
+          loadSchedules();
+        }
+      }
+
+      /**
+       * Load next page
+       */
+      function loadNextPage() {
+        if (hasMoreSchedules) {
+          currentOffset += currentLimit;
+          loadSchedules();
+        }
+      }
+
+      /**
+       * UI state management
+       */
+      function showLoading() {
+        document.getElementById("loading-state").classList.remove("hidden");
+        document.getElementById("error-state").classList.add("hidden");
+        document.getElementById("empty-state").classList.add("hidden");
+        document.getElementById("schedules-table").classList.add("hidden");
+      }
+
+      function showError(message) {
+        document.getElementById("loading-state").classList.add("hidden");
+        document.getElementById("error-state").classList.remove("hidden");
+        document.getElementById("empty-state").classList.add("hidden");
+        document.getElementById("schedules-table").classList.add("hidden");
+        document.getElementById("error-message").textContent = message;
+      }
+
+      function showEmpty() {
+        document.getElementById("loading-state").classList.add("hidden");
+        document.getElementById("error-state").classList.add("hidden");
+        document.getElementById("empty-state").classList.remove("hidden");
+        document.getElementById("schedules-table").classList.add("hidden");
+      }
+
+      function showContent() {
+        document.getElementById("loading-state").classList.add("hidden");
+        document.getElementById("error-state").classList.add("hidden");
+        document.getElementById("empty-state").classList.add("hidden");
+        document.getElementById("schedules-table").classList.remove("hidden");
+      }
+
+      /**
+       * Utility functions
+       */
+      function formatDateTime(dateString) {
+        if (!dateString) return "-";
+        const date = new Date(dateString);
+        return date.toLocaleString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      /**
+       * Wait for API utilities to be loaded
+       */
+      function waitForApiUtils() {
+        return new Promise((resolve) => {
+          if (typeof apiFetch !== "undefined") {
+            resolve();
+          } else {
+            const checkInterval = setInterval(() => {
+              if (typeof apiFetch !== "undefined") {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 50);
+          }
+        });
+      }
+
+      /**
+       * Load available tasks for filter
+       */
+      async function loadAvailableTasks() {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+        if (!apiKey) return;
+
+        try {
+          const response = await fetch('/admin/tasks', {
+            headers: {
+              'X-API-Key': apiKey,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            availableTasks = data.tasks || [];
+            populateTaskFilter();
+          }
+        } catch (error) {
+          console.error('Error loading tasks:', error);
+        }
+      }
+
+      /**
+       * Populate task filter dropdown
+       */
+      function populateTaskFilter() {
+        const taskSelect = document.getElementById('filter-task');
+        taskSelect.innerHTML = '<option value="">All Tasks</option>';
+        
+        availableTasks.forEach(task => {
+          const option = document.createElement('option');
+          option.value = task.task_id;
+          option.textContent = `${task.name} (${task.task_id})`;
+          option.dataset.versions = JSON.stringify(task.versions || []);
+          taskSelect.appendChild(option);
+        });
+      }
+
+      /**
+       * Handle task filter change
+       */
+      function onTaskFilterChange() {
+        const taskSelect = document.getElementById('filter-task');
+        const versionSelect = document.getElementById('filter-version');
+        const selectedOption = taskSelect.selectedOptions[0];
+        
+        versionSelect.innerHTML = '<option value="">All Versions</option>';
+        
+        if (selectedOption && selectedOption.dataset.versions) {
+          const versions = JSON.parse(selectedOption.dataset.versions);
+          versions.forEach(version => {
+            const option = document.createElement('option');
+            option.value = version;
+            option.textContent = version;
+            versionSelect.appendChild(option);
+          });
+        }
+        
+        resetAndLoadSchedules();
+      }
+
+      /**
+       * Reset all filters
+       */
+      function resetFilters() {
+        document.getElementById('filter-state').value = '';
+        document.getElementById('filter-task').value = '';
+        document.getElementById('filter-version').innerHTML = '<option value="">All Versions</option>';
+        document.getElementById('limit-select').value = '25';
+        currentOffset = 0;
+        currentLimit = 25;
+        loadSchedules();
+      }
+
+      // Initialize
+      document.addEventListener("DOMContentLoaded", async function () {
+        await waitForApiUtils();
+        await loadAvailableTasks();
+        loadSchedules();
+      });
+    </script>
+  </body>
+</html>
+
