@@ -1,0 +1,851 @@
+# AI-AfterImage
+
+[![Tests](https://github.com/DragonShadows1978/AI-AfterImage/actions/workflows/test.yml/badge.svg)](https://github.com/DragonShadows1978/AI-AfterImage/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/DragonShadows1978/AI-AfterImage/graph/badge.svg)](https://codecov.io/gh/DragonShadows1978/AI-AfterImage)
+[![PyPI](https://img.shields.io/pypi/v/ai-afterimage)](https://pypi.org/project/ai-afterimage/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Episodic memory for AI coding agents.**
+
+Like the visual phenomenon where an image persists after you look away - AfterImage gives Claude Code persistent memory of code it has written across sessions.
+
+## The Problem
+
+Claude Code starts every session with amnesia. Even though transcripts exist with every Write/Edit ever made, Claude can't remember:
+- What code it wrote yesterday
+- How it solved a similar problem last week
+- Patterns it has used before in this codebase
+
+Users re-explain context. Claude rewrites similar solutions. Institutional knowledge is lost.
+
+## The Solution
+
+A Claude Code hook that:
+
+1. **Pre-Write**: Searches KB for related past code before writing
+2. **Injects**: "You wrote this before..." with relevant examples
+3. **Post-Write**: Extracts and stores the diff for future recall
+
+```
+Write/Edit hook fires
+        |
+        v
+   Is this code?
+   (not .md/.json/etc)
+        |
+        v
+   Search KB for similar
+        |
+   +----+----+
+Found      Not Found
+   |           |
+   v           v
+Inject     Just write
+context
+   |           |
+   +-----+-----+
+         v
+   Claude writes
+         |
+         v
+   Extract diff
+   Store in KB
+```
+
+## Features
+
+- Claude Code hook (pre/post Write/Edit)
+- Local SQLite + embeddings KB
+- Hybrid search (keyword + semantic)
+- Personal developer memory
+- Session-to-session continuity
+- No cloud, no API calls - everything local
+- **Works offline** after initial model download
+- CLI for search and management
+- **v0.2.1**: Optional PostgreSQL backend with pgvector
+- **v0.3.0**: Semantic Chunking for smarter context injection
+- **v0.4.0**: Config enhancement for PostgreSQL password fallback
+- **v0.5.0**: Code Intelligence - language detection, AST parsing, semantic index
+
+## Code Intelligence (v0.5.0)
+
+AfterImage now has semantic code understanding - not just text embeddings.
+
+**Language Detection**
+- Pattern-based detection for 20+ programming languages
+- Confidence scoring for ambiguous files
+- Polyglot file support (HTML with embedded JS/CSS)
+- Handles extensionless scripts (shebangs, etc.)
+
+**AST Parsing (tree-sitter based)**
+- Multi-language support: Python, JavaScript/TypeScript, Rust, C, Go
+- Incremental parsing for large files
+- Semantic extraction: functions, classes, imports, dependencies
+
+**Semantic Index**
+- Symbol tables with scope-aware resolution
+- Go-to-definition across files
+- Find all references
+- Call graph generation
+- Hover information provider
+- Basic type inference
+
+Install with code intelligence features:
+
+```bash
+pip install ai-afterimage[ast]
+```
+
+See [docs/code_intelligence.md](docs/code_intelligence.md) for full documentation.
+
+## Semantic Chunking (v0.3.0)
+
+AfterImage now includes intelligent context injection that:
+
+- **Parses code into semantic units** - Functions, classes, methods instead of raw files
+- **Scores snippets by relevance** - Recency (20%), proximity (25%), semantic similarity (35%), project awareness (20%)
+- **Summarizes similar snippets** - Groups 3+ similar snippets to reduce token usage
+- **Caches results** - 108x speedup on repeated operations
+
+Enable via `~/.afterimage/config.yaml`:
+
+```yaml
+semantic_chunking:
+  enabled: true
+  max_tokens: 2000
+  summarization:
+    enabled: true
+    summary_mode_threshold: 3
+```
+
+See [docs/semantic_chunking.md](docs/semantic_chunking.md) for full documentation.
+
+## Code Churn Tracking (v0.3.0)
+
+AfterImage now tracks file and function modification patterns:
+
+- **Tier Classification** - Files categorized as Gold (stable), Silver (normal), Bronze (active), Red (hot)
+- **Smart Warnings** - Alerts before modifying stable files or frequently-changed functions
+- **Function-Level Tracking** - AST-based detection for Python, regex for other languages
+- **Session-Aware** - Track edits across Claude Code sessions
+
+### Churn Tier System
+
+| Tier | Edits (30d) | Warning Behavior |
+|------|-------------|------------------|
+| Gold | 0-2 | Warns before modification |
+| Silver | 3-10 | Normal operation |
+| Bronze | 11-20 | Churn velocity alerts |
+| Red | 21+ | Excessive churn warnings |
+
+### Churn CLI Commands
+
+```bash
+# Show churn stats for a file
+afterimage churn src/app.py
+
+# Show function-level details
+afterimage churn src/app.py --functions
+
+# Show edit history
+afterimage churn src/app.py --history
+
+# List hotspots (most churned files)
+afterimage hotspots --limit 10
+
+# List files by tier
+afterimage files --tier gold
+afterimage files --tier red
+```
+
+### Warning Examples
+
+**Gold Tier Warning:**
+```
+File: src/core/auth.py
+Tier: GOLD (Stable - rarely changed)
+
+This file is stable and rarely modified.
+  - Total edits: 2
+  - Last edit: 2026-01-01T10:30:00
+
+Are you sure this change is necessary?
+Retry your write if intentional.
+```
+
+**Repetitive Function Warning:**
+```
+File: src/handlers/api.py
+Function: process_request()
+
+This function has been modified 4 times in the last 24 hours.
+
+Possible issues:
+  - Bug not fully fixed
+  - Requirements unclear
+  - Function needs redesign
+
+Consider stepping back to understand the root cause.
+```
+
+## Quick Start
+
+### Step 1: Install
+
+```bash
+pip install ai-afterimage
+```
+
+### Step 2: Setup
+
+```bash
+afterimage setup
+```
+
+This automatically:
+- Creates `~/.afterimage/` configuration
+- Installs the hook to `~/.claude/hooks/`
+- Configures `~/.claude/settings.json`
+- Downloads the embedding model (~90MB)
+
+### Step 3: Done
+
+Start Claude Code. AfterImage now works invisibly in the background:
+- Before writes: Shows similar past code (if found)
+- After writes: Stores the code for future recall
+
+### Verify It's Working
+
+```bash
+afterimage stats    # Check KB statistics
+afterimage search "authentication"  # Search your code memory
+afterimage recent   # See recent stored entries
+```
+
+### Requirements
+
+- Python 3.10+
+- Claude Code CLI
+- Linux or macOS (Windows support planned)
+
+---
+
+## Installation Options
+
+### From PyPI (Recommended)
+
+```bash
+# Basic install (SQLite backend - works out of the box)
+pip install ai-afterimage
+
+# With PostgreSQL support (for multi-user/concurrent access)
+pip install ai-afterimage[postgresql]
+```
+
+### PostgreSQL Backend (Optional)
+
+If you want concurrent access (multiple Claude sessions) or shared team memory:
+
+```bash
+# 1. Install PostgreSQL and pgvector
+# Ubuntu/Debian:
+sudo apt install postgresql postgresql-contrib
+# Then install pgvector extension (see https://github.com/pgvector/pgvector)
+
+# 2. Create database
+sudo -u postgres psql -c "CREATE USER afterimage WITH PASSWORD 'yourpassword';"
+sudo -u postgres psql -c "CREATE DATABASE afterimage OWNER afterimage;"
+sudo -u postgres psql -d afterimage -c "CREATE EXTENSION vector;"
+
+# 3. Install with PostgreSQL support
+pip install ai-afterimage[postgresql]
+
+# 4. Set password environment variable (REQUIRED for PostgreSQL)
+export AFTERIMAGE_PG_PASSWORD=yourpassword
+
+# Add to shell config for persistence
+echo 'export AFTERIMAGE_PG_PASSWORD=yourpassword' >> ~/.bashrc
+
+# 5. Update config to use PostgreSQL backend
+# Edit ~/.afterimage/config.yaml and add:
+#   storage:
+#     backend: postgresql
+```
+
+**Important**: The `AFTERIMAGE_PG_PASSWORD` environment variable must be set before running any afterimage commands when using PostgreSQL. Without it, authentication will fail.
+
+See the [PostgreSQL Backend](#postgresql-backend-optional-1) section below for full configuration options.
+
+### From Source
+
+```bash
+git clone https://github.com/DragonShadows1978/AI-AfterImage.git
+cd AI-AfterImage
+pip install -e ".[embeddings]"
+```
+
+---
+
+## Ingest Existing Transcripts (Optional)
+
+If you have existing Claude Code transcripts:
+
+```bash
+# Ingest all transcripts from default location
+afterimage ingest
+
+# Or from a specific directory
+afterimage ingest -d /path/to/transcripts
+
+# With verbose output
+afterimage ingest -v
+```
+
+### 4. Search Your Memory
+
+```bash
+# Search for code you've written before
+afterimage search "authentication middleware"
+
+# Filter by file path
+afterimage search "validate" --path validators
+
+# Output as JSON
+afterimage search "database connection" --json
+```
+
+## PostgreSQL Backend (Optional)
+
+For better concurrent access and vector search performance, AfterImage v0.2.0+ supports PostgreSQL with pgvector as an alternative to SQLite.
+
+### Why PostgreSQL?
+
+| Feature | SQLite | PostgreSQL |
+|---------|--------|------------|
+| Setup | Zero-config | Requires installation |
+| Concurrent writes | Limited | Excellent |
+| Vector search | Approximate (brute force) | Native pgvector with IVFFlat |
+| Multi-user | Single user | Multi-user capable |
+| Large datasets | Works well to ~100K entries | Scales to millions |
+| Network access | Local only | Network capable |
+
+**Recommendation**: Start with SQLite (default). Switch to PostgreSQL if you need concurrent access from multiple Claude Code sessions or have a large code history.
+
+### PostgreSQL Setup
+
+#### 1. Install PostgreSQL and pgvector
+
+```bash
+# Ubuntu/Debian
+sudo apt install postgresql postgresql-contrib
+
+# Install pgvector extension
+sudo apt install postgresql-server-dev-all
+git clone https://github.com/pgvector/pgvector.git
+cd pgvector && make && sudo make install
+```
+
+#### 2. Create the Database
+
+```bash
+# Create user and database
+sudo -u postgres psql <<EOF
+CREATE USER afterimage WITH PASSWORD 'your_secure_password';
+CREATE DATABASE afterimage OWNER afterimage;
+\c afterimage
+CREATE EXTENSION vector;
+EOF
+```
+
+#### 3. Install Python Dependencies
+
+```bash
+# With package
+pip install -e ".[postgresql]"
+
+# Or manually
+pip install asyncpg psycopg[binary] pgvector
+```
+
+#### 4. Configure AfterImage
+
+Edit `~/.afterimage/config.yaml`:
+
+```yaml
+storage:
+  backend: postgresql
+
+  sqlite:
+    path: ~/.afterimage/memory.db  # Fallback location
+
+  postgresql:
+    host: localhost
+    port: 5432
+    database: afterimage
+    user: afterimage
+    # Password via environment variable (recommended)
+    # Or set here: password: your_secure_password
+    min_pool_size: 2
+    max_pool_size: 10
+
+# Other settings remain the same
+search:
+  max_results: 5
+  relevance_threshold: 0.6
+
+embeddings:
+  model: all-MiniLM-L6-v2
+  device: cpu  # or cuda
+```
+
+### Environment Variables
+
+Set the PostgreSQL password via environment variable (recommended over storing in config):
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export AFTERIMAGE_PG_PASSWORD=your_secure_password
+
+# Optional: Override backend from config
+export AFTERIMAGE_BACKEND=postgresql
+```
+
+| Variable | Description |
+|----------|-------------|
+| `AFTERIMAGE_BACKEND` | Override backend: `sqlite` or `postgresql` |
+| `AFTERIMAGE_PG_PASSWORD` | PostgreSQL password |
+| `AFTERIMAGE_PG_HOST` | PostgreSQL host |
+| `AFTERIMAGE_PG_PORT` | PostgreSQL port |
+| `AFTERIMAGE_PG_DATABASE` | Database name |
+| `AFTERIMAGE_PG_USER` | Database user |
+| `AFTERIMAGE_DATABASE_URL` | Full connection string (overrides individual params) |
+
+### Migrating from SQLite to PostgreSQL
+
+If you have existing code memories in SQLite, migrate them to PostgreSQL:
+
+```bash
+# Migrate all entries
+afterimage migrate --sqlite ~/.afterimage/memory.db --postgresql
+
+# Validate migration
+afterimage stats --backend postgresql
+
+# Verify entry counts match
+afterimage stats --backend sqlite
+```
+
+The migration:
+- Copies all entries with embeddings preserved
+- Supports resumable migration (skips existing entries)
+- Validates embedding integrity
+
+### Graceful Fallback
+
+The hook automatically falls back to SQLite if PostgreSQL is unavailable:
+
+1. PostgreSQL server unreachable
+2. `psycopg` package not installed
+3. Authentication failure
+4. Database doesn't exist
+
+You'll see in stderr: `[AfterImage] PostgreSQL unavailable (...), falling back to SQLite`
+
+This ensures your code memory continues working even if PostgreSQL has issues.
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `afterimage search <query>` | Search the knowledge base |
+| `afterimage ingest` | Ingest transcripts into KB |
+| `afterimage stats` | Show KB statistics |
+| `afterimage recent` | Show recent entries |
+| `afterimage export` | Export KB to JSON |
+| `afterimage clear` | Clear the knowledge base |
+| `afterimage config` | Show/create configuration |
+
+### Search Options
+
+```bash
+afterimage search "query" [options]
+
+Options:
+  -l, --limit N          Maximum results (default: 5)
+  -t, --threshold FLOAT  Minimum relevance (default: 0.3)
+  -p, --path PATTERN     Filter by file path
+  --json                 Output as JSON
+```
+
+### Ingest Options
+
+```bash
+afterimage ingest [options]
+
+Options:
+  -f, --file PATH        Specific transcript file
+  -d, --directory PATH   Directory to search
+  --no-embeddings        Skip embedding generation
+  -v, --verbose          Verbose output
+```
+
+## Architecture
+
+```
+AI-AfterImage/
++-- afterimage/
+|   +-- __init__.py
+|   +-- kb.py              # Knowledge base (SQLite + FTS5)
+|   +-- filter.py          # Code vs artifact filter
+|   +-- embeddings.py      # Embedding generation (sentence-transformers)
+|   +-- search.py          # Hybrid search (keyword + semantic)
+|   +-- inject.py          # Context injection formatting
+|   +-- extract.py         # Transcript parsing
+|   +-- cli.py             # Command line interface
+|   +-- language_detection/  # v0.5.0: Language detection
+|   |   +-- detector.py      # Content-based language identification
+|   |   +-- signatures.py    # Language patterns and confidence scoring
+|   +-- ast_parser/          # v0.5.0: Tree-sitter AST parsing
+|   |   +-- parser.py        # Parser factory
+|   |   +-- python_parser.py
+|   |   +-- javascript_parser.py
+|   |   +-- rust_parser.py
+|   |   +-- go_parser.py
+|   |   +-- c_parser.py
+|   +-- semantic_index/      # v0.5.0: IDE-like code intelligence
+|       +-- semantic_index.py     # Main coordinator
+|       +-- definition_resolver.py # Go-to-definition
+|       +-- references_finder.py   # Find all references
+|       +-- hover_provider.py      # Hover info
+|       +-- symbol_table.py        # Per-file symbols
+|       +-- call_graph.py          # Call relationships
+|       +-- type_inference.py      # Basic type propagation
++-- hooks/
+|   +-- README.md          # Hook installation guide
+|   +-- afterimage_hook.py # Claude Code hook script
++-- docs/
+|   +-- code_intelligence.md  # Code intelligence documentation
+|   +-- semantic_chunking.md  # Semantic chunking documentation
+|   +-- churn_tracking.md     # Churn tracking documentation
++-- tests/
++-- pyproject.toml
++-- README.md
++-- LICENSE
+```
+
+### Core Components
+
+#### Knowledge Base (`kb.py`)
+
+SQLite database with FTS5 full-text search:
+
+- **Table**: `code_memory`
+  - `id`: Unique identifier
+  - `file_path`: Where the code was written
+  - `old_code`: Previous content (for Edit) or NULL (for Write)
+  - `new_code`: The code that was written
+  - `context`: Conversation context (why it was written)
+  - `timestamp`: When it was written
+  - `session_id`: Which Claude Code session
+  - `embedding`: Vector embedding (BLOB)
+
+- **Location**: `~/.afterimage/memory.db`
+
+#### Code Filter (`filter.py`)
+
+Determines if a file is "code" vs artifacts:
+
+- **Code extensions**: .py, .js, .ts, .jsx, .tsx, .rs, .go, .java, .c, .cpp, etc.
+- **Skip extensions**: .md, .json, .yaml, .txt, .log, .env
+- **Skip paths**: artifacts/, docs/, research/, node_modules/
+- **Content heuristics**: Fallback for unknown extensions
+
+#### Embedding System (`embeddings.py`)
+
+Local embeddings using sentence-transformers:
+
+- **Model**: all-MiniLM-L6-v2 (90MB)
+- **Runs locally**: No API calls
+- **CUDA support**: Uses GPU if available
+- **Cached**: Embeddings cached in KB for fast retrieval
+
+#### Hybrid Search (`search.py`)
+
+Combines keyword and semantic search:
+
+```
+relevance = (fts_weight * fts_score) + (semantic_weight * semantic_score)
+```
+
+- **FTS5**: SQLite full-text search with BM25 scoring
+- **Semantic**: Cosine similarity between embeddings
+- **Default weights**: FTS 40%, Semantic 60%
+
+#### Context Injection (`inject.py`)
+
+Formats search results for Claude:
+
+```
+You have written similar code before (3 matches):
+
+### Match 1 (src/validators.py)
+
+```python
+def validate_email(email):
+    return '@' in email
+```
+
+**Context:** Added email validation for user signup
+
+*Relevance: 85%*
+```
+
+### Hook System
+
+The Claude Code hook integrates AfterImage into your workflow using a **deny-then-allow pattern** that ensures Claude actually sees relevant past code before writing.
+
+#### How It Works
+
+```
+Claude attempts Write/Edit
+        |
+        v
+   AfterImage hook fires
+        |
+        v
+   Search KB for similar code
+        |
+   +----+----+
+Found      Not Found
+   |           |
+   v           v
+ DENY       Allow
+ + show     (write
+ context    proceeds)
+   |
+   v
+Claude SEES the past code
+(deny reason shown to Claude!)
+   |
+   v
+Claude retries Write
+        |
+        v
+   Hook recognizes retry
+   (same content hash)
+        |
+        v
+      ALLOW
+        |
+        v
+   File created
+        |
+        v
+   Post-hook stores
+   code in KB
+```
+
+#### Pre-Write Hook (Deny-Then-Allow)
+
+The key insight: Claude Code's hook system shows `permissionDecisionReason` to Claude when a hook returns `deny`. We use this to inject context:
+
+1. **First attempt**: Hook searches KB, finds similar code
+2. **DENY** with reason containing the code examples
+3. Claude **sees** the past code (it's in the deny message!)
+4. Claude **retries** the write (automatically or adjusted)
+5. **Second attempt**: Hook recognizes the same content hash, **allows** it
+
+This ensures Claude has seen relevant patterns before the file is actually written.
+
+#### Post-Write Hook
+
+After Claude successfully writes code:
+1. Check if file is code (not markdown, JSON, etc.)
+2. Generate embedding (optional, for semantic search)
+3. Store in KB with session context
+
+## Configuration
+
+`~/.afterimage/config.yaml`:
+
+```yaml
+# Search settings
+search:
+  max_results: 5
+  relevance_threshold: 0.6
+  max_injection_tokens: 2000
+
+# Filter settings
+filter:
+  code_extensions:
+    - .py
+    - .js
+    - .ts
+    - .jsx
+    - .tsx
+    - .rs
+    - .go
+    - .java
+    - .c
+    - .cpp
+    - .h
+    - .rb
+    - .php
+    - .swift
+    - .kt
+  skip_extensions:
+    - .md
+    - .json
+    - .yaml
+    - .yml
+    - .txt
+    - .log
+    - .env
+  skip_paths:
+    - artifacts/
+    - docs/
+    - research/
+    - test_data/
+    - __pycache__/
+    - node_modules/
+
+# Embedding model
+embeddings:
+  model: all-MiniLM-L6-v2
+  device: cpu  # or cuda
+```
+
+## Offline Mode
+
+AfterImage is designed to work **completely offline** after the initial setup. This ensures your code memory is always accessible, even without internet.
+
+### Initial Setup (Requires Network)
+
+On first use with embeddings enabled, the sentence-transformers model (~90MB) is downloaded and cached:
+
+```bash
+# First use downloads the model to ~/.afterimage/models/
+afterimage search "test"  # Downloads all-MiniLM-L6-v2
+```
+
+### Fully Offline After Setup
+
+After the model is cached, all operations work offline:
+
+- **SQLite database** - Local file storage, no network
+- **FTS5 search** - Built into SQLite, no network
+- **Embeddings** - Model loaded from local cache
+- **Configuration** - Local YAML files only
+
+### What's Cached
+
+| Component | Location | Size |
+|-----------|----------|------|
+| Knowledge Base | `~/.afterimage/memory.db` | Varies |
+| Embedding Model | `~/.afterimage/models/` | ~90MB |
+| Configuration | `~/.afterimage/config.yaml` | <1KB |
+
+### Verifying Offline Readiness
+
+```bash
+# Check if model is cached
+ls ~/.afterimage/models/models--sentence-transformers--all-MiniLM-L6-v2
+
+# Test offline search (disconnect network first to verify)
+afterimage search "function"
+```
+
+## Performance
+
+| Operation | Target | Typical |
+|-----------|--------|---------|
+| Model load | <5s | 2-3s |
+| Embedding generation | <50ms | 20-30ms |
+| Hybrid search | <100ms | 30-50ms |
+| FTS search only | <10ms | 2-5ms |
+
+## Development
+
+### Running Tests
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=afterimage
+
+# Run specific test file
+pytest tests/test_inject.py
+
+# Run slow tests (with embeddings)
+pytest -m slow
+```
+
+### Test Coverage
+
+The test suite covers:
+- Knowledge Base operations
+- Code filtering logic
+- Transcript extraction
+- Search functionality
+- Context injection formatting
+- End-to-end integration
+- Hook script handling
+
+## License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
+## Status
+
+**Working implementation** - Core functionality complete:
+- [x] Knowledge Base with FTS5
+- [x] Code filtering
+- [x] Transcript extraction
+- [x] Embedding generation
+- [x] Hybrid search
+- [x] Context injection
+- [x] CLI commands
+- [x] Claude Code hooks
+- [x] Test suite (233/234 tests, 95.3% pass rate)
+- [x] Offline mode (works without network after model download)
+- [x] **v0.2.0**: PostgreSQL backend with pgvector (optional)
+- [x] **v0.2.0**: Graceful fallback from PostgreSQL to SQLite
+- [x] **v0.2.0**: Environment variable configuration
+- [x] **v0.4.0**: Config enhancement for PostgreSQL password fallback from ~/.bashrc
+- [x] **v0.5.0**: Code Intelligence (language detection, AST parsing, semantic index)
+
+## Roadmap
+
+Planned features for upcoming releases:
+
+- [ ] **Background Embedding Daemon** - Async embedding generation service with systemd/launchd integration, GPU acceleration, and progress monitoring
+- [x] **Semantic Code Chunking** (v0.3.0) - Break code into meaningful units (functions, classes, blocks) instead of raw files for more precise context injection
+- [x] **Churn Tracking** (v0.3.0) - Detect repeatedly modified code, distinguish iteration from bug-chasing, surface stability metrics
+- [x] **Code Intelligence** (v0.5.0) - Language detection, tree-sitter AST parsing, semantic index with go-to-definition and find-references
+- [ ] **Code Pattern Clustering** - Automatic grouping of related code using HDBSCAN, with 2D/3D visualization via UMAP
+- [ ] **Search Quality Improvements** - Embedding validation, relevance feedback loop, drift detection
+- [ ] **VS Code Support** - MCP server architecture for VS Code Claude extension compatibility
+
+## Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Submit a pull request
+
+## Related Projects
+
+- **[AI-AtlasForge](https://github.com/DragonShadows1978/AI-AtlasForge)** - Autonomous AI research and development platform. Run multi-day missions, accumulate cross-session knowledge, and build software autonomously. AfterImage provides the code memory that persists across AtlasForge missions.
+
+## Name
+
+**AI** = **A**fter **I**mage
+
+The ghost of what was written, persisting across sessions.
