@@ -1,0 +1,40 @@
+"""Type definitions for Midjourney MCP server."""
+
+from typing import Literal
+
+# Midjourney generation modes
+MidjourneyMode = Literal["fast", "relax", "turbo"]
+
+# Midjourney imagine actions
+ImagineAction = Literal[
+    "generate",
+    "upscale1",
+    "upscale2",
+    "upscale3",
+    "upscale4",
+    "upscale_2x",
+    "upscale_4x",
+    "variation1",
+    "variation2",
+    "variation3",
+    "variation4",
+    "variation_subtle",
+    "variation_strong",
+    "variation_region",
+    "reroll",
+    "zoom_out_2x",
+    "zoom_out_1_5x",
+    "pan_left",
+    "pan_right",
+    "pan_up",
+    "pan_down",
+]
+
+# Video actions
+VideoAction = Literal["generate", "extend"]
+
+# Video resolution options
+VideoResolution = Literal["720p", "1080p"]
+
+# Default mode
+DEFAULT_MODE: MidjourneyMode = "fast"
