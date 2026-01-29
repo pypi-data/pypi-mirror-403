@@ -1,0 +1,417 @@
+// QALITA (c) COPYRIGHT 2025 - ALL RIGHTS RESERVED
+// gRPC service definitions for Worker-Backend communication
+
+syntax = "proto3";
+
+package qalita.worker;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// =============================================================================
+// Main Worker Service
+// =============================================================================
+
+service WorkerService {
+  // Bidirectional stream for real-time communication (Keep Alive, Jobs, Status)
+  rpc Connect(stream WorkerMessage) returns (stream ServerMessage);
+  
+  // Authentication and Registration (unary RPCs)
+  rpc Authenticate(AuthRequest) returns (AuthResponse);
+  rpc RegisterWorker(RegisterWorkerRequest) returns (Worker);
+  rpc GetWorker(GetWorkerRequest) returns (Worker);
+  
+  // Resource fetching (unary RPCs)
+  rpc GetPack(GetPackRequest) returns (Pack);
+  rpc GetSource(GetSourceRequest) returns (Source);
+  rpc GetAssetUrl(GetAssetUrlRequest) returns (AssetUrl);
+  rpc GetRegistries(google.protobuf.Empty) returns (RegistriesResponse);
+  
+  // Job management (unary RPCs)
+  rpc CreateJob(CreateJobRequest) returns (Job);
+  rpc UpdateJob(UpdateJobRequest) returns (Job);
+  rpc ClaimJob(ClaimJobRequest) returns (Job);
+  
+  // Routines (unary RPCs)
+  rpc GetRoutines(google.protobuf.Empty) returns (RoutinesResponse);
+}
+
+// =============================================================================
+// Stream Messages
+// =============================================================================
+
+// Messages sent from Worker to Server via stream
+message WorkerMessage {
+  oneof payload {
+    KeepAlive keep_alive = 1;
+    JobStatusUpdate job_status = 2;
+    WorkerStatusUpdate worker_status = 3;
+    JobLogLine log_line = 4;
+    DataPreviewResponse data_preview_response = 5;
+    AddSourceResponse add_source_response = 6;
+    AgentActionResponse agent_action_response = 7;
+  }
+}
+
+// Log line from job execution (for live streaming)
+message JobLogLine {
+  int32 job_id = 1;
+  string line = 2;
+  string level = 3;  // INFO, WARNING, ERROR
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// Messages sent from Server to Worker via stream
+message ServerMessage {
+  oneof payload {
+    JobAssignment job_assignment = 1;
+    RoutineTriggered routine_triggered = 2;
+    ServerAck ack = 3;
+    ServerError error = 4;
+    DataPreviewRequest data_preview_request = 5;
+    AddSourceRequest add_source_request = 6;
+    AgentActionRequest agent_action_request = 7;
+  }
+}
+
+// Keep alive signal from worker
+message KeepAlive {
+  int32 worker_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// Job status update from worker
+message JobStatusUpdate {
+  int32 job_id = 1;
+  string status = 2;  // pending, running, succeeded, failed, killed
+  optional string error_message = 3;
+  optional google.protobuf.Timestamp start_date = 4;
+  optional google.protobuf.Timestamp end_date = 5;
+  optional int32 logs_id = 6;
+}
+
+// Worker status update
+message WorkerStatusUpdate {
+  int32 worker_id = 1;
+  string status = 2;  // online, offline, busy, starting, succeeded, failed
+}
+
+// Job assignment pushed from server
+message JobAssignment {
+  Job job = 1;
+}
+
+// Routine trigger pushed from server
+message RoutineTriggered {
+  Routine routine = 1;
+}
+
+// Server acknowledgment
+message ServerAck {
+  string message_type = 1;
+  bool success = 2;
+  optional string message = 3;
+}
+
+// Server error
+message ServerError {
+  string code = 1;
+  string message = 2;
+}
+
+// =============================================================================
+// Authentication
+// =============================================================================
+
+message AuthRequest {
+  string token = 1;
+}
+
+message AuthResponse {
+  bool authenticated = 1;
+  User user = 2;
+  optional string error = 3;
+}
+
+message User {
+  int32 id = 1;
+  string email = 2;
+  string name = 3;          // Full name (single field matching database)
+  int32 partner_id = 4;
+  repeated string roles = 5;
+}
+
+// =============================================================================
+// Worker
+// =============================================================================
+
+message RegisterWorkerRequest {
+  string name = 1;
+  string mode = 2;  // worker or job
+  string status = 3;
+  bool is_active = 4;
+}
+
+message GetWorkerRequest {
+  int32 worker_id = 1;
+}
+
+message Worker {
+  int32 id = 1;
+  string name = 2;
+  string mode = 3;
+  string status = 4;
+  bool is_active = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  repeated Job jobs = 8;
+}
+
+// =============================================================================
+// Pack
+// =============================================================================
+
+message GetPackRequest {
+  int32 pack_id = 1;
+}
+
+message Pack {
+  int32 id = 1;
+  string name = 2;
+  string description = 3;
+  string type = 4;
+  string visibility = 5;
+  repeated PackVersion versions = 6;
+}
+
+message PackVersion {
+  int32 id = 1;
+  string sem_ver_id = 2;
+  int32 asset_id = 3;
+}
+
+// =============================================================================
+// Source
+// =============================================================================
+
+message GetSourceRequest {
+  int32 source_id = 1;
+}
+
+message Source {
+  int32 id = 1;
+  string name = 2;
+  string description = 3;
+  string type = 4;
+  string visibility = 5;
+  bool sensitive = 6;
+  repeated SourceVersion versions = 7;
+}
+
+message SourceVersion {
+  int32 id = 1;
+  string sem_ver_id = 2;
+}
+
+// =============================================================================
+// Asset
+// =============================================================================
+
+message GetAssetUrlRequest {
+  int32 asset_id = 1;
+}
+
+message AssetUrl {
+  int32 id = 1;
+  string url = 2;
+  string bucket = 3;
+  string name = 4;
+  string version = 5;
+}
+
+// =============================================================================
+// Registry
+// =============================================================================
+
+message Registry {
+  int32 id = 1;
+  string name = 2;
+  string url = 3;
+}
+
+message RegistriesResponse {
+  repeated Registry registries = 1;
+}
+
+// =============================================================================
+// Job
+// =============================================================================
+
+message CreateJobRequest {
+  int32 source_id = 1;
+  optional int32 source_version_id = 2;
+  optional int32 target_id = 3;
+  optional int32 target_version_id = 4;
+  int32 pack_id = 5;
+  optional int32 pack_version_id = 6;
+  optional int32 routine_id = 7;
+  optional string pack_config_override = 8;
+  optional string type = 9;  // manual, routine
+  optional string name = 10;
+}
+
+message UpdateJobRequest {
+  int32 job_id = 1;
+  optional int32 agent_id = 2;
+  optional string status = 3;
+  optional string name = 4;
+  optional google.protobuf.Timestamp start_date = 5;
+  optional google.protobuf.Timestamp end_date = 6;
+  optional int32 logs_id = 7;
+}
+
+message ClaimJobRequest {
+  int32 job_id = 1;
+  int32 worker_id = 2;
+}
+
+message Job {
+  int32 id = 1;
+  string name = 2;
+  string status = 3;
+  int32 source_id = 4;
+  optional int32 source_version_id = 5;
+  optional int32 target_id = 6;
+  optional int32 target_version_id = 7;
+  int32 pack_id = 8;
+  optional int32 pack_version_id = 9;
+  optional int32 agent_id = 10;
+  optional int32 routine_id = 11;
+  optional string pack_config_override = 12;
+  optional google.protobuf.Timestamp start_date = 13;
+  optional google.protobuf.Timestamp end_date = 14;
+  google.protobuf.Timestamp created_at = 15;
+  
+  // Nested objects for convenience
+  optional Source source = 16;
+  optional Source target = 17;
+  optional Pack pack = 18;
+  optional SourceVersion source_version = 19;
+  optional SourceVersion target_version = 20;
+  optional PackVersion pack_version = 21;
+}
+
+// =============================================================================
+// Routine
+// =============================================================================
+
+message Routine {
+  int32 id = 1;
+  string name = 2;
+  string status = 3;  // active, inactive
+  string schedule = 4;  // cron expression
+  string config = 5;
+  google.protobuf.Timestamp start_date = 6;
+  int32 source_id = 7;
+  optional int32 source_version_id = 8;
+  optional int32 target_id = 9;
+  optional int32 target_version_id = 10;
+  int32 pack_id = 11;
+  optional int32 pack_version_id = 12;
+  
+  // Nested objects
+  optional Source source = 13;
+  optional Source target = 14;
+  optional Pack pack = 15;
+}
+
+message RoutinesResponse {
+  repeated Routine routines = 1;
+}
+
+// =============================================================================
+// Data Preview (Studio)
+// =============================================================================
+
+// Request data preview from a worker
+message DataPreviewRequest {
+  string request_id = 1;      // Unique ID to correlate request/response
+  int32 source_id = 2;        // Source to preview
+  optional int32 source_version_id = 3;
+  optional int32 limit = 4;   // Max rows (default 1000)
+  optional string query = 5;  // Custom SQL query if applicable
+}
+
+// Response with preview data from worker
+message DataPreviewResponse {
+  string request_id = 1;      // Correlates with request
+  bool ok = 2;
+  string data_type = 3;       // table, image, pdf, text, json, error
+  optional string error = 4;  // Error message if ok=false
+  
+  // For table data
+  repeated string headers = 5;
+  repeated DataRow rows = 6;
+  optional int64 total_rows = 7;  // Total rows in source (before limit)
+  
+  // For text/json content
+  optional string content = 8;
+  
+  // For binary content (image, pdf) - base64 encoded
+  optional string binary_base64 = 9;
+  optional string mime_type = 10;
+}
+
+// Single row of table data
+message DataRow {
+  repeated string values = 1;
+}
+
+// =============================================================================
+// Add Source (via Worker)
+// =============================================================================
+
+// Request to add a source configuration to a worker
+message AddSourceRequest {
+  string request_id = 1;          // Unique ID to correlate request/response
+  string name = 2;                // Source name
+  string type = 3;                // Source type (postgresql, mysql, csv, etc.)
+  string description = 4;         // Source description
+  string visibility = 5;          // private, internal, public
+  bool reference = 6;             // Is reference data
+  bool sensitive = 7;             // Contains sensitive data
+  string config_json = 8;         // Full configuration as JSON (includes credentials)
+}
+
+// Response after adding source to worker
+message AddSourceResponse {
+  string request_id = 1;          // Correlates with request
+  bool ok = 2;                    // Whether operation succeeded
+  optional string error = 3;      // Error message if ok=false
+  optional int32 source_id = 4;   // ID assigned by worker in local config
+  bool connectivity_verified = 5; // Whether connection to source was verified
+}
+
+// =============================================================================
+// Agent Actions (Studio LLM -> Worker)
+// =============================================================================
+
+// Request from LLM agent to execute an action on a data source
+message AgentActionRequest {
+  string request_id = 1;          // Unique ID to correlate request/response
+  string action_type = 2;         // query, read_data, filter, aggregate, describe, sample
+  int32 source_id = 3;            // Source to operate on
+  string parameters_json = 4;     // Action parameters as JSON
+  optional int32 timeout_seconds = 5;  // Optional timeout for the action
+}
+
+// Response from worker after executing an agent action
+message AgentActionResponse {
+  string request_id = 1;          // Correlates with request
+  bool ok = 2;                    // Whether operation succeeded
+  string action_type = 3;         // Echo back the action type
+  optional string error = 4;      // Error message if ok=false
+  optional string result_json = 5;     // Structured result as JSON (for metadata, stats)
+  optional DataPreviewResponse data = 6;  // Tabular data result if applicable
+  optional int64 execution_time_ms = 7;   // How long the action took
+}
