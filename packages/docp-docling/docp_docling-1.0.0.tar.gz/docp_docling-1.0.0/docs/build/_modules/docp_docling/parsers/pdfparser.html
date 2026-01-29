@@ -1,0 +1,632 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>docp_docling.parsers.pdfparser &mdash; docp-docling - v1.0.0.dev1 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/s5defs-rules.css?v=0345028d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=9a09b0f8"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            docp-docling
+              <img src="../../../_static/s3dev_tri_white_sm.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../library.html">Library API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Change Log</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contact.html">Contact Us</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">docp-docling</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">docp_docling.parsers.pdfparser</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for docp_docling.parsers.pdfparser</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">:Purpose:   This module provides the implementation for the docling-based</span>
+<span class="sd">            PDF parser. This parser is specifically designed for</span>
+<span class="sd">            converting content from a PDF file to Markdown and/or HTML</span>
+<span class="sd">            format.</span>
+
+<span class="sd">:Platform:  Linux/Windows | Python 3.11+</span>
+<span class="sd">:Developer: J Berendt</span>
+<span class="sd">:Email:     development@s3dev.uk</span>
+
+<span class="sd">:Comments:  The :class:`PDFParser` class requires the ``docling`` project</span>
+<span class="sd">            model to be accessible. The following guidance can be used</span>
+<span class="sd">            to obtain the model and set the model&#39;s path in the config</span>
+<span class="sd">            file.</span>
+
+<span class="sd">            **Model Pre-Fetching:**</span>
+<span class="sd">            The ``docling`` project `model`_ must be downloaded and</span>
+<span class="sd">            available for use before this module can be used. Below is</span>
+<span class="sd">            guidance for pre-fetching the model for offline usage.</span>
+
+<span class="sd">            1) Download the model::</span>
+
+<span class="sd">                   docling-tools models download \\</span>
+<span class="sd">                        --output-dir /path/to/models/docling-project</span>
+
+<span class="sd">            2) Update ``config.toml``:</span>
+
+<span class="sd">               With the ``docp-core/config/config.toml`` file, update the</span>
+<span class="sd">               ``docling`` key in the ``paths.models`` table to match the</span>
+<span class="sd">               download path specified in the previous step.</span>
+
+<span class="sd">            **GPU Support:**</span>
+<span class="sd">            GPU support (CUDA) should be enabled automatically by the</span>
+<span class="sd">            internals. However, guidance for enabling GPU-support can be</span>
+<span class="sd">            found `here &lt;gpu-support_&gt;`_.</span>
+
+<span class="sd">.. _model: https://docling-project.github.io/docling/usage/advanced_options/</span>
+<span class="sd">    #model-prefetching-and-offline-usage</span>
+<span class="sd">.. _gpu-support: https://docling-project.github.io/docling/usage/gpu/</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="c1"># pylint: disable=wrong-import-order</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">webbrowser</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docling_core.types.doc.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageRefMode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docling.datamodel.accelerator_options</span><span class="w"> </span><span class="kn">import</span> <span class="n">AcceleratorDevice</span><span class="p">,</span> <span class="n">AcceleratorOptions</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docling.datamodel.base_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputFormat</span><span class="p">,</span> <span class="n">ConversionStatus</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docling.datamodel.pipeline_options</span><span class="w"> </span><span class="kn">import</span> <span class="n">PdfPipelineOptions</span>
+<span class="c1"># This import must be commented when building the docs.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docling.document_converter</span><span class="w"> </span><span class="kn">import</span> <span class="n">DocumentConverter</span><span class="p">,</span> <span class="n">PdfFormatOption</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docp_core</span><span class="w"> </span><span class="kn">import</span> <span class="n">Document</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docp_core</span><span class="w"> </span><span class="kn">import</span> <span class="n">SETTINGS</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docp_core.objects.textobject</span><span class="w"> </span><span class="kn">import</span> <span class="n">TextObject</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docp_core.utilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">utilities</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docp_parsers</span><span class="w"> </span><span class="kn">import</span> <span class="n">PDFParser</span> <span class="k">as</span> <span class="n">_PDFParser</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ghmdlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">converter</span>
+
+<span class="c1"># Silence logging output. Cannot seem to silence the output for RapidOCR.</span>
+<span class="n">_logger_docling</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;docling&#39;</span><span class="p">)</span>
+<span class="n">_logger_docling</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="PDFParser">
+<a class="viewcode-back" href="../../../parsers_pdfparser.html#docp_docling.parsers.pdfparser.PDFParser">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PDFParser</span><span class="p">(</span><span class="n">_PDFParser</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Docling-based PDF parser class.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path (str): Path to the PDF file to be parsed.</span>
+<span class="sd">        detailed_extraction (bool, optional): Optimise extraction of</span>
+<span class="sd">            additional features such as code and formulae.</span>
+<span class="sd">            Defaults to False.</span>
+
+<span class="sd">            .. tip::</span>
+
+<span class="sd">                While useful in certain cases, this extraction mode</span>
+<span class="sd">                increases processing time by ~2x.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        For basic text or table extraction from PDFs, the ``PDFParser``</span>
+<span class="sd">        class available from the ``docp-parsers`` library is recommended</span>
+<span class="sd">        as it’s fast and straightforward.</span>
+
+<span class="sd">        For converting PDFs into **Markdown** or **HTML** formats, this</span>
+<span class="sd">        class provides the functionality you need:</span>
+
+<span class="sd">            - **HTML:** Use the :meth:`to_html` method.</span>
+<span class="sd">            - **Markdown:** Use the :meth:`to_markdown` method.</span>
+
+<span class="sd">        As an extension of :class:`docp-parsers.PDFParser`, it also</span>
+<span class="sd">        supports all the core PDF extraction features, so you can also</span>
+<span class="sd">        use it for text and table extraction.</span>
+
+<span class="sd">    .. important::</span>
+
+<span class="sd">        If parsing a single document several times, (e.g. for testing</span>
+<span class="sd">        different method options) the content of each parse will be</span>
+<span class="sd">        appended to the :attr:`texts` attribute. This can lead to</span>
+<span class="sd">        unexpected content. If applicable to your use case, ensure to</span>
+<span class="sd">        call the :meth:`initialise` method between parsings to clear the</span>
+<span class="sd">        content.</span>
+
+<span class="sd">    :Example:</span>
+
+<span class="sd">        Parse a PDF into **Markdown** format::</span>
+
+<span class="sd">            &gt;&gt;&gt; from docp_docling import PDFParser</span>
+
+<span class="sd">            # Convert</span>
+<span class="sd">            &gt;&gt;&gt; pdf = PDFParser(path=&#39;/path/to/file.pdf&#39;)</span>
+<span class="sd">            &gt;&gt;&gt; pdf.to_markdown()</span>
+
+<span class="sd">            # Access the converted content</span>
+<span class="sd">            &gt;&gt;&gt; pdf.content</span>
+
+<span class="sd">            # Render extracted text as HTML and preview in a browser.</span>
+<span class="sd">            &gt;&gt;&gt; pdf.preview()</span>
+
+
+<span class="sd">        Parse a single page from a PDF into **Markdown** format,</span>
+<span class="sd">        including images, and store to a file::</span>
+
+<span class="sd">            &gt;&gt;&gt; from docp_docling import PDFParser</span>
+
+<span class="sd">            # Convert</span>
+<span class="sd">            &gt;&gt;&gt; pdf = PDFParser(path=&#39;/path/to/file.pdf&#39;)</span>
+<span class="sd">            &gt;&gt;&gt; pdf.to_markdown(page_no=1,</span>
+<span class="sd">                                image_mode=&#39;embedded&#39;,  # &lt;-- Include images</span>
+<span class="sd">                                to_file=True)</span>
+
+<span class="sd">            # Render extracted text as HTML and preview in a browser.</span>
+<span class="sd">            &gt;&gt;&gt; pdf.preview()</span>
+
+
+<span class="sd">        Parse a single page from a PDF into **Markdown** format,</span>
+<span class="sd">        including images, and store to a file (manually)::</span>
+
+<span class="sd">            &gt;&gt;&gt; from docp_docling import PDFParser</span>
+
+<span class="sd">            # Convert</span>
+<span class="sd">            &gt;&gt;&gt; pdf = PDFParser(path=&#39;/path/to/file.pdf&#39;)</span>
+<span class="sd">            &gt;&gt;&gt; pdf.to_markdown(page_no=1)</span>
+
+<span class="sd">            # Render extracted text as HTML and preview in a browser.</span>
+<span class="sd">            &gt;&gt;&gt; pdf.preview()</span>
+
+<span class="sd">            # Write the converted Markdown content to a file.</span>
+<span class="sd">            &gt;&gt;&gt; pdf.write(ext=&#39;.md&#39;)</span>
+
+
+<span class="sd">        Parse a single page from a PDF into **HTML** format, including</span>
+<span class="sd">        images::</span>
+
+<span class="sd">            &gt;&gt;&gt; from docp_docling import PDFParser</span>
+
+<span class="sd">            # Convert</span>
+<span class="sd">            &gt;&gt;&gt; pdf = PDFParser(path=&#39;/path/to/file.pdf&#39;)</span>
+<span class="sd">            &gt;&gt;&gt; pdf.to_html(page_no=1,</span>
+<span class="sd">                            image_mode=&#39;embedded&#39;)  # &lt;-- Include images</span>
+
+<span class="sd">            # Render extracted text and preview in a browser.</span>
+<span class="sd">            &gt;&gt;&gt; pdf.preview(raw=True)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_IMAGE_MODES</span> <span class="o">=</span> <span class="p">(</span><span class="n">ImageRefMode</span><span class="o">.</span><span class="n">EMBEDDED</span><span class="p">,</span> <span class="n">ImageRefMode</span><span class="o">.</span><span class="n">PLACEHOLDER</span><span class="p">,</span> <span class="n">ImageRefMode</span><span class="o">.</span><span class="n">REFERENCED</span><span class="p">)</span>
+    <span class="n">_SETTINGS</span> <span class="o">=</span> <span class="n">SETTINGS</span><span class="p">[</span><span class="s1">&#39;docp-docling&#39;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">detailed_extraction</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Docling-based PDF parser class.&quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_conv</span> <span class="o">=</span> <span class="kc">None</span>       <span class="c1"># Docling DocumentConverter object.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_document</span> <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># Docling results.document object.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_texts</span> <span class="o">=</span> <span class="p">[]</span>        <span class="c1"># List of TextObjects</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tmpfiles</span> <span class="o">=</span> <span class="p">[]</span>     <span class="c1"># A collection of temp files to be cleaned up.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_optmode</span> <span class="o">=</span> <span class="s1">&#39;detail&#39;</span> <span class="k">if</span> <span class="n">detailed_extraction</span> <span class="k">else</span> <span class="s1">&#39;speed&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_create_converter</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Actions to be performed on class destruction.</span>
+
+<span class="sd">        - Remove all generated temp files.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Corner case where the parent class does not have this attribute.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_tmpfiles&#39;</span><span class="p">):</span>  <span class="c1"># nocover  # Unreachable in testing.</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tmpfiles</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">content</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accessor to all content by merging all :attr:`texts`.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str: Returns a continuous string of converted text by joining</span>
+<span class="sd">            the :attr:`content` attribute for all elements of the</span>
+<span class="sd">            :attr:`texts` property.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">content</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_texts</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">texts</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accessor to parsed text as TextObject instances.</span>
+
+<span class="sd">        For each text in the list, use the :attr:`.content` attribute to</span>
+<span class="sd">        access the extracted text.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_texts</span>
+
+<div class="viewcode-block" id="PDFParser.initialise">
+<a class="viewcode-back" href="../../../parsers_pdfparser.html#docp_docling.parsers.pdfparser.PDFParser.initialise">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialise</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Clean up the preview extraction activities and start over.&quot;&quot;&quot;</span>
+        <span class="c1"># pylint: disable=unnecessary-dunder-call</span>
+        <span class="bp">self</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">doc</span><span class="o">.</span><span class="n">filepath</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PDFParser.to_html">
+<a class="viewcode-back" href="../../../parsers_pdfparser.html#docp_docling.parsers.pdfparser.PDFParser.to_html">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_html</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                <span class="o">*</span><span class="p">,</span>
+                <span class="n">page_no</span><span class="p">:</span> <span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                <span class="n">image_mode</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="s1">&#39;placeholder&#39;</span><span class="p">,</span>
+                <span class="n">include_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">unique_lines</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">to_file</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">auto_open</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Convert a PDF to HTML format.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            page_no (int, optional): Page number to convert.</span>
+<span class="sd">                Defaults to None (for all pages).</span>
+<span class="sd">            image_mode (str, optional): The mode to use for including</span>
+<span class="sd">                images in the markdown. Options are: &#39;embedded&#39;,</span>
+<span class="sd">                &#39;placeholder&#39;, &#39;referenced&#39;. Defaults to &#39;placeholder&#39;.</span>
+<span class="sd">            include_annotations (bool, optional): Whether to include</span>
+<span class="sd">                annotations in the export. Defaults to True.</span>
+<span class="sd">            unique_lines (bool, optional): Remove any duplicated lines</span>
+<span class="sd">                from the document&#39;s content. Generally used to remove</span>
+<span class="sd">                repeated header and footer strings. Defaults to False.</span>
+<span class="sd">            to_file (bool, optional): Write the converted text to a text</span>
+<span class="sd">                file. Defaults to False.</span>
+
+<span class="sd">                .. tip::</span>
+<span class="sd">                    If you change your mind, call the :meth:`write`</span>
+<span class="sd">                    method to store the converted text to a file.</span>
+
+<span class="sd">            auto_open (bool, optional): On completion, display the</span>
+<span class="sd">                converted text as rendered HTML in a web browser.</span>
+<span class="sd">                Defaults to False.</span>
+
+<span class="sd">                .. tip::</span>
+<span class="sd">                    To view later, simply call the :meth:`preview`</span>
+<span class="sd">                    method.</span>
+
+<span class="sd">                    Ensure to pass ``raw=True`` to display the converted</span>
+<span class="sd">                    HTML in the browser rather than converting HTML to</span>
+<span class="sd">                    MD and back to HTML.</span>
+
+<span class="sd">        :Keyword Arguments:</span>
+<span class="sd">            All \*\*kwargs are passed directly into docling&#39;s</span>
+<span class="sd">            :func:`export_to_html` function.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str | None: If the file is written successfully, a string</span>
+<span class="sd">            containing the full path to the output file is returned.</span>
+<span class="sd">            Otherwise, None.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_image_mode_override</span><span class="p">(</span><span class="n">image_mode</span><span class="o">=</span><span class="n">image_mode</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert</span><span class="p">():</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_document</span><span class="o">.</span><span class="n">export_to_html</span><span class="p">(</span><span class="n">page_no</span><span class="o">=</span><span class="n">page_no</span><span class="p">,</span>
+                                                 <span class="n">image_mode</span><span class="o">=</span><span class="n">image_mode</span><span class="p">,</span>
+                                                 <span class="n">include_annotations</span><span class="o">=</span><span class="n">include_annotations</span><span class="p">,</span>
+                                                 <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">unique_lines</span><span class="p">:</span>
+                <span class="n">text</span> <span class="o">=</span> <span class="n">utilities</span><span class="o">.</span><span class="n">remove_duplicate_lines</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="n">text</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_texts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TextObject</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">text</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_add_document_objects</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">to_file</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">ext</span><span class="o">=</span><span class="s1">&#39;.html&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">auto_open</span><span class="p">:</span>  <span class="c1"># nocover</span>
+                <span class="c1"># Set offline to true to be more robust for offline environments.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">preview</span><span class="p">(</span><span class="n">raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">offline</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span></div>
+
+
+<div class="viewcode-block" id="PDFParser.to_markdown">
+<a class="viewcode-back" href="../../../parsers_pdfparser.html#docp_docling.parsers.pdfparser.PDFParser.to_markdown">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_markdown</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                    <span class="o">*</span><span class="p">,</span>
+                    <span class="n">page_no</span><span class="p">:</span> <span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">image_mode</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="s1">&#39;placeholder&#39;</span><span class="p">,</span>
+                    <span class="n">include_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="n">unique_lines</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">to_file</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">auto_open</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Convert a PDF to Markdown format.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            page_no (int, optional): Page number to convert.</span>
+<span class="sd">                Defaults to None (for all pages).</span>
+<span class="sd">            image_mode (str, optional): The mode to use for including</span>
+<span class="sd">                images in the markdown. Options are: &#39;embedded&#39;,</span>
+<span class="sd">                &#39;placeholder&#39;, &#39;referenced&#39;. Defaults to &#39;placeholder&#39;.</span>
+<span class="sd">            include_annotations (bool, optional): Whether to include</span>
+<span class="sd">                annotations in the export. Defaults to True.</span>
+<span class="sd">            unique_lines (bool, optional): Remove any duplicated lines</span>
+<span class="sd">                from the document&#39;s content. Generally used to remove</span>
+<span class="sd">                repeated header and footer strings. Defaults to False.</span>
+<span class="sd">            to_file (bool, optional): Write the converted text to a text</span>
+<span class="sd">                file. Defaults to False.</span>
+
+<span class="sd">                .. tip::</span>
+<span class="sd">                    If you change your mind, call the :meth:`write`</span>
+<span class="sd">                    method to store the converted text to a file.</span>
+
+<span class="sd">            auto_open (bool, optional): On completion, display the</span>
+<span class="sd">                converted text as rendered HTML in a web browser.</span>
+<span class="sd">                Defaults to False.</span>
+
+<span class="sd">                .. tip::</span>
+<span class="sd">                    To view later, simply call the :meth:`preview`</span>
+<span class="sd">                    method.</span>
+
+<span class="sd">        :Keyword Arguments:</span>
+<span class="sd">            All \*\*kwargs are passed directly into docling&#39;s</span>
+<span class="sd">            :func:`export_to_html` function.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str | None: If the file is written successfully, a string</span>
+<span class="sd">            containing the full path to the output file is returned.</span>
+<span class="sd">            Otherwise, None.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_image_mode_override</span><span class="p">(</span><span class="n">image_mode</span><span class="o">=</span><span class="n">image_mode</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert</span><span class="p">():</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_document</span><span class="o">.</span><span class="n">export_to_markdown</span><span class="p">(</span><span class="n">page_no</span><span class="o">=</span><span class="n">page_no</span><span class="p">,</span>
+                                                     <span class="n">image_mode</span><span class="o">=</span><span class="n">image_mode</span><span class="p">,</span>
+                                                     <span class="n">include_annotations</span><span class="o">=</span><span class="n">include_annotations</span><span class="p">,</span>
+                                                     <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">unique_lines</span><span class="p">:</span>
+                <span class="n">text</span> <span class="o">=</span> <span class="n">utilities</span><span class="o">.</span><span class="n">remove_duplicate_lines</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="n">text</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_texts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TextObject</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">text</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_add_document_objects</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">to_file</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">ext</span><span class="o">=</span><span class="s1">&#39;.md&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">auto_open</span><span class="p">:</span>  <span class="c1"># nocover</span>
+                <span class="c1"># Set offline to true to be more robust for offline environments.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">preview</span><span class="p">(</span><span class="n">offline</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span></div>
+
+
+<div class="viewcode-block" id="PDFParser.preview">
+<a class="viewcode-back" href="../../../parsers_pdfparser.html#docp_docling.parsers.pdfparser.PDFParser.preview">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">preview</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">offline</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># nocover</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Preview the conversion as rendered text in a web browser.</span>
+
+<span class="sd">        .. note::</span>
+<span class="sd">            Each conversion (``TextObject``) is rendered to it own page</span>
+<span class="sd">            in the web browser.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            raw (bool, optional): If viewing a Markdown formatted file,</span>
+<span class="sd">                preview the *raw* Markdown (i.e. do not render as HTML).</span>
+<span class="sd">                Defaults to False.</span>
+<span class="sd">            offline (bool, optional): If ``True``, this prevents</span>
+<span class="sd">                ``ghmdlib`` from calling the GitHub Markdown conversion</span>
+<span class="sd">                API, and performing the conversion internally.</span>
+<span class="sd">                Defaults to False.</span>
+
+<span class="sd">        :Keyword Arguments:</span>
+<span class="sd">            These arguments are passed directly into the</span>
+<span class="sd">            :func:`ghmdlib.ghmd.Converter.convert` method. Refer to that</span>
+<span class="sd">            method&#39;s documentation for the accepted arguments.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">texts</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">delete_on_close</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="c1"># Register the temp filenames for deletion.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_tmpfiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>            <span class="c1"># Original MD file to be converted.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_tmpfiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1">.html&#39;</span><span class="p">)</span>  <span class="c1"># HTML file created by ghmdlib.</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">raw</span><span class="p">:</span>
+                <span class="n">webbrowser</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                  <span class="n">offline</span><span class="o">=</span><span class="n">offline</span><span class="p">,</span>
+                                  <span class="n">preview</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                                  <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PDFParser.write">
+<a class="viewcode-back" href="../../../parsers_pdfparser.html#docp_docling.parsers.pdfparser.PDFParser.write">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ext</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Write the extracted Markdown or HTML content to disk.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ext (str): File extension to be applied to the output file.</span>
+<span class="sd">                For example: ``&#39;.html&#39;``</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str | None: If the file is written successfully, a string</span>
+<span class="sd">            containing the full path to the output file is returned.</span>
+<span class="sd">            Otherwise, None.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ext</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;.</span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">ext</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="n">ext</span>
+        <span class="n">base</span> <span class="o">=</span> <span class="n">utilities</span><span class="o">.</span><span class="n">build_project_outpath</span><span class="p">(</span><span class="n">subpath</span><span class="o">=</span><span class="s1">&#39;conversions&#39;</span><span class="p">)</span>
+        <span class="n">fname</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">doc</span><span class="o">.</span><span class="n">basename</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="si">}{</span><span class="n">ext</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">fname</span><span class="p">)</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">texts</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">c</span> <span class="o">+=</span> <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">content</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">texts</span><span class="p">)):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;File written successfully: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">path</span>
+        <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># nocover  # Should be unreachable.</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_add_document_objects</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create Document objects from the parsed text.</span>
+
+<span class="sd">        :class:`Document` objects are used by the text splitter and data</span>
+<span class="sd">        loaders to encapsulate a document&#39;s metadata and page content.</span>
+
+<span class="sd">        The metadata extracted by ``pdfplumber`` is automatically added</span>
+<span class="sd">        to the :class:`Document` object&#39;s metadata.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">doc</span><span class="o">.</span><span class="n">metadata</span>  <span class="c1"># Metadata from pdfplumber</span>
+        <span class="n">metadata</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">doc</span><span class="o">.</span><span class="n">basename</span><span class="p">,</span> <span class="s1">&#39;pageno&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">})</span>
+        <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_texts</span><span class="p">:</span>
+            <span class="n">doc</span> <span class="o">=</span> <span class="n">Document</span><span class="p">(</span><span class="n">page_content</span><span class="o">=</span><span class="n">text</span><span class="o">.</span><span class="n">content</span><span class="p">,</span>
+                           <span class="n">metadata</span><span class="o">=</span><span class="n">metadata</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_doc</span><span class="o">.</span><span class="n">documents</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_convert</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the PDF file into docling objects for extraction.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            bool: True if the conversion was successful, otherwise False.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conv</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_document</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">document</span>
+        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">ConversionStatus</span><span class="o">.</span><span class="n">SUCCESS</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_converter</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup the Docling document converter object.&quot;&quot;&quot;</span>
+        <span class="n">pipeline_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_set_pipeline_options</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_conv</span> <span class="o">=</span> <span class="n">DocumentConverter</span><span class="p">(</span><span class="n">format_options</span><span class="o">=</span><span class="p">{</span>
+            <span class="n">InputFormat</span><span class="o">.</span><span class="n">PDF</span><span class="p">:</span> <span class="n">PdfFormatOption</span><span class="p">(</span><span class="n">pipeline_options</span><span class="o">=</span><span class="n">pipeline_options</span><span class="p">)</span>
+        <span class="p">})</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_image_mode_override</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">image_mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Override the preset image generation options.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            image_mode (str): Image mode selected by the user.</span>
+
+<span class="sd">        If the ``image_mode`` is &#39;embedded&#39;, the converter is updated to</span>
+<span class="sd">        allow image generation; which is False by default.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: Raised if an invalid ``image_mode`` is received.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">image_mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_IMAGE_MODES</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Invalid image mode selected (</span><span class="se">\&#39;</span><span class="si">{</span><span class="n">image_mode</span><span class="si">}</span><span class="se">\&#39;</span><span class="s1">).</span><span class="se">\n</span><span class="s1">&#39;</span>
+                   <span class="sa">f</span><span class="s1">&#39;Valid options: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_IMAGE_MODES</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">image_mode</span> <span class="o">==</span> <span class="n">ImageRefMode</span><span class="o">.</span><span class="n">EMBEDDED</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_conv</span><span class="o">.</span><span class="n">format_to_options</span><span class="p">[</span><span class="s1">&#39;pdf&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">pipeline_options</span><span class="o">.</span><span class="n">generate_page_images</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_conv</span><span class="o">.</span><span class="n">format_to_options</span><span class="p">[</span><span class="s1">&#39;pdf&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">pipeline_options</span><span class="o">.</span><span class="n">generate_picture_images</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_pipeline_options</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup the Docling PDF pipeline options for file parsing.</span>
+
+<span class="sd">        .. note::</span>
+
+<span class="sd">            The majority of the options are defined in the following</span>
+<span class="sd">            config file keys:</span>
+
+<span class="sd">                - GPU_PIPELINE_OPTIONS</span>
+<span class="sd">                - PIPELINE_OPTIONS</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            FileNotFoundError: Raised if the path to the model does not</span>
+<span class="sd">            exist.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># pylint: disable=line-too-long</span>
+        <span class="c1"># pylint: disable=no-member      # multiprocessing.cpu_count</span>
+        <span class="n">model_path</span> <span class="o">=</span> <span class="n">SETTINGS</span><span class="p">[</span><span class="s1">&#39;paths&#39;</span><span class="p">][</span><span class="s1">&#39;models&#39;</span><span class="p">][</span><span class="s1">&#39;docling&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">model_path</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;[ERROR]: The model path does not exist: </span><span class="si">{</span><span class="n">model_path</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">opts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_SETTINGS</span><span class="p">[</span><span class="s1">&#39;options&#39;</span><span class="p">][</span><span class="s1">&#39;pipeline_options&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_optmode</span><span class="p">)</span>
+        <span class="n">opts</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_SETTINGS</span><span class="p">[</span><span class="s1">&#39;options&#39;</span><span class="p">][</span><span class="s1">&#39;gpu_pipeline_options&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">AcceleratorDevice</span><span class="o">.</span><span class="n">CUDA</span>
+                                                                          <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span>
+                                                                          <span class="k">else</span> <span class="n">AcceleratorDevice</span><span class="o">.</span><span class="n">CPU</span><span class="p">))</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">opts</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;device&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">PdfPipelineOptions</span><span class="p">(</span>
+            <span class="n">accelerator_options</span><span class="o">=</span><span class="n">AcceleratorOptions</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+                                                   <span class="n">num_threads</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">()),</span>
+            <span class="n">artifacts_path</span><span class="o">=</span><span class="n">model_path</span><span class="p">,</span>
+            <span class="n">enable_remote_services</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>       <span class="c1"># Keep offline</span>
+            <span class="n">min_picture_page_surface_ratio</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>   <span class="c1"># Process all images</span>
+            <span class="o">**</span><span class="n">opts</span><span class="p">,</span>                             <span class="c1"># Defined by config values</span>
+        <span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026 | s3dev | version 1.0.0.dev1.</p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
