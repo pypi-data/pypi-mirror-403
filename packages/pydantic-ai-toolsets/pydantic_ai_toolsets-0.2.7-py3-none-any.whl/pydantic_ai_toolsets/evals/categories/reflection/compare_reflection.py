@@ -1,0 +1,119 @@
+"""Compare reflection toolsets."""
+
+from typing import Any
+
+from pydantic_ai_toolsets.evals.categories.reflection.reflection_eval import evaluate_reflection_toolset
+from pydantic_ai_toolsets.evals.categories.reflection.self_ask_eval import evaluate_self_ask_toolset
+from pydantic_ai_toolsets.evals.categories.reflection.self_refine_eval import evaluate_self_refine_toolset
+from pydantic_ai_toolsets.evals.config import EvaluationConfig
+
+
+async def compare_reflection_toolsets(
+    config: EvaluationConfig | None = None,
+) -> dict[str, Any]:
+    """Compare all reflection toolsets on the same test cases.
+
+    Args:
+        config: Evaluation configuration.
+
+    Returns:
+        Dictionary with comparison results.
+    """
+    if config is None:
+        from pydantic_ai_toolsets.evals.config import default_config
+        config = default_config
+
+    evaluation_functions = [
+        ("self_refine", evaluate_self_refine_toolset),
+        ("reflection", evaluate_reflection_toolset),
+        ("self_ask", evaluate_self_ask_toolset),
+    ]
+
+    comparison = {}
+    total_cases = 0
+    total_errors = 0
+
+    # Run all evaluations
+    for toolset_name, eval_func in evaluation_functions:
+        try:
+            report = await eval_func(config)
+            
+            # Extract case results from report
+            if hasattr(report, "case_results"):
+                case_results = report.case_results
+            elif hasattr(report, "results"):
+                case_results = report.results
+            elif hasattr(report, "cases"):
+                case_results = report.cases
+            else:
+                case_results = getattr(report, "case_results", [])
+            
+            # Helper function to extract passed status
+            def extract_passed(case_result: Any) -> bool:
+                """Extract passed status from a case result."""
+                if hasattr(case_result, "passed"):
+                    return bool(case_result.passed)
+                if hasattr(case_result, "error") and case_result.error:
+                    return False
+                if hasattr(case_result, "exception") and case_result.exception:
+                    return False
+                if hasattr(case_result, "evaluator_results") and case_result.evaluator_results:
+                    evaluator_results = case_result.evaluator_results
+                    if isinstance(evaluator_results, dict):
+                        for eval_name, eval_result in evaluator_results.items():
+                            if isinstance(eval_result, bool):
+                                if not eval_result:
+                                    return False
+                            elif hasattr(eval_result, "value"):
+                                if not bool(eval_result.value):
+                                    return False
+                            elif isinstance(eval_result, dict):
+                                if "value" in eval_result and not bool(eval_result["value"]):
+                                    return False
+                        return True
+                return True
+            
+            num_cases = len(case_results) if case_results else 0
+            passed = sum(1 for r in case_results if extract_passed(r)) if case_results else 0
+            failed = num_cases - passed
+            
+            # Extract summary stats if available
+            avg_time = 0.0
+            total_tokens = 0
+            if hasattr(report, "summary_stats") and report.summary_stats:
+                stats = report.summary_stats
+                avg_time = stats.get("avg_duration_ms", 0) / 1000.0
+                total_tokens = stats.get("total_tokens", 0)
+            
+            comparison[toolset_name] = {
+                "num_cases": num_cases,
+                "passed": passed,
+                "failed": failed,
+                "avg_execution_time": avg_time,
+                "total_tokens": total_tokens,
+                "errors": failed,
+                "report": report,
+            }
+            
+            total_cases += num_cases
+            total_errors += failed
+        except Exception as e:
+            print(f"Error evaluating {toolset_name}: {e}")
+            import traceback
+            traceback.print_exc()
+            comparison[toolset_name] = {
+                "error": str(e),
+                "num_cases": 0,
+                "errors": 1,
+            }
+            total_errors += 1
+
+    return {
+        "summary": {
+            "total": total_cases,
+            "errors": total_errors,
+            "success_rate": (total_cases - total_errors) / total_cases if total_cases > 0 else 0.0,
+        },
+        "by_toolset": comparison,
+    }
+
