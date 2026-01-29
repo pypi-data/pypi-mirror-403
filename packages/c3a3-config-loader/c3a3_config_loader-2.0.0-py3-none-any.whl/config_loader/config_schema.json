@@ -1,0 +1,466 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "C3A3 Configuration Schema",
+  "description": "Schema for c3a3-config-loader configuration files (v1.0 and v2.0)",
+  "type": "object",
+  "required": ["schema_version", "app_name"],
+  "definitions": {
+    "deprecation": {
+      "type": "object",
+      "description": "Deprecation metadata",
+      "properties": {
+        "since": {
+          "type": "string",
+          "description": "Version when deprecation started"
+        },
+        "removed_in": {
+          "type": "string",
+          "description": "Version when item will be removed"
+        },
+        "replacement": {
+          "type": "string",
+          "description": "Suggested alternative"
+        },
+        "message": {
+          "type": "string",
+          "description": "Custom deprecation message"
+        }
+      },
+      "required": ["since"],
+      "additionalProperties": false
+    },
+    "command_argument": {
+      "type": "object",
+      "description": "Command-specific argument",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Argument name (used as --name on CLI)",
+          "pattern": "^[a-z0-9_-]+$"
+        },
+        "type": {
+          "type": "string",
+          "description": "Argument type",
+          "enum": ["string", "number", "boolean"],
+          "default": "string"
+        },
+        "short": {
+          "type": "string",
+          "description": "Short flag (e.g., 'r' for -r)",
+          "pattern": "^[a-zA-Z]$"
+        },
+        "scope": {
+          "type": "string",
+          "description": "Visibility scope",
+          "enum": ["local", "inherited", "ephemeral"],
+          "default": "local"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether argument is required",
+          "default": false
+        },
+        "default": {
+          "description": "Default value if not provided"
+        },
+        "env": {
+          "type": "boolean",
+          "description": "Whether to read from environment variables",
+          "default": false
+        },
+        "env_name": {
+          "type": "string",
+          "description": "Custom environment variable name"
+        },
+        "nargs": {
+          "oneOf": [
+            {"type": "string", "enum": ["?", "*", "+"]},
+            {"type": "integer", "minimum": 1}
+          ],
+          "description": "Argument count"
+        },
+        "deprecated": {
+          "$ref": "#/definitions/deprecation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "exclusion_group": {
+      "type": "object",
+      "description": "Mutually exclusive argument group",
+      "required": ["name", "arguments"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Group identifier for error messages"
+        },
+        "arguments": {
+          "type": "array",
+          "description": "Argument names that are mutually exclusive",
+          "items": {"type": "string"},
+          "minItems": 2
+        },
+        "required": {
+          "type": "boolean",
+          "description": "If true, at least one must be provided",
+          "default": false
+        },
+        "message": {
+          "type": "string",
+          "description": "Custom error message"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependency_rule": {
+      "type": "object",
+      "description": "Inter-argument dependency rule",
+      "required": ["name", "rule"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Rule identifier for error messages"
+        },
+        "rule": {
+          "type": "string",
+          "description": "Rule type",
+          "enum": ["if_then", "requires", "conflicts"]
+        },
+        "if_arg": {
+          "type": "string",
+          "description": "For if_then: the condition argument"
+        },
+        "eq": {
+          "description": "For if_then: the condition value"
+        },
+        "then_require": {
+          "type": "array",
+          "description": "For if_then: arguments required when condition is met",
+          "items": {"type": "string"}
+        },
+        "message": {
+          "type": "string",
+          "description": "Custom error message"
+        }
+      },
+      "additionalProperties": false
+    },
+    "validator": {
+      "type": "object",
+      "description": "Custom validator definition",
+      "required": ["name", "rule"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Validator identifier"
+        },
+        "rule": {
+          "type": "string",
+          "description": "Validator type",
+          "enum": ["if_then", "requires", "conflicts", "callable"]
+        },
+        "if": {
+          "type": "object",
+          "description": "Condition for if_then rule",
+          "properties": {
+            "arg": {"type": "string"},
+            "eq": {}
+          }
+        },
+        "then": {
+          "type": "object",
+          "description": "Action for if_then rule",
+          "properties": {
+            "require": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "forbid": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          }
+        },
+        "function": {
+          "type": "string",
+          "description": "Python function path for callable rule"
+        },
+        "message": {
+          "type": "string",
+          "description": "Custom error message"
+        }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "type": "object",
+      "description": "Hierarchical command definition",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Command name (no dots allowed)",
+          "pattern": "^[a-z0-9_-]+$"
+        },
+        "aliases": {
+          "type": "array",
+          "description": "Alternative names for this command",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]+$"
+          }
+        },
+        "terminal": {
+          "type": "boolean",
+          "description": "Whether this command is executable",
+          "default": false
+        },
+        "ordering": {
+          "type": "string",
+          "description": "Argument ordering mode",
+          "enum": ["strict", "relaxed", "interleaved"],
+          "default": "relaxed"
+        },
+        "arguments": {
+          "type": "array",
+          "description": "Command-specific arguments",
+          "items": {"$ref": "#/definitions/command_argument"}
+        },
+        "exclusion_groups": {
+          "type": "array",
+          "description": "Mutually exclusive argument groups",
+          "items": {"$ref": "#/definitions/exclusion_group"}
+        },
+        "dependency_rules": {
+          "type": "array",
+          "description": "Inter-argument validation rules",
+          "items": {"$ref": "#/definitions/dependency_rule"}
+        },
+        "validators": {
+          "type": "array",
+          "description": "Custom validator definitions",
+          "items": {"$ref": "#/definitions/validator"}
+        },
+        "subcommands": {
+          "type": "array",
+          "description": "Child command nodes",
+          "items": {"$ref": "#/definitions/command"}
+        },
+        "deprecated": {
+          "$ref": "#/definitions/deprecation"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of the configuration schema (1.0, 1.0.0, or 2.0)",
+      "pattern": "^\\d+\\.\\d+(\\.\\d+)?$"
+    },
+    "app_name": {
+      "type": "string",
+      "description": "Application name",
+      "pattern": "^[a-z0-9_-]+$"
+    },
+    "precedence": {
+      "type": "array",
+      "description": "Order of precedence for configuration sources",
+      "items": {
+        "type": "string",
+        "enum": ["args", "env", "rc"]
+      },
+      "uniqueItems": true,
+      "default": ["args", "env", "rc"]
+    },
+    "sources": {
+      "type": "object",
+      "description": "Enable/disable configuration sources",
+      "properties": {
+        "args": {"type": "boolean", "default": true},
+        "env": {"type": "boolean", "default": true},
+        "rc": {"type": "boolean", "default": true}
+      },
+      "additionalProperties": false,
+      "default": {"args": true, "env": true, "rc": true}
+    },
+    "print_help_on_err": {
+      "type": "boolean",
+      "description": "Print help on error",
+      "default": false
+    },
+    "handle_protocol": {
+      "type": "boolean",
+      "description": "Enable protocol handling",
+      "default": true
+    },
+    "reserved": {
+      "type": "object",
+      "description": "Enable/disable reserved argument names (v2.0)",
+      "properties": {
+        "help": {
+          "type": "boolean",
+          "description": "Reserve --help/-h for built-in help",
+          "default": true
+        },
+        "version": {
+          "type": "boolean",
+          "description": "Reserve --version/-V for version info",
+          "default": true
+        },
+        "debug": {
+          "type": "boolean",
+          "description": "Reserve --debug for debug output",
+          "default": true
+        }
+      },
+      "additionalProperties": false,
+      "default": {"help": true, "version": true, "debug": true}
+    },
+    "deprecation": {
+      "type": "object",
+      "description": "Deprecation handling settings (v2.0)",
+      "properties": {
+        "strict": {
+          "type": "boolean",
+          "description": "If true, deprecated items cause errors instead of warnings",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "error_recovery": {
+      "type": "object",
+      "description": "Error recovery and suggestion settings (v2.0)",
+      "properties": {
+        "suggest_distance": {
+          "type": "integer",
+          "description": "Maximum Levenshtein distance for suggestions",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 5
+        },
+        "max_suggestions": {
+          "type": "integer",
+          "description": "Maximum number of suggestions to show",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10
+        },
+        "show_available": {
+          "type": "boolean",
+          "description": "Show available commands/arguments in error messages",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "parameters": {
+      "type": "array",
+      "description": "Configuration parameters",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "namespace": {
+            "type": ["string", "null"],
+            "description": "Parameter namespace",
+            "pattern": "^[a-z0-9_-]+$"
+          },
+          "name": {
+            "type": "string",
+            "description": "Parameter name",
+            "pattern": "^[a-z0-9_-]+$"
+          },
+          "type": {
+            "type": "string",
+            "description": "Parameter type",
+            "enum": ["string", "number", "boolean"]
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether parameter is required",
+            "default": false
+          },
+          "default": {
+            "description": "Default value for parameter"
+          },
+          "accepts": {
+            "type": "array",
+            "description": "Allowed values for parameter",
+            "minItems": 2
+          },
+          "obfuscated": {
+            "type": "boolean",
+            "description": "Whether parameter should be obfuscated",
+            "default": false
+          },
+          "protocol": {
+            "type": "string",
+            "description": "Protocol for loading parameter value"
+          },
+          "min": {
+            "type": "number",
+            "description": "Minimum value for numeric parameters"
+          },
+          "max": {
+            "type": "number",
+            "description": "Maximum value for numeric parameters"
+          },
+          "deprecated": {
+            "$ref": "#/definitions/deprecation"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "arguments": {
+      "type": "array",
+      "description": "Positional arguments",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Argument name",
+            "pattern": "^[a-z0-9_-]+$"
+          },
+          "type": {
+            "type": "string",
+            "description": "Argument type",
+            "enum": ["string", "number", "boolean"]
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether argument is required",
+            "default": false
+          },
+          "default": {
+            "description": "Default value for argument"
+          },
+          "protocol": {
+            "type": "string",
+            "description": "Protocol for loading argument value"
+          },
+          "nargs": {
+            "oneOf": [
+              {"type": "string", "enum": ["?", "*", "+"]},
+              {"type": "integer", "minimum": 1}
+            ],
+            "description": "Argument count for variadic arguments"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "commands": {
+      "type": "array",
+      "description": "Command tree definition (v2.0)",
+      "items": {"$ref": "#/definitions/command"}
+    }
+  },
+  "additionalProperties": false
+}
