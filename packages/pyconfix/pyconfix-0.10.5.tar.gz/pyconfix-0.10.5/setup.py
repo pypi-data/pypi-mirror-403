@@ -1,0 +1,23 @@
+from setuptools import setup
+
+setup(
+    name="pyconfix",
+    version="0.10.5",
+    description="A simple feature managment tool library",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    author="Nemesis",
+    author_email="nemesiswasalientoo@proton.me",
+    url="https://github.com/NemesisWasAlienToo/pyconfix",
+    packages=["pyconfix"],
+    python_requires=">=3.11",
+    license="MIT",
+    install_requires=[
+        "windows-curses ; platform_system == 'Windows'"
+    ],
+    entry_points={
+        'console_scripts': [
+            'pyconfix = pyconfix.main:main',
+        ],
+    },
+)
