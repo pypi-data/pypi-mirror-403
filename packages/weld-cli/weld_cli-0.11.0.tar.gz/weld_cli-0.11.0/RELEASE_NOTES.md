@@ -1,0 +1,15 @@
+### Added
+- Documentation for `weld prompt` command to manage prompt customizations
+- prompt personalization system for customizing weld command prompts
+  - Configure via `[prompts]` section in `.weld/config.toml`
+  - Global prefix/suffix applied to all prompts
+  - Per-task prefix, suffix, and default_focus settings
+  - Layered application: global_prefix → task_prefix → prompt → task_suffix → global_suffix
+  - Includes example customizations in generated config template
+- prompt viewer command `weld prompt` for managing prompt customizations
+  - `weld prompt list`: Show all task types with customization status
+  - `weld prompt show <type>`: Display customization details for a task type
+  - `weld prompt show --raw`: Output raw template (pipe-friendly)
+  - `weld prompt show --focus`: Preview with specific focus value
+  - `weld prompt export <dir> --raw`: Export all templates as markdown files
+  - `weld prompt export --format toml/json`: Export customizations as config
