@@ -1,0 +1,143 @@
+Metadata-Version: 2.3
+Name: noot
+Version: 0.1.0
+Summary: noot library
+Author: Jack Jackson, Armin Stepanyan
+Requires-Dist: anthropic>=0.76.0
+Requires-Dist: mitmproxy
+Requires-Dist: rich
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+
+# noot
+
+[![PyPI version](https://img.shields.io/pypi/v/noot.svg)](https://pypi.org/project/noot/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CI](https://github.com/Recurse-ML/noot/actions/workflows/ci.yml/badge.svg)](https://github.com/Recurse-ML/noot/actions/workflows/ci.yml)
+
+Test interactive CLIs.
+Think [Stagehand](https://github.com/browserbase/stagehand), but for the terminal.
+
+- `f.step("Select 'pyright' from dropdown")`: Define CLI interactions in plain English.
+- `f.expect("Linting options must contain 'pyright'")`: Define expected CLI states in plain English too.
+- `assert "pyright" in f.screen().lower()`: Or make assertions on CLI state in good ol' Python.
+- Record with LLM once, replay locally and in CI/CD.
+
+## Installation
+
+```bash
+pip install noot
+```
+
+Requires [tmux](https://github.com/tmux/tmux) and an `ANTHROPIC_API_KEY` environment variable.
+
+## Quick Start
+
+Scaffold a new project:
+```bash
+noot init
+```
+
+Or add noot to an existing project:
+
+```python
+from noot import Flow
+
+def test_create_web_project():
+    with Flow.spawn('python setup_wizard.py') as f:
+        f.expect('Welcome to Project Setup Wizard')
+
+        f.step("Enter project name 'mywebapp' and press enter")
+
+        # `expect` parses assertions from natural language
+        f.expect('Web Application project option is available')
+
+        f.step('Press enter to select Web Application')
+
+        # or specify assertions on screen state directly
+        assert "author name" in f.screen()
+
+        f.step("Enter author name 'Alice' and press enter")
+```
+
+Run your tests:
+```bash
+pytest tests/test_cli.py
+```
+
+The first run records LLM responses to the cassette file. Subsequent runs replay from the cassette, so no API calls are made.
+
+## API
+
+| Method | Description |
+|--------|-------------|
+| `Flow.spawn(cmd)` | Context manager. Start a CLI process in a managed terminal session |
+| `f.step(instruction)` | Execute a natural language instruction (e.g., "Press enter", "Type 'hello'") |
+| `f.expect(condition)` | Assert the screen matches a natural language condition |
+| `f.screen()` | Return the current terminal output as a string |
+
+## Recording Modes
+
+Control recording behavior with the `RECORD_MODE` environment variable:
+
+| `RECORD_MODE` | Behavior |
+|---------------|----------|
+| `once` | **(Default)** Record if cassette is missing, replay if it exists. |
+| `none` | Replay only. Fails if a request isn't cached. Use this in CI. |
+| `all` | Always re-record, overwriting existing cassettes. |
+
+By default you don't have to think about recording and replay:
+
+```bash
+pytest tests/test_cli.py
+# Subsequent runs will use cache
+```
+
+Example - force re-recording:
+```bash
+RECORD_MODE=all pytest tests/test_cli.py
+```
+
+Example - CI mode (fail if cassette is missing):
+```bash
+RECORD_MODE=none pytest tests/test_cli.py
+```
+
+Cassettes are stored in `<project_root>/.cassettes/`:
+- CLI cassettes (LLM responses): `.cassettes/cli/`
+- HTTP cassettes (API recordings): `.cassettes/http/`
+
+## CI/CD
+
+Run tests in CI with `RECORD_MODE=none` to replay from cached cassettes (no API key needed):
+
+```yaml
+# .github/workflows/test.yml
+name: Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tmux
+        run: sudo apt-get install -y tmux
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run tests
+        run: RECORD_MODE=none pytest
+```
+
+Commit your `.cassettes/` directory to version control so CI can replay recordings.
+
+## Contributing
+
+Issues and PRs welcome.
+
+## License
+
+Apache 2.0
