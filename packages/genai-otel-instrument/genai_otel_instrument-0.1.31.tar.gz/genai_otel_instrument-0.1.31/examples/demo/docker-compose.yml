@@ -1,0 +1,226 @@
+version: '3.8'
+
+services:
+  # OpenTelemetry Collector - Central telemetry pipeline
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: genai-otel-collector
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "55680:55680"    # OTLP gRPC receiver
+      - "55681:55681"    # OTLP HTTP receiver
+      - "8888:8888"    # Prometheus metrics (collector internal)
+      - "8889:8889"    # Prometheus exporter
+    networks:
+      - genai-otel-network
+    depends_on:
+      - jaeger
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # OpenSearch - Advanced search and analytics engine for trace storage
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: genai-otel-opensearch
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"    # REST API
+      - "9600:9600"    # Performance Analyzer
+    networks:
+      - genai-otel-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # OpenSearch Setup - Creates ingest pipeline and index template
+  opensearch-setup:
+    image: alpine:latest
+    container_name: genai-otel-opensearch-setup
+    volumes:
+      - ./opensearch-setup.sh:/tmp/setup-orig.sh:ro
+    environment:
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=admin
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache curl dos2unix
+        cp /tmp/setup-orig.sh /tmp/setup.sh
+        dos2unix /tmp/setup.sh
+        sh /tmp/setup.sh
+    networks:
+      - genai-otel-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: "no"
+
+  # Jaeger - Distributed tracing backend with OpenSearch storage
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: genai-otel-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=elasticsearch
+      - ES_SERVER_URLS=http://opensearch:9200
+      - ES_USERNAME=admin
+      - ES_PASSWORD=admin
+      - ES_VERSION=7
+      - ES_TLS_ENABLED=false
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14250:14250"  # Model.proto gRPC
+      - "14268:14268"  # Jaeger Collector HTTP
+      - "4317:4317"    # OTLP gRPC receiver
+      - "4318:4318"    # OTLP HTTP receiver
+    networks:
+      - genai-otel-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:16686/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Prometheus - Metrics storage and querying
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: genai-otel-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=7d'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9091:9090"    # Prometheus UI (changed from 9090 to avoid conflict)
+    networks:
+      - genai-otel-network
+
+  # Grafana - Visualization and dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: genai-otel-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true  # Changed from false for easier access
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=false  # Usually keep this false
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+      - GF_INSTALL_PLUGINS=grafana-opensearch-datasource
+      # SQLite specific settings (optional optimizations)
+      - GF_DATABASE_TYPE=sqlite3
+      - GF_DATABASE_PATH=/var/lib/grafana/data/grafana.db
+      - GF_DATABASE_MAX_IDLE_CONN=2
+      - GF_DATABASE_MAX_OPEN_CONN=10
+      # SMTP / Email Alert Configuration (Uncomment and configure to enable)
+      # - GF_SMTP_ENABLED=true
+      # - GF_SMTP_HOST=smtp.gmail.com:587
+      # - GF_SMTP_USER=your-email@gmail.com
+      # - GF_SMTP_PASSWORD=your-app-password
+      # - GF_SMTP_FROM_ADDRESS=your-email@gmail.com
+      # - GF_SMTP_FROM_NAME=GenAI Evaluation Alerts
+      # - GF_SMTP_SKIP_VERIFY=false
+      # - GF_SMTP_STARTTLS_POLICY=MandatoryStartTLS
+      # Unified Alerting Settings (enabled by default in Grafana 9+)
+      - GF_UNIFIED_ALERTING_ENABLED=true
+      - GF_ALERTING_ENABLED=false  # Disable legacy alerting
+      - GF_UNIFIED_ALERTING_EXECUTE_ALERTS=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/data:/var/lib/grafana
+    ports:
+      - "3000:3000"    # Grafana UI
+    networks:
+      - genai-otel-network
+    depends_on:
+      - prometheus
+      - jaeger
+    restart: unless-stopped
+
+  # Demo Application
+  demo-app:
+    build:
+      context: ../..
+      dockerfile: examples/demo/Dockerfile
+    container_name: genai-otel-demo-app
+    environment:
+      # OpenTelemetry Configuration
+      - OTEL_SERVICE_NAME=genai-demo-app
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:55681
+      - OTEL_SERVICE_INSTANCE_ID=demo-instance-1
+      - OTEL_ENVIRONMENT=demo
+      - OTEL_EXPORTER_OTLP_TIMEOUT=10.0
+
+      # Semantic Conventions
+      - OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai
+      - GENAI_ENABLE_CONTENT_CAPTURE=false
+
+      # Feature Flags
+      - GENAI_ENABLE_GPU_METRICS=false
+      - GENAI_ENABLE_COST_TRACKING=true
+      - GENAI_ENABLE_MCP_INSTRUMENTATION=true
+      - GENAI_ENABLE_CO2_TRACKING=true
+
+      # API Keys (pass from host environment)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+
+      # CO2 Tracking Configuration
+      - GENAI_CO2_COUNTRY_ISO_CODE=IND  # India
+      # Optional: Specify region within India for more accurate carbon intensity
+      # - GENAI_CO2_REGION=maharashtra
+
+      # Logging
+      - GENAI_OTEL_LOG_LEVEL=INFO
+      - GENAI_FAIL_ON_ERROR=false
+    depends_on:
+      otel-collector:
+        condition: service_healthy
+    networks:
+      - genai-otel-network
+    restart: on-failure
+    command: sh -c "sleep 5 && python /app/app.py"
+
+networks:
+  genai-otel-network:
+    driver: bridge
+
+volumes:
+  opensearch-data:
+  prometheus-data:
+  grafana-data:
