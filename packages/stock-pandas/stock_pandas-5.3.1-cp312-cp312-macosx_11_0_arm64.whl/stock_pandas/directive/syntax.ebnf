@@ -1,0 +1,89 @@
+// Bitwise OR operator: '|' (lowest priority)
+// -> bool series
+directive ::= bitwise_xor_expression ( bitwise_or_operator bitwise_xor_expression )*
+
+// Bitwise XOR operator: '^'
+// -> bool series
+bitwise_xor_expression ::= bitwise_and_expression ( bitwise_xor_operator bitwise_and_expression )*
+
+// Bitwise AND operator: '&' (highest priority)
+// -> bool series
+bitwise_and_expression ::= relational_expression ( bitwise_and_operator relational_expression )*
+
+// Relational operators: '<' | '<=' | '>=' | '>'
+// -> bool series
+relational_expression ::= equality_expression ( relational_operator equality_expression )*
+
+// Equality operators: '==' | '!='
+// -> bool series
+equality_expression ::= style_expression ( equality_operator style_expression )*
+
+// Style operators: '//' | '\\' | '><'
+// -> bool series
+style_expression ::= addition_expression ( style_operator addition_expression )*
+
+// Addition operators: '+' | '-'
+// -> float series
+addition_expression ::= multiplication_expression ( addition_operator multiplication_expression )*
+
+// Multiplication operators (highest priority: '*' | '/')
+// -> float series
+multiplication_expression ::= primary_expression ( multiplication_operator primary_expression )*
+
+// Primary expressions (no operators)
+primary_expression ::= number | unary_expression
+
+unary_expression ::= ( "-" | "~" )? primary_directive
+
+primary_directive ::= wrapped_directive | command
+
+wrapped_directive ::= "(" directive ")"
+
+// Priority from lowest to highest
+// ----------------------------------------------------------------
+
+// Bitwise operators (priority: | < ^ < &)
+bitwise_or_operator ::= '|'
+bitwise_xor_operator ::= '^'
+bitwise_and_operator ::= '&'
+
+// Logical (Boolean) operators
+relational_operator ::= '<' | '<=' | '>=' | '>'
+
+equality_operator ::= '==' | '!='
+
+// Since style operator generates bool series from data series
+// for logical operators,
+// we put the priority higher than equality operators
+style_operator ::= '//' | '\\' | '><'
+
+// Math operators
+addition_operator ::= '+' | '-'
+multiplication_operator ::= '*' | '/'
+// ----------------------------------------------------------------
+
+
+command ::= command_name ( ":" param ( "," param )* )? ( "@" series ( "," series )* )?
+
+command_name ::= main_command_name ( "." sub_command_name )?
+
+// fallback to column
+main_command_name ::= ALPHABETS
+sub_command_name ::= ALPHABETS
+
+// - empty_string: default value
+// - number: number value
+param ::= EMPTY_STRING | number
+
+// - empty_string: default value
+// - ALPHABETS: column name
+// - directive: nested directive
+series ::= EMPTY_STRING | ALPHABETS | wrapped_directive
+
+number ::= ( "-" )? positive_number
+positive_number ::= DIGIT+ ( "." DIGIT+ )?
+
+DIGIT  ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+ALPHABETS ::= [a-zA-Z_][a-zA-Z0-9_]*
+EMPTY_STRING ::= ""

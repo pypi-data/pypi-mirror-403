@@ -1,0 +1,119 @@
+"""Moving average calculations.
+
+This module provides moving average implementations that use the Rust backend
+for optimal performance, with fallback to pure Python implementations.
+"""
+
+from stock_pandas.backend import use_rust, is_rust_available
+from stock_pandas.common import rolling_calc
+
+import numpy as np
+
+# Import Rust implementations if available
+if is_rust_available():
+    from stock_pandas_rs import (
+        calc_ma as _rs_calc_ma,
+        calc_ewma as _rs_calc_ewma,
+        calc_smma as _rs_calc_smma
+    )
+
+
+def calc_ewma(
+    array: np.ndarray,
+    period: int
+) -> np.ndarray:
+    """Calculates Exponential Weighted Moving Average.
+
+    About `_ewma::com`
+
+    According to pandas._libs.window.aggregations.pyx,
+    the ewma alpha which follows the formula:
+        alpha = 1. / (1. + com)
+
+    And for ewma:
+        alpha = 2. / (1 + period)
+
+    So:
+        com = (period - 1.) / 2.
+    """
+    if use_rust():
+        return np.asarray(_rs_calc_ewma(array.astype(float), period))
+
+    # Pure Python fallback
+    n = len(array)
+    result = np.empty(n)
+    result[:] = np.nan
+
+    alpha = 2.0 / (period + 1.0)
+    one_minus_alpha = 1.0 - alpha
+
+    ewma_val = np.nan
+    count = 0
+
+    for i in range(n):
+        val = float(array[i])
+        if not np.isnan(val):
+            count += 1
+            if np.isnan(ewma_val):
+                ewma_val = val
+            else:
+                ewma_val = alpha * val + one_minus_alpha * ewma_val
+
+        if count >= period:
+            result[i] = ewma_val
+
+    return result
+
+
+def calc_smma(
+    array: np.ndarray,
+    period: int
+) -> np.ndarray:
+    """Calculates Smoothed Moving Average(Modified Moving Average)
+    https://en.wikipedia.org/wiki/Moving_average#Modified_moving_average
+
+    >  SMMA is an EWMA, with `alpha = 1 / N`
+
+    1. / period = 1. / (1. + com)
+    """
+    # Note: When Rust is available, rsi() calls _rs_rsi directly,
+    # so this Rust path is only used when calc_smma is called directly.
+    if use_rust():  # pragma: no cover
+        return np.asarray(_rs_calc_smma(array.astype(float), period))
+
+    # Pure Python fallback
+    n = len(array)
+    result = np.empty(n)
+    result[:] = np.nan
+
+    alpha = 1.0 / period
+    one_minus_alpha = 1.0 - alpha
+
+    smma_val = np.nan
+    count = 0
+
+    for i in range(n):
+        val = float(array[i])
+        if not np.isnan(val):
+            count += 1
+            if np.isnan(smma_val):
+                smma_val = val
+            else:
+                smma_val = alpha * val + one_minus_alpha * smma_val
+
+        if count >= period:
+            result[i] = smma_val
+
+    return result
+
+
+def calc_ma(
+    array: np.ndarray,
+    period: int
+) -> np.ndarray:
+    """Calculates N-period Simple Moving Average
+    """
+    if use_rust():
+        return np.asarray(_rs_calc_ma(array.astype(float), period))
+
+    return rolling_calc(array, period, np.mean)
