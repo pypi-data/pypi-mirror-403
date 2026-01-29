@@ -1,0 +1,109 @@
+# DocAPI Python SDK
+
+PDF, Image, Excel 변환 API
+
+## 설치
+
+```bash
+pip install docapi
+```
+
+## 사용법
+
+```python
+from docapi import DocAPI
+
+api = DocAPI("your_api_key")  # 또는 DOCAPI_KEY 환경변수
+
+# PDF 병합
+api.merge(["a.pdf", "b.pdf"]).save("merged.pdf")
+
+# PDF 압축
+api.compress("large.pdf").save("small.pdf")
+
+# PDF → Word
+api.to_word("doc.pdf").save("doc.docx")
+
+# HTML → PDF
+api.html_to_pdf("<h1>Hello</h1>").save("hello.pdf")
+
+# URL → PDF
+api.url_to_pdf("https://example.com").save("page.pdf")
+
+# 이미지 → PDF
+api.images_to_pdf(["1.jpg", "2.png"]).save("images.pdf")
+
+# OCR
+result = api.ocr("scan.pdf")
+print(result.text)
+```
+
+## API 목록
+
+### PDF
+| 메서드 | 설명 |
+|--------|------|
+| `merge(files)` | PDF 병합 |
+| `split(file, pages)` | PDF 분할 |
+| `compress(file, level)` | PDF 압축 |
+| `rotate(file, angle)` | PDF 회전 |
+| `protect(file, password)` | 암호 설정 |
+| `unlock(file, password)` | 암호 해제 |
+| `watermark(file, text)` | 워터마크 |
+| `to_word(file)` | PDF → Word |
+| `to_excel(file)` | PDF → Excel |
+| `to_images(file)` | PDF → 이미지 |
+| `extract_text(file)` | 텍스트 추출 |
+| `ocr(file, lang)` | OCR |
+
+### 생성
+| 메서드 | 설명 |
+|--------|------|
+| `html_to_pdf(html)` | HTML → PDF |
+| `url_to_pdf(url)` | URL → PDF |
+| `md_to_pdf(md)` | Markdown → PDF |
+| `text_to_pdf(text)` | 텍스트 → PDF |
+
+### 이미지
+| 메서드 | 설명 |
+|--------|------|
+| `images_to_pdf(files)` | 이미지 → PDF |
+| `compress_image(file)` | 이미지 압축 |
+| `resize_image(file)` | 리사이즈 |
+| `convert_image(file, fmt)` | 포맷 변환 |
+| `ocr_image(file)` | 이미지 OCR |
+
+### Excel/Word
+| 메서드 | 설명 |
+|--------|------|
+| `excel_to_csv(file)` | Excel → CSV |
+| `excel_to_json(file)` | Excel → JSON |
+| `excel_to_pdf(file)` | Excel → PDF |
+| `word_to_pdf(file)` | Word → PDF |
+
+## 에러 처리
+
+```python
+from docapi import DocAPI, DocAPIError
+
+try:
+    api = DocAPI("key")
+    api.compress("file.pdf").save("out.pdf")
+except DocAPIError as e:
+    print(f"에러: {e}")
+```
+
+## 컨텍스트 매니저
+
+```python
+with DocAPI("key") as api:
+    api.merge(["a.pdf", "b.pdf"]).save("out.pdf")
+```
+
+## API 키 발급
+
+[https://pdf.evesky.net](https://pdf.evesky.net)
+
+## 라이선스
+
+MIT
