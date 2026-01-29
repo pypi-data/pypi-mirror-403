@@ -1,0 +1,704 @@
+"""Tool guide module for lazy-loading tool documentation.
+
+This module provides the get_tool_guide tool that allows AI to query
+detailed tool documentation on-demand, reducing initial token consumption.
+"""
+
+from fastmcp import FastMCP
+
+# Tool guides data (embedded to avoid packaging issues)
+TOOL_GUIDES = {
+    "version": "1.0",
+    "description": "MCP 工具详细使用指南 - AI 按需读取",
+    "categories": {
+        "project": {
+            "name_zh": "项目管理",
+            "name_en": "Project Management",
+            "description_zh": "项目扫描、目录树、项目信息管理",
+            "description_en": "Project scanning, directory tree, project info management",
+            "tools": ["scan_project", "get_project_tree", "list_projects", "get_project_info", "delete_project"]
+        },
+        "stats": {
+            "name_zh": "统计分析",
+            "name_en": "Statistics & Analysis",
+            "description_zh": "文件统计、引用排名、层级分析、函数关系",
+            "description_en": "File stats, reference ranking, depth analysis, function relations",
+            "tools": ["get_file_stats", "get_reference_ranking", "get_depth_analysis", "get_function_relations", "get_parse_logs", "set_log_level"]
+        },
+        "analysis": {
+            "name_zh": "代码分析",
+            "name_en": "Code Analysis",
+            "description_zh": "调用链追踪、符号搜索、使用查找、导入图、影响分析",
+            "description_en": "Call chain tracing, symbol search, usage finding, import graph, impact analysis",
+            "tools": ["trace_call_chain", "symbol_search", "find_all_usages", "get_import_graph", "analyze_change_impact"]
+        },
+        "quality": {
+            "name_zh": "代码质量",
+            "name_en": "Code Quality",
+            "description_zh": "复杂度分析、架构检查、死代码检测、循环依赖",
+            "description_en": "Complexity analysis, architecture checking, dead code detection, circular deps",
+            "tools": ["get_complexity_metrics", "check_layer_violations", "find_dead_code", "detect_circular_deps"]
+        },
+        "context": {
+            "name_zh": "上下文获取",
+            "name_en": "Context Retrieval",
+            "description_zh": "获取相关代码上下文、入口点发现",
+            "description_en": "Get related code context, entry point discovery",
+            "tools": ["get_related_code_context", "find_entry_points"]
+        }
+    },
+    "task_mapping": [
+        {"task_zh": "首次分析项目", "task_en": "First project analysis", "primary": "scan_project", "related": []},
+        {"task_zh": "了解项目结构", "task_en": "Understand project structure", "primary": "get_project_tree", "related": ["get_file_stats"]},
+        {"task_zh": "查找函数/类定义", "task_en": "Find function/class definition", "primary": "symbol_search", "related": []},
+        {"task_zh": "查找符号所有引用", "task_en": "Find all symbol usages", "primary": "find_all_usages", "related": []},
+        {"task_zh": "分析多文件函数关系", "task_en": "Analyze multi-file function relations", "primary": "get_function_relations", "related": ["trace_call_chain"]},
+        {"task_zh": "追踪单个函数调用链", "task_en": "Trace single function call chain", "primary": "trace_call_chain", "related": []},
+        {"task_zh": "分析文件/模块依赖", "task_en": "Analyze file/module dependencies", "primary": "get_import_graph", "related": []},
+        {"task_zh": "评估代码修改影响", "task_en": "Assess code change impact", "primary": "analyze_change_impact", "related": ["trace_call_chain"]},
+        {"task_zh": "代码质量/复杂度检查", "task_en": "Code quality/complexity check", "primary": "get_complexity_metrics", "related": ["find_dead_code"]},
+        {"task_zh": "架构分层合规检查", "task_en": "Architecture layer compliance", "primary": "check_layer_violations", "related": []},
+        {"task_zh": "检测循环依赖", "task_en": "Detect circular dependencies", "primary": "detect_circular_deps", "related": []},
+        {"task_zh": "获取相关代码上下文", "task_en": "Get related code context", "primary": "get_related_code_context", "related": []},
+        {"task_zh": "查找项目入口点", "task_en": "Find project entry points", "primary": "find_entry_points", "related": []},
+        {"task_zh": "查看最常被引用的文件", "task_en": "Find most referenced files", "primary": "get_reference_ranking", "related": []}
+    ],
+    "tools": {
+        "scan_project": {
+            "name": "scan_project",
+            "category": "project",
+            "summary_zh": "扫描并分析项目代码依赖",
+            "summary_en": "Scan and analyze project code dependencies",
+            "when_to_use": [
+                "首次分析项目（必须先扫描才能使用其他工具）",
+                "代码更新后增量扫描",
+                "切换到新项目时"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"path": "/myproject", "incremental": True},
+                "output_hint": "返回 project_id, file_count, file_types"
+            },
+            "tips": [
+                "首次扫描较慢（解析所有文件），后续增量扫描很快",
+                "include_external=true 会分析第三方依赖，增加扫描时间"
+            ],
+            "related_tools": ["get_project_info", "list_projects"]
+        },
+        "get_project_tree": {
+            "name": "get_project_tree",
+            "category": "project",
+            "summary_zh": "获取项目目录树结构",
+            "summary_en": "Get project directory tree structure",
+            "when_to_use": [
+                "快速了解项目目录结构",
+                "查看项目有哪些模块/子目录"
+            ],
+            "not_for": [
+                "获取文件内容 → 直接读取文件",
+                "获取文件统计 → get_file_stats"
+            ],
+            "example": {
+                "input": {"path": "/myproject", "max_depth": 3, "output_format": "ascii"},
+                "output_hint": "返回目录树（json 或 ascii 格式）"
+            },
+            "tips": [
+                "directories_only=true 只显示文件夹",
+                "max_depth 限制深度，-1 表示无限制",
+                "output_format='ascii' 更适合直接显示"
+            ],
+            "related_tools": ["get_file_stats"]
+        },
+        "list_projects": {
+            "name": "list_projects",
+            "category": "project",
+            "summary_zh": "获取所有已扫描的项目列表",
+            "summary_en": "Get list of all scanned projects",
+            "when_to_use": [
+                "查看有哪些项目已被扫描",
+                "获取项目 ID"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"paths_only": False},
+                "output_hint": "返回项目列表（id, name, path, file_count, last_scanned）"
+            },
+            "tips": [
+                "paths_only=true 只返回路径列表，减少输出"
+            ],
+            "related_tools": ["scan_project", "get_project_info"]
+        },
+        "get_project_info": {
+            "name": "get_project_info",
+            "category": "project",
+            "summary_zh": "获取项目详细信息",
+            "summary_en": "Get project details",
+            "when_to_use": [
+                "查看项目扫描状态",
+                "获取项目统计信息"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"path": "/myproject"},
+                "output_hint": "返回项目详情"
+            },
+            "tips": [],
+            "related_tools": ["scan_project", "list_projects"]
+        },
+        "delete_project": {
+            "name": "delete_project",
+            "category": "project",
+            "summary_zh": "删除已扫描的项目",
+            "summary_en": "Delete a scanned project",
+            "when_to_use": [
+                "清理不再需要的项目数据",
+                "重新扫描前清除旧数据"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"path": "/myproject"},
+                "output_hint": "返回删除结果"
+            },
+            "tips": [
+                "删除后需要重新 scan_project 才能使用其他工具"
+            ],
+            "related_tools": ["scan_project"]
+        },
+        "get_file_stats": {
+            "name": "get_file_stats",
+            "category": "stats",
+            "summary_zh": "获取项目文件类型统计",
+            "summary_en": "Get project file type statistics",
+            "when_to_use": [
+                "了解项目技术栈（有哪些语言/文件类型）",
+                "统计各类文件数量和占比"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"path": "/myproject", "subdirectory": "src"},
+                "output_hint": "返回 [{type: '.go', count: 50, percentage: 60.5, total_size: 102400}, ...]"
+            },
+            "tips": [
+                "subdirectory 可以只统计某个子目录"
+            ],
+            "related_tools": ["get_project_tree"]
+        },
+        "get_reference_ranking": {
+            "name": "get_reference_ranking",
+            "category": "stats",
+            "summary_zh": "获取被引用最多的文件排名",
+            "summary_en": "Get top referenced files ranking",
+            "when_to_use": [
+                "找出项目核心文件（被引用最多）",
+                "识别公共模块/工具库"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"path": "/myproject", "limit": 10, "file_type": ".go"},
+                "output_hint": "返回文件及其被引用次数和引用者列表"
+            },
+            "tips": [
+                "被引用最多的文件通常是核心模块",
+                "file_type 可以过滤特定类型文件"
+            ],
+            "related_tools": ["get_import_graph"]
+        },
+        "get_depth_analysis": {
+            "name": "get_depth_analysis",
+            "category": "stats",
+            "summary_zh": "获取目录和文件层级分析",
+            "summary_en": "Get directory and file depth analysis",
+            "when_to_use": [
+                "分析项目目录嵌套深度",
+                "检查项目结构是否合理"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"path": "/myproject"},
+                "output_hint": "返回目录深度和文件深度分布"
+            },
+            "tips": [],
+            "related_tools": ["get_project_tree"]
+        },
+        "get_function_relations": {
+            "name": "get_function_relations",
+            "category": "stats",
+            "summary_zh": "获取指定文件间的函数调用关系",
+            "summary_en": "Get function call relations between files",
+            "when_to_use": [
+                "分析多个文件之间的函数调用关系",
+                "理解模块间的依赖",
+                "绘制调用关系图"
+            ],
+            "not_for": [
+                "追踪单个函数的完整调用链 → trace_call_chain",
+                "分析文件导入关系 → get_import_graph"
+            ],
+            "example": {
+                "input": {"files": ["/project/src/a.go", "/project/src/b.go"]},
+                "output_hint": "返回 functions 列表、relations 列表、call_graph"
+            },
+            "tips": [
+                "最多支持 50 个文件",
+                "include_external=true 包含第三方库调用"
+            ],
+            "related_tools": ["trace_call_chain"]
+        },
+        "get_parse_logs": {
+            "name": "get_parse_logs",
+            "category": "stats",
+            "summary_zh": "获取解析日志",
+            "summary_en": "Get parsing logs",
+            "when_to_use": [
+                "调试解析问题",
+                "查看扫描过程中的警告/错误"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"level": "WARNING", "limit": 50},
+                "output_hint": "返回解析日志列表"
+            },
+            "tips": [
+                "level 可选 DEBUG, INFO, WARNING, ERROR"
+            ],
+            "related_tools": ["set_log_level"]
+        },
+        "set_log_level": {
+            "name": "set_log_level",
+            "category": "stats",
+            "summary_zh": "设置解析日志级别",
+            "summary_en": "Set parsing log level",
+            "when_to_use": [
+                "调试时启用详细日志",
+                "生产环境减少日志输出"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"level": "DEBUG"},
+                "output_hint": "返回设置结果"
+            },
+            "tips": [
+                "DEBUG 最详细，ERROR 最少"
+            ],
+            "related_tools": ["get_parse_logs"]
+        },
+        "trace_call_chain": {
+            "name": "trace_call_chain",
+            "category": "analysis",
+            "summary_zh": "追踪函数调用链（upstream/downstream）",
+            "summary_en": "Trace function call chains",
+            "when_to_use": [
+                "分析某函数被哪些模块调用（upstream）",
+                "理解入口函数的完整调用树（downstream）",
+                "重构前评估影响范围",
+                "理解代码执行流程"
+            ],
+            "not_for": [
+                "查找符号定义 → symbol_search",
+                "分析文件导入关系 → get_import_graph",
+                "批量分析多文件函数关系 → get_function_relations"
+            ],
+            "example": {
+                "input": {"project_path": "/myproject", "start_symbol": "CreateUser", "direction": "downstream", "depth": 3},
+                "output_hint": "返回 chains 数组，每个元素是调用路径"
+            },
+            "tips": [
+                "depth > 5 可能较慢",
+                "prune_standard_libs=true 减少标准库噪音",
+                "大型项目建议 limit_per_level <= 20"
+            ],
+            "related_tools": ["get_function_relations", "analyze_change_impact"]
+        },
+        "symbol_search": {
+            "name": "symbol_search",
+            "category": "analysis",
+            "summary_zh": "基于AST的精确符号搜索",
+            "summary_en": "AST-based precise symbol search",
+            "when_to_use": [
+                "查找函数/类/方法/变量的定义位置",
+                "按名称搜索代码符号",
+                "查找接口/结构体定义"
+            ],
+            "not_for": [
+                "查找符号的所有使用位置 → find_all_usages",
+                "全文搜索 → 使用 grep/ripgrep"
+            ],
+            "example": {
+                "input": {"project_path": "/myproject", "query": "Create", "symbol_types": ["function", "method"], "prefix_match": True},
+                "output_hint": "返回匹配的符号列表（名称、类型、文件、行号、签名）"
+            },
+            "tips": [
+                "symbol_types 可过滤: function, class, method, variable, struct, interface",
+                "prefix_match=true 匹配前缀（如 Create 匹配 CreateUser, CreateOrder）",
+                "case_sensitive=false 忽略大小写"
+            ],
+            "related_tools": ["find_all_usages"]
+        },
+        "find_all_usages": {
+            "name": "find_all_usages",
+            "category": "analysis",
+            "summary_zh": "查找符号的所有使用位置",
+            "summary_en": "Find all usages of a symbol",
+            "when_to_use": [
+                "查找函数/变量在哪些地方被使用",
+                "重命名前评估影响范围",
+                "理解符号的使用模式"
+            ],
+            "not_for": [
+                "查找符号定义 → symbol_search"
+            ],
+            "example": {
+                "input": {"project_path": "/myproject", "symbol_name": "CreateUser", "classify_types": True},
+                "output_hint": "返回定义位置 + 所有使用位置（分类：调用、赋值、参数等）"
+            },
+            "tips": [
+                "classify_types=true 会分类使用类型（call, assignment, argument 等）",
+                "symbol_type 可过滤特定类型的符号"
+            ],
+            "related_tools": ["symbol_search", "analyze_change_impact"]
+        },
+        "get_import_graph": {
+            "name": "get_import_graph",
+            "category": "analysis",
+            "summary_zh": "获取模块级导入关系图",
+            "summary_en": "Get module-level import relationship graph",
+            "when_to_use": [
+                "分析模块/文件之间的导入依赖",
+                "可视化项目依赖结构",
+                "查找某个文件被哪些文件导入"
+            ],
+            "not_for": [
+                "分析函数调用关系 → get_function_relations"
+            ],
+            "example": {
+                "input": {"project_path": "/myproject", "target_file": "src/service.go", "direction": "imported_by", "depth": 2},
+                "output_hint": "返回 nodes（文件/模块）和 edges（导入关系）"
+            },
+            "tips": [
+                "target_file 可聚焦到特定文件",
+                "direction: imports（我导入谁）, imported_by（谁导入我）, both",
+                "scope: internal（项目内）, external（第三方）, all",
+                "group_by: file, directory, package"
+            ],
+            "related_tools": ["detect_circular_deps", "analyze_change_impact"]
+        },
+        "analyze_change_impact": {
+            "name": "analyze_change_impact",
+            "category": "analysis",
+            "summary_zh": "分析文件修改的影响范围",
+            "summary_en": "Analyze the impact of file modifications",
+            "when_to_use": [
+                "修改核心文件前评估影响",
+                "重构前了解波及范围",
+                "代码审查时评估风险"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"project_path": "/myproject", "modified_files": ["src/entity.go"], "depth": 3},
+                "output_hint": "返回直接影响文件、间接影响文件、受影响的测试文件"
+            },
+            "tips": [
+                "depth 控制传递影响分析深度",
+                "结合 trace_call_chain 可以更精确分析函数级影响"
+            ],
+            "related_tools": ["trace_call_chain", "find_all_usages"]
+        },
+        "get_complexity_metrics": {
+            "name": "get_complexity_metrics",
+            "category": "quality",
+            "summary_zh": "分析代码复杂度，识别热点",
+            "summary_en": "Analyze code complexity and identify hotspots",
+            "when_to_use": [
+                "识别复杂度过高的函数",
+                "代码质量审计",
+                "找出需要重构的代码"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"project_path": "/myproject", "min_complexity": 10, "limit": 20},
+                "output_hint": "返回复杂度热点列表（函数名、文件、复杂度指标）"
+            },
+            "tips": [
+                "min_complexity 过滤低复杂度函数",
+                "directory 可限定分析范围",
+                "通常圈复杂度 > 10 需要关注"
+            ],
+            "related_tools": ["find_dead_code"]
+        },
+        "check_layer_violations": {
+            "name": "check_layer_violations",
+            "category": "quality",
+            "summary_zh": "检查架构分层违规",
+            "summary_en": "Check architecture layer violations",
+            "when_to_use": [
+                "检查 Clean Architecture 分层是否正确",
+                "验证依赖方向（domain 不应依赖 infrastructure）",
+                "架构合规审计"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"project_path": "/myproject"},
+                "output_hint": "返回违规列表（从哪层到哪层的非法依赖）"
+            },
+            "tips": [
+                "默认规则: domain 无依赖, application 依赖 domain, infrastructure 依赖 domain, interface 依赖 domain+application",
+                "可通过 rules 和 custom_patterns 自定义"
+            ],
+            "related_tools": ["get_import_graph"]
+        },
+        "find_dead_code": {
+            "name": "find_dead_code",
+            "category": "quality",
+            "summary_zh": "检测死代码（未使用的符号）",
+            "summary_en": "Detect dead code (unused symbols)",
+            "when_to_use": [
+                "清理未使用的函数/类型/常量",
+                "代码库瘦身",
+                "代码质量检查"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"project_path": "/myproject", "confidence_threshold": "high"},
+                "output_hint": "返回未使用的函数、类型、常量、未被引用的文件"
+            },
+            "tips": [
+                "include_exported=true 包含导出符号（可能被外部使用）",
+                "confidence_threshold: low/medium/high 控制置信度",
+                "include_tests=true 包含测试文件"
+            ],
+            "related_tools": ["get_complexity_metrics"]
+        },
+        "detect_circular_deps": {
+            "name": "detect_circular_deps",
+            "category": "quality",
+            "summary_zh": "检测循环依赖",
+            "summary_en": "Detect circular dependencies",
+            "when_to_use": [
+                "检查模块间是否存在循环引用",
+                "解决编译/导入问题",
+                "架构问题排查"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"project_path": "/myproject", "scope": "file"},
+                "output_hint": "返回循环依赖列表（A → B → C → A）"
+            },
+            "tips": [
+                "scope: file（文件级）, module（模块级）, package（包级）"
+            ],
+            "related_tools": ["get_import_graph"]
+        },
+        "get_related_code_context": {
+            "name": "get_related_code_context",
+            "category": "context",
+            "summary_zh": "获取文件的关联代码上下文（Repo Map）",
+            "summary_en": "Get related code context (Repo Map)",
+            "when_to_use": [
+                "修改文件前了解相关依赖",
+                "获取文件上下文用于 AI 分析",
+                "减少 Token 消耗同时保留关键信息"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"project_path": "/myproject", "file_path": "src/service.go", "hops": 2, "mode": "skeleton"},
+                "output_hint": "返回目标文件及其依赖文件的内容（根据 mode 返回完整/骨架/仅签名）"
+            },
+            "tips": [
+                "mode=full: 完整代码内容（Token 最多）",
+                "mode=skeleton: 函数签名+文档（推荐，平衡信息量和 Token）",
+                "mode=signature_only: 仅签名（Token 最少）",
+                "hops 控制依赖跳数（1-3），越大返回越多"
+            ],
+            "related_tools": ["get_import_graph"]
+        },
+        "find_entry_points": {
+            "name": "find_entry_points",
+            "category": "context",
+            "summary_zh": "查找项目入口点",
+            "summary_en": "Find project entry points",
+            "when_to_use": [
+                "快速了解项目有哪些 API 接口",
+                "查找 main 函数入口",
+                "发现数据库模型和 CLI 命令"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {"project_path": "/myproject", "types": ["http_routes", "main_entry"]},
+                "output_hint": "返回 HTTP 路由、main 函数、数据库模型、CLI 命令"
+            },
+            "tips": [
+                "types 可选: http_routes, main_entry, database_models, cli_commands",
+                "不指定 types 返回所有类型"
+            ],
+            "related_tools": ["symbol_search"]
+        },
+        "open_web_ui": {
+            "name": "open_web_ui",
+            "category": "project",
+            "summary_zh": "打开 Web 可视化界面",
+            "summary_en": "Open the web visualization UI",
+            "when_to_use": [
+                "可视化查看依赖图",
+                "交互式浏览项目结构"
+            ],
+            "not_for": [],
+            "example": {
+                "input": {},
+                "output_hint": "在浏览器中打开 Web UI"
+            },
+            "tips": [
+                "需要先 scan_project"
+            ],
+            "related_tools": ["scan_project"]
+        }
+    }
+}
+
+
+def register_guide_tools(mcp: FastMCP) -> None:
+    """Register guide tools with the MCP server."""
+
+    @mcp.tool
+    def get_tool_guide(
+        tool_name: str | None = None,
+        category: str | None = None,
+        task: str | None = None,
+        list_only: bool = False
+    ) -> dict:
+        """获取工具详细使用指南（按需加载）| Get detailed tool usage guide (lazy load)
+        
+        Args:
+            tool_name: 工具名（获取单个工具详情）
+            category: 分类过滤 project/stats/analysis/quality/context
+            task: 任务描述（返回推荐工具）
+            list_only: 仅返回工具列表（不含详情）
+        """
+        guides = TOOL_GUIDES
+        
+        # 1. Query single tool
+        if tool_name:
+            tool = guides["tools"].get(tool_name)
+            if not tool:
+                return {
+                    "error": "TOOL_NOT_FOUND",
+                    "details": f"Tool '{tool_name}' not found",
+                    "available_tools": list(guides["tools"].keys())
+                }
+            return {"success": True, "tool": tool}
+        
+        # 2. Query by category
+        if category:
+            cat = guides["categories"].get(category)
+            if not cat:
+                return {
+                    "error": "CATEGORY_NOT_FOUND",
+                    "details": f"Category '{category}' not found",
+                    "available_categories": list(guides["categories"].keys())
+                }
+            
+            if list_only:
+                return {
+                    "success": True,
+                    "category": category,
+                    "name_zh": cat["name_zh"],
+                    "name_en": cat["name_en"],
+                    "tools": cat["tools"]
+                }
+            
+            # Return full details for all tools in category
+            tools = {}
+            for t in cat["tools"]:
+                if t in guides["tools"]:
+                    tools[t] = guides["tools"][t]
+            
+            return {
+                "success": True,
+                "category": category,
+                "name_zh": cat["name_zh"],
+                "name_en": cat["name_en"],
+                "description_zh": cat["description_zh"],
+                "description_en": cat["description_en"],
+                "tools": tools
+            }
+        
+        # 3. Query by task
+        if task:
+            task_lower = task.lower()
+            
+            for mapping in guides["task_mapping"]:
+                if (task_lower in mapping["task_zh"].lower() or 
+                    task_lower in mapping["task_en"].lower()):
+                    primary = mapping["primary"]
+                    related = mapping["related"]
+                    
+                    result = {
+                        "success": True,
+                        "task": task,
+                        "matched_task_zh": mapping["task_zh"],
+                        "matched_task_en": mapping["task_en"],
+                        "recommended_tool": primary,
+                        "related_tools": related,
+                        "tool_detail": guides["tools"].get(primary)
+                    }
+                    
+                    # Include related tool details if any
+                    if related:
+                        result["related_tool_details"] = {
+                            t: guides["tools"].get(t) 
+                            for t in related 
+                            if t in guides["tools"]
+                        }
+                    
+                    return result
+            
+            # No exact match, return all task mappings for reference
+            return {
+                "success": False,
+                "message": f"No exact match for task: {task}",
+                "available_tasks": [
+                    {"zh": m["task_zh"], "en": m["task_en"], "tool": m["primary"]}
+                    for m in guides["task_mapping"]
+                ]
+            }
+        
+        # 4. Return overview (list_only mode)
+        if list_only:
+            return {
+                "success": True,
+                "categories": {
+                    k: {
+                        "name_zh": v["name_zh"],
+                        "name_en": v["name_en"],
+                        "tools": v["tools"]
+                    }
+                    for k, v in guides["categories"].items()
+                },
+                "total_tools": len(guides["tools"]),
+                "message": "Use tool_name, category, or task parameter to get details"
+            }
+        
+        # 5. Return full overview with task mapping
+        return {
+            "success": True,
+            "categories": {
+                k: {
+                    "name_zh": v["name_zh"],
+                    "name_en": v["name_en"],
+                    "description_zh": v["description_zh"],
+                    "description_en": v["description_en"],
+                    "tools": v["tools"]
+                }
+                for k, v in guides["categories"].items()
+            },
+            "task_mapping": [
+                {
+                    "task_zh": m["task_zh"],
+                    "task_en": m["task_en"],
+                    "primary": m["primary"],
+                    "related": m["related"]
+                }
+                for m in guides["task_mapping"]
+            ],
+            "total_tools": len(guides["tools"]),
+            "message": "Use tool_name, category, or task parameter to get specific details"
+        }
