@@ -1,0 +1,152 @@
+"""Informational tools for Suno API."""
+
+from core.server import mcp
+
+
+@mcp.tool()
+async def suno_list_models() -> str:
+    """List all available Suno models and their capabilities.
+
+    Shows all available model versions with their limits, features, and
+    recommended use cases. Use this to understand which model to choose
+    for your music generation.
+
+    Model comparison:
+    - chirp-v5: Latest and best quality, 8-minute max duration
+    - chirp-v4-5-plus: High quality with 8-minute duration
+    - chirp-v4-5: Recommended balance of quality and speed, 4-minute duration
+    - chirp-v4: Good quality, 150 seconds max
+    - chirp-v3-5/v3: Legacy models, 120 seconds max
+
+    Returns:
+        Table of all models with their version, limits, and features.
+    """
+    return """Available Suno Models:
+
+| Model           | Version | Prompt Limit | Style Limit | Max Duration |
+|-----------------|---------|--------------|-------------|--------------|
+| chirp-v5        | V5      | 5000 chars   | 1000 chars  | 8 minutes    |
+| chirp-v4-5-plus | V4.5+   | 5000 chars   | 1000 chars  | 8 minutes    |
+| chirp-v4-5      | V4.5    | 5000 chars   | 1000 chars  | 4 minutes    |
+| chirp-v4        | V4      | 3000 chars   | 200 chars   | 150 seconds  |
+| chirp-v3-5      | V3.5    | 3000 chars   | 200 chars   | 120 seconds  |
+| chirp-v3        | V3      | 3000 chars   | 200 chars   | 120 seconds  |
+
+Recommended: chirp-v4-5 for most use cases, chirp-v5 for best quality.
+
+Features by Version:
+- V4.5+: Vocal gender control ('f' for female, 'm' for male)
+- V5: Latest model with improved quality and 8-minute songs
+"""
+
+
+@mcp.tool()
+async def suno_list_actions() -> str:
+    """List all available Suno API actions and corresponding tools.
+
+    Reference guide for what each action does and which tool to use.
+    Helpful for understanding the full capabilities of the Suno MCP.
+
+    Returns:
+        Categorized list of all actions and their corresponding tools.
+    """
+    return """Available Suno Actions and Tools:
+
+Music Generation:
+- suno_generate_music: Create music from a simple text prompt (Inspiration Mode)
+- suno_generate_custom_music: Create music with custom lyrics and style (Custom Mode)
+- suno_extend_music: Continue an existing song from a specific timestamp
+- suno_cover_music: Create a cover/remix version of a song
+- suno_concat_music: Merge extended song segments into complete audio
+
+Persona (Voice Style):
+- suno_create_persona: Save a voice style for reuse
+- suno_generate_with_persona: Generate with a saved voice style
+
+Lyrics:
+- suno_generate_lyrics: Generate song lyrics from a prompt
+
+Task Management:
+- suno_get_task: Check status of a single generation
+- suno_get_tasks_batch: Check status of multiple generations
+
+Information:
+- suno_list_models: Show available models and their capabilities
+- suno_list_actions: Show this action reference (you are here)
+- suno_get_lyric_format_guide: Show how to format lyrics
+
+Workflow Examples:
+1. Quick song: suno_generate_music → suno_get_task
+2. Custom song: suno_generate_lyrics → suno_generate_custom_music → suno_get_task
+3. Long song: suno_generate_music → suno_extend_music (repeat) → suno_concat_music
+4. Consistent voice: suno_generate_music → suno_create_persona → suno_generate_with_persona
+"""
+
+
+@mcp.tool()
+async def suno_get_lyric_format_guide() -> str:
+    """Get guidance on formatting lyrics for Suno music generation.
+
+    Shows how to structure lyrics with section markers for best results.
+    Following this format helps Suno understand the song structure and
+    generate appropriate melodies for each section.
+
+    Returns:
+        Complete guide with section markers, examples, and tips.
+    """
+    return """Lyric Format Guide for Suno:
+
+Section Markers (use square brackets):
+- [Verse] or [Verse 1], [Verse 2]: Main storytelling sections
+- [Chorus]: Repeated catchy section (the hook)
+- [Pre-Chorus]: Build-up before chorus
+- [Bridge]: Contrasting section, usually near the end
+- [Outro]: Ending section
+- [Intro]: Opening instrumental or vocals
+
+Example Structure:
+```
+[Verse 1]
+First verse lyrics here
+Setting up the story
+
+[Pre-Chorus]
+Building anticipation
+Leading to the hook
+
+[Chorus]
+The main hook goes here
+Most memorable part
+Repeat this section
+
+[Verse 2]
+Second verse continues
+The narrative unfolds
+
+[Chorus]
+The main hook goes here
+Most memorable part
+Repeat this section
+
+[Bridge]
+Something different here
+A twist or climax
+
+[Chorus]
+The main hook goes here
+Most memorable part
+Final repetition
+
+[Outro]
+Winding down
+Fade out
+```
+
+Tips for Best Results:
+- Keep lines concise (4-8 words) for better singing flow
+- Use simple, clear language that's easy to sing
+- Include rhymes for catchiness (especially in chorus)
+- Leave some creative freedom for the AI
+- Use consistent line lengths within sections
+- End verses with a lead-in to the chorus
+"""
