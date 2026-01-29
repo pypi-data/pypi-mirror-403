@@ -1,0 +1,104 @@
+import { useState, SetStateAction } from 'react';
+import type { Dispatch } from 'react';
+import { Outlet } from 'react-router';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { PiDotsSixVerticalBold } from 'react-icons/pi';
+
+import { usePreferencesContext } from '@/contexts/PreferencesContext';
+import useLayoutPrefs from '@/hooks/useLayoutPrefs';
+import Sidebar from '@/components/ui/Sidebar/Sidebar';
+import PropertiesDrawer from '@/components/ui/PropertiesDrawer/PropertiesDrawer';
+
+export type OutletContextType = {
+  setShowPermissionsDialog: Dispatch<SetStateAction<boolean>>;
+  togglePropertiesDrawer: () => void;
+  toggleSidebar: () => void;
+  setShowConvertFileDialog: Dispatch<SetStateAction<boolean>>;
+  showPermissionsDialog: boolean;
+  showPropertiesDrawer: boolean;
+  showSidebar: boolean;
+  showConvertFileDialog: boolean;
+};
+
+export const BrowsePageLayout = () => {
+  const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
+  const [showConvertFileDialog, setShowConvertFileDialog] = useState(false);
+
+  const { preferenceQuery } = usePreferencesContext();
+  const {
+    layoutPrefsStorage,
+    togglePropertiesDrawer,
+    showPropertiesDrawer,
+    showSidebar,
+    toggleSidebar
+  } = useLayoutPrefs();
+
+  const outletContextValue: OutletContextType = {
+    setShowPermissionsDialog: setShowPermissionsDialog,
+    togglePropertiesDrawer: togglePropertiesDrawer,
+    toggleSidebar: toggleSidebar,
+    setShowConvertFileDialog: setShowConvertFileDialog,
+    showPermissionsDialog: showPermissionsDialog,
+    showPropertiesDrawer: showPropertiesDrawer,
+    showSidebar: showSidebar,
+    showConvertFileDialog: showConvertFileDialog
+  };
+
+  return (
+    <div
+      className={`flex h-full w-full overflow-y-hidden ${preferenceQuery.isPending ? 'animate-pulse gap-4 p-4' : ''}`}
+    >
+      {preferenceQuery.isPending ? (
+        <>
+          <div className="bg-surface rounded h-full w-1/4" />
+          <div className="bg-surface rounded h-full w-1/2" />
+          <div className="bg-surface rounded h-full w-1/4" />
+        </>
+      ) : (
+        <PanelGroup
+          autoSaveId="layout"
+          direction="horizontal"
+          key={`layout-${preferenceQuery.isPending}`}
+          storage={layoutPrefsStorage}
+        >
+          {showSidebar ? (
+            <>
+              <Panel defaultSize={24} id="sidebar" minSize={10} order={1}>
+                <Sidebar />
+              </Panel>
+              <PanelResizeHandle className="group relative w-3 bg-surface border-r border-surface hover:border-secondary/60">
+                <PiDotsSixVerticalBold className="icon-default stroke-2 absolute -right-1 top-1/2 stroke-black dark:stroke-white pointer-events-none" />
+              </PanelResizeHandle>
+            </>
+          ) : null}
+          <Panel id="main" order={2} style={{ overflowX: 'auto' }}>
+            <Outlet context={outletContextValue} />
+          </Panel>
+          {showPropertiesDrawer ? (
+            <>
+              {/* Need a little extra width on this handle to make up for the apparent extra width added by the sidebar grey inner border on the other handle */}
+              <PanelResizeHandle className="group relative w-3.5 bg-surface border-l border-surface hover:border-secondary/60">
+                <PiDotsSixVerticalBold className="icon-default stroke-2 absolute -left-1 top-1/2 stroke-black dark:stroke-white pointer-events-none" />
+              </PanelResizeHandle>
+              <Panel
+                className="bg-background"
+                defaultSize={24}
+                id="properties"
+                minSize={15}
+                order={3}
+                role="complementary"
+                style={{ overflowX: 'auto' }}
+              >
+                <PropertiesDrawer
+                  setShowConvertFileDialog={setShowConvertFileDialog}
+                  setShowPermissionsDialog={setShowPermissionsDialog}
+                  togglePropertiesDrawer={togglePropertiesDrawer}
+                />
+              </Panel>
+            </>
+          ) : null}
+        </PanelGroup>
+      )}
+    </div>
+  );
+};
