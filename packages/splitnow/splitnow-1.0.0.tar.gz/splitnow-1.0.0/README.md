@@ -1,0 +1,333 @@
+# SplitNOW Python SDK
+
+Python SDK (API wrapper) for [SplitNOW](https://splitnow.io), the multi-wallet instant crypto exchange. 🪼
+
+## Install
+
+```shell
+pip install splitnow
+```
+
+## Usage Example
+
+You'll need to create a SplitNOW API key if you don't have one already:
+
+1. Create a SplitNOW account at [https://splitnow.io/auth/register](https://splitnow.io/auth/register)
+2. Head to the API keys page on your account dashboard at [https://splitnow.io/account/api-keys](https://splitnow.io/account/api-keys)
+3. Copy your account's API key and store it in a safe place.
+
+This example demonstrates splitting **10 SOL** evenly across **2 wallets** through [Binance](https://binance.com/) & [Bybit](https://bybit.com/):
+
+```python
+# First, import the SplitNOW SDK into your file:
+from splitnow import (SplitNow, AssetId, NetworkId, WalletDistribution)
+
+SPLITNOW_API_KEY = "replace_me"  # Get a free API key at: https://splitnow.io/auth/register
+
+# Next, initialize the SplitNOW SDK with your API key:
+client = SplitNow(api_key=SPLITNOW_API_KEY)
+
+# (Optional) Check health
+health = client.get_health()
+print(f"API Status: {health}")
+
+# Step 1/3: Creating and fetching a quote
+quote_data = client.create_and_fetch_quote(
+    from_amount=10.0,
+    from_asset_id=AssetId.SOL,
+    from_network_id=NetworkId.SOLANA,
+    to_asset_id=AssetId.SOL,
+    to_network_id=NetworkId.SOLANA,
+    wait_time=1.0
+)
+print(f"Quote ID: {quote_data.quote_id}")
+print(f"Available rates: {len(quote_data.rates)}")
+print("Top 5 rates (with 1% slippage buffer):")
+
+# (Optional) Sort by rate descending
+sorted_rates = sorted(quote_data.rates, key=lambda x: x.exchange_rate, reverse=True)
+for rate in sorted_rates[:5]:
+    if rate.exchange_rate > 0:
+        print(f"  - {rate.exchange_id}: {rate.exchange_rate:.6f}")
+
+# Step 2/3: Creating and fetching an order
+best_rate = sorted_rates[0] if sorted_rates else None
+if best_rate and best_rate.exchange_rate > 0:
+    order_data = client.create_and_fetch_order(
+        quote_id=quote_data.quote_id,
+        from_amount=10.0,
+        from_asset_id=AssetId.SOL,
+        from_network_id=NetworkId.SOLANA,
+        wallet_distributions=[
+            WalletDistribution(
+                to_address="7ingPqZUYmuso5HakTLgoXjMpETpbZYzxeQBJChGrQn5",
+                to_pct_bips=5000,  # 50%
+                to_asset_id=AssetId.SOL,
+                to_network_id=NetworkId.SOLANA,
+                to_exchanger_id="binance"
+            ),
+            WalletDistribution(
+                to_address="92CzWZt7fD5ffhwkRNBKHxqHahVTPeWedd5UYmdmHjMw",
+                to_pct_bips=5000,  # 50%
+                to_asset_id=AssetId.SOL,
+                to_network_id=NetworkId.SOLANA,
+                to_exchanger_id="bybit"
+            )
+        ],
+        wait_time=1.0
+    )
+    print(f"Order ID: {order_data.order_id}")
+    print(f"Deposit Address: {order_data.deposit_address}")
+    print(f"Deposit Amount: {order_data.deposit_amount}")
+    
+    # The unique deposit address and amount to send to start the order
+    deposit_address = order_data.deposit_address
+    deposit_amount = order_data.deposit_amount
+    
+    order_id_for_status = order_data.order_id
+else:
+    print("Skipped (no valid rates)")
+    order_id_for_status = None
+
+# Step 3/3: Fetching an order status
+if order_id_for_status:
+    order_status = client.get_order_status(order_id_for_status)
+    print(f"Order Status: {order_status.order_status}")
+    print(f"Status Text: {order_status.order_status_text}")
+```
+
+### Understanding The 3-Step Flow
+
+To ensure a seamless SplitNOW API integration for your use case, you must first understand the **3-step flow** when using the SplitNOW API.
+
+Below is a short explainer of each step so that you can best fit each step into your own software & workflows.
+
+#### Step 1/3: `client.create_and_fetch_quote()` - Creating and fetching a quote
+
+```python
+quote_data = client.create_and_fetch_quote(
+    from_amount=10.0,
+    from_asset_id=AssetId.SOL,
+    from_network_id=NetworkId.SOLANA,
+    to_asset_id=AssetId.SOL,
+    to_network_id=NetworkId.SOLANA
+)
+```
+
+- Save `quote_data.quote_id` because you need this value to create your order in the next step.
+- You'll also probably want to do something such as filter through `quote_data.rates` to see which exchanges are available and at what rate.
+- If the `exchange_rate` key of a rate object in the `quote_data.rates` array is `0`, the pair might not be supported on that exchange.
+- You can pick any exchange no matter what, though. Our systems fall back to the next best rate if your selection is unavailable!
+
+#### Step 2/3: `client.create_and_fetch_order()` - Creating and fetching an order
+
+```python
+order_data = client.create_and_fetch_order(
+    quote_id=quote_data.quote_id,
+    from_amount=10.0,
+    from_asset_id=AssetId.SOL,
+    from_network_id=NetworkId.SOLANA,
+    wallet_distributions=[...]
+)
+```
+
+- Remember to pass in the `quote_id` from the previous step!
+- The `order_data` object contains important information you'll need for initiating the order: `order_data.deposit_address` & `order_data.deposit_amount`.
+- Once you've sent the deposit, we take care of everything else automatically!
+- Save `order_data.order_id` so you can check the status of your order anytime.
+
+#### Step 3/3: `client.get_order_status()` - Fetching an order status
+
+```python
+order_status = client.get_order_status(order_id)
+```
+
+- Remember to pass in the `order_id` from the previous step!
+- Your 6-digit order ID is returned as `order_status.order_id`.
+- You'll probably want to do something with `order_status.order_status` such as update your app's client or trigger a notification once the order status changes.
+- If you want a human-readable order status such as for your UI, use `order_status.order_status_text`.
+- Once `order_status.order_status` is `completed`, it's all done and the wallets are funded as requested! Enjoy!
+
+### Full Reference
+
+This Python SDK includes **10 functions** that wrap around the [SplitNOW API](https://splitnow.io/api/docs) to help you get up and running with creating quotes & orders quickly, no matter your use case:
+
+#### get_health
+
+```python
+def get_health() -> bool
+```
+
+- Checks whether the SplitNOW API is healthy.
+- **Returns**: A `bool` indicating API health status.
+
+API Reference: [GET /health/](https://splitnow.io/api/docs#tag/default/get/health)
+
+#### get_assets
+
+```python
+def get_assets() -> List[Asset]
+```
+
+- Gets a list of available asset IDs and network IDs.
+- **Returns:** A `List[Asset]` array.
+
+**💡 Pro Tip:** When creating quotes & orders, the `asset_id` key of each `Asset` can be used for `from_asset_id` & `to_asset_id`.
+
+**💡 Pro Tip:** When creating quotes & orders, the `network_id` key of a corresponding `Asset` can be used for `from_network_id` & `to_network_id`.
+
+API Reference: [GET /assets/](https://splitnow.io/api/docs#tag/assets/get/assets)
+
+#### get_asset_prices
+
+```python
+def get_asset_prices() -> Dict[str, Optional[float]]
+```
+
+- Gets the current USD price of each available asset by ID.
+- **Returns:** A `Dict[str, Optional[float]]` where each key is an asset ID and each value is its price.
+
+API Reference: [GET /assets/prices/](https://splitnow.io/api/docs#tag/assets/get/assetsprices)
+
+#### get_asset_deposit_limits
+
+```python
+def get_asset_deposit_limits() -> List[AssetLimit]
+```
+
+- Gets the minimum and maximum deposit (if any) for each available asset.
+- **Returns:** A `List[AssetLimit]` array.
+
+API Reference: [GET /assets/limits/](https://splitnow.io/api/docs#tag/assets/get/assetslimits)
+
+#### get_exchangers
+
+```python
+def get_exchangers() -> List[Exchanger]
+```
+
+- Get a list of available exchanger IDs.
+- **Returns:** A `List[Exchanger]` array.
+
+**💡 Pro Tip:** When creating quotes & orders, the `id` key of each `Exchanger` can be used for `to_exchanger_id`.
+
+API Reference: [GET /exchangers/](https://splitnow.io/api/docs#tag/exchangers/get/exchangers)
+
+#### create_and_fetch_quote
+
+```python
+def create_and_fetch_quote(
+    from_amount: float,
+    from_asset_id: Union[str, AssetId],
+    from_network_id: Union[str, NetworkId],
+    to_asset_id: Union[str, AssetId],
+    to_network_id: Union[str, NetworkId],
+    wait_time: float = 1.0
+) -> QuoteData
+```
+
+- Creates and fetches a quote.
+- **Parameters:**
+  - `from_amount`: A numerical amount of tokens to split.
+  - `from_asset_id`: The input asset ID returned from `get_assets`.
+  - `from_network_id`: A corresponding input network ID returned from `get_assets`.
+  - `to_asset_id`: The output asset ID returned from `get_assets`.
+  - `to_network_id`: A corresponding output network ID returned from `get_assets`.
+  - `wait_time`: Time to wait (in seconds) after creating the quote before fetching it. Default is 1.0.
+- **Returns:** A `QuoteData` object.
+
+API Reference: [POST /quotes/](https://splitnow.io/api/docs#tag/quotes/post/quotes), [GET /quotes/{id}](https://splitnow.io/api/docs#tag/quotes/get/quotesid)
+
+#### create_and_fetch_order
+
+```python
+def create_and_fetch_order(
+    quote_id: str,
+    from_amount: float,
+    from_asset_id: Union[str, AssetId],
+    from_network_id: Union[str, NetworkId],
+    wallet_distributions: List[WalletDistribution],
+    wait_time: float = 1.0
+) -> OrderData
+```
+
+- Creates and fetches an order.
+- **Parameters:**
+  - `quote_id`: A quote ID returned from `create_and_fetch_quote`.
+  - `from_amount`: A numerical amount of tokens to split.
+  - `from_asset_id`: The input asset ID returned from `get_assets`.
+  - `from_network_id`: A corresponding input network ID returned from `get_assets`.
+  - `wallet_distributions`: A `List[WalletDistribution]` containing recipient wallets and distribution preferences.
+  - `wait_time`: Time to wait (in seconds) after creating the order before fetching it. Default is 1.0.
+- **Returns:** An `OrderData` object.
+
+API Reference: [POST /orders/](https://splitnow.io/api/docs#tag/orders/post/orders), [GET /orders/{id}](https://splitnow.io/api/docs#tag/orders/get/ordersid)
+
+#### get_quote
+
+```python
+def get_quote(quote_id: str) -> Quote
+```
+
+- Fetches a quote by its ID.
+- **Parameters:**
+  - `quote_id`: The quote ID to fetch.
+- **Returns:** A `Quote` object.
+
+API Reference: [GET /quotes/{id}](https://splitnow.io/api/docs#tag/quotes/get/quotesid)
+
+#### get_order
+
+```python
+def get_order(order_id: str) -> Order
+```
+
+- Fetches an order by its ID.
+- **Parameters:**
+  - `order_id`: The order ID to fetch.
+- **Returns:** An `Order` object.
+
+API Reference: [GET /orders/{id}](https://splitnow.io/api/docs#tag/orders/get/ordersid)
+
+#### get_order_status
+
+```python
+def get_order_status(order_id: str) -> OrderStatusData
+```
+
+- Fetches the status of an order by its ID.
+- **Parameters:**
+  - `order_id`: The order ID to fetch.
+- **Returns:** An `OrderStatusData` object.
+
+API Reference: [GET /orders/{id}](https://splitnow.io/api/docs#tag/orders/get/ordersid)
+
+## Rate Limits
+
+The default rate-limit of each API key is 60 requests per minute.
+
+Don't hesitate to [contact SplitNOW](mailto:support@splitnow.io) if you need more. We scale to meet any demand instantly!
+
+## Security
+
+Never expose your SplitNOW API key to clients! If you think your API key may have been accidentally leaked, please [contact support](mailto:support@splitnow.io) right away so that we can get you set up with a fresh one.
+
+## Compliance & Restricted Regions
+
+Our API services are not available to users in the [Restricted Regions](https://splitnow.io/restricted-regions), directly or indirectly, in accordance with our [Terms of Service](https://splitnow.io/terms).
+
+## Support
+
+- Official API docs: [https://splitnow.io/api/docs](https://splitnow.io/api/docs)
+- Free 24/7 email support: [support@splitnow.io](mailto:support@splitnow.io)
+- Free community support: [SplitNOW API Developers Chat](https://t.me/splitnow_developers)
+
+## License
+
+Unlicensed (Whitelabelled)
+
+More information: [https://unlicense.org](https://unlicense.org)
+
+---
+
+*© 2025 SplitOTC, Ltd.*
