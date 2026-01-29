@@ -1,0 +1,166 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.15)'
+        required: true
+        type: string
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      create_github_release:
+        description: 'Create GitHub release'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.PAT_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Configure git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Validate version format
+      run: |
+        if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: Invalid version format. Must be MAJOR.MINOR.PATCH"
+          exit 1
+        fi
+
+    - name: Get current version
+      id: current_version
+      run: |
+        CURRENT_VERSION=$(grep -oP '__version__\s*=\s*"\K[^"]+' tallyfy/__init__.py)
+        echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "Current version: $CURRENT_VERSION"
+
+    - name: Validate version increment
+      run: |
+        CURRENT="${{ steps.current_version.outputs.current }}"
+        NEW="${{ inputs.version }}"
+
+        if [[ "$NEW" == "$CURRENT" ]]; then
+          echo "Error: New version must be different from current version"
+          exit 1
+        fi
+
+        # Simple version comparison (works for semver)
+        if [[ "$NEW" < "$CURRENT" ]]; then
+          echo "Error: New version must be higher than current version"
+          exit 1
+        fi
+
+    - name: Update version in __init__.py
+      run: |
+        sed -i 's/__version__ = ".*"/__version__ = "${{ inputs.version }}"/' tallyfy/__init__.py
+        echo "Updated tallyfy/__init__.py"
+        grep "__version__" tallyfy/__init__.py
+
+    - name: Update version in pyproject.toml
+      run: |
+        sed -i '0,/version = ".*"/s//version = "${{ inputs.version }}"/' pyproject.toml
+        echo "Updated pyproject.toml"
+        grep -m 1 "version =" pyproject.toml
+
+    - name: Update CHANGELOG.md
+      run: |
+        TODAY=$(date +%Y-%m-%d)
+
+        # Create new changelog entry
+        cat > /tmp/new_entry.md << 'EOF'
+        ## [${{ inputs.version }}] - $TODAY
+
+        ### Added
+        -
+
+        ### Changed
+        -
+
+        ### Fixed
+        -
+
+        EOF
+
+        # Insert new entry after header
+        awk '/^## \[/ && !found {print ""; system("cat /tmp/new_entry.md"); found=1} 1' CHANGELOG.md > /tmp/changelog_new.md
+        mv /tmp/changelog_new.md CHANGELOG.md
+
+        echo "Updated CHANGELOG.md with template for version ${{ inputs.version }}"
+
+    - name: Commit version bump
+      run: |
+        git add tallyfy/__init__.py pyproject.toml CHANGELOG.md
+        git commit -m "Bump version to ${{ inputs.version }}"
+        echo "Created commit for version bump"
+
+    - name: Create git tag
+      run: |
+        git tag -a "v${{ inputs.version }}" -m "Release version ${{ inputs.version }}"
+        echo "Created tag v${{ inputs.version }}"
+
+    - name: Push changes and tag
+      run: |
+        git push origin main
+        git push origin "v${{ inputs.version }}"
+        echo "Pushed commit and tag to origin"
+
+    - name: Create GitHub Release
+      if: ${{ inputs.create_github_release }}
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ inputs.version }}
+        name: Release ${{ inputs.version }}
+        body: |
+          ## Release ${{ inputs.version }}
+
+          ### What's Changed
+          Please see [CHANGELOG.md](https://github.com/tallyfy/sdk/blob/main/CHANGELOG.md) for details.
+
+          ### Installation
+          ```bash
+          pip install tallyfy==${{ inputs.version }}
+          ```
+
+          **Full Changelog**: https://github.com/tallyfy/sdk/blob/main/CHANGELOG.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Summary
+      run: |
+        echo "## 🚀 Release Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version:** ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Release Type:** ${{ inputs.release_type }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Previous Version:** ${{ steps.current_version.outputs.current }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tag:** v${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Update CHANGELOG.md with actual release notes" >> $GITHUB_STEP_SUMMARY
+        echo "2. GitHub Actions will automatically build and publish to PyPI" >> $GITHUB_STEP_SUMMARY
+        echo "3. Monitor the build: https://github.com/${{ github.repository }}/actions" >> $GITHUB_STEP_SUMMARY
