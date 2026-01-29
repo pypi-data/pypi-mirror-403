@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+
+# Copyright 2025 IDDM Authors
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+    @Date   : 2024/5/6 10:47
+    @Author : chairc
+    @Site   : https://github.com/chairc
+"""
+import torch
+import torchvision
+
+from torch.utils.data import DataLoader, DistributedSampler
+from typing import Union
+
+from iddm.config.setting import RANDOM_RESIZED_CROP_SCALE, MEAN, STD, PREFETCH_FACTOR
+from iddm.utils.check import check_path_is_exist
+from iddm.utils.logger import get_logger
+
+logger = get_logger(name=__name__)
+
+
+def get_dataset(image_size: Union[int, list, tuple], dataset_path=None, batch_size=2, num_workers=0, distributed=False):
+    """
+    Get dataset
+
+    Automatically divide labels torchvision.datasets.ImageFolder(args.dataset_path, transform=transforms)
+    If the dataset is as follow:
+        dataset_path/class_1/image_1.jpg
+        dataset_path/class_1/image_2.jpg
+        ...
+        dataset_path/class_2/image_1.jpg
+        dataset_path/class_2/image_2.jpg
+        ...
+
+    'dataset_path' is the root directory of the dataset, 'class_1', 'class_2', etc. are different categories in
+    the dataset, and each category contains several image files.
+
+    Use the 'ImageFolder' class to conveniently load image datasets with this folder structure,
+    and automatically assign corresponding labels to each image.
+
+    You can specify the root directory where the dataset is located by passing the 'dataset_path' parameter,
+    and perform operations such as image preprocessing and label conversion through other optional parameters.
+
+    About Distributed Training:
+    +------------------------+                     +-----------+
+    |DistributedSampler      |                     |DataLoader |
+    |                        |     2 indices       |           |
+    |    Some strategy       +-------------------> |           |
+    |                        |                     |           |
+    |-------------+----------|                     |           |
+                  ^                                |           |  4 data  +-------+
+                  |                                |       -------------->+ train |
+                1 | length                         |           |          +-------+
+                  |                                |           |
+    +-------------+----------+                     |           |
+    |DataSet                 |                     |           |
+    |        +---------+     |      3 Load         |           |
+    |        |  Data   +-------------------------> |           |
+    |        +---------+     |                     |           |
+    |                        |                     |           |
+    +------------------------+                     +-----------+
+
+    :param image_size: Image size
+    :param dataset_path: Dataset path
+    :param batch_size: Batch size
+    :param num_workers: Number of workers
+    :param distributed: Whether to distribute training
+    :return: dataloader
+    """
+    check_path_is_exist(path=dataset_path)
+    # Data augmentation
+    transforms = torchvision.transforms.Compose([
+        # Resize input size, input type is (height, width)
+        # torchvision.transforms.Resize(), image_size + 1/4 * image_size
+        torchvision.transforms.Resize(size=set_resize_images_size(image_size=image_size, divisor=4)),
+        # Random adjustment cropping
+        torchvision.transforms.RandomResizedCrop(size=image_size, scale=RANDOM_RESIZED_CROP_SCALE),
+        # To Tensor Format
+        torchvision.transforms.ToTensor(),
+        # For standardization, the mean and standard deviation
+        # Refer to the initialization of ImageNet
+        torchvision.transforms.Normalize(mean=MEAN, std=STD)
+    ])
+    # Load the folder data under the current path,
+    # and automatically divide the labels according to the dataset under each file name
+    dataset = torchvision.datasets.ImageFolder(root=dataset_path, transform=transforms)
+    if distributed:
+        sampler = DistributedSampler(dataset)
+        dataloader = DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+            sampler=sampler,
+            persistent_workers=True if num_workers > 0 else False,
+            prefetch_factor=PREFETCH_FACTOR if num_workers > 0 else None
+        )
+    else:
+        dataloader = DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            persistent_workers=True if num_workers > 0 else False,
+            prefetch_factor=PREFETCH_FACTOR if num_workers > 0 else None
+        )
+    logger.info(f"Current dataset status: [image size: {image_size}, dataset path: {dataset_path}, "
+                f"batch size: {batch_size}, num workers: {num_workers}, distributed: {distributed}, "
+                f"dataloader length: {len(dataloader)}, mean: {MEAN}, std: {STD}]")
+    return dataloader
+
+
+def set_resize_images_size(image_size: Union[int, list, tuple], divisor=4):
+    """
+    Set resized image size
+    :param image_size: Image size
+    :param divisor: Divisor
+    :return: image_size
+    """
+    if isinstance(image_size, (int, list, tuple)):
+        if type(image_size) is int:
+            image_size = int(image_size + image_size / divisor)
+        elif type(image_size) is list:
+            image_size = [int(x + x / divisor) for x in image_size]
+        else:
+            image_size = tuple([int(x + x / divisor) for x in image_size])
+        return image_size
+    else:
+        raise TypeError("image_size must be int, list or tuple.")
+
+
+def post_image(images, device="cpu"):
+    """
+    Post images
+    :param images: Images
+    :param device: CPU or GPU
+    :return: new_images
+    """
+    mean_tensor = torch.tensor(data=MEAN).view(1, -1, 1, 1).to(device)
+    std_tensor = torch.tensor(data=STD).view(1, -1, 1, 1).to(device)
+    new_images = images * std_tensor + mean_tensor
+    # Limit the image between 0 and 1
+    new_images = (new_images.clamp(0, 1) * 255).to(torch.uint8)
+    return new_images

@@ -1,0 +1,103 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+
+# Copyright 2025 IDDM Authors
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+    @Date   : 2024/7/9 00:01
+    @Author : chairc
+    @Site   : https://github.com/chairc
+"""
+from iddm.config.choices import image_type_choices
+
+# Temp files download path
+DOWNLOAD_FILE_TEMP_PATH = "../.temp/download_files"
+
+# Train
+MASTER_ADDR = "localhost"
+MASTER_PORT = "12345"
+EMA_BETA = 0.995
+
+# Some special parameter settings
+# model.networks
+# Image type setting (1 channel or 3 channels), you can set "RGB" or "GRAY" in the project
+IMAGE_TYPE = "RGB"
+IMAGE_CHANNEL = image_type_choices[IMAGE_TYPE]
+TIME_CHANNEL = 256
+EMB_CHANNEL = TIME_CHANNEL
+TEXT_FEAT_CHANNEL = 768
+CHANNEL_LIST = [32, 64, 128, 256, 512, 1024]
+
+DEFAULT_IMAGE_SIZE = [64, 64]
+
+# model.networks.sr
+SR_IMAGE_TYPE = "RGB"
+SR_IMAGE_CHANNEL = image_type_choices[SR_IMAGE_TYPE]
+
+# model.networks.ldm
+# Latent space channel, default is 4 (If the image is blurry, it can be set to 8), which is the same as the original LDM
+LATENT_CHANNEL = 4
+# Autoencoder image size, image size default is 64x64, so the latent mode is (64*IMAGE_SCALE)x(64*IMAGE_SCALE)
+IMAGE_SCALE = 8
+
+# Data processing
+# ****** torchvision.transforms.Compose ******
+# RandomResizedCrop
+RANDOM_RESIZED_CROP_SCALE = (0.8, 1.0)
+# Mean in datasets
+MEAN = (0.5, 0.5, 0.5)
+# Std in datasets
+STD = (0.5, 0.5, 0.5)
+# Sr mean in datasets
+SR_MEAN = (0.485, 0.456, 0.406)
+# Sr std in datasets
+SR_STD = (0.229, 0.224, 0.225)
+# ****** iddm/utils/dataset.py/get_dateset() DataLoader ******
+# Indicates the number of samples that are loaded in advance for each worker
+PREFETCH_FACTOR = 2
+# ****** iddm/sr/dataset.py/get_sr_dateset() DataLoader ******
+SR_PREFETCH_FACTOR = 2
+
+# Project
+# Log level setting
+LOG_LEVEL_DEFAULT = "INFO"
+# config
+LOG_LEVEL_CONFIG_CHOICES = "INFO"
+LOG_LEVEL_CONFIG_VERSION = "INFO"
+# model.modules
+LOG_LEVEL_MODULES_ACT = "INFO"
+LOG_LEVEL_MODULES_CONV = "INFO"
+LOG_LEVEL_MODULES_MODULE = "INFO"
+# model.samples
+LOG_LEVEL_SAMPLES_DDPM = "INFO"
+LOG_LEVEL_SAMPLES_DDIM = "INFO"
+LOG_LEVEL_SAMPLES_PLMS = "INFO"
+# model.trainers
+LOG_LEVEL_TRAINERS_DM = "INFO"
+LOG_LEVEL_TRAINERS_SR = "INFO"
+# sr
+LOG_LEVEL_SR_DEMO = "INFO"
+LOG_LEVEL_SR_INTERFACE = "INFO"
+LOG_LEVEL_SR_TRAIN = "INFO"
+# Tools
+LOG_LEVEL_TOOLS_DEPLOY = "INFO"
+LOG_LEVEL_TOOLS_TRAIN = "INFO"
+LOG_LEVEL_TOOLS_GENERATE = "INFO"
+LOG_LEVEL_TOOLS_FID_PLUS = "INFO"
+# utils
+LOG_LEVEL_UTILS_CHECK = "INFO"
+LOG_LEVEL_UTILS_CHECKPOINT = "INFO"
+LOG_LEVEL_UTILS_INIT = "INFO"
+LOG_LEVEL_UTILS_UTILS = "INFO"
