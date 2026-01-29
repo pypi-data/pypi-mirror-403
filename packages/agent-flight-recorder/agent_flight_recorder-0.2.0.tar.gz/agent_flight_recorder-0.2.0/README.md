@@ -1,0 +1,317 @@
+# Agent Flight Recorder ✈️
+
+Debug your AI Agents without burning money. **AgentFlightRecorder** caches your function outputs so you can replay failed runs for free.
+
+## The Problem
+
+AI API calls (OpenAI, Anthropic, etc.) are **expensive**. During debugging and testing, you often run the same prompts multiple times, wasting money. Agent Flight Recorder solves this by:
+
+- **Recording** API responses on first execution
+- **Replaying** cached responses on subsequent identical calls
+- **Tracking** costs and savings with detailed analytics
+- **Supporting** multiple providers (OpenAI, Anthropic)
+
+## How It Works
+
+1. **Intercept**: When you call a function or API, AFR sits in the middle.
+2. **Fingerprint**: It creates a unique "hash" based on the inputs (e.g., the prompt sent to OpenAI).
+3. **Check Cache**:
+   - **Found?** Returns the saved result instantly (0 cost, 0 latency). ✈️
+   - **New?** Executes the real function, saves the result, and returns it. 🔴
+
+This means you can run your test suite 100 times, but only pay for the API calls once.
+
+## Installation
+
+```bash
+pip install agent-flight-recorder
+```
+
+## Quick Start
+
+### Basic Usage (Without API Integration)
+
+```python
+from agent_flight_recorder import Recorder
+
+# Initialize recorder
+recorder = Recorder(save_dir="./afr_logs")
+
+# Decorate your expensive function
+@recorder.trace(session_id="my_session")
+def expensive_computation(n):
+    print(f"Computing factorial of {n}...")
+    result = 1
+    for i in range(1, n + 1):
+        result *= i
+    return result
+
+# First run: Executes and records
+result1 = expensive_computation(5)  # Takes time
+# 🔴 [RECORD] Running live function: expensive_computation...
+
+# Second run: Replayed instantly!
+result2 = expensive_computation(5)  
+# ✈️  [REPLAY] Loaded cached result for expensive_computation
+
+# View statistics
+recorder.stats()
+```
+
+### OpenAI Integration
+
+```python
+from agent_flight_recorder import Recorder
+import openai
+
+# Initialize recorder with OpenAI provider
+recorder = Recorder(
+    save_dir="./afr_logs",
+    providers=["openai"]
+)
+
+# Your OpenAI calls are now recorded & replayed!
+response1 = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "Hello!"}],
+    session_id="my_session"
+)
+
+# Identical second call uses cache (no API cost!)
+response2 = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "Hello!"}],
+    session_id="my_session"
+)
+
+# View cost savings
+recorder.stats("my_session")
+```
+
+### Anthropic Integration
+
+```python
+from agent_flight_recorder import Recorder
+from anthropic import Anthropic
+
+# Initialize with Anthropic provider
+recorder = Recorder(
+    save_dir="./afr_logs",
+    providers=["anthropic"]
+)
+
+# Your Anthropic calls are automatically intercepted
+client = Anthropic()
+response1 = client.messages.create(
+    model="claude-3-opus-20240229",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello!"}],
+    session_id="my_session"
+)
+
+# Replay the cached response
+response2 = client.messages.create(
+    model="claude-3-opus-20240229",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello!"}],
+    session_id="my_session"
+)
+```
+
+## Configuration
+
+### Recorder Parameters
+
+```python
+recorder = Recorder(
+    save_dir="./afr_logs",           # Where to store recordings
+    mode="auto",                      # "auto" (record then replay), "record-only", "replay-only"
+    providers=["openai", "anthropic"],# List of providers to intercept
+    storage_backend="sqlite"          # "sqlite" (recommended) or "json"
+)
+```
+
+### Trace Decorator Options
+
+```python
+@recorder.trace(
+    session_id="my_test",      # Unique session identifier (required)
+    ttl=3600,                  # Time-to-live in seconds (None = never expire)
+    version="v1"               # Version string to invalidate old caches
+)
+def my_function():
+    return expensive_api_call()
+```
+
+## API Reference
+
+### Recorder Methods
+
+- `trace(session_id, ttl, version)` - Decorator to record/replay function calls
+- `stats(session_id)` - Display analytics and cost savings
+- `clear(session_id)` - Clear cached recordings
+- `deactivate()` - Disable all interceptors
+- `diff(session_id_1, session_id_2)` - Compare two sessions
+
+### Command-Line Interface
+
+```bash
+# View statistics for all sessions
+afr stats
+
+# View statistics for specific session
+afr stats --session my_session
+
+# List all recorded sessions
+afr list
+
+# Clear cache for specific session
+afr clear --session my_session
+
+# Clear all caches
+afr clear
+
+# Compare two sessions
+afr diff --session session_1 --compare session_2
+```
+
+## Storage Backends
+
+### SQLite (Recommended)
+
+- **Pros**: Fast, indexed queries, built-in TTL support, cost tracking
+- **Cons**: Binary format (less portable)
+
+```python
+recorder = Recorder(storage_backend="sqlite")
+```
+
+### JSON
+
+- **Pros**: Human-readable, portable, easy to inspect
+- **Cons**: Slower for large datasets, no TTL support
+
+```python
+recorder = Recorder(storage_backend="json")
+```
+
+## Cost Estimation
+
+AgentFlightRecorder automatically estimates API costs based on token usage:
+
+- **OpenAI**: Estimates based on GPT-4, GPT-4 Turbo, GPT-3.5-turbo pricing
+- **Anthropic**: Estimates based on Claude 3 pricing
+- **Custom**: Add your own cost estimators
+
+Example output:
+```
+==================================================
+📊 AGENT FLIGHT RECORDER STATISTICS
+==================================================
+💰 Cost Saved: $3.24
+📈 Total Cost Spent: $12.56
+🔴 Live API Calls: 15
+✈️  Replayed Calls: 42
+⚡ Replay Rate: 73.7%
+==================================================
+```
+
+## Best Practices
+
+### 1. Use Session IDs Strategically
+
+```python
+# Good: Different sessions for different test suites
+@recorder.trace(session_id="test_suite_1")
+def test_function_1():
+    pass
+
+@recorder.trace(session_id="test_suite_2")
+def test_function_2():
+    pass
+```
+
+### 2. Version Your Caches
+
+```python
+# When you change prompts, update version to invalidate old caches
+@recorder.trace(session_id="chat_tests", version="v2")  # Invalidates v1 cache
+def ask_ai(question):
+    return openai.ChatCompletion.create(...)
+```
+
+### 3. Set Appropriate TTL
+
+```python
+# Short TTL for data that changes frequently
+@recorder.trace(session_id="live_data", ttl=300)  # 5 minutes
+def fetch_live_data():
+    return api.get_current_data()
+
+# No TTL for stable test data
+@recorder.trace(session_id="test_data")
+def get_test_fixture():
+    return api.get_fixture()
+```
+
+### 4. Use Replay-Only Mode for CI/CD
+
+```python
+# In CI/CD, avoid unnecessary API calls
+recorder = Recorder(
+    save_dir="./afr_logs",
+    mode="replay-only"  # Fail fast if cache is missing
+)
+```
+
+## Examples
+
+See the `examples/` directory for:
+- `example_basic.py` - Simple function recording
+- `example_openai.py` - OpenAI API integration
+- `example_anthropic.py` - Anthropic API integration
+- `example_langchain.py` - LangChain integration
+- `autogpt_example.py` - AutoGPT agent recording
+
+## Troubleshooting
+
+### Issue: "No cached result found" in replay-only mode
+
+**Solution**: Make sure you recorded sessions first in "auto" mode, then switch to "replay-only".
+
+### Issue: Cache not being used
+
+**Possible causes**:
+- Different function arguments (including kwargs order)
+- Different `version` parameter
+- TTL expired
+- Using different `session_id`
+
+### Issue: Anthropic interceptor not working
+
+**Solution**: Ensure Anthropic is installed:
+```bash
+pip install anthropic
+```
+
+## Contributing
+
+Contributions welcome! Open issues or PRs on [GitHub](https://github.com/0xdivin3/agent-flight-recorder).
+
+## License
+
+MIT License - See LICENSE file for details.
+
+## Disclaimer
+
+Agent Flight Recorder caches API responses. Be aware that:
+- Cached responses may become outdated
+- API errors are replayed as-is
+- Use version parameter to invalidate caches when needed
+- Always test with fresh API calls before production deployment
+
+## Support
+
+- **Documentation**: Check the README and examples
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/0xdivin3/agent-flight-recorder/issues)
+- **Questions**: Open a discussion or see examples folder
