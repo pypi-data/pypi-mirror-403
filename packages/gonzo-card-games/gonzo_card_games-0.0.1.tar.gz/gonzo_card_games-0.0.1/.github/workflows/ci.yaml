@@ -1,0 +1,56 @@
+name: CI Process
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  run-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    name: Test
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Install card_games package locally
+        run: python -m pip install -e .
+      - name: Run linting
+        # Run linter only on ubuntu since not compatible with windows or macos
+        # Linter local syntax: docker run -e RUN_LOCAL=true -e DEFAULT_BRANCH=main -e IGNORE_GITIGNORED_FILES=true -e VALIDATE_PYTHON_RUFF=true -e VALIDATE_PYTHON_BLACK -v .:/tmp/lint --rm ghcr.io/super-linter/super-linter:latest
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' }}
+        uses: super-linter/super-linter@v8.3.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: main
+          VALIDATE_PYTHON_RUFF: true
+          VALIDATE_PYTHON_BLACK: true
+      - name: Run tests and generate coverage report
+        run: python -m pytest --cov --cov-branch --cov-report=xml:coverage.xml --junitxml=pytest.xml
+      - name: Add Coverage Report As Comment To Pull Request
+        id: coverage
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-xml-coverage-path: ./coverage.xml
+          junitxml-path: ./pytest.xml
+      - name: Fail if coverage too low
+        if: ${{ steps.coverage.outputs.coverage < 99 }}
+        run: |
+          echo "Coverage is below 99%!"
+          exit 1
