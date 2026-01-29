@@ -1,0 +1,221 @@
+Metadata-Version: 2.4
+Name: intellema-vdk
+Version: 0.2.1
+Summary: A Voice Development Kit for different Voice Agent Platforms
+Author: Intellema
+License: MIT License
+        
+        Copyright (c) 2026 Intellema
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: livekit-api>=1.1.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: boto3>=1.28.0
+Requires-Dist: twilio
+Requires-Dist: retell-sdk
+Requires-Dist: requests
+Requires-Dist: openai
+Requires-Dist: httpx
+Requires-Dist: pyaudio
+Requires-Dist: together
+Requires-Dist: langchain-openai
+Requires-Dist: langchain-core
+Dynamic: license-file
+
+# Intellema VDK
+
+Intellema VDK is a unified Voice Development Kit designed to simplify the integration and management of various voice agent platforms. It provides a consistent, factory-based API to interact with providers like LiveKit and Retell AI, enabling developers to build scalable voice applications with ease. Whether you need real-time streaming, outbound calling, or participant management, Intellema VDK abstracts the complexity into a single, intuitive interface.
+
+## Features
+
+- **Room Management**: Create and delete rooms dynamically.
+- **Participant Management**: Generate tokens, kick users, and mute tracks.
+- **SIP Outbound Calling**: Initiate calls to phone numbers via SIP trunks.
+- **Streaming & Recording**: Stream to RTMP destinations and record room sessions directly to AWS S3.
+- **Real-time Alerts**: Send data packets (alerts) to participants.
+
+## Prerequisites
+
+- Python 3.8+
+- A SIP Provider (for outbound calls)
+
+## Installation
+
+```bash
+pip install intellema-vdk
+```
+
+## Usage
+
+### Unified Wrapper (Factory Pattern)
+
+The recommended way to use the library is via the `VoiceClient` factory:
+
+```python
+import asyncio
+from intellema_vdk import VoiceClient
+
+async def main():
+    # 1. Initialize the client
+    client = VoiceClient("livekit") 
+
+    # 2. Use methods directly
+    call_id = await client.start_outbound_call(
+        phone_number="+15551234567",
+        prompt_content="Hello from LiveKit"
+    )
+    
+    # 3. Clean API calls
+    await client.mute_participant(call_id, "user-1", "track-1", True)
+    await client.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Convenience Function
+
+For quick one-off calls, you can still use the helper:
+
+```python
+from intellema_vdk import start_outbound_call
+
+await start_outbound_call("livekit", phone_number="+1...")
+```
+
+## Speech To Text (STT)
+
+The `STTManager` class provides an interface for transcribing audio files using OpenAI's Whisper model and optionally posting the transcribed text to a specified agent API.
+
+### Usage
+
+Here's how to use the `STTManager` to transcribe an audio file and post the result:
+Ensure to set OPENAI_API_KEY and AGENT_API_URL in your `.env` file.
+
+```python
+import asyncio
+from intellema_vdk import STTManager
+
+async def main():
+    # 1- Initialize the STTManager
+    stt_manager = STTManager()
+
+    try:
+        # 2- Transcribe an audio file and post the result to your agent API URL (if provided)
+        # Replace "path/to/your/audio.mp3" with the actual file path
+        transcript = await stt_manager.transcribe_and_post("path/to/your/audio.mp3")
+        print(f"Transcription: {transcript}")
+
+    except FileNotFoundError:
+        print("The audio file was not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        # 3- Clean up
+        await stt_manager.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+    
+## TTS Streaming 
+
+The `TTSStreamer` class provides low-latency text-to-speech streaming using Together AI's inference engine. It enables real-time voice synthesis from streaming LLM responses.
+
+### Running the Sample implementation
+
+We provide a ready-to-use sample that connects LangChain (OpenAI) with the TTS Streamer.
+
+1.  **Configure Keys**: Ensure `OPENAI_API_KEY` and `TOGETHER_API_KEY` are set in your `.env`.
+2.  **Run the script**:
+    ```bash
+    python sample_implementation.py
+    ```
+
+### Library Usage
+
+You can integrate the streamer into your own loops:
+
+```python
+from intellema_vdk import TTSStreamer
+
+# 1. Initialize per turn
+tts = TTSStreamer()
+
+# 2. Feed text chunks as they are generated
+for chunk in llm_response_stream:
+    tts.feed(chunk)
+
+# 3. Flush and clean up
+tts.flush()
+tts.close()
+```
+
+## Configuration
+
+Create a `.env` file in the root directory:
+
+```bash
+LIVEKIT_URL=wss://your-livekit-domain.com
+LIVEKIT_API_KEY=your-key
+LIVEKIT_API_SECRET=your-secret
+SIP_OUTBOUND_TRUNK_ID=your-trunk-id
+TWILIO_ACCOUNT_SID=your-sid
+TWILIO_AUTH_TOKEN=your-token
+TWILIO_PHONE_NUMBER=your-number
+RETELL_API_KEY=your-retell-key
+RETELL_AGENT_ID=your-agent-id
+TOGETHER_API_KEY=your-together-key
+OPENAI_API_KEY=your-openai-key
+AGENT_API_URL=https://your-agent-api.com/endpoint
+```
+
+## Retell Setup
+
+**Important:** Before initiating calls with Retell, you must register your Twilio phone number with Retell. This binds your agent to the number and allows Retell to handle the call flow.
+
+You can register your number in two ways:
+
+1.  **Using the Helper Script:**
+    We provide an interactive script to guide you through the process:
+    ```bash
+    python import_phone_number.py
+    ```
+
+2.  **Programmatically:**
+    ```python
+    from intellema_vdk.retell_lib.retell_client import RetellManager
+    
+    manager = RetellManager()
+    # Optional: Pass termination_uri if you have a SIP trunk
+    manager.import_phone_number(nickname="My Twilio Number")
+    ```
+
+## Notes
+
+- **Retell `delete_room` Limitation**: The `delete_room` method for Retell relies on updating dynamic variables during the conversation loop. As a result, it **only works if the user speaks something** which triggers the agent to check the variable and terminate the call.
+
+
