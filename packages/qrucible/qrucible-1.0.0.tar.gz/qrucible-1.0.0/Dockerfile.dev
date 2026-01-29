@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+ && rm -rf /var/lib/apt/lists/*
+
+# Rust toolchain for building from source.
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /work
+COPY pyproject.toml Cargo.toml Cargo.lock requirements.txt README.md /work/
+COPY src /work/src
+COPY scripts /work/scripts
+COPY tests /work/tests
+
+RUN python -m pip install -U pip
+RUN python -m pip install -r requirements.txt pytest
+RUN python -m pip install maturin>=1.4,<2.0
+RUN maturin develop --release
+
+CMD ["python", "scripts/benchmark.py"]

@@ -1,0 +1,78 @@
+name: Release (PyPI)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-wheels:
+    name: Build wheels
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            manylinux: "2_28"
+          - os: macos-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build wheels (manylinux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: pyo3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist
+          manylinux: ${{ matrix.manylinux }}
+      - name: Build wheels
+        if: matrix.os != 'ubuntu-latest'
+        uses: pyo3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist
+      - name: Build sdist (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: pyo3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist
+
+  publish:
+    name: Publish to PyPI
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/project/qrucible/
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
