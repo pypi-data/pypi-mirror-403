@@ -1,0 +1,1 @@
+from .cloud_gcp_bigquery_controlled_changes import BigQueryChangelogManager
