@@ -1,0 +1,75 @@
+---
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+   pull-requests: write
+
+jobs:
+  python:
+    name: Python ${{ matrix.target }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set python version to ${{ matrix.target }}
+        run: echo "${{ matrix.target }}" > .python-version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: ${{ matrix.target }}
+        run: make ci
+
+  ci:
+    name: Run ${{ matrix.target }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - test
+          - ruff
+          - pyright
+          - check-readme
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install cowsay
+        if: matrix.target == 'check-readme'
+        run: sudo apt install -y cowsay
+
+      - name: Run ${{ matrix.target }}
+        run: make ${{ matrix.target }}
+
+      - name: Get Cover
+        if: matrix.target == 'test'
+        uses: orgoro/coverage@v3.2
+        with:
+            coverageFile: coverage.xml
+            token: ${{ secrets.GITHUB_TOKEN }}
