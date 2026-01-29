@@ -1,0 +1,189 @@
+"""Test factories for creating ErkContext instances.
+
+This module provides factory functions for creating test contexts with
+fake implementations. These are used by both erk and erk-kits tests.
+"""
+
+from pathlib import Path
+
+from erk_shared.context.context import ErkContext
+from erk_shared.context.types import LoadedConfig, RepoContext
+from erk_shared.core.claude_executor import ClaudeExecutor
+from erk_shared.core.fakes import (
+    FakeClaudeExecutor,
+    FakeCodespaceRegistry,
+    FakePlanListService,
+    FakeScriptWriter,
+)
+from erk_shared.gateway.codespace.abc import Codespace
+from erk_shared.gateway.graphite.abc import Graphite
+from erk_shared.gateway.graphite.branch_ops.abc import GraphiteBranchOps
+from erk_shared.gateway.graphite.disabled import GraphiteDisabled
+from erk_shared.git.abc import Git
+from erk_shared.git.branch_ops.abc import GitBranchOps
+from erk_shared.github.abc import GitHub
+from erk_shared.github.issues.abc import GitHubIssues
+from erk_shared.github.types import RepoInfo
+from erk_shared.learn.extraction.claude_installation.abc import ClaudeInstallation
+from erk_shared.prompt_executor.abc import PromptExecutor
+
+
+def context_for_test(
+    *,
+    github_issues: GitHubIssues | None = None,
+    git: Git | None = None,
+    github: GitHub | None = None,
+    graphite: Graphite | None = None,
+    claude_installation: ClaudeInstallation | None = None,
+    prompt_executor: PromptExecutor | None = None,
+    claude_executor: ClaudeExecutor | None = None,
+    codespace: Codespace | None = None,
+    debug: bool = False,
+    repo_root: Path | None = None,
+    cwd: Path | None = None,
+    repo_info: RepoInfo | None = None,
+) -> ErkContext:
+    """Create test context with optional pre-configured implementations.
+
+    Provides full control over all context parameters with sensible test defaults
+    for any unspecified values. Uses fakes by default to avoid subprocess calls.
+
+    This is the factory function for creating test contexts in tests.
+    It creates an ErkContext with fake implementations for all services.
+
+    Args:
+        github_issues: Optional GitHubIssues implementation. If None, creates FakeGitHubIssues.
+        git: Optional Git implementation. If None, creates FakeGit.
+        github: Optional GitHub implementation. If None, creates FakeGitHub.
+        graphite: Optional Graphite implementation. If None, creates FakeGraphite.
+        claude_installation: Optional ClaudeInstallation. If None, creates FakeClaudeInstallation.
+        prompt_executor: Optional PromptExecutor. If None, creates FakePromptExecutor.
+        claude_executor: Optional ClaudeExecutor. If None, creates FakeClaudeExecutor.
+        debug: Whether to enable debug mode (default False).
+        repo_root: Repository root path (defaults to Path("/fake/repo"))
+        cwd: Current working directory (defaults to Path("/fake/worktree"))
+        repo_info: Optional RepoInfo (owner/name). If None, repo_info will be None in context.
+
+    Returns:
+        ErkContext configured with provided values and test defaults
+
+    Example:
+        >>> from erk_shared.github.issues import FakeGitHubIssues
+        >>> from erk_shared.git.fake import FakeGit
+        >>> github = FakeGitHubIssues()
+        >>> git_ops = FakeGit()
+        >>> ctx = context_for_test(github_issues=github, git=git_ops, debug=True)
+    """
+    from erk_shared.gateway.codespace.fake import FakeCodespace
+    from erk_shared.gateway.completion.fake import FakeCompletion
+    from erk_shared.gateway.console.fake import FakeConsole
+    from erk_shared.gateway.erk_installation.fake import FakeErkInstallation
+    from erk_shared.gateway.graphite.branch_ops.fake import FakeGraphiteBranchOps
+    from erk_shared.gateway.graphite.fake import FakeGraphite
+    from erk_shared.gateway.shell.fake import FakeShell
+    from erk_shared.gateway.time.fake import FakeTime
+    from erk_shared.git.branch_ops.fake import FakeGitBranchOps
+    from erk_shared.git.fake import FakeGit
+    from erk_shared.github.fake import FakeGitHub
+    from erk_shared.github.issues.fake import FakeGitHubIssues
+    from erk_shared.github_admin.fake import FakeGitHubAdmin
+    from erk_shared.learn.extraction.claude_installation.fake import FakeClaudeInstallation
+    from erk_shared.plan_store.github import GitHubPlanStore
+    from erk_shared.prompt_executor.fake import FakePromptExecutor
+
+    # Resolve defaults - create issues first since it's composed into github
+    # Track whether issues was explicitly passed (for composition logic below)
+    issues_explicitly_passed = github_issues is not None
+
+    resolved_issues: GitHubIssues = (
+        github_issues if github_issues is not None else FakeGitHubIssues()
+    )
+    resolved_git: Git = git if git is not None else FakeGit()
+    # Compose github with issues
+    # If github is provided without issues_gateway, use github as-is (it has its own issues)
+    # Only inject issues if caller explicitly passed BOTH github and github_issues
+    if github is None:
+        resolved_github: GitHub = FakeGitHub(issues_gateway=resolved_issues)
+    elif isinstance(github, FakeGitHub) and issues_explicitly_passed:
+        # Caller passed both github and github_issues separately - inject issues
+        # into the existing FakeGitHub instance to preserve test references
+        github._issues_gateway = resolved_issues
+        resolved_github = github
+    else:
+        resolved_github = github
+    resolved_graphite: Graphite = graphite if graphite is not None else FakeGraphite()
+
+    # Create linked sub-gateways so mutation tracking is shared between fakes.
+    # This allows tests to check FakeGit.deleted_branches while mutations go through
+    # BranchManager (which uses FakeGitBranchOps under the hood).
+    if isinstance(resolved_git, FakeGit):
+        resolved_git_branch_ops: GitBranchOps = resolved_git.create_linked_branch_ops()
+    else:
+        resolved_git_branch_ops = FakeGitBranchOps()
+
+    if isinstance(resolved_graphite, GraphiteDisabled):
+        resolved_graphite_branch_ops: GraphiteBranchOps | None = None
+    elif isinstance(resolved_graphite, FakeGraphite):
+        resolved_graphite_branch_ops = resolved_graphite.create_linked_branch_ops()
+    else:
+        resolved_graphite_branch_ops = FakeGraphiteBranchOps()
+    resolved_repo_root: Path = repo_root if repo_root is not None else Path("/fake/repo")
+    resolved_claude_installation: ClaudeInstallation = (
+        claude_installation
+        if claude_installation is not None
+        else FakeClaudeInstallation.for_test()
+    )
+    resolved_prompt_executor: PromptExecutor = (
+        prompt_executor if prompt_executor is not None else FakePromptExecutor()
+    )
+    resolved_claude_executor: ClaudeExecutor = (
+        claude_executor if claude_executor is not None else FakeClaudeExecutor()
+    )
+    resolved_codespace: Codespace = codespace if codespace is not None else FakeCodespace()
+    resolved_cwd: Path = cwd if cwd is not None else Path("/fake/worktree")
+
+    # Create repo context
+    repo_dir = Path("/fake/erk/repos") / resolved_repo_root.name
+    repo = RepoContext(
+        root=resolved_repo_root,
+        repo_name=resolved_repo_root.name,
+        repo_dir=repo_dir,
+        worktrees_dir=repo_dir / "worktrees",
+        pool_json_path=repo_dir / "pool.json",
+    )
+
+    fake_time = FakeTime()
+    fake_console = FakeConsole(
+        is_interactive=True,
+        is_stdout_tty=None,
+        is_stderr_tty=None,
+        confirm_responses=None,
+    )
+    return ErkContext(
+        git=resolved_git,
+        git_branch_ops=resolved_git_branch_ops,
+        github=resolved_github,
+        github_admin=FakeGitHubAdmin(),
+        claude_installation=resolved_claude_installation,
+        prompt_executor=resolved_prompt_executor,
+        graphite=resolved_graphite,
+        graphite_branch_ops=resolved_graphite_branch_ops,
+        console=fake_console,
+        time=fake_time,
+        erk_installation=FakeErkInstallation(),
+        plan_store=GitHubPlanStore(resolved_issues, fake_time),
+        shell=FakeShell(),
+        completion=FakeCompletion(),
+        codespace=resolved_codespace,
+        claude_executor=resolved_claude_executor,
+        script_writer=FakeScriptWriter(),
+        codespace_registry=FakeCodespaceRegistry(),
+        plan_list_service=FakePlanListService(),
+        cwd=resolved_cwd,
+        repo=repo,
+        repo_info=repo_info,
+        global_config=None,
+        local_config=LoadedConfig.test(),
+        dry_run=False,
+        debug=debug,
+    )

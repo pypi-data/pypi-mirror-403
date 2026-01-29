@@ -1,0 +1,232 @@
+"""Context types for erk and erk-kits.
+
+This module provides the core data types used by ErkContext:
+- RepoContext: Repository discovery result
+- NoRepoSentinel: Sentinel for when not in a repository
+- GlobalConfig: Global erk configuration
+- LoadedConfig: Repository-level configuration
+- InteractiveClaudeConfig: Configuration for interactive Claude launches
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, Self
+
+from erk_shared.github.types import GitHubRepoId
+
+# Claude CLI permission modes:
+# - "default": Default mode with permission prompts
+# - "acceptEdits": Accept edits without prompts (--permission-mode acceptEdits)
+# - "plan": Plan mode for exploration and planning (--permission-mode plan)
+# - "bypassPermissions": Bypass all permissions (--permission-mode bypassPermissions)
+ClaudePermissionMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
+
+
+@dataclass(frozen=True)
+class RepoContext:
+    """Represents a git repo root and its managed worktrees directory.
+
+    Attributes:
+        root: The actual working tree root (where git commands run).
+              For worktrees, this is the worktree directory.
+              For main repos, this equals main_repo_root.
+        repo_name: Name of the repository (derived from main_repo_root).
+        repo_dir: Path to erk metadata directory (~/.erk/repos/<repo-name>).
+        worktrees_dir: Path to worktrees directory (~/.erk/repos/<repo-name>/worktrees).
+        main_repo_root: The main repository root (for consistent metadata paths).
+                       For worktrees, this is the parent repo's root directory.
+                       For main repos, this equals root.
+                       Defaults to root for backwards compatibility.
+        github: GitHub repository identity, if available.
+    """
+
+    root: Path
+    repo_name: str
+    repo_dir: Path  # ~/.erk/repos/<repo-name>
+    worktrees_dir: Path  # ~/.erk/repos/<repo-name>/worktrees
+    pool_json_path: Path  # ~/.erk/repos/<repo-name>/pool.json
+    main_repo_root: Path | None = None  # Defaults to root for backwards compatibility
+    github: GitHubRepoId | None = None  # None if not a GitHub repo or no remote
+
+    def __post_init__(self) -> None:
+        """Set main_repo_root to root if not provided."""
+        if self.main_repo_root is None:
+            # Use object.__setattr__ because dataclass is frozen
+            object.__setattr__(self, "main_repo_root", self.root)
+
+
+@dataclass(frozen=True)
+class NoRepoSentinel:
+    """Sentinel value indicating execution outside a git repository.
+
+    Used when commands run outside git repositories (e.g., before init,
+    in non-git directories). Commands that require repo context can check
+    for this sentinel and fail fast.
+    """
+
+    message: str = "Not inside a git repository"
+
+
+@dataclass(frozen=True)
+class InteractiveClaudeConfig:
+    """Configuration for interactive Claude CLI launches.
+
+    All fields are optional in the config file. CLI flags always override
+    config values. This is loaded from [interactive-claude] section in
+    ~/.erk/config.toml.
+
+    Attributes:
+        model: Claude model to use (e.g., "claude-opus-4-5")
+        verbose: Whether to show verbose output
+        permission_mode: Claude CLI permission mode. See ClaudePermissionMode for options.
+        dangerous: Whether to skip permission prompts (--dangerously-skip-permissions)
+        allow_dangerous: Whether to enable --allow-dangerously-skip-permissions flag,
+            which lets the user opt into skipping prompts during a session
+    """
+
+    model: str | None
+    verbose: bool
+    permission_mode: ClaudePermissionMode
+    dangerous: bool
+    allow_dangerous: bool
+
+    @staticmethod
+    def default() -> InteractiveClaudeConfig:
+        """Create default configuration with sensible defaults."""
+        return InteractiveClaudeConfig(
+            model=None,
+            verbose=False,
+            permission_mode="acceptEdits",
+            dangerous=False,
+            allow_dangerous=False,
+        )
+
+    def with_overrides(
+        self: Self,
+        *,
+        permission_mode_override: ClaudePermissionMode | None,
+        model_override: str | None,
+        dangerous_override: bool | None,
+        allow_dangerous_override: bool | None,
+    ) -> InteractiveClaudeConfig:
+        """Create a new config with CLI overrides applied.
+
+        CLI flags always override config values. Pass None to keep config value.
+
+        Args:
+            permission_mode_override: Override permission_mode if not None
+            model_override: Override model if not None
+            dangerous_override: Override dangerous if not None
+            allow_dangerous_override: Override allow_dangerous if not None
+
+        Returns:
+            New InteractiveClaudeConfig with overrides applied
+        """
+        new_permission_mode: ClaudePermissionMode = (
+            permission_mode_override
+            if permission_mode_override is not None
+            else self.permission_mode
+        )
+        return InteractiveClaudeConfig(
+            model=model_override if model_override is not None else self.model,
+            verbose=self.verbose,
+            permission_mode=new_permission_mode,
+            dangerous=dangerous_override if dangerous_override is not None else self.dangerous,
+            allow_dangerous=(
+                allow_dangerous_override
+                if allow_dangerous_override is not None
+                else self.allow_dangerous
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class GlobalConfig:
+    """Immutable global configuration data.
+
+    Loaded once at CLI entry point and stored in ErkContext.
+    All fields are read-only after construction.
+    """
+
+    erk_root: Path
+    use_graphite: bool
+    shell_setup_complete: bool
+    github_planning: bool
+    fix_conflicts_require_dangerous_flag: bool = True
+    show_hidden_commands: bool = False
+    prompt_learn_on_land: bool = True
+    shell_integration: bool = False
+    interactive_claude: InteractiveClaudeConfig = InteractiveClaudeConfig.default()
+
+    @staticmethod
+    def test(
+        erk_root: Path,
+        *,
+        use_graphite: bool = True,
+        shell_setup_complete: bool = True,
+        github_planning: bool = True,
+        fix_conflicts_require_dangerous_flag: bool = True,
+        show_hidden_commands: bool = False,
+        prompt_learn_on_land: bool = True,
+        shell_integration: bool = False,
+        interactive_claude: InteractiveClaudeConfig | None = None,
+    ) -> GlobalConfig:
+        """Create a GlobalConfig with sensible test defaults."""
+        return GlobalConfig(
+            erk_root=erk_root,
+            use_graphite=use_graphite,
+            shell_setup_complete=shell_setup_complete,
+            github_planning=github_planning,
+            fix_conflicts_require_dangerous_flag=fix_conflicts_require_dangerous_flag,
+            show_hidden_commands=show_hidden_commands,
+            prompt_learn_on_land=prompt_learn_on_land,
+            shell_integration=shell_integration,
+            interactive_claude=(
+                interactive_claude
+                if interactive_claude is not None
+                else InteractiveClaudeConfig.default()
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class LoadedConfig:
+    """In-memory representation of merged repo + project config."""
+
+    env: dict[str, str]
+    post_create_commands: list[str]
+    post_create_shell: str | None
+    plans_repo: str | None
+    pool_size: int | None  # None = use default
+    pool_checkout_commands: list[str]  # Commands to run after pooled checkout
+    pool_checkout_shell: str | None  # Shell to use for checkout commands
+    # Overridable global keys (can be set at repo or local level to override global config)
+    prompt_learn_on_land: bool | None  # None = not set at this level, use global
+
+    @staticmethod
+    def test(
+        *,
+        env: dict[str, str] | None = None,
+        post_create_commands: list[str] | None = None,
+        post_create_shell: str | None = None,
+        plans_repo: str | None = None,
+        pool_size: int | None = None,
+        pool_checkout_commands: list[str] | None = None,
+        pool_checkout_shell: str | None = None,
+        prompt_learn_on_land: bool | None = None,
+    ) -> LoadedConfig:
+        """Create a LoadedConfig with sensible test defaults."""
+        return LoadedConfig(
+            env=env if env is not None else {},
+            post_create_commands=post_create_commands if post_create_commands is not None else [],
+            post_create_shell=post_create_shell,
+            plans_repo=plans_repo,
+            pool_size=pool_size,
+            pool_checkout_commands=(
+                pool_checkout_commands if pool_checkout_commands is not None else []
+            ),
+            pool_checkout_shell=pool_checkout_shell,
+            prompt_learn_on_land=prompt_learn_on_land,
+        )

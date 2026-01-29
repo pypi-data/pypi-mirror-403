@@ -1,0 +1,879 @@
+"""Fake git operations for testing.
+
+FakeGit is an in-memory implementation that accepts pre-configured state
+in its constructor. Construct instances directly with keyword arguments.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from erk_shared.git.branch_ops.fake import FakeGitBranchOps
+from pathlib import Path
+from typing import NamedTuple
+
+from erk_shared.git.abc import BranchDivergence, BranchSyncInfo, Git, RebaseResult, WorktreeInfo
+from erk_shared.git.worktree.abc import Worktree
+from erk_shared.git.worktree.fake import FakeWorktree
+
+
+class PushedBranch(NamedTuple):
+    """Record of a branch push operation.
+
+    Attributes:
+        remote: Remote name (e.g., "origin")
+        branch: Branch name that was pushed
+        set_upstream: Whether -u flag was used to set upstream tracking
+        force: Whether --force flag was used for force push
+    """
+
+    remote: str
+    branch: str
+    set_upstream: bool
+    force: bool
+
+
+class FakeGit(Git):
+    """In-memory fake implementation of git operations.
+
+    State Management:
+    -----------------
+    This fake maintains mutable state to simulate git's stateful behavior.
+    Operations like add_worktree, checkout_branch modify internal state.
+    State changes are visible to subsequent method calls within the same test.
+
+    When to Use Mutation:
+    --------------------
+    - Operations that simulate stateful external systems (git, databases)
+    - When tests need to verify sequences of operations
+    - When simulating side effects visible to production code
+
+    Constructor Injection:
+    ---------------------
+    All INITIAL state is provided via constructor (immutable after construction).
+    Runtime mutations occur through operation methods.
+    Tests should construct fakes with complete initial state.
+
+    Mutation Tracking:
+    -----------------
+    This fake tracks mutations for test assertions via read-only properties:
+    - deleted_branches: Branches deleted via delete_branch()
+    - added_worktrees: Worktrees added via add_worktree()
+    - removed_worktrees: Worktrees removed via remove_worktree()
+    - checked_out_branches: Branches checked out via checkout_branch()
+
+    Examples:
+    ---------
+        # Initial state via constructor
+        git_ops = FakeGit(
+            worktrees={repo: [WorktreeInfo(path=wt1, branch="main")]},
+            current_branches={wt1: "main"},
+            git_common_dirs={repo: repo / ".git"},
+        )
+
+        # Mutation through operation
+        git_ops.add_worktree(repo, wt2, branch="feature")
+
+        # Verify mutation
+        assert len(git_ops.list_worktrees(repo)) == 2
+        assert (wt2, "feature") in git_ops.added_worktrees
+
+        # Verify sequence of operations
+        git_ops.checkout_branch(repo, "feature")
+        git_ops.delete_branch(repo, "old-feature", force=True)
+        assert (repo, "feature") in git_ops.checked_out_branches
+        assert "old-feature" in git_ops.deleted_branches
+    """
+
+    def __init__(
+        self,
+        *,
+        worktrees: dict[Path, list[WorktreeInfo]] | None = None,
+        current_branches: dict[Path, str | None] | None = None,
+        default_branches: dict[Path, str] | None = None,
+        trunk_branches: dict[Path, str] | None = None,
+        git_common_dirs: dict[Path, Path] | None = None,
+        branch_heads: dict[str, str] | None = None,
+        commit_messages: dict[str, str] | None = None,
+        staged_repos: set[Path] | None = None,
+        file_statuses: dict[Path, tuple[list[str], list[str], list[str]]] | None = None,
+        ahead_behind: dict[tuple[Path, str], tuple[int, int]] | None = None,
+        behind_commit_authors: dict[tuple[Path, str], list[str]] | None = None,
+        branch_sync_info: dict[str, BranchSyncInfo] | None = None,
+        recent_commits: dict[Path, list[dict[str, str]]] | None = None,
+        existing_paths: set[Path] | None = None,
+        file_contents: dict[Path, str] | None = None,
+        delete_branch_raises: dict[str, Exception] | None = None,
+        local_branches: dict[Path, list[str]] | None = None,
+        remote_branches: dict[Path, list[str]] | None = None,
+        tracking_branch_failures: dict[str, str] | None = None,
+        dirty_worktrees: set[Path] | None = None,
+        branch_last_commit_times: dict[str, str] | None = None,
+        repository_roots: dict[Path, Path] | None = None,
+        diff_to_branch: dict[tuple[Path, str], str] | None = None,
+        merge_conflicts: dict[tuple[str, str], bool] | None = None,
+        commits_ahead: dict[tuple[Path, str], int] | None = None,
+        remote_urls: dict[tuple[Path, str], str] | None = None,
+        add_all_raises: Exception | None = None,
+        pull_branch_raises: Exception | None = None,
+        branch_issues: dict[str, int] | None = None,
+        conflicted_files: list[str] | None = None,
+        rebase_in_progress: bool = False,
+        rebase_continue_raises: Exception | None = None,
+        rebase_continue_clears_rebase: bool = False,
+        commit_messages_since: dict[tuple[Path, str], list[str]] | None = None,
+        head_commit_messages_full: dict[Path, str] | None = None,
+        git_user_name: str | None = None,
+        branch_commits_with_authors: dict[str, list[dict[str, str]]] | None = None,
+        push_to_remote_raises: Exception | None = None,
+        existing_tags: set[str] | None = None,
+        branch_divergence: dict[tuple[Path, str, str], BranchDivergence] | None = None,
+        rebase_onto_result: RebaseResult | None = None,
+        rebase_abort_raises: Exception | None = None,
+        pull_rebase_raises: Exception | None = None,
+        merge_bases: dict[tuple[str, str], str] | None = None,
+    ) -> None:
+        """Create FakeGit with pre-configured state.
+
+        Args:
+            worktrees: Mapping of repo_root -> list of worktrees
+            current_branches: Mapping of cwd -> current branch
+            default_branches: Mapping of repo_root -> default branch
+            trunk_branches: Mapping of repo_root -> trunk branch name
+            git_common_dirs: Mapping of cwd -> git common directory
+            branch_heads: Mapping of branch name -> commit SHA
+            commit_messages: Mapping of commit SHA -> commit message
+            staged_repos: Set of repo roots that should report staged changes
+            file_statuses: Mapping of cwd -> (staged, modified, untracked) files
+            ahead_behind: Mapping of (cwd, branch) -> (ahead, behind) counts
+            behind_commit_authors: Mapping of (cwd, branch) -> list of author names
+                for commits on remote but not locally
+            branch_sync_info: Mapping of branch name -> BranchSyncInfo for batch queries
+            recent_commits: Mapping of cwd -> list of commit info dicts
+            existing_paths: Set of paths that should be treated as existing (for pure mode)
+            file_contents: Mapping of path -> file content (for commands that read files)
+            delete_branch_raises: Mapping of branch name -> exception to raise on delete
+            local_branches: Mapping of repo_root -> list of local branch names
+            remote_branches: Mapping of repo_root -> list of remote branch names
+                (with prefix like 'origin/branch-name')
+            tracking_branch_failures: Mapping of branch name -> error message to raise
+                when create_tracking_branch is called for that branch
+            dirty_worktrees: Set of worktree paths that have uncommitted/staged/untracked changes
+            branch_last_commit_times: Mapping of branch name -> ISO 8601 timestamp for last commit
+            repository_roots: Mapping of cwd -> repository root path
+            diff_to_branch: Mapping of (cwd, branch) -> diff output
+            merge_conflicts: Mapping of (base_branch, head_branch) -> has conflicts bool
+            commits_ahead: Mapping of (cwd, base_branch) -> commit count
+            remote_urls: Mapping of (repo_root, remote_name) -> remote URL
+            add_all_raises: Exception to raise when add_all() is called
+            pull_branch_raises: Exception to raise when pull_branch() is called
+            branch_issues: Mapping of branch name -> issue number for get_branch_issue()
+            conflicted_files: List of file paths with merge conflicts
+            rebase_in_progress: Whether a rebase is currently in progress
+            rebase_continue_raises: Exception to raise when rebase_continue() is called
+            rebase_continue_clears_rebase: If True, rebase_continue() clears the rebase state
+            commit_messages_since: Mapping of (cwd, base_branch) -> list of commit messages
+            head_commit_messages_full: Mapping of cwd -> full commit message for HEAD
+            git_user_name: Configured git user.name to return from get_git_user_name()
+            branch_commits_with_authors: Mapping of branch name -> list of commit dicts
+                with keys: sha, author, timestamp
+            push_to_remote_raises: Exception to raise when push_to_remote() is called
+            existing_tags: Set of tag names that exist in the repository
+            branch_divergence: Mapping of (cwd, branch, remote) -> BranchDivergence
+                for is_branch_diverged_from_remote()
+            rebase_onto_result: Result to return from rebase_onto(). Defaults to success.
+            rebase_abort_raises: Exception to raise when rebase_abort() is called
+            pull_rebase_raises: Exception to raise when pull_rebase() is called
+            merge_bases: Mapping of (ref1, ref2) -> merge base commit SHA for
+                get_merge_base(). Keys are ordered pairs, so (A, B) and (B, A)
+                are both checked.
+        """
+        self._worktrees = worktrees or {}
+        self._current_branches = current_branches or {}
+        self._default_branches = default_branches or {}
+        self._trunk_branches = trunk_branches or {}
+        self._git_common_dirs = git_common_dirs or {}
+        self._branch_heads = branch_heads or {}
+        self._commit_messages = commit_messages or {}
+        self._repos_with_staged_changes: set[Path] = staged_repos or set()
+        self._file_statuses = file_statuses or {}
+        self._ahead_behind = ahead_behind or {}
+        self._behind_commit_authors = behind_commit_authors or {}
+        self._branch_sync_info = branch_sync_info or {}
+        self._recent_commits = recent_commits or {}
+        self._existing_paths = existing_paths or set()
+        self._file_contents = file_contents or {}
+        self._delete_branch_raises = delete_branch_raises or {}
+        self._local_branches = local_branches or {}
+        self._remote_branches = remote_branches or {}
+        self._tracking_branch_failures = tracking_branch_failures or {}
+        self._dirty_worktrees = dirty_worktrees or set()
+        self._branch_last_commit_times = branch_last_commit_times or {}
+        self._repository_roots = repository_roots or {}
+        self._diff_to_branch = diff_to_branch or {}
+        self._merge_conflicts = merge_conflicts or {}
+        self._commits_ahead = commits_ahead or {}
+        self._remote_urls = remote_urls or {}
+        self._add_all_raises = add_all_raises
+        self._pull_branch_raises = pull_branch_raises
+        self._branch_issues = branch_issues or {}
+        self._conflicted_files = conflicted_files or []
+        self._rebase_in_progress = rebase_in_progress
+        self._rebase_continue_raises = rebase_continue_raises
+        self._rebase_continue_clears_rebase = rebase_continue_clears_rebase
+        self._commit_messages_since = commit_messages_since or {}
+        self._head_commit_messages_full = head_commit_messages_full or {}
+        self._git_user_name = git_user_name
+        self._branch_commits_with_authors = branch_commits_with_authors or {}
+        self._push_to_remote_raises = push_to_remote_raises
+        self._existing_tags: set[str] = existing_tags or set()
+        self._branch_divergence = branch_divergence or {}
+        self._rebase_onto_result = rebase_onto_result
+        self._rebase_abort_raises = rebase_abort_raises
+        self._pull_rebase_raises = pull_rebase_raises
+        self._merge_bases = merge_bases or {}
+
+        # Mutation tracking
+        self._deleted_branches: list[str] = []
+        self._checked_out_branches: list[tuple[Path, str]] = []
+        self._detached_checkouts: list[tuple[Path, str]] = []
+        self._fetched_branches: list[tuple[str, str]] = []
+        self._pulled_branches: list[tuple[str, str, bool]] = []
+        self._created_tracking_branches: list[tuple[str, str]] = []
+        self._staged_files: list[str] = []
+        self._commits: list[tuple[Path, str, list[str]]] = []
+        self._pushed_branches: list[PushedBranch] = []
+        self._created_branches: list[
+            tuple[Path, str, str, bool]
+        ] = []  # (cwd, branch_name, start_point, force)
+        self._rebase_continue_calls: list[Path] = []
+        self._config_settings: list[tuple[str, str, str]] = []  # (key, value, scope)
+        self._created_tags: list[tuple[str, str]] = []  # (tag_name, message)
+        self._pushed_tags: list[tuple[str, str]] = []  # (remote, tag_name)
+        self._rebase_onto_calls: list[tuple[Path, str]] = []  # (cwd, target_ref)
+        self._rebase_abort_calls: list[Path] = []
+        self._pull_rebase_calls: list[tuple[Path, str, str]] = []  # (cwd, remote, branch)
+
+        # Worktree subgateway
+        self._worktree_gateway = FakeWorktree(
+            worktrees=self._worktrees,
+            existing_paths=self._existing_paths,
+            dirty_worktrees=self._dirty_worktrees,
+        )
+
+    @property
+    def worktree(self) -> Worktree:
+        """Access worktree operations subgateway."""
+        return self._worktree_gateway
+
+    def get_current_branch(self, cwd: Path) -> str | None:
+        """Get the currently checked-out branch."""
+        return self._current_branches.get(cwd)
+
+    def detect_trunk_branch(self, repo_root: Path) -> str:
+        """Auto-detect the trunk branch name."""
+        if repo_root in self._trunk_branches:
+            return self._trunk_branches[repo_root]
+        # Default to "main" if not configured
+        return "main"
+
+    def validate_trunk_branch(self, repo_root: Path, name: str) -> str:
+        """Validate that a configured trunk branch exists."""
+        # Check trunk_branches first
+        if repo_root in self._trunk_branches and self._trunk_branches[repo_root] == name:
+            return name
+        # Check local_branches as well
+        if repo_root in self._local_branches and name in self._local_branches[repo_root]:
+            return name
+        error_msg = (
+            f"Error: Configured trunk branch '{name}' does not exist in repository.\n"
+            f"Update your configuration in pyproject.toml or create the branch."
+        )
+        raise RuntimeError(error_msg)
+
+    def list_local_branches(self, repo_root: Path) -> list[str]:
+        """List all local branch names in the repository."""
+        return self._local_branches.get(repo_root, [])
+
+    def list_remote_branches(self, repo_root: Path) -> list[str]:
+        """List all remote branch names in the repository (fake implementation)."""
+        return self._remote_branches.get(repo_root, [])
+
+    def get_git_common_dir(self, cwd: Path) -> Path | None:
+        """Get the common git directory.
+
+        Mimics `git rev-parse --git-common-dir` behavior:
+        1. First checks explicit mapping for cwd or ancestors
+        2. Handles symlink resolution differences (e.g., /var vs /private/var on macOS)
+        3. Returns None if not in a git repository
+        """
+        # Build a resolved-key lookup for symlink handling
+        resolved_lookup = {k.resolve(): v for k, v in self._git_common_dirs.items()}
+        resolved_cwd = cwd.resolve()
+
+        # Check exact match first
+        if resolved_cwd in resolved_lookup:
+            return resolved_lookup[resolved_cwd]
+
+        # Walk up parent directories to find a match
+        for parent in resolved_cwd.parents:
+            if parent in resolved_lookup:
+                return resolved_lookup[parent]
+
+        return None
+
+    def has_staged_changes(self, repo_root: Path) -> bool:
+        """Report whether the repository has staged changes."""
+        return repo_root in self._repos_with_staged_changes
+
+    def has_uncommitted_changes(self, cwd: Path) -> bool:
+        """Check if a worktree has uncommitted changes."""
+        staged, modified, untracked = self._file_statuses.get(cwd, ([], [], []))
+        return bool(staged or modified or untracked)
+
+    def get_branch_head(self, repo_root: Path, branch: str) -> str | None:
+        """Get the commit SHA at the head of a branch."""
+        return self._branch_heads.get(branch)
+
+    def get_commit_message(self, repo_root: Path, commit_sha: str) -> str | None:
+        """Get the commit message for a given commit SHA."""
+        return self._commit_messages.get(commit_sha)
+
+    def get_file_status(self, cwd: Path) -> tuple[list[str], list[str], list[str]]:
+        """Get lists of staged, modified, and untracked files."""
+        return self._file_statuses.get(cwd, ([], [], []))
+
+    def get_ahead_behind(self, cwd: Path, branch: str) -> tuple[int, int]:
+        """Get number of commits ahead and behind tracking branch."""
+        return self._ahead_behind.get((cwd, branch), (0, 0))
+
+    def get_behind_commit_authors(self, cwd: Path, branch: str) -> list[str]:
+        """Get authors of commits on remote that are not in local branch."""
+        return self._behind_commit_authors.get((cwd, branch), [])
+
+    def get_all_branch_sync_info(self, repo_root: Path) -> dict[str, BranchSyncInfo]:
+        """Get sync status for all local branches (fake implementation)."""
+        return self._branch_sync_info.copy()
+
+    def get_recent_commits(self, cwd: Path, *, limit: int = 5) -> list[dict[str, str]]:
+        """Get recent commit information."""
+        commits = self._recent_commits.get(cwd, [])
+        return commits[:limit]
+
+    def fetch_branch(self, repo_root: Path, remote: str, branch: str) -> None:
+        """Fetch a specific branch from a remote (tracks mutation)."""
+        self._fetched_branches.append((remote, branch))
+
+    def pull_branch(self, repo_root: Path, remote: str, branch: str, *, ff_only: bool) -> None:
+        """Pull a specific branch from a remote (tracks mutation)."""
+        self._pulled_branches.append((remote, branch, ff_only))
+        if self._pull_branch_raises is not None:
+            raise self._pull_branch_raises
+
+    def branch_exists_on_remote(self, repo_root: Path, remote: str, branch: str) -> bool:
+        """Check if a branch exists on a remote (fake implementation).
+
+        Returns True if the branch exists in the configured remote branches.
+        Checks for the branch in format: remote/branch (e.g., origin/feature).
+        """
+        remote_branches = self._remote_branches.get(repo_root, [])
+        remote_ref = f"{remote}/{branch}"
+        return remote_ref in remote_branches
+
+    @property
+    def deleted_branches(self) -> list[str]:
+        """Get the list of branches that have been deleted.
+
+        This property is for test assertions only.
+        """
+        return self._deleted_branches.copy()
+
+    @property
+    def created_branches(self) -> list[tuple[Path, str, str, bool]]:
+        """Get list of branches created during test.
+
+        Returns list of (cwd, branch_name, start_point, force) tuples.
+        This property is for test assertions only.
+        """
+        return self._created_branches.copy()
+
+    @property
+    def added_worktrees(self) -> list[tuple[Path, str | None]]:
+        """Get list of worktrees added during test.
+
+        Returns list of (path, branch) tuples.
+        This property is for test assertions only.
+        """
+        return self._worktree_gateway.added_worktrees
+
+    @property
+    def removed_worktrees(self) -> list[Path]:
+        """Get list of worktrees removed during test.
+
+        This property is for test assertions only.
+        """
+        return self._worktree_gateway.removed_worktrees
+
+    @property
+    def checked_out_branches(self) -> list[tuple[Path, str]]:
+        """Get list of branches checked out during test.
+
+        Returns list of (cwd, branch) tuples.
+        This property is for test assertions only.
+        """
+        return self._checked_out_branches.copy()
+
+    @property
+    def detached_checkouts(self) -> list[tuple[Path, str]]:
+        """Get list of detached HEAD checkouts during test.
+
+        Returns list of (cwd, ref) tuples.
+        This property is for test assertions only.
+        """
+        return self._detached_checkouts.copy()
+
+    @property
+    def fetched_branches(self) -> list[tuple[str, str]]:
+        """Get list of branches fetched during test.
+
+        Returns list of (remote, branch) tuples.
+        This property is for test assertions only.
+        """
+        return self._fetched_branches.copy()
+
+    @property
+    def pulled_branches(self) -> list[tuple[str, str, bool]]:
+        """Get list of branches pulled during test.
+
+        Returns list of (remote, branch, ff_only) tuples.
+        This property is for test assertions only.
+        """
+        return self._pulled_branches.copy()
+
+    @property
+    def chdir_history(self) -> list[Path]:
+        """Get list of directories changed to during test.
+
+        Returns list of Path objects passed to safe_chdir().
+        This property is for test assertions only.
+        """
+        return self._worktree_gateway.chdir_history
+
+    @property
+    def created_tracking_branches(self) -> list[tuple[str, str]]:
+        """Get list of tracking branches created during test.
+
+        Returns list of (branch, remote_ref) tuples.
+        This property is for test assertions only.
+        """
+        return self._created_tracking_branches.copy()
+
+    def read_file(self, path: Path) -> str:
+        """Read file content from in-memory store.
+
+        Used in erk_inmem_env for commands that need to read files
+        (e.g., plan files, config files) without actual filesystem I/O.
+
+        Raises:
+            FileNotFoundError: If path not in file_contents mapping.
+        """
+        if path not in self._file_contents:
+            raise FileNotFoundError(f"No content for {path}")
+        return self._file_contents[path]
+
+    def get_branch_issue(self, repo_root: Path, branch: str) -> int | None:
+        """Extract GitHub issue number from branch name.
+
+        Branch names follow the pattern: {issue_number}-{slug}-{timestamp}
+
+        Uses configured branch_issues mapping if available, otherwise extracts
+        from branch name.
+        """
+        # Check configured mapping first (allows tests to override)
+        if branch in self._branch_issues:
+            return self._branch_issues[branch]
+
+        from erk_shared.naming import extract_leading_issue_number
+
+        return extract_leading_issue_number(branch)
+
+    def fetch_pr_ref(
+        self, *, repo_root: Path, remote: str, pr_number: int, local_branch: str
+    ) -> None:
+        """Record PR ref fetch in fake storage (mutates internal state).
+
+        Simulates fetching a PR ref by creating a local branch. In real git,
+        this would fetch refs/pull/<number>/head and create the branch.
+        """
+        # Track the fetch for test assertions
+        self._fetched_branches.append((remote, f"pull/{pr_number}/head"))
+
+        # In the fake, we simulate branch creation by adding to local branches
+        if repo_root not in self._local_branches:
+            self._local_branches[repo_root] = []
+        if local_branch not in self._local_branches[repo_root]:
+            self._local_branches[repo_root].append(local_branch)
+
+    def stage_files(self, cwd: Path, paths: list[str]) -> None:
+        """Record staged files for commit."""
+        self._staged_files.extend(paths)
+
+    def commit(self, cwd: Path, message: str) -> None:
+        """Record commit with staged changes.
+
+        Also updates commits_ahead for the parent branch if state is tracked.
+        This ensures that test scenarios where uncommitted changes are committed
+        result in the expected commit count increase.
+        """
+        self._commits.append((cwd, message, list(self._staged_files)))
+        self._staged_files = []  # Clear staged files after commit
+
+        # Update commits_ahead for all tracked parent branches at this cwd
+        for (path, base_branch), count in list(self._commits_ahead.items()):
+            if path == cwd:
+                self._commits_ahead[(cwd, base_branch)] = count + 1
+
+    def push_to_remote(
+        self,
+        cwd: Path,
+        remote: str,
+        branch: str,
+        *,
+        set_upstream: bool = False,
+        force: bool = False,
+    ) -> None:
+        """Record push to remote, or raise if failure configured."""
+        if self._push_to_remote_raises is not None:
+            raise self._push_to_remote_raises
+        self._pushed_branches.append(
+            PushedBranch(remote=remote, branch=branch, set_upstream=set_upstream, force=force)
+        )
+
+    @property
+    def staged_files(self) -> list[str]:
+        """Read-only access to currently staged files for test assertions."""
+        return self._staged_files
+
+    @property
+    def commits(self) -> list[tuple[Path, str, list[str]]]:
+        """Read-only access to commits for test assertions.
+
+        Returns list of (cwd, message, staged_files) tuples.
+        """
+        return self._commits
+
+    @property
+    def pushed_branches(self) -> list[PushedBranch]:
+        """Read-only access to pushed branches for test assertions.
+
+        Returns list of PushedBranch named tuples with fields:
+        remote, branch, set_upstream, force.
+        """
+        return self._pushed_branches
+
+    def get_branch_last_commit_time(self, repo_root: Path, branch: str, trunk: str) -> str | None:
+        """Get the author date of the most recent commit unique to a branch."""
+        return self._branch_last_commit_times.get(branch)
+
+    def add_all(self, cwd: Path) -> None:
+        """Stage all changes for commit (git add -A).
+
+        Also clears dirty worktree state since changes are now staged.
+        Raises configured exception if add_all_raises was set.
+        """
+        if self._add_all_raises is not None:
+            raise self._add_all_raises
+        # Clear dirty state - changes are staged for commit
+        self._dirty_worktrees.discard(cwd)
+
+    def amend_commit(self, cwd: Path, message: str) -> None:
+        """Amend the current commit with a new message."""
+        # In the fake, replace last commit message if commits exist
+        if self._commits:
+            last_commit = self._commits[-1]
+            self._commits[-1] = (last_commit[0], message, last_commit[2])
+        else:
+            # If no commits tracked yet, create one to track the amend
+            self._commits.append((cwd, message, []))
+
+    def count_commits_ahead(self, cwd: Path, base_branch: str) -> int:
+        """Count commits in HEAD that are not in base_branch."""
+        return self._commits_ahead.get((cwd, base_branch), 0)
+
+    def get_repository_root(self, cwd: Path) -> Path:
+        """Get the repository root directory.
+
+        Mimics `git rev-parse --show-toplevel` behavior:
+        1. First checks explicit repository_roots mapping
+        2. Falls back to finding the deepest worktree path that contains cwd
+        3. Falls back to deriving root from git_common_dirs (parent of .git directory)
+        4. Returns cwd as last resort if no match found
+        5. Handles symlink resolution differences (e.g., /var vs /private/var on macOS)
+        """
+        resolved_cwd = cwd.resolve()
+
+        # Check explicit mapping first (with symlink resolution)
+        resolved_roots = {k.resolve(): v for k, v in self._repository_roots.items()}
+        if resolved_cwd in resolved_roots:
+            return resolved_roots[resolved_cwd]
+
+        # Infer from worktrees: find the deepest worktree path that contains cwd
+        # This mimics git --show-toplevel returning the worktree root from subdirectories
+        best_match: Path | None = None
+        for worktree_list in self._worktrees.values():
+            for wt_info in worktree_list:
+                wt_path = wt_info.path.resolve()
+                # Check if cwd is the worktree path or a subdirectory of it
+                if resolved_cwd == wt_path or wt_path in resolved_cwd.parents:
+                    # Prefer deeper paths (more specific match)
+                    if best_match is None or len(wt_path.parts) > len(best_match.parts):
+                        best_match = wt_path
+
+        if best_match is not None:
+            return best_match
+
+        # Fallback: derive from git_common_dirs (parent of .git directory is repo root)
+        # This handles the case where we're in a subdirectory of a normal repo (not a worktree)
+        git_common_dir = self.get_git_common_dir(cwd)
+        if git_common_dir is not None:
+            # For normal repos, git_common_dir is the .git directory
+            # Its parent is the repository root
+            return git_common_dir.parent
+
+        # Last resort: return cwd itself
+        return cwd
+
+    def get_diff_to_branch(self, cwd: Path, branch: str) -> str:
+        """Get diff between branch and HEAD."""
+        return self._diff_to_branch.get((cwd, branch), "")
+
+    def check_merge_conflicts(self, cwd: Path, base_branch: str, head_branch: str) -> bool:
+        """Check if merging would have conflicts using git merge-tree."""
+        return self._merge_conflicts.get((base_branch, head_branch), False)
+
+    def get_remote_url(self, repo_root: Path, remote: str = "origin") -> str:
+        """Get the URL for a git remote.
+
+        Raises:
+            ValueError: If remote doesn't exist or has no URL
+        """
+        url = self._remote_urls.get((repo_root, remote))
+        if url is None:
+            raise ValueError(f"Remote '{remote}' not found in repository")
+        return url
+
+    def get_conflicted_files(self, cwd: Path) -> list[str]:
+        """Get list of files with merge conflicts."""
+        return list(self._conflicted_files)
+
+    def is_rebase_in_progress(self, cwd: Path) -> bool:
+        """Check if a rebase is in progress."""
+        return self._rebase_in_progress
+
+    def rebase_continue(self, cwd: Path) -> None:
+        """Continue an in-progress rebase."""
+        if self._rebase_continue_raises is not None:
+            raise self._rebase_continue_raises
+        self._rebase_continue_calls.append(cwd)
+        if self._rebase_continue_clears_rebase:
+            self._rebase_in_progress = False
+
+    @property
+    def rebase_continue_calls(self) -> list[Path]:
+        """Get list of rebase_continue calls for test assertions."""
+        return list(self._rebase_continue_calls)
+
+    def get_commit_messages_since(self, cwd: Path, base_branch: str) -> list[str]:
+        """Get full commit messages for commits in HEAD but not in base_branch."""
+        return self._commit_messages_since.get((cwd, base_branch), [])
+
+    def config_set(self, cwd: Path, key: str, value: str, *, scope: str = "local") -> None:
+        """Record git config set for test assertions."""
+        self._config_settings.append((key, value, scope))
+
+    @property
+    def config_settings(self) -> list[tuple[str, str, str]]:
+        """Get list of config settings applied during test.
+
+        Returns list of (key, value, scope) tuples.
+        This property is for test assertions only.
+        """
+        return self._config_settings.copy()
+
+    def get_head_commit_message_full(self, cwd: Path) -> str:
+        """Get the full commit message (subject + body) of HEAD.
+
+        Returns:
+            Full commit message from head_commit_messages_full if configured,
+            or the message from the most recent commit if commits were created,
+            or empty string as fallback.
+        """
+        # Check configured messages first
+        if cwd in self._head_commit_messages_full:
+            return self._head_commit_messages_full[cwd]
+
+        # Fallback: return message from most recent commit at this cwd
+        for commit_cwd, message, _files in reversed(self._commits):
+            if commit_cwd == cwd:
+                return message
+
+        return ""
+
+    def get_git_user_name(self, cwd: Path) -> str | None:
+        """Get the configured git user.name."""
+        return self._git_user_name
+
+    def get_branch_commits_with_authors(
+        self, repo_root: Path, branch: str, trunk: str, *, limit: int = 50
+    ) -> list[dict[str, str]]:
+        """Get commits on branch not on trunk, with author and timestamp."""
+        commits = self._branch_commits_with_authors.get(branch, [])
+        return commits[:limit]
+
+    def tag_exists(self, repo_root: Path, tag_name: str) -> bool:
+        """Check if a git tag exists in the fake state."""
+        return tag_name in self._existing_tags
+
+    def create_tag(self, repo_root: Path, tag_name: str, message: str) -> None:
+        """Create an annotated git tag (mutates internal state)."""
+        self._existing_tags.add(tag_name)
+        self._created_tags.append((tag_name, message))
+
+    def push_tag(self, repo_root: Path, remote: str, tag_name: str) -> None:
+        """Push a tag to a remote (tracks mutation)."""
+        self._pushed_tags.append((remote, tag_name))
+
+    @property
+    def created_tags(self) -> list[tuple[str, str]]:
+        """Get list of tags created during test.
+
+        Returns list of (tag_name, message) tuples.
+        This property is for test assertions only.
+        """
+        return self._created_tags.copy()
+
+    @property
+    def pushed_tags(self) -> list[tuple[str, str]]:
+        """Get list of tags pushed during test.
+
+        Returns list of (remote, tag_name) tuples.
+        This property is for test assertions only.
+        """
+        return self._pushed_tags.copy()
+
+    def is_branch_diverged_from_remote(
+        self, cwd: Path, branch: str, remote: str
+    ) -> BranchDivergence:
+        """Check if a local branch has diverged from its remote tracking branch.
+
+        Returns the configured divergence state if the key exists in branch_divergence,
+        otherwise returns BranchDivergence(False, 0, 0) to indicate no divergence.
+        """
+        key = (cwd, branch, remote)
+        if key in self._branch_divergence:
+            return self._branch_divergence[key]
+        return BranchDivergence(is_diverged=False, ahead=0, behind=0)
+
+    def rebase_onto(self, cwd: Path, target_ref: str) -> RebaseResult:
+        """Rebase the current branch onto a target ref.
+
+        Returns the configured rebase_onto_result if set, otherwise returns success.
+        Tracks call for test assertions.
+        """
+        self._rebase_onto_calls.append((cwd, target_ref))
+        if self._rebase_onto_result is not None:
+            return self._rebase_onto_result
+        return RebaseResult(success=True, conflict_files=())
+
+    def rebase_abort(self, cwd: Path) -> None:
+        """Abort an in-progress rebase operation.
+
+        Tracks call for test assertions. Raises configured exception if set.
+        """
+        self._rebase_abort_calls.append(cwd)
+        if self._rebase_abort_raises is not None:
+            raise self._rebase_abort_raises
+
+    @property
+    def rebase_onto_calls(self) -> list[tuple[Path, str]]:
+        """Get list of rebase_onto calls for test assertions.
+
+        Returns list of (cwd, target_ref) tuples.
+        This property is for test assertions only.
+        """
+        return list(self._rebase_onto_calls)
+
+    @property
+    def rebase_abort_calls(self) -> list[Path]:
+        """Get list of rebase_abort calls for test assertions.
+
+        This property is for test assertions only.
+        """
+        return list(self._rebase_abort_calls)
+
+    def pull_rebase(self, cwd: Path, remote: str, branch: str) -> None:
+        """Pull and rebase from remote branch.
+
+        Tracks call for test assertions. Raises configured exception if set.
+        On success, clears the behind count in branch_divergence for this branch.
+        """
+        self._pull_rebase_calls.append((cwd, remote, branch))
+        if self._pull_rebase_raises is not None:
+            raise self._pull_rebase_raises
+        # Simulate successful rebase by clearing behind count
+        key = (cwd, branch, remote)
+        if key in self._branch_divergence:
+            old = self._branch_divergence[key]
+            self._branch_divergence[key] = BranchDivergence(
+                is_diverged=False, ahead=old.ahead, behind=0
+            )
+
+    @property
+    def pull_rebase_calls(self) -> list[tuple[Path, str, str]]:
+        """Get list of pull_rebase calls for test assertions.
+
+        Returns list of (cwd, remote, branch) tuples.
+        This property is for test assertions only.
+        """
+        return list(self._pull_rebase_calls)
+
+    def get_merge_base(self, repo_root: Path, ref1: str, ref2: str) -> str | None:
+        """Get the merge base commit SHA between two refs.
+
+        Checks both (ref1, ref2) and (ref2, ref1) key orderings.
+        """
+        if (ref1, ref2) in self._merge_bases:
+            return self._merge_bases[(ref1, ref2)]
+        if (ref2, ref1) in self._merge_bases:
+            return self._merge_bases[(ref2, ref1)]
+        return None
+
+    def create_linked_branch_ops(self) -> FakeGitBranchOps:
+        """Create a FakeGitBranchOps linked to this FakeGit's state.
+
+        The returned FakeGitBranchOps shares mutable state and mutation tracking
+        with this FakeGit instance. This allows tests to check FakeGit properties
+        like deleted_branches while mutations happen through BranchManager.
+
+        Returns:
+            FakeGitBranchOps with linked state and mutation tracking
+        """
+        from erk_shared.git.branch_ops.fake import FakeGitBranchOps
+
+        ops = FakeGitBranchOps(
+            worktrees=self._worktrees,
+            current_branches=self._current_branches,
+            local_branches=self._local_branches,
+            delete_branch_raises=self._delete_branch_raises,
+            tracking_branch_failures=self._tracking_branch_failures,
+        )
+        # Link mutation tracking so FakeGit properties see mutations from FakeGitBranchOps
+        ops.link_mutation_tracking(
+            created_branches=self._created_branches,
+            deleted_branches=self._deleted_branches,
+            checked_out_branches=self._checked_out_branches,
+            detached_checkouts=self._detached_checkouts,
+            created_tracking_branches=self._created_tracking_branches,
+        )
+        return ops
