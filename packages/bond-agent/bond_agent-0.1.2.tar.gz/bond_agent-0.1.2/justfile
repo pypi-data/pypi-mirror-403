@@ -1,0 +1,416 @@
+# Bond Agent UI - Command Runner
+# Forensic timeline viewer for Bond agent traces
+# Run `just` to see all available commands
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+# Default ports
+ui_port := "5173"
+backend_port := "8000"
+
+# Project paths (relative to this justfile)
+project_root := justfile_directory()
+ui_dir := justfile_directory() / "ui"
+
+# =============================================================================
+# Default & Help
+# =============================================================================
+
+# List all available commands
+default:
+    @just --list
+
+# Show detailed help for demo setup
+help:
+    @echo "Bond Agent UI - Forensic Timeline Viewer"
+    @echo "========================================="
+    @echo ""
+    @echo "Quick Start:"
+    @echo "  just setup      Install all dependencies"
+    @echo "  just demo       Run full demo (backend + frontend)"
+    @echo "  just demo-stop  Stop all running services"
+    @echo ""
+    @echo "Development:"
+    @echo "  just dev-ui       Run frontend only (Vite)"
+    @echo "  just dev-backend  Run backend only (uvicorn)"
+    @echo "  just dev          Run both frontend and backend"
+    @echo ""
+    @echo "Ports:"
+    @echo "  Frontend: http://localhost:{{ui_port}}"
+    @echo "  Backend:  http://localhost:{{backend_port}}"
+    @echo ""
+    @echo "Usage:"
+    @echo "  1. Click 'Connect' in the UI"
+    @echo "  2. Server URL: http://localhost:8000"
+    @echo "  3. Enter a prompt and chat!"
+
+# =============================================================================
+# Setup Commands
+# =============================================================================
+
+# Install all dependencies (Python + Node)
+setup: setup-python setup-node setup-pre-commit
+    @echo ""
+    @echo "Setup complete! Run 'just demo' to start."
+
+# Install Python dependencies
+setup-python:
+    @echo "Installing Python dependencies..."
+    uv sync --extra server --extra dev
+    @echo "Python dependencies installed."
+
+# Install Node dependencies (pnpm)
+setup-node:
+    @echo "Installing Node dependencies..."
+    cd {{ui_dir}} && pnpm install
+    @echo "Node dependencies installed."
+
+# Install pre-commit hooks
+setup-pre-commit:
+    @echo "Installing pre-commit hooks..."
+    uv run pre-commit install || true
+    @echo "Pre-commit hooks installed."
+
+# =============================================================================
+# Demo Commands
+# =============================================================================
+
+# Run full demo stack (backend + frontend + auto-open browser)
+demo: check-env
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Starting Bond Agent Demo..."
+    echo ""
+
+    # Kill any existing processes on our ports
+    lsof -ti:{{ui_port}} | xargs kill -9 2>/dev/null || true
+    lsof -ti:{{backend_port}} | xargs kill -9 2>/dev/null || true
+
+    # Trap to clean up on exit
+    trap 'kill 0 2>/dev/null' EXIT
+
+    echo "========================================="
+    echo "  Bond Agent Demo"
+    echo "========================================="
+    echo ""
+    echo "  Frontend: http://localhost:{{ui_port}}"
+    echo "  Backend:  http://localhost:{{backend_port}}"
+    echo ""
+    echo "  Press Ctrl+C to stop all services"
+    echo "========================================="
+    echo ""
+
+    # Start backend
+    (uv run python test_server.py) &
+    BACKEND_PID=$!
+
+    # Wait for backend to be ready
+    echo "Waiting for backend to be ready..."
+    for i in {1..30}; do
+        if curl -s http://localhost:{{backend_port}}/health > /dev/null 2>&1; then
+            echo "Backend ready!"
+            break
+        fi
+        sleep 1
+    done
+
+    # Open browser after frontend is ready
+    (
+        sleep 3
+        if command -v open &> /dev/null; then
+            open "http://localhost:{{ui_port}}"
+        elif command -v xdg-open &> /dev/null; then
+            xdg-open "http://localhost:{{ui_port}}" &
+        fi
+    ) &
+
+    # Start frontend (this blocks)
+    cd {{ui_dir}} && pnpm dev --port {{ui_port}}
+
+# Run demo without opening browser
+demo-headless: check-env
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Starting Bond Agent Demo (headless)..."
+
+    # Kill any existing processes on our ports
+    lsof -ti:{{ui_port}} | xargs kill -9 2>/dev/null || true
+    lsof -ti:{{backend_port}} | xargs kill -9 2>/dev/null || true
+
+    trap 'kill 0 2>/dev/null' EXIT
+
+    echo ""
+    echo "  Frontend: http://localhost:{{ui_port}}"
+    echo "  Backend:  http://localhost:{{backend_port}}"
+    echo ""
+
+    # Start backend
+    (uv run python test_server.py) &
+
+    # Start frontend
+    cd {{ui_dir}} && pnpm dev --port {{ui_port}}
+
+# Stop all demo services
+demo-stop:
+    #!/usr/bin/env bash
+    echo "Stopping demo services..."
+
+    # Kill by process name
+    pkill -f "uvicorn.*test_server" 2>/dev/null || true
+    pkill -f "python.*test_server" 2>/dev/null || true
+    pkill -f "vite" 2>/dev/null || true
+    pkill -f "pnpm dev" 2>/dev/null || true
+
+    # Kill by port (fallback)
+    lsof -ti:{{ui_port}} | xargs kill -9 2>/dev/null || true
+    lsof -ti:{{backend_port}} | xargs kill -9 2>/dev/null || true
+
+    # Kill orphaned Vite processes on nearby ports
+    for port in 5173 5174 5175 5176 5177 5178 5179; do
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    done
+
+    echo "Done. All services stopped."
+
+# Show what's running on demo ports
+demo-status:
+    #!/usr/bin/env bash
+    echo "Port Status:"
+    echo "============"
+    echo ""
+    echo "Frontend ({{ui_port}}):"
+    lsof -i :{{ui_port}} 2>/dev/null || echo "  Not running"
+    echo ""
+    echo "Backend ({{backend_port}}):"
+    lsof -i :{{backend_port}} 2>/dev/null || echo "  Not running"
+    echo ""
+    echo "Other Vite ports (5173-5179):"
+    lsof -i :5173 -i :5174 -i :5175 -i :5176 -i :5177 -i :5178 -i :5179 2>/dev/null || echo "  None"
+
+# =============================================================================
+# Development Commands
+# =============================================================================
+
+# Run frontend only (Vite dev server)
+dev-ui:
+    #!/usr/bin/env bash
+    # Kill any existing Vite on our port
+    lsof -ti:{{ui_port}} | xargs kill -9 2>/dev/null || true
+    echo "Starting UI on http://localhost:{{ui_port}}..."
+    cd {{ui_dir}} && pnpm dev --port {{ui_port}}
+
+# Run backend only (test server)
+dev-backend: check-env
+    #!/usr/bin/env bash
+    lsof -ti:{{backend_port}} | xargs kill -9 2>/dev/null || true
+    echo "Starting backend on http://localhost:{{backend_port}}..."
+    uv run python test_server.py
+
+# Run both frontend and backend (alias for demo-headless)
+dev: demo-headless
+
+# Run frontend with specific port
+dev-ui-port port:
+    #!/usr/bin/env bash
+    lsof -ti:{{port}} | xargs kill -9 2>/dev/null || true
+    echo "Starting UI on http://localhost:{{port}}..."
+    cd {{ui_dir}} && pnpm dev --port {{port}}
+
+# =============================================================================
+# Build Commands
+# =============================================================================
+
+# Build production bundle
+build:
+    @echo "Building production bundle..."
+    cd {{ui_dir}} && pnpm build
+    @echo "Build complete! Output in ui/dist/"
+
+# Preview production build
+preview:
+    @echo "Starting preview server..."
+    cd {{ui_dir}} && pnpm preview
+
+# Build and preview
+build-preview: build preview
+
+# =============================================================================
+# Code Quality Commands
+# =============================================================================
+
+# Run ESLint
+lint:
+    @echo "Running ESLint..."
+    cd {{ui_dir}} && pnpm lint
+
+# Run ESLint with auto-fix
+lint-fix:
+    @echo "Running ESLint with auto-fix..."
+    cd {{ui_dir}} && pnpm lint --fix
+
+# Type check (TypeScript)
+typecheck:
+    @echo "Running TypeScript type check..."
+    cd {{ui_dir}} && pnpm exec tsc --noEmit
+
+# Run all checks (lint + typecheck)
+check: lint typecheck
+    @echo "All checks passed!"
+
+# =============================================================================
+# Python Backend Commands
+# =============================================================================
+
+# Run Python tests
+test-python:
+    @echo "Running Python tests..."
+    uv run pytest
+
+# Run Python tests with coverage
+test-python-cov:
+    @echo "Running Python tests with coverage..."
+    uv run pytest --cov=src/bond --cov-report=html
+    @echo "Coverage report: htmlcov/index.html"
+
+# Run Python linting (ruff)
+lint-python:
+    @echo "Running ruff..."
+    uv run ruff check src tests
+
+# Format Python code
+format-python:
+    @echo "Formatting Python code..."
+    uv run ruff format src tests
+
+# Run Python type checking (mypy)
+typecheck-python:
+    @echo "Running mypy..."
+    uv run mypy src/bond
+
+# Run all Python checks
+check-python: lint-python typecheck-python
+    @echo "All Python checks passed!"
+
+# =============================================================================
+# Pre-commit & CI
+# =============================================================================
+
+# Run pre-commit on all files
+pre-commit:
+    @echo "Running pre-commit hooks..."
+    uv run pre-commit run --all-files
+
+# Run full CI pipeline locally
+ci: check check-python test-python build
+    @echo ""
+    @echo "CI pipeline passed!"
+
+# =============================================================================
+# Clean Commands
+# =============================================================================
+
+# Clean build artifacts
+clean:
+    @echo "Cleaning build artifacts..."
+    rm -rf {{ui_dir}}/dist
+    rm -rf {{ui_dir}}/node_modules/.cache
+    rm -rf {{ui_dir}}/node_modules/.vite
+    @echo "Clean complete."
+
+# Clean all (including node_modules)
+clean-all: clean
+    @echo "Removing node_modules..."
+    rm -rf {{ui_dir}}/node_modules
+    @echo "Full clean complete. Run 'just setup-node' to reinstall."
+
+# Clean Python artifacts
+clean-python:
+    @echo "Cleaning Python artifacts..."
+    rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov dist
+    @echo "Python clean complete."
+
+# =============================================================================
+# Documentation
+# =============================================================================
+
+# Serve docs locally
+docs:
+    @echo "Starting docs server..."
+    uv run mkdocs serve
+
+# Build docs
+docs-build:
+    @echo "Building docs..."
+    uv run mkdocs build
+    @echo "Docs built! Output in site/"
+
+# =============================================================================
+# Utility Commands
+# =============================================================================
+
+# Check environment is ready
+check-env:
+    #!/usr/bin/env bash
+    echo "Checking environment..."
+
+    # Check for OPENAI_API_KEY
+    if [ -z "${OPENAI_API_KEY:-}" ]; then
+        echo ""
+        echo "WARNING: OPENAI_API_KEY not set!"
+        echo "The backend will fail to generate AI responses."
+        echo ""
+        echo "Set it with:"
+        echo "  export OPENAI_API_KEY=sk-..."
+        echo ""
+        echo "Or create a .env file:"
+        echo "  echo 'OPENAI_API_KEY=sk-...' > .env"
+        echo ""
+        # Don't exit - allow demo to run without API key
+    else
+        echo "OPENAI_API_KEY is set."
+    fi
+
+    # Check for required tools
+    for cmd in node pnpm uv; do
+        if ! command -v $cmd &> /dev/null; then
+            echo "ERROR: $cmd is required but not installed."
+            exit 1
+        fi
+    done
+
+    echo "Environment check passed."
+
+# Open project in browser
+open-ui:
+    #!/usr/bin/env bash
+    if command -v open &> /dev/null; then
+        open "http://localhost:{{ui_port}}"
+    elif command -v xdg-open &> /dev/null; then
+        xdg-open "http://localhost:{{ui_port}}" &
+    else
+        echo "Open http://localhost:{{ui_port}} in your browser"
+    fi
+
+# Show project info
+info:
+    @echo "Bond Agent UI"
+    @echo "============="
+    @echo ""
+    @echo "Project: {{project_root}}"
+    @echo "UI Dir:  {{ui_dir}}"
+    @echo ""
+    @echo "Node:    $(node --version)"
+    @echo "pnpm:    $(pnpm --version)"
+    @echo "uv:      $(uv --version)"
+    @echo ""
+    @echo "Run 'just help' for usage instructions."
+
+# Concatenate all source files (for context/review)
+concat:
+    @echo "Concatenating source files..."
+    python scripts/concat_files.py
+    @echo "Output: all_code_and_configs.txt"
