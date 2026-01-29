@@ -1,0 +1,245 @@
+# Spectra CLI
+
+🎯 **Generate production-ready DevOps files for your projects using AI**
+
+Spectra CLI scans your project, identifies the tech stack, and automatically generates production-ready DevOps files including:
+- **Dockerfile** - Multi-stage, optimized Docker images
+- **docker-compose.yml** - Local development setup
+- **GitHub Actions CI/CD** - Automated build and deployment workflows
+
+## Features
+
+- 🔍 **Smart Project Scanning** - Automatically detects your tech stack (Node.js, Python, Java, Go, Rust, PHP, etc.)
+- 🤖 **AI-Powered Generation** - Uses Gemini AI to generate production-ready DevOps files
+- ⚡ **Lightning Fast** - Instant responses for common stacks via template caching (80% of users)
+- 🔄 **Async Processing** - Background job queue for custom stacks with real-time progress
+- 🔒 **Production-Ready** - Follows best practices for security and performance
+- 🚀 **Zero Configuration** - Works out of the box with sensible defaults
+
+## Installation
+
+### Option 1: Global install (recommended for users)
+
+Install via pipx (isolated global CLI):
+
+```bash
+# Install pipx if needed
+python3 -m pip install --user pipx && python3 -m pipx ensurepath
+
+# Install the Spectra CLI globally (after PyPI publish)
+pipx install spectra-cli
+
+# Use from any project
+spectra init
+```
+
+If you prefer using pip:
+
+```bash
+pip install --user spectra-cli
+spectra init
+```
+
+### Option 2: Install from Source (Development)
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/spectra-cli.git
+cd spectra-cli
+
+# Create a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install in editable mode
+pip install -e .
+```
+
+### Option 3: Install via pip (Production)
+
+```bash
+pip install spectra-cli
+```
+
+## Quick Start
+
+1. **Navigate to your project directory:**
+   ```bash
+   cd /path/to/your/project
+   ```
+
+2. **Run Spectra:**
+   ```bash
+   spectra init
+   ```
+
+3. **That's it!** Spectra will:
+   - Scan your project
+   - Detect your tech stack
+   - Generate Dockerfile, docker-compose.yml, and CI/CD workflows
+
+## Performance
+
+**System Design v2** includes major performance improvements:
+
+- **Template Caching**: Common stacks (Python, Node.js, Go, Rust, Java) get instant responses (<1 second)
+- **Async Job Queue**: Custom stacks use background processing with real-time polling
+- **No Timeouts**: Architecture solves Vercel timeout issues completely
+
+See [API_V2_DOCS.md](API_V2_DOCS.md) for detailed architecture documentation.
+
+## Configuration
+
+### Environment Variables
+
+**CLI:**
+- `SPECTRA_API_URL` - API endpoint URL (default: `https://spectra-cli-f7h0.onrender.com/`)
+  ```bash
+  export SPECTRA_API_URL='https://your-custom-api.example.com/'
+  ```
+
+**API Server (for self-hosting):**
+- `OPENROUTER_API_KEY` - OpenRouter API key (get from https://openrouter.ai/keys - free tier available)
+- `UPSTASH_REDIS_URL` - Upstash Redis URL (optional, for production job queue)
+- `UPSTASH_REDIS_TOKEN` - Upstash Redis token (optional)
+
+### Command Options
+
+```bash
+# Scan a specific directory
+spectra init /path/to/project
+
+# Use a custom API URL
+spectra init --api-url https://custom-api.example.com/
+
+# Check version
+spectra version
+```
+
+## Local Development
+
+### Running the API Locally
+
+1. **Install API dependencies:**
+   ```bash
+   pip install -r api/requirements.txt
+   ```
+
+2. **Set OpenRouter API key:**
+   ```bash
+   export OPENROUTER_API_KEY='your-openrouter-api-key-here'
+   ```
+   Get your free API key from https://openrouter.ai/keys (no credit card required)
+
+3. **Run the API server:**
+   ```bash
+   uvicorn api.index:app --host 127.0.0.1 --port 8000
+   ```
+
+4. **Test the CLI:**
+   ```bash
+   export SPECTRA_API_URL='http://127.0.0.1:8000/'
+   spectra init
+   ```
+
+## Deployment
+
+### Production API
+
+The Spectra CLI uses a production API hosted on Render at `https://spectra-cli-f7h0.onrender.com/`. The CLI works out of the box without any configuration needed.
+
+### Self-Hosting the API
+
+If you want to host your own instance of the API:
+
+1. **Deploy to Render, Vercel, or any Python hosting platform**
+
+2. **Set environment variables:**
+   - `OPENROUTER_API_KEY` - Your OpenRouter API key (get from https://openrouter.ai/keys)
+   - `UPSTASH_REDIS_URL` - (Optional) For job queue
+   - `UPSTASH_REDIS_TOKEN` - (Optional) For job queue
+
+3. **Configure CLI to use your instance:**
+   ```bash
+   export SPECTRA_API_URL='https://your-custom-api.example.com/'
+   ```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+
+## Project Structure
+
+```
+spectra-cli/
+├── spectra/              # CLI package
+│   ├── __init__.py
+│   ├── main.py          # CLI entry point
+│   ├── scanner.py       # Project scanner
+│   └── client.py        # API client
+├── api/                 # Serverless API
+│   ├── index.py        # FastAPI app
+│   └── requirements.txt
+├── requirements.txt     # CLI dependencies
+├── pyproject.toml      # Package configuration
+├── vercel.json         # Vercel config
+└── README.md
+```
+
+## Supported Tech Stacks
+
+- **Node.js** - Detected via `package.json`
+- **Python** - Detected via `requirements.txt`, `Pipfile`, or `pyproject.toml`
+- **Java (Maven)** - Detected via `pom.xml`
+- **Java (Gradle)** - Detected via `build.gradle`
+- **Go** - Detected via `go.mod`
+- **Rust** - Detected via `Cargo.toml`
+- **PHP** - Detected via `composer.json`
+
+## Requirements
+
+- Python 3.8 or higher
+- Internet connection (to call the API)
+
+## Troubleshooting
+
+### CLI can't connect to API
+
+- Check that `SPECTRA_API_URL` is set correctly
+- Verify the API server is running (if testing locally)
+- Check your network connection
+
+### No files generated
+
+- Ensure your project contains recognizable files (package.json, requirements.txt, etc.)
+- Check that the API is responding correctly
+- Review API logs for errors
+
+### API errors
+
+- Verify `OPENROUTER_API_KEY` is set correctly on the server
+- Get your free API key from https://openrouter.ai/keys (no credit card required)
+- Check OpenRouter API status at https://openrouter.ai/status
+- For job queue issues, verify `UPSTASH_REDIS_URL` and `UPSTASH_REDIS_TOKEN` are set (optional)
+- See [API_V2_DOCS.md](API_V2_DOCS.md) for troubleshooting
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support
+
+For issues and questions:
+- Open an issue on GitHub
+- Check the documentation
+- Review the troubleshooting section
+
+---
+
+Built with ❤️ by the Spectra team
+
