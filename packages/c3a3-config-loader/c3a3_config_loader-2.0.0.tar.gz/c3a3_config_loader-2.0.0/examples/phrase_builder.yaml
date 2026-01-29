@@ -1,0 +1,402 @@
+# phrase_builder - Synthetic example demonstrating all config_loader v2.0 features
+#
+# Usage: phrase_builder <subject> <action> [object] [options]
+# Examples:
+#   phrase_builder animal jumped fence
+#   phrase_builder animal jumped fence --add-article
+#   phrase_builder animal --species dog jumped fence --gracefully
+#   phrase_builder human danced --style salsa --partner Alice --music jazz funk
+
+schema_version: "2.0"
+app_name: phrase_builder
+
+# Error recovery for typo suggestions
+error_recovery:
+  suggest_distance: 2
+  max_suggestions: 3
+  show_available: true
+
+# Deprecation settings
+deprecation:
+  strict: false  # Warnings only, don't error
+
+commands:
+  # ===========================================================================
+  # ANIMAL - Demonstrates: value providers, inherited args, validators
+  # ===========================================================================
+  - name: animal
+    aliases: [creature, beast]
+    arguments:
+      # Inherited arguments - available in all subcommands
+      - name: add-article
+        short: a
+        type: boolean
+        scope: inherited
+        default: false
+
+      - name: add-name
+        short: n
+        type: string
+        scope: inherited
+
+      - name: uppercase
+        short: u
+        type: boolean
+        scope: inherited
+        default: false
+
+      - name: repeat
+        short: r
+        type: number
+        scope: inherited
+        default: 1
+
+      # Animal-specific with value provider
+      - name: species
+        short: s
+        type: string
+        scope: inherited
+        values_from: phrase_builder_providers.provide_animal_species
+
+      - name: color
+        short: c
+        type: string
+        scope: inherited
+        values_from: phrase_builder_providers.provide_colors
+
+    subcommands:
+      # JUMPED action
+      - name: jumped
+        aliases: [leaped, hopped]
+        terminal: true
+        arguments:
+          - name: over
+            short: o
+            type: string
+
+          - name: height
+            type: number
+
+          - name: gracefully
+            short: g
+            type: boolean
+            default: false
+
+      # RAN action
+      - name: ran
+        aliases: [sprinted, dashed]
+        terminal: true
+        arguments:
+          - name: speed
+            type: string
+            values_from: phrase_builder_providers.provide_speeds
+
+          - name: direction
+            short: d
+            type: string
+            values_from: phrase_builder_providers.provide_directions
+
+          - name: chasing
+            type: string
+
+      # FLEW action - with validator that checks species
+      - name: flew
+        aliases: [soared]
+        terminal: true
+        arguments:
+          - name: altitude
+            type: number
+            default: 100
+
+          - name: destination
+            type: string
+
+        validators:
+          - name: can-fly
+            rule: callable
+            function: phrase_builder_providers.validate_can_fly
+            message: "Only birds and some insects can fly!"
+
+  # ===========================================================================
+  # HUMAN - Demonstrates: exclusion groups, dependency rules, variadic args
+  # ===========================================================================
+  - name: human
+    aliases: [person, individual]
+    arguments:
+      # Inherited arguments
+      - name: add-article
+        short: a
+        type: boolean
+        scope: inherited
+        default: false
+
+      - name: add-name
+        short: n
+        type: string
+        scope: inherited
+
+      - name: uppercase
+        short: u
+        type: boolean
+        scope: inherited
+        default: false
+
+      - name: repeat
+        short: r
+        type: number
+        scope: inherited
+        default: 1
+
+      # Human-specific
+      - name: profession
+        short: p
+        type: string
+        scope: inherited
+        values_from: phrase_builder_providers.provide_professions
+
+      - name: age
+        type: number
+        scope: inherited
+
+      # Mood options - mutually exclusive
+      - name: happy
+        type: boolean
+        scope: inherited
+      - name: sad
+        type: boolean
+        scope: inherited
+      - name: excited
+        type: boolean
+        scope: inherited
+
+    # Exclusion group - can only pick one mood
+    exclusion_groups:
+      - name: mood
+        arguments: [happy, sad, excited]
+        message: "Choose only one mood: --happy, --sad, or --excited"
+
+    subcommands:
+      # JUMPED action
+      - name: jumped
+        terminal: true
+        arguments:
+          - name: over
+            short: o
+            type: string
+
+          - name: with-style
+            type: boolean
+            default: false
+
+          - name: shouting
+            type: string
+
+      # DANCED action - with dependency rules
+      - name: danced
+        aliases: [grooved, boogied]
+        terminal: true
+        arguments:
+          - name: style
+            type: string
+            values_from: phrase_builder_providers.provide_dance_styles
+
+          - name: partner
+            type: string
+
+          # Variadic argument - multiple music genres
+          - name: music
+            short: m
+            type: string
+            nargs: "*"
+
+        dependency_rules:
+          # If partner is set, style must also be set
+          - name: partner-needs-style
+            rule: if_then
+            if_arg: partner
+            then_require: [style]
+            message: "Dancing with a partner requires specifying a dance --style"
+
+      # WORKED action
+      - name: worked
+        terminal: true
+        arguments:
+          - name: task
+            type: string
+            required: true
+
+          - name: hours
+            type: number
+            default: 8
+
+          - name: diligently
+            type: boolean
+            default: false
+
+  # ===========================================================================
+  # ROBOT - Demonstrates: deprecation, required args
+  # ===========================================================================
+  - name: robot
+    aliases: [android, bot]
+    deprecated:
+      since: "2.0"
+      replacement: "android"
+      message: "Use 'android' instead of 'robot' for modern terminology"
+    arguments:
+      # Inherited
+      - name: add-article
+        short: a
+        type: boolean
+        scope: inherited
+        default: false
+
+      - name: add-name
+        short: n
+        type: string
+        scope: inherited
+
+      - name: uppercase
+        short: u
+        type: boolean
+        scope: inherited
+        default: false
+
+      - name: repeat
+        short: r
+        type: number
+        scope: inherited
+        default: 1
+
+      # Robot-specific
+      - name: model
+        type: string
+        scope: inherited
+        values_from: phrase_builder_providers.provide_robot_models
+
+      - name: serial
+        type: string
+        scope: inherited
+        required: true
+
+      # Deprecated argument
+      - name: battery-level
+        type: number
+        scope: inherited
+        deprecated:
+          since: "1.5"
+          replacement: "--power-level"
+          message: "Battery terminology is outdated"
+
+      - name: power-level
+        type: number
+        scope: inherited
+        default: 100
+
+    subcommands:
+      # COMPUTED action
+      - name: computed
+        aliases: [calculated, processed]
+        terminal: true
+        arguments:
+          - name: algorithm
+            type: string
+            values_from: phrase_builder_providers.provide_algorithms
+
+          - name: iterations
+            type: number
+            default: 1000
+
+          - name: result
+            type: string
+
+      # BEEPED action
+      - name: beeped
+        terminal: true
+        arguments:
+          - name: frequency
+            type: number
+            default: 440
+
+          - name: times
+            type: number
+            default: 3
+
+          - name: loudly
+            type: boolean
+            default: false
+
+      # TRANSFORMED action
+      - name: transformed
+        terminal: true
+        arguments:
+          - name: into
+            type: string
+            required: true
+
+          - name: dramatically
+            type: boolean
+            default: false
+
+  # ===========================================================================
+  # VEHICLE - Demonstrates: deep nesting, complex inheritance
+  # ===========================================================================
+  - name: vehicle
+    arguments:
+      - name: add-article
+        short: a
+        type: boolean
+        scope: inherited
+        default: false
+
+      - name: color
+        type: string
+        scope: inherited
+        values_from: phrase_builder_providers.provide_colors
+
+      - name: brand
+        type: string
+        scope: inherited
+
+    subcommands:
+      - name: car
+        arguments:
+          - name: car-model
+            type: string
+            scope: inherited
+
+        subcommands:
+          - name: drove
+            terminal: true
+            arguments:
+              - name: to
+                type: string
+              - name: speed
+                type: number
+
+          - name: parked
+            terminal: true
+            arguments:
+              - name: at
+                type: string
+                required: true
+
+      - name: bike
+        subcommands:
+          - name: rode
+            terminal: true
+            arguments:
+              - name: through
+                type: string
+              - name: uphill
+                type: boolean
+                default: false
+
+          - name: crashed
+            terminal: true
+            arguments:
+              - name: into
+                type: string
+                required: true
+              - name: spectacularly
+                type: boolean
+                default: false

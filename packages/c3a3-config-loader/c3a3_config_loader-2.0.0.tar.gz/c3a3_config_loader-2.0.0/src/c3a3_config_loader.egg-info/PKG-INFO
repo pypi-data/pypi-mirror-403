@@ -1,0 +1,326 @@
+Metadata-Version: 2.4
+Name: c3a3-config_loader
+Version: 2.0.0
+Summary: Loads configurations from different files with ease
+Author-email: ã <me@c3a3.me>
+Project-URL: Homepage, https://github.com/mrtu/c3a3-config_loader
+Project-URL: Documentation, https://github.com/mrtu/c3a3-config_loader#readme
+Project-URL: Issues, https://github.com/mrtu/c3a3-config_loader/issues
+Project-URL: Bug Tracker, https://github.com/mrtu/c3a3-config_loader/issues
+Project-URL: License, https://github.com/mrtu/c3a3-config_loader/blob/main/LICENSE
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries
+Classifier: License :: Other/Proprietary License
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE.md
+Requires-Dist: cryptography>=42.0.0
+Requires-Dist: pyyaml>=6.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Dynamic: license-file
+
+# c3a3-config-loader
+
+[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](./tests)
+[![Python](https://img.shields.io/pypi/pyversions/c3a3-config-loader.svg)](https://pypi.org/project/c3a3-config-loader/)
+
+> **Seamless, pluggable configuration for Python apps — merge CLI/ENV/RC, validate, encrypt secrets, and build hierarchical CLI commands.**
+
+---
+
+## Why?
+
+Reading configuration shouldn't require boilerplate. **`c3a3-config-loader`** lets you declare a YAML/JSON spec and automatically:
+
+* Parse **command-line** arguments with namespace support (`--db.host`)
+* Build **hierarchical commands** with subcommands (`deploy staging --region us-east-1`)
+* Pull values from **environment variables** (`MYAPP_DB_HOST`)
+* Fall back to a per-user **RC file** (`~/.myapprc`) in TOML format
+* Respect a deterministic **precedence** order you choose
+* **Validate** types, required fields, allowed values, and relationships
+* **Obfuscate** sensitive values using AES-256 encryption
+* **Extend** via **plugins** (`vault://secret`, `ssm://param`)
+
+All in a 100% type-annotated, 80%+ test-covered library.
+
+---
+
+## Installation
+
+```bash
+pip install c3a3-config-loader
+```
+
+> Requires **Python 3.11+**. Binary wheels ship with cryptography.
+
+---
+
+## Quick Start
+
+### v1.x Style: Parameters Only
+
+```python
+from config_loader import Configuration
+
+spec = {
+    "schema_version": "1.0",
+    "app_name": "myapp",
+    "precedence": ["args", "env", "rc"],
+    "parameters": [
+        {"namespace": "db", "name": "host", "type": "string", "required": True},
+        {"namespace": "db", "name": "port", "type": "number", "default": 5432},
+        {"namespace": None, "name": "debug", "type": "boolean", "default": False},
+    ],
+}
+
+cfg = Configuration(spec)
+result = cfg.process()  # Reads sys.argv, os.environ, ~/.myapprc
+
+print(f"Database: {result.db.host}:{result.db.port}")
+print(f"Debug: {result.debug}")
+```
+
+```bash
+python app.py --db.host localhost --debug
+# Or: export MYAPP_DB_HOST=localhost
+```
+
+### v2.0 Style: With Commands
+
+```python
+from config_loader import Configuration
+
+spec = {
+    "schema_version": "2.0",
+    "app_name": "deploy",
+    "commands": [
+        {
+            "name": "deploy",
+            "aliases": ["d"],
+            "subcommands": [
+                {
+                    "name": "staging",
+                    "terminal": True,
+                    "arguments": [
+                        {"name": "region", "short": "r", "type": "string", "required": True}
+                    ]
+                },
+                {
+                    "name": "production",
+                    "terminal": True,
+                    "arguments": [
+                        {"name": "region", "type": "string", "required": True},
+                        {"name": "force", "short": "f", "type": "boolean"}
+                    ]
+                }
+            ]
+        }
+    ]
+}
+
+cfg = Configuration(spec)
+result = cfg.process(["deploy", "staging", "--region", "us-east-1"])
+
+print(result.command.path)       # ["deploy", "staging"]
+print(result.command.arguments)  # {"region": "us-east-1"}
+```
+
+```bash
+deploy staging --region us-east-1
+deploy production -r eu-west-1 --force
+d staging -r us-east-1  # Using alias
+```
+
+---
+
+## Features
+
+### Multi-Source Configuration
+
+```yaml
+precedence:
+  - args    # CLI arguments (highest priority)
+  - env     # Environment variables
+  - rc      # RC file (~/.apprc)
+```
+
+### Validation
+
+```yaml
+parameters:
+  - name: port
+    type: number
+    min: 1
+    max: 65535
+
+  - name: environment
+    type: string
+    accepts: [dev, staging, prod]
+```
+
+### Hierarchical Commands (v2.0)
+
+```yaml
+commands:
+  - name: deploy
+    subcommands:
+      - name: staging
+        terminal: true
+      - name: production
+        terminal: true
+```
+
+### Argument Inheritance (v2.0)
+
+```yaml
+commands:
+  - name: deploy
+    arguments:
+      - name: verbose
+        scope: inherited  # Available in all subcommands
+```
+
+### Exclusion Groups (v2.0)
+
+```yaml
+exclusion_groups:
+  - name: output-format
+    arguments: [json, yaml, table]
+    message: "Choose one output format"
+```
+
+### Dependency Rules (v2.0)
+
+```yaml
+dependency_rules:
+  - name: notify-needs-email
+    rule: if_then
+    if_arg: notify
+    then_require: [email]
+```
+
+### Value Providers (v2.0)
+
+```yaml
+arguments:
+  - name: region
+    values_from: myapp.providers.get_regions
+```
+
+```python
+def get_regions(ctx):
+    return ["us-east-1", "us-west-2", "eu-west-1"]
+```
+
+### Builder Pattern (v2.0)
+
+```python
+builder = cfg.builder()
+builder = builder.add_command("deploy")
+suggestions = builder.check_next()  # Available arguments
+builder = builder.add_argument("region", "us-east-1")
+result = builder.build()
+```
+
+### Secret Obfuscation
+
+```yaml
+parameters:
+  - name: password
+    obfuscated: true
+```
+
+```python
+print(result.db.password)       # obfuscated:...
+print(cfg.reveal(result.db.password))  # actual value
+```
+
+### Protocol Plugins
+
+```python
+from config_loader import ConfigPlugin, PluginManifest
+
+class VaultPlugin(ConfigPlugin):
+    @property
+    def manifest(self):
+        return PluginManifest(protocol="vault", type="string", sensitive=True)
+
+    def load_value(self, value):
+        return vault_client.read(value)
+
+cfg = Configuration(spec, plugins=[VaultPlugin()])
+```
+
+```bash
+myapp --db.password vault://secrets/db/password
+```
+
+---
+
+## Documentation
+
+Full documentation follows the [Divio documentation system](https://documentation.divio.com/):
+
+* **[Tutorials](docs/tutorials/)** — Learning-oriented guides
+  * [Quickstart](docs/tutorials/quickstart.md) — Your first config in 5 minutes
+  * [Building a CLI App](docs/tutorials/cli-app.md) — Create multi-command applications
+  * [Migrating to v2.0](docs/tutorials/migration-v1-to-v2.md) — Upgrade from v1.x
+
+* **[How-To Guides](docs/how-to/)** — Task-oriented guides
+  * [Validate Inputs](docs/how-to/validate-inputs.md)
+  * [Use Value Providers](docs/how-to/use-value-providers.md)
+  * [Build Commands Programmatically](docs/how-to/build-commands-programmatically.md)
+  * [Handle Secrets](docs/how-to/handle-secrets.md)
+  * [Create Plugins](docs/how-to/create-plugins.md)
+
+* **[Reference](docs/reference/)** — Technical reference
+  * [YAML Schema](docs/reference/yaml-schema.md) — Complete configuration schema
+  * [Python API](docs/reference/python-api.md) — Classes and methods
+  * [CLI Conventions](docs/reference/cli-conventions.md) — Argument syntax
+
+* **[Explanation](docs/explanation/)** — Understanding-oriented
+  * [Architecture](docs/explanation/architecture.md)
+  * [Three-Phase Parsing](docs/explanation/three-phase-parsing.md)
+  * [Design Decisions](docs/explanation/design-decisions.md)
+
+---
+
+## Version History
+
+| Version | Features |
+|---------|----------|
+| **2.0** | Hierarchical commands, value providers, builder pattern, deprecation |
+| **1.x** | Parameters, CLI/ENV/RC merging, validation, encryption, plugins |
+
+v2.0 is fully backward compatible with v1.x specs.
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/your-org/c3a3-config-loader.git
+cd c3a3-config-loader
+pip install -e .[dev]
+
+# Run tests
+pytest -q
+
+# Type checking
+mypy --strict -p config_loader
+
+# Linting
+ruff check --fix src/ tests/
+```
+
+---
+
+## License
+
+SPDX-License-Identifier: Prosperity-3.0.0

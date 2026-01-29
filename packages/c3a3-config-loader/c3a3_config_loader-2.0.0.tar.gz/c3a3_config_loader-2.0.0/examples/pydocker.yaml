@@ -1,0 +1,191 @@
+# pydocker - Docker CLI wrapper demonstrating config_loader v2.0
+#
+# This spec defines a subset of Docker's container lifecycle commands
+# to showcase the library's validation and command handling features.
+
+schema_version: "2.0"
+app_name: pydocker
+
+# Global parameters available to all commands
+# Environment variable: PYDOCKER_DOCKER_HOST
+parameters:
+  - namespace: docker
+    name: host
+    type: string
+
+# Error recovery configuration for typo suggestions
+error_recovery:
+  suggest_distance: 2
+  max_suggestions: 3
+  show_available: true
+
+# Command hierarchy
+commands:
+  # ===========================================================================
+  # docker run - Demonstrates exclusion groups, dependency rules, variadic args
+  # ===========================================================================
+  - name: run
+    terminal: true
+    arguments:
+      # Boolean flags
+      - name: detach
+        short: d
+        type: boolean
+        default: false
+
+      - name: interactive
+        short: i
+        type: boolean
+        default: false
+
+      # tty has no default - allows dependency rule to detect when missing
+      - name: tty
+        short: t
+        type: boolean
+
+      - name: rm
+        type: boolean
+        default: false
+
+      # String options
+      - name: name
+        type: string
+
+      - name: network
+        type: string
+        values_from: pydocker_validators.provide_networks
+
+      - name: workdir
+        short: w
+        type: string
+
+      - name: user
+        short: u
+        type: string
+
+      - name: restart
+        type: string
+        values_from: pydocker_validators.provide_restart_policies
+
+      # Variadic options (nargs: "*" allows multiple values)
+      - name: env
+        short: e
+        type: string
+        nargs: "*"
+
+      - name: port
+        short: p
+        type: string
+        nargs: "*"
+
+      - name: volume
+        short: v
+        type: string
+        nargs: "*"
+
+      # Deprecated argument - demonstrates deprecation warnings
+      - name: link
+        type: string
+        nargs: "*"
+        deprecated:
+          since: "1.0"
+          replacement: "--network"
+          message: "Container links are deprecated."
+
+    # Mutually exclusive: can't be detached AND interactive
+    exclusion_groups:
+      - name: attach-mode
+        arguments: [detach, interactive]
+        message: "Cannot use --detach (-d) and --interactive (-i) together"
+
+    # Dependency: interactive mode requires TTY
+    dependency_rules:
+      - name: interactive-needs-tty
+        rule: if_then
+        if_arg: interactive
+        then_require: [tty]
+        message: "Interactive mode (-i) requires TTY (-t). Use -it together."
+
+    # Callable validator - checks Docker is accessible
+    validators:
+      - name: docker-accessible
+        rule: callable
+        function: pydocker_validators.validate_image_exists
+
+  # ===========================================================================
+  # docker stop - Demonstrates callable validators with container state
+  # ===========================================================================
+  - name: stop
+    terminal: true
+    arguments:
+      - name: time
+        short: t
+        type: number
+        default: 10
+
+      - name: signal
+        short: s
+        type: string
+
+    # Callable validator - checks containers are running
+    validators:
+      - name: containers-running
+        rule: callable
+        function: pydocker_validators.validate_stop_containers
+        message: "Validation failed for stop command"
+
+  # ===========================================================================
+  # docker rm - Demonstrates safety validation
+  # ===========================================================================
+  - name: rm
+    terminal: true
+    arguments:
+      - name: force
+        short: f
+        type: boolean
+        default: false
+
+      - name: volumes
+        short: v
+        type: boolean
+        default: false
+
+    # Callable validator - warns about running containers
+    validators:
+      - name: rm-safety
+        rule: callable
+        function: pydocker_validators.validate_rm_containers
+        message: "Container removal validation failed"
+
+  # ===========================================================================
+  # docker ps - Demonstrates filter arguments
+  # ===========================================================================
+  - name: ps
+    terminal: true
+    arguments:
+      - name: all
+        short: a
+        type: boolean
+        default: false
+
+      - name: quiet
+        short: q
+        type: boolean
+        default: false
+
+      - name: size
+        short: s
+        type: boolean
+        default: false
+
+      - name: filter
+        short: f
+        type: string
+        nargs: "*"
+
+      - name: format
+        type: string
+
+      - name: last
+        short: n
+        type: number
