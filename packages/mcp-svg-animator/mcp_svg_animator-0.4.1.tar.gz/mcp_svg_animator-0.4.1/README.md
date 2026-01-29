@@ -1,0 +1,129 @@
+# MCP SVG Animator
+
+An MCP server for creating animated SVG diagrams.
+You can create a diagram from text input, photos of sketches and YAML specifications.
+
+You don't normally need to use YAML; just tell Claude code what you want, upload photos of sketches,
+and then iterate until you've got what you want.
+
+You can see some sample inputs and outputs on the [Demo Page](https://htmlpreview.github.io/?https://github.com/romilly/mcp-svg-animator/blob/main/examples/demo.html)
+
+## File Output Configuration
+
+By default, the MCP server does not allow writing files to your filesystem. To enable file output (SVG, PNG, or video), create a configuration file at `~/.config/mcp-svg-animator/config.yaml`:
+
+```yaml
+file_output:
+  allowed:
+    - path: "~/diagrams"
+      types: [svg, png, webm]
+    - path: "/tmp/svg-animator/**"
+      types: [svg, png]
+    - path: "~/projects/**/output"
+      types: [svg, png, webm]
+```
+
+**Configuration options:**
+- `path`: Directory where files can be written. Supports `~` expansion and glob patterns (`*` for single level, `**` for recursive).
+- `types`: List of allowed file types (`svg`, `png`, `webm`).
+
+Files in subdirectories of allowed paths are also permitted.
+
+## Features
+
+- **Create and iterate on your requirements** using natural language and/or rough diagrams
+- **Multiple shape types** - circle, rectangle, line, text, path, ellipse, group
+- **Connection elements** - Draw lines between element centers with automatic positioning
+- **Text backgrounds** - Auto-generate background panels behind text labels
+- **Path segments** - Build curves with move_to, line_to, cubic_bezier, quadratic_bezier, arc
+- **SMIL animations** - Animate attributes and transforms
+- **Reusable definitions** - Define once, use many times
+- **Library imports** - Share definitions across diagrams
+- **Relative positioning** - Reference other elements' positions
+- **Direct file output** - Write SVG directly to file, reducing token usage
+- **PNG export** - Generate PNG previews of static diagrams
+- **Video export** - Record animations to .webm video
+
+## Installation
+
+```bash
+pip install mcp-svg-animator
+
+# Install Playwright browsers (for video generation)
+playwright install chromium
+```
+
+## Usage with Claude Code
+
+Register the MCP server globally:
+
+```bash
+claude mcp add --scope user svg-animator -- python -m mcp_svg_animator
+```
+
+Then in any Claude Code session, **ask Claude code to create animations**:
+
+> "Create an animated SVG of a red circle that pulses"
+
+See [docs/usage.md](docs/usage.md) for more details.
+
+## MCP Tools
+
+You don't need to explicitly invoke these. Ask Claude Code to create the animation you describe,
+and it will invoke the relevant tools.
+
+| Tool | Description |
+|------|-------------|
+| `create_svg_from_yaml` | Generate SVG from YAML specification. Optional `output_path` writes SVG to file; optional `png_path` generates a PNG preview. |
+| `create_animation_video` | Record SVG animation to .webm video |
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/romilly/mcp-svg-animator.git
+cd mcp-svg-animator
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+pip install -r requirements-test.txt
+
+# Install Playwright browsers (for video generation)
+playwright install chromium
+
+# Run tests
+pytest
+
+# Type checking
+pyright src/
+```
+
+## Examples
+
+See the `examples/` directory for sample YAML files and generated SVGs:
+
+- `demo.yaml` - Basic shapes
+- `stick_figure.yaml` - Static stick figure
+- `stick_figure_waving.yaml` - Animated waving
+- `curves.yaml` - Bezier curves and arcs
+- `meeting.yaml` - Two figures, one walks to meet the other
+- `connection_demo.svg` - Architecture diagram using connection elements
+- `balloon_friends.svg` - Animated stick figures with stretching line
+
+## Acknowledgments
+
+This project uses the following open source packages:
+
+- [MCP](https://github.com/modelcontextprotocol/python-sdk) - Model Context Protocol SDK (MIT)
+- [Pydantic](https://github.com/pydantic/pydantic) - Data validation (MIT)
+- [drawsvg](https://github.com/cduck/drawsvg) - SVG generation (MIT)
+- [PyYAML](https://github.com/yaml/pyyaml) - YAML parsing (MIT)
+- [Playwright](https://github.com/microsoft/playwright-python) - Video recording (Apache 2.0)
+
+## License
+
+MIT
