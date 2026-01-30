@@ -1,0 +1,129 @@
+Metadata-Version: 2.4
+Name: printwell
+Version: 0.1.11
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: GNU Affero General Public License v3
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Rust
+Classifier: Topic :: Text Processing :: Markup :: HTML
+Classifier: Topic :: Multimedia :: Graphics :: Graphics Conversion
+Requires-Dist: pytest>=7.0 ; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.21 ; extra == 'dev'
+Provides-Extra: dev
+Summary: High-fidelity HTML to PDF conversion using Chromium
+Keywords: pdf,html,chromium,converter,render
+License: AGPL-3.0
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: Homepage, https://printwell.dev
+Project-URL: Repository, https://github.com/printwell-dev/core
+
+# printwell
+
+High-fidelity HTML to PDF conversion using Chromium's rendering engine.
+
+## Installation
+
+```bash
+pip install printwell
+```
+
+## Quick Start
+
+```python
+from printwell import Converter, PdfOptions, PageSize
+
+# Create a converter (reuse for multiple conversions)
+converter = Converter()
+
+# Simple conversion
+result = converter.html_to_pdf("<h1>Hello, World!</h1>")
+result.write_to_file("output.pdf")
+
+# With options
+result = converter.html_to_pdf(
+    "<h1>Hello</h1><p>World</p>",
+    pdf_options=PdfOptions(
+        page_size=PageSize.Letter,
+        print_background=True,
+    ),
+)
+
+# Get PDF data as bytes
+pdf_bytes = result.data()
+print(f"Generated {result.page_count} pages, {len(pdf_bytes)} bytes")
+```
+
+## Batch Processing
+
+```python
+from printwell import ConverterPool
+
+pool = ConverterPool(max_concurrent=4)
+results = pool.convert_batch([
+    "<h1>Document 1</h1>",
+    "<h1>Document 2</h1>",
+    "<h1>Document 3</h1>",
+])
+
+for i, result in enumerate(results):
+    result.write_to_file(f"doc_{i}.pdf")
+```
+
+## Features
+
+- **Rendering**: Full HTML5/CSS3 support via Chromium's Blink engine
+- **Large Documents**: Automatic chunking and parallel rendering for documents >50MB
+- **Watermarks**: Text and image overlays with positioning and opacity control
+- **Bookmarks**: Table of contents and navigation structure
+- **Annotations**: Highlights, sticky notes, and geometric shapes
+
+## API Reference
+
+### Converter
+
+Main converter class. Create once, reuse for multiple conversions.
+
+- `html_to_pdf(html, render_options=None, pdf_options=None)` - Convert HTML to PDF
+- `url_to_pdf(url, render_options=None, pdf_options=None)` - Convert URL to PDF
+- `info()` - Get renderer information
+
+### PdfOptions
+
+- `page_size` - PageSize enum (A3, A4, A5, Letter, Legal, Tabloid)
+- `margins` - Margins object
+- `orientation` - Orientation enum (Portrait, Landscape)
+- `print_background` - Print background colors/images
+- `scale` - Scale factor (0.1 to 2.0)
+- `metadata` - PdfMetadata object
+
+### RenderOptions
+
+- `base_url` - Base URL for relative resources
+- `user_stylesheets` - Additional CSS stylesheets
+- `viewport` - Viewport configuration
+- `resources` - ResourceOptions for network control
+- `fonts` - Font configuration options
+- `max_chunk_size` - Max HTML size before chunking (default 50MB, 0 to disable)
+
+## Other Packages
+
+- **Node.js**: [printwell on npm](https://www.npmjs.com/package/printwell)
+- **Rust**: [printwell on crates.io](https://crates.io/crates/printwell)
+- **CLI**: [printwell-cli on crates.io](https://crates.io/crates/printwell-cli)
+
+## Links
+
+- [GitHub](https://github.com/printwell-dev/core)
+- [Documentation](https://printwell-dev.github.io/core/)
+
+## License
+
+AGPL-3.0
+
