@@ -1,0 +1,261 @@
+# Veritas Framework
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-19%20passed-brightgreen.svg)](tests/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+
+**Trust-Based Agent Architecture for Reliable AI Systems**
+
+> *"Errors are acceptable. Lies are not."*
+
+---
+
+## The Problem
+
+AI agents fail trust in predictable, dangerous ways:
+
+| Failure Mode | What Happens | Real Impact |
+|--------------|--------------|-------------|
+| **Silent Fallbacks** | Service fails, agent quietly uses backup | Wrong model runs for months undetected |
+| **Unverified Claims** | Agent says "done" without proof | Broken code reaches production |
+| **Fabricated Data** | Agent fills knowledge gaps with guesses | Decisions made on hallucinated facts |
+| **Corner Cutting** | Agent skips "tedious" validation steps | Edge cases crash in production |
+| **No Audit Trail** | No record of what agent actually did | Debugging becomes guesswork |
+
+### The LegalBERT Incident (Real Example)
+
+```
+Code claimed to use LegalBERT for months
+LegalBERT was never actually deployed
+System silently fell back to a different model
+ML pipeline operated as a facade
+Nobody verified the actual model running
+```
+
+**This wasn't an error. It was a lie the system told through silence.**
+
+---
+
+## The Solution
+
+Veritas makes **lying structurally difficult** through three enforcement layers:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  LAYER 3: AUDIT                                                 │
+│  Catches what slips through - spot-checks and reviews           │
+├─────────────────────────────────────────────────────────────────┤
+│  LAYER 2: WORKFLOW GATES                                        │
+│  No proof = No progress - tasks blocked without evidence        │
+├─────────────────────────────────────────────────────────────────┤
+│  LAYER 1: PROTOCOL-EMBEDDED                                     │
+│  Makes honesty the path of least resistance                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Principle**: Trust is earned through consistent behavior, not granted through configuration.
+
+---
+
+## Quick Start
+
+### Installation
+
+```bash
+pip install veritas-framework
+```
+
+Or from source:
+```bash
+git clone https://github.com/RBKunnela/veritas-framework.git
+cd veritas-framework
+pip install -e ".[dev]"
+```
+
+### Basic Usage
+
+```python
+from veritas import TrustContext, Evidence
+from veritas.layers import WorkflowGate, GateRequirement
+
+# Create trust context for your agent
+ctx = TrustContext(agent_id="my-agent")
+
+# Add evidence for claims
+evidence = ctx.add_evidence(
+    claim="API endpoint returns 200",
+    evidence_type="api_response",
+    content='{"status": "healthy"}',
+    verifiable_command="curl http://localhost:8000/health"
+)
+
+# Gate blocks progress without proof
+gate = WorkflowGate(
+    name="dev_to_review",
+    requirements=[
+        GateRequirement(evidence_type="test_results", required=True),
+        GateRequirement(evidence_type="api_response", required=True),
+    ]
+)
+
+# Transition fails without evidence
+can_proceed = gate.can_transition(ctx.evidence)  # True only with evidence
+```
+
+---
+
+## The Five Trust Behaviors
+
+Veritas enforces five character traits that define trustworthy agents:
+
+| Behavior | Rule | Enforcement |
+|----------|------|-------------|
+| **Verification Before Claim** | Never say "done" without proof | `@requires_verification` decorator |
+| **Loud Failure** | No silent fallbacks | Exceptions surfaced, logged, explained |
+| **Honest Uncertainty** | "I don't know" is valid | Fabrication detection, uncertainty flags |
+| **Paper Trail** | Every action documented | Automatic logging, evidence collection |
+| **Diligent Execution** | No shortcuts, even when tedious | Spot-check audits, consistency validation |
+
+---
+
+## Integration Examples
+
+### With Claude Code Agents
+
+```python
+from veritas.integrations.claude_code import ClaudeCodeTrustHook
+
+hook = ClaudeCodeTrustHook(
+    enforce_verification=True,
+    require_evidence_on_done=True,
+    audit_tool_calls=True,
+    strict_mode=True
+)
+
+# Hook validates claims before allowing completion
+```
+
+### With QA Agents
+
+```python
+from veritas import AgentTrustMixin
+
+class MyQAAgent(AgentTrustMixin):
+    def __init__(self):
+        self.init_trust("my-qa-agent", strict_mode=True)
+
+    async def run_tests(self, url: str):
+        self.start_trust_task("test-123", f"Testing {url}")
+        try:
+            results = await self._execute_tests(url)
+            self.add_test_evidence("Tests completed", results)
+            self.claim_completion("All tests pass")  # Validated!
+        except Exception as e:
+            self.record_failure(e)  # Loud failure
+            raise
+```
+
+---
+
+## How It Compares
+
+| Feature | Traditional Agents | Veritas Agents |
+|---------|-------------------|----------------|
+| Completion claims | Trusts agent's word | Requires proof |
+| Service failures | Silent fallback | Loud, logged failure |
+| Knowledge gaps | May fabricate | Admits uncertainty |
+| Audit trail | Optional logging | Mandatory evidence |
+| Task transitions | Status change | Gate with requirements |
+
+---
+
+## Philosophy: Agent Maturation
+
+Veritas implements a trust-building progression:
+
+```
+EDGE TASKS (Low Risk)
+    │
+    │ Success + Expertise + Transparency
+    ↓
+PERIPHERAL TASKS (Analysis, Suggestions)
+    │
+    │ Trust + Domain Knowledge
+    ↓
+ADJACENT TASKS (Recommendations, Drafts)
+    │
+    │ Reliability + Judgment
+    ↓
+CORE WORKFLOWS (Decisions, Execution)
+```
+
+> "When we start by attacking the edges, we remind the people doing the work that their expertise is valuable."
+
+**Start with low-risk tasks. Earn trust. Graduate to core workflows.**
+
+See [Agent Maturation Philosophy](docs/agent-maturation-philosophy.md) for the full framework.
+
+---
+
+## Documentation
+
+- [Core Concepts](docs/core-concepts.md) - Evidence, behaviors, context
+- [Layer 1: Protocol-Embedded](docs/layer-1-protocol.md) - Verification decorators
+- [Layer 2: Workflow Gates](docs/layer-2-gates.md) - Task transition requirements
+- [Layer 3: Trust Audit](docs/layer-3-audit.md) - Spot-checks and reviews
+- [Integration Guide](docs/integration.md) - Adding Veritas to your agents
+- [Agent Maturation](docs/agent-maturation-philosophy.md) - Trust-building philosophy
+
+---
+
+## Project Status
+
+| Component | Status |
+|-----------|--------|
+| Core Evidence System | ✅ Stable |
+| Trust Behaviors | ✅ Stable |
+| Workflow Gates | ✅ Stable |
+| Audit Layer | ✅ Stable |
+| Claude Code Integration | ✅ Stable |
+| LangChain Integration | 🚧 Planned |
+| CrewAI Integration | 🚧 Planned |
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**Good First Issues:**
+- Add integration adapters for popular frameworks
+- Improve documentation with examples
+- Add more evidence validators
+- Create tutorials and guides
+
+---
+
+## License
+
+MIT License - See [LICENSE](LICENSE)
+
+---
+
+## Citation
+
+If you use Veritas in research, please cite:
+
+```bibtex
+@software{veritas_framework,
+  title = {Veritas Framework: Trust-Based Agent Architecture},
+  author = {RBKunnela},
+  year = {2026},
+  url = {https://github.com/RBKunnela/veritas-framework}
+}
+```
+
+---
+
+<p align="center">
+  <strong>"Trust is earned in drops and lost in buckets."</strong>
+</p>
