@@ -1,0 +1,248 @@
+Metadata-Version: 2.4
+Name: notice-me-sensei
+Version: 0.2.0
+Summary: AI-powered personal learning coach with spaced repetition
+Project-URL: Homepage, https://github.com/tdfirth/sensei
+Project-URL: Repository, https://github.com/tdfirth/sensei
+Project-URL: Issues, https://github.com/tdfirth/sensei/issues
+Author: Tom Firth
+License-Expression: MIT
+License-File: LICENSE
+Keywords: ai,claude,learning,mcp,spaced-repetition,srs,study
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Education
+Classifier: Typing :: Typed
+Requires-Python: >=3.11
+Requires-Dist: fastmcp>=2.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: typer>=0.21
+Description-Content-Type: text/markdown
+
+# Sensei
+
+A personal learning coach that turns [Claude Code](https://claude.com/claude-code) into a tutor, practice partner, and spaced repetition system.
+
+Sensei manages your study tasks, schedules reviews using spaced repetition, tracks your progress, and connects everything to your notes and code. When you open a sensei project in Claude Code, Claude becomes your sensei—guiding your learning with the patience of a teacher and the memory of a database.
+
+## Installation
+
+```bash
+uv tool install notice-me-sensei
+```
+
+Or with pip:
+
+```bash
+pip install notice-me-sensei
+```
+
+## Tutorial
+
+### 1. Initialize a study project
+
+```bash
+mkdir ~/study && cd ~/study
+sensei init
+```
+
+This creates:
+- `sensei.db` — SQLite database for tasks, assessments, and artifacts
+- `topics/` — Directory for your study materials
+- `practice/` — Directory for practice attempts
+- `.claude/` — Claude Code integration (MCP server config and sensei skill)
+- `CLAUDE.md` — Project context file
+
+### 2. Open with Claude Code
+
+```bash
+claude
+```
+
+Claude automatically loads the sensei tools and skill. You can now have conversations like:
+
+> **You:** I want to learn about attention mechanisms in transformers
+>
+> **Claude:** You will read the paper. Then implement it. Then we will see.
+>
+> I've created these tasks in `topics/attention/`:
+> - `[a1b2c3]` Read "Attention Is All You Need" (learning)
+> - `[d4e5f6]` Implement scaled dot-product attention (implementation)
+> - `[g7h8i9]` Implement multi-head attention (implementation)
+>
+> What will you study first?
+
+### 3. Work through tasks
+
+As you complete tasks, Claude tracks your progress:
+
+> **You:** I finished reading the paper and wrote some notes in topics/attention/notes.md
+>
+> **Claude:** *[reviews your notes]*
+>
+> Good. You covered the key concepts. A few gaps:
+> - You didn't mention why we scale by √d_k
+> - The masking section is light
+>
+> I'll create SRS cards for the concepts you should retain. These will resurface over the coming weeks.
+
+### 4. Spaced repetition
+
+SRS tasks automatically schedule based on your performance:
+
+> **You:** What's due today?
+>
+> **Claude:** You have unfinished business.
+>
+> - `[j1k2l3]` Quiz: Explain the purpose of scaling in attention (due today)
+>
+> Ready?
+
+When you pass, the interval increases. When you fail: "Again. Tomorrow."
+
+### 5. Track progress
+
+```bash
+sensei status
+```
+
+```
+Sensei Project Status
+========================================
+Pending tasks:  12
+Active tasks:   1
+Due today:      3
+Overdue:        1
+```
+
+## CLI Reference
+
+### Project Management
+
+```bash
+sensei init [--path PATH]    # Initialize a new project
+sensei status                # Show project summary
+```
+
+### Tasks
+
+```bash
+sensei task list [OPTIONS]   # List tasks
+  --status pending|active|completed|archived
+  --type learning|implementation|srs|test|review
+  --due-before DATE          # ISO8601 or "today"
+  --path PATH                # Filter by topic path
+  --limit N                  # Max results (default: 20)
+
+sensei task create TITLE --type TYPE [OPTIONS]
+  --description TEXT
+  --due DATE
+  --path PATH
+  --parent ID
+
+sensei task show ID          # Show task details
+sensei task update ID [OPTIONS]
+sensei task complete ID      # Mark as completed
+sensei task schedule-next ID [--days N]  # Create follow-up SRS task
+```
+
+### Artifacts
+
+Link files to tasks for context:
+
+```bash
+sensei artifact add TASK_ID PATH [--type TYPE]
+sensei artifact list TASK_ID
+```
+
+Types: `note`, `code`, `notebook`, `pdf`, `test_harness`, `other`
+
+Type is auto-detected from the file:
+- `.md` → note
+- `.py` → code (or `notebook` if it's a marimo notebook)
+- `test_*.py` → test_harness
+- `.ipynb` → notebook
+- `.pdf` → pdf
+
+### Assessments
+
+```bash
+sensei assess TASK_ID [OPTIONS]
+  --passed / --failed
+  --score N                  # 0-10 scale
+  --feedback TEXT
+
+sensei history TASK_ID       # Show assessment history
+```
+
+### Convenience Commands
+
+```bash
+sensei due [--days N]        # Tasks due within N days (default: 0 = today)
+sensei search QUERY          # Search task titles and descriptions
+```
+
+## Task Types
+
+| Type | Purpose | SRS? |
+|------|---------|------|
+| `learning` | Reading, watching, initial exploration | No |
+| `implementation` | Write code for the first time | No |
+| `srs` | Spaced repetition—questions, re-implementation from memory | Yes |
+| `test` | One-off assessment | No |
+| `review` | Review notes or code with Claude | No |
+
+## How SRS Scheduling Works
+
+Sensei uses an SM-2 inspired algorithm:
+
+- **First pass:** Review tomorrow
+- **Second pass:** Review in 3 days
+- **Subsequent passes:** Interval × ease factor (default 2.5)
+- **On failure:** Reset to 1 day, reduce ease factor
+
+Scores (0-10) adjust the ease factor:
+- Score ≥ 8: Ease factor increases (easier = longer intervals)
+- Score < 5: Ease factor decreases (harder = shorter intervals)
+
+## Project Structure
+
+```
+my-study-project/
+├── .claude/
+│   ├── skills/sensei/SKILL.md    # Claude's personality and workflows
+│   └── settings.local.json       # MCP server configuration
+├── topics/                       # Your study materials
+│   └── attention/
+│       ├── notes.md
+│       ├── attention.py
+│       └── practice/
+│           └── attention-2025-01-15.py
+├── practice/                     # General practice (no specific topic)
+├── sensei.db                     # SQLite database
+└── CLAUDE.md                     # Project goals and context
+```
+
+## Using Without Claude
+
+Sensei works as a standalone CLI. You can manage tasks, record assessments, and track progress without Claude Code:
+
+```bash
+sensei task create "Read Chapter 5" --type learning --path topics/ml
+sensei task list --status pending
+sensei assess abc123 --passed --feedback "Understood gradient descent"
+sensei task schedule-next abc123
+sensei due
+```
+
+## License
+
+MIT — Tom Firth
