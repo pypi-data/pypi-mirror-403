@@ -1,0 +1,268 @@
+# GeoSystems Default Configuration
+# This file contains default values for GeoSystems projects
+# Import this file in your ci-config.yaml to inherit these defaults
+
+# Default Node.js version for all projects
+defaults:
+  nodeVersion: "18"
+  
+  # Default build configuration
+  build:
+    # Default Docker registry destinations
+    destination:
+      - type: dockerRegistry
+        url: "nexus.geosystems.it:8083"
+        credentials: "NEXUS_CREDENTIALS"
+        tags:
+          - "{{ project.version }}.{{ git.branch }}.{{ git.build_number }}"
+          - "{{ git.branch }}-latest"
+      
+      - type: dockerRegistry
+        url: "123456789012.dkr.ecr.eu-west-1.amazonaws.com"
+        credentials: "AWS_ECR_CREDENTIALS"
+        tags:
+          - "{{ project.version }}.{{ git.branch }}.{{ git.build_number }}"
+          - "{{ git.branch }}-latest"
+        lifecyclePolicy:
+          enabled: true
+          keepLastImages: 10
+          expireUntaggedAfterDays: 7
+  
+  # Default Kubernetes resources configuration
+  kubernetes:
+    resources:
+      - type: deployment
+        replicas: 2
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      
+      - type: service
+        serviceType: ClusterIP
+        port: 80
+        targetPort: 8080
+      
+      - type: ingress
+        className: "nginx"
+        pathType: "Prefix"
+        path: "/"
+        tls:
+          enabled: true
+
+# Environment-specific configurations
+environments:
+  dev:
+    branches:
+      - "develop"
+      - "develop-*"
+      - "feature/*"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://k8s-dev.geosystems.it:6443"
+        namespace: "{{ project.organization }}-{{ project.name }}-dev"
+        credentials: "K8S_DEV_CREDENTIALS"
+    argocd:
+      server: "https://argocd-dev.geosystems.it"
+      project: "default"
+      chartsRepo:
+        url: "https://gitlab.geosystems.it/infrastructure/k8s-charts.git"
+        branch: "main"
+        credentials: "GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+    build:
+      destination:
+        - type: dockerRegistry
+          url: "nexus.geosystems.it:8083"
+          credentials: "NEXUS_CREDENTIALS"
+          imageName: "{{ project.organization }}/{{ component.name }}"
+          tags:
+            - "{{ project.version }}.dev.{{ git.build_number }}"
+            - "dev-latest"
+  
+  stg:
+    branches:
+      - "staging"
+      - "stage"
+      - "release/*"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://k8s-stg.geosystems.it:6443"
+        namespace: "{{ project.organization }}-{{ project.name }}-stg"
+        credentials: "K8S_STG_CREDENTIALS"
+    argocd:
+      server: "https://argocd-stg.geosystems.it"
+      project: "default"
+      chartsRepo:
+        url: "https://gitlab.geosystems.it/infrastructure/k8s-charts.git"
+        branch: "main"
+        credentials: "GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+    build:
+      destination:
+        - type: dockerRegistry
+          url: "nexus.geosystems.it:8083"
+          credentials: "NEXUS_CREDENTIALS"
+          imageName: "{{ project.organization }}/{{ component.name }}"
+          tags:
+            - "{{ project.version }}.stg.{{ git.build_number }}"
+            - "stg-latest"
+  
+  ese:
+    branches:
+      - "main"
+      - "master"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://k8s-prod.geosystems.it:6443"
+        namespace: "{{ project.organization }}-{{ project.name }}-prod"
+        credentials: "K8S_PROD_CREDENTIALS"
+    argocd:
+      server: "https://argocd-prod.geosystems.it"
+      project: "default"
+      chartsRepo:
+        url: "https://gitlab.geosystems.it/infrastructure/k8s-charts.git"
+        branch: "main"
+        credentials: "GITLAB_TOKEN"
+      application:
+        autoSync: false
+        selfHeal: false
+        prune: false
+    build:
+      destination:
+        - type: dockerRegistry
+          url: "123456789012.dkr.ecr.eu-west-1.amazonaws.com"
+          credentials: "AWS_ECR_CREDENTIALS"
+          imageName: "{{ project.organization }}/{{ component.name }}"
+          tags:
+            - "{{ project.version }}"
+            - "{{ project.version }}.{{ git.build_number }}"
+            - "latest"
+          lifecyclePolicy:
+            enabled: true
+            keepLastImages: 20
+            expireUntaggedAfterDays: 7
+
+# Change detection configuration
+changeDetection:
+  enabled: true
+  strategy:
+    dev:
+      enabled: false
+      compareWith: null
+      useLastSuccessful: false
+    stg:
+      enabled: true
+      compareWith: "develop"
+      useLastSuccessful: true
+    ese:
+      enabled: true
+      compareWith: "staging"
+      useLastSuccessful: true
+  artifactRegistry:
+    type: dockerRegistry
+    url: "nexus.geosystems.it:8083"
+    credentials: "NEXUS_CREDENTIALS"
+
+# SonarQube configuration
+sonarqube:
+  enabled: true
+  server: "https://sonarqube.geosystems.it"
+  token: "SONARQUBE_TOKEN"
+  
+  # Quality gate thresholds
+  qualityGates:
+    coverage:
+      enabled: true
+      threshold: 80
+      operator: "GTE"
+    bugs:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    vulnerabilities:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    codeSmells:
+      enabled: true
+      threshold: 50
+      operator: "LTE"
+    duplicatedLinesDensity:
+      enabled: true
+      threshold: 3
+      operator: "LTE"
+    securityHotspots:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+  
+  # Acceptable failures (warnings only)
+  acceptableFailures:
+    - "codeSmells"
+    - "duplicatedLinesDensity"
+  
+  # Failure behavior per environment
+  onFailure:
+    dev:
+      allowFailure: true
+      blockDeploy: false
+    stg:
+      allowFailure: true
+      blockDeploy: true
+    ese:
+      allowFailure: false
+      blockDeploy: true
+  
+  # Analysis strategy per environment
+  strategy:
+    dev:
+      enabled: true
+      skipIfNoChanges: false
+      compareWith: null
+    stg:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "develop"
+    ese:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "staging"
+
+# Notification configuration
+notifications:
+  slack:
+    enabled: false
+    webhook: "SLACK_WEBHOOK_URL"
+    channel: "#ci-cd-notifications"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+      - "quality_gate_failed"
+  
+  teams:
+    enabled: false
+    webhook: "TEAMS_WEBHOOK_URL"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+  
+  email:
+    enabled: false
+    recipients:
+      - "devops@geosystems.it"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
