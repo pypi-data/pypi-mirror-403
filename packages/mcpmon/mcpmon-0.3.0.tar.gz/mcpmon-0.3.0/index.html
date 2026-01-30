@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mcpmon - Hot reload for MCP servers</title>
+  <meta name="description" content="Hot reload for MCP servers. Like nodemon, but for MCP.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-tertiary: #1a1a2e;
+      --neon-cyan: #00f5ff;
+      --neon-magenta: #ff00aa;
+      --neon-yellow: #ffe600;
+      --neon-green: #00ff88;
+      --text-primary: #e0e0e0;
+      --text-secondary: #888888;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: 'VT323', monospace;
+      font-size: 18px;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanlines overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.1),
+        rgba(0, 0, 0, 0.1) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* CRT vignette */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(
+        ellipse at center,
+        transparent 0%,
+        transparent 60%,
+        rgba(0, 0, 0, 0.4) 100%
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 0;
+      border-bottom: 2px solid var(--bg-tertiary);
+      margin-bottom: 3rem;
+    }
+
+    .logo {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 14px;
+      color: var(--neon-cyan);
+      text-decoration: none;
+    }
+
+    .github-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 20px;
+      transition: color 0.2s;
+    }
+
+    .github-link:hover {
+      color: var(--neon-cyan);
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 2rem 0 3rem;
+    }
+
+    .ascii-art {
+      font-family: 'Fira Code', monospace;
+      font-size: 14px;
+      color: var(--neon-cyan);
+      text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+      margin-bottom: 2rem;
+      line-height: 1.2;
+      white-space: pre;
+    }
+
+    @media (max-width: 600px) {
+      .ascii-art {
+        font-size: 10px;
+      }
+    }
+
+    .tagline {
+      font-family: 'VT323', monospace;
+      font-size: 28px;
+      color: var(--text-primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .subtext {
+      font-size: 22px;
+      color: var(--text-secondary);
+    }
+
+    /* Terminal */
+    .terminal {
+      background: var(--bg-secondary);
+      border: 2px solid var(--bg-tertiary);
+      border-radius: 4px;
+      padding: 1.5rem;
+      margin: 3rem 0;
+      font-family: 'Fira Code', monospace;
+      font-size: 14px;
+      overflow-x: auto;
+      box-shadow:
+        0 0 20px rgba(0, 245, 255, 0.1),
+        inset 0 0 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .terminal-header {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--bg-tertiary);
+    }
+
+    .terminal-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .terminal-dot.red { background: #ff5f56; }
+    .terminal-dot.yellow { background: #ffbd2e; }
+    .terminal-dot.green { background: #27ca40; }
+
+    .terminal-line {
+      margin: 0.25rem 0;
+      opacity: 0;
+      animation: typeIn 0.3s ease forwards;
+    }
+
+    .terminal-line:nth-child(1) { animation-delay: 0.2s; }
+    .terminal-line:nth-child(2) { animation-delay: 0.6s; }
+    .terminal-line:nth-child(3) { animation-delay: 1.0s; }
+    .terminal-line:nth-child(4) { animation-delay: 1.8s; }
+    .terminal-line:nth-child(5) { animation-delay: 2.2s; }
+    .terminal-line:nth-child(6) { animation-delay: 2.6s; }
+
+    @keyframes typeIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .prompt { color: var(--neon-green); }
+    .cmd { color: var(--text-primary); }
+    .output { color: var(--neon-cyan); }
+    .file { color: var(--neon-yellow); }
+
+    /* Install cards */
+    .install-section {
+      margin: 3rem 0;
+    }
+
+    .section-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 12px;
+      color: var(--neon-cyan);
+      margin-bottom: 1.5rem;
+    }
+
+    .install-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .install-card {
+      background: var(--bg-secondary);
+      border: 2px solid var(--bg-tertiary);
+      padding: 1.5rem;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .install-card:hover {
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 20px rgba(0, 245, 255, 0.2);
+    }
+
+    .install-card h3 {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      color: var(--text-primary);
+      margin-bottom: 1rem;
+    }
+
+    .install-card code {
+      display: block;
+      background: var(--bg-primary);
+      padding: 0.75rem;
+      font-family: 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--neon-green);
+      border: 1px solid var(--bg-tertiary);
+    }
+
+    .install-card .note {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 0.75rem;
+    }
+
+    /* Usage */
+    .usage-section {
+      margin: 3rem 0;
+    }
+
+    .code-block {
+      background: var(--bg-secondary);
+      border: 2px solid var(--bg-tertiary);
+      padding: 1.5rem;
+      font-family: 'Fira Code', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    .code-block .comment { color: var(--text-secondary); }
+    .code-block .key { color: var(--neon-magenta); }
+    .code-block .string { color: var(--neon-green); }
+    .code-block .bracket { color: var(--text-primary); }
+
+    /* Footer */
+    footer {
+      margin-top: 4rem;
+      padding: 2rem 0;
+      border-top: 2px solid var(--bg-tertiary);
+      text-align: center;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 18px;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--neon-cyan);
+    }
+
+    .footer-family {
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+
+    .footer-family a {
+      color: var(--neon-cyan);
+      text-decoration: none;
+    }
+
+    .footer-family a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="/" class="logo">mcpmon</a>
+      <a href="https://github.com/b17z/mcpmon" class="github-link" aria-label="GitHub">[GitHub]</a>
+    </header>
+
+    <main>
+      <section class="hero">
+        <pre class="ascii-art">
+░█▄█░█▀▀░█▀█░█▄█░█▀█░█▀█
+░█░█░█░░░█▀▀░█░█░█░█░█░█
+░▀░▀░▀▀▀░▀░░░▀░▀░▀▀▀░▀░▀</pre>
+        <p class="tagline">Hot reload for MCP servers.</p>
+        <p class="subtext">Change code. Server restarts. Context stays.</p>
+      </section>
+
+      <section class="terminal">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+        </div>
+        <div class="terminal-content">
+          <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">mcpmon --timestamps --verbose --watch src/ -- python -m my_server</span></div>
+          <div class="terminal-line"><span class="output">[mcpmon 14:32:01]</span> Watching src/ for .py changes</div>
+          <div class="terminal-line"><span class="output">[mcpmon 14:32:01 <span class="file">pid:48291</span>]</span> Started: python -m my_server</div>
+          <div class="terminal-line"><span class="output">[mcpmon 14:32:15]</span> File modified: <span class="file">tools.py</span></div>
+          <div class="terminal-line"><span class="output">[mcpmon 14:32:15 <span class="file">pid:48291</span>]</span> Restarting...</div>
+          <div class="terminal-line"><span class="output">[mcpmon 14:32:15 <span class="file">pid:48342</span>]</span> Restart #1 complete</div>
+        </div>
+      </section>
+
+      <section class="install-section">
+        <h2 class="section-title">LOGGING LEVELS</h2>
+        <div class="install-grid">
+          <div class="install-card">
+            <h3>--quiet</h3>
+            <code>errors only</code>
+          </div>
+          <div class="install-card">
+            <h3>default</h3>
+            <code>start/stop + PIDs</code>
+          </div>
+          <div class="install-card">
+            <h3>--verbose</h3>
+            <code>+ file changes</code>
+          </div>
+          <div class="install-card">
+            <h3>--debug</h3>
+            <code>+ everything</code>
+          </div>
+        </div>
+      </section>
+
+      <section class="install-section">
+        <h2 class="section-title">INSTALL</h2>
+        <div class="install-grid">
+          <div class="install-card">
+            <h3>Python</h3>
+            <code>pip install mcpmon</code>
+            <p class="note">requires watchfiles</p>
+          </div>
+          <div class="install-card">
+            <h3>Bun</h3>
+            <code>bunx mcpmon</code>
+            <p class="note">no install needed</p>
+          </div>
+          <div class="install-card">
+            <h3>Binary</h3>
+            <code>download & run</code>
+            <p class="note">no dependencies</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="usage-section">
+        <h2 class="section-title">MCP CONFIG</h2>
+        <pre class="code-block"><span class="bracket">{</span>
+  <span class="key">"mcpServers"</span><span class="bracket">:</span> <span class="bracket">{</span>
+    <span class="key">"my-server"</span><span class="bracket">:</span> <span class="bracket">{</span>
+      <span class="key">"command"</span><span class="bracket">:</span> <span class="string">"mcpmon"</span><span class="bracket">,</span>
+      <span class="key">"args"</span><span class="bracket">:</span> <span class="bracket">[</span><span class="string">"--watch"</span><span class="bracket">,</span> <span class="string">"src/"</span><span class="bracket">,</span> <span class="string">"--"</span><span class="bracket">,</span> <span class="string">"python"</span><span class="bracket">,</span> <span class="string">"-m"</span><span class="bracket">,</span> <span class="string">"my_server"</span><span class="bracket">]</span>
+    <span class="bracket">}</span>
+  <span class="bracket">}</span>
+<span class="bracket">}</span></pre>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-links">
+        <a href="https://github.com/b17z/mcpmon">GitHub</a>
+        <a href="https://pypi.org/project/mcpmon/">PyPI</a>
+        <a href="https://www.npmjs.com/package/mcpmon">npm</a>
+      </div>
+      <p class="footer-family">part of: <a href="https://github.com/b17z/sage">sage</a> | <a href="https://github.com/b17z/crucible">crucible</a></p>
+    </footer>
+  </div>
+</body>
+</html>
