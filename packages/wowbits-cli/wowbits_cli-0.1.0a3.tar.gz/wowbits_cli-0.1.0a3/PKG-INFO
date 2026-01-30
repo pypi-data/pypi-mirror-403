@@ -1,0 +1,631 @@
+Metadata-Version: 2.4
+Name: wowbits-cli
+Version: 0.1.0a3
+Summary: WowBits AI Platform CLI - Manage connectors and integrations for AI workflows
+Project-URL: Homepage, https://github.com/wowbits/wowbits-cli
+Project-URL: Documentation, https://github.com/wowbits/wowbits-cli#readme
+Project-URL: Repository, https://github.com/wowbits/wowbits-cli
+Project-URL: Issues, https://github.com/wowbits/wowbits-cli/issues
+Author-email: WowBits AI <support@wowbits.ai>
+License: MIT
+Keywords: ai,api-management,cli,connectors,integrations,wowbits
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Utilities
+Requires-Python: >=3.9
+Requires-Dist: psycopg2-binary>=2.9.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: sqlalchemy>=2.0.0
+Provides-Extra: dev
+Requires-Dist: black>=23.0.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# WowBits Agents Guide
+
+A comprehensive guide to creating, configuring, and running AI agents in the WowBits platform.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Directory Structure](#directory-structure)
+- [Creating Agents](#creating-agents)
+  - [YAML Configuration Format](#yaml-configuration-format)
+  - [Tools](#tools)
+  - [Skills](#skills)
+  - [Agents](#agents)
+- [Execution Modes](#execution-modes)
+- [Python Functions](#python-functions)
+- [MCP Server Tools](#mcp-server-tools)
+- [CLI Commands](#cli-commands)
+- [Examples](#examples)
+- [Best Practices](#best-practices)
+
+---
+
+## Overview
+
+WowBits agents are hierarchical AI systems built on Google's Agent Development Kit (ADK). An agent consists of:
+
+- **Agent**: The root orchestrator with instructions and configuration
+- **Skills**: Capabilities that an agent can use (can be nested)
+- **Tools**: Python functions or MCP servers that skills can invoke
+
+```
+Agent
+├── Skill A
+│   ├── Tool 1 (Python Function)
+│   └── Tool 2 (MCP Server)
+└── Skill B
+    ├── Skill B1 (nested skill)
+    └── Tool 3
+```
+
+---
+
+## Prerequisites
+
+1. **Run Setup**: Initialize the WowBits environment
+   ```bash
+   wowbits setup
+   ```
+
+2. **Environment Variables**: Ensure `WOWBITS_ROOT_DIR` is set (done automatically by setup)
+
+3. **Database**: A running Supabase/PostgreSQL database with the schema created
+
+---
+
+## Directory Structure
+
+After setup, your `WOWBITS_ROOT_DIR` should have this structure:
+
+```
+~/wowbits/                    # WOWBITS_ROOT_DIR
+├── .env                      # Environment variables (API keys, DB connection)
+├── agent_studio/             # YAML configuration files for agents
+│   └── my_agent.yaml
+├── agent_runner/             # Generated agent code (auto-created)
+│   └── my_agent/
+│       └── agent.py
+└── functions/                # Python function files
+    ├── requirements.txt      # Dependencies for functions
+    ├── search_web.py
+    └── calculate.py
+```
+
+---
+
+## Creating Agents
+
+### YAML Configuration Format
+
+Agent configurations are written in YAML with multiple documents separated by `---`. The documents are processed in order: **tools → skills → agents**.
+
+Each document must have:
+- `kind`: The type (`tool`, `skill`, or `agent`)
+- `name`: A unique identifier
+
+### Tools
+
+Tools are the atomic capabilities that skills can use. WowBits supports two types:
+
+#### Python Function Tools
+
+```yaml
+---
+kind: tool
+name: search_tool
+type: PYTHON_FUNCTION
+python_function_name: search_web  # Name of function in WOWBITS_ROOT_DIR/functions/
+description: Search the web for information
+```
+
+#### MCP Server Tools
+
+```yaml
+---
+kind: tool
+name: neo4j_tool
+type: MCP_SERVER
+mcp_config_name: neo4j_server  # Name in mcp_configs table
+description: Query Neo4j database
+```
+
+### Skills
+
+Skills define capabilities with instructions and can use tools or other skills.
+
+```yaml
+---
+kind: skill
+name: research_skill
+description: Research and gather information from various sources
+instructions: |
+  You are a research specialist. When asked to research a topic:
+  1. Use the search tool to find relevant information
+  2. Synthesize findings into a coherent summary
+  3. Cite your sources
+tools:
+  - search_tool
+config:
+  exec_mode: llm           # llm, sequential, or parallel
+  model: gpt-4.1           # or any LiteLLM-supported model
+  temperature: 0.2
+  max_output_tokens: 32000
+  output_key: research_result  # Optional: store output in session state
+```
+
+### Agents
+
+Agents are the root-level orchestrators that combine skills.
+
+```yaml
+---
+kind: agent
+name: research_assistant
+description: An AI assistant that can research topics and answer questions
+instructions: |
+  You are a helpful research assistant. Use your skills to:
+  - Research topics thoroughly
+  - Provide accurate, well-sourced answers
+  - Ask clarifying questions when needed
+skills:
+  - research_skill
+  - summary_skill
+status: ACTIVE  # ACTIVE, INACTIVE, or MAINTENANCE
+config:
+  exec_mode: llm
+  model: gpt-4.1
+  temperature: 0.3
+```
+
+---
+
+## Execution Modes
+
+WowBits supports three execution modes for both agents and skills:
+
+### LLM Mode (Default)
+
+The LLM decides when and how to use sub-skills/tools.
+
+```yaml
+config:
+  exec_mode: llm
+```
+
+### Sequential Mode
+
+Skills execute in a defined order, passing results to the next.
+
+```yaml
+config:
+  exec_mode: sequential
+skills:
+  - gather_data      # Runs first
+  - analyze_data     # Runs second
+  - generate_report  # Runs third
+```
+
+### Parallel Mode
+
+All sub-skills execute simultaneously.
+
+```yaml
+config:
+  exec_mode: parallel
+skills:
+  - search_google
+  - search_arxiv
+  - search_wikipedia
+```
+
+---
+
+## Python Functions
+
+### Creating a Function
+
+1. Create a Python file in `WOWBITS_ROOT_DIR/functions/`:
+
+```python
+# functions/search_web.py
+
+def search_web(query: str, num_results: int = 5) -> dict:
+    """
+    Search the web for information.
+    
+    Args:
+        query: The search query
+        num_results: Number of results to return
+        
+    Returns:
+        dict with search results
+    """
+    # Your implementation here
+    import requests
+    
+    # Example using a search API
+    response = requests.get(
+        "https://api.search.com/search",
+        params={"q": query, "limit": num_results}
+    )
+    return response.json()
+```
+
+2. Add dependencies to `functions/requirements.txt`:
+
+```
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+```
+
+3. Sync functions to the database:
+
+```bash
+wowbits create functions
+```
+
+### Function Requirements
+
+- **Function name must match filename**: `search_web.py` should contain `def search_web(...)`
+- **Use type hints**: For proper tool schema generation
+- **Include docstrings**: Description and args are extracted for the tool schema
+- **Return serializable data**: Results must be JSON-serializable
+
+---
+
+## MCP Server Tools
+
+MCP (Model Context Protocol) servers provide tool capabilities over HTTP.
+
+### Setup MCP Config
+
+First, create an MCP configuration in the database (via SQL or API):
+
+```sql
+INSERT INTO mcp_configs (name, url, config) VALUES (
+  'neo4j_server',
+  'http://localhost:8080',
+  '{"transport_mode": "http"}'
+);
+```
+
+### Use in YAML
+
+```yaml
+---
+kind: tool
+name: graph_query
+type: MCP_SERVER
+mcp_config_name: neo4j_server
+description: Query the knowledge graph
+```
+
+### Supported Transport Modes
+
+- `http`: Streamable HTTP connection
+- `sse`: Server-Sent Events connection
+
+---
+
+## CLI Commands
+
+### Setup
+
+```bash
+# Initialize WowBits environment
+wowbits setup
+
+# Setup with custom root directory
+wowbits setup --root-dir /path/to/wowbits
+```
+
+### Functions
+
+```bash
+# List all registered functions
+wowbits list functions
+
+# Sync functions from WOWBITS_ROOT_DIR/functions/ to database
+wowbits create functions
+
+# Sync from custom directory
+wowbits create functions --dir /path/to/functions
+```
+
+### Agents
+
+```bash
+# Create agent from YAML (looks for WOWBITS_ROOT_DIR/agent_studio/<name>.yaml)
+wowbits create agent my_agent
+
+# Create agent from custom YAML path
+wowbits create agent my_agent -c /path/to/config.yaml
+
+# List all agents
+wowbits list agents
+
+# Run agent in web mode (starts ADK web server)
+wowbits run agent my_agent
+```
+
+---
+
+## Examples
+
+### Example 1: Simple Research Agent
+
+```yaml
+# agent_studio/research_agent.yaml
+
+---
+kind: tool
+name: web_search
+type: PYTHON_FUNCTION
+python_function_name: search_web
+description: Search the web for information
+
+---
+kind: skill
+name: research
+description: Research topics using web search
+instructions: |
+  You are a research specialist. When asked about a topic:
+  1. Search for relevant information using the web_search tool
+  2. Compile and summarize the findings
+  3. Always cite your sources with URLs
+tools:
+  - web_search
+config:
+  model: gpt-4.1
+  temperature: 0.2
+
+---
+kind: agent
+name: research_agent
+description: Research assistant that finds and summarizes information
+instructions: |
+  You are a helpful research assistant. Help users find information
+  on any topic by using your research capabilities. Be thorough,
+  accurate, and always provide sources.
+skills:
+  - research
+status: ACTIVE
+config:
+  model: gpt-4.1
+  temperature: 0.3
+```
+
+### Example 2: Multi-Stage Pipeline Agent
+
+```yaml
+# agent_studio/content_pipeline.yaml
+
+---
+kind: tool
+name: scrape_url
+type: PYTHON_FUNCTION
+python_function_name: scrape_url
+description: Scrape content from a URL
+
+---
+kind: skill
+name: gather_content
+description: Gather content from provided URLs
+instructions: Use the scraper to extract content from each URL.
+tools:
+  - scrape_url
+config:
+  model: gpt-4.1
+  output_key: raw_content
+
+---
+kind: skill
+name: analyze_content
+description: Analyze and categorize the gathered content
+instructions: |
+  Analyze the content in session state under 'raw_content'.
+  Identify key themes, sentiment, and main points.
+config:
+  model: gpt-4.1
+  output_key: analysis
+
+---
+kind: skill
+name: generate_summary
+description: Generate a final summary report
+instructions: |
+  Using the analysis from session state, create a comprehensive
+  summary report with key findings and recommendations.
+config:
+  model: gpt-4.1
+
+---
+kind: agent
+name: content_pipeline
+description: Multi-stage content processing pipeline
+instructions: Process and analyze content from multiple sources.
+skills:
+  - gather_content
+  - analyze_content
+  - generate_summary
+config:
+  exec_mode: sequential
+```
+
+### Example 3: Parallel Search Agent
+
+```yaml
+# agent_studio/multi_search.yaml
+
+---
+kind: tool
+name: google_search
+type: PYTHON_FUNCTION
+python_function_name: google_search
+description: Search Google
+
+---
+kind: tool
+name: arxiv_search
+type: PYTHON_FUNCTION
+python_function_name: arxiv_search
+description: Search ArXiv papers
+
+---
+kind: skill
+name: search_google
+description: Search Google for general information
+instructions: Search Google and return top results.
+tools:
+  - google_search
+config:
+  output_key: google_results
+
+---
+kind: skill
+name: search_arxiv
+description: Search ArXiv for academic papers
+instructions: Search ArXiv and return relevant papers.
+tools:
+  - arxiv_search
+config:
+  output_key: arxiv_results
+
+---
+kind: skill
+name: parallel_search
+description: Search multiple sources simultaneously
+instructions: Coordinate parallel searches
+skills:
+  - search_google
+  - search_arxiv
+config:
+  exec_mode: parallel
+
+---
+kind: skill
+name: synthesize_results
+description: Combine results from all searches
+instructions: |
+  Combine and deduplicate results from google_results and arxiv_results
+  in session state. Rank by relevance.
+config:
+  model: gpt-4.1
+
+---
+kind: agent
+name: multi_search_agent
+description: Agent that searches multiple sources in parallel
+instructions: Search across multiple sources and provide unified results.
+skills:
+  - parallel_search
+  - synthesize_results
+config:
+  exec_mode: sequential
+```
+
+---
+
+## Best Practices
+
+### 1. Structure Your YAML Properly
+
+- Define tools first, then skills, then agents
+- Use descriptive names that indicate purpose
+- Keep instructions clear and actionable
+
+### 2. Use Output Keys for Pipelines
+
+When building sequential pipelines, use `output_key` to pass data between skills:
+
+```yaml
+config:
+  output_key: step1_result
+```
+
+### 3. Choose the Right Execution Mode
+
+| Mode | Use When |
+|------|----------|
+| `llm` | Agent should decide dynamically which skills to use |
+| `sequential` | Steps must happen in order (pipelines) |
+| `parallel` | Multiple independent operations that can run simultaneously |
+
+### 4. Keep Functions Focused
+
+- One function per file
+- Single responsibility
+- Clear input/output types
+- Comprehensive error handling
+
+### 5. Test Incrementally
+
+1. Test functions independently first
+2. Test skills with their tools
+3. Test the full agent
+
+### 6. Use Appropriate Models
+
+- Use `gpt-4.1` or similar for complex reasoning
+- Use lighter models for simple tasks
+- Adjust temperature based on task (lower for factual, higher for creative)
+
+### 7. Document Your Agents
+
+Include clear descriptions and instructions so the agent (and other developers) understand the purpose and expected behavior.
+
+---
+
+## Troubleshooting
+
+### "Python function not found"
+
+```bash
+# Ensure functions are synced to database
+wowbits create functions
+```
+
+### "Agent not found"
+
+```bash
+# Check if agent was created
+wowbits list agents
+
+# Recreate from YAML
+wowbits create agent my_agent
+```
+
+### "WOWBITS_ROOT_DIR not set"
+
+```bash
+# Run setup again
+wowbits setup
+```
+
+### Cycle Detected in Skills
+
+Skills cannot reference themselves directly or indirectly. Check your `skills` arrays for circular dependencies.
+
+---
+
+## Additional Resources
+
+- [WowBits CLI README](./README.md)
+- [Database Schema](./db/schema.py)
+- [Google ADK Documentation](https://github.com/google/adk-python)
+
