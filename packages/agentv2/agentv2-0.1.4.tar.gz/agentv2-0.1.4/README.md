@@ -1,0 +1,457 @@
+# AgentV2 - Production-Ready Python Agent Framework
+
+[![PyPI version](https://badge.fury.io/py/agentv2.svg)](https://badge.fury.io/py/agentv2)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A modular, production-ready Python framework for building autonomous AI agents that can plan, validate, and execute complex tasks using LLMs and custom tools.
+
+**📦 Install**: `pip install agentv2` | **🔗 PyPI**: [pypi.org/project/agentv2](https://pypi.org/project/agentv2/)
+
+## 🎯 What is This Project?
+
+AgentV2 is a deterministic, production-grade agent framework that separates concerns into distinct components:
+
+- **Planner**: Generates structured todo lists from natural language tasks
+- **Validator**: Ensures todos meet quality and domain-specific requirements
+- **Executor**: Deterministically executes todos one at a time using LLM-guided actions
+- **Agent**: High-level orchestrator that coordinates the entire workflow
+- **Session Memory**: Lightweight caching and context management for conversational agents
+
+The framework enforces strict architectural boundaries, ensuring predictable execution, no silent failures, and deterministic outcomes.
+
+
+## 🚀 Quick Start
+
+### Installation
+
+**Install from PyPI (Recommended):**
+
+```bash
+pip install agentv2
+```
+
+📦 **Package**: [agentv2 on PyPI](https://pypi.org/project/agentv2/)
+
+**Or install from source (Development):**
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd AgentV2
+
+# Install in editable mode
+pip install -e .
+
+# Or install with development dependencies
+pip install -e ".[dev]"
+```
+
+### Environment Setup
+
+Create a `.env` file:
+
+```env
+API_KEY=your_api_key_here
+```
+
+### Basic Usage
+
+#### Example 1: Simple Task Execution
+
+```python
+from agentv2.src.agent import Agent
+import uuid
+
+# Define tools
+def add(a: int, b: int) -> int:
+    return a + b
+
+tools = {"add": add}
+
+# Create agent
+agent = Agent(
+    model="groq/openai/gpt-oss-120b",
+    system_prompt="You are an autonomous execution agent.",
+    session_id=f"session-{uuid.uuid4().hex[:8]}",
+    tools=tools,
+)
+
+# Run a task
+result = agent.run("Add 5 and 10, then multiply by 2")
+print(result.final_reply)
+```
+
+#### Example 2: Chat Agent with Web Search
+
+```python
+from agentv2.src.agent import Agent
+from ddgs import DDGS
+import uuid
+
+def web_search(query: str) -> str:
+    with DDGS() as ddgs:
+        results = list(ddgs.text(query, max_results=5))
+    return format_results(results)
+
+tools = {"web_search": web_search}
+
+agent = Agent(
+    model="groq/openai/gpt-oss-120b",
+    system_prompt="You are a helpful assistant with web search.",
+    session_id=f"chat-{uuid.uuid4().hex[:8]}",
+    tools=tools,
+)
+
+# Use chat API (with session memory)
+reply = agent.chat("What's the latest news about AI?")
+print(reply)
+```
+
+#### Example 3: File Operations Agent
+
+```python
+from agentv2.src.agent import Agent
+from pathlib import Path
+import uuid
+
+def read_file(path: str) -> str:
+    return Path(path).read_text()
+
+def write_file(path: str, content: str) -> str:
+    Path(path).write_text(content)
+    return f"Wrote {len(content)} bytes to {path}"
+
+tools = {
+    "read_file": read_file,
+    "write_file": write_file,
+}
+
+agent = Agent(
+    model="groq/openai/gpt-oss-120b",
+    system_prompt="You are a file operations agent.",
+    session_id=f"fileops-{uuid.uuid4().hex[:8]}",
+    tools=tools,
+    domain_validator=None,  # Disable domain validation for file ops
+)
+
+result = agent.run("Create a hello.py file that prints 'Hello, World!'")
+print(result.final_reply)
+```
+
+
+## 🎨 Key Features
+
+### 1. **Deterministic Execution**
+- No unbounded loops
+- Strict step limits per todo
+- Predictable outcomes
+- No silent failures
+
+### 2. **Session Memory**
+- Automatic caching of exact-match tasks
+- Context injection across multiple turns
+- Lightweight, token-efficient
+- Session-based isolation
+
+### 3. **Strict Validation**
+- Base validation (action verbs, length, forbidden phrases)
+- Domain-specific validation (backend/frontend/data)
+- Quality scoring (0.0-1.0)
+- Auto-rewrite on failure (bounded attempts)
+
+### 4. **Tool Sandboxing**
+- Tools provided as callables
+- Validated before execution
+- Exceptions propagate as RuntimeError
+- Results stored in authoritative memory
+
+### 5. **Rich Logging**
+- Structured, box-formatted logs
+- Clear visual separation
+- Execution stats and progress tracking
+- Error reporting with context
+
+## 🔧 Architecture Constraints
+
+The framework enforces strict boundaries:
+
+- **Planner decides todos** - Executor never modifies the plan
+- **LLM proposes actions** - Only via `AgentState` schema
+- **Memory is authoritative** - Executor enforces all invariants
+- **No retries in Agent** - Failures propagate immediately
+- **Tools are sandboxed** - Validated and isolated
+- **Deterministic execution** - Same input → same output
+
+## 📁 Project Structure
+
+```
+AgentV2/
+├── src/
+│   ├── agent.py          # High-level orchestrator
+│   ├── planner.py        # Todo generation
+│   ├── executor.py        # Deterministic execution
+│   └── session_store.py  # Session memory management
+├── schemas/
+│   ├── AgentMemory.py    # Authoritative memory state
+│   ├── AgentState.py     # LLM action proposals
+│   ├── TodoSchema.py     # Todo data models
+│   └── SessionMemory.py  # Session context model
+├── utils/
+│   ├── llm.py            # LLM interface (LiteLLM)
+│   ├── logger.py         # Rich logging utilities
+│   ├── validators.py     # Todo validation & scoring
+│   └── Prompts.py        # Prompt template loader
+├── prompts/
+│   ├── Agent.md          # Execution prompt
+│   ├── Todo.md           # Planning prompt
+│   ├── FinalReply.md     # Summarization prompt
+│   └── TodoRewrite.md    # Rewrite prompt
+├── main.py               # Example: Basic tools
+├── main2.py             # Example: Chat agent
+├── main3.py             # Example: File operations
+└── README.md
+```
+
+## 💡 Use Cases
+
+### 1. **Task Automation**
+- Break down complex tasks into executable steps
+- Execute multi-step workflows deterministically
+- Handle file operations, API calls, data processing
+
+### 2. **Conversational Agents**
+- Chat interfaces with web search
+- Context-aware responses
+- Caching for repeated queries
+- Session-based memory
+
+### 3. **Code Generation & File Operations**
+- Generate code files from descriptions
+- Read and modify existing files
+- Execute and test generated code
+- Create full-stack applications
+
+### 4. **Data Processing Pipelines**
+- Extract, transform, and load data
+- Validate and clean datasets
+- Generate reports and summaries
+
+### 5. **API Integration Agents**
+- Interact with external APIs
+- Process web search results
+- Aggregate information from multiple sources
+
+### 6. **Development Assistants**
+- Generate boilerplate code
+- Refactor existing codebases
+- Write tests and documentation
+- Debug and fix issues
+
+## 🛠️ Customization
+
+### Adding Custom Tools
+
+```python
+def my_custom_tool(param1: str, param2: int) -> str:
+    """Tool description for the LLM."""
+    # Your logic here
+    return "result"
+
+tools = {
+    "my_custom_tool": my_custom_tool,
+}
+```
+
+### Custom Domain Validators
+
+```python
+from agentv2.utils.validators import DomainTodoValidator
+
+class MyDomainValidator(DomainTodoValidator):
+    FORBIDDEN = ["forbidden_term1", "forbidden_term2"]
+    
+    def validate(self, todo: TodoItemInput) -> None:
+        # Your validation logic
+        pass
+
+agent = Agent(
+    ...,
+    domain_validator=MyDomainValidator(),
+)
+```
+
+### Custom Prompts
+
+Edit the markdown files in `prompts/`:
+- `Agent.md` - Execution instructions
+- `Todo.md` - Planning instructions
+- `FinalReply.md` - Summarization instructions
+
+## 📊 Execution Flow Details
+
+### Planning Phase
+1. User provides task description
+2. Planner generates `TodoListInput` using LLM
+3. Validator checks base rules, domain rules, quality score
+4. Auto-rewrite invalid todos (up to 2 attempts)
+5. Return validated `TodoList` with UUIDs
+
+### Execution Phase
+1. Executor iterates through todos sequentially
+2. For each todo:
+   - LLM proposes `AgentState` (think/tool/complete_todo/fail_todo/noop)
+   - Validate JSON strictly
+   - Apply action deterministically
+   - Update `AgentMemory` (authoritative state)
+   - Enforce step limits (MAX_STEPS_PER_TODO)
+3. Continue until all todos complete or fail
+
+### Summarization Phase
+1. Collect completed todos and final results
+2. Generate natural language summary
+3. Return final reply to user
+
+## 🔒 Security & Safety
+
+- **Tool Sandboxing**: Tools execute in controlled environment
+- **Input Validation**: All LLM outputs validated with Pydantic
+- **Error Handling**: No silent failures, all errors propagate
+- **Step Limits**: Bounded execution prevents infinite loops
+- **Session Isolation**: Each session_id has isolated memory
+
+## 📝 Logging
+
+The framework uses Rich for beautiful, structured logging:
+
+- **Box-formatted panels** for clear separation
+- **Color-coded** success/error/warning messages
+- **Execution stats** tables
+- **Todo lists** with status indicators
+- **Structured logs** to files in `logs/` directory
+
+
+
+## 🏗️ Architecture & Logic
+
+### High-Level Flow
+
+```mermaid
+graph TD
+    A[User Task] --> B[Agent.run]
+    B --> C[Planner]
+    C --> D[Generate Todos]
+    D --> E[Validator]
+    E --> F{Valid?}
+    F -->|No| G[Auto-Rewrite]
+    G --> E
+    F -->|Yes| H[Executor]
+    H --> I[Execute Todos]
+    I --> J[LLM Proposes Action]
+    J --> K{Action Type}
+    K -->|tool| L[Execute Tool]
+    K -->|complete_todo| M[Mark Complete]
+    K -->|think| N[Update State]
+    L --> O[Update Memory]
+    M --> O
+    N --> O
+    O --> P{All Done?}
+    P -->|No| I
+    P -->|Yes| Q[Summarize]
+    Q --> R[Final Reply]
+```
+
+### Component Responsibilities
+
+```mermaid
+graph LR
+    subgraph "Agent (Orchestrator)"
+        A1[Task Input] --> A2[Plan]
+        A2 --> A3[Validate]
+        A3 --> A4[Execute]
+        A4 --> A5[Summarize]
+    end
+    
+    subgraph "Planner"
+        P1[Task] --> P2[LLM Generate]
+        P2 --> P3[TodoList]
+    end
+    
+    subgraph "Validator"
+        V1[TodoList] --> V2[Base Rules]
+        V2 --> V3[Domain Rules]
+        V3 --> V4[Quality Score]
+        V4 --> V5{Pass?}
+        V5 -->|No| V6[Rewrite]
+        V6 --> V1
+        V5 -->|Yes| V7[Validated]
+    end
+    
+    subgraph "Executor"
+        E1[TodoList] --> E2[Iterate Todos]
+        E2 --> E3[LLM Action]
+        E3 --> E4{Action}
+        E4 -->|tool| E5[Call Tool]
+        E4 -->|complete| E6[Mark Done]
+        E4 -->|think| E7[Update State]
+        E5 --> E8[Update Memory]
+        E6 --> E8
+        E7 --> E8
+        E8 --> E9{Next?}
+        E9 -->|Yes| E2
+        E9 -->|No| E10[Done]
+    end
+    
+    A2 --> P1
+    A3 --> V1
+    A4 --> E1
+    V7 --> A4
+    E10 --> A5
+```
+
+### Session Memory Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant S as SessionStore
+    participant C as Cache
+    
+    U->>A: chat("What's the weather?")
+    A->>S: get(session_id)
+    S->>C: check_cache(normalized_task)
+    alt Cache Hit
+        C-->>A: cached_reply
+        A-->>U: cached_reply (no LLM call)
+    else Cache Miss
+        A->>A: plan + execute
+        A->>C: cache_reply(task, reply)
+        A-->>U: final_reply
+    end
+```
+
+## 🤝 Contributing
+
+This is a production-ready framework with strict architectural constraints. When contributing:
+
+1. Maintain separation of concerns (Planner/Executor/Agent)
+2. Never add retry logic in Agent
+3. Always validate LLM outputs
+4. Keep execution deterministic
+5. Add tests for new features
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with [LiteLLM](https://github.com/BerriAI/litellm) for LLM abstraction
+- Uses [Rich](https://github.com/Textualize/rich) for beautiful terminal output
+- [DuckDuckGo Search](https://github.com/deedy5/duckduckgo_search) for web search capabilities
+
+---
+
+Made With **Hate** and **Love**
+Because perfection isn't born out of love, it's forged in frustration, obsession, and an unrelenting pursuit of something better.
