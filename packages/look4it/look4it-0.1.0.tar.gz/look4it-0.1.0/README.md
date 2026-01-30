@@ -1,0 +1,191 @@
+# Look4It 🔍
+
+A simple web searching tool similar to Tavily - search the web and extract content programmatically without using Tavily API.
+
+## Features
+
+- 🌐 Web search using DuckDuckGo (no API key required)
+- 📄 Automatic content extraction from web pages
+- 🎯 Structured JSON results
+- 🚀 Simple Python API
+- 💻 Command-line interface
+
+## Installation
+
+```bash
+# Install the package
+uv pip install -e .
+
+# Install with test dependencies
+uv pip install -e .[test]
+```
+
+## Project Structure
+
+```
+look4it/
+├── src/look4it/          # Main package
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── cli.py
+│   └── search_tool.py
+├── tests/                # Test suite
+├── examples/             # Usage examples
+├── docs/                 # Documentation
+└── pyproject.toml        # Configuration
+```
+
+## Testing
+
+Look4It includes comprehensive unit tests with 91% code coverage.
+
+### Run All Tests
+```bash
+# Using pytest
+pytest
+
+# With coverage report
+pytest --cov=src/look4it --cov-report=html
+```
+
+### Test Statistics
+- **Total Tests:** 31
+- **Coverage:** 97%
+- **Status:** ✅ All Passing
+
+See [TESTING.md](TESTING.md) for detailed testing documentation.
+
+## Installation
+
+## Usage
+
+### Command Line
+
+**Important:** Make sure the package is installed first!
+
+```bash
+# Install package
+uv pip install -e .
+
+# Run as a module
+python -m look4it "Python web scraping"
+
+# Or use the installed command
+look4it "Python web scraping"
+
+# Results are saved to search_results.json
+```
+
+### Python API
+
+```python
+from look4it import Look4It
+
+# Initialize the search tool
+searcher = Look4It(max_results=5)
+
+# Perform a search (without full content)
+results = searcher.search("Python tutorial", include_content=False)
+print(results)
+
+# Perform a search with full content extraction
+results = searcher.search("Python tutorial", include_content=True)
+
+# Get formatted summary
+summary = searcher.search_and_summarize("Python tutorial")
+print(summary)
+
+# Extract content from a specific URL
+content = searcher.get_content("https://example.com")
+print(content)
+```
+
+### Response Format
+
+```json
+{
+  "query": "Python tutorial",
+  "results": [
+    {
+      "title": "Learn Python - Free Interactive Python Tutorial",
+      "url": "https://example.com/python",
+      "snippet": "Welcome to the LearnPython.org interactive Python tutorial...",
+      "content": "Full extracted content from the page...",
+      "word_count": 1234
+    }
+  ],
+  "result_count": 5
+}
+```
+
+## API Reference
+
+### Look4It Class
+
+#### `__init__(max_results=5, timeout=10)`
+Initialize the search tool.
+
+**Parameters:**
+- `max_results` (int): Maximum number of search results to return (default: 5)
+- `timeout` (int): Timeout for HTTP requests in seconds (default: 10)
+
+#### `search(query, include_content=True)`
+Search the web and return structured results.
+
+**Parameters:**
+- `query` (str): The search query
+- `include_content` (bool): Whether to fetch full content from pages (default: True)
+
+**Returns:** Dictionary with search results and metadata
+
+#### `search_and_summarize(query)`
+Search and return a formatted text summary.
+
+**Parameters:**
+- `query` (str): The search query
+
+**Returns:** Formatted string with results
+
+#### `get_content(url)`
+Extract content from a specific URL.
+
+**Parameters:**
+- `url` (str): The URL to extract content from
+
+**Returns:** Dictionary with content and metadata
+
+## How It Works
+
+1. **Search**: Uses DuckDuckGo search API to find relevant web pages
+2. **Extract**: Downloads each page and extracts main content using BeautifulSoup
+3. **Clean**: Removes navigation, scripts, styles, and excessive whitespace
+4. **Structure**: Returns results in a clean JSON format
+
+## Dependencies
+
+- `requests`: HTTP requests
+- `beautifulsoup4`: HTML parsing
+- `duckduckgo-search`: Search functionality
+- `lxml`: Fast HTML parser
+
+## Example Use Cases
+
+- Research assistant tools
+- Content aggregation
+- Automated fact-checking
+- Web monitoring
+- Data collection for ML/AI projects
+
+## Differences from Tavily
+
+Look4It is a simplified alternative to Tavily:
+- ✅ No API key required
+- ✅ Open source and free
+- ✅ Full control over search and extraction
+- ⚠️ Slower than dedicated APIs
+- ⚠️ Basic content extraction (no AI-powered summarization)
+- ⚠️ Rate limited by search engine
+
+## License
+
+MIT License - feel free to use and modify!
