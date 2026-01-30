@@ -1,0 +1,106 @@
+# ObliviousPy-HSS
+
+[![PyPI version](https://badge.fury.io/py/obliviouspy-HSS.svg)](https://badge.fury.io/py/obliviouspy-HSS)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Paper: IACR ePrint](https://img.shields.io/badge/IACR-ePrint%202026%2F104-blue)](https://eprint.iacr.org/2026/104)
+
+**ObliviousPy-HSS** is a Python library implementing **Homomorphic Secret Sharing (HSS)** constructions applied to **Oblivious Linear Evaluation (OLE)**, **Vector-OLE (V-OLE)**, and **n×OLE** generation, with a particular focus on *silent* and *pre-computation–based* correlation generation.
+
+The library accompanies and implements the constructions presented in the following research paper.
+
+---
+
+## 📄 Related Paper
+
+**Deal out oblivious correlations: 2-depth HSS circuit for silent V-OLE generation**
+Davide Cerutti, Stelvio Cimato
+Cryptology ePrint Archive, Paper 2026/104
+
+🔗 Paper link (IACR ePrint):
+[https://eprint.iacr.org/2026/104](https://eprint.iacr.org/2026/104)
+
+---
+
+## 🧾 Abstract
+
+We analyzed in depth the Homomorphic Secret Sharing construction applied for Pseudorandom Correlation Function, and we obtained interesting results for various applications.
+
+In this paper, we discuss how the PCF can be achieved using the Damgård–Jurik HSS schema by solving the distance function over a ciphertext parametric space of (\mathbb{Z}^*_{n^{\xi+1}}), performing the distributed multiplication protocol as the base building block for our PCF.
+
+We created a weak PCF for Vector-OLE via 1-depth HSS circuit; furthermore, via what we called pre-computation with RO-less, we achieved a strong PCF for V-OLE between two parties correct against an honest-but-curious adversary (\mathcal{A}*{hbc}) and fail-safe secure against an active adversary (\mathcal{A}*{poly}).
+
+We also extended our main construction by describing a silent approach in two different ways: a semi-silent variant based on a pre-sampling assumption between the parties, and a true-silent protocol execution exploiting the generation of seeds by a PRF.
+
+As a final step, we discuss how to build an (n \times \text{OLE}) generator via our pre-computation session to craft an arbitrary amount of OLE correlation.
+
+Our entire paper is further verified by the implementation of a complete and exhaustive library covering all HSS operations, publicly accessible and usable via `pip install obliviouspy-HSS` and importing `import oblivious`.
+
+---
+
+## 📚 Citation
+
+If you use this library in your research, please cite our paper:
+
+```bibtex
+@misc{cryptoeprint:2026/104,
+      author = {Davide Cerutti and Stelvio Cimato},
+      title = {Deal out oblivious correlations: 2-depth {HSS} circuit for silent V-{OLE} generation},
+      howpublished = {Cryptology {ePrint} Archive, Paper 2026/104},
+      year = {2026},
+      url = {https://eprint.iacr.org/2026/104}
+}
+```
+
+---
+
+## 🚀 Installation
+
+You can install the library directly from PyPI:
+
+```bash
+pip install obliviouspy-HSS
+```
+
+---
+
+## 🧑‍💻 Quick Start
+
+After installation, simply import the library in Python:
+
+```python
+import oblivious
+```
+
+The package exposes the core primitives and utilities required to construct and experiment with HSS-based circuits, following the designs described in the paper.
+
+---
+
+## 📓 Examples & Notebooks
+
+The repository includes Jupyter notebooks demonstrating the main use cases:
+
+* **V-OLE generation** using HSS-based PCF constructions
+* **n×OLE generation** via a pre-computation phase, showing how to craft an arbitrary amount of OLE correlations
+
+These notebooks are intended both as executable examples and as a companion to the theoretical constructions presented in the paper.
+
+---
+
+## 📦 PyPI Package
+
+The official PyPI page is available at:
+
+[https://pypi.org/project/obliviouspy-HSS/](https://pypi.org/project/obliviouspy-HSS/)
+
+---
+
+## 📜 License
+
+This project is released under the **MIT License**.
+See the `LICENSE` file for full details.
+
+---
+
+## 🎯 Notes
+
+This library is primarily intended for **research and experimental purposes**. While care has been taken to faithfully implement the constructions, it is **not designed for production deployment** without further hardening and independent security review.
