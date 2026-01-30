@@ -1,0 +1,316 @@
+# FastAPI–Nacos Integration Guide
+
+This document describes how to quickly integrate FastAPI with Nacos using the `fastapi-nacos` package. It provides the following capabilities:
+
+1. Unified management of local configuration and Nacos remote configuration
+2. Service registration, service discovery, and client-side load-balanced service invocation
+
+Before use, install the `fastapi-nacos` dependency:
+
+```bash
+# Install via pip
+pip install fastapi-nacos
+# Install via uv
+uv add fastapi-nacos
+```
+
+---
+
+# 1. Basic Integration
+
+## 1.1. Load Local Configuration
+
+```python
+from fastapi_nacos import FastApiNacos
+from yamlpyconfig.models import AlgorithmEnum
+
+def get_fastapi_nacos():
+    # Initialize FastApiNacos — local configuration is already loaded
+    # Singleton instance: only the first initialization takes effect
+    return FastApiNacos("./", AlgorithmEnum.SM4, "/Oa0TQLjIQ8EQUrYqROmBQ==")
+```
+
+This code loads the local configuration and returns a `FastApiNacos` object. It accepts three parameters:
+
+1. The path to the configuration files. It loads the following:
+
+   * `application.yaml` — required
+   * `application-{profile}.yaml` — optional. The `profile` value must be defined in `application.yaml`, e.g. `profile: dev`.
+2. The encryption algorithm (currently supports SM4 and SM2)
+3. The key. For SM4, this is the symmetric key; for SM2, this is the private key.
+
+**Notes:**
+
+1. `FastApiNacos` is a singleton — only the first initialization takes effect.
+2. Local configuration supports:
+
+   * **Environment variable expansion**, e.g. `${ENV_VAR}` or `${ENV_VAR:default_value}`
+   * **Encrypted configuration** in both local and Nacos configs using the `{encrypted}` prefix, e.g. `{encrypted}xxxxxx`.
+
+### 1.1.1. Local Configuration File Example
+
+`application.yaml`:
+
+```yaml
+profile: dev
+```
+
+`application-dev.yaml`:
+
+```yaml
+# Nacos remote configuration settings
+config-sources:
+  nacos:
+    server-addr: "192.168.30.36:9090"
+    namespace: "dev"
+    group: "DEFAULT_GROUP"
+    username: "nacos"
+    password: "{encrypted}YXx6whAK7qytz8K7rF9VHQ=="
+    imports:
+      - data-id: "gateway.yaml"
+      - data-id: "application-ext.yaml"
+
+# Service caller configuration
+service-caller:
+  # Supported LB types: round_robin, random, weight_round_robin, weight_random
+  lb-type: round_robin
+  connection-timeout: 6
+  read-timeout: 6
+  connection-pool-size: 100
+
+# Nacos service registration and discovery
+app-registry:
+  nacos:
+    app-name: "my-app"
+    server-addr: ${NACOS_SERVER:192.168.30.36:9090}
+    namespace: ${NACOS_NAMESPACE:dev}
+    ip: ${SERVER_IP:127.0.0.1}
+    port: ${SERVER_PORT:8000}
+    username: ${NACOS_USERNAME:nacos}
+    password: ${NACOS_PASSWORD:{encrypted}YXx6whAK7qytz8K7rF9VHQ==}
+    weight: 1.0
+
+# fastdfs configuration for aiofdfs
+fastdfs:
+  tracker-servers: 192.168.30.36:22122
+  connect-timeout: 6
+  network-timeout: 6
+  store-path-index: 1
+
+port: ${SERVER_PORT:8000}
+```
+
+### 1.1.2. Using Local Configuration in `gunicorn`
+
+You can load local configuration inside `gunicorn.conf.py`:
+
+```python
+import multiprocessing
+import os
+
+from api.configs import get_fastapi_nacos
+
+fastapi_nacos_manager = get_fastapi_nacos()
+server_config = fastapi_nacos_manager.config.get("server", {})
+bind = f"0.0.0.0:{server_config.get("port", 8000)}"
+
+# Worker count: #CPU * 2
+if "SERVICE_WORKERS" in os.environ:
+    workers = int(os.environ["SERVICE_WORKERS"])
+else:
+    workers = multiprocessing.cpu_count() * 2
+
+worker_class = "uvicorn.workers.UvicornWorker"
+
+max_requests = 1000
+max_requests_jitter = 100
+timeout = server_config.get("timeout", 30)
+```
+
+Then start the service using:
+
+```
+gunicorn -c gunicorn.conf.py api.main:app
+```
+
+---
+
+## 1.2. Loading Remote Configuration & Service Registration
+
+It is recommended to integrate this with FastAPI’s **lifespan** hook.
+
+`api.configs.py`:
+
+```python
+import logging
+from contextlib import asynccontextmanager
+from typing import Optional
+
+from aio_service_caller import LoggingInterceptor, AuthInterceptor, MetricsInterceptor
+from aiofdfs import FastDfsConf, Async_Fdfs_Client
+from fastapi import FastAPI
+from fastapi_nacos import FastApiNacos, ServiceRegistryConfigError
+from yamlpyconfig.models import AlgorithmEnum
+
+logger = logging.getLogger(__name__)
+
+__fdfs_client: Optional[Async_Fdfs_Client] = None
+
+def get_fdfs() -> Optional[Async_Fdfs_Client]:
+    global __fdfs_client
+    return __fdfs_client
+
+def get_fastapi_nacos():
+    return FastApiNacos("./", AlgorithmEnum.SM4, "lSU543Tes6wmjnb+PMVQNg==")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global __fdfs_client
+    try:
+        async with get_fastapi_nacos() as fastapi_nacos_manager:
+            try:
+                # Add interceptors
+                await fastapi_nacos_manager.service_manager.add_interceptors(
+                    [LoggingInterceptor(), AuthInterceptor(token="123456"),
+                     MetricsInterceptor()])
+            except ServiceRegistryConfigError as e:
+                logger.warning(f"{e}")
+            # If the aiofdfs package is used, you can refer to this code snippet to initialize the fdfs_client using configuration.
+            async with Async_Fdfs_Client(FastDfsConf.from_dict(fastapi_nacos_manager.config)) as __fdfs_client:
+                yield
+    except Exception as e:
+        logger.error(f"lifespan init error: {e}")
+```
+
+`api.main.py`:
+
+```python
+from fastapi import FastAPI
+from .configs import lifespan
+
+app = FastAPI(lifespan=lifespan, title="Demo", description="Demo API", version="0.1.0", redoc_url=None)
+```
+
+This accomplishes two things:
+
+1. Loads remote configuration and merges it with local configuration.
+   Access full configuration via:
+
+   ```python
+   get_fastapi_nacos().config
+   ```
+2. Registers this service instance in Nacos under the name defined in:
+   `app-registry.nacos.app-name`
+
+---
+
+## 1.3. Configuration Priority
+
+(From low to high)
+
+1. Local `application.yaml`
+2. Local `application-{profile}.yaml`
+3. Remote configuration listed in `config-sources.nacos.imports` (later entries override earlier ones)
+
+---
+
+# 2. Service Invocation
+
+You can invoke remote services with:
+
+```
+get_fastapi_nacos().service_manager
+```
+
+Service-caller configuration:
+
+```yaml
+service-caller:
+  lb-type: round_robin
+  connection-timeout: 6
+  read-timeout: 6
+  connection-pool-size: 100
+```
+
+### Example
+
+```python
+@router.get("/hello-config")
+async def get_hello_config():
+    return await get_fastapi_nacos().service_manager.get("my-app", "/demo/config")
+
+@router.get("/hello-config-raw")
+async def get_hello_config_raw():
+    async with get_fastapi_nacos().service_manager.raw_get("my-app", "/demo/config") as response:
+        return await response.json()
+```
+
+Each HTTP method provides **two invocation styles**:
+
+1. `service_manager.<method>(...)` → returns processed business result
+2. `service_manager.raw_<method>(...)` → returns the raw `ClientResponse`
+
+Extra arguments (headers, params, json, timeout, etc.) are passed through `**kwargs`.
+
+---
+
+## 2.1. Interceptors
+
+Example in lifespan:
+
+```python
+await fastapi_nacos_manager.service_manager.add_interceptors(
+    [LoggingInterceptor(), AuthInterceptor(token="123456"), MetricsInterceptor()]
+)
+```
+
+Interceptors implement the `IServiceInterceptor` interface:
+
+```python
+class IServiceInterceptor(ABC):
+    async def before_request(self, context: RequestContext) -> None: ...
+    async def after_response(self, context: RequestContext) -> None: ...
+    async def handle_exception(self, context: RequestContext) -> None: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def order(self) -> int: return 0
+```
+
+Interceptors execute in ascending `order` value.
+
+**Rules:**
+
+1. Interceptors with duplicate names are ignored
+2. You can manage interceptors via:
+
+   * `add_interceptor(interceptor)`
+   * `remove_interceptor(name)`
+   * `clear_interceptors()`
+
+---
+
+### 2.1.1. `RequestContext` Fields
+
+Available in all phases:
+
+1. `method` — HTTP method
+2. `service_name` — service to call
+3. `path` — request path
+4. `protocol` — default `http`
+5. `kwargs` — modifiable request args (headers, params, json, etc.)
+6. `attributes` — custom attribute dictionary
+
+Available in `after_response` & `handle_exception`:
+
+1. `resolved_url` — final request URL
+2. `selected_instance` — chosen service instance
+3. `response` — aiohttp response
+4. `exception` — captured exception
+5. `result` — final processed result
+6. `start_time`
+7. `response_time`
+8. `end_time`
+9. `duration`
