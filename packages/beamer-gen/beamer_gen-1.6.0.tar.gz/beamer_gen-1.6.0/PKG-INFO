@@ -1,0 +1,162 @@
+Metadata-Version: 2.1
+Name: beamer_gen
+Version: 1.6.0
+Summary: Preprocessor to generate LaTeX/beamer files
+Home-page: https://github.com/fcolas/beamer_gen
+Author: Francis Colas
+Author-email: francis.colas@inria.fr
+License: BSD
+Keywords: LaTeX beamer generator markup
+Platform: any
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Text Processing :: Markup :: LaTeX
+Requires-Python: >=3.4
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+beamer_gen
+==========
+
+Preprocessor to generate LaTeX-beamer code from a more compact language.
+
+The needs for a new sub language were:
+
+- compactness: so as to type as few formatting informations as possible,
+- expressiveness: allow to format most beamer frames with clear and short syntax,
+- flexibility: allowance for LaTeX without too much overhead.
+
+In TeX, environments are enclosed into ``\begin{env}`` and ``\end{env}`` tags which makes it unambiguous but requires duplicating the name of the environment.
+Here, for compactness, the choice is made instead to use indentation as environment markers.
+Indentation is therefore significant and compulsory.
+
+
+Features
+--------
+
+``beamer_gen`` code has shortcuts for the following current LaTeX/beamer features:
+
+- sections, using ``s Section title``,
+- subsections, using ``ss Subsection title``,
+- frames, using ``+ Frame title``,
+- blocks, using ``b Block title``,
+- itemize, using ``- item text`` with automatic environment creation,
+- enumerate, using ``# item text`` with automatic environment creation,
+- columns, using ``c{ratio}`` (ratio relative to ``\columnwidth``) with automatic environment creation,
+- figures, using ``f{ratio}[options]{filename}`` (ratio relative to ``\columnwidth``, it can be omitted).
+
+In addition, options can be placed to some environments that are implicitly defined by inserting them before:
+
+- itemize, using ``{itemize} commands``
+- columns, using ``{columns}[options]``
+
+
+Beamer overlay directives (``<...>``) are supported for most elements.
+Frames and items can also have options (``[...]``), in which case, they must be specified after an optional beamer directive (``+<+->[fragile] Title``, or ``-<+->[\square] item`` for instance).
+Columns can also have a placement option (e.g. ``[c]``), which needs to be specified before the size.
+
+Everything else is reproduced verbatim.
+
+
+Usage
+-----
+
+Usage is straightforward:
+
+    usage: beamer_gen.py [-h] filename [filename ...]
+
+    Generate LaTeX/beamer files from a stub.
+
+    positional arguments:
+      filename    name of the file to be processed.
+
+    optional arguments:
+      -h, --help  show this help message and exit
+
+Each file is processed by creating a new file with the original extension replaced by ``.tex``.
+
+
+Example
+-------
+
+The following source:
+
+```
++[allowframebreaks] Example 1
+    b<+-> Example block
+        - first item
+            # subitem in enumerate
+            # other subitem
+        - second item
+        -<2>[!] third item
+    b<+-> second block
+        {columns}[T]
+        c{0.4}
+            f<3->{0.8}{figure1.png}\\caption text
+        c[t]{0.6}
+            Some generic text:
+            {itemize}<+-> \itemsep 1.5em
+            - and
+            - items
+            {enumerate}<+->
+            # and numbered
+            # items
+    f{1}[draft]{figure2.png}
+
+    f<4>[height=2cm]{figure3.png}
+```
+
+translates into:
+
+```tex
+\begin{frame}[allowframebreaks]
+    \frametitle{Example 1}
+    \begin{block}<+->{Example block}
+        \begin{itemize}
+            \item first item
+            \begin{enumerate}
+                \item subitem in enumerate
+                \item other subitem
+            \end{enumerate}
+            \item second item
+            \item<2>[!] third item
+        \end{itemize}
+    \end{block}
+    \begin{block}<+->{second block}
+        \begin{columns}[T]
+            \column{0.4\columnwidth}
+            \includegraphics<3->[width=0.8\columnwidth]{figure1.png}\\caption text
+            \column[t]{0.6\columnwidth}
+            Some generic text:
+            \begin{itemize}<+-> \itemsep 1.5em
+                \item and
+                \item items
+            \end{itemize}
+            \begin{enumerate}<+->
+                \item and numbered
+                \item items
+            \end{enumerate}
+        \end{columns}
+    \end{block}
+    \includegraphics[width=1\columnwidth,draft]{figure2.png}
+
+    \includegraphics[height=2cm]{figure3.png}
+\end{frame}
+```
+
+
