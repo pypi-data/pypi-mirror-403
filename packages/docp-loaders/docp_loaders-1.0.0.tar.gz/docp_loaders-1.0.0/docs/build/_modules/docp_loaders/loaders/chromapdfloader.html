@@ -1,0 +1,354 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>docp_loaders.loaders.chromapdfloader &mdash; docp_loaders - v1.0.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/s5defs-rules.css?v=0345028d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=a12e3537"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            docp_loaders
+              <img src="../../../_static/s3dev_tri_white_sm.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../library.html">Library API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Change Log</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contact.html">Contact Us</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">docp_loaders</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">docp_loaders.loaders.chromapdfloader</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for docp_loaders.loaders.chromapdfloader</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">:Purpose:   This module provides the entry point for loading PDF files</span>
+<span class="sd">            into a Chroma database.</span>
+
+<span class="sd">:Platform:  Linux/Windows | Python 3.10+</span>
+<span class="sd">:Developer: J Berendt</span>
+<span class="sd">:Email:     development@s3dev.uk</span>
+
+<span class="sd">:Comments:  n/a</span>
+
+<span class="sd">:Examples:</span>
+
+<span class="sd">    Parse and load a *single* PDF file into a Chroma database</span>
+<span class="sd">    collection::</span>
+
+<span class="sd">        &gt;&gt;&gt; from docp_loaders import ChromaPDFLoader</span>
+
+<span class="sd">        &gt;&gt;&gt; l = ChromaPDFLoader(path=&#39;/path/to/chroma&#39;,</span>
+<span class="sd">                                collection=&#39;spam&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; l.load(path=&#39;/path/to/directory/myfile.pdf&#39;)</span>
+
+
+<span class="sd">    Parse and load a *directory* of PDF files into a Chroma database</span>
+<span class="sd">    collection::</span>
+
+<span class="sd">        &gt;&gt;&gt; from docp_loaders import ChromaPDFLoader</span>
+
+<span class="sd">        &gt;&gt;&gt; l = ChromaPDFLoader(path=&#39;/path/to/chroma&#39;,</span>
+<span class="sd">                                collection=&#39;spam&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; l.load(path=&#39;/path/to/directory&#39;, ext=&#39;pdf&#39;)</span>
+
+
+<span class="sd">    For further example code use, please refer to the</span>
+<span class="sd">    :class:`ChromaPDFLoader` class docstring.</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">docp_core.utilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">utilities</span>
+<span class="c1"># locals</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">..objects._chromabasepdfloader</span><span class="w"> </span><span class="kn">import</span> <span class="n">_ChromaBasePDFLoader</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">docp_loaders.objects._chromabasepdfloader</span><span class="w"> </span><span class="kn">import</span> <span class="n">_ChromaBasePDFLoader</span>
+
+
+<div class="viewcode-block" id="ChromaPDFLoader">
+<a class="viewcode-back" href="../../../loaders_chromapdfloader.html#docp_loaders.loaders.chromapdfloader.ChromaPDFLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChromaPDFLoader</span><span class="p">(</span><span class="n">_ChromaBasePDFLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Chroma database PDF-specific document loader.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path (str | ChromaDB): Either the full path to the Chroma</span>
+<span class="sd">            database *directory*, or an instance of a</span>
+<span class="sd">            :class:`~docp.dbs.chroma.ChromaDB` class. If the instance is</span>
+<span class="sd">            passed, the ``collection`` argument is ignored.</span>
+<span class="sd">        collection (str, optional): Name of the Chroma database</span>
+<span class="sd">            collection. Only required if the ``dbpath`` parameter is a</span>
+<span class="sd">            path. Defaults to None.</span>
+<span class="sd">        split_text (bool, optional): Split the document into chunks,</span>
+<span class="sd">            before loading it into the database. Defaults to True.</span>
+<span class="sd">        chunk_size (int, optional): Size (in characters) of each text</span>
+<span class="sd">            chunk after splitting. Defaults to 512.</span>
+<span class="sd">        chunk_overlap (int, optional): Number of characters to overlap in</span>
+<span class="sd">            the split text.  Defaults to 128.</span>
+<span class="sd">        separators (list, optional): Separators to be used by the</span>
+<span class="sd">            recursive text splitter.</span>
+<span class="sd">            Defaults to ``[&#39;\n\n\n&#39;, &#39;\n\n&#39;, &#39;\n&#39;, &#39; &#39;]``.</span>
+<span class="sd">        separators_md (list, optional): Separators to be used by the</span>
+<span class="sd">            recursive text splitter, **for Markdown files**.</span>
+<span class="sd">            Defaults to ``[&#39;#&#39;, &#39;##&#39;, &#39;###&#39;, &#39;\n&#39;]``.</span>
+<span class="sd">        embedding_model_path (str, optional): Path to the embedding model</span>
+<span class="sd">            to be used. Defaults to None.</span>
+<span class="sd">        repo_id (str, optional): Huggingface repository name to be used</span>
+<span class="sd">            as the embedding model. Defaults to None.</span>
+<span class="sd">        offline (bool, optional): Remain offline and use the locally</span>
+<span class="sd">            cached embedding function model. Defaults to False.</span>
+
+<span class="sd">    :Examples:</span>
+
+<span class="sd">        Parse and load a *single* PDF file into a Chroma database</span>
+<span class="sd">        collection::</span>
+
+<span class="sd">            &gt;&gt;&gt; from docp_loaders import ChromaPDFLoader</span>
+
+<span class="sd">            &gt;&gt;&gt; l = ChromaPDFLoader(path=&#39;/path/to/chroma&#39;,</span>
+<span class="sd">                                    collection=&#39;spam&#39;)</span>
+<span class="sd">            &gt;&gt;&gt; l.load(path=&#39;/path/to/directory/myfile.pdf&#39;)</span>
+
+
+<span class="sd">        Parse and load a *directory* of PDF files into a Chroma</span>
+<span class="sd">        database collection::</span>
+
+<span class="sd">            &gt;&gt;&gt; from docp_loaders import ChromaPDFLoader</span>
+
+<span class="sd">            &gt;&gt;&gt; l = ChromaPDFLoader(path=&#39;/path/to/chroma&#39;,</span>
+<span class="sd">                                    collection=&#39;spam&#39;)</span>
+<span class="sd">            &gt;&gt;&gt; l.load(path=&#39;/path/to/directory&#39;, ext=&#39;pdf&#39;)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1">#</span>
+    <span class="c1"># No __init__ method here to ensure the ultimate base class&#39;</span>
+    <span class="c1"># signature is used and to save passing loads of stuff around, if we</span>
+    <span class="c1"># don&#39;t have to.</span>
+    <span class="c1">#</span>
+
+<div class="viewcode-block" id="ChromaPDFLoader.load">
+<a class="viewcode-back" href="../../../loaders_chromapdfloader.html#docp_loaders.loaders.chromapdfloader.ChromaPDFLoader.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+             <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+             <span class="o">*</span><span class="p">,</span>
+             <span class="n">ext</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="s1">&#39;**&#39;</span><span class="p">,</span>
+             <span class="n">recursive</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">load_from_markdown</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+             <span class="c1"># docp_parsers.PDFParser.extract_text --&gt;</span>
+             <span class="n">remove_header</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">remove_footer</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">remove_newlines</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">ignore_tags</span><span class="p">:</span> <span class="nb">set</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+             <span class="n">convert_to_ascii</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">x_tolerance</span><span class="p">:</span> <span class="nb">int</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+             <span class="n">y_tolerance</span><span class="p">:</span> <span class="nb">int</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+             <span class="c1"># docp_docling.PDFParser.to_markdown --&gt;</span>
+             <span class="n">page_no</span><span class="p">:</span> <span class="nb">int</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+             <span class="n">image_mode</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="s1">&#39;placeholder&#39;</span><span class="p">,</span>
+             <span class="n">include_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">unique_lines</span><span class="p">:</span> <span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+             <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load a PDF file (or files) into a Chroma database.</span>
+
+<span class="sd">        .. note::</span>
+
+<span class="sd">            There are *many* argument in this method. This is because</span>
+<span class="sd">            these arguments are passed into the document parser(s). Any</span>
+<span class="sd">            argument which is not accepted by the target parser is simply</span>
+<span class="sd">            ignored.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            path (str): Full path to the file (or *directory*) to be</span>
+<span class="sd">                parsed and loaded. Note: If this is a directory, a</span>
+<span class="sd">                specific file extension can be passed into the</span>
+<span class="sd">                :meth:`load` method using the ``ext`` argument.</span>
+<span class="sd">            ext (str, optional): If the ``path`` argument refers to a</span>
+<span class="sd">                *directory*, a specific file extension can be specified</span>
+<span class="sd">                here. For example: ``ext = &#39;pdf&#39;``. Defaults to &#39;**&#39;,</span>
+<span class="sd">                for a recursive search.</span>
+
+<span class="sd">                .. note::</span>
+
+<span class="sd">                    If anything other than ``&#39;**&#39;`` is provided, all</span>
+<span class="sd">                    alpha-characters are parsed from the string, and</span>
+<span class="sd">                    prefixed with ``*.``. Meaning, if ``&#39;.pdf&#39;`` is</span>
+<span class="sd">                    passed, the characters ``&#39;pdf&#39;`` are parsed and</span>
+<span class="sd">                    prefixed with ``*.`` to create ``&#39;*.pdf&#39;``. However,</span>
+<span class="sd">                    if ``&#39;things.foo&#39;`` is passed, the derived extension</span>
+<span class="sd">                    will be ``&#39;*.thingsfoo&#39;``.</span>
+
+<span class="sd">            recursive (bool, optional): If True, subdirectories are</span>
+<span class="sd">                searched. Defaults to True.</span>
+<span class="sd">            load_from_markdown (bool, optional): Convert the PDF text to</span>
+<span class="sd">                Markdown format and load from the Markdown text.</span>
+<span class="sd">                Defaults to False.</span>
+
+<span class="sd">                .. tip::</span>
+
+<span class="sd">                    This is particularly useful when loading PDF</span>
+<span class="sd">                    documents for use with a RAG pipeline as this method</span>
+<span class="sd">                    of loading is designed to **keep document sections</span>
+<span class="sd">                    together** as chunks in the database, which aids in</span>
+<span class="sd">                    more complete content retrieval.</span>
+
+<span class="sd">                    **Note:**</span>
+<span class="sd">                    This is more processing intensive as ``docling``</span>
+<span class="sd">                    models are required for the conversion.</span>
+
+<span class="sd">            remove_header (bool, optional): Attempt to remove the header</span>
+<span class="sd">                from each page. Defaults to True.</span>
+<span class="sd">            remove_footer (bool, optional): Attempt to remove the footer</span>
+<span class="sd">                from each page. Defaults to True.</span>
+<span class="sd">            remove_newlines (bool, optional): Replace newline characters</span>
+<span class="sd">                with a space. Defaults to True, as this helps with</span>
+<span class="sd">                document chunk splitting.</span>
+<span class="sd">            ignore_tags (set, optional): If provided, these are the</span>
+<span class="sd">                PDF &#39;marked content&#39; tags which will be ignored. Note</span>
+<span class="sd">                that the PDF document must contain tags, otherwise the</span>
+<span class="sd">                bounding box method is used and this argument is ignored.</span>
+<span class="sd">                Defaults to ``{&#39;Artifact&#39;}``, as these generally</span>
+<span class="sd">                relate to a header and/or footer. To include all tags,</span>
+<span class="sd">                (not skip any) pass this argument as ``&#39;na&#39;``.</span>
+<span class="sd">            convert_to_ascii (bool, optional): Convert all characters to</span>
+<span class="sd">                ASCII. Defaults to True.</span>
+<span class="sd">            x_tolerance (int, optional): Adds space where the difference</span>
+<span class="sd">                between x1 of one character and the x0 of the next</span>
+<span class="sd">                character is greater than x_tolerance. Defaults to 3.</span>
+<span class="sd">            y_tolerance (int, optional): Adds space where the difference</span>
+<span class="sd">                between y1 of one character and the y0 of the next</span>
+<span class="sd">                character is greater than y_tolerance. Defaults to 3.</span>
+<span class="sd">            page_no (int, optional): Page number to convert.</span>
+<span class="sd">                Defaults to None (for all pages).</span>
+<span class="sd">            image_mode (str, optional): The mode to use for including</span>
+<span class="sd">                images in the markdown. Options are: &#39;embedded&#39;,</span>
+<span class="sd">                &#39;placeholder&#39;, &#39;referenced&#39;. Defaults to &#39;placeholder&#39;.</span>
+<span class="sd">            include_annotations (bool, optional): Whether to include</span>
+<span class="sd">                annotations in the export. Defaults to True.</span>
+<span class="sd">            unique_lines (bool, optional): Remove any duplicated lines</span>
+<span class="sd">                from the document&#39;s content. Generally used to remove</span>
+<span class="sd">                repeated header and footer strings. Defaults to False.</span>
+
+<span class="sd">        :Keyword Args:</span>
+<span class="sd">            kwargs (dict): Additional keywords to be passed into the</span>
+<span class="sd">            document parser(s).</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># pylint: disable=too-many-locals  # A lot of arguments are needed.</span>
+        <span class="c1"># Prepare the arguments being sent to the doc parser.</span>
+        <span class="c1"># - This has been done manually as using locals() introduces</span>
+        <span class="c1">#   unpredictable behaviour.</span>
+        <span class="n">_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+                   <span class="c1"># docp_parsers.PDFParser.extract_text --&gt;</span>
+                   <span class="s1">&#39;remove_header&#39;</span><span class="p">:</span> <span class="n">remove_header</span><span class="p">,</span>
+                   <span class="s1">&#39;remove_footer&#39;</span><span class="p">:</span> <span class="n">remove_footer</span><span class="p">,</span>
+                   <span class="s1">&#39;remove_newlines&#39;</span><span class="p">:</span> <span class="n">remove_newlines</span><span class="p">,</span>
+                   <span class="s1">&#39;ignore_tags&#39;</span><span class="p">:</span> <span class="n">ignore_tags</span><span class="p">,</span>
+                   <span class="s1">&#39;convert_to_ascii&#39;</span><span class="p">:</span> <span class="n">convert_to_ascii</span><span class="p">,</span>
+                   <span class="s1">&#39;x_tolerance&#39;</span><span class="p">:</span> <span class="n">x_tolerance</span><span class="p">,</span>
+                   <span class="s1">&#39;y_tolerance&#39;</span><span class="p">:</span> <span class="n">y_tolerance</span><span class="p">,</span>
+                   <span class="c1"># docp_docling.PDFParser.to_markdown --&gt;</span>
+                   <span class="s1">&#39;page_no&#39;</span><span class="p">:</span> <span class="n">page_no</span><span class="p">,</span>
+                   <span class="s1">&#39;image_mode&#39;</span><span class="p">:</span> <span class="n">image_mode</span><span class="p">,</span>
+                   <span class="s1">&#39;include_annotations&#39;</span><span class="p">:</span> <span class="n">include_annotations</span><span class="p">,</span>
+                   <span class="s1">&#39;unique_lines&#39;</span><span class="p">:</span> <span class="n">unique_lines</span><span class="p">,</span>
+                   <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+                  <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_from_md</span> <span class="o">=</span> <span class="n">load_from_markdown</span>  <span class="c1"># Set parent class&#39; flag.</span>
+        <span class="c1"># Load multi</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="n">files</span> <span class="o">=</span> <span class="n">utilities</span><span class="o">.</span><span class="n">collect_files</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">ext</span><span class="o">=</span><span class="n">ext</span><span class="p">,</span> <span class="n">recursive</span><span class="o">=</span><span class="n">recursive</span><span class="p">)</span>
+            <span class="n">count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">f</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Processing </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s1"> of </span><span class="si">{</span><span class="n">count</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_load</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="o">**</span><span class="n">_kwargs</span><span class="p">)</span>
+        <span class="c1"># Load single</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Processing: </span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="si">}</span><span class="s1"> ...&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_load</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="o">**</span><span class="n">_kwargs</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026 | s3dev | version 1.0.0.</p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
