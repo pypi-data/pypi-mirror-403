@@ -1,0 +1,256 @@
+# mdstruct
+
+Split and recombine markdown files by ATX headers.
+
+## Similar Projects
+
+- Inspired by [gron](https://github.com/tomnomnom/gron) - make markdown greppable by splitting into hierarchical files, then recombine them.
+- [mdsplit](https://github.com/markusstraub/mdsplit) - Python CLI for splitting markdown files (focuses on flat output structure), but has no easy reversible join.
+
+## Installation
+
+```bash
+uv pip install mdstruct
+# or
+pip install mdstruct
+```
+
+**Tip:** For convenience, consider adding an alias to your shell:
+
+```bash
+# Add to ~/.bashrc, ~/.zshrc, or equivalent
+alias md='mdstruct'
+
+# Then use:
+md split foo
+md join foo
+```
+
+## Usage
+
+### Auto-detection (recommended)
+
+Use `mdstruct` directly to automatically detect whether to split or join based on what exists:
+
+```bash
+# Auto-detects: splits if foo.md exists, joins if foo/ exists
+mdstruct foo
+
+# Works with explicit extensions too
+mdstruct foo.md    # splits foo.md → foo/
+mdstruct foo/      # joins foo/ → foo.md
+
+# With options
+mdstruct foo --level 3    # split with custom level
+mdstruct foo --force      # skip overwrite confirmation
+```
+
+**Tip:** Create an alias for even shorter commands:
+```bash
+alias md='mdstruct'
+# Then use: md foo
+```
+
+### Split markdown file
+
+```bash
+# Auto-detect and split (uses smart default level)
+mdstruct foo
+
+# Explicit split command
+mdstruct split foo
+
+# Split up to H3 level
+mdstruct split foo --level 3
+```
+
+**Example:**
+
+`example.md`:
+```markdown
+# First Section
+
+Content before subsections.
+
+## Subsection A
+
+Content A.
+
+## Subsection B
+
+Content B.
+```
+
+After `mdstruct example` (or `mdstruct split example`):
+
+```
+example/
+├── first-section/
+│   ├── README.md         # "# First Section\n\nContent before subsections."
+│   ├── subsection-a.md   # "# Subsection A\n\nContent A."
+│   └── subsection-b.md   # "# Subsection B\n\nContent B."
+```
+
+**Alphanumeric Prefixes with Fractional Indexing:**
+
+Prefixes are only added when sections are not in alphabetical order or when there are duplicates.
+
+**Automatic Indexing (during split):**
+- Uses rescaling based on total item count
+- ≤36 items: 1-char indexes (`0`, `1`, ..., `9`, `a`, ..., `z`)
+- 37-702 items: 2-char indexes (`aa`, `ab`, ..., `zz`)
+- 703+ items: 3-char indexes (`aaa`, `aab`, ..., `zzz`)
+
+**Manual Insertion (between splits):**
+- Add fractional characters after the index to insert between items
+- Between `0` and `1`: create `0m.new-section/` (index=0, fraction=m)
+- Between `z` and `aa`: create `z5.new-section/` (index=z, fraction=5)
+- Between `aa` and `ab`: create `aam.new-section/` (index=aa, fraction=m)
+- Can nest deeper: `0mm.`, `0mmm.`, etc. for very tight spaces
+
+**How it works:**
+- Format: `<index><fraction>.slug` where fraction is optional
+- During join, detects most common prefix length to determine index width
+- Everything beyond that length is treated as manual fractional insertion
+- Preserves lexicographic sorting automatically
+
+**Examples:**
+```bash
+# Alphabetical headers → no prefixes needed
+apple/
+banana/
+cherry/
+
+# Non-alphabetical (3 items) → single-char indexes
+0.zebra/
+1.apple/
+2.banana/
+
+# Manual insertion between 0 and 1
+0.zebra/
+03.manually-inserted/    # index=0, fraction=3
+1.apple/
+2.banana/
+
+# Many items (50) → two-char indexes for all
+00.first/
+...
+03.second/    # index=3, fraction=0
+...
+bx.fiftieth/
+
+# Rebalancing: just run join + split
+mdstruct join foo
+mdstruct split foo
+# Removes all fractional insertions, resets to clean sequential indexes
+```
+
+### Join split files
+
+```bash
+# Auto-detect and join (checks if foo/ exists)
+mdstruct foo
+
+# Explicit join command
+mdstruct join foo
+
+# Join with explicit output
+mdstruct join foo --output combined.md
+
+# Force overwrite without confirmation
+mdstruct foo --force
+```
+
+### Manual insertion workflow
+
+After splitting, you can manually insert new sections between existing ones:
+
+```bash
+# Split into directories
+mdstruct split doc.md
+
+# Filesystem shows:
+# doc/
+# ├── 0.intro/
+# ├── 1.main-content/
+# └── 2.conclusion/
+
+# Manually create new section between intro and main-content
+mkdir doc/0m.background
+echo "# Background" > doc/0m.background/README.md
+echo "Historical context..." >> doc/0m.background/README.md
+
+# Join back - manual insertion is preserved in order
+mdstruct join doc -o doc.md
+
+# Result preserves order:
+# - Intro
+# - Background (inserted)
+# - Main Content
+# - Conclusion
+```
+
+
+## Development
+
+### Setup
+
+```bash
+# Clone repository
+git clone https://github.com/DJRHails/mdstruct
+cd mdstruct
+
+# Install dependencies with uv
+uv pip install -e ".[dev]"
+```
+
+### Testing
+
+```bash
+# Run tests
+uv run pytest -v
+
+# Run tests with coverage
+uv run pytest --cov=mdstruct --cov-report=term-missing
+
+# Run linting
+uv run ruff check .
+
+# Format code
+uv run ruff format .
+```
+
+### Version Management
+
+This project uses [bumpver](https://github.com/mbarkhau/bumpver) for version management:
+
+```bash
+# Show current version
+uv run bumpver show
+
+# Bump patch version (1.0.0 → 1.0.1)
+uv run bumpver update --patch
+
+# Bump minor version (1.0.0 → 1.1.0)
+uv run bumpver update --minor
+
+# Bump major version (1.0.0 → 2.0.0)
+uv run bumpver update --major
+
+# Dry run to preview changes
+uv run bumpver update --patch --dry
+```
+
+### Publishing
+
+```bash
+# Build package
+uv build
+
+# Publish to PyPI
+uv publish
+```
+
+## License
+
+MIT
