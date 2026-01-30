@@ -1,0 +1,132 @@
+Metadata-Version: 2.1
+Name: xml_validator
+Version: 1.0.3
+Summary: High-performance XML lexical structure validator using DFA state machine.
+Home-page: https://github.com/rahul-sharma-dev/xml_validator
+Author: Rahul Sharma
+Author-email: Rahul.Sharma.Dev@proton.me
+License: MIT
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: C++
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Text Processing :: Markup :: XML
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+# xml_validator
+
+A high-performance C++/Cython module for rapidly checking the well-formedness of XML documents.
+
+## Features
+
+* **Performance:** Written in Cython with direct C/C++ access for maximum processing speed.
+* **Low-level Processing:** Operates directly on byte streams, minimizing overhead.
+* **No Dependencies:** Does not require `libxml2` or other external XML parsers.
+* **GIL-Free:** The core validation logic runs without the Global Interpreter Lock (GIL), allowing for efficient use in
+  multi-threaded applications.
+
+## Installation
+
+```bash
+pip install xml_validator
+```
+
+## API and Usage
+
+The module provides two primary functions.
+
+---
+
+### `is_malformed_xml(content: bytes) -> bool`
+
+Checks the well-formedness of XML provided as a byte string.
+
+* **Parameters:**
+    * `content` (`bytes`): A byte string or any object that supports the buffer protocol (e.g., `bytearray`,
+      `memoryview`) containing the XML content.
+* **Returns:**
+    * `bool`: `True` if the XML document is malformed. `False` if the document is well-formed.
+
+**Example:**
+
+```python
+from xml_validator import is_malformed_xml
+
+# Well-formed XML
+good_xml = b'<?xml version="1.0"?><root><item/></root>'
+assert is_malformed_xml(good_xml) is False
+
+# Malformed XML (unclosed tag)
+bad_xml = b'<root><item>'
+assert is_malformed_xml(bad_xml) is True
+
+# Malformed XML (incorrect nesting)
+bad_xml_nesting = b'<root><item></root></item>'
+assert is_malformed_xml(bad_xml_nesting) is True
+```
+
+---
+
+### `is_malformed_xml_file(path: str) -> bool`
+
+Checks the well-formedness of an XML document by reading it from a file.
+
+* **Parameters:**
+    * `path` (`str`): The path to the file.
+* **Returns:**
+    * `bool`: `True` if the file does not exist, cannot be read, or contains malformed XML. `False` if the document in
+      the file is well-formed.
+
+**Example:**
+
+```python
+from xml_validator import is_malformed_xml_file
+
+# Create test files
+with open("good.xml", "wb") as f:
+    f.write(b'<data><node value="1" /></data>')
+
+with open("bad.xml", "wb") as f:
+    f.write(b'<data><node value="1"')
+
+# Perform checks
+assert is_malformed_xml_file("good.xml") is False
+assert is_malformed_xml_file("bad.xml") is True
+assert is_malformed_xml_file("non_existent_file.xml") is True
+```
+
+---
+
+## Benchmark
+
+Performance comparison against the standard `lxml` library. The benchmark highlights significant speed improvements,
+particularly in identifying malformed documents early.
+
+| Scenario                      | lxml (ms) | xml_validator (ms) | Speedup       |
+|-------------------------------|-----------|--------------------|---------------|
+| Small Valid XML               | 0.003     | 0.001              | 5.12× faster  |
+| Large Valid XML (10k records) | 14.768    | 3.975              | 3.72× faster  |
+| Invalid XML (unclosed tag)    | 0.0065    | 0.0003             | 19.92× faster |
+
+## License
+
+The MIT License
+Copyright (c) 2023 Rahul Sharma
