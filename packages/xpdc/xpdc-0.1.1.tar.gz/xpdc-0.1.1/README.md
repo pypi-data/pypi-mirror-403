@@ -1,0 +1,54 @@
+<p align="center">
+    <img src="logo.png" alt="pyecharts logo" width=200 />
+</p>
+
+---
+
+# Introduction
+
+XPDC (X-Platform Device Connector) is designed to bridge the gap between devices across multiple platforms (Android, HarmonyOS, iOS).
+
+It allows users to operate devices on different platforms with the same set of code.
+
+**Before using XPDC, you need to install the corresponding debug environment separately for each platform's device.**
+
+Android is `adb`, HarmonyOS is `hdc`
+
+# Installation
+
+```shell
+# Using uv
+pip install uv
+uv add xpdc
+
+# Using pip
+pip install xpdc
+```
+
+# Quick Start
+
+## Install Dependencies
+
+```python
+from xpdc import connection, DeviceType
+
+# Specify connect device type
+conn = connection(DeviceType.ADB)
+# conn = connection(DeviceType.HDC)
+# iOS will support it in the future.
+
+conn.cmd(['devices'])
+
+device = conn.devices[0]
+# You can also specify the device by its device id
+# device = conn.device(device_id='device_id')
+
+device.tap(500, 500)
+device.type_text(text='lanbaoshen')
+device.screenshot()
+device.cmd(cmd=['shell', 'ls'])
+device.shell(cmd=['ls'])
+
+# For Android devices, additionally install ADBKeyboard.apk and enable it to support Chinese input.
+device.install_and_set_adb_keyboard()
+```
