@@ -1,0 +1,1242 @@
+/*
+File: graph.rs
+Functionality: Core graph construction and management logic.
+Role: Manages the high-level Graph structure, integrating commit history and symbol relationships to build a comprehensive map of code dependencies.
+*/
+use crate::extractor::Extractor;
+use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
+use crate::cache::CacheManager;
+use anyhow::{Context, Result};
+use cupido::collector::config::Collect;
+use cupido::collector::config::{get_collector, Config};
+use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
+use git2::{Oid, Repository};
+use indicatif::ProgressBar;
+use pyo3::{pyclass, pymethods};
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Instant;
+use tracing::{debug, info};
+
+pub struct FileContext {
+    pub path: Arc<String>,
+    pub symbols: Vec<Symbol>,
+}
+
+pub struct NamespaceManager<'a> {
+    namespaces: Vec<&'a Symbol>,
+}
+
+impl<'a> NamespaceManager<'a> {
+    pub fn new(namespaces: Vec<&'a Symbol>) -> Self {
+        NamespaceManager { namespaces }
+    }
+
+    pub fn get_line_depth(&self, line: usize) -> usize {
+        let mut depth = 0;
+        for namespace in &self.namespaces {
+            if namespace.range.start_point.row < line && line < namespace.range.end_point.row {
+                depth += 1;
+            }
+        }
+        depth
+    }
+}
+
+fn is_file_matches_import(target_file: &str, import_str: &str, importer_file: &str) -> bool {
+    let target = target_file.replace('\\', "/");
+    let imp = import_str.replace('\\', "/").trim_matches('"').trim_matches('\'').to_string();
+    let importer = importer_file.replace('\\', "/");
+
+    // 1. Relative import (starts with . or ..)
+    if imp.starts_with('.') {
+        let importer_path = Path::new(&importer);
+        if let Some(parent) = importer_path.parent() {
+            let joined = parent.join(&imp);
+            if let Some(joined_str) = joined.to_str() {
+                let normalized = joined_str.replace('\\', "/");
+                // Remove redundant ./ or leading /
+                let clean_normalized = normalized.trim_start_matches("./");
+                if target.contains(clean_normalized) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // 2. Package/Absolute import
+    // Check if the last part of import matches any directory part of target path
+    let target_parts: Vec<&str> = target.split('/').collect();
+    let imp_parts: Vec<&str> = imp.split('/').collect();
+
+    if let Some(&last_imp) = imp_parts.last() {
+        if !last_imp.is_empty() {
+            // For Go/Java, package name usually matches directory name
+            if target_parts.contains(&last_imp) {
+                return true;
+            }
+        }
+    }
+
+    // Fallback: if the import string is a suffix of the target's directory structure
+    // e.g. imp: "github.com/gin-gonic/gin/render", target: "render/json.go"
+    if imp.len() > 3 && (target.starts_with(&imp) || imp.contains(&target_parts[0])) {
+        if target_parts[0].len() > 2 {
+             return true;
+        }
+    }
+
+    false
+}
+
+fn is_same_package(file_a: &str, file_b: &str) -> bool {
+    let path_a = Path::new(file_a);
+    let path_b = Path::new(file_b);
+    path_a.parent() == path_b.parent()
+}
+
+#[pyclass]
+pub struct Graph {
+    pub(crate) file_contexts: Vec<FileContext>,
+    pub(crate) _relation_graph: CupidoRelationGraph,
+    pub(crate) symbol_graph: SymbolGraph,
+    pub(crate) config: GraphConfig,
+}
+
+impl Graph {
+    fn extract_file_context(
+        file_name: Arc<String>,
+        file_content: &String,
+        _symbol_limit: usize,
+    ) -> Option<FileContext> {
+        let file_extension = match file_name.split('.').last() {
+            Some(ext) => ext.to_lowercase(),
+            None => {
+                debug!("File {} has no extension, skipping...", file_name);
+                return None;
+            }
+        };
+
+        let extractor_mapping: HashMap<&str, &Extractor> = [
+            ("rs", &Extractor::Rust),
+            ("ts", &Extractor::TypeScript),
+            ("tsx", &Extractor::TypeScript),
+            ("go", &Extractor::Go),
+            ("py", &Extractor::Python),
+            ("js", &Extractor::JavaScript),
+            ("jsx", &Extractor::JavaScript),
+            ("java", &Extractor::Java),
+            ("kt", &Extractor::Kotlin),
+            ("swift", &Extractor::Swift),
+            ("cs", &Extractor::CSharp),
+            ("c", &Extractor::C),
+            ("h", &Extractor::C),
+            ("cpp", &Extractor::Cpp),
+            ("cc", &Extractor::Cpp),
+            ("hpp", &Extractor::Cpp),
+        ]
+        .into_iter()
+        .collect();
+
+        if let Some(extractor) = extractor_mapping.get(file_extension.as_str()) {
+            let symbols = extractor.extract(file_name.clone(), file_content);
+            let mut file_context = FileContext {
+                // use the relative path as key
+                path: file_name,
+                symbols,
+            };
+
+            // further steps
+            let rule = extractor.get_rule();
+            if rule.namespace_filter_level == 0 {
+                // do not filter
+                return Some(file_context);
+            }
+
+            // start namespace pruning
+            let namespaces: Vec<_> = file_context
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.kind == SymbolKind::NAMESPACE)
+                .collect();
+
+            if namespaces.is_empty() {
+                return Some(file_context);
+            }
+
+            let namespace_manager = NamespaceManager::new(namespaces);
+            file_context.symbols = file_context
+                .symbols
+                .iter()
+                .filter_map(|symbol| {
+                    if symbol.kind == SymbolKind::NAMESPACE {
+                        return None;
+                    }
+
+                    let line = symbol.range.start_point.row;
+                    let depth = namespace_manager.get_line_depth(line);
+
+                    match symbol.kind {
+                        SymbolKind::DEF => {
+                            // nested def
+                            if depth >= rule.namespace_filter_level {
+                                return None;
+                            }
+
+                            return Some(symbol);
+                        }
+                        _ => Some(symbol),
+                    }
+                })
+                .map(|f| f.clone())
+                .collect();
+
+            Some(file_context)
+        } else {
+            None
+        }
+    }
+
+    fn extract_file_contexts(
+        conf: &GraphConfig,
+        files: Vec<String>,
+    ) -> Result<Vec<FileContext>> {
+        let pb = ProgressBar::new(files.len() as u64);
+        let cache_manager = if conf.enable_cache {
+            CacheManager::new(&conf.project_path).ok()
+        } else {
+            None
+        };
+
+        let file_contexts: Vec<FileContext> = files
+            .into_par_iter()
+            .filter_map(|file_path| {
+                pb.inc(1);
+                // Open repo in each thread to avoid Sync issues and keep it simple
+                let repo = match Repository::open(&conf.project_path) {
+                    Ok(r) => r,
+                    Err(_) => return None,
+                };
+
+                let commit = if let Some(ref cid) = conf.commit_id {
+                    repo.revparse_single(cid)
+                        .ok()
+                        .and_then(|obj| obj.peel_to_commit().ok())?
+                } else {
+                    repo.head()
+                        .ok()
+                        .and_then(|head| head.peel_to_commit().ok())?
+                };
+
+                let tree = match commit.tree() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        debug!("Failed to get tree: {}", e);
+                        return None;
+                    }
+                };
+                let tree_entry = match tree.get_path(Path::new(&file_path)) {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        debug!("Failed to get tree entry for {}: {}", file_path, e);
+                        return None;
+                    }
+                };
+                let object = match tree_entry.to_object(&repo) {
+                    Ok(obj) => obj,
+                    Err(e) => {
+                        debug!("Failed to get object for {}: {}", file_path, e);
+                        return None;
+                    }
+                };
+                let blob = match object.peel_to_blob() {
+                    Ok(blob) => blob,
+                    Err(e) => {
+                        debug!("Failed to peel blob for {}: {}", file_path, e);
+                        return None;
+                    }
+                };
+
+                if blob.is_binary() {
+                    return None;
+                }
+
+                let blob_id = blob.id().to_string();
+                if let Some(ref cm) = cache_manager {
+                    if let Some(symbols) = cm.get(&file_path, &blob_id) {
+                        return Some(FileContext {
+                            path: Arc::new(file_path),
+                            symbols,
+                        });
+                    }
+                }
+
+                let content = match std::str::from_utf8(blob.content()) {
+                    Ok(c) => c.to_string(),
+                    Err(e) => {
+                        debug!("Invalid UTF-8 content in {}: {}", file_path, e);
+                        return None;
+                    }
+                };
+                let ctx = Graph::extract_file_context(Arc::new(file_path.clone()), &content, conf.symbol_limit)?;
+                
+                if let Some(ref cm) = cache_manager {
+                    let _ = cm.set(&file_path, &blob_id, ctx.symbols.clone());
+                }
+                Some(ctx)
+            })
+            .filter(|ctx| ctx.symbols.len() < conf.symbol_limit)
+            .collect();
+
+        pb.finish_and_clear();
+        Ok(file_contexts)
+    }
+
+    fn build_global_symbol_table(
+        file_contexts: &[FileContext],
+    ) -> (
+        HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, f64>, // New: DEF name -> IDF score
+    ) {
+        let mut global_def_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
+        let mut global_ref_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
+        let mut global_imp_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
+        let mut def_file_distribution: HashMap<Arc<String>, HashSet<Arc<String>>> = HashMap::new();
+
+        let total_files = file_contexts.len() as f64;
+
+        file_contexts.iter().for_each(|file_context| {
+            file_context.symbols.iter().for_each(|symbol| {
+                match symbol.kind {
+                    SymbolKind::DEF => {
+                        global_def_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                        def_file_distribution
+                            .entry(symbol.name.clone())
+                            .or_insert_with(HashSet::new)
+                            .insert(file_context.path.clone());
+                    }
+                    SymbolKind::REF => {
+                        global_ref_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                    }
+                    SymbolKind::IMPORT => {
+                        global_imp_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                    }
+                    SymbolKind::NAMESPACE => {}
+                }
+            });
+        });
+
+        let global_unique_def_symbol_table: HashMap<_, _> = global_def_symbol_table
+            .iter()
+            .filter(|(_, symbols)| symbols.len() == 1)
+            .map(|(name, symbols)| (name.clone(), symbols.clone()))
+            .collect();
+
+        let def_idfs = def_file_distribution
+            .into_iter()
+            .map(|(name, files)| {
+                // IDF = ln(Total Files / (Files defining it + 1)) + 1.0
+                let idf = (total_files / (files.len() as f64)).ln() + 1.0;
+                (name, idf)
+            })
+            .collect();
+
+        (
+            global_def_symbol_table,
+            global_ref_symbol_table,
+            global_unique_def_symbol_table,
+            global_imp_symbol_table,
+            def_idfs,
+        )
+    }
+
+    fn filter_pointless_symbols(
+        mut file_contexts: Vec<FileContext>,
+        global_def_symbol_table: &HashMap<Arc<String>, Vec<Symbol>>,
+        global_ref_symbol_table: &HashMap<Arc<String>, Vec<Symbol>>,
+        symbol_len_limit: usize,
+    ) -> Vec<FileContext> {
+        // Create a set of "base names" for all definitions to allow fast suffix matching
+        let global_def_base_names: HashSet<String> = global_def_symbol_table.keys()
+            .map(|k| k.split('.').last().unwrap().to_string())
+            .collect();
+
+        for file_context in &mut file_contexts {
+            file_context.symbols.retain(|symbol| {
+                if symbol.name.len() <= symbol_len_limit {
+                    return false;
+                }
+                match symbol.kind {
+                    SymbolKind::DEF => global_ref_symbol_table.contains_key(&symbol.name) || 
+                                      global_ref_symbol_table.keys().any(|k| k.ends_with(&format!(".{}", symbol.name))),
+                    SymbolKind::REF => {
+                        if global_def_symbol_table.contains_key(&symbol.name) {
+                            return true;
+                        }
+                        // Try matching by base name
+                        let base_name = symbol.name.split('.').last().unwrap();
+                        global_def_base_names.contains(base_name)
+                    },
+                    SymbolKind::IMPORT => true,
+                    SymbolKind::NAMESPACE => true,
+                }
+            });
+        }
+        file_contexts
+    }
+
+    pub fn empty() -> Graph {
+        Graph {
+            file_contexts: Vec::new(),
+            _relation_graph: CupidoRelationGraph::new(),
+            symbol_graph: SymbolGraph::new(),
+            config: GraphConfig::default(),
+        }
+    }
+
+    pub fn from(conf: GraphConfig) -> Result<Graph> {
+        let start_time = Instant::now();
+
+        // Auto cutoff for ambiguous matches.
+        // Input: unique scores in descending order.
+        // Output: the minimal score we should keep (inclusive).
+        fn knee_cutoff_score(desc_scores: &[usize]) -> usize {
+            if desc_scores.is_empty() {
+                return 0;
+            }
+            if desc_scores.len() <= 2 {
+                return *desc_scores.last().unwrap_or(&desc_scores[0]);
+            }
+
+            let top = desc_scores[0] as f64;
+            if top <= 0.0 {
+                return desc_scores[0];
+            }
+
+            let n = desc_scores.len();
+            let y_last = (desc_scores[n - 1] as f64) / top;
+
+            let mut best_i = 0usize;
+            let mut best_dist = f64::NEG_INFINITY;
+            for i in 0..n {
+                let x = i as f64 / (n as f64 - 1.0);
+                let y = (desc_scores[i] as f64) / top;
+                // distance to the line connecting (0,1) and (1,y_last)
+                let y_line = 1.0 + (y_last - 1.0) * x;
+                let dist = y_line - y;
+                if dist > best_dist {
+                    best_dist = dist;
+                    best_i = i;
+                }
+            }
+
+            desc_scores[best_i]
+        }
+
+        // A stricter cutoff based on the largest relative drop between consecutive scores.
+        // Example: [100, 95, 90, 10, 8] -> cutoff = 90.
+        fn max_drop_cutoff_score(desc_scores: &[usize]) -> usize {
+            if desc_scores.is_empty() {
+                return 0;
+            }
+            if desc_scores.len() == 1 {
+                return desc_scores[0];
+            }
+
+            let mut best_i = 1usize;
+            let mut best_drop = f64::NEG_INFINITY;
+            for i in 1..desc_scores.len() {
+                let prev = desc_scores[i - 1] as f64;
+                let cur = desc_scores[i] as f64;
+                if prev <= 0.0 {
+                    continue;
+                }
+                let drop = (prev - cur) / prev;
+                if drop > best_drop {
+                    best_drop = drop;
+                    best_i = i;
+                }
+            }
+
+            // keep up to best_i-1
+            desc_scores[best_i - 1]
+        }
+
+        // 1. Building relation graph from git history
+        let relation_graph = create_cupido_graph(
+            &conf.project_path,
+            conf.depth,
+            conf.exclude_author_regex.clone(),
+            conf.exclude_commit_regex.clone(),
+            conf.issue_regex.clone(),
+        )
+        .context("Failed to create relation graph")?;
+        info!(
+            "relation graph ready, size: {:?}",
+            relation_graph.size()
+        );
+
+        // 2. Filter files
+        let mut files = relation_graph.files();
+        if !conf.exclude_file_regex.is_empty() {
+            let re = Regex::new(&conf.exclude_file_regex).context("Invalid exclude_file_regex")?;
+            files.retain(|file| !re.is_match(file));
+        }
+        let file_len = files.len();
+
+        // 3. Extract symbols from files
+        let file_contexts = Self::extract_file_contexts(
+            &conf,
+            files.clone(),
+        )?;
+        info!("symbol extract finished, files: {}", file_contexts.len());
+
+        // 4. Build global tables and filter pointless symbols
+        let (global_def_table, global_ref_table, global_unique_def_table, _global_imp_table, def_idfs) =
+            Self::build_global_symbol_table(&file_contexts);
+        let final_file_contexts = Self::filter_pointless_symbols(
+            file_contexts,
+            &global_def_table,
+            &global_ref_table,
+            conf.symbol_len_limit,
+        );
+
+        // 5. Initialize symbol graph with files and symbols
+        info!("start building symbol graph ...");
+        let mut symbol_graph = SymbolGraph::new();
+        for file_context in &final_file_contexts {
+            symbol_graph.add_file(file_context.path.clone());
+            for symbol in &file_context.symbols {
+                symbol_graph.add_symbol(symbol.clone());
+                symbol_graph.link_file_to_symbol(&file_context.path, symbol);
+            }
+        }
+
+        // 6. Link symbols by commit history
+        let pb = ProgressBar::new(final_file_contexts.len() as u64);
+
+        // Pre-filter valid commits to avoid re-calculating for every file
+        // A commit is valid if it doesn't touch too many files
+        let all_commits = relation_graph.commits();
+        let valid_commits: HashSet<String> = all_commits
+            .into_iter()
+            .filter(|c| {
+                let touched = relation_graph.commit_related_files(c).unwrap_or_default();
+                touched.len() < ((file_len as f32) * conf.commit_size_limit_ratio) as usize
+            })
+            .collect();
+
+        // 6.1 Pre-cache commit timestamps for temporal decay
+        let mut commit_timestamps: HashMap<String, i64> = HashMap::new();
+        if conf.temporal_decay {
+            if let Ok(repo) = Repository::open(&conf.project_path) {
+                for commit_sha in &valid_commits {
+                    if let Ok(oid) = Oid::from_str(commit_sha) {
+                        if let Ok(commit) = repo.find_commit(oid) {
+                            commit_timestamps.insert(commit_sha.clone(), commit.time().seconds());
+                        }
+                    }
+                }
+            }
+        }
+        let now_ts = commit_timestamps.values().cloned().max().unwrap_or(0);
+
+        // 6.2 Pre-calculate decayed cardinality for each file
+        let mut file_decayed_cardinality: HashMap<String, f64> = HashMap::new();
+        for file in &files {
+            let commits = relation_graph.file_related_commits(file).unwrap_or_default();
+            let mut score = 0.0;
+            for c in commits {
+                if valid_commits.contains(&c) {
+                    if conf.temporal_decay {
+                        if let Some(&ts) = commit_timestamps.get(&c) {
+                            let age_days = (now_ts - ts) as f64 / 86400.0;
+                            score += 2.0f64.powf(-age_days / conf.half_life_days);
+                        } else {
+                            score += 1.0;
+                        }
+                    } else {
+                        score += 1.0;
+                    }
+                }
+            }
+            file_decayed_cardinality.insert(file.clone(), score);
+        }
+
+        let mut file_valid_commits_cache: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut get_file_valid_commits = |f: &str| -> HashSet<String> {
+            let f_string = f.to_string();
+            file_valid_commits_cache
+                .entry(f_string.clone())
+                .or_insert_with(|| {
+                    relation_graph
+                        .file_related_commits(&f_string)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|c| valid_commits.contains(c))
+                        .collect()
+                })
+                .clone()
+        };
+
+        let mut symbol_mapping: HashMap<Arc<String>, usize> = HashMap::new();
+        let mut get_symbol_count = |f: &Arc<String>, g: &SymbolGraph| -> usize {
+            *symbol_mapping
+                .entry(f.clone())
+                .or_insert_with(|| g.list_references(f).len())
+        };
+
+        for file_context in &final_file_contexts {
+            pb.inc(1);
+            let def_related_commits = get_file_valid_commits(file_context.path.as_ref());
+            
+            // Collect explicit imports for this file to boost precision
+            let explicit_imports: HashSet<String> = file_context.symbols.iter()
+                .filter(|s| s.kind == SymbolKind::IMPORT)
+                .map(|s| s.name.as_ref().clone())
+                .collect();
+
+            if def_related_commits.is_empty() && explicit_imports.is_empty() {
+                continue;
+            }
+
+            for symbol in &file_context.symbols {
+                if symbol.kind != SymbolKind::REF {
+                    continue;
+                }
+
+                // Collect potential definitions
+                let mut potential_defs: Vec<(&Symbol, bool)> = Vec::new();
+                if let Some(exact_defs) = global_def_table.get(&symbol.name) {
+                    for def in exact_defs {
+                        potential_defs.push((def, true));
+                    }
+                }
+                
+                // If not found or if it's a qualified name, try base name matching
+                if potential_defs.is_empty() || symbol.name.contains('.') {
+                    let base_name = symbol.name.split('.').last().unwrap();
+                    let base_name_arc = Arc::new(base_name.to_string());
+                    if let Some(base_defs) = global_def_table.get(&base_name_arc) {
+                        for def in base_defs {
+                            // avoid duplicate if exact match already added it
+                            if !potential_defs.iter().any(|(d, _)| d.id() == def.id()) {
+                                potential_defs.push((def, false));
+                            }
+                        }
+                    }
+                }
+
+                if potential_defs.is_empty() {
+                    continue;
+                }
+
+                let mut scored_defs = Vec::new();
+                for (def, _is_exact_match) in potential_defs {
+                    // 1. Symbol Specificity (IDF)
+                    let idf = *def_idfs.get(&def.name).unwrap_or(&1.0);
+
+                    // 2. Physical Evidence
+                    let is_explicitly_imported = explicit_imports.iter().any(|imp| {
+                        is_file_matches_import(def.file.as_ref(), imp, file_context.path.as_ref())
+                    });
+                    let same_pkg = is_same_package(def.file.as_ref(), file_context.path.as_ref());
+                    let has_physical_link = is_explicitly_imported || same_pkg;
+
+                    // 3. Logical Evidence (Jaccard Similarity based on Commits)
+                    let ref_related_commits = get_file_valid_commits(def.file.as_ref());
+                    let mut intersection_score = 0.0;
+                    for c in def_related_commits.iter().filter(|c| ref_related_commits.contains(*c)) {
+                        if conf.temporal_decay {
+                            if let Some(&ts) = commit_timestamps.get(c) {
+                                let age_days = (now_ts - ts) as f64 / 86400.0;
+                                intersection_score += 2.0f64.powf(-age_days / conf.half_life_days);
+                            } else {
+                                intersection_score += 1.0;
+                            }
+                        } else {
+                            intersection_score += 1.0;
+                        }
+                    }
+
+                    let file_a_decay = *file_decayed_cardinality.get(file_context.path.as_ref()).unwrap_or(&0.0);
+                    let file_b_decay = *file_decayed_cardinality.get(def.file.as_ref()).unwrap_or(&0.0);
+
+                    let union_decay = file_a_decay + file_b_decay - intersection_score;
+                    let jaccard = if union_decay > 0.0 {
+                        intersection_score / union_decay
+                    } else {
+                        0.0
+                    };
+
+                    // 4. Scoring & Normalization
+                    let confidence = idf * jaccard;
+                    let mut score = confidence * 10.0;
+
+                    // Physical evidence still gives a strong signal
+                    if has_physical_link {
+                        score += 100.0;
+                        if is_explicitly_imported {
+                            score += 50.0;
+                        }
+                    }
+
+                    // Adjust score by file complexity
+                    let ref_count_in_file = get_symbol_count(&def.file, &symbol_graph);
+                    if ref_count_in_file > 0 {
+                        score /= (ref_count_in_file as f64).sqrt();
+                    }
+                    
+                    scored_defs.push((def, score, has_physical_link));
+                }
+
+                // 5. Entropy-based Pruning (Mitigate Ambiguity)
+                if scored_defs.len() > 1 {
+                    let sum: f64 = scored_defs.iter().map(|(_, s, _)| *s).sum();
+                    if sum > 0.0 {
+                        // NEW: Statistical Outlier Detection (Z-Score)
+                        // If we have many candidates, calculate mean and std dev.
+                        // Only keep those that are significantly better than the average noise.
+                        let scores: Vec<f64> = scored_defs.iter().map(|(_, s, _)| *s).collect();
+                        let count = scores.len() as f64;
+                        let mean = sum / count;
+                        let variance = scores.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / count;
+                        let std_dev = variance.sqrt();
+
+                        let mut entropy = 0.0;
+                        for &(_, s, _) in &scored_defs {
+                            let p = s / sum;
+                            if p > 0.0 {
+                                entropy -= p * p.ln();
+                            }
+                        }
+                        // Penalty: distributed credit. If 2 choices are equal, each gets 0.5.
+                        let penalty = (-entropy).exp();
+                        for (_, s, has_phys) in &mut scored_defs {
+                            // If it's a weak signal (below mean + 0.5*std_dev) and not physical, 
+                            // apply extra penalty to suppress noise.
+                            if !*has_phys && count > 2.0 && *s < (mean + 0.5 * std_dev) {
+                                *s *= 0.1; 
+                            }
+                            *s *= penalty;
+                        }
+                    }
+                }
+
+                let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
+                for (def, score, has_physical_link) in scored_defs {
+                    if !has_physical_link && score < conf.min_score {
+                        continue;
+                    }
+
+                    ratio_map
+                        .entry(score as usize)
+                        .or_insert_with(Vec::new)
+                        .push(def);
+                }
+
+                if let Some(&_max_score) = ratio_map.keys().last() {
+                    let mut def_count = 0;
+                    // Score Gap Pruning: only keep definitions that are close to the top match
+                    // V2 Logic: 
+                    // 1. Always keep the Top 1.
+                    // 2. Use knee/elbow detection to decide where to cut off.
+                    // 3. Optional hard cap: top_n (0 means auto/unlimited), and def_limit.
+
+                    let unique_scores_desc: Vec<usize> = ratio_map.keys().rev().cloned().collect();
+                    // Only consider the top part of the curve: we will never keep more than def_limit anyway.
+                    let k = std::cmp::min(unique_scores_desc.len(), std::cmp::max(conf.def_limit, 2));
+                    let head = &unique_scores_desc[..k];
+                    // Combine a smooth knee detector (kneedle) with a strict max-drop detector.
+                    // Using the stricter (higher) cutoff avoids selecting a too-low elbow in long-tail distributions.
+                    let cutoff_score = std::cmp::max(knee_cutoff_score(head), max_drop_cutoff_score(head));
+
+                    let hard_cap = if conf.top_n == 0 {
+                        conf.def_limit
+                    } else {
+                        std::cmp::min(conf.top_n, conf.def_limit)
+                    };
+
+                    for (&ratio, defs) in ratio_map.iter().rev() {
+                        // Always keep Top 1; stop once we are below the knee.
+                        if def_count > 0 && ratio < cutoff_score {
+                            break;
+                        }
+                        for def in defs {
+                            symbol_graph.link_symbol_to_symbol(&symbol, &def);
+                            symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
+
+                            def_count += 1;
+                            if def_count >= hard_cap {
+                                break;
+                            }
+                        }
+                        if def_count >= hard_cap {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        pb.finish_and_clear();
+
+        // 7. Fallback for symbols without refs
+        for file_context in &final_file_contexts {
+            for each_def in &file_context.symbols {
+                if each_def.kind != SymbolKind::DEF {
+                    continue;
+                }
+                
+                if symbol_graph.list_references_by_definition(&each_def.id()).is_empty() {
+                    if let Some(fallback_defs) = global_unique_def_table.get(&each_def.name) {
+                        for fallback_def in fallback_defs {
+                            if let Some(refs) = global_ref_table.get(&each_def.name) {
+                                for r in refs {
+                                    symbol_graph.link_symbol_to_symbol(fallback_def, r);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        info!(
+            "symbol graph ready, nodes: {}, edges: {}",
+            symbol_graph.symbol_mapping.len(),
+            symbol_graph.g.edge_count(),
+        );
+        info!("total time cost: {:?}", start_time.elapsed());
+
+        Ok(Graph {
+            file_contexts: final_file_contexts,
+            _relation_graph: relation_graph,
+            symbol_graph,
+            config: conf,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
+pub struct RelatedSymbol {
+    #[pyo3(get)]
+    pub symbol: Symbol,
+
+    #[pyo3(get)]
+    pub weight: usize,
+}
+
+fn create_cupido_graph(
+    project_path: &String,
+    depth: u32,
+    exclude_author_regex: Option<String>,
+    exclude_commit_regex: Option<String>,
+    issue_regex: Option<String>,
+) -> Result<CupidoRelationGraph> {
+    let mut conf = Config::default();
+    conf.repo_path = project_path
+        .parse()
+        .context(format!("Invalid project path: {}", project_path))?;
+    conf.depth = depth;
+    conf.author_exclude_regex = exclude_author_regex;
+    conf.commit_exclude_regex = exclude_commit_regex;
+    if let Some(re) = issue_regex {
+        conf.issue_regex = re;
+    }
+
+    let collector = get_collector();
+    let graph = collector.walk(conf);
+    Ok(graph)
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct GraphConfig {
+    #[pyo3(get, set)]
+    pub project_path: String,
+
+    // if a def has been referenced over `def_limit` times, it will be ignored.
+    #[pyo3(get, set)]
+    pub def_limit: usize,
+
+    // commit size limit
+    // reduce the impact of large commits
+    // large commit: edit more than xx% files once
+    // default to 1.0, do nothing
+    // set to 0.3, means 30%
+    #[pyo3(get, set)]
+    pub commit_size_limit_ratio: f32,
+
+    // commit history search depth
+    #[pyo3(get, set)]
+    pub depth: u32,
+
+    // symbol limit of each file, for ignoring large files
+    #[pyo3(get, set)]
+    pub symbol_limit: usize,
+
+    // if a symbol len <= `symbol_len_limit`, it will be ignored.
+    #[pyo3(get, set)]
+    pub symbol_len_limit: usize,
+
+    #[pyo3(get, set)]
+    pub exclude_file_regex: String,
+    #[pyo3(get, set)]
+    pub exclude_author_regex: Option<String>,
+    #[pyo3(get, set)]
+    pub exclude_commit_regex: Option<String>,
+
+    #[pyo3(get, set)]
+    pub issue_regex: Option<String>,
+
+    #[pyo3(get, set)]
+    pub commit_id: Option<String>,
+
+    #[pyo3(get, set)]
+    pub min_score: f64,
+
+    // If a symbol name is defined in more than `max_def_ratio` files, it will be treated as noise.
+    #[pyo3(get, set)]
+    pub max_def_ratio: f32,
+
+    // NEW: top_n limit for symbol definitions
+    #[pyo3(get, set)]
+    pub top_n: usize,
+
+    // NEW: output-level filtering for file relations
+    // 0 means disable that constraint.
+    #[pyo3(get, set)]
+    pub file_min_links: usize,
+
+    // Maximum number of related files returned per file.
+    // 0 means unlimited.
+    #[pyo3(get, set)]
+    pub file_max_links: usize,
+
+    #[pyo3(get, set)]
+    pub enable_cache: bool,
+
+    #[pyo3(get, set)]
+    pub temporal_decay: bool,
+
+    #[pyo3(get, set)]
+    pub half_life_days: f64,
+}
+
+#[pymethods]
+impl GraphConfig {
+    #[new]
+    pub fn default() -> GraphConfig {
+        GraphConfig {
+            project_path: String::from("."),
+            def_limit: 12,
+            top_n: 0,
+            // Keep legacy behavior by default (no output-level truncation).
+            // Users can enable it to improve readability and reduce noise.
+            file_min_links: 0,
+            file_max_links: 0,
+            commit_size_limit_ratio: 1.0,
+            depth: 10240,
+            symbol_limit: 4096,
+            symbol_len_limit: 3,
+            exclude_file_regex: String::new(),
+            exclude_author_regex: None,
+            exclude_commit_regex: None,
+            issue_regex: None,
+            commit_id: None,
+            min_score: 0.01,
+            max_def_ratio: 0.1,
+            enable_cache: true,
+            temporal_decay: true,
+            half_life_days: 365.0,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbol::{DefRefPair, Symbol};
+    use petgraph::visit::EdgeRef;
+    use std::sync::Arc;
+    use std::fs;
+    use tracing::{debug, info};
+
+    #[test]
+    #[ignore]
+    fn symbol_graph_rust() {
+        tracing_subscriber::fmt::init();
+        let mut config = GraphConfig::default();
+        config.project_path = String::from("../stack-graphs");
+        let g = Graph::from(config).unwrap();
+        g.file_contexts.iter().for_each(|context| {
+            debug!("{}: {:?}", context.path, context.symbols);
+        });
+
+        // "stack-graphs/src/stitching.rs2505"
+        g.symbol_graph.g.edge_references().for_each(|each| {
+            if *each.weight() > 0 {
+                debug!(
+                    "{:?} {:?} -- {:?} {:?}, {}",
+                    g.symbol_graph.g[each.source()]._id,
+                    g.symbol_graph.g[each.source()].get_symbol().unwrap().kind,
+                    g.symbol_graph.g[each.target()]._id,
+                    g.symbol_graph.g[each.target()].get_symbol().unwrap().kind,
+                    each.weight()
+                )
+            }
+        });
+
+        g.symbol_graph
+            .list_definitions(&Arc::new(String::from(
+                "tree-sitter-stack-graphs/src/cli/util/reporter.rs",
+            )))
+            .iter()
+            .for_each(|each| {
+                g.symbol_graph
+                    .list_references_by_definition(&each.id())
+                    .iter()
+                    .for_each(|(each_ref, weight)| {
+                        debug!("{} ref in {}, weight {}", each.file, each_ref.file, weight);
+                    });
+            });
+    }
+
+    #[test]
+    #[ignore]
+    fn symbol_graph_ts() {
+        tracing_subscriber::fmt::init();
+        let mut config = GraphConfig::default();
+        config.project_path = String::from("../lsif-node");
+        let g = Graph::from(config).unwrap();
+        g.file_contexts.iter().for_each(|context| {
+            debug!("{}: {:?}", context.path, context.symbols);
+        });
+
+        g.symbol_graph
+            .list_symbols(&Arc::new(String::from("lsif/src/main.ts")))
+            .iter()
+            .for_each(|each| {
+                debug!(
+                    "{:?} {}: {}:{}",
+                    each.kind, each.name, each.range.start_point.row, each.range.start_point.column
+                )
+            });
+    }
+
+    #[test]
+    #[ignore]
+    fn graph_api() {
+        tracing_subscriber::fmt::init();
+        let mut config = GraphConfig::default();
+        config.project_path = String::from("../stack-graphs");
+        let g = Graph::from(config).unwrap();
+        let files = g.related_files(String::from(
+            "tree-sitter-stack-graphs/src/cli/util/reporter.rs",
+        ));
+        files.iter().for_each(|item| {
+            info!("{}: {}", item.name, item.score);
+        });
+    }
+
+    #[test]
+    fn paths() {
+        tracing_subscriber::fmt::init();
+        let mut config = GraphConfig::default();
+        config.project_path = String::from(".");
+        let g = Graph::from(config).unwrap();
+        let symbols: Vec<DefRefPair> = g.pairs_between_files(
+            String::from("src/extractor.rs"),
+            String::from("src/graph.rs"),
+        );
+        symbols.iter().for_each(|pair| {
+            info!(
+                "{} {} {} -> {} {} {}",
+                pair.src_symbol.file,
+                pair.src_symbol.name,
+                pair.src_symbol.range.start_point.row,
+                pair.dst_symbol.file,
+                pair.dst_symbol.name,
+                pair.dst_symbol.range.start_point.row
+            );
+        });
+
+        let issues = g.list_file_issues(String::from("src/extractor.rs"));
+        let commits = g.list_file_commits(String::from("src/graph.rs"));
+        assert!(issues.len() > 0);
+        assert!(commits.len() > 0);
+    }
+
+    #[test]
+    fn test_graph_config_filters() {
+        let mut config = GraphConfig::default();
+        config.project_path = String::from(".");
+        // exclude all rs files should result in no files in graph
+        config.exclude_file_regex = String::from(".*\\.rs$");
+        let g = Graph::from(config).unwrap();
+
+        let files = g.files();
+        for file in files {
+            assert!(
+                !file.ends_with(".rs"),
+                "File {} should have been excluded",
+                file
+            );
+        }
+    }
+
+    #[test]
+    fn test_graph_with_commit_id() {
+        let mut config = GraphConfig::default();
+        config.project_path = String::from(".");
+        // use an old commit
+        config.commit_id = Some(String::from("f034426"));
+        let g = Graph::from(config).unwrap();
+        assert!(!g.file_contexts.is_empty());
+        // f034426 should have some files
+        info!("Files in commit f034426: {}", g.file_contexts.len());
+    }
+
+    #[test]
+    fn test_internal_symbol_filtering() {
+        let file_a = Arc::new("a.rs".to_string());
+        let file_b = Arc::new("b.rs".to_string());
+        let range = tree_sitter::Range {
+            start_byte: 0,
+            end_byte: 0,
+            start_point: tree_sitter::Point { row: 0, column: 0 },
+            end_point: tree_sitter::Point { row: 0, column: 0 },
+        };
+
+        // Case 1: DEF "foo" in A, REF "foo" in B -> both should be kept
+        let def_foo = Symbol::new_def(file_a.clone(), Arc::new("foo".to_string()), range);
+        let ref_foo = Symbol::new_ref(file_b.clone(), Arc::new("foo".to_string()), range);
+
+        // Case 2: DEF "bar" in A, no REF -> DEF "bar" should be filtered out
+        let def_bar = Symbol::new_def(file_a.clone(), Arc::new("bar".to_string()), range);
+
+        // Case 3: REF "baz" in B, no DEF -> REF "baz" should be filtered out
+        let ref_baz = Symbol::new_ref(file_b.clone(), Arc::new("baz".to_string()), range);
+
+        let contexts = vec![
+            FileContext {
+                path: file_a.clone(),
+                symbols: vec![def_foo.clone(), def_bar.clone()],
+            },
+            FileContext {
+                path: file_b.clone(),
+                symbols: vec![ref_foo.clone(), ref_baz.clone()],
+            },
+        ];
+
+        let (global_def, global_ref, _, _, _) = Graph::build_global_symbol_table(&contexts);
+        let filtered = Graph::filter_pointless_symbols(contexts, &global_def, &global_ref, 0);
+
+        let symbols_a = &filtered[0].symbols;
+        let symbols_b = &filtered[1].symbols;
+
+        assert!(symbols_a.iter().any(|s| s.name.as_ref() == "foo"));
+        assert!(!symbols_a.iter().any(|s| s.name.as_ref() == "bar"));
+        assert!(symbols_b.iter().any(|s| s.name.as_ref() == "foo"));
+        assert!(!symbols_b.iter().any(|s| s.name.as_ref() == "baz"));
+    }
+
+    #[test]
+    fn test_fqn_isolation_in_graph() {
+        let file_a = Arc::new("Auth.java".to_string());
+        let file_b = Arc::new("Data.java".to_string());
+        let range = tree_sitter::Range {
+            start_byte: 0,
+            end_byte: 0,
+            start_point: tree_sitter::Point { row: 0, column: 0 },
+            end_point: tree_sitter::Point { row: 0, column: 0 },
+        };
+
+        // AuthService.validate vs DataService.validate
+        let def_auth = Symbol::new_def(file_a.clone(), Arc::new("AuthService.validate".to_string()), range);
+        let ref_data = Symbol::new_ref(file_b.clone(), Arc::new("DataService.validate".to_string()), range);
+        
+        let contexts = vec![
+            FileContext {
+                path: file_a.clone(),
+                symbols: vec![def_auth.clone()],
+            },
+            FileContext {
+                path: file_b.clone(),
+                symbols: vec![ref_data.clone()],
+            },
+        ];
+
+        // Build global symbol table
+        let (global_def, _, _, _, _) = Graph::build_global_symbol_table(&contexts);
+        
+        // Core verification: ref_data ("DataService.validate") tries to find definition
+        // It should NOT find it because it doesn't match def_auth ("AuthService.validate")
+        assert!(!global_def.contains_key(&ref_data.name));
+        assert!(global_def.contains_key(&def_auth.name));
+    }
+
+    #[test]
+    fn test_graph_caching_workflow() {
+        let test_dir = "./.test_graph_caching";
+        let mut config = GraphConfig::default();
+        config.project_path = ".".to_string();
+        // Use a unique project path for test if possible, but here we want to scan the current repo
+        // So we just use a unique cache directory by overriding it in the test context if we could,
+        // but currently CacheManager::new uses project_path/.gossiphs/cache.
+        // Let's create a dummy project structure for this test to be safe.
+        
+        let dummy_dir = Path::new(test_dir);
+        if dummy_dir.exists() {
+            fs::remove_dir_all(dummy_dir).unwrap();
+        }
+        fs::create_dir_all(dummy_dir).unwrap();
+        
+        // Initialize a dummy git repo
+        let repo = Repository::init(dummy_dir).unwrap();
+        let file_path = "hello.rs";
+        fs::write(dummy_dir.join(file_path), "fn hello() {}").unwrap();
+        
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(file_path)).unwrap();
+        index.write().unwrap();
+        
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@example.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
+
+        config.project_path = test_dir.to_string();
+        config.enable_cache = true;
+        
+        let start = Instant::now();
+        let _g1 = Graph::from(config.clone()).unwrap();
+        let first_run_duration = start.elapsed();
+        
+        let start = Instant::now();
+        let _g2 = Graph::from(config).unwrap();
+        let second_run_duration = start.elapsed();
+        
+        info!("First run: {:?}, Second run (cached): {:?}", first_run_duration, second_run_duration);
+        
+        fs::remove_dir_all(test_dir).unwrap();
+    }
+}
