@@ -1,0 +1,436 @@
+Metadata-Version: 2.4
+Name: pulse-workflow-mcp
+Version: 0.1.0
+Summary: MCP server for interacting with Pulse workflows from Claude Code
+Project-URL: Homepage, https://github.com/Pulse-Intelligence/pulse-workflow-mcp
+Project-URL: Repository, https://github.com/Pulse-Intelligence/pulse-workflow-mcp
+Project-URL: Issues, https://github.com/Pulse-Intelligence/pulse-workflow-mcp/issues
+Project-URL: Changelog, https://github.com/Pulse-Intelligence/pulse-workflow-mcp/blob/main/CHANGELOG.md
+Author: Pulse Intelligence
+License: MIT
+License-File: LICENSE
+Keywords: ai,automation,claude,llm,mcp,pulse,workflow
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Requires-Dist: httpx[http2]>=0.25.0
+Requires-Dist: mcp>=1.0.0
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pylint>=4.0.4
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: respx>=0.21.0; extra == 'dev'
+Requires-Dist: ruff>=0.4.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Pulse Workflow MCP Server
+
+An MCP (Model Context Protocol) server that enables Claude Code to interact with and modify Pulse workflows directly.
+
+## Overview
+
+This MCP server exposes Pulse workflow operations as tools, allowing you to:
+
+- **Browse and select** from available Pulse apps
+- **Discover** available node types, models, tools, and datasets at runtime
+- **Create** new workflow apps from scratch
+- View and navigate workflow structure
+- Add, edit, and delete nodes
+- Create and remove connections between nodes
+- Publish workflows
+- Run individual nodes for testing
+- Manage workflow features and variables
+
+## Installation
+
+### Quick Start (Recommended)
+
+No installation required - use `uvx` to run directly:
+
+```bash
+# Install Claude Code skills (one-time setup)
+uvx pulse-workflow-mcp install-skills
+```
+
+### From PyPI
+
+```bash
+pip install pulse-workflow-mcp
+
+# Or with uv
+uv pip install pulse-workflow-mcp
+```
+
+### For Development
+
+```bash
+git clone https://github.com/Pulse-Intelligence/pulse-workflow-mcp.git
+cd pulse-workflow-mcp
+uv pip install -e ".[dev]"
+```
+
+## Skills
+
+This package includes Claude Code skills for guided workflow development:
+
+| Skill            | Description                            |
+|------------------|----------------------------------------|
+| `/pulse`         | Overview and available commands        |
+| `/pulse-create`  | Create a new workflow from description |
+| `/pulse-edit`    | Edit an existing workflow              |
+| `/pulse-publish` | Validate and publish workflow          |
+
+Install skills to `~/.claude/skills/`:
+
+```bash
+# Using uvx (no installation required)
+uvx pulse-workflow-mcp install-skills
+uvx pulse-workflow-mcp install-skills --force  # Overwrite existing
+uvx pulse-workflow-mcp uninstall-skills        # Remove skills
+
+# Or if installed via pip
+pulse-workflow-mcp install-skills
+```
+
+## Configuration
+
+Set the following environment variables:
+
+```bash
+export PULSE_API_URL="http://localhost:5001"  # Pulse instance URL
+export PULSE_API_KEY="your-api-key"           # Console API key
+export PULSE_APP_ID="your-app-id"             # Optional: default app ID
+```
+
+### Getting Your API Key
+
+The easiest way is through the Pulse workflow editor:
+
+1. Open any workflow in Pulse
+2. Click "Connect Claude Code" button
+3. The modal will generate a token for you
+
+### App ID (Optional)
+
+`PULSE_APP_ID` is now **optional**. You can:
+
+- Set it to always work with a specific app
+- Leave it empty and use `list_apps` + `select_app` tools to choose at runtime
+
+The app ID is in the URL when viewing a workflow:
+
+```
+https://your-pulse.com/app/abc123def456/workflow
+                        ^^^^^^^^^^^^
+                        This is your app ID
+```
+
+## Usage with Claude Code
+
+### Recommended Configuration (uvx)
+
+Add to `~/.claude.json` - no installation required:
+
+```json
+{
+  "mcpServers": {
+    "pulse-workflow": {
+      "command": "uvx",
+      "args": [
+        "pulse-workflow-mcp"
+      ],
+      "env": {
+        "PULSE_API_URL": "http://localhost:5001",
+        "PULSE_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+### Alternative: Direct Command
+
+If installed via pip:
+
+```json
+{
+  "mcpServers": {
+    "pulse-workflow": {
+      "command": "pulse-workflow-mcp",
+      "env": {
+        "PULSE_API_URL": "http://localhost:5001",
+        "PULSE_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+### With Default App ID
+
+If you always work with one app, add `PULSE_APP_ID`:
+
+```json
+{
+  "mcpServers": {
+    "pulse-workflow": {
+      "command": "uvx",
+      "args": [
+        "pulse-workflow-mcp"
+      ],
+      "env": {
+        "PULSE_API_URL": "http://localhost:5001",
+        "PULSE_API_KEY": "your-api-key",
+        "PULSE_APP_ID": "your-app-id"
+      }
+    }
+  }
+}
+```
+
+### Usage
+
+Once configured, in Claude Code:
+
+```
+> List my workflow apps
+
+Claude will use: list_apps with mode="workflow"
+
+> Select app abc123def456
+
+Claude will use: select_app
+```
+
+## Available Tools
+
+### App Operations
+
+| Tool         | Description                                          |
+|--------------|------------------------------------------------------|
+| `list_apps`  | List available Pulse apps (filter by mode, name)     |
+| `select_app` | Select an app to work with for subsequent operations |
+| `create_app` | Create a new workflow or chat app                    |
+
+### Discovery Operations
+
+| Tool                  | Description                                          |
+|-----------------------|------------------------------------------------------|
+| `list_node_types`     | List all available node types with default configs   |
+| `get_node_schema`     | Get detailed schema for a specific node type         |
+| `list_tool_providers` | List available tool/plugin providers                 |
+| `list_tools`          | List tools from a provider with input/output schemas |
+| `list_models`         | List available AI models (LLM, embedding, etc.)      |
+| `list_datasets`       | List available knowledge base datasets               |
+
+### Node Operations
+
+| Tool          | Description                                  |
+|---------------|----------------------------------------------|
+| `add_node`    | Add a new node to the workflow               |
+| `edit_node`   | Modify an existing node                      |
+| `delete_node` | Remove a node and its connections            |
+| `get_node`    | Get details of a specific node               |
+| `list_nodes`  | List all nodes (optionally filtered by type) |
+
+### Edge Operations
+
+| Tool               | Description                           |
+|--------------------|---------------------------------------|
+| `connect_nodes`    | Create a connection between two nodes |
+| `disconnect_nodes` | Remove connection(s) between nodes    |
+| `list_edges`       | List all edges in the workflow        |
+
+### Workflow Operations
+
+| Tool                | Description                          |
+|---------------------|--------------------------------------|
+| `view_workflow`     | View the complete workflow structure |
+| `publish_workflow`  | Publish the draft as a new version   |
+| `validate_workflow` | Check workflow for errors/warnings   |
+| `run_node`          | Execute a single node for testing    |
+
+### Feature Operations
+
+| Tool              | Description                                |
+|-------------------|--------------------------------------------|
+| `get_features`    | Get workflow feature configuration         |
+| `update_features` | Update workflow features                   |
+| `get_variables`   | Get environment and conversation variables |
+
+## Examples
+
+### List and Select Apps
+
+```
+> Show me my workflow apps
+
+Claude will use: list_apps with mode="workflow"
+Returns: List of apps with IDs, names, and modes
+
+> Select the "Customer Support" app
+
+Claude will use: select_app with the app ID
+```
+
+### View Current Workflow
+
+```
+> Show me the current workflow
+
+Claude will use: view_workflow
+```
+
+### Add an LLM Node
+
+```
+> Add an LLM node called "Summarizer" that summarizes user input.
+  Connect it after the Start node.
+
+Claude will:
+1. Use list_nodes to find the Start node ID
+2. Use add_node with after_node_id to create and connect the LLM node
+```
+
+### Build a RAG Pipeline
+
+```
+> Create a RAG pipeline that:
+  1. Retrieves from my knowledge base (dataset ID: abc123)
+  2. Uses GPT-4 to answer based on the context
+  3. Returns the response to the user
+
+Claude will:
+1. add_node (knowledge-retrieval)
+2. add_node (llm with context)
+3. connect_nodes appropriately
+```
+
+### Publish a Version
+
+```
+> Publish this workflow as version 1.0
+
+Claude will use: publish_workflow with name="v1.0"
+```
+
+### Create a Workflow from Scratch (Discovery Flow)
+
+```
+> Create a new customer support workflow with an LLM that responds to questions
+
+Claude will:
+1. create_app to create a new workflow app
+2. list_node_types to discover available nodes
+3. get_node_schema("llm") to understand LLM node config
+4. list_models to discover available AI models
+5. add_node to add the LLM node with proper config
+6. connect_nodes to wire up the flow
+7. validate_workflow to check for errors
+```
+
+### Configure a Knowledge Retrieval Node
+
+```
+> Add knowledge retrieval from my product docs
+
+Claude will:
+1. list_datasets to find available knowledge bases
+2. get_node_schema("knowledge-retrieval") to get config schema
+3. add_node with the discovered dataset ID
+```
+
+## Supported Node Types
+
+| Category      | Node Types                                                                                                  |
+|---------------|-------------------------------------------------------------------------------------------------------------|
+| **Control**   | start, end, answer, if-else, iteration, loop                                                                |
+| **AI**        | llm, knowledge-retrieval, question-classifier, parameter-extractor                                          |
+| **Transform** | code, template-transform, variable-assigner, variable-aggregator, document-extractor, list-filter, assigner |
+| **External**  | http-request, tool                                                                                          |
+
+## Resources
+
+The server provides these MCP resources:
+
+- `pulse://workflow/current` - Current workflow as JSON
+- `pulse://workflow/node-types` - Available node type schemas
+- `pulse://workflow/summary` - Human-readable workflow summary
+
+## Prompts
+
+Available MCP prompts:
+
+- `workflow_context` - Full context about the current workflow
+- `discovery_workflow` - Mandatory discovery workflow for building from scratch
+- `add_rag_pipeline` - Template for adding a RAG pipeline
+- `add_llm_chain` - Template for adding an LLM processing chain
+
+## Development
+
+```bash
+# Clone and install
+git clone https://github.com/Pulse-Intelligence/pulse-workflow-mcp.git
+cd pulse-workflow-mcp
+uv pip install -e ".[dev]"
+
+# Run tests
+pytest tests/
+
+# Run linter
+ruff check .
+
+# Run server locally
+export PULSE_API_URL="http://localhost:5001"
+export PULSE_API_KEY="your-api-key"
+pulse-workflow-mcp
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Claude Code CLI                          │
+│  > "Add an LLM node that summarizes user input"             │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ MCP Protocol (stdio)
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Pulse MCP Server                           │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐   │
+│  │   Tools     │ │  Resources  │ │    Prompts          │   │
+│  │ - list_apps │ │ - workflow  │ │ - workflow_context  │   │
+│  │ - add_node  │ │ - node_types│ │ - add_rag_pipeline  │   │
+│  │ - edit_node │ │ - summary   │ │ - add_llm_chain     │   │
+│  │ - connect   │ │             │ │                     │   │
+│  └─────────────┘ └─────────────┘ └─────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ REST API
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Pulse Backend                             │
+│   /apps (GET)                                               │
+│   /apps/{id}/workflows/draft (GET/POST)                     │
+│   /apps/{id}/workflows/publish (POST)                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Error Handling
+
+The server handles common errors:
+
+- **WorkflowNotSyncError**: Concurrent edit detected - refresh and retry
+- **PulseClientError**: API errors with status code and message
+- **No app selected**: Use `list_apps` and `select_app` to choose an app
+
+## License
+
+MIT
