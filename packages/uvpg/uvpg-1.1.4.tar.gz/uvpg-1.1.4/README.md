@@ -1,0 +1,196 @@
+# uvpg - UV Project Generator
+
+[![PyPI version](https://img.shields.io/pypi/v/uvpg)](https://pypi.org/project/uvpg)
+[![PyPI downloads](https://img.shields.io/pypi/dm/uvpg)](https://pypi.org/project/uvpg)
+[![PyPI total downloads](https://img.shields.io/pepy/dt/uvpg)](https://pypi.org/project/uvpg)
+[![License](https://img.shields.io/pypi/l/uvpg)](https://github.com/lucasmaziero/uvpg/blob/main/LICENSE)
+[![Release and Publish](https://github.com/lucasmaziero/uvpg/actions/workflows/release.yml/badge.svg)](https://github.com/lucasmaziero/uvpg/actions/workflows/release.yml)
+
+A CLI tool to scaffold Python monorepo projects using [uv](https://docs.astral.sh/uv) workspaces.
+
+## Features
+
+- 🚀 Creates monorepo structure with uv workspaces
+- 📦 Adds internal packages with automatic dependency registration
+- 🐍 Configurable Python version
+- 👤 Configurable author name and email
+- 📄 MIT License auto-generated
+- 🔧 Pre-configured tools: Ruff, Ty, pytest, coverage
+- 💻 VSCode settings with recommended extensions
+- 🖥️ Auto-detects OS for correct Python interpreter path
+- 🐳 Docker support with multi-stage build and compose
+- ⚡ FastAPI + Uvicorn basic example included
+
+## Installation
+
+```bash
+# Install from PyPI
+pip install uvpg
+
+# Or install from PyPI with uv
+uv tool install uvpg
+
+# Or clone the repository
+git clone https://github.com/lucasmaziero/uvpg.git
+cd uvpg
+
+# Install with uv
+uv sync
+uv build
+uv tool install dist/uvpg-*.whl
+
+# Or install with pip
+pip install dist/uvpg-*.whl
+```
+
+## Uninstall
+
+```bash
+# Via uv
+uv tool uninstall uvpg
+
+# Via pip
+pip uninstall uvpg
+```
+
+## Upgrade
+
+```bash
+# Via pip
+pip install --upgrade uvpg
+
+# Via uv
+uv tool upgrade uvpg
+```
+
+## Usage
+
+### Create a new project
+
+```bash
+# Basic project
+uvpg my-project
+
+# With specific Python version
+uvpg my-project --python 3.14
+
+# With author information
+uvpg my-project --author "John Doe" --email "john@example.com"
+
+# With initial packages
+uvpg my-project -p core -p utils -p api
+
+# Combining options
+uvpg my-project --python 3.14 --author "John Doe" --email "john@example.com" -p core
+```
+
+### Add packages to existing project
+
+```bash
+cd my-project
+uvpg . -p new-package
+```
+
+### Show version
+
+```bash
+uvpg --version
+```
+
+### Show help
+
+```bash
+uvpg --help
+```
+
+## Generated Structure
+
+```
+my-project/
+├── .vscode/
+│   ├── settings.json       # VSCode settings (Ruff, Ty, Action Buttons)
+│   └── extensions.json     # Recommended extensions
+├── packages/
+│   └── core/
+│       ├── pyproject.toml
+│       ├── src/
+│       │   └── core/
+│       │       ├── __init__.py
+│       │       └── main.py
+│       └── tests/
+├── src/
+│   └── app/
+│       ├── __init__.py
+│       └── main.py         # FastAPI application
+├── tests/
+├── .dockerignore
+├── .gitignore
+├── .python-version
+├── compose.yaml            # Docker Compose config
+├── Dockerfile              # Multi-stage Docker build
+├── LICENSE                 # MIT License
+├── Makefile                # Build automation
+├── pyproject.toml          # Root config with workspace
+├── README.md
+└── uv.lock
+```
+
+## Configuration
+
+The generated `pyproject.toml` includes:
+
+- **FastAPI + Uvicorn** - Web framework and ASGI server
+- **Ruff** - Linting with `select = ["ALL"]`
+- **Ty** - Type checking
+- **pytest** - Testing (commented, ready to enable)
+- **coverage** - Code coverage (commented, ready to enable)
+- **uv workspaces** - Monorepo package management
+- **hatchling** - Build system
+
+## Docker
+
+Run with Docker Compose:
+
+```bash
+# Build and run
+docker compose up --build
+
+# Run with watch mode (auto-reload)
+docker compose up --watch
+```
+
+## Requirements
+
+- Python >= 3.12
+- [uv](https://docs.astral.sh/uv/) package manager
+
+### Windows (for Makefile support)
+
+```bash
+# Install Make
+winget install --id=GnuWin32.Make -e
+
+# Use Git Bash terminal for make commands. Launch from batch/command line:
+start "" "%ProgramFiles%\Git\bin\bash.exe"
+```
+
+## Development
+
+```bash
+# Clone
+git clone https://github.com/lucasmaziero/uvpg.git
+cd uvpg
+
+# Install dependencies
+uv sync
+
+# Run locally
+uv run uvpg --help
+
+# Build
+uv build
+```
+
+## License
+
+MIT License - See [LICENSE](https://github.com/lucasmaziero/uvpg/blob/main/LICENSE) for details.
