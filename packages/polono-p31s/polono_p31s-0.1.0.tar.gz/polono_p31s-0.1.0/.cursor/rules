@@ -1,0 +1,91 @@
+# Polono P31S Thermal Label Printer Project
+
+## Project Overview
+This is a Python CLI tool and web interface for printing labels on Polono P31S thermal printers via Bluetooth Low Energy (BLE). It uses TSPL (Taiwan Semiconductor Programming Language) commands to communicate with the printer.
+
+## Architecture
+
+### Core Components
+- `polono.py` - Main CLI application with the `PolonoP31S` class
+- `web/` - Web interface for label design and printing
+  - `server.py` - Flask server
+  - `static/` - Frontend assets (HTML, CSS, JS)
+
+### Key Classes
+- `PolonoP31S` - Main printer interface class with:
+  - BLE connection management (`connect_ble`, `disconnect_ble`)
+  - Render methods (`render_text`, `render_image`, `render_qr`, `render_barcode`)
+  - Single print method (`print_ble`) that takes a pre-rendered PIL Image
+  - Text fitting utilities (`check_text_fit`, `find_fitting_font_size`)
+
+### Design Patterns
+- Render methods return PIL Images in mode '1' (1-bit), landscape orientation
+- All print types use the same `print_ble(img, copies)` method
+- Preview mode renders without connecting to printer
+- Address caching in `~/.polono_address` for faster subsequent prints
+
+## Technical Details
+
+### Printer Specs
+- Resolution: 203 DPI (8 dots/mm)
+- Default label: 14mm × 40mm with 5mm gap
+- BLE Write Characteristic: `0000ff02-0000-1000-8000-00805f9b34fb`
+- BLE Notify Characteristic: `0000ff01-0000-1000-8000-00805f9b34fb`
+
+### Image Handling
+- Images are created in LANDSCAPE orientation (height_px × width_px)
+- Rotated 90° clockwise during bitmap conversion for correct label orientation
+- TSPL BITMAP format: 1 bit per pixel, MSB first, 0=black, 1=white
+
+### BLE Communication
+- Uses `bleak` library for cross-platform BLE
+- Data sent in 180-byte MTU chunks
+- 30ms delay between chunks for reliability
+- 2 second wait after print command
+
+## CLI Commands
+- `text` - Print text with options: --font-size, --font, --align, --autofit, --force, --preview
+- `image` - Print image file
+- `qr` - Print QR code
+- `barcode` - Print barcode (code128, code39, ean13, etc.)
+- `scan` - Scan for BLE devices
+- `status` - Query printer status
+
+## Global CLI Options
+- `-w, --width` - Label width in mm
+- `-h, --height` - Label height in mm
+- `-d, --density` - Print density 1-15
+- `-a, --address` - BLE address (skips scanning)
+
+## Dependencies
+- `bleak` - BLE communication
+- `Pillow` - Image processing
+- `click` - CLI framework
+- `rich` - Console output formatting
+- `qrcode` - QR code generation (optional)
+- `python-barcode` - Barcode generation (optional)
+
+## Code Style
+- Use async/await for BLE operations
+- Type hints for function signatures
+- Docstrings for public methods
+- Use `console.print()` with rich markup for user feedback
+- Check for optional dependencies at runtime with try/except ImportError
+
+## Common Patterns
+
+### Adding a new print type
+1. Add `render_xyz()` method that returns PIL Image
+2. Add CLI command that:
+   - Creates printer instance
+   - Calls render method
+   - Either saves preview or calls `print_ble(img, copies)`
+
+### Text rendering
+- Use `_load_font()` for consistent font loading
+- Use `check_text_fit()` before rendering to warn about overflow
+- Use `find_fitting_font_size()` for autofit feature
+- Account for font bbox offsets when centering text
+
+## Environment Variables
+- `POLONO_ADDRESS` - Default printer BLE address
