@@ -1,0 +1,1467 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+#  RepliMap Schema Mapping Rules v3.7.10 (SQS Conflicts & Read-Only Fix)
+#
+#  Key Updates from v3.7.9:
+#  - CRITICAL FIX: SQS kms_master_key_id conflicts with sqs_managed_sse_enabled
+#    (cleanup transformer removes sqs_managed_sse_enabled when KMS is set)
+#  - CRITICAL FIX: SQS url is read-only and must be ignored
+#  - FinalCleanupTransformer handles SQS read-only fields and conflicts
+#
+#  v3.7.9 fixes preserved:
+#  - SQS field renames corrected
+#  - Nuclear matcher fix for aws_lb_target_group
+#
+#  v3.7.8 fixes preserved:
+#  - Added _seconds, _timeout, _period, etc. to SAFE_SUFFIXES
+#  - aws_launch_template: latest_version, default_version ignored
+#  - aws_autoscaling_group: subnet_ids → vpc_zone_identifier rename
+#  - aws_lb_listener: target_groups ignored
+#
+#  v3.7.7 fixes preserved:
+#  - to_int and to_bool transform types for type conversion
+#  - aws_sqs_queue: to_int transforms for numeric fields
+#  - aws_route_table: is_main ignored
+#
+#  v3.7.6 fixes preserved:
+#  - NEW: rename_value transform type for handling reserved names
+#  - NUCLEAR OPTION: aws_network_acl removes ALL ingress/egress blocks
+#  - aws_db_subnet_group uses rename_value transform for "default" name
+#
+#  v3.7.5 fixes preserved:
+#  - CRITICAL FIX: aws_lb_listener rules (fixes 294 TF plan errors)
+#    - DefaultActions → default_action (singular, not plural!)
+#    - load_balancer_arn is REQUIRED, not ignored
+#    - Proper action block transform for type, target_group_arn, redirect, etc.
+#  - CRITICAL FIX: aws_route_table vpc_id removed from ignores (required field!)
+#
+#  v3.7.4 fixes preserved:
+#  - aws_network_acl rules (fixes 281 TF plan errors)
+#  - aws_vpc_endpoint rules with policy_document → policy rename
+#  - FinalCleanupTransformer with matcher dict→string safety net
+#
+#  v3.7.3 fixes preserved:
+#  - clean_list_items transform for aws_db_parameter_group
+#  - sort_list transform for aws_db_instance.enabled_cloudwatch_logs_exports
+#
+#  v3.7.2 fixes preserved:
+#  - FinalCleanupTransformer now uses _get_terraform_type() for correct type lookup
+#  - Added security_groups to aws_security_group ignores (belt-and-suspenders)
+#  - Added aws_s3_bucket_policy rules (policy_json -> policy rename)
+#
+#  v3.7 fixes preserved:
+#  - Pipeline v3.7: Added FinalCleanupTransformer as last stage
+#  - transforms.py v3.7: flatten_to_string now handles list-wrapped dicts
+#
+#  v3.6 fixes preserved:
+#  - CRITICAL FIX: vpc_id removed from aws_subnet.ignores (required field!)
+#  - Enhanced no_redact whitelist validation
+#  - All v3.5 fixes preserved:
+#    - no_redact whitelist (kms_key_id should not be replaced with [REDACTED])
+#    - rename_keys transform for nested block field renaming
+#    - extract_ids transform for object list → ID list conversion
+#    - flatten_to_string transform for nested block → scalar
+#    - aws_lb_target_group health_check field names
+#    - aws_db_subnet_group Subnets extraction
+#
+#  Fixes for tfplan.txt errors:
+#  - "targets" block removed (parent-child boundary violation)
+#  - interval_seconds → interval, timeout_seconds → timeout
+#  - matcher {} block → matcher = "200" (flatten_to_string handles lists too)
+#  - kms_key_id no longer [REDACTED] (no_redact whitelist)
+#  - vpc_id preserved in aws_subnet (required Terraform argument)
+#  - security_groups field cleaned from aws_security_group (FinalCleanupTransformer)
+#  - policy_json renamed to policy for aws_s3_bucket_policy (v3.7.2)
+#  - aws_db_parameter_group.parameter cleaned of read-only fields (v3.7.3)
+#  - DefaultActions → default_action for aws_lb_listener (v3.7.5)
+#  - vpc_id preserved in aws_route_table (required Terraform argument) (v3.7.5)
+#
+#  Principle:
+#  - All field names use snake_case format
+#  - Python code uses normalize() for case-insensitive matching
+#  - No need to list multiple naming formats for the same field
+#
+#  Version: 3.7.10
+#  Compatible with: Terraform AWS Provider ~> 5.0
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+global:
+  # Readonly field patterns (regex, auto-matched against snake_case)
+  readonly_patterns:
+    - ".*_count$"
+    - ".*_confirmed$"
+    - ".*_pending$"
+    - ".*_deleted$"
+    - ".*_total$"
+    - "^approximate_.*"
+    - "^effective_.*"
+    - ".*_status$"
+    - ".*_state$"
+    - "^status$"
+    - "^state$"
+    - ".*_time$"
+    - ".*_date$"
+    - "^created_at$"
+    - "^updated_at$"
+    - "^last_.*"
+    - ".*_timestamp$"
+    - "^owner_id$"
+    - "^requester_id$"
+    - "^account_id$"
+    - ".*_arn$"
+    - "^arn$"
+
+  # v3.5 NEW: No-redact whitelist (preserve original ARN values)
+  # These fields should NOT be replaced with [REDACTED] even if they contain ARNs
+  # 🚨 v3.7.20 FIX: Added key_name - it's just an identifier, not sensitive
+  # Redacting it causes "forces replacement" errors in Terraform
+  no_redact:
+    - kms_key_id
+    - kms_master_key_id
+    - kms_key_arn
+    - key_arn
+    - key_id
+    - key_name  # 🚨 v3.7.20: SSH key pair name - NOT sensitive, just an identifier
+    - certificate_arn
+    - acm_certificate_arn
+    - iam_role_arn
+    - execution_role_arn
+    - task_role_arn
+    - source_arn
+    - destination_arn
+
+  # JSON field patterns
+  json_patterns:
+    - ".*_policy$"
+    - ".*_policy_document$"
+    - "^policy$"
+
+  # Empty value pruning
+  prune_empty:
+    enabled: true
+    values: ["", [], {}, null]
+
+  # Tag fields (auto-normalized matching)
+  tag_fields:
+    - tags
+    - tag_set
+
+resources:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_lb (ALB/NLB)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_lb:
+    renames:
+      type: load_balancer_type
+      subnet_ids: subnets
+      security_group_ids: security_groups
+      deletion_protection_enabled: enable_deletion_protection
+
+    ignores:
+      - availability_zones
+      - access_logs_enabled
+      - access_logs_bucket
+      - access_logs_prefix
+      - canonical_hosted_zone_id
+      - created_time
+      - dns_name
+      - vpc_id
+      - zone_id
+      - scheme
+      - ip_address_type
+      - customer_owned_ipv4_pool
+      - load_balancer_arn
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_lb_target_group (v3.5 CRITICAL FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_lb_target_group:
+    renames:
+      target_type: target_type
+      vpc_id: vpc_id
+
+    # 🚨 v3.6 CRITICAL: Keep threshold fields despite global .*_count$ pattern
+    # These are REQUIRED for health_check block, not readonly metrics
+    keep:
+      - HealthyThresholdCount
+      - healthy_threshold_count
+      - UnhealthyThresholdCount
+      - unhealthy_threshold_count
+
+    ignores:
+      # 🚨 Parent-child boundary: Targets are separate resources (aws_lb_target_group_attachment)
+      - targets
+      - target_health_descriptions
+      # Readonly
+      - target_group_arn
+      - load_balancer_arns
+
+    transforms:
+      # 🚨 CRITICAL: Rename nested health_check fields
+      # AWS API: IntervalSeconds, TimeoutSeconds
+      # Terraform: interval, timeout
+      health_check:
+        type: rename_keys
+        mapping:
+          IntervalSeconds: interval
+          interval_seconds: interval
+          TimeoutSeconds: timeout
+          timeout_seconds: timeout
+          HealthyThresholdCount: healthy_threshold
+          healthy_threshold_count: healthy_threshold
+          UnhealthyThresholdCount: unhealthy_threshold
+          unhealthy_threshold_count: unhealthy_threshold
+          HealthCheckPath: path
+          health_check_path: path
+          HealthCheckPort: port
+          health_check_port: port
+          HealthCheckProtocol: protocol
+          health_check_protocol: protocol
+
+      # 🚨 CRITICAL: Flatten matcher block to string
+      # AWS API: { "Matcher": { "HttpCode": "200" } }
+      # Terraform: matcher = "200"
+      matcher:
+        type: flatten_to_string
+        extract_field: HttpCode
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_lb_listener (v3.7.8 FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # v3.7.5: AWS API returns DefaultActions (plural), Terraform expects default_action (singular)
+  # v3.7.5: AWS API returns LoadBalancerArn, Terraform REQUIRES load_balancer_arn
+  # v3.7.8: Added target_groups to ignores (API-only field, not valid in TF)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_lb_listener:
+    renames:
+      # 🚨 CRITICAL: Plural → Singular rename
+      # AWS API: DefaultActions: [{Type: "forward", ...}]
+      # Terraform: default_action { type = "forward" ... }
+      default_actions: default_action
+      DefaultActions: default_action
+
+    ignores:
+      - listener_arn
+      # Computed/read-only fields
+      - ssl_policy
+      - alpn_policy
+      - mutual_authentication
+      # 🚨 v3.7.17 FIX: REMOVED target_groups/TargetGroups from ignores!
+      # The _filter_fields() in schema_mapper.py is RECURSIVE, so these ignores
+      # were also removing forward.TargetGroups which is needed for weighted targets.
+      # FinalCleanupTransformer handles the transformation of TargetGroups to target_group.
+
+    keep:
+      # 🚨 CRITICAL: load_balancer_arn is REQUIRED by Terraform
+      - load_balancer_arn
+      - LoadBalancerArn
+      - port
+      - protocol
+      - default_action
+      - certificate_arn
+      - tags
+      # 🚨 v3.7.17 CRITICAL: TargetGroupArn in forward.TargetGroups[] MUST be preserved!
+      # The global readonly pattern ".*_arn$" would remove target_group_arn.
+      # Since _filter_fields is RECURSIVE and keep applies to ALL nesting levels,
+      # this whitelist entry preserves TargetGroupArn inside nested structures.
+      - TargetGroupArn
+      - target_group_arn
+
+    transforms:
+      # 🚨 CRITICAL: Transform default_action block fields
+      # AWS API uses PascalCase, Terraform uses snake_case
+      default_action:
+        type: rename_keys
+        mapping:
+          Type: type
+          TargetGroupArn: target_group_arn
+          Order: order
+          # Forward action config
+          ForwardConfig: forward
+          forward_config: forward
+          # Redirect action config
+          RedirectConfig: redirect
+          redirect_config: redirect
+          # Fixed response config
+          FixedResponseConfig: fixed_response
+          fixed_response_config: fixed_response
+          # Authenticate actions
+          AuthenticateCognitoConfig: authenticate_cognito
+          authenticate_cognito_config: authenticate_cognito
+          AuthenticateOidcConfig: authenticate_oidc
+          authenticate_oidc_config: authenticate_oidc
+
+  aws_lb_listener_rule:
+    ignores:
+      - rule_arn
+      - is_default
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_network_acl (v3.7.4 FIX - 281 errors)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # AWS API returns Entries[] with nested fields that Terraform doesn't accept
+  # at the top level. Terraform expects ingress/egress blocks instead.
+  # The FinalCleanupTransformer also strips these as a safety net.
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_network_acl:
+    ignores:
+      - network_acl_id
+      - owner_id
+      # 🚨 v3.7.20 FIX: is_default MUST NOT be ignored here!
+      # DefaultResourceFilter (Stage 1) needs this field to filter out default NACLs.
+      # FinalCleanupTransformer removes it later before HCL generation.
+      # Ignoring it caused "use aws_default_network_acl resource instead" errors.
+      - association_set
+      - associations
+      # API-native entry fields that pollute top level
+      - entries
+      - rule_number
+      - rule_action
+      - protocol
+      - cidr_block
+      - ipv6_cidr_block
+      - egress
+      - icmp_type_code
+      - port_range
+      # PascalCase variants
+      - Entries
+      - RuleNumber
+      - RuleAction
+      - Protocol
+      - CidrBlock
+      - Ipv6CidrBlock
+      - IcmpTypeCode
+      - PortRange
+
+    keep:
+      - vpc_id
+      - subnet_ids
+      - ingress
+      - egress
+      - tags
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_vpc_endpoint (v3.7.4 FIX - 6 errors)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # API returns PolicyDocument, Terraform expects policy
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_vpc_endpoint:
+    renames:
+      policy_document: policy
+      PolicyDocument: policy
+      service_name: service_name
+      vpc_endpoint_type: vpc_endpoint_type
+
+    ignores:
+      - vpc_endpoint_id
+      - creation_timestamp
+      - owner_id
+      - state
+      - requester_managed
+      - network_interface_ids
+      - dns_entries
+      - groups
+      - prefix_list_id
+      # Computed/read-only fields
+      - dns_options
+      - ip_address_type
+
+    keep:
+      - vpc_id
+      - service_name
+      - vpc_endpoint_type
+      - policy
+      - route_table_ids
+      - subnet_ids
+      - security_group_ids
+      - private_dns_enabled
+      - tags
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_ebs_volume (v3.5 CRITICAL FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_ebs_volume:
+    renames:
+      volume_type: type
+      volume_size: size
+
+    ignores:
+      - attachments
+      - create_time
+      - volume_id
+      - snapshot_id
+      - state
+      - outpost_arn
+
+    # 🚨 CRITICAL: kms_key_id must NOT be redacted
+    # Otherwise: Error: "kms_key_id" ([REDACTED]) is an invalid ARN
+    no_redact:
+      - kms_key_id
+      - encrypted
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_db_subnet_group
+  # ═══════════════════════════════════════════════════════════════════════════
+  # v3.7.20: Removed rename_value transform for "default" name
+  # The DefaultResourceFilter now skips "default" db_subnet_group entirely
+  # (AWS-managed, can't be changed without forcing replacement)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_db_subnet_group:
+    renames:
+      db_subnet_group_description: description
+      db_subnet_group_name: name
+
+    ignores:
+      - db_subnet_group_arn
+      - subnet_group_status
+      - vpc_id
+
+    transforms:
+      # 🚨 CRITICAL: Extract IDs from object list
+      # AWS API: Subnets: [{SubnetIdentifier: "subnet-1", ...}, ...]
+      # Terraform: subnet_ids = ["subnet-1", ...]
+      subnets:
+        type: extract_ids
+        id_field: SubnetIdentifier
+        target: subnet_ids
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_cloudwatch_log_group
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_cloudwatch_log_group:
+    renames:
+      log_group_name: name
+
+    ignores:
+      - stored_bytes
+      - creation_time
+      - metric_filter_count
+
+    keep:
+      - retention_in_days
+      - kms_key_id
+      - name
+
+    no_redact:
+      - kms_key_id
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_cloudwatch_metric_alarm
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_cloudwatch_metric_alarm:
+    renames:
+      alarm_name: alarm_name
+      comparison_operator: comparison_operator
+      evaluation_periods: evaluation_periods
+      metric_name: metric_name
+      namespace: namespace
+      period: period
+      statistic: statistic
+      threshold: threshold
+
+    transforms:
+      dimensions:
+        type: list_to_map
+        key_field: Name
+        value_field: Value
+
+    ignores:
+      - alarm_arn
+      - alarm_configuration_updated_timestamp
+      - state_reason
+      - state_reason_data
+      - state_updated_timestamp
+      - state_transitioned_timestamp
+      - state_value
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_eip
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_eip:
+    renames:
+      network_interface_id: network_interface
+      instance_id: instance
+
+    ignores:
+      - private_ip_address
+      - public_ip
+      - allocation_id
+      - association_id
+      - domain
+      - network_border_group
+      - public_ipv4_pool
+      - customer_owned_ip
+      - customer_owned_ipv4_pool
+      - carrier_ip
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_vpc
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_vpc:
+    renames:
+      cidr_block: cidr_block
+      enable_dns_support: enable_dns_support
+      enable_dns_hostnames: enable_dns_hostnames
+
+    ignores:
+      - vpc_id
+      - dhcp_options_id
+      - is_default
+      - cidr_block_association_set
+      - ipv6_cidr_block_association_set
+      - flow_logs_enabled
+      - flow_logs
+      - instance_tenancy
+
+    defaults:
+      instance_tenancy: "default"
+      enable_dns_support: true
+      enable_dns_hostnames: false
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_subnet (v3.6 CRITICAL FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_subnet:
+    renames:
+      cidr_block: cidr_block
+      availability_zone: availability_zone
+      map_public_ip_on_launch: map_public_ip_on_launch
+
+    ignores:
+      - subnet_id
+      - subnet_arn
+      # 🚨 v3.6 CRITICAL FIX: vpc_id is a REQUIRED Terraform argument!
+      # DO NOT add vpc_id to this list - it will cause:
+      # Error: The argument "vpc_id" is required, but no definition was found.
+      # - vpc_id  ← REMOVED IN v3.6
+      - owner_id
+      - assign_ipv6_address_on_creation
+      - available_ip_address_count
+      - default_for_az
+      - enable_dns64
+      - ipv6_native
+      - ipv6_cidr_block_association_set
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_internet_gateway
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_internet_gateway:
+    ignores:
+      - internet_gateway_id
+      - owner_id
+      - attachments
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_nat_gateway
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_nat_gateway:
+    renames:
+      allocation_id: allocation_id
+      subnet_id: subnet_id
+      connectivity_type: connectivity_type
+
+    ignores:
+      - nat_gateway_id
+      - vpc_id
+      - create_time
+      - nat_gateway_addresses
+      - state
+      - failure_code
+      - failure_message
+      - network_interface_id
+      - private_ip
+      - public_ip
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_route_table (v3.7.7 FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚨 v3.7.5 CRITICAL FIX: vpc_id is REQUIRED by Terraform!
+  # 🚨 v3.7.7 FIX: is_main must be ignored (read-only attribute)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_route_table:
+    ignores:
+      - route_table_id
+      # 🚨 v3.7.5: vpc_id REMOVED from ignores (it's REQUIRED!)
+      # - vpc_id  ← DO NOT IGNORE - causes terraform plan to fail!
+      - owner_id
+      - associations
+      - propagating_vgws
+      - routes
+      # 🚨 v3.7.7: is_main is read-only (indicates if this is the main route table)
+      - is_main
+      - IsMain
+
+    keep:
+      # 🚨 CRITICAL: vpc_id is REQUIRED by Terraform
+      - vpc_id
+      - tags
+
+  aws_route:
+    ignores:
+      - origin
+      - instance_owner_id
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_autoscaling_group (v3.7.13 FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚨 v3.7.8: Added subnet_ids → vpc_zone_identifier rename
+  # 🚨 v3.7.13: Added load_balancer_names, service_linked_role_arn to ignores
+  # AWS API returns SubnetIds/subnet_ids, Terraform expects vpc_zone_identifier
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_autoscaling_group:
+    renames:
+      max_size: max_size
+      min_size: min_size
+      default_cooldown: default_cooldown
+      health_check_type: health_check_type
+      health_check_grace_period: health_check_grace_period
+      auto_scaling_group_name: name
+      launch_configuration_name: launch_configuration
+      # 🚨 v3.7.8: AWS API returns subnet_ids, TF expects vpc_zone_identifier
+      subnet_ids: vpc_zone_identifier
+      SubnetIds: vpc_zone_identifier
+      VPCZoneIdentifier: vpc_zone_identifier
+
+    ignores:
+      - auto_scaling_group_arn
+      - availability_zones
+      - instances
+      - created_time
+      - suspended_processes
+      - enabled_metrics
+      - status
+      - new_instances_protected_from_scale_in
+      # v3.7.13: Additional ignores for complex/read-only fields
+      - load_balancer_names          # Use target_group_arns instead
+      - service_linked_role_arn      # Read-only
+      - termination_policies         # Often causes conflicts
+      - warm_pool                    # Complex block
+      - mixed_instances_policy       # Complex block
+      - traffic_sources              # Complex block
+
+    transforms:
+      # ASG uses vpc_zone_identifier for subnets
+      vpc_zone_identifier:
+        type: sort_list
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_launch_template (v3.7.8 FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚨 v3.7.8: Added latest_version, default_version to ignores
+  # These are read-only computed attributes, not configurable
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_launch_template:
+    renames:
+      launch_template_name: name
+      security_group_ids: vpc_security_group_ids
+
+    ignores:
+      - launch_template_id
+      - latest_version_number
+      - default_version_number
+      # 🚨 v3.7.8: Additional computed version fields from different API responses
+      - latest_version
+      - default_version
+      - LatestVersion
+      - DefaultVersion
+      - created_by
+      - create_time
+      - groups
+      - version_number
+      - version
+      - Version
+
+    transforms:
+      # Ensure consistent ordering
+      vpc_security_group_ids:
+        type: sort_list
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_instance (v3.7.15 - fixes root_block_device unconfigurable attribute)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_instance:
+    renames:
+      # Standard renames for EC2
+      instance_type: instance_type
+      key_name: key_name
+      subnet_id: subnet_id
+      # 🚨 v3.7.14: Map security_group_ids to vpc_security_group_ids
+      security_group_ids: vpc_security_group_ids
+      SecurityGroupIds: vpc_security_group_ids
+      # IAM Profile mapping
+      IamInstanceProfile: iam_instance_profile
+
+    ignores:
+      # 🚨 v3.7.14: vpc_id must be ignored - TF derives VPC from subnet_id
+      - vpc_id
+      - VpcId
+      # 🚨 v3.7.19: root_block_device is now KEPT (not ignored)
+      # We clean up problematic fields inside it (device_name) in FinalCleanupTransformer
+      # Ignoring it entirely caused "must be replaced" errors (34 instances!)
+      # Read-only/computed fields
+      - instance_id
+      - architecture
+      - client_token
+      - ebs_optimized
+      - ena_support
+      - hypervisor
+      - kernel_id
+      - launch_time
+      - platform
+      - platform_details
+      - private_dns_name
+      - private_ip_address
+      - product_codes
+      - public_dns_name
+      - public_ip_address
+      - ramdisk_id
+      - root_device_name
+      - root_device_type
+      - source_dest_check
+      - spot_instance_request_id
+      - sriov_net_support
+      - state
+      - state_reason
+      - state_transition_reason
+      - virtualization_type
+      - instance_lifecycle
+      - outpost_arn
+      - capacity_reservation_id
+      - usage_operation
+      - usage_operation_update_time
+      - boot_mode
+      - current_instance_boot_mode
+      # 🚨 v3.7.12 CRITICAL: API-native complex structures that cause TF errors
+      - block_device_mappings      # TF uses ebs_block_device, root_block_device
+      - network_interfaces         # TF uses network_interface (singular)
+      - security_groups            # Use vpc_security_group_ids instead
+      - iam_instance_profile_arn   # Use iam_instance_profile (name) instead
+      # 🚨 v3.7.12 CRITICAL: Structures that conflict with TF defaults
+      - cpu_options
+      - capacity_reservation_specification
+      - metadata_options
+      - enclave_options
+      - hibernation_options
+      - maintenance_options
+      - private_dns_name_options
+      - placement                  # Use individual placement_* args
+      - monitoring                 # Use monitoring = true/false instead
+      # Internal markers (should be caught by cleanup, double safety)
+      - asg_name
+      - is_asg_managed
+      # Deprecated/legacy
+      - image_id                   # Use ami instead
+
+    keep:
+      - ami
+      - instance_type
+      - key_name
+      - subnet_id
+      - vpc_security_group_ids
+      - iam_instance_profile
+      - tags
+      - tags_all
+      - availability_zone
+      - tenancy
+      - user_data
+      - user_data_base64
+
+    # v3.7.14: Transforms for IAM Profile and Security Groups
+    transforms:
+      iam_instance_profile:
+        type: flatten_to_string
+        extract_field: Arn
+      IamInstanceProfile:
+        type: flatten_to_string
+        extract_field: Arn
+      vpc_security_group_ids:
+        type: sort_list
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_iam_instance_profile
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_iam_instance_profile:
+    renames:
+      instance_profile_name: name
+
+    transforms:
+      roles:
+        type: unwrap_list
+        target: role
+
+    ignores:
+      - instance_profile_id
+      - create_date
+      - path
+      - unique_id
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_iam_role
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_iam_role:
+    renames:
+      role_name: name
+      assume_role_policy_document: assume_role_policy
+
+    ignores:
+      - role_id
+      - create_date
+      - role_last_used
+      - unique_id
+
+    types:
+      assume_role_policy: json
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_iam_policy
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_iam_policy:
+    renames:
+      policy_name: name
+      policy_document: policy
+
+    ignores:
+      - policy_id
+      - create_date
+      - update_date
+      - attachment_count
+      - permissions_boundary_usage_count
+      - is_attachable
+      - default_version_id
+
+    types:
+      policy: json
+
+  aws_iam_role_policy:
+    ignores:
+      - policy_arn
+
+    types:
+      policy: json
+
+  aws_iam_role_policy_attachment:
+    ignores:
+      - policy_arn
+
+  aws_iam_user:
+    ignores:
+      - user_id
+      - password_last_used
+      - unique_id
+
+  aws_iam_group:
+    ignores:
+      - group_id
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_security_group
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_security_group:
+    renames:
+      group_name: name
+      group_id: id
+
+    ignores:
+      - owner_id
+      - ip_permissions
+      - ip_permissions_egress
+      # v3.7.2: Terraform aws_security_group doesn't accept security_groups argument
+      # This field may appear from AWS API describing related SGs
+      - security_groups
+
+    keep:
+      - name
+      - description
+      - vpc_id
+      - tags
+
+  aws_security_group_rule:
+    ignores:
+      - security_group_rule_id
+      - group_owner_id
+      - is_egress
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_s3_bucket
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_s3_bucket:
+    renames:
+      name: bucket
+
+    ignores:
+      - creation_date
+      - owner
+      # Server-side encryption (managed by aws_s3_bucket_server_side_encryption_configuration)
+      - server_side_encryption_configuration
+      - sse_algorithm
+      # Bucket policy (managed by aws_s3_bucket_policy)
+      - policy
+      - policy_json
+      - policy_status
+      # Public access (managed by aws_s3_bucket_public_access_block)
+      - public_access_block
+      - public_access_block_configuration
+      # Versioning (managed by aws_s3_bucket_versioning)
+      - versioning
+      - versioning_configuration
+      # Logging (managed by aws_s3_bucket_logging)
+      - logging
+      - logging_configuration
+      - bucket_logging_status
+      # Lifecycle (managed by aws_s3_bucket_lifecycle_configuration)
+      - lifecycle
+      - lifecycle_configuration
+      - lifecycle_rules
+      # Replication (managed by aws_s3_bucket_replication_configuration)
+      - replication_configuration
+      - replication
+      # Website (managed by aws_s3_bucket_website_configuration)
+      - website
+      - website_configuration
+      # CORS (managed by aws_s3_bucket_cors_configuration)
+      - cors
+      - cors_rule
+      - cors_configuration
+      # ACL (managed by aws_s3_bucket_acl)
+      - acl
+      - access_control_list
+      # Other managed resources
+      - object_lock_configuration
+      - accelerate_configuration
+      - request_payment_configuration
+      - request_payer
+      - notification_configuration
+      - notification
+      - ownership_controls
+      - intelligent_tiering_configuration
+      - inventory_configuration
+      - metrics_configuration
+      - analytics_configuration
+      # Read-only
+      - bucket_domain_name
+      - bucket_regional_domain_name
+      - hosted_zone_id
+      - region
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_s3_bucket_policy (v3.7.2 NEW)
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_s3_bucket_policy:
+    renames:
+      # AWS API may return PolicyText or PolicyJson, Terraform expects 'policy'
+      policy_text: policy
+      policy_json: policy
+      bucket_name: bucket
+
+    ignores:
+      # Read-only
+      - bucket_arn
+
+    types:
+      policy: json
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_sns_topic
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_sns_topic:
+    renames:
+      name: name
+      display_name: display_name
+      kms_master_key_id: kms_master_key_id
+
+    ignores:
+      - topic_arn
+      - owner
+      - subscriptions_confirmed
+      - subscriptions_pending
+      - subscriptions_deleted
+      - effective_delivery_policy
+
+    no_redact:
+      - kms_master_key_id
+
+    types:
+      policy: json
+      delivery_policy: json
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_sqs_queue (v3.7.9 CRITICAL FIX)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚨 v3.7.9: FIXED field renames - AWS API → Terraform argument names
+  # AWS API returns different field names than Terraform expects!
+  # 🚨 v3.7.7: AWS API returns numeric fields as strings, TF expects integers
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_sqs_queue:
+    renames:
+      queue_name: name
+      # 🚨 v3.7.9: CORRECTED mappings (AWS API → Terraform)
+      # AWS returns "visibility_timeout" (no _seconds suffix!)
+      visibility_timeout: visibility_timeout_seconds
+      VisibilityTimeout: visibility_timeout_seconds
+      # AWS returns "message_retention_period" (not message_retention_seconds)
+      message_retention_period: message_retention_seconds
+      MessageRetentionPeriod: message_retention_seconds
+      # AWS returns "maximum_message_size" (TF uses max_message_size)
+      maximum_message_size: max_message_size
+      MaximumMessageSize: max_message_size
+      # AWS returns "receive_message_wait_time_seconds" (TF uses shorter name)
+      receive_message_wait_time_seconds: receive_wait_time_seconds
+      ReceiveMessageWaitTimeSeconds: receive_wait_time_seconds
+      # Keep delay_seconds as-is (same in both)
+      delay_seconds: delay_seconds
+      DelaySeconds: delay_seconds
+
+    ignores:
+      - queue_arn
+      - queue_url
+      # 🚨 v3.7.10: url is read-only, causes "Can't configure a value" error
+      - url
+      - Url
+      - created_timestamp
+      - last_modified_timestamp
+      - approximate_number_of_messages
+      - approximate_number_of_messages_not_visible
+      - approximate_number_of_messages_delayed
+      # Policy is often a separate aws_sqs_queue_policy resource
+      - policy
+      - Policy
+
+    no_redact:
+      - kms_master_key_id
+
+    types:
+      redrive_policy: json
+      redrive_allow_policy: json
+
+    # 🚨 v3.7.7: Convert string values to integers (AWS returns strings)
+    transforms:
+      delay_seconds:
+        type: to_int
+      max_message_size:
+        type: to_int
+      message_retention_seconds:
+        type: to_int
+      receive_wait_time_seconds:
+        type: to_int
+      visibility_timeout_seconds:
+        type: to_int
+      kms_data_key_reuse_period_seconds:
+        type: to_int
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_lambda_function
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_lambda_function:
+    renames:
+      function_name: function_name
+      handler: handler
+      runtime: runtime
+      memory_size: memory_size
+      timeout: timeout
+
+    ignores:
+      - function_arn
+      - code_sha256
+      - code_size
+      - last_modified
+      - qualified_arn
+      - version
+      - signing_profile_version_arn
+      - signing_job_arn
+      - state
+      - state_reason
+      - state_reason_code
+      - last_update_status
+      - last_update_status_reason
+      - last_update_status_reason_code
+      - master_arn
+      - revision_id
+      - snap_start
+      - runtime_version_config
+      - logging_config
+
+    no_redact:
+      - kms_key_arn
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_rds_cluster
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_rds_cluster:
+    renames:
+      db_cluster_identifier: cluster_identifier
+      engine: engine
+      engine_version: engine_version
+      database_name: database_name
+      master_username: master_username
+      port: port
+
+    ignores:
+      - db_cluster_arn
+      - db_cluster_resource_id
+      - endpoint
+      - reader_endpoint
+      - hosted_zone_id
+      - earliest_restorable_time
+      - latest_restorable_time
+      - cluster_create_time
+      - associated_roles
+      - db_cluster_members
+      - read_replica_identifiers
+      - multi_az
+      - status
+      - percent_progress
+      - earliest_backtrack_time
+      - backtrack_window
+      - backtrack_consumed_change_records
+      - capacity
+
+    no_redact:
+      - kms_key_id
+      - master_user_secret_kms_key_id
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_db_instance
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_db_instance:
+    renames:
+      db_instance_identifier: identifier
+      db_instance_class: instance_class
+      engine: engine
+      engine_version: engine_version
+      allocated_storage: allocated_storage
+      db_name: db_name
+      master_username: username
+
+    ignores:
+      - db_instance_arn
+      - dbi_resource_id
+      - endpoint
+      - address
+      - port
+      - instance_create_time
+      - latest_restorable_time
+      - read_replica_source_db_instance_identifier
+      - read_replica_db_instance_identifiers
+      - db_instance_status
+      - status_infos
+      - pending_modified_values
+      - db_instance_automated_backups_replications
+      - listener_endpoint
+      - db_instance_port
+      - enhanced_monitoring_resource_arn
+      - monitoring_role_arn
+      - certificate_details
+      - db_system_id
+      - master_user_secret
+      - activity_stream_kinesis_stream_name
+      - activity_stream_kms_key_id
+      - activity_stream_status
+      - activity_stream_mode
+      - activity_stream_engine_native_audit_fields_included
+      - aws_backup_recovery_point_arn
+      - db_security_groups
+      - ca_certificate_identifier
+      - performance_insights_enabled
+
+    keep:
+      - identifier
+      - instance_class
+      - allocated_storage
+      - engine
+      - engine_version
+      - db_name
+      - username
+      - db_subnet_group_name
+      - vpc_security_group_ids
+
+    no_redact:
+      - kms_key_id
+      - performance_insights_kms_key_id
+
+    transforms:
+      # Sort for deterministic output (prevents terraform plan drift)
+      enabled_cloudwatch_logs_exports:
+        type: sort_list
+      vpc_security_group_ids:
+        type: sort_list
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_db_parameter_group
+  # ═══════════════════════════════════════════════════════════════════════════
+  # v3.7.3 FIX: AWS API returns read-only fields in Parameters[] that Terraform rejects:
+  #   - ApplyType, IsModifiable, AllowedValues, DataType, Description, Source
+  #   - MinimumEngineVersion, SupportedEngineModes
+  # The clean_list_items transform strips these fields and renames valid ones.
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_db_parameter_group:
+    renames:
+      parameters: parameter
+      db_parameter_group_family: family
+
+    ignores:
+      - db_parameter_group_arn
+      - db_parameter_group_name
+
+    keep:
+      - family
+      - name
+      - description
+
+    transforms:
+      # Clean parameter list: rename valid fields, strip read-only fields
+      # AWS API fields → Terraform fields (everything else gets stripped)
+      parameter:
+        type: clean_list_items
+        mapping:
+          ParameterName: name
+          parameter_name: name
+          ParameterValue: value
+          parameter_value: value
+          ApplyMethod: apply_method
+          apply_method: apply_method
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_elasticache_cluster
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_elasticache_cluster:
+    renames:
+      cache_cluster_id: cluster_id
+      cache_node_type: node_type
+      engine: engine
+      engine_version: engine_version
+      num_cache_nodes: num_cache_nodes
+      parameter_group_name: parameter_group_name
+      cache_subnet_group_name: subnet_group_name
+
+    ignores:
+      - arn
+      - cache_cluster_status
+      - cache_nodes
+      - cache_cluster_create_time
+      - configuration_endpoint
+      - client_download_landing_page
+      - preferred_outpost_arn
+      - notification_configuration
+      - transit_encryption_enabled
+      - at_rest_encryption_enabled
+      - replication_group_id
+      - snapshot_retention_limit
+      - snapshot_window
+      - auth_token_enabled
+      - auth_token_last_modified_date
+      - ip_discovery
+      - network_type
+      - transit_encryption_mode
+
+  aws_elasticache_subnet_group:
+    ignores:
+      - vpc_id
+
+    transforms:
+      # Extract subnet IDs from object list
+      subnets:
+        type: extract_ids
+        id_field: SubnetIdentifier
+        target: subnet_ids
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_kms_key
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_kms_key:
+    renames:
+      description: description
+      key_usage: key_usage
+      customer_master_key_spec: customer_master_key_spec
+
+    ignores:
+      - key_id
+      - creation_date
+      - deletion_date
+      - valid_to
+      - key_state
+      - origin
+      - key_manager
+      - expiration_model
+      - cloud_hsm_cluster_id
+      - custom_key_store_id
+      - mac_algorithms
+      - encryption_algorithms
+      - signing_algorithms
+      - pending_deletion_window_in_days
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_secretsmanager_secret
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_secretsmanager_secret:
+    renames:
+      name: name
+      description: description
+      kms_key_id: kms_key_id
+
+    ignores:
+      - secret_version_id
+      - created_date
+      - last_accessed_date
+      - last_changed_date
+      - last_rotated_date
+      - deleted_date
+      - owning_service
+      - primary_region
+
+    no_redact:
+      - kms_key_id
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_ssm_parameter
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_ssm_parameter:
+    renames:
+      name: name
+      type: type
+      description: description
+
+    ignores:
+      - version
+      - last_modified_date
+      - last_modified_user
+      - policies
+
+    no_redact:
+      - key_id
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_acm_certificate
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_acm_certificate:
+    renames:
+      domain_name: domain_name
+      subject_alternative_names: subject_alternative_names
+
+    ignores:
+      - certificate_arn
+      - created_at
+      - issued_at
+      - imported_at
+      - not_after
+      - not_before
+      - renewal_eligibility
+      - renewal_summary
+      - revocation_reason
+      - revoked_at
+      - serial
+      - signature_algorithm
+      - status
+      - type
+      - failure_reason
+      - in_use_by
+      - issuer
+      - key_algorithm
+      - key_usages
+      - extended_key_usages
+      - certificate_authority_arn
+      - domain_validation_options
+      - options
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_route53_zone
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_route53_zone:
+    renames:
+      name: name
+      comment: comment
+
+    ignores:
+      - id
+      - resource_record_set_count
+      - caller_reference
+      - linked_service
+      - config
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_route53_record
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_route53_record:
+    renames:
+      name: name
+      type: type
+      ttl: ttl
+      resource_records: records
+
+    transforms:
+      records:
+        type: sort_list
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_ecs_cluster
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_ecs_cluster:
+    renames:
+      cluster_name: name
+
+    ignores:
+      - cluster_arn
+      - status
+      - registered_container_instances_count
+      - running_tasks_count
+      - pending_tasks_count
+      - active_services_count
+      - statistics
+      - attachments
+      - attachments_status
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_ecs_service
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_ecs_service:
+    renames:
+      service_name: name
+
+    ignores:
+      - service_arn
+      - cluster_arn
+      - task_definition
+      - created_at
+      - created_by
+      - deployments
+      - events
+      - running_count
+      - pending_count
+      - status
+      - role_arn
+      - task_sets
+
+    transforms:
+      load_balancers:
+        type: sort_list
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # aws_ecs_task_definition
+  # ═══════════════════════════════════════════════════════════════════════════
+  aws_ecs_task_definition:
+    renames:
+      family: family
+      task_role_arn: task_role_arn
+      execution_role_arn: execution_role_arn
+      network_mode: network_mode
+      cpu: cpu
+      memory: memory
+
+    ignores:
+      - task_definition_arn
+      - revision
+      - status
+      - registered_at
+      - registered_by
+      - deregistered_at
+      - compatibilities
+      - requires_attributes
+
+    no_redact:
+      - task_role_arn
+      - execution_role_arn
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END OF SCHEMA RULES v3.7.10 (SQS Conflicts & Read-Only Fix)
+# ═══════════════════════════════════════════════════════════════════════════════
