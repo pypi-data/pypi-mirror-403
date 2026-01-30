@@ -1,0 +1,201 @@
+Metadata-Version: 2.1
+Name: deformacion_lib
+Version: 0.1.0
+Summary: Library for deformation analysis in tensile tests and 3D structures
+Author: Martin Esteban, Oier Labeaga, Malen Ubiria, Eneko Urrutia
+Author-email: martin.esteban@alumni.mondragon.edu, oier.labeaga@alumni.mondragon.edu, malen.ubiria@alumni.mondragon.edu, eneko.urrutia@alumni.mondragon.edu
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: opencv-python >=4.5.0
+Requires-Dist: numpy >=1.19.0
+Requires-Dist: matplotlib >=3.3.0
+Requires-Dist: pandas >=1.1.0
+Requires-Dist: Pillow >=8.0.0
+Requires-Dist: imageio >=2.9.0
+
+# deformacion_lib
+
+Python library for deformation analysis in materials through image and video processing.
+
+## Installation
+```bash
+pip install deformacion_lib
+```
+
+## Features
+
+1. **Tensile test analysis**: Measures strain and elongation in tensile tests
+2. **3D structure analysis**: Analyzes deformation in 3D printed structures
+
+---
+
+## Experimental Setup
+
+### General Requirements (Both Experiments)
+
+#### Camera Settings
+- **High resolution**: Use the highest resolution available on your device
+- **High frame rate**: Use slow-motion mode if available (more frames = better analysis)
+- **Fixed camera**: Use a tripod or stable support - DO NOT move the camera during the experiment
+- **Close framing**: Frame as close as possible to minimize cropping later while maintaining full view of the deformation area
+- **Centered focus**: Keep the deformation area centered both vertically and horizontally
+
+#### Lighting
+- **Uniform lighting**: Ensure even illumination across the sample
+- **Minimize shadows**: Reduce shadows as much as possible, especially on the structure
+- **Light shadows**: If shadows are unavoidable, make them as light as possible (less dark = better detection)
+- **No reflections**: Avoid reflections on the sample surface
+
+#### Background
+- **High contrast**: Use a background that contrasts strongly with the sample
+  - Dark sample → Light background
+  - Light sample → Dark background
+
+#### File Format
+- **Video**: Must be `.mp4` format
+- **Photos**: Any format accepted, but `.jpg` or `.png` preferred
+
+#### Timing
+- **Accurate timing**: Use a stopwatch or timer to measure the exact experiment duration for the `tiempo_experimento` parameter
+
+---
+
+### Tensile Test Specific Setup
+
+#### Sample Preparation
+- **Two reference lines**: Paint or mark two **thick, dark, horizontal lines** on the sample
+- **High visibility**: Lines must be clearly visible and well-defined
+- **Perfectly horizontal**: Use a level to ensure lines are horizontal
+- **Measure L0**: Use a caliper or precise ruler to measure the initial distance between the two lines (`L0_mm`)
+
+#### Camera Positioning
+- **Centered**: Keep the deformation area centered in the frame
+- **Full view**: Ensure both reference lines are fully visible throughout the test
+
+---
+
+### 3D Structure Specific Setup
+
+#### Sample Preparation
+- **Dark edges**: Paint the entire perimeter/edges of the structure with a **very dark color** (black preferred)
+- **Clean edges**: Ensure edges are well-defined and visible
+- **Measure total distance**: Measure the total base width of the structure (the distance between your two palms if you were holding it fully stretched)
+  - This includes the 5mm left wall
+  - Use a caliper for precision
+
+#### Camera Positioning
+- **Centered**: Keep the structure centered in the frame
+- **Wall visibility**: Ensure at least a large portion of both walls (left and right) are visible
+  - The entire left wall does NOT need to be visible, but a significant part should be
+- **Full deformation area**: Frame the region where deformation will occur
+
+---
+
+## Usage
+
+### 1. Tensile Test Analysis
+```python
+from deformacion_lib.tensile import ejecutar_analisis_tensile
+
+# For video
+ejecutar_analisis_tensile(
+    modo="video",
+    nombre_archivo="tensile_test.mp4",
+    tiempo_experimento=91.5,  # seconds (measured with stopwatch)
+    L0_mm=35.0,              # initial distance between lines (mm)
+    n_frames=100,
+    ext_imagen=".tif",
+    duracion_gifs=2.0
+)
+
+# For photo sequence
+ejecutar_analisis_tensile(
+    modo="foto",
+    nombre_archivo="image_folder",
+    tiempo_experimento=91.5,
+    L0_mm=35.0,
+    ext_imagen=".jpg",
+    duracion_gifs=2.0
+)
+```
+
+**Parameters:**
+- `modo`: "video" or "foto"
+- `nombre_archivo`: Video filename or image folder name
+- `tiempo_experimento`: Total experiment duration (seconds)
+- `L0_mm`: Initial distance between the two black reference lines (mm)
+- `n_frames`: Number of frames to extract from video (only if modo="video")
+- `ext_imagen`: Image extension (default: ".tif")
+- `duracion_gifs`: Duration of generated GIFs (seconds, default: 2.0)
+
+**Output:**
+- `Results (Tensile Test Program)/analysis/`: Strain and elongation graphs + CSV data
+- `Results (Tensile Test Program)/visual/`: Animated GIFs
+
+---
+
+### 2. 3D Structure Analysis
+```python
+from deformacion_lib.estructura3d import ejecutar_analisis_3d
+
+# For video
+ejecutar_analisis_3d(
+    modo="video",
+    nombre_archivo="structure_test.mp4",
+    tiempo_experimento=0.23,      # seconds
+    distancia_total_mm=39.0,      # total base width including 5mm left wall
+    n_frames=150,
+    ext_imagen=".png",
+    duracion_gifs=2.0
+)
+
+# For photo sequence
+ejecutar_analisis_3d(
+    modo="foto",
+    nombre_archivo="image_folder",
+    tiempo_experimento=0.23,
+    distancia_total_mm=39.0,
+    ext_imagen=".png",
+    duracion_gifs=2.0
+)
+```
+
+**Parameters:**
+- `modo`: "video" or "foto"
+- `nombre_archivo`: Video filename or image folder name
+- `tiempo_experimento`: Total experiment duration (seconds)
+- `distancia_total_mm`: Total base width of the structure (includes 5mm left wall)
+- `n_frames`: Number of frames to extract from video (only if modo="video")
+- `ext_imagen`: Image extension (default: ".png")
+- `duracion_gifs`: Duration of generated GIFs (seconds, default: 2.0)
+
+**Output:**
+- `Results (3D Printed Body Program)/Analysis/`: Deformation graphs and CSV data
+- `Results (3D Printed Body Program)/Visualization/`: GIFs and visual comparisons
+
+---
+
+## Requirements
+
+- Python >= 3.8
+- opencv-python >= 4.5.0
+- numpy >= 1.19.0
+- matplotlib >= 3.3.0
+- pandas >= 1.1.0
+- Pillow >= 8.0.0
+- imageio >= 2.9.0
+
+## License
+
+MIT License
+
+## Authors
+
+- Martin Esteban
+- Oier Labeaga
+- Malen Ubiria
+- Eneko Urrutia
