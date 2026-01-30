@@ -1,0 +1,101 @@
+[project]
+name = "lumyn-sdk"
+version = "4.1.1"
+description = "Python SDK for Lumyn Labs ConnectorX LED controllers"
+readme = "README.md"
+license = {text = "Proprietary"}
+requires-python = ">=3.8"
+dependencies = [
+    "pyserial>=3.5",
+]
+authors = [
+    {name = "Lumyn Labs", email = "support@lumynlabs.com"}
+]
+keywords = ["lumyn", "connectorx", "led", "frc", "robotics", "animation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Hardware",
+]
+
+[project.urls]
+Homepage = "https://lumynlabs.com"
+Documentation = "https://docs.lumynlabs.com"
+Repository = "https://github.com/Lumyn-Labs/lumyn-sdk-python"
+Issues = "https://github.com/Lumyn-Labs/lumyn-sdk-python/issues"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "cmake>=3.18", "pybind11>=2.10"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lumyn_sdk*"]
+exclude = ["lumyn-c-sdk*", "tests*", "examples*", "lumyn_sdk.src*", "lumyn_sdk.Release*"]
+
+[tool.setuptools.package-data]
+lumyn_sdk = [
+    "*.pyi",
+    "py.typed",
+    # Native libraries (bundled by CMake build)
+    "*.dll",      # Windows: lumyn_sdk_cpp.dll
+    "*.so",       # Linux: *.so (includes _bindings_ext.cpython-*.so)
+    "*.so.*",     # Linux versioned: *.so.1.0.0
+    "*.dylib",    # macOS: *.dylib
+    "*.pyd",      # Python extension module (Windows)
+    "_bindings_ext*", # Pybind11 compiled module (all platforms)
+]
+"lumyn_sdk._bindings" = ["*.pyi", "*.py"]
+
+[tool.cibuildwheel]
+# Build for Python 3.10-3.12 only (3.8/3.9 are EOL or near-EOL)
+# This significantly reduces CI build time
+build = "cp310-* cp311-* cp312-*"
+skip = "*-win32 *-manylinux_i686 *-musllinux_*"
+# Quick smoke test only - full tests run in unit-tests workflow
+test-command = "python -c \"import lumyn_sdk; print(f'lumyn_sdk v{lumyn_sdk.__version__}')\""
+# Verbose build output for debugging
+build-verbosity = 1
+
+[tool.cibuildwheel.linux]
+# Note: aarch64 builds via QEMU are extremely slow (1+ hours)
+# Would need native ARM runners for reasonable build times
+archs = ["x86_64"]
+before-build = "pip install pybind11 cmake"
+# Set LD_LIBRARY_PATH so auditwheel can find the shared library during repair
+# The shared library is copied to lumyn_sdk/ by CMake post-build
+environment = { LD_LIBRARY_PATH="/project/lumyn_sdk:${LD_LIBRARY_PATH}" }
+# auditwheel repairs the wheel to bundle shared libraries
+# Use $(uname -m) to get the architecture dynamically
+repair-wheel-command = "LD_LIBRARY_PATH=/project/lumyn_sdk:$LD_LIBRARY_PATH auditwheel repair --plat manylinux2014_$(uname -m) -w {dest_dir} {wheel}"
+
+[tool.cibuildwheel.macos]
+# Build only for the native architecture to avoid cross-compilation issues
+# macOS runners are Apple Silicon (arm64), so we build arm64 natively
+# x86_64 requires cross-compilation which needs CMAKE_OSX_ARCHITECTURES
+archs = ["arm64"]
+before-build = "pip install pybind11 cmake"
+# delocate repairs macOS wheels by finding libraries via @rpath install names
+# CMakeLists.txt sets INSTALL_NAME_DIR=@rpath on lumyn_sdk_cpp dylib
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+before-build = "pip install pybind11 cmake"
+# delvewheel repairs Windows wheels to bundle DLLs
+# The DLL is built to lumyn_sdk/ by CMake (via OUTPUT_DIRECTORY settings)
+# Use the project directory (cwd during build) as the search path
+repair-wheel-command = "pip install delvewheel && delvewheel repair --add-path lumyn_sdk -w {dest_dir} -v {wheel}"
+

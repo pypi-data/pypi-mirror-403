@@ -1,0 +1,113 @@
+```C
+#include "lumyn.h"
+
+static cx_t cx;
+// or cx_t *cx = malloc(sizeof(cx_t));
+
+int main(void) {
+  // or lumyn_CreateConnectorXAnimate(&cx_anim);
+  lumyn_CreateConnectorX(&cx);
+  lumyn_cx_Connect(&cx, "/dev/ttyACM0");
+
+  lumyn_connection_status_t st = lumyn_cx_GetCurrentStatus(&cx);
+  printf("connected=%d enabled=%d\n", st.connected, st.enabled);
+
+  // We assume Disconnect cleans up the serial handle
+  lumyn_cx_Disconnect(&cx);
+  // only if cx was allocated on heap
+  // free(cx);
+  return 0;
+}
+```
+
+```C
+#include "lumyn.h"
+
+static cx_t cx;
+
+int main(void) {
+  lumyn_CreateConnectorX(&cx);
+  lumyn_cx_Connect(&cx, "/dev/ttyACM0");
+
+  while(true) {
+    lumyn_event_t evt;
+    if (lumyn_cx_GetLatestEvent(&cx, &evt) == LUMYN_OK) {
+      printf("event type=%d\n", (int)evt.type);
+    }
+    usleep(10000);
+  }
+
+  lumyn_cx_Disconnect(&cx);
+  return 0;
+}
+```
+
+```C
+#include "lumyn.h"
+
+typedef struct __attribute__((packed)) {
+  uint8_t valid;
+  uint16_t dist;
+} vl53l1x_payload_t;
+
+static cx_t cx;
+
+int main(void) {
+  lumyn_CreateConnectorX(&cx);
+  lumyn_cx_Connect(&cx, "/dev/ttyACM0");
+
+  while(true) {
+    vl53l1x_payload_t p = {0};
+
+    if (lumyn_cx_GetLatestData(&cx, "lidar", &p, sizeof(p)) == LUMYN_OK) {
+      if (p.valid) {
+        printf("VL53L1X distance=%u mm\n", (unsigned)p.dist);
+      }
+    }
+
+    usleep(10000);
+  }
+
+  lumyn_cx_Disconnect(&cx);
+  return 0;
+}
+```
+
+ILEDDevice
+SetColor
+SetAnimation
+...
+wraps led handler stuff
+
+ILumynDevice
+Connect
+Disconnect
+Restart
+BasePtr accessor
+
+ConfigManager
+get/set config
+
+EventManager
+polling
+
+BaseLEDDevice : ILEDDevice
+led_handler_.SetColor(zone_id, color);
+...
+
+BaseLumynDevice : ILumynDevice
+connect, disconnect, restart, configmanager(self.basePtr), eventmanager(self.basePtr)
+BasePtr
+
+BaseModuleDevice : IModuleDevice
+module_handler_...
+module_callbacks_ unordered map, not vector
+
+ConnectorX : BaseLEDDevice, BaseModuleDevice, BaseDevice
+ConnectorXAnimate : BaseLEDDevice, BaseDevice
+
+---
+
+c version needs to produce static archive, c++ build step comes after c build step and pulls in both headers and static archive
+
+releases need to be namespaced. fw/4.1.0 for firmware, c/, cpp/¸ etc.

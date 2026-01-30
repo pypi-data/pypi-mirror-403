@@ -1,0 +1,5 @@
+#pragma once
+
+#define LUMYN_VERSION_MAJOR 4
+#define LUMYN_VERSION_MINOR 5
+#define LUMYN_VERSION_PATCH 0

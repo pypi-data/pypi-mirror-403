@@ -1,0 +1,45 @@
+# C++ Examples
+add_executable(quickstart_cpp quickstart.cpp)
+target_link_libraries(quickstart_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(connectorx_basic_cpp connectorx_basic.cpp)
+target_link_libraries(connectorx_basic_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(connectorx_animate_cpp connectorx_animate.cpp)
+target_link_libraries(connectorx_animate_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(matrix_text_advanced_cpp matrix_text_advanced.cpp)
+target_link_libraries(matrix_text_advanced_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(modules_typed_cpp modules_typed.cpp)
+target_link_libraries(modules_typed_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(modules_from_config_cpp modules_from_config.cpp)
+target_link_libraries(modules_from_config_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(direct_led_patterns_cpp direct_led_patterns.cpp)
+target_link_libraries(direct_led_patterns_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(screen_mirror_cpp screen_mirror.cpp)
+target_link_libraries(screen_mirror_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(config_builder_basic_cpp config_builder_basic.cpp)
+target_link_libraries(config_builder_basic_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(config_builder_advanced_cpp config_builder_advanced.cpp)
+target_link_libraries(config_builder_advanced_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(config_apply_json_cpp config_apply_json.cpp)
+target_link_libraries(config_apply_json_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(handshake_basic_cpp handshake_basic.cpp)
+target_link_libraries(handshake_basic_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(port_scan_cpp port_scan.cpp)
+target_link_libraries(port_scan_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(device_comparison_cpp device_comparison.cpp)
+target_link_libraries(device_comparison_cpp PRIVATE lumyn_sdk_cpp)
+
+add_executable(event_demo_cpp event_demo.cpp)
+target_link_libraries(event_demo_cpp PRIVATE lumyn_sdk_cpp)
