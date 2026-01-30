@@ -1,0 +1,219 @@
+Metadata-Version: 2.4
+Name: django-geoaddress
+Version: 0.1.4
+Summary: Django integration for address verification and geocoding. Provides Django fields, widgets, and admin integration for the geoaddress library.
+Author-email: Hicinformatic <hicinformatic@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/hicinformatic/django-geoaddress
+Project-URL: Repository, https://github.com/hicinformatic/django-geoaddress
+Project-URL: Documentation, https://github.com/hicinformatic/django-geoaddress#readme
+Project-URL: Issues, https://github.com/hicinformatic/django-geoaddress/issues
+Keywords: django,geocoding,reverse-geocoding,address,geolocation,maps,django-fields,django-widgets,address-autocomplete,python
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Framework :: Django
+Classifier: Framework :: Django :: 3.2
+Classifier: Framework :: Django :: 4.0
+Classifier: Framework :: Django :: 4.1
+Classifier: Framework :: Django :: 4.2
+Classifier: Framework :: Django :: 5.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Internet :: WWW/HTTP :: Dynamic Content
+Classifier: Topic :: Scientific/Engineering :: GIS
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: Django>=3.2
+Requires-Dist: geoaddress>=0.2.2
+Requires-Dist: django-boosted>=0.1.0
+Requires-Dist: django-providerkit>=0.1.0
+Requires-Dist: django-virtualqueryset>=0.1.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-django>=4.5; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Requires-Dist: django-stubs>=5.0.0; extra == "dev"
+Requires-Dist: python-dotenv>=1.0; extra == "dev"
+Provides-Extra: lint
+Requires-Dist: ruff>=0.5.0; extra == "lint"
+Requires-Dist: mypy>=1.0.0; extra == "lint"
+Requires-Dist: semgrep>=1.0.0; extra == "lint"
+Requires-Dist: pylint>=3.0.0; extra == "lint"
+Provides-Extra: quality
+Requires-Dist: radon>=6.0.0; extra == "quality"
+Requires-Dist: vulture>=2.0.0; extra == "quality"
+Requires-Dist: autoflake>=2.0.0; extra == "quality"
+Provides-Extra: security
+Requires-Dist: bandit>=1.7.0; extra == "security"
+Requires-Dist: safety>=3.0.0; extra == "security"
+Requires-Dist: pip-audit>=2.7.0; extra == "security"
+Requires-Dist: semgrep>=1.0.0; extra == "security"
+Dynamic: license-file
+
+# django-geoaddress
+
+Django integration for address verification and geocoding. Provides Django fields, widgets, and admin integration for the [geoaddress](https://github.com/hicinformatic/python-geoaddress) library.
+
+## Installation
+
+```bash
+pip install django-geoaddress
+```
+
+## Features
+
+- **Django Model Fields**: `GeoaddressField` for storing address data in Django models
+- **Autocomplete Widget**: Interactive address autocomplete widget with real-time suggestions
+- **Admin Integration**: Django admin interface for managing addresses and providers
+- **Multiple Providers**: Support for multiple geocoding providers (Google Maps, Mapbox, Nominatim, etc.)
+- **Virtual Models**: Uses `django-virtualqueryset` for dynamic provider and address models
+- **Address Management**: View, search, and manage addresses through Django admin
+
+## Quick Start
+
+### 1. Add to INSTALLED_APPS
+
+```python
+INSTALLED_APPS = [
+    # ...
+    'djgeoaddress',
+]
+```
+
+### 2. Include URLs
+
+```python
+# urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    # ...
+    path('geoaddress/', include('djgeoaddress.urls')),
+]
+```
+
+### 3. Use in Models
+
+```python
+from django.db import models
+from djgeoaddress.fields import GeoaddressField
+
+class MyModel(models.Model):
+    address = GeoaddressField()
+    # ... other fields
+```
+
+### 4. Use in Forms
+
+The `GeoaddressField` automatically uses the `GeoaddressAutocompleteWidget` which provides:
+- Real-time address autocomplete
+- Address search across multiple providers
+- Structured address data storage
+
+## Address Field
+
+The `GeoaddressField` stores address data as JSON with the following structure:
+
+```python
+{
+    "text": "Full formatted address string",
+    "reference": "Backend reference ID",
+    "address_line1": "Street number and name",
+    "address_line2": "Building, apartment (optional)",
+    "city": "City name",
+    "postal_code": "Postal/ZIP code",
+    "state": "State/region/province",
+    "country": "Country name",
+    "country_code": "ISO country code (e.g., FR, US, GB)",
+    "latitude": 48.8566,
+    "longitude": 2.3522,
+    "backend_name": "nominatim",
+    "geoaddress_id": "nominatim-123456"
+}
+```
+
+## Admin Interface
+
+Django-geoaddress provides admin interfaces for:
+
+- **Address Management**: View and manage addresses with search and filtering
+- **Provider Management**: View available geocoding providers and their capabilities
+- **Address Autocomplete**: Interactive autocomplete in admin forms
+
+Access the admin at:
+- Addresses: `/admin/djgeoaddress/address/`
+- Providers: `/admin/djgeoaddress/provider/`
+
+## Supported Providers
+
+The library supports multiple geocoding providers through the `geoaddress` library:
+
+**Free providers** (no API key required):
+- Nominatim (OpenStreetMap)
+- Photon (Komoot/OSM)
+
+**Paid/API key providers**:
+- Google Maps
+- Mapbox
+- LocationIQ
+- OpenCage
+- Geocode Earth
+- Geoapify
+- Maps.co
+- HERE
+
+## Configuration
+
+### Provider Configuration
+
+Configure geocoding providers in your Django settings or through environment variables. Each provider may require API keys or specific configuration.
+
+Example:
+
+```python
+# settings.py
+GEOADDRESS_PROVIDERS = {
+    'google_maps': {
+        'api_key': 'your-api-key',
+    },
+    'mapbox': {
+        'api_key': 'your-api-key',
+    },
+}
+```
+
+## Requirements
+
+- Django >= 3.2
+- Python >= 3.10
+- geoaddress (automatically installed as dependency)
+- django-virtualqueryset (for virtual models)
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/hicinformatic/django-geoaddress.git
+cd django-geoaddress
+
+# Install in development mode
+pip install -e .
+pip install -e ".[dev]"
+```
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Links
+
+- **Homepage**: https://github.com/hicinformatic/django-geoaddress
+- **Repository**: https://github.com/hicinformatic/django-geoaddress
+- **Issues**: https://github.com/hicinformatic/django-geoaddress/issues
+- **geoaddress library**: https://github.com/hicinformatic/python-geoaddress
+
