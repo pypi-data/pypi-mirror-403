@@ -1,0 +1,233 @@
+image: python:3.9
+
+stages:
+  - analysis
+  - test
+  - end-to-end testing
+  - build
+  - deploy
+
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Code-Quality.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
+documentation-coverage:
+  stage: analysis
+  allow_failure: true
+  script:
+    - pip install docstr-coverage
+    - docstr-coverage -F 60.0 asimov
+  coverage: '/Total coverage: (\d+\.\d+%)/'
+
+flake8:
+  stage: analysis
+  script:
+    - pip install flake8 flake8_formatter_junit_xml
+    - flake8 --max-line-length=120 --format junit-xml --verbose asimov > report.xml
+  allow_failure: true
+  artifacts:
+    reports:
+      junit: report.xml
+
+pylint:
+  stage: analysis
+  allow_failure: True
+  script:
+    - pip install pylint pylint-gitlab
+    - pylint --exit-zero --load-plugins=pylint_gitlab --output-format=gitlab-codeclimate asimov > codeclimate.json
+  artifacts:
+    reports:
+      codequality: codeclimate.json
+    when: always
+
+test-python-39:
+  stage: test
+  image: python:3.9
+  script:
+    - git config --global user.email "you@example.com"
+    - git config --global user.name "Your Name"
+    - pip install coverage
+    - pip install unittest-xml-reporting
+    - pip install .
+    - pip install bilby-pipe
+    - coverage run -m xmlrunner discover tests/ -o junit-reports
+    - coverage report
+    - coverage xml
+  artifacts:
+    when: always
+    paths:
+      - public/coverage.txt
+    reports:
+      junit: junit-reports/*
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  coverage: '/TOTAL\s+\d+\s+\d+\s+(\d+%)/'
+
+test-python-310:
+  stage: test
+  image: python:3.10
+  script:
+    - git config --global user.email "you@example.com"
+    - git config --global user.name "Your Name"
+    - pip install coverage
+    - pip install .
+    - pip install bilby-pipe
+    - python -m unittest discover tests/
+
+test-python-311:
+  stage: test
+  allow_failure: True
+  image: python:3.11
+  script:
+    - git config --global user.email "you@example.com"
+    - git config --global user.name "Your Name"
+    - pip install coverage
+    - pip install .
+    - pip install bilby-pipe
+    - python -m unittest discover tests/
+
+test-python-312:
+  stage: test
+  allow_failure: True
+  image: python:3.12
+  script:
+    - git config --global user.email "you@example.com"
+    - git config --global user.name "Your Name"
+    - pip install coverage
+    - pip install .
+    - pip install bilby-pipe
+    - python -m unittest discover tests/
+
+test-python-313:
+  stage: test
+  allow_failure: True
+  image: python:3.13
+  script:
+    - git config --global user.email "you@example.com"
+    - git config --global user.name "Your Name"
+    - pip install coverage
+    - pip install .
+    - pip install bilby-pipe
+    - python -m unittest discover tests/
+
+test-htcondor:
+  stage: test
+  image: htcondor/mini:latest
+  tags:
+    - docker-privileged
+  variables:
+    FF_NETWORK_PER_BUILD: "true"
+  before_script:
+    # Start HTCondor
+    - condor_master &
+    - sleep 10
+    - condor_status
+    
+    # Change to the submit user
+    - su - submituser
+    
+    # Set up conda environment
+    - wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+    - bash miniconda.sh -b -p $HOME/miniconda
+    - export PATH="$HOME/miniconda/bin:$PATH"
+    - conda init bash
+    - source ~/.bashrc
+    - conda config --set always_yes yes --set changeps1 no
+    - conda config --add channels conda-forge
+    - conda config --remove channels defaults || true
+    
+    # Create and activate environment
+    - conda create -n asimov python=3.9
+    - source activate asimov
+    
+    # Install dependencies & asimov
+    - conda install --file conda/environment.yaml
+    - conda install conda-build
+    - pip install .
+    
+    # Git configuration
+    - git config --global init.defaultBranch master
+    - git config --global user.email "ci@example.com"
+    - git config --global user.name "GitLab CI"
+  script:
+    # Create asimov project
+    - mkdir test_project
+    - cd test_project
+    - asimov init "Test Project"
+    - asimov apply -f ../tests/test_blueprints/gwosc_quick_test.yaml
+    
+    # Test Event Add
+    - asimov apply -f https://git.ligo.org/asimov/data/-/raw/gwosc/events/gwtc-2-1/GW150914_095045.yaml
+    
+    # Commented out test - uncomment when ready
+    # - asimov apply -f ../tests/test_blueprints/gwosc_get_data.yaml -e GW150914_095045
+    # - asimov manage build
+    # - asimov manage submit 
+    # - sleep 300
+    # - ls working/GW150914_095045/get-data/*
+    # - asimov monitor
+
+# Build docs for multiple code versions
+pages:
+  stage: build
+  script:
+    - pip install .[docs]
+    - sphinx-multiversion docs/source public
+    - echo "<!DOCTYPE html><html><head><title>Redirecting to master branch</title><meta
+      charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"0; url=./master/index.html\">    <link
+      rel=\"canonical\" href=\"https://asimov.docs.ligo.org/asimov/master/index.html\"></head></html>"
+      > public/index.html
+  artifacts:
+    paths:
+      - public
+  only:
+    - master
+
+wheel-310:
+  image: python:3.10
+  stage: build
+  script:
+    - pip install wheel build twine
+    - python -m build
+    - twine check dist/*
+  dependencies: []
+  artifacts:
+    expire_in: 3h
+    paths:
+    - dist
+
+#   stage: test
+include:
+- template: Security/SAST.gitlab-ci.yml
+
+include:
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+
+include:
+  - template: Code-Quality.gitlab-ci.yml
+
+
+include:
+- template: Security/Secret-Detection.gitlab-ci.yml
+
+deploy:wheel:
+  stage: deploy
+  script:
+    - pip install twine
+    - twine upload --non-interactive --skip-existing dist/*
+  rules:
+    - if: $CI_COMMIT_TAG
+
+release_job:
+  stage: deploy
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG # Run this job when a tag is created
+  script:
+    - echo "running release_job"
+  release: # See https://docs.gitlab.com/ee/ci/yaml/#release for available properties
+    tag_name: "$CI_COMMIT_TAG"
+    description: "$CI_COMMIT_TAG"
