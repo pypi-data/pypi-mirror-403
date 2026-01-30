@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>调用链图 - jcgraph</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/js/lib/alpine.min.js" defer></script>
+</head>
+<body class="bg-gray-100">
+    <div x-data="graphApp()" x-init="init()" class="container mx-auto px-4 py-8">
+        <!-- 头部 -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">调用链图</h1>
+                    <p class="text-gray-600 mt-1" x-text="nodeInfo?.full_name || '加载中...'"></p>
+                </div>
+                <a href="/" class="text-blue-600 hover:text-blue-800">← 返回首页</a>
+            </div>
+        </div>
+
+        <!-- 控制面板 -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex items-center gap-4">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">方向：</label>
+                    <select x-model="direction" @change="loadGraph()"
+                            class="ml-2 px-3 py-2 border border-gray-300 rounded-md">
+                        <option value="callees">向下 - 我调用了谁</option>
+                        <option value="callers">向上 - 谁调用了我</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">深度：</label>
+                    <select x-model="depth" @change="loadGraph()"
+                            class="ml-2 px-3 py-2 border border-gray-300 rounded-md">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                    </select>
+                </div>
+                <div class="ml-auto">
+                    <span class="text-sm text-gray-600">
+                        节点: <span class="font-semibold" x-text="graphData?.nodes?.length || 0"></span>
+                        关系: <span class="font-semibold" x-text="graphData?.edges?.length || 0"></span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div x-show="loading" class="bg-white rounded-lg shadow-md p-12 text-center">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p class="mt-4 text-gray-600">加载中...</p>
+        </div>
+
+        <!-- 图表容器 -->
+        <div x-show="!loading" class="bg-white rounded-lg shadow-md p-6">
+            <div id="graph-container" style="width: 100%; height: 600px;"></div>
+        </div>
+
+        <!-- 错误提示 -->
+        <div x-show="error" class="bg-red-50 border border-red-200 rounded-lg p-4 mt-6">
+            <p class="text-red-800" x-text="error"></p>
+        </div>
+    </div>
+
+    <script src="/static/js/lib/echarts.min.js"></script>
+    <script>
+    function graphApp() {
+        return {
+            nodeId: '',
+            direction: 'callees',
+            depth: 2,
+            loading: true,
+            error: '',
+            graphData: null,
+            nodeInfo: null,
+            chart: null,
+
+            init() {
+                // 从URL获取参数
+                const params = new URLSearchParams(window.location.search);
+                this.nodeId = params.get('node') || '';
+                this.direction = params.get('direction') || 'callees';
+                this.depth = parseInt(params.get('depth') || '2');
+
+                if (!this.nodeId) {
+                    this.error = '缺少node参数';
+                    this.loading = false;
+                    return;
+                }
+
+                // 等待ECharts加载
+                if (typeof echarts === 'undefined') {
+                    this.error = 'ECharts加载失败';
+                    this.loading = false;
+                    return;
+                }
+
+                // 加载节点信息
+                this.loadNodeInfo();
+                // 加载图数据
+                this.loadGraph();
+            },
+
+            async loadNodeInfo() {
+                try {
+                    const resp = await fetch(`/api/nodes/${encodeURIComponent(this.nodeId)}`);
+                    if (!resp.ok) throw new Error('节点不存在');
+                    this.nodeInfo = await resp.json();
+                } catch (e) {
+                    this.error = '加载节点信息失败: ' + e.message;
+                }
+            },
+
+            async loadGraph() {
+                this.loading = true;
+                this.error = '';
+
+                try {
+                    const url = `/api/graph/${this.direction}/${encodeURIComponent(this.nodeId)}?depth=${this.depth}`;
+                    const resp = await fetch(url);
+                    if (!resp.ok) throw new Error('加载失败');
+
+                    this.graphData = await resp.json();
+                    this.renderGraph();
+                } catch (e) {
+                    this.error = '加载图数据失败: ' + e.message;
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            renderGraph() {
+                if (!this.graphData) return;
+
+                // 初始化ECharts
+                const container = document.getElementById('graph-container');
+                if (!this.chart) {
+                    this.chart = echarts.init(container);
+                }
+
+                // 构建图数据
+                const nodes = this.graphData.nodes.map(node => ({
+                    id: node.id,
+                    name: node.name || node.id,
+                    symbolSize: node.id === this.nodeId ? 60 : 40,
+                    itemStyle: {
+                        color: node.id === this.nodeId ? '#ef4444' : '#3b82f6'
+                    },
+                    label: {
+                        show: true,
+                        fontSize: node.id === this.nodeId ? 14 : 12,
+                        fontWeight: node.id === this.nodeId ? 'bold' : 'normal'
+                    }
+                }));
+
+                const links = this.graphData.edges.map(edge => ({
+                    source: edge.source_id,
+                    target: edge.target_id || edge.target_raw,
+                    label: {
+                        show: true,
+                        formatter: `L${edge.line_number || ''}`
+                    }
+                }));
+
+                // ECharts配置
+                const option = {
+                    title: {
+                        text: this.direction === 'callees' ? '向下调用链' : '向上调用链',
+                        left: 'center'
+                    },
+                    tooltip: {
+                        trigger: 'item',
+                        formatter: (params) => {
+                            if (params.dataType === 'node') {
+                                return `<strong>${params.data.name}</strong><br/>
+                                        ID: ${params.data.id}`;
+                            } else {
+                                return `${params.data.source} → ${params.data.target}`;
+                            }
+                        }
+                    },
+                    series: [{
+                        type: 'graph',
+                        layout: 'force',
+                        data: nodes,
+                        links: links,
+                        roam: true,
+                        label: {
+                            show: true,
+                            position: 'right'
+                        },
+                        force: {
+                            repulsion: 200,
+                            edgeLength: 120
+                        },
+                        emphasis: {
+                            focus: 'adjacency',
+                            lineStyle: {
+                                width: 3
+                            }
+                        }
+                    }]
+                };
+
+                this.chart.setOption(option);
+            }
+        }
+    }
+    </script>
+</body>
+</html>
