@@ -1,0 +1,93 @@
+Metadata-Version: 2.4
+Name: tgedr-simplepipe
+Version: 0.0.11
+Summary: this is an example of a simple data pipeline
+Author-email: tiago <jtviegas@gmail.com>
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: pandas>=2.3.0
+Requires-Dist: finnhub-python>=2.4.26
+Requires-Dist: pyarrow>=23.0.0
+Requires-Dist: transformers>=4.57.6
+Requires-Dist: torch>=2.10.0
+Requires-Dist: great-expectations~=0.18.8
+
+# tgedr-simplepipe
+
+[[_TOC_]]
+
+
+## data pipeline use case: ticker news and its sentiment
+
+  We want to create a data pipeline that retrieves news about a specific set of tickers and applies an NLP model defining the sentiment of each news article.
+
+```mermaid
+graph TD
+    Start([Start]) --> Process1[fetch news
+    create articles]
+    Process1 --> Process2[sentiment analysis
+    data quality validation
+    append data]
+    Process2 --> End([End])
+```
+
+  Tasks
+  - get news
+    - currently financial news in the last 24 hours about tickers [NVDA](https://www.nvidia.com/) and [ARM](https://www.arm.com/) 
+  - apply sentiment + validate data + store data
+
+  The solution involves
+  - business logic
+    - the news extraction feature is created in this project module `src/tgedr/simplepipe/news` for simplicity, 
+      in an organisation setting we can think of this as something provided by a different team, having ownership 
+      on this business logic this team could eventually package this feature in a separate library that we could consume 
+      here in the pipeline;
+    - the sentiment analysis is tipically owned by a data science/ML team, that can provide this feature in 
+      a separate library. In this pipeline we consume an external public library for the NLP sentiment analysis implementation, 
+      even if not from an internal team it ends being a simple example of what can be achieved with this rationale 
+      (see `src/tgedr/simplepipe/etl/sentiment_etl.py`);
+  - business logic coupling
+    - business logic features should work as `pure functions` as much as possible, it should be provided with the data and tools 
+      required to perform its transformation but kept uncoupled from `how` and `where` it is provided;
+    - pipeline tasks enclosing business logic are defined as implementations of an ETL abstract class 
+      (see `src/tgedr/simplepipe/etl/etl.py`). The main purpose of this abstract class is to provide scaffolding for any 
+      kind of data transformation, whether its data science or pure data engineering. 
+      (check the etl implementations: `src/tgedr/simplepipe/etl/news_etl.py` and `src/tgedr/simplepipe/etl/sentiment_etl.py`)
+  - data quality validation - `Great Expectations` library provides solutions for data quality validation, check the component in `src/tgedr/simplepipe/utils/validation/data_validation.py` and its pandas specific implementation (`src/tgedr/simplepipe/utils/validation/pandas_validation.py`) that uses a legacy GE library to easily validate data expectations against a json specification;
+  - data storage: for simplicity the data is being stored in the repository `runtime/data/` folder and there is a persistence `Store` abstract component with a specific parquet implementation (`src/tgedr/simplepipe/store/parquet_store.py`) that is used to persist the data
+  
+  The pipeline
+  - is defined by a sequence of tasks in a `github actions` pipeline named `execution` (see `.github/workflows/execution.yml`) that can be triggered manually in the repository [page](https://github.com/jtviegas/simplepipe/actions/workflows/execution.yml)
+  - tasks implementation are bundled in a library published to [PyPi](https://pypi.org/project/tgedr-simplepipe/)
+  - the tasks are invoked in the `execution` pipeline using the library entrypoint that allows to parameterize the module, class and params to be used:
+    ```
+    .venv/bin/run --module tgedr.simplepipe.etl.news_etl \
+          --classname NewsEtl \
+          --callable run \
+          --classparams "{\"configuration\": {\"tickers\": \"NVDA,ARM\"}}" 
+    ```
+  - the final step in the pipeline run is to commit and push the updated data back to the repository
+
+  Further improvements to be made (regardless of simplistic approach):
+  - storage: 
+    - currently data is being appended and there will be duplicates if the pipeline is run in overlapping time windows
+    - data contracts implementation
+  - observability: should send telemetry to a collector somewhere, the integration of logger, metrics and tracer should be abstracted in the ETL component with a conventional interface (OpenTelemetry)
+  - coupling ds/ml team code and ETL component
+    - this needs collaboration to create the simplest possible solution that provides abstraction and does not stiffle team development specificities, preventing wheel reinvention and maintainability while keeping the development agile as possible;
+    - example? currently there are the ETL class implementations, we could liaise with the teams and try a mixin approach;
+    - main goal: improve secure and fast change while keeping maintainability
+ 
+
+## development
+
+- clone the repository:
+
+  ``` bash
+  git clone git@github.com:jtviegas/simplepipe
+  ```
+- open VSCode in the repository folder
+- check the operations sequence in the `cicd` (see `.github/workflows/cicd.yml`) pipeline using the `helper.sh` bash script
+- if you can run all up to `./helper.sh build` then your system is ready to develop
+- the test coverage is checked for 100%
+- to publish a new version to PyPi, bump it up in `pyproject.toml` to version `X`, push the code, and then tag it with the latest commit hash using the `./helper.sh` script as `./helper.sh tag X <COMMIT_HASH>`
