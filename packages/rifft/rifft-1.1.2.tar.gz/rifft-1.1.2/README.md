@@ -1,0 +1,369 @@
+# RIFFT
+
+[![CI](https://github.com/benschneider/rifft/actions/workflows/ci.yml/badge.svg)](https://github.com/benschneider/rifft/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/rifft.svg)](https://crates.io/crates/rifft)
+[![docs.rs](https://docs.rs/rifft/badge.svg)](https://docs.rs/rifft)
+[![PyPI](https://img.shields.io/pypi/v/rifft.svg)](https://pypi.org/project/rifft/)
+[![License: Apache-2.0 OR MIT](https://img.shields.io/crates/l/rifft.svg)](./LICENSE)
+
+RIFFT is a self-contained FFT runtime that combines RustFFT plans, Rayon parallelism, and optional
+`std::simd` acceleration to deliver deterministic 2-D FFTs, fused forward/filter/inverse passes, and
+zero-copy bridges into C and Python runtimes.
+
+## Install
+
+Python:
+
+```bash
+pip install rifft
+# optional (to enable torch comparisons / helpers)
+pip install "rifft[torch]"
+```
+
+Rust:
+
+```bash
+cargo add rifft
+```
+
+### From source (optional)
+
+```bash
+# Build/install the Python extension into the current environment
+./scripts/install_python_binding.sh --locked
+
+# End-to-end harness (builds the extension + runs comparisons)
+./scripts/build_and_bench.sh --locked
+```
+
+## Quickstart
+
+Python:
+
+```python
+import numpy as np
+from rifft import fft2
+
+x = (np.random.randn(256, 256) + 1j * np.random.randn(256, 256)).astype(np.complex64)
+y = fft2(x)
+```
+
+Torch optional:
+
+```python
+import torch
+from rifft import fft2
+
+x = torch.randn(256, 256, dtype=torch.complex64)
+y = fft2(x)
+```
+
+Torch “drop-in” wrapper (keeps existing codepaths smooth):
+
+```python
+import torch
+import rifft
+
+def fft2(x: torch.Tensor, *args, **kwargs):
+    # RIFFT: CPU-only, complex64, 2-D. Fall back to torch.fft otherwise.
+    if x.device.type == "cpu" and x.dtype == torch.complex64 and x.dim() >= 2:
+        return rifft.fft2(x)
+    return torch.fft.fft2(x, *args, **kwargs)
+
+def ifft2(x: torch.Tensor, *args, **kwargs):
+    if x.device.type == "cpu" and x.dtype == torch.complex64 and x.dim() >= 2:
+        return rifft.ifft2(x)
+    return torch.fft.ifft2(x, *args, **kwargs)
+```
+
+Rust:
+
+```rust
+use num_complex::Complex32;
+use rifft::RifftHandle;
+
+let handle = RifftHandle::new();
+let mut plane = vec![Complex32::default(); 256 * 256];
+handle.fft2d_forward(&mut plane, 256, 256)?;
+# Ok::<(), rifft::types::RifftError>(())
+```
+
+## Benchmark on your machine
+
+Performance is hardware- and environment-dependent. Benchmark on your machine and pick the fastest
+backend for your workload.
+
+```bash
+# Quick benchmark (installed package)
+pip install "rifft[bench]"
+python -m rifft.bench --sizes 256 512 1024 --iters 25 --device cpu
+
+# Source build + A/B compare vs torch.fft / numpy.fft
+./scripts/build_and_bench.sh --locked
+```
+
+## When to reach for RIFFT
+
+- **Deterministic spectral filtering pipelines** where you control the kernels and want
+  repeatable CPU-only latency (e.g., classical vision, audio, radar, or scientific imaging).
+- **Embedding Torch/NumPy workloads into Rust** without copying data: transfer ownership through
+  DLPack and let RIFFT mutate in place, then return the capsule to Python.
+- **Services that batch a small set of FFT shapes** (tile-based convolutions, patch-wise inference)
+  and benefit from the built-in planner/workspace cache to skip repeated allocations.
+- **Interop tooling**: export from a C++ or Python stack, run RIFFT’s fused forward→filter→inverse
+  path, and re-import without touching disk or extra serialization layers.
+
+If you primarily need GPU throughput, autograd support, many dtypes, or arbitrary dimension counts,
+stick to torch.fft / numpy.fft; RIFFT intentionally narrows the scope to keep the CPU kernels lean.
+
+## Features
+
+- **Planner + workspace cache** keyed by geometry/direction/SIMD flag with per-thread scratch.
+- **Fused kernels** (`fft → filter → ifft`) with SIMD element-wise multiply helpers.
+- **Zero-copy DLPack bridge** for Torch tensors plus an optional C FFI surface.
+- **PyO3/Maturin bindings** shipping the same runtime to Python (`pip install rifft`).
+- **Criterion benchmarks and Python harness** for reproducible timing across standard sizes.
+- **Focused surface area**: currently limited to complex64 2-D FFTs (single plane or batches). No
+  autograd, dtype promotion, filtering helpers, or half/complex128 kernels—use NumPy/Torch for
+  generic transforms and hand buffers to RIFFT only when you need the tuned path.
+
+```
+┌──────────────┐     ┌───────────────┐     ┌───────────────┐
+│ DLPack inputs│ ──▶ │ Planner cache │ ──▶ │ Row FFT stage │
+└──────────────┘     └───────────────┘     └───────────────┘
+        │                                    │
+        ▼                                    ▼
+┌──────────────┐     ┌───────────────┐     ┌───────────────┐
+│ TLS scratch  │ ◀── │ Workspace pool│ ◀── │ Column FFT/T  │
+└──────────────┘     └───────────────┘     └───────────────┘
+        │                                    │
+        ▼                                    ▼
+┌──────────────┐     ┌───────────────┐     ┌───────────────┐
+│ SIMD fused   │ ◀── │ C / Python FFI│ ◀── │ Torch adapters │
+└──────────────┘     └───────────────┘     └───────────────┘
+```
+
+## Benchmark Results
+
+Hardware: M1 Max 32GB RAM
+
+Environment: cpu=arm, threads=10, RUSTFLAGS=-C target-cpu=native
+
+Performance is hardware- and environment-dependent. For an apples-to-apples comparison on your
+machine (including optional `torch.fft` baselines), run `./scripts/build_and_bench.sh` locally.
+If installed via pip, you can run basic RIFFT benchmarks with
+`python -m rifft.bench --sizes 256 512 1024 --iters 25 --device cpu`.
+
+| Shape | Impl | Median (ms) | Mean (ms) | Std (ms) |
+| ---- | ---- | ----------- | -------- | ------- |
+| (256, 256) | torch.fft | 0.208 | 0.210 | 0.009 |
+| (256, 256) | numpy | 0.769 | 0.789 | 0.064 |
+| (256, 256) | rifft.torch | 0.387 | 0.390 | 0.051 |
+| (256, 256) | rifft.np | 0.297 | 0.282 | 0.094 |
+| (256, 256) | rifft.np_out | 0.182 | 0.199 | 0.085 |
+| (512, 512) | torch.fft | 0.976 | 0.990 | 0.058 |
+| (512, 512) | numpy | 4.266 | 4.331 | 0.258 |
+| (512, 512) | rifft.torch | 0.668 | 0.710 | 0.548 |
+| (512, 512) | rifft.np | 0.468 | 0.517 | 0.146 |
+| (512, 512) | rifft.np_out | 0.628 | 0.686 | 0.274 |
+| (1024, 1024) | torch.fft | 6.904 | 6.894 | 0.781 |
+| (1024, 1024) | numpy | n/a | n/a | n/a |
+| (1024, 1024) | rifft.torch | 2.090 | 2.153 | 0.487 |
+| (1024, 1024) | rifft.np | 1.732 | 1.979 | 1.131 |
+| (1024, 1024) | rifft.np_out | 2.360 | 2.782 | 1.431 |
+| (1536, 1536) | torch.fft | 16.637 | 16.732 | 0.905 |
+| (1536, 1536) | numpy | n/a | n/a | n/a |
+| (1536, 1536) | rifft.torch | 3.968 | 4.400 | 1.668 |
+| (1536, 1536) | rifft.np | 3.607 | 4.284 | 2.200 |
+| (1536, 1536) | rifft.np_out | 4.770 | 5.382 | 1.698 |
+| (2048, 2048) | torch.fft | 39.082 | 39.407 | 1.199 |
+| (2048, 2048) | numpy | n/a | n/a | n/a |
+| (2048, 2048) | rifft.torch | 8.540 | 9.268 | 2.575 |
+| (2048, 2048) | rifft.np | 8.401 | 9.315 | 3.188 |
+| (2048, 2048) | rifft.np_out | 10.117 | 10.945 | 2.276 |
+
+Criterion benches live under `benches/` and report timing, bandwidth, and thread scaling.
+
+## Limits & assumptions
+
+- **Complex64 2-D only**: RIFFT currently handles batches of `(H, W)` planes stored row-major. No
+  real-only, half precision, complex128, or >2D transforms. Callers must prepack complex data.
+- **CPU, host memory**: targets x86-64 and aarch64 CPUs with AVX2/AVX-512/NEON fast paths. There is
+  no GPU backend. Inputs must be host-resident, contiguous buffers.
+- **Normalized inverse**: every inverse path (plain or fused) scales by `1/(H*W)` for consistency.
+  If you need the raw RustFFT output, divide manually before calling into RIFFT.
+- **Caching is bounded**: planner caches evict once the small/large FIFO caps are reached (env vars
+  `RUSTFFT_SMALL_CACHE`, `RUSTFFT_LARGE_CACHE`). Filter spectra use an LRU with capacity governed by
+  `RIFFT_FILTER_CACHE` (default 32). Repeatedly cycling through many shapes/filters will thrash.
+- **Bench tolerances**: Torch/NumPy equivalence checks allow up to `5e-4` for ≤1M elements and
+  `1.25e-3` for larger grids to absorb expected CPU rounding drift. Failures outside those limits are
+  treated as correctness bugs.
+- **Contiguous inputs**: The Rust core assumes C-contiguous row-major layout; Python helpers
+  canonicalize the layout (with at most one copy) before passing buffers across the FFI boundary.
+
+## Rust API
+
+```rust
+use num_complex::Complex32;
+use rifft::RifftHandle;
+
+let mut handle = RifftHandle::new();
+let mut plane = vec![Complex32::default(); 512 * 512];
+handle.fft2d_forward(&mut plane, 512, 512).unwrap();
+// Or keep the result column-major for chaining:
+handle
+    .fft2d_forward_transposed(&mut plane, 512, 512)
+    .unwrap();
+```
+
+The `RifftHandle` caches plans (height, width, direction, dtype, SIMD flag) and reuses aligned
+workspace allocations for every call. Set `RUSTFFT_THREADS` to pin Rayon parallelism and
+`RUSTFFT_SMALL_MAX/RUSTFFT_SMALL_CACHE` to tune the small-plan FIFO. On Linux runners with only one
+or two logical cores (e.g., GitHub Actions VMs), RIFFT defaults to a single worker thread to avoid
+oversubscribing the CPU.
+Set `RIFFT_PREPLAN=auto` (or a comma-separated list like `RIFFT_PREPLAN=256x256,1024x512`) to warm
+up planner entries during `RifftHandle::new()`.
+
+## C ABI
+
+The shared library exports `riff_create_handle`, `riff_fft2d_forward`, `riff_fft2d_inverse`,
+`riff_fft2d_fused_filter`, `riff_get_version`, and `riff_get_backend_name`. See
+`include/rifft.h` for the full surface area.
+
+## Python bindings
+
+- Built with Maturin + PyO3 (`python` feature).
+- `rifft.bridge` exposes `fft2`, `ifft2`, `fft_filter_ifft`, plus batched variants.
+- `rifft` provides a NumPy-first API that canonicalizes dtype/layout before calling the same backend.
+- CLI: `python -m rifft.bench --sizes 256 512 1024 --iters 25 --device cpu`.
+- Higher-level helpers live in `rifft.helpers` for in-place Torch usage.
+- `rifft.runtime` exposes `preplan`, `enable_timing`, `timing_reset`, and `timing_summary` so you can warm caches
+  and inspect kernel timings from Python.
+
+```python
+import torch
+from rifft.helpers import fft2_inplace, fft_filter_ifft_inplace
+
+image = torch.randn(256, 256, dtype=torch.complex64)
+fft2_inplace(image)  # mutates `image`
+
+kernel = torch.randn(256, 256, dtype=torch.complex64)
+fft_filter_ifft_inplace(image, kernel)  # runs forward→filter→inverse in place
+```
+
+### NumPy usage
+
+```python
+import numpy as np
+from rifft import (
+    canonicalize_numpy,
+    rifft,
+    rifft_ifft,
+    rifft_out,
+    preplan,
+    enable_timing,
+    timing_reset,
+    timing_summary,
+)
+
+rng = np.random.default_rng(0)
+x = (rng.standard_normal((2, 256, 256)) + 1j * rng.standard_normal((2, 256, 256))).astype(
+    np.complex64
+)
+
+canon = canonicalize_numpy(x)  # zero-copy when already complex64 + C-contiguous
+freq = rifft(canon)
+spatial = rifft_ifft(freq.copy())  # normalized inverse (divides by H*W)
+detached = rifft_out(x)            # leaves `x` untouched and returns a new buffer
+
+preplan([(256, 256), (512, 512)])  # warm planner
+enable_timing(True)
+timing_reset()
+_ = rifft(np.copy(x))
+print(timing_summary())
+enable_timing(False)
+```
+
+`canonicalize_numpy` upgrades dtype to `complex64` and enforces C-contiguity with at most one copy,
+so `rifft()` can pass the buffer to the Rust kernel without branching on frameworks. Use
+`rifft_ifft(freq, normalize=False)` if you want to skip the automatic `1/(H*W)` scaling.
+
+### Performance debugging
+
+```python
+from rifft import preplan, enable_timing, timing_reset, timing_summary, rifft
+import numpy as np
+
+preplan([(256, 256)])         # warm the planner cache for common shapes
+enable_timing(True)           # start collecting row/col/transpose timings
+timing_reset()
+data = (np.random.default_rng(0).standard_normal((256, 256)) + 1j * np.random.default_rng(1).standard_normal((256, 256))).astype(np.complex64)
+rifft(data)                   # mutates in place
+print(timing_summary())       # {'row_ms': ..., 'transpose_ms': ..., 'calls': ...}
+enable_timing(False)
+```
+
+Use this pattern when you benchmark or pipeline repeated transforms: warm the planner once, run a few iterations, and inspect `timing_summary()` to see if time is spent in the row kernels, column kernels, or the transpose steps. The same helpers back the Python benchmark harness, so the numbers you print locally align with the values in `results/rifft_benchmark.json`.
+
+### Zero-copy DLPack
+
+`rifft.bridge` converts `torch.Tensor` objects into DLPack capsules via `torch.utils.dlpack`. The
+PyO3 shim unwraps the capsule, validates contiguity/alignment, and hands the raw pointer to the Rust
+planner without copying. Ownership is transferred back to PyTorch after the transform so the
+returned tensor shares memory with the accelerated path. See `python/examples/torch_fft_demo.py`
+for a runnable snippet.
+
+## Build & test matrix
+
+```bash
+cargo build --release
+maturin develop --features python
+pytest python/tests -q
+```
+
+Benchmarks:
+
+```bash
+cargo bench --bench bench_fft256
+cargo bench --bench bench_fft512
+cargo bench --bench bench_fft1024
+cargo bench --bench bench_fused
+
+# End-to-end harness (builds the extension + runs comparisons)
+./scripts/build_and_bench.sh
+
+# Or run the Python benchmark directly:
+python scripts/bench_rifft_compare.py
+# include NumPy timings for every shape (skipping >512 by default):
+python scripts/bench_rifft_compare.py --numpy-all
+```
+
+The benchmark script reports up to four implementations per shape: `torch.fft`, `numpy`, `rifft.torch`
+(PyTorch+DLPack path), `rifft.numpy` (mutates the NumPy buffer in place), and `rifft.numpy_out` (uses
+`rifft_out`, so it includes the single copy overhead). If PyTorch is unavailable (or you pass
+`--skip-torch`), the torch rows are omitted automatically. Pair these numbers with the optional
+timing summary to understand whether row kernels, column kernels, or transposes dominate a given
+workload.
+
+PyTorch is only required for torch comparisons; install it via `pip install "rifft[bench]"` (or
+`pip install "rifft[torch]"`) before running the benchmarks.
+
+## Release helper
+
+Use `./scripts/release.sh` to format/lint/test the Rust crate, ensure `maturin` is ready, and then
+optionally publish to crates.io and PyPI (each step prompts for confirmation).
+
+## Roadmap
+
+- [ ] CUDA + Metal back-ends via opaque `TensorHandle`s.
+- [ ] Mixed-precision kernels (bf16/half) with on-the-fly promotion.
+- [ ] Autotuned fuse graph builder for multi-filter workloads.
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0, (`LICENSE-APACHE` or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license (`LICENSE-MIT` or <http://opensource.org/licenses/MIT>)
+
+at your option. Any contributions are accepted under the same dual license.
