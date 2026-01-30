@@ -1,0 +1,1207 @@
+Metadata-Version: 2.4
+Name: litespeech
+Version: 0.2.0
+Summary: Unified SDK for speech operations (ASR/TTS) with streaming support across multiple providers
+Project-URL: Homepage, https://github.com/litespeech/litespeech
+Project-URL: Documentation, https://github.com/litespeech/litespeech#readme
+Project-URL: Repository, https://github.com/litespeech/litespeech
+Project-URL: Issues, https://github.com/litespeech/litespeech/issues
+Author-email: Sawradip Saha <sawradip0@gmail.com>
+Maintainer-email: Sawradip Saha <sawradip0@gmail.com>
+License: MIT
+License-File: LICENSE
+Keywords: asr,cartesia,deepgram,elevenlabs,speech,speech-to-text,streaming,text-to-speech,tts
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Multimedia :: Sound/Audio :: Speech
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Typing :: Typed
+Requires-Python: >=3.9
+Requires-Dist: aiofiles>=24.1.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: nest-asyncio>=1.5.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: websockets>=12.0
+Provides-Extra: all
+Requires-Dist: pydub>=0.25.0; extra == 'all'
+Requires-Dist: soundfile>=0.12.0; extra == 'all'
+Provides-Extra: audio
+Requires-Dist: pydub>=0.25.0; extra == 'audio'
+Requires-Dist: soundfile>=0.12.0; extra == 'audio'
+Provides-Extra: dev
+Requires-Dist: mypy>=1.8.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.3.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# LiteSpeech
+
+**Unified SDK for speech operations (ASR/TTS) with streaming support across multiple providers.**
+
+LiteSpeech provides a consistent interface for text-to-speech and speech-to-text across providers like ElevenLabs, Deepgram, Cartesia, OpenAI, and Azure. It features first-class support for streaming and seamless integration with LLM outputs.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Provider String Format](#provider-string-format)
+- [Supported Providers](#supported-providers)
+- [API Reference](#api-reference)
+  - [LiteSpeech Client](#litespeech-client)
+  - [Text-to-Speech](#text-to-speech)
+  - [Speech-to-Text](#speech-to-text)
+  - [Sync Interface](#sync-interface)
+- [LLM Integration](#llm-integration)
+- [Audio Processing](#audio-processing)
+- [ASR Streaming Results](#asr-streaming-results)
+- [Configuration](#configuration)
+- [Provider-Specific Details](#provider-specific-details)
+- [Error Handling](#error-handling)
+- [Examples](#examples)
+- [Development](#development)
+- [License](#license)
+
+---
+
+## Features
+
+- **Multi-Provider Support**: ElevenLabs, Deepgram, Cartesia, OpenAI, Azure Speech Services
+- **Streaming-First**: True streaming TTS and ASR where supported
+- **LLM Integration**: Auto-detect and pipe OpenAI/Anthropic/LiteLLM streams to TTS
+- **Unified API**: Same interface across all providers
+- **Sync + Async**: Primary async interface with sync wrapper
+- **Audio Preprocessing**: Auto-detect and convert audio formats
+- **Interim Results**: Real-time partial transcriptions with clear final/interim marking
+- **Deduplication**: Smart filtering of duplicate transcripts in streaming ASR
+
+---
+
+## Installation
+
+```bash
+pip install litespeech
+```
+
+With audio conversion support (recommended for format conversion):
+```bash
+pip install litespeech[audio]
+```
+
+With development dependencies:
+```bash
+pip install litespeech[dev]
+```
+
+---
+
+## Quick Start
+
+### Text-to-Speech
+
+```python
+from litespeech import LiteSpeech
+import asyncio
+
+async def main():
+    ls = LiteSpeech()
+
+    # Batch TTS
+    audio = await ls.text_to_speech(
+        text="Hello, world!",
+        provider="elevenlabs/eleven_turbo_v2_5/JBFqnCBsd6RMkjVDRZzb"
+    )
+
+    with open("output.mp3", "wb") as f:
+        f.write(audio)
+
+    # Streaming TTS
+    async for chunk in ls.text_to_speech_stream(
+        text="Hello, this is streaming TTS!",
+        provider="elevenlabs/eleven_turbo_v2_5/JBFqnCBsd6RMkjVDRZzb",
+        output_format="pcm_16000"
+    ):
+        # Play or process audio chunk
+        pass
+
+asyncio.run(main())
+```
+
+### Speech-to-Text
+
+```python
+from litespeech import LiteSpeech
+import asyncio
+
+async def main():
+    ls = LiteSpeech()
+
+    # Batch ASR
+    text = await ls.speech_to_text(
+        audio="recording.mp3",
+        provider="deepgram/nova-2"
+    )
+    print(text)
+
+    # Streaming ASR with interim results
+    async def microphone_stream():
+        # Yield audio chunks from microphone
+        ...
+
+    async for result in ls.speech_to_text_stream(
+        audio_stream=microphone_stream(),
+        provider="deepgram/nova-2",
+        interim_results=True
+    ):
+        if result.is_final:
+            print(f"✓ {result.text}")
+        else:
+            print(f"  {result.text}...", end="\r", flush=True)
+
+asyncio.run(main())
+```
+
+### LLM to TTS (Voice Assistant)
+
+```python
+from openai import AsyncOpenAI
+from litespeech import LiteSpeech
+import asyncio
+
+async def main():
+    openai = AsyncOpenAI()
+    ls = LiteSpeech()
+
+    # Get LLM stream
+    llm_stream = await openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Tell me a story"}],
+        stream=True
+    )
+
+    # Pipe directly to TTS (auto-detects OpenAI stream!)
+    async for audio_chunk in ls.text_to_speech_stream(
+        text_stream=llm_stream,  # Works with OpenAI, Anthropic, LiteLLM
+        provider="elevenlabs/eleven_turbo_v2_5/JBFqnCBsd6RMkjVDRZzb"
+    ):
+        # Play audio in real-time
+        pass
+
+asyncio.run(main())
+```
+
+### Sync Interface
+
+```python
+from litespeech import LiteSpeech
+
+ls = LiteSpeech()
+
+# Use sync interface
+audio = ls.sync.text_to_speech(
+    text="Hello, world!",
+    provider="elevenlabs/eleven_turbo_v2_5"
+)
+
+text = ls.sync.speech_to_text(
+    audio="recording.mp3",
+    provider="deepgram/nova-2"
+)
+
+# Streaming (returns sync iterator)
+for chunk in ls.sync.text_to_speech_stream(
+    text="Hello",
+    provider="elevenlabs/eleven_turbo_v2_5"
+):
+    process(chunk)
+
+for result in ls.sync.speech_to_text_stream(
+    audio_stream=mic_stream,
+    provider="deepgram/nova-2",
+    interim_results=True
+):
+    print(result.text, result.is_final)
+```
+
+---
+
+## Provider String Format
+
+LiteSpeech uses a unified provider string format: `provider/model[/voice]`
+
+**TTS Examples:**
+- `elevenlabs/eleven_turbo_v2_5/JBFqnCBsd6RMkjVDRZzb` - ElevenLabs with specific voice
+- `deepgram/aura-asteria-en` - Deepgram Aura
+- `cartesia/sonic-3` - Cartesia Sonic
+- `openai/tts-1/alloy` - OpenAI TTS
+- `azure/en-US-AvaMultilingualNeural` - Azure Speech
+
+**ASR Examples:**
+- `deepgram/nova-2` - Deepgram Nova
+- `elevenlabs/scribe_v1` - ElevenLabs Scribe (batch)
+- `elevenlabs` - ElevenLabs Scribe (streaming, uses `scribe_v2_realtime`)
+- `cartesia/ink-whisper` - Cartesia Ink
+- `openai/whisper-1` - OpenAI Whisper
+- `azure` - Azure Speech-to-Text
+
+---
+
+## Supported Providers
+
+| Provider | TTS Batch | TTS Streaming | ASR Batch | ASR Streaming |
+|----------|-----------|---------------|-----------|---------------|
+| ElevenLabs | ✅ | ✅ | ✅ | ✅ |
+| Deepgram | ✅ | ✅ | ✅ | ✅ |
+| Cartesia | ✅ | ✅ | ✅ | ✅ |
+| OpenAI | ✅ | ❌ | ✅ | ❌ |
+| Azure | ✅ | ✅ | ✅ | ❌ |
+
+---
+
+## API Reference
+
+### LiteSpeech Client
+
+```python
+from litespeech import LiteSpeech
+
+ls = LiteSpeech(
+    elevenlabs_api_key="sk_...",      # Optional, uses ELEVENLABS_API_KEY env var
+    deepgram_api_key="...",            # Optional, uses DEEPGRAM_API_KEY env var
+    cartesia_api_key="...",            # Optional, uses CARTESIA_API_KEY env var
+    openai_api_key="sk-...",           # Optional, uses OPENAI_API_KEY env var
+    azure_speech_key="...",            # Optional, uses AZURE_SPEECH_KEY env var
+    azure_speech_region="eastus"       # Optional, uses AZURE_SPEECH_REGION env var
+)
+```
+
+**Utility Methods:**
+
+```python
+# List available providers
+ls.list_providers()                    # All providers
+ls.list_providers(capability="tts")    # Only TTS providers
+ls.list_providers(capability="asr")    # Only ASR providers
+
+# Check streaming support
+ls.supports_streaming("deepgram", "tts")   # True
+ls.supports_streaming("openai", "tts")     # False
+
+# Access provider registry
+ls.registry.list_tts_providers()
+ls.registry.list_asr_providers()
+```
+
+### Text-to-Speech
+
+#### Batch TTS
+
+```python
+audio = await ls.text_to_speech(
+    text="Hello, world!",
+    provider="elevenlabs/eleven_turbo_v2_5/JBFqnCBsd6RMkjVDRZzb",
+    voice=None,           # Override voice from provider string
+    language=None,        # Language code (provider-specific)
+    output_format="mp3",  # Output format (mp3, wav, pcm, etc.)
+    **kwargs              # Provider-specific options
+)
+# Returns: bytes (audio data)
+```
+
+#### Streaming TTS
+
+```python
+async for chunk in ls.text_to_speech_stream(
+    text="Hello, this is streaming!",   # Static text
+    # OR
+    text_stream=llm_stream,             # Async iterator or LLM stream
+    provider="elevenlabs/eleven_turbo_v2_5",
+    voice=None,
+    language=None,
+    output_format="pcm_16000",
+    sample_rate=16000,                  # Optional: for providers that support it
+    **kwargs
+):
+    # Process audio chunk
+    pass
+# Yields: bytes (audio chunks)
+```
+
+**Note:** Some providers (Cartesia, Deepgram) accept `sample_rate` as a separate parameter for streaming output.
+
+**Output Formats (provider-specific):**
+
+| Provider | Formats |
+|----------|---------|
+| ElevenLabs | `mp3_44100_128`, `mp3_32000_128`, `pcm_16000`, `pcm_22050`, `pcm_24000`, `pcm_44100` |
+| Deepgram | `mp3`, `linear16`, `alaw`, `mulaw` |
+| Cartesia | `pcm_s16le`, `wav`, `mp3` |
+| OpenAI | `mp3`, `opus`, `aac`, `flac` |
+| Azure | `audio-16khz-128kbitrate-mono-mp3`, `audio-24khz-160kbitrate-mono-mp3`, `riff-16khz-16bit-mono-pcm` |
+
+### Speech-to-Text
+
+#### Batch ASR
+
+```python
+text = await ls.speech_to_text(
+    audio="recording.mp3",   # File path (str or Path) or bytes
+    provider="deepgram/nova-2",
+    language=None,           # Language code
+    preprocess=True,         # Auto-detect and convert audio format
+    **kwargs                 # Provider-specific options (e.g., punctuate, smart_format)
+)
+# Returns: str (transcribed text)
+```
+
+**Provider-specific kwargs:**
+- Deepgram: `punctuate`, `smart_format`, `diarize`, `detect_language`, `paragraphs`, `utterances`
+- ElevenLabs: Language auto-detection built-in
+- OpenAI: `response_format`, `temperature`
+
+#### Streaming ASR
+
+```python
+async for result in ls.speech_to_text_stream(
+    audio_stream=mic_stream,     # AsyncIterator[bytes] of audio chunks
+    provider="deepgram/nova-2",
+    language=None,
+    interim_results=False,       # Include partial transcriptions
+    deduplicate=True,            # Filter duplicate transcripts (default: True)
+    sample_rate=16000,           # Audio sample rate (MUST match your audio!)
+    channels=1,                  # Number of audio channels
+    encoding="linear16",         # Audio encoding
+    **kwargs                     # Provider-specific options
+):
+    print(result.text, result.is_final)
+# Yields: ASRResult(text: str, is_final: bool)
+```
+
+**Provider-specific kwargs for streaming:**
+- Deepgram: `diarize`, `vad_events`, `endpointing`
+- ElevenLabs: `audio_format` (e.g., `pcm_16000`)
+- Cartesia: `encoding` (e.g., `pcm_s16le`)
+
+### Sync Interface
+
+All async methods are available synchronously via the `.sync` property:
+
+```python
+# Batch operations
+audio = ls.sync.text_to_speech(text="Hello", provider="elevenlabs")
+text = ls.sync.speech_to_text(audio="file.wav", provider="deepgram")
+
+# Streaming operations (returns sync iterators)
+for chunk in ls.sync.text_to_speech_stream(text="Hello", provider="elevenlabs"):
+    process(chunk)
+
+for result in ls.sync.speech_to_text_stream(
+    audio_stream=mic_stream,
+    provider="deepgram",
+    interim_results=True
+):
+    print(result.text)
+```
+
+---
+
+## LLM Integration
+
+LiteSpeech automatically detects and adapts LLM completion streams for TTS.
+
+### Supported LLM Providers
+
+| Provider | Stream Types |
+|----------|--------------|
+| OpenAI | `AsyncStream[ChatCompletionChunk]`, Responses API |
+| Anthropic | `AsyncMessageStream`, `MessageStream`, `.text_stream` |
+| LiteLLM | LiteLLM completion streams |
+
+### OpenAI Example
+
+```python
+from openai import AsyncOpenAI
+from litespeech import LiteSpeech
+
+async def main():
+    openai = AsyncOpenAI()
+    ls = LiteSpeech()
+
+    llm_stream = await openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Tell me a joke"}],
+        stream=True
+    )
+
+    # Auto-detected and adapted!
+    async for audio in ls.text_to_speech_stream(
+        text_stream=llm_stream,
+        provider="elevenlabs/eleven_turbo_v2_5"
+    ):
+        play_audio(audio)
+
+asyncio.run(main())
+```
+
+### Anthropic Example
+
+```python
+from anthropic import AsyncAnthropic
+from litespeech import LiteSpeech
+
+async def main():
+    anthropic = AsyncAnthropic()
+    ls = LiteSpeech()
+
+    stream = anthropic.messages.stream(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": "Say something interesting"}]
+    )
+
+    # Works with Anthropic too!
+    async for audio in ls.text_to_speech_stream(
+        text_stream=stream,
+        provider="elevenlabs/eleven_turbo_v2_5"
+    ):
+        play_audio(audio)
+
+asyncio.run(main())
+```
+
+### Plain Async Iterator (Simulated LLM)
+
+```python
+async def simulate_llm_stream(text: str, delay: float = 0.1):
+    """Simulate LLM token streaming by yielding words with a delay."""
+    words = text.split()
+    for i, word in enumerate(words):
+        await asyncio.sleep(delay)
+        yield word if i == 0 else f" {word}"
+
+async def main():
+    ls = LiteSpeech()
+
+    text = "Hello! This is simulated LLM output being streamed to TTS."
+
+    async for audio in ls.text_to_speech_stream(
+        text_stream=simulate_llm_stream(text),
+        provider="cartesia/sonic-3",
+        voice="79a125e8-cd45-4c13-8a67-188112f4dd22",
+        language="en",
+        sample_rate=16000,
+    ):
+        play_audio(audio)
+
+asyncio.run(main())
+```
+
+---
+
+## Audio Processing
+
+### Audio Format Detection
+
+LiteSpeech automatically detects audio formats via magic bytes and header parsing:
+
+- **WAV**: RIFF header, sample rate, channels, bit depth
+- **MP3**: ID3 tags, sync words, MPEG version, bitrate
+- **FLAC**: STREAMINFO metadata block
+- **OGG/OPUS**: OggS container
+- **WEBM**: EBML header
+
+### Audio Conversion
+
+With `litespeech[audio]` installed, automatic format conversion is available:
+
+```python
+# Auto-converts to provider's preferred format
+text = await ls.speech_to_text(
+    audio="recording.m4a",  # Will be converted to WAV/PCM
+    provider="deepgram/nova-2",
+    preprocess=True         # Default: True
+)
+```
+
+**Supported Conversions:**
+- Format changes (MP3 → WAV, etc.)
+- Sample rate resampling
+- Channel mixing (stereo → mono)
+
+### Streaming Audio Parameters
+
+For streaming ASR, you must specify audio parameters (cannot be auto-detected from raw PCM):
+
+```python
+async for result in ls.speech_to_text_stream(
+    audio_stream=mic_stream,
+    provider="deepgram/nova-2",
+    sample_rate=16000,       # REQUIRED: Audio sample rate
+    channels=1,              # Audio channels (default: 1)
+    encoding="linear16",     # Audio encoding (default: linear16)
+):
+    print(result.text)
+```
+
+---
+
+## ASR Streaming Results
+
+All ASR streaming methods return `AsyncIterator[ASRResult]`:
+
+```python
+from litespeech import ASRResult
+
+@dataclass
+class ASRResult:
+    text: str       # Transcribed text
+    is_final: bool  # True for final results, False for interim
+```
+
+### Interim vs Final Results
+
+```python
+async for result in ls.speech_to_text_stream(
+    audio_stream=mic_stream,
+    provider="deepgram/nova-2",
+    interim_results=True,  # Enable interim results
+):
+    if result.is_final:
+        # Committed transcription - won't change
+        print(f"✓ Final: {result.text}")
+    else:
+        # Partial transcription - may change
+        print(f"  Interim: {result.text}...", end="\r", flush=True)
+```
+
+**Behavior:**
+- `interim_results=False` (default): Only yields final results (`is_final=True`)
+- `interim_results=True`: Yields both interim and final results
+
+### Deduplication
+
+Most ASR providers send the full accumulated transcript with each update (not deltas):
+
+```
+Provider sends: "Hello" → "Hello world" → "Hello world how" → "Hello world how are you"
+```
+
+**With `deduplicate=True`** (default): Only yields when text changes
+```python
+async for result in ls.speech_to_text_stream(
+    audio_stream=mic_stream,
+    provider="deepgram",
+    deduplicate=True  # Default
+):
+    # Only unique text values are yielded
+    print(result.text)
+```
+
+**With `deduplicate=False`**: Pass through every message
+```python
+async for result in ls.speech_to_text_stream(
+    audio_stream=mic_stream,
+    provider="deepgram",
+    deduplicate=False  # Raw provider behavior
+):
+    # May receive duplicate values
+    print(result.text)
+```
+
+---
+
+## Configuration
+
+### API Keys
+
+LiteSpeech accepts explicit parameter names that map to environment variables.
+
+**Option 1: Environment Variables** (Recommended)
+
+```bash
+export ELEVENLABS_API_KEY=sk_...
+export DEEPGRAM_API_KEY=...
+export CARTESIA_API_KEY=...
+export OPENAI_API_KEY=sk-...
+export AZURE_SPEECH_KEY=...
+export AZURE_SPEECH_REGION=eastus
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
+export GOOGLE_PROJECT_ID=my-project
+```
+
+```python
+ls = LiteSpeech()  # Auto-detects from environment
+```
+
+**Option 2: Explicit Parameters**
+
+```python
+ls = LiteSpeech(
+    elevenlabs_api_key="sk_...",
+    deepgram_api_key="...",
+    cartesia_api_key="...",
+    openai_api_key="sk-...",
+    azure_speech_key="...",
+    azure_speech_region="eastus"
+)
+```
+
+**Parameter Mapping:**
+
+| Parameter | Environment Variable |
+|-----------|---------------------|
+| `elevenlabs_api_key` | `ELEVENLABS_API_KEY` |
+| `openai_api_key` | `OPENAI_API_KEY` |
+| `deepgram_api_key` | `DEEPGRAM_API_KEY` |
+| `cartesia_api_key` | `CARTESIA_API_KEY` |
+| `azure_speech_key` | `AZURE_SPEECH_KEY` |
+| `azure_speech_region` | `AZURE_SPEECH_REGION` |
+| `google_application_credentials` | `GOOGLE_APPLICATION_CREDENTIALS` |
+| `google_project_id` | `GOOGLE_PROJECT_ID` |
+
+**Validation:**
+
+```python
+# ❌ Raises ValueError - unknown parameter
+ls = LiteSpeech(invalid_param="value")
+
+# ✅ Correct usage
+ls = LiteSpeech(cartesia_api_key="sk_car_...")
+```
+
+### Debug Logging
+
+```bash
+# Enable debug logging for all components
+export LITESPEECH_LOG_LEVEL=DEBUG
+python your_script.py
+
+# Log format options
+export LITESPEECH_LOG_FORMAT=detailed  # or simple, json
+```
+
+**Log Levels:**
+- `DEBUG`: Verbose WebSocket/chunk details
+- `INFO`: General operation info
+- `WARNING`: Non-optimal configurations (default)
+- `ERROR`: Errors and exceptions
+
+---
+
+## Provider-Specific Details
+
+### ElevenLabs
+
+**TTS:**
+- Models: `eleven_turbo_v2_5`, `eleven_multilingual_v2`, `eleven_monolingual_v1`
+- Default voice: `JBFqnCBsd6RMkjVDRZzb` (George)
+- Formats: `mp3_44100_128`, `mp3_32000_128`, `pcm_16000`, `pcm_22050`, `pcm_24000`, `pcm_44100`
+
+**ASR:**
+- Batch models: `scribe_v1`, `scribe_v1_experimental`
+- Streaming model: `scribe_v2_realtime` (different from batch!)
+- Format: `pcm_16000`
+
+**Important:** Batch and streaming use different models. Using `scribe_v1` for streaming will raise an error.
+
+```python
+# TTS with specific voice
+audio = await ls.text_to_speech(
+    text="Hello world",
+    provider="elevenlabs/eleven_turbo_v2_5",
+    voice="JBFqnCBsd6RMkjVDRZzb",  # George voice
+    output_format="mp3_44100_128",
+)
+
+# Batch ASR (uses scribe_v1)
+text = await ls.speech_to_text(audio, provider="elevenlabs/scribe_v1")
+
+# Streaming ASR (must use scribe_v2_realtime or omit model)
+async for result in ls.speech_to_text_stream(
+    audio_stream=mic,
+    provider="elevenlabs",  # Defaults to scribe_v2_realtime
+    sample_rate=16000,
+):
+    if result.is_final:
+        print(f"Final: {result.text}")
+    else:
+        print(f"Interim: {result.text}")
+```
+
+### Deepgram
+
+**TTS (Aura):**
+- Models: Aura voices follow pattern `aura-{voice}-{language}` (e.g., `aura-asteria-en`)
+- Voices: `asteria`, `luna`, `stella`, `athena`, `hera`, `orion`, `arcas`, `perseus`, `angus`, `orpheus`, `helios`, `zeus`
+- You can specify voice and language separately: `provider="deepgram/aura"` + `voice="asteria"` + `language="en"`
+- Formats: `mp3`, `linear16`, `alaw`, `mulaw`
+
+**ASR:**
+- Models: `nova-3`, `nova-2`, `nova-2-general`, `nova-2-meeting`, `nova-2-phonecall`, `nova-2-medical`, `enhanced`, `base`
+- Recommended: 16kHz PCM mono
+- Language: ISO-639-1, ISO-639-3, BCP-47, or `multi` for auto-detection
+- Provider-specific kwargs: `punctuate`, `smart_format`, `diarize`, `detect_language`
+
+```python
+# Nova-2 with language and formatting options
+text = await ls.speech_to_text(
+    audio="recording.wav",
+    provider="deepgram/nova-2",
+    language="en-US",
+    punctuate=True,       # Add punctuation (default: True)
+    smart_format=True,    # Smart formatting (default: True)
+)
+
+# Deepgram Aura TTS streaming
+async for chunk in ls.text_to_speech_stream(
+    text="Hello world",
+    provider="deepgram/aura",
+    voice="asteria",
+    language="en",
+    sample_rate=24000,
+):
+    play_audio(chunk)
+```
+
+### Cartesia
+
+**TTS:**
+- Models: `sonic-3`, `sonic-2`, `sonic`
+- Voices: UUID format (e.g., `79a125e8-cd45-4c13-8a67-188112f4dd22`)
+- Formats: `pcm_s16le`, `wav`, `mp3`
+- Streaming sample rate: 16000Hz (batch can use 44100Hz)
+
+**ASR:**
+- Model: `ink-whisper`
+- Encoding: `pcm_s16le`, `linear16`
+
+```python
+# Cartesia TTS streaming
+async for chunk in ls.text_to_speech_stream(
+    text="Hello world",
+    provider="cartesia/sonic-3",
+    voice="79a125e8-cd45-4c13-8a67-188112f4dd22",
+    language="en",
+    sample_rate=16000,
+):
+    play_audio(chunk)
+```
+
+### OpenAI
+
+**TTS (Batch only, no streaming):**
+- Models: `tts-1`, `tts-1-hd`
+- Voices: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`
+
+**ASR (Batch only, no streaming):**
+- Model: `whisper-1`
+
+```python
+# OpenAI TTS
+audio = await ls.text_to_speech(
+    text="Hello",
+    provider="openai/tts-1/alloy"
+)
+
+# OpenAI Whisper
+text = await ls.speech_to_text(
+    audio="recording.mp3",
+    provider="openai/whisper-1"
+)
+```
+
+### Azure Speech Services
+
+**TTS:**
+- Voices: Format like `en-US-AvaMultilingualNeural`
+- Requires: `azure_speech_key` and `azure_speech_region`
+- Two ways to specify voice (both work):
+
+**ASR (Batch only):**
+- Requires: `azure_speech_key` and `azure_speech_region`
+- Language: BCP-47 format (e.g., `en-US`, `es-MX`)
+
+```python
+ls = LiteSpeech(
+    azure_speech_key="your-key",
+    azure_speech_region="eastus"
+)
+
+# Azure TTS - Full format (voice in provider string)
+audio = await ls.text_to_speech(
+    text="Hello",
+    provider="azure/en-US-AvaMultilingualNeural"
+)
+
+# Azure TTS - Split format (voice + language separate)
+audio = await ls.text_to_speech(
+    text="Hello",
+    provider="azure",
+    voice="AvaMultilingualNeural",
+    language="en-US"
+)
+
+# Azure ASR (uses BCP-47 language codes)
+text = await ls.speech_to_text(
+    audio="recording.wav",
+    provider="azure",
+    language="en-US"
+)
+```
+
+---
+
+## Error Handling
+
+### Exception Hierarchy
+
+```
+LiteSpeechError (base)
+├── ProviderError          # Provider-specific errors (includes status_code)
+├── StreamingError         # Streaming-related errors
+├── AudioFormatError       # Audio format/conversion errors
+├── AuthenticationError    # API key/authentication errors
+├── ProviderNotFoundError  # Provider not found in registry
+└── UnsupportedOperationError  # Operation not supported by provider
+```
+
+### Usage
+
+```python
+from litespeech import LiteSpeech
+from litespeech.exceptions import (
+    AuthenticationError,
+    ProviderError,
+    AudioFormatError,
+    UnsupportedOperationError
+)
+
+try:
+    text = await ls.speech_to_text(audio, provider="deepgram/nova-2")
+except AuthenticationError as e:
+    print(f"Auth failed for {e.provider}: {e}")
+except ProviderError as e:
+    print(f"Provider error (status {e.status_code}): {e}")
+except AudioFormatError as e:
+    print(f"Audio format issue: {e}")
+except UnsupportedOperationError as e:
+    print(f"Not supported: {e}")
+```
+
+### Error Philosophy
+
+- **Fail fast with actionable errors**: Shows current state, expected state, and specific fixes
+- **Warn, don't block**: Non-optimal configs (like non-recommended sample rates) warn but proceed
+- **Trust user for raw PCM**: Can't validate format without headers - user must know their audio
+
+---
+
+## Examples
+
+### FastAPI Voice Assistant
+
+```python
+from fastapi import FastAPI, WebSocket
+from litespeech import LiteSpeech
+from openai import AsyncOpenAI
+
+app = FastAPI()
+ls = LiteSpeech()
+openai = AsyncOpenAI()
+
+@app.websocket("/voice-assistant")
+async def voice_assistant(ws: WebSocket):
+    await ws.accept()
+
+    # ASR: Transcribe user speech
+    async def audio_stream():
+        while True:
+            data = await ws.receive_bytes()
+            if not data:
+                break
+            yield data
+
+    async for result in ls.speech_to_text_stream(
+        audio_stream=audio_stream(),
+        provider="deepgram/nova-2",
+        sample_rate=16000
+    ):
+        if not result.is_final:
+            continue
+
+        # LLM: Generate response
+        llm_stream = await openai.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": result.text}],
+            stream=True
+        )
+
+        # TTS: Stream audio back
+        async for audio in ls.text_to_speech_stream(
+            text_stream=llm_stream,
+            provider="elevenlabs/eleven_turbo_v2_5",
+            output_format="pcm_16000"
+        ):
+            await ws.send_bytes(audio)
+```
+
+### Microphone Streaming with sounddevice
+
+```python
+import sounddevice as sd
+import queue
+import asyncio
+from collections.abc import AsyncIterator
+from litespeech import LiteSpeech
+
+# Audio configuration
+SAMPLE_RATE = 16000
+CHANNELS = 1
+CHUNK_SIZE = 4096
+
+async def microphone_stream() -> AsyncIterator[bytes]:
+    """Stream audio from microphone in real-time."""
+    # Use thread-safe queue since callback runs in different thread
+    audio_queue = queue.Queue()
+
+    def audio_callback(indata, frames, time, status):
+        if status:
+            print(f"[Audio Status] {status}")
+        # Copy data - sounddevice reuses buffers!
+        audio_queue.put(indata.copy().tobytes())
+
+    # Open microphone stream
+    stream = sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype='int16',
+        blocksize=CHUNK_SIZE // 2,
+        callback=audio_callback,
+    )
+
+    with stream:
+        while True:
+            try:
+                chunk = audio_queue.get(timeout=0.1)
+                yield chunk
+            except queue.Empty:
+                await asyncio.sleep(0.01)
+                continue
+
+async def main():
+    ls = LiteSpeech()
+
+    async for result in ls.speech_to_text_stream(
+        audio_stream=microphone_stream(),
+        provider="deepgram/nova-2",
+        language="en",
+        sample_rate=SAMPLE_RATE,
+        channels=CHANNELS,
+        encoding="linear16",
+        interim_results=True,
+    ):
+        if result.is_final:
+            print(f"\n✓ {result.text}")
+        else:
+            print(f"\r  {result.text}...", end="", flush=True)
+
+asyncio.run(main())
+```
+
+### Batch Processing Multiple Files
+
+```python
+import asyncio
+from pathlib import Path
+from litespeech import LiteSpeech
+
+async def transcribe_all(directory: str):
+    ls = LiteSpeech()
+    audio_files = Path(directory).glob("*.wav")
+
+    tasks = [
+        ls.speech_to_text(str(f), provider="deepgram/nova-2")
+        for f in audio_files
+    ]
+
+    results = await asyncio.gather(*tasks)
+    return dict(zip(audio_files, results))
+
+transcriptions = asyncio.run(transcribe_all("./recordings"))
+for file, text in transcriptions.items():
+    print(f"{file.name}: {text[:100]}...")
+```
+
+---
+
+## Development
+
+### Setup
+
+```bash
+# Clone repository
+git clone https://github.com/your-org/litespeech.git
+cd litespeech
+
+# Install with dev dependencies
+uv pip install -e ".[dev]"
+
+# Install with audio support
+uv pip install -e ".[audio]"
+```
+
+### Testing
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_audio.py
+
+# Run with coverage
+pytest --cov=litespeech --cov-report=html
+
+# Run specific test
+pytest tests/test_audio.py::test_wav_to_wav_no_conversion -v
+```
+
+### Linting & Type Checking
+
+```bash
+# Format and lint with ruff
+ruff check litespeech/
+ruff format litespeech/
+
+# Type check with mypy
+mypy litespeech/
+```
+
+### Project Structure
+
+```
+litespeech/
+├── __init__.py          # Public API exports
+├── client.py            # Main LiteSpeech class
+├── config.py            # API key configuration
+├── exceptions.py        # Exception hierarchy
+├── version.py           # Version info
+├── providers/
+│   ├── base.py          # Abstract provider interfaces
+│   ├── registry.py      # Provider discovery and routing
+│   ├── tts/             # TTS providers (elevenlabs, deepgram, cartesia, openai, azure)
+│   └── asr/             # ASR providers (elevenlabs, deepgram, cartesia, openai, azure)
+├── audio/
+│   ├── types.py         # AudioFormat, AudioInfo, AudioChunk
+│   ├── detection.py     # Format detection
+│   ├── conversion.py    # Format conversion
+│   ├── specs.py         # Provider specifications
+│   └── stream_validator.py  # Stream validation
+├── adapters/
+│   ├── base.py          # StreamAdapter interface
+│   ├── auto_detect.py   # LLM stream auto-detection
+│   ├── openai_adapter.py
+│   ├── anthropic_adapter.py
+│   └── litellm_adapter.py
+└── utils/
+    ├── logging.py       # Logging setup
+    └── debug.py         # Debug utilities
+```
+
+### Adding a New Provider
+
+1. Create provider class in `providers/{tts,asr}/{provider_name}.py`:
+
+```python
+from litespeech.providers.base import ASRProvider, ProviderInfo, ProviderCapabilities
+
+class MyProviderASRProvider(ASRProvider):
+    """My Provider ASR implementation."""
+
+    DEFAULT_MODEL = "my-model"
+
+    def __init__(self, api_key: str | None = None):
+        super().__init__(api_key)
+        self._api_key = api_key or os.environ.get("MYPROVIDER_API_KEY")
+
+    @property
+    def info(self) -> ProviderInfo:
+        return ProviderInfo(
+            name="myprovider",
+            display_name="My Provider",
+            capabilities=ProviderCapabilities(asr_batch=True, asr_streaming=True),
+            default_model=self.DEFAULT_MODEL,
+        )
+
+    @classmethod
+    def get_audio_specs(cls, model: str | None = None) -> dict:
+        return {"preferred": {"format": "wav"}, "recommended_sample_rate": 16000}
+
+    async def speech_to_text(self, audio, model=None, language=None, **kwargs) -> str:
+        # Implementation
+        ...
+
+    async def speech_to_text_stream(self, audio_stream, model=None, **kwargs):
+        # Implementation
+        ...
+```
+
+2. Register in `providers/{tts,asr}/__init__.py`:
+
+```python
+from .myprovider import MyProviderASRProvider
+```
+
+That's it! Your provider is now available: `ls.speech_to_text(audio, provider="myprovider")`
+
+### Publishing to PyPI
+
+**For maintainers: How to publish a new release**
+
+1. **Update version** in `pyproject.toml`:
+   ```toml
+   version = "0.2.0"  # Bump version
+   ```
+
+2. **Commit and tag**:
+   ```bash
+   git add .
+   git commit -m "Release v0.2.0"
+   git tag v0.2.0
+   git push origin main --tags
+   ```
+
+3. **Build and publish**:
+   ```bash
+   # Clean old builds
+   rm -rf dist/ build/ *.egg-info
+
+   # Build with UV
+   uv build
+
+   # Test on TestPyPI (optional but recommended)
+   uv publish --publish-url https://test.pypi.org/legacy/
+
+   # Publish to PyPI
+   uv publish
+   ```
+
+**What gets published:**
+- Wheel file (`.whl`) - Contains `litespeech/` package code
+- Source distribution (`.tar.gz`) - Contains code + examples + docs
+
+**Note:** Examples are included in the source distribution and visible on PyPI, but not installed with `pip install`. Users can find examples on GitHub or by downloading the source tarball.
+
+---
+
+## License
+
+MIT License
