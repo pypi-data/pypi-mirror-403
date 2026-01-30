@@ -1,0 +1,48 @@
+# =============================================================================
+# CORRECTION APPLIER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent applies corrections to journal entries when "modify_and_approve"
+# is selected at the HITL gate. It marks original entries as "superseded"
+# and creates new corrected entries with status "processed". This agent only
+# runs when argus_review.decision == "modify_and_approve" and correction
+# suggestions are available.
+#
+# =============================================================================
+id: argus_correction_applier
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/argus_correction_applier
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.argus.argus_tools
+  toolkits: ["argus"]
+  tools: ["argus.apply_correction", "argus.verify_correction"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/argus_correction_applier.jinja
+  inputs:
+    inline: |
+      - HITL Decision: {{argus_review.decision}}
+      - Correction Suggestions: {{argus_correction_suggester}}
+      - Extracted Entry: {{argus_journal_extractor.extracted_entry}}
+      - Current Journal Transaction: {{current_journal}}
+      - Database Path: {{argus_pending_journal_scanner.database_path}}
+      - Run ID: {{argus_pending_journal_scanner.run_id}}
+      - Project Directory: {{project_dir}}

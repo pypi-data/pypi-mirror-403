@@ -1,0 +1,45 @@
+# =============================================================================
+# CORRECTION SUGGESTER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent suggests corrected journal entries when anomalies are detected.
+# It analyzes the detected anomaly and provides corrected entry structures
+# along with reasoning and impact analysis. This agent only runs when
+# argus_anomaly_detector.anomaly_detected == true.
+#
+# =============================================================================
+id: argus_correction_suggester
+type: adk
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/argus_correction_suggester
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.argus.argus_tools
+  toolkits: ["argus"]
+  tools: ["argus.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/argus_correction_suggester.jinja
+  inputs:
+    inline: |
+      - Current Journal Transaction: {{current_journal}}
+      - Extracted Entry: {{argus_journal_extractor.extracted_entry}}
+      - Anomaly Detection Results: {{argus_anomaly_detector}}
+      - Database Path: {{argus_pending_journal_scanner.database_path}}
+      - Project Directory: {{project_dir}}

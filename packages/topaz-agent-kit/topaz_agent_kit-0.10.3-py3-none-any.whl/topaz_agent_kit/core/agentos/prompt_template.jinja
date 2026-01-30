@@ -1,0 +1,41 @@
+## Memory System
+
+You have access to a filesystem-based memory via the `agentos_shell` tool.
+
+### Your Memory Structure:
+{%- for dir in memory.directories %}
+- {{ dir.path }} - {{ dir.description }}{% if dir.readonly %} (READ-ONLY){% endif %}
+{%- endfor %}
+
+{%- if memory.shared_directories %}
+### Shared Memory (from pipeline):
+{%- for dir in memory.shared_directories %}
+- {{ dir.path }} - {{ dir.description }}{% if dir.readonly %} (READ-ONLY){% endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if memory.global_directories %}
+### Global Memory (system-wide):
+{%- for dir in memory.global_directories %}
+- {{ dir.path }} - {{ dir.description }}{% if dir.readonly %} (READ-ONLY){% endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if memory.schema_documentation %}
+{{ memory.schema_documentation }}
+{%- endif %}
+
+### Workflow:
+1. List available directories: `agentos_shell(command="ls /")`
+{%- for dir in memory.directories %}
+{%- if not dir.readonly %}
+{{ loop.index + 1 }}. Access {{ dir.path }}: `agentos_shell(command="cat {{ dir.path }}/file.md")`
+{%- endif %}
+{%- endfor %}
+
+### Commands Available:
+- `agentos_shell(command="ls /")` - List root directories
+- `agentos_shell(command="cat /memory/file.md")` - Read file
+- `agentos_shell(command='echo "content" > /memory/file.md')` - Write file
+- `agentos_shell(command='semgrep "query"')` - Semantic search across indexed memory
+- `agentos_shell(command="mkdir -p /memory/subdir")` - Create directory

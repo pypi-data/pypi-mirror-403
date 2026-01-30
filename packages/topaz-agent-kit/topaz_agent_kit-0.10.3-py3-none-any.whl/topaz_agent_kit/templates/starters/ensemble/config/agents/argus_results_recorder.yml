@@ -1,0 +1,49 @@
+# =============================================================================
+# RESULTS RECORDER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent saves processing results to the database. It updates journal entry
+# status, records anomaly detection results, correction suggestions, and HITL
+# decisions. It also inserts records into anomaly_detection_results,
+# correction_suggestions, and validation_results tables.
+#
+# =============================================================================
+id: argus_results_recorder
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/argus_results_recorder
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.argus.argus_tools
+  toolkits: ["argus"]
+  tools: ["argus.save_processing_results"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/argus_results_recorder.jinja
+  inputs:
+    inline: |
+      - Current Journal Transaction: {{current_journal}}
+      - Extracted Entry: {{argus_journal_extractor.extracted_entry}}
+      - Anomaly Detection Results: {{argus_anomaly_detector}}
+      - Correction Suggestions: {% if argus_correction_suggester %}{{argus_correction_suggester}}{% else %}None{% endif %}
+      - Decision Router Results: {% if argus_decision_router %}{{argus_decision_router}}{% else %}None (straight-through, decision router did not run){% endif %}
+      - HITL Decision: {{argus_review.decision | default(None)}}
+      - Run ID: {{argus_pending_journal_scanner.run_id}}
+      - Database Path: {{argus_pending_journal_scanner.database_path}}
+      - Project Directory: {{project_dir}}

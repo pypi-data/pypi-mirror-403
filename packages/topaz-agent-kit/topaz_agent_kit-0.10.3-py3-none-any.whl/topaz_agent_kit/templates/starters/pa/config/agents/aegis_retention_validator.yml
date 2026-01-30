@@ -1,0 +1,66 @@
+# =============================================================================
+# RETENTION VALIDATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent validates that retention has been applied correctly according to
+# the SOW's retention percentage. It checks if the invoice amount has been
+# reduced by the appropriate retention amount.
+#
+# =============================================================================
+id: aegis_retention_validator
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_retention_validator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# MEMORY CONFIGURATION
+# =============================================================================
+memory:
+  inherit: true
+  directories:
+    - path: "/memory/validation_results/"
+      description: "Stored validation results"
+      readonly: false
+      auto_index: true
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.aegis.aegis_tools
+  toolkits: ["aegis"]
+  tools: ["aegis.get_sow_retention_info"]
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  enabled: true
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits:
+        - "agentos_memory"
+      tools:
+        - "agentos_shell"
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_retention_validator.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Extracted Invoice Data: {{aegis_translator.translated_data.invoice_data if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data}}
+      - Database Path: {{aegis_pending_invoice_scanner.database_path}}
+      - Project Directory: {{project_dir}}

@@ -1,0 +1,248 @@
+# =============================================================================
+# PIPELINE CONFIGURATION - Argus
+# =============================================================================
+#
+# Argus is an anomaly detection pipeline for financial journal entries that acts
+# as an all-seeing watchman for financial irregularities. Like the mythological
+# Argus who had a hundred eyes, this pipeline scans journal entries for
+# anomalies before posting, detects Capital/Revenue and Lease/ROU misclassifications,
+# suggests corrections, and routes entries to async human review or straight-through
+# processing. Async human reviews can be viewed and acted upon in the Operations
+# Center, ensuring only valid journal entries proceed while catching anomalies
+# before they impact the financial records.
+#
+# =============================================================================
+
+name: "Argus"
+description: "Argus is an anomaly detection pipeline for financial journal entries that acts as an all-seeing watchman for financial irregularities. Like the mythological Argus who had a hundred eyes, this pipeline scans journal entries for anomalies before posting, detects Capital/Revenue and Lease/ROU misclassifications, suggests corrections, and routes entries to async human review or straight-through processing. Async human reviews can be viewed and acted upon in the Operations Center, ensuring only valid journal entries proceed while catching anomalies before they impact the financial records."
+
+# =============================================================================
+# EXECUTION SETTINGS - Async HITL Configuration
+# =============================================================================
+
+execution_settings:
+  hitl_mode: "async"              # Enable async HITL for this pipeline
+  checkpoint_expiry_days: 7       # Checkpoints expire after 7 days
+
+# =============================================================================
+# CASE MANAGEMENT CONFIGURATION
+# =============================================================================
+# Reference to external case configuration file that defines:
+# - Case identification (how to extract case ID)
+# - Display fields for list/detail views
+# - HITL preview fields
+#
+# tracking_variables (optional): Configure variable names for case tracking in loops
+#   - hitl_queued: Variable name for tracking HITL-queued cases (default: "hitl_queued_cases")
+#   - completed: Variable name for tracking completed cases (default: "completed_cases")
+#   These variables are automatically created by LoopRunner when async HITL is enabled
+#   and case management is configured. They are available to downstream agents (e.g., summary reporters).
+# =============================================================================
+
+case_management:
+  config_file: "cases/argus.yml"
+  tracking_variables:
+    hitl_queued: "hitl_queued_cases"
+    completed: "completed_cases"
+
+# =============================================================================
+# NODES REGISTRY
+# =============================================================================
+
+nodes:
+  - id: argus_pending_journal_scanner
+    config_file: "agents/argus_pending_journal_scanner.yml"
+  - id: argus_journal_extractor
+    config_file: "agents/argus_journal_extractor.yml"
+  - id: argus_anomaly_detector
+    config_file: "agents/argus_anomaly_detector.yml"
+  - id: argus_correction_suggester
+    config_file: "agents/argus_correction_suggester.yml"
+  - id: argus_decision_router
+    config_file: "agents/argus_decision_router.yml"
+  - id: argus_correction_applier
+    config_file: "agents/argus_correction_applier.yml"
+  - id: argus_results_recorder
+    config_file: "agents/argus_results_recorder.yml"
+  - id: argus_summary_reporter
+    config_file: "agents/argus_summary_reporter.yml"
+
+# =============================================================================
+# PIPELINE PATTERN
+# =============================================================================
+
+pattern:
+  type: sequential
+  name: "Argus Anomaly Detection Flow"
+  description: |
+    ## Argus Processing Flow
+    
+    This pipeline automatically detects and handles anomalies in financial journal entries:
+    
+    1. **Pending Journal Scanner** - Finds all pending journal entries in the database
+
+    2. **Processing Loop** - Processes each journal transaction (debit/credit pair) one by one<br>
+        **2.1.&nbsp;Journal Extractor** - Retrieves and structures the journal entry data<br>
+        **2.2.&nbsp;Anomaly Detector** - Checks for misclassifications (Capital/Revenue or Lease/ROU issues)<br>
+        **2.3.&nbsp;Correction Suggester** - When an anomaly is found, suggests how to fix it<br>
+            - **Clean entries** (no anomaly): Skip directly to Results Recorder for automatic approval<br>
+            - **Anomalous entries**: Continue to Decision Router for human review<br>
+        **2.4.&nbsp;Decision Router** - Analyzes the anomaly and prepares options for human review<br>
+        **2.5.&nbsp;Human Review** - Human reviewer decides what to do:<br>
+            - **Approve**: Accept the entry as-is<br>
+            - **Reject**: Decline the entry<br>
+            - **Modify and Approve**: Apply corrections and approve (triggers Correction Applier)<br>
+            - **Request Clarification**: Ask for more information<br>
+        **2.6.&nbsp;Correction Applier** - Applies the corrections to the database (only when "Modify and Approve" is selected)<br>
+        **2.7.&nbsp;Results Recorder** - Saves all decisions and results to the database
+    
+    3. **Summary Reporter** - Generates a final report of all processed entries
+    
+    **Key Behavior:**
+    - Clean entries are automatically approved (straight-through processing)
+    - Entries with anomalies are queued for human review in the Operations Center
+    - The pipeline continues processing other entries while waiting for human decisions
+  steps:
+    - node: argus_pending_journal_scanner
+    - type: loop
+      name: "Journal Entry Processing Loop"
+      description: |
+        ## Processing All Pending Journal Entries
+        
+        This loop processes each pending journal transaction one at a time:
+        
+        **What Happens:**
+        - Each transaction contains two entries (debit and credit) that must be processed together
+        - The pipeline checks each transaction for anomalies
+        - Clean transactions are automatically approved
+        - Transactions with anomalies are sent for human review
+        - The pipeline continues processing other transactions while waiting for human decisions
+        - All results are collected for the final summary report
+        
+        **Processing Flow:**
+        1. Extract transaction data
+        2. Check for anomalies
+        3. Route to automatic approval or human review
+        4. Apply corrections if needed
+        5. Save results
+        6. Move to next transaction
+        
+        {% if argus_pending_journal_scanner.pending_journals and argus_pending_journal_scanner.pending_journals | length > 0 %}
+        ## Pending Transactions to Process
+        
+        The following transactions are waiting to be processed:
+        
+        | Transaction ID | Company Code | Business Area | Debit GL Account | Credit GL Account | Assignment | Amount | Posting Date | Status |
+        |----------------|--------------|---------------|------------------|-------------------|------------|--------|--------------|--------|
+        {%- for journal in argus_pending_journal_scanner.pending_journals %}
+        | {{ journal.transaction_id }} | {{ journal.company_code }} | {{ journal.business_area or 'N/A' }} | {{ journal.gl_account }} | {{ journal.credit_gl_account or 'N/A' }} | {{ journal.assignment or 'N/A' }} | {{ journal.amount }} | {{ journal.posting_date }} | {{ journal.status or 'pending' }} |
+        {%- endfor %}
+        
+        **Note**: Each transaction has two entries (debit and credit) that are processed together.
+        {% endif %}
+      iterate_over: "argus_pending_journal_scanner.pending_journals"
+      loop_item_key: "current_journal"
+      accumulate_results: true
+      termination:
+        max_iterations: 100  # Safety limit
+      body:
+        type: sequential
+        name: "Single Journal Transaction Workflow"
+        description: |
+          ## Processing This Journal Transaction
+          
+          This workflow processes one journal transaction (debit/credit pair) through the following steps:
+          
+          **Step 1: Extract Journal Data**
+          - Retrieves both debit and credit entries from the database
+          - Structures the data for analysis
+          
+          **Step 2: Detect Anomalies**
+          - Checks for Capital/Revenue misclassifications (e.g., capital account used for revenue transactions)
+          - Checks for Lease/ROU misclassifications (e.g., ROU asset account used incorrectly)
+          
+          **Step 3: Handle Results**
+          
+          **If No Anomaly Found:**
+          - Entry is clean and valid
+          - Automatically approved and saved to database
+          - No human review needed
+          
+          **If Anomaly Detected:**
+          - Correction suggestions are generated
+          - Decision options are prepared for human review
+          - Entry is queued for review in Operations Center
+          - Human reviewer can:
+            - **Approve** the entry as-is
+            - **Reject** the entry
+            - **Modify and Approve** - corrections are automatically applied to the database
+            - **Request Clarification** - ask for more information
+          
+          **Step 4: Save Results**
+          - All decisions and corrections are recorded in the database
+          - Entry status is updated (processed, rejected, or pending clarification)
+          
+          {% if current_journal %}
+          ## Current Transaction Details
+          
+          | Field | Value |
+          |-------|-------|
+          | Transaction ID | {{ current_journal.transaction_id }} |
+          | Company Code | {{ current_journal.company_code }} |
+          | Business Area | {{ current_journal.business_area or 'N/A' }} |
+          | Assignment | {{ current_journal.assignment or 'N/A' }} |
+          | Debit GL Account | {{ current_journal.gl_account }} |
+          | Credit GL Account | {{ current_journal.credit_gl_account or 'N/A' }} |
+          | Amount | {{ current_journal.amount }} |
+          | Posting Date | {{ current_journal.posting_date }} |
+          | Status | {{ current_journal.status or 'pending' }} |
+          
+          **Note**: Each transaction has two entries (debit and credit) that are processed together.
+          {% endif %}
+        steps:
+          - node: argus_journal_extractor
+          - node: argus_anomaly_detector
+          - node: argus_correction_suggester
+            condition: "argus_anomaly_detector.anomaly_detected == true"
+            on_false:
+              - node: argus_results_recorder
+          - node: argus_decision_router
+          - gate: argus_review
+            on_approve: continue
+            on_reject: continue
+            on_modify_and_approve:
+              - node: argus_correction_applier
+            on_request_clarification: continue
+          - node: argus_results_recorder
+    - node: argus_summary_reporter
+
+# =============================================================================
+# HITL SECTION - Human-in-the-loop gates
+# =============================================================================
+
+gates:
+  - id: argus_review
+    type: selection
+    title: "Review Journal Entry Anomaly"
+    description:
+      jinja: "hitl/argus_review.jinja"
+    options_source: "argus_decision_router.dynamic_options"
+    default: "{{ argus_decision_router.recommended_action }}"
+    context_key: "argus_review_decision"
+    timeout_ms: 300000
+    on_timeout: default
+    resume_match_field: "transaction_id"  # Match by transaction_id when resuming from checkpoint
+
+# =============================================================================
+# OUTPUTS SECTION - Intermediate and Final Outputs
+# =============================================================================
+
+outputs:
+  final:
+    node: argus_summary_reporter
+    selectors:
+      - summary_report
+      - summary_report_path
+      - statistics
+      - error
+    transform: "{{ summary_report if summary_report else 'No summary available' }}"

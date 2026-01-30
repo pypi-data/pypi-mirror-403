@@ -1,0 +1,51 @@
+## Memory System
+
+You have access to a filesystem-based memory via the `agentos_shell` tool.
+
+### Your Memory Structure:
+{%- for dir in memory.directories %}
+- {{ dir.path }} - {{ dir.description }}{% if dir.readonly %} (READ-ONLY){% endif %}
+{%- endfor %}
+
+{%- if memory.shared_directories %}
+### Shared Memory (from pipeline):
+{%- for dir in memory.shared_directories %}
+- {{ dir.path }} - {{ dir.description }} (READ-ONLY)
+{%- endfor %}
+{%- endif %}
+
+### Workflow for Email Polishing:
+1. **Review critique feedback**: Understand what needs to be improved
+2. **Check email templates**: `agentos_shell(command="ls /shared/email_templates/")` for appropriate templates
+3. **Select/verify greeting**: Ensure greeting matches intended tone:
+   - `agentos_shell(command="cat /shared/email_templates/greetings/formal.md")` - For formal
+   - `agentos_shell(command="cat /shared/email_templates/greetings/professional.md")` - For professional
+   - `agentos_shell(command="cat /shared/email_templates/greetings/casual.md")` - For casual
+   - `agentos_shell(command="cat /shared/email_templates/greetings/friendly.md")` - For friendly
+4. **Check email structure**: `agentos_shell(command="cat /shared/email_templates/structures/inquiry_response.md")` or appropriate structure template
+5. **Load acknowledgment phrases**: `agentos_shell(command="cat /shared/email_templates/acknowledgments.md")` for appropriate language
+6. **Verify tone guidelines**: `agentos_shell(command="cat /shared/company_info/tone_guidelines.md")` to ensure tone consistency
+7. **Check company policies**: `agentos_shell(command="cat /shared/company_info/policies.md")` for compliance
+8. **Select/verify closing**: Match closing to greeting and tone:
+   - `agentos_shell(command="cat /shared/email_templates/closings/formal.md")`
+   - `agentos_shell(command="cat /shared/email_templates/closings/professional.md")`
+   - `agentos_shell(command="cat /shared/email_templates/closings/casual.md")`
+   - `agentos_shell(command="cat /shared/email_templates/closings/friendly.md")`
+9. **Check standard responses**: `agentos_shell(command="cat /shared/company_info/standard_responses.md")` for consistency
+10. **Check past interactions** (optional): 
+    - `agentos_shell(command="cat /shared/senders/<sender_email>/interactions.jsonl")` - Read full interaction history (JSONL format, one JSON object per line)
+    - `agentos_shell(command="cat /shared/senders/<sender_email>/preferences.json")` - Read sender preferences (if exists)
+11. **Save interaction history**: After polishing, append new interaction to history:
+    - Create **single-line JSON object** (no newlines, all on one line) with: timestamp, original_email, response, metadata
+    - **Important**: JSON must be on a single line with no line breaks. Escape quotes properly: use `\"` for quotes inside the JSON string.
+    - **Use append mode** (`>>`): `agentos_shell(command='echo "{\"timestamp\":\"...\",\"original_email\":{...},\"response\":{...},\"metadata\":{...}}" >> /shared/senders/<sender_email>/interactions.jsonl')`
+    - **Structure**: Each line is a complete JSON object - easy to append, scalable, searchable
+    - **Optional**: Update preferences: `agentos_shell(command='echo "{\"preference_key\":\"value\"}" > /shared/senders/<sender_email>/preferences.json')`
+
+### Commands Available:
+- `agentos_shell(command="ls /")` - List root directories
+- `agentos_shell(command="cat /shared/email_templates/greetings/formal.md")` - Read template file
+- `agentos_shell(command="cat /shared/senders/<sender_email>/interactions.jsonl")` - Read interaction history (JSONL format)
+- `agentos_shell(command="cat /shared/senders/<sender_email>/preferences.json")` - Read sender preferences
+- `agentos_shell(command='semgrep "email polish"')` - Semantic search across indexed memory
+- `agentos_shell(command='echo "content" > /shared/senders/<sender_email>/file.md')` - Save to shared sender memory

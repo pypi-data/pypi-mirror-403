@@ -1,0 +1,67 @@
+# =============================================================================
+# SIGNED ANALYZER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent analyzes signed contract terms, obligations, and risks, and
+# generates a structured summary with markdown report.
+#
+# =============================================================================
+id: covenant_signed_analyzer
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_signed_analyzer
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# MEMORY CONFIGURATION
+# =============================================================================
+memory:
+  inherit: true
+  directories:
+    - path: "/memory/contract_analysis/"
+      description: "Stored contract analysis results"
+      readonly: false
+      auto_index: true
+    - path: "/workspace/"
+      description: "Temporary workspace"
+      readonly: false
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  enabled: true
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits:
+        - "agentos_memory"
+      tools:
+        - "agentos_shell"
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_signed_analyzer.jinja
+  inputs:
+    inline: |
+      SOW Number: {{covenant_orchestrator.sow_number}}
+      Extracted Data: {{covenant_signed_extractor.extracted_data}}
+      Project Directory: {{project_dir}}

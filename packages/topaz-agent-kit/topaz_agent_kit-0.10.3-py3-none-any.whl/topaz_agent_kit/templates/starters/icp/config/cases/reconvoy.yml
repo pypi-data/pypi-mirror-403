@@ -1,0 +1,235 @@
+# =============================================================================
+# CASE CONFIGURATION - ReconVoy
+# =============================================================================
+#
+# Defines how cases are displayed and managed for ReconVoy pipeline.
+# Each case group (multiple related BlackLine items) is tracked for
+# async HITL review when required.
+#
+# =============================================================================
+
+identity:
+  # Each case gets its own case ID based on the first BlackLine item
+  # Format: RECONVOY-{first_item_id}
+  prefix: "RECONVOY"
+  uniqueness: "current_blackline_item.item_id"  # Uses item_id from current_blackline_item
+
+# =============================================================================
+# LIST VIEW - Case List Display (Tabbed View)
+# =============================================================================
+
+list_view:
+  # Define pipeline-specific fields (extracted from upstream context)
+  pipeline_fields:
+    - key: "blackline_item_id"
+      field: "current_blackline_item.item_id"
+      label: "Blackline Item ID"
+      type: text
+    - key: "total_blackline_gbp"
+      field: "reconvoy_sop_matcher.total_blackline_gbp"
+      label: "Blackline Amount (GBP)"
+      type: number
+    - key: "matched_amount_gbp"
+      field: "reconvoy_sop_matcher.total_matched_gbp"
+      label: "Matched Amount (GBP)"
+      type: number
+    - key: "variance_gbp"
+      field: "reconvoy_sop_matcher.variance_gbp"
+      label: "Variance (GBP)"
+      type: number
+    - key: "variance_pct"
+      field: "reconvoy_sop_matcher.variance_percent"
+      label: "Variance (%)"
+      type: percentage
+
+  # Column order for ReconVoy pipeline tab
+  column_order:
+    - "case_id"                    # Common field
+    - "blackline_item_id"          # Pipeline field
+    - "total_blackline_gbp"        # Pipeline field
+    - "matched_amount_gbp"         # Pipeline field
+    - "variance_gbp"               # Pipeline field
+    - "variance_pct"               # Pipeline field
+    - "status"                     # Common field
+    - "hitl_status"                # Common field
+    - "created_at"                 # Common field
+    - "updated_at"                 # Common field
+    - "actions"                    # Common field
+
+# =============================================================================
+# DOCUMENTS - Case Documents Tab
+# =============================================================================
+
+documents: []
+
+# =============================================================================
+# DETAIL VIEW - Case Detail Display
+# =============================================================================
+
+detail_view:
+  sections:
+    - name: "BlackLine Item Information"
+      fields:
+        - field: "current_blackline_item.item_id"
+          label: "Item ID"
+          type: text
+        - field: "current_blackline_item.source"
+          label: "Source"
+          type: text
+        - field: "current_blackline_item.system_id"
+          label: "System ID"
+          type: text
+        - field: "current_blackline_item.trans_date"
+          label: "Transaction Date"
+          type: text
+        - field: "current_blackline_item.document_number"
+          label: "Document Number"
+          type: text
+        - field: "current_blackline_item.currency"
+          label: "Currency"
+          type: text
+        - field: "current_blackline_item.amount_foreign"
+          label: "Amount (Foreign)"
+          type: number
+        - field: "current_blackline_item.amount_local_gbp"
+          label: "Amount (GBP)"
+          type: number
+        - field: "current_blackline_item.reference_description"
+          label: "Reference/Description"
+          type: text
+
+    - name: "Case Items"
+      fields:
+        - field: "reconvoy_sop_matcher.case_items_markdown"
+          label: "All Items in Case Group"
+          type: markdown
+          condition: "reconvoy_sop_matcher.case_items_markdown IS NOT NULL"
+
+    - name: "Foreign Book Mappings"
+      fields:
+        - field: "reconvoy_sop_matcher.foreign_book_mappings_markdown"
+          label: "Foreign Book Entry Mappings"
+          type: markdown
+          condition: "reconvoy_sop_matcher.foreign_book_mappings_markdown IS NOT NULL"
+
+    - name: "FX & Variance Analysis"
+      fields:
+        - field: "reconvoy_sop_matcher.match_summary"
+          label: "FX & Variance Analysis"
+          type: markdown
+          condition: "reconvoy_sop_matcher.match_summary IS NOT NULL"
+
+    - name: "Proposed Journals"
+      fields:
+        - field: "reconvoy_sop_matcher.proposed_journals"
+          label: "Proposed UK Journal Entries"
+          type: json
+          condition: "reconvoy_sop_matcher.proposed_journals IS NOT NULL"
+        - field: "reconvoy_sop_matcher.proposed_journals_markdown"
+          label: "Journal Entries (Markdown)"
+          type: markdown
+          condition: "reconvoy_sop_matcher.proposed_journals_markdown IS NOT NULL"
+
+    - name: "Execution Trace"
+      fields:
+        - field: "reconvoy_sop_matcher.execution_trace"
+          label: "Step-by-Step Execution Trace"
+          type: multiline
+          condition: "reconvoy_sop_matcher.execution_trace IS NOT NULL"
+
+# =============================================================================
+# REVIEW RESPONSE OUTCOME - Post-HITL Response Results
+# =============================================================================
+
+review_response_outcome:
+  sections:
+    - name: "Processing Results"
+      fields:
+        - field: "reconvoy_review.decision"
+          label: "Human Review Decision"
+          type: text
+          condition: "reconvoy_review.decision IS NOT NULL"
+        - field: "reconvoy_results_recorder.route"
+          label: "Routing Path"
+          type: text
+          condition: "reconvoy_results_recorder.route IS NOT NULL"
+        - field: "reconvoy_journal_applier.journals_posted"
+          label: "Journals Posted"
+          type: boolean
+          condition: "reconvoy_journal_applier IS NOT NULL"
+        - field: "reconvoy_journal_applier.entry_ids"
+          label: "Journal Entry IDs"
+          type: json
+          condition: "reconvoy_journal_applier.entry_ids IS NOT NULL"
+
+    - name: "BlackLine Item Status"
+      fields:
+        - field: "reconvoy_journal_applier.new_status"
+          label: "New Status"
+          type: text
+          condition: "reconvoy_journal_applier.new_status IS NOT NULL"
+        - field: "reconvoy_journal_applier.blackline_items_updated"
+          label: "Items Updated"
+          type: number
+          condition: "reconvoy_journal_applier.blackline_items_updated IS NOT NULL"
+
+# =============================================================================
+# DASHBOARD - Pipeline-Specific Analytics Cards
+# =============================================================================
+
+dashboard:
+  enabled: true
+
+  cards:
+    # Card 1: Case Status Distribution
+    - type: "donut"
+      title: "Case Status"
+      icon: "GitMerge"
+      field: "status"
+      show_legend: true
+      show_percentages: true
+      colors:
+        processing: "blue"
+        hitl_pending: "amber"
+        completed: "green"
+        failed: "red"
+      value_mapping:
+        processing: "Processing"
+        hitl_pending: "Pending Human Review"
+        completed: "Completed"
+        failed: "Failed"
+
+    # Card 2: Total Amount (GBP)
+    - type: "metric"
+      title: "Total Amount (GBP)"
+      icon: "DollarSign"
+      field: "reconvoy_sop_matcher.total_blackline_gbp"
+      aggregation: "sum"
+      format: "currency"
+      color: "green"
+      visualization: "none"
+      footer:
+        - label: "Cases"
+          value: "{{totalCases}}"
+        - label: "Currency"
+          value: "GBP"
+    # Card 3: Average Variance (GBP)
+    - type: "metric"
+      title: "Average Variance (GBP)"
+      icon: "Activity"
+      field: "reconvoy_sop_matcher.variance_gbp"
+      aggregation: "avg"
+      format: "number"
+      decimals: 2
+      color: "blue"
+      visualization: "progress"
+
+    # Card 4: Cases Timeline
+    - type: "timeline"
+      title: "Cases Timeline"
+      icon: "Calendar"
+    
+    # Card 5: Response Method (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "response_method"
+      title: "Response Method"
