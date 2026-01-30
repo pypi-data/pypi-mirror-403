@@ -1,0 +1,93 @@
+  # LiveKit Plugins - Google Extended                                                                                                                                                                          
+                                                                                                                                                                                                               
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)                                                                                         
+                                                                                                                                                                                                               
+  This is an extended version of LiveKit's official [livekit-plugins-google](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-google) plugin with additional support for            
+  Anthropic/Claude models.                                                                                                                                                                                     
+                                                                                                                                                                                                               
+  ## About                                                                                                                                                                                                     
+                                                                                                                                                                                                               
+  This plugin extends the official LiveKit Google plugin to enable access to Anthropic's Claude models through Google Cloud's Vertex AI, while maintaining full compatibility with the original plugin's       
+  functionality.                                                                                                                                                                                               
+                                                                                                                                                                                                               
+  **Original Plugin:** [livekit-plugins-google](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-google)                                                                            
+  **License:** Apache 2.0                                                                                                                                                                                      
+  **Copyright:** Original work © 2023 LiveKit, Inc. | Modifications © 2026 Harsh Mahajan                                                                                                                    
+                                                                                                                                                                                                               
+  ## New Features                                                                                                                                                                                              
+                                                                                                                                                                                                               
+  This extended version adds the following capabilities:                                                                                                                                                       
+                                                                                                                                                                                                               
+  1. **Anthropic Model Support via Vertex AI**                                                                                                                                                                 
+     - Access Claude models (Opus, Sonnet, Haiku) through Google Cloud Vertex AI                                                                                                                                
+                                                                                                                                                                                                               
+  2. **Prompt Caching for Anthropic Models**                                                                                                                                                                   
+     - Cache system prompts (agent instructions)                                                                                                                                
+     - Configurable cache TTL (5 minutes or 1 hour)
+                                                                                                                                                                                                               
+  ## Installation
+
+  `pip install livekit-plugins-google-extended `                                                                                                                                                                 
+                                                                                                                                                                                                               
+  Additional Dependencies                                                                                                                                                                                      
+                                                                                                                                                                                                               
+  For Anthropic model support, you'll need:                                                                                                                                                                    
+                                                                                                                                                                                                               
+  `pip install 'anthropic[vertex]'`                                                                                                                                                                              
+                                                                                                                                                                                                               
+  Usage                                                                                                                                                                                                        
+                                                                                                                                                                                                               
+  Using Claude Models via Vertex AI                                                                                                                                                                            
+                                                                                                                                                                                                               
+  from livekit.plugins import google                                                                                                                                                                           
+                                                                                                                                                                                                               
+`  # Initialize with Anthropic model                                                                                                                                                                            
+  llm = google.LLM(                                                                                                                                                                                            
+      model="claude-sonnet-4-5@20250929",                                                                                                                                                                      
+      vertexai=True,                                                                                                                                                                                           
+      use_anthropic=True,                                                                                                                                                                                      
+      project="your-gcp-project",                                                                                                                                                                              
+      location="us-central1",                                                                                                                                                                                  
+      anthropic_caching=True,  # Enable prompt caching                                                                                                                                                         
+      anthropic_cache_ttl="5m"  # 5 minute cache duration                                                                                                                                                      
+  )     `                                                                                                                                                                                                       
+                                                                                                                                                                                                               
+  Available Claude Models                                                                                                                                                                                      
+                                                                                                                                                                                                               
+  - claude-opus-4-5@20251101                                                                                                                                                                                   
+  - claude-sonnet-4-5@20250929                                                                                                                                                                                 
+  - claude-haiku-4-5@20251001                                                                                                                                                                                  
+  - claude-3-haiku@20240307                                                                                                                                                                                    
+  - claude-sonnet-4@20250514                                                                                                                                                                                   
+  - claude-opus-4@20250514
+                                                                                                                                                                                                               
+  Original Features                                                                                                                                                                                            
+                                                                                                                                                                                                               
+  All original features from livekit-plugins-google are fully supported:                                                                                                                                       
+  - Google Gemini models                                                                                                                                                                                       
+  - Cloud Speech-to-Text                                                                                                                                                                                       
+  - Cloud Text-to-Speech                                                                                                                                                                                       
+  - Vertex AI integration                                                                                                                                                                                      
+                                                                                                                                                                                                               
+  See the https://docs.livekit.io/agents/integrations/google/ for details.                                                                                                                                     
+                                                                                                                                                                                                               
+  Attribution                                                                                                                                                                                                  
+                                                                                                                                                                                                               
+  This project is based on the https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-google developed by LiveKit, Inc.                                                                   
+                                                                                                                                                                                                               
+  Original work Copyright © 2023 LiveKit, Inc.                                                                                                                                                                 
+  Modifications Copyright © 2026 Harsh Mahajan                                                                                                                                                            
+                                                                                                                                                                                                               
+  Licensed under the Apache License, Version 2.0. See LICENSE for details.                                                                                                                                     
+                                                                                                                                                                                                               
+  Contributing                                                                                                                                                                                                 
+                                                                                                                                                                                                               
+  This is a personal extension of the official plugin. For issues related to:                                                                                                                                  
+  - Original functionality: Please report to https://github.com/livekit/agents/issues                                                                                                                          
+  - Anthropic integration features: Open an issue in this repository                                                                                                                                           
+                                                                                                                                                                                                               
+  Links                                                                                                                                                                                                        
+                                                                                                                                                                                                               
+  - https://docs.livekit.io/agents/                                                                                                                                                                            
+  - https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-google                                                                                                                         
+  - https://github.com/livekit/agents         
