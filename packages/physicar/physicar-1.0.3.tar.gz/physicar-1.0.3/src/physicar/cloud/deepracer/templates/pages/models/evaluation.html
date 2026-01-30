@@ -1,0 +1,271 @@
+{% extends "_base.html" %}
+
+{% block title %}{{ _("evaluation.page_title") }}{% endblock %}
+
+{% block styles %}
+<style>
+  /* Track Preview */
+  .track-preview-box {
+    min-height: 250px;
+    background: #f8f9fa;
+  }
+  .track-preview-box img {
+    max-height: 210px;
+    width: 100%;
+    object-fit: contain;
+  }
+  
+  /* Track Description */
+  .track-description-box {
+    min-height: 250px;
+    background: #f8f9fa;
+  }
+</style>
+<!-- SweetAlert2 CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+{% endblock %}
+
+{% block header %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="page-pretitle">{{ _("menu.models") }}</div>
+    <h2 class="page-title">{{ _("evaluation.page_title") }}</h2>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- MODEL NAME (읽기 전용) -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title mb-0">{{ _("model_list.col_name")|upper }}</h3>
+  </div>
+  <div class="card-body">
+    <div class="col-md-12">
+      <input type="text" class="form-control w-25" id="model-name-id" value="{{ model_name }}" disabled>
+    </div>
+  </div>
+</div>
+
+<!-- SIMULATION -->
+<div class="card mt-3" id="simulation-card-wrapper">
+  <div class="card-header">
+    <h3 class="card-title">{{ _("simulation.title")|upper }}</h3>
+  </div>
+  <div class="card-body">
+    <div class="row">
+      <!-- 왼쪽 컨트롤 영역 -->
+      <div class="col-12 col-md-4">
+        <div class="mb-3">
+          <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+            {{ _("simulation.choose_track") }}
+          </a>
+        </div>
+        <div class="mb-3">
+          <div class="form-label">{{ _("simulation.direction") }}</div>
+          <div>
+            {% set direction = main_simulation.direction|default('counterclockwise') %}
+            <label class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="clock-direction" value="clockwise"
+                {% if direction == 'clockwise' %}checked{% endif %}>
+              <span class="form-check-label">{{ _("common.clockwise") }}</span>
+            </label>
+            <label class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="clock-direction" value="counterclockwise"
+                {% if direction == 'counterclockwise' %}checked{% endif %}>
+              <span class="form-check-label">{{ _("common.counter_clockwise") }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-label">{{ _("simulation.race_type") }}</div>
+          <div>
+            {% set race_type = main_simulation.race_type|default('TIME_TRIAL') %}
+            <label class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="race-type" value="TIME_TRIAL"
+                {% if race_type == 'TIME_TRIAL' %}checked{% endif %}>
+              <span class="form-check-label">{{ _("common.time_trial") }}</span>
+            </label>
+            <label class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="race-type" value="OBJECT_AVOIDANCE"
+                {% if race_type == 'OBJECT_AVOIDANCE' %}checked{% endif %}>
+              <span class="form-check-label">{{ _("common.object_avoidance") }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 중앙 프리뷰 -->
+      <div class="col-12 col-md-4">
+        {% set track_id = main_simulation.track_id|default('reinvent_base') %}
+        {% set track_info = tracks_info.get(track_id) %}
+        {% set track_name_display = track_info.track_name if track_info else track_id %}
+        <div id="track-preview-box"
+          class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box">
+          <input type="hidden" name="track-id" value="{{ track_id }}">
+          {% if track_info %}
+          <img src="/static/img/tracks_thumbnail/{{ track_info.thumbnail }}" alt="{{ track_name_display }}">
+          {% else %}
+          <span class="text-muted">{{ _("evaluation.no_preview") }}</span>
+          {% endif %}
+          <span class="text-muted small mt-2">{{ track_name_display }}</span>
+        </div>
+      </div>
+
+      <!-- 오른쪽 트랙 정보 -->
+      <div class="col-12 col-md-4">
+        <div id="track-description-box" class="p-3 rounded border bg-light h-100 track-description-box">
+          {% if track_info %}
+          <h5>{{ track_info.track_name }}</h5>
+          <p class="mb-1"><strong>{{ _("track.width") }}:</strong> {{ track_info.track_width }}m</p>
+          <p class="mb-1"><strong>{{ _("track.length") }}:</strong> {{ track_info.track_length }}m</p>
+          {% if track_info.track_direction %}
+          <p class="mb-1"><strong>{{ _("track.directions") }}:</strong> {{ track_info.track_direction | join(', ') }}</p>
+          {% endif %}
+          {% else %}
+          <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+            <span>{{ _("evaluation.select_track_hint") }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Object Avoidance 옵션 -->
+    <div class="row mt-4 {% if race_type != 'OBJECT_AVOIDANCE' %}d-none{% endif %}" id="race-type-wrapper">
+      <div class="card w-100">
+        <div class="card-header">
+          <h3 class="card-title">{{ _("object_avoidance.title") }}</h3>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <!-- 좌측: 옵션들 -->
+            <div class="col-md-6">
+              <div class="mb-3">
+                <h5 class="card-title">{{ _("object_avoidance.randomize_locations") }}</h5>
+                {% set oa = main_simulation.object_avoidance|default({}) %}
+                <label class="form-check">
+                  <input class="form-check-input" type="checkbox" id="object-position">
+                  <span class="form-check-label">{{ _("object_avoidance.randomize_positions") }}</span>
+                </label>
+              </div>
+              <div class="mb-3">
+                <h5 class="card-title">{{ _("object_avoidance.number_of_objects") }}</h5>
+                <select class="form-select w-75" id="number-of-objects">
+                  {% for i in range(1, 11) %}
+                  <option value="{{ i }}" {% if i == oa.number_of_objects|default(3) %}selected{% endif %}>{{ i }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <h5 class="card-title">{{ _("object_avoidance.object_type") }}</h5>
+                <select class="form-select w-75" id="object-type">
+                  <option value="box_obstacle" {% if oa.object_type|default('box_obstacle') == 'box_obstacle' %}selected{% endif %}>{{ _("object_avoidance.box") }}</option>
+                  <option value="deepracer_box_obstacle" {% if oa.object_type == 'deepracer_box_obstacle' %}selected{% endif %}>{{ _("object_avoidance.deepracer_box") }}</option>
+                  <option value="amazon_box_obstacle" {% if oa.object_type == 'amazon_box_obstacle' %}selected{% endif %}>{{ _("object_avoidance.amazon_box") }}</option>
+                </select>
+              </div>
+            </div>
+            <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+            <div class="col-md-6 d-none" id="object-location-wrapper">
+              <div class="card h-100">
+                <div class="card-header py-2">
+                  <h5 class="card-title mb-0">{{ _("object_avoidance.object_locations") }}</h5>
+                </div>
+                <div class="card-body" id="object-location-wrapper-inside">
+                  <!-- JS Appends Here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EVALUATION SETTINGS -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">{{ _("evaluation.settings")|upper }}</h3>
+  </div>
+  <div class="card-body">
+    <!-- Number of Trials -->
+    <div class="row mb-3">
+      <div class="col-md-3">
+        <label class="form-label" for="number-of-trials">{{ _("evaluation.number_of_trials") }}</label>
+      </div>
+      <div class="col-md-9">
+        <input type="number" class="form-control" id="number-of-trials" min="1" max="20" value="5" style="max-width: 200px;">
+        <small class="text-muted">{{ _("evaluation.number_of_trials_hint") }}</small>
+      </div>
+    </div>
+    
+    <!-- Checkpoint -->
+    <div class="row mb-3">
+      <div class="col-md-3">
+        <label class="form-label">{{ _("evaluation.checkpoint") }}</label>
+      </div>
+      <div class="col-md-9">
+        <label class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="checkpoint" value="last" checked>
+          <span class="form-check-label">{{ _("evaluation.last") }}</span>
+        </label>
+        <label class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="checkpoint" value="best">
+          <span class="form-check-label">{{ _("evaluation.best") }}</span>
+        </label>
+      </div>
+    </div>
+    
+    <!-- Off-track Penalty -->
+    <div class="row mb-3">
+      <div class="col-md-3">
+        <label class="form-label" for="offtrack-penalty">{{ _("evaluation.off_track_penalty") }}</label>
+      </div>
+      <div class="col-md-9">
+        <div class="input-group" style="max-width: 200px;">
+          <input type="number" class="form-control" id="offtrack-penalty" min="0" max="60" step="0.5" value="5">
+          <span class="input-group-text">sec</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Collision Penalty -->
+    <div class="row mb-3">
+      <div class="col-md-3">
+        <label class="form-label" for="collision-penalty">{{ _("evaluation.collision_penalty") }}</label>
+      </div>
+      <div class="col-md-9">
+        <div class="input-group" style="max-width: 200px;">
+          <input type="number" class="form-control" id="collision-penalty" min="0" max="60" step="0.5" value="5">
+          <span class="input-group-text">sec</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 제출 버튼 -->
+<div class="d-flex justify-content-end gap-2 mt-3 mb-3">
+  <a href="/pages/models/model?model_name={{ model_name }}#evaluation" class="btn btn-secondary">{{ _("common.cancel") }}</a>
+  <button type="button" class="btn btn-primary" id="start-evaluation-btn">
+    <i class="fas fa-play me-1"></i>{{ _("evaluation.start") }}
+  </button>
+</div>
+
+{% endblock %}
+
+{% block modals %}
+{% include "modals/tracks.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script>
+{% include "js/evaluation-page.js" %}
+</script>
+{% endblock %}
