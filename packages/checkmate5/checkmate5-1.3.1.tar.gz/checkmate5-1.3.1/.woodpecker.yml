@@ -1,0 +1,41 @@
+labels:
+  platform: linux/amd64
+
+steps:
+  # 1. BUILD STAGE
+  build_package:
+    image: python:3.13
+    commands:
+      - pip install build
+      - python -m build
+    when:
+      event: [push, tag]
+
+  # 2. PUBLISH STAGE
+  publish_to_pypi:
+    image: python:3.13
+    environment:
+      TWINE_USERNAME: __token__
+      TWINE_PASSWORD:
+        from_secret: PYPI_TOKEN
+    commands:
+      - pip install twine
+      - twine upload dist/*
+    when:
+      event: tag
+      branch: main
+
+  # 3. RENOVATE STAGE
+  renovate:
+    image: renovate/renovate:latest
+    environment:
+      RENOVATE_PLATFORM: forgejo
+      RENOVATE_ENDPOINT: https://codeberg.org/api/v1
+      RENOVATE_AUTODISCOVER: 'false'
+      RENOVATE_REPOSITORIES: ${CI_REPO}
+      RENOVATE_TOKEN:
+        from_secret: RENOVATE_TOKEN
+    when:
+      - event: [manual, cron]
+        # Important: Ensure this cron name matches what you set in the Woodpecker UI
+        cron: renovate_schedule
