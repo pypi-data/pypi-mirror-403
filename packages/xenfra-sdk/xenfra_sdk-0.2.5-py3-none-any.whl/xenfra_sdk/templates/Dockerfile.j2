@@ -1,0 +1,41 @@
+# Dockerfile template for Python web applications
+FROM {{ python_version | default('python:3.11-slim') }}
+
+WORKDIR /app
+
+{% if package_manager != 'pip' %}
+# Install uv package manager and add to PATH
+RUN apt-get update && apt-get install -y curl && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    apt-get remove -y curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
+{% endif %}
+
+{% if dependency_file == 'pyproject.toml' %}
+# For pyproject.toml, copy all files first (hatchling needs README.md etc.)
+COPY . .
+
+# Install dependencies
+RUN uv pip install --system --no-cache .
+{% else %}
+COPY {{ dependency_file | default('requirements.txt') }} .
+
+# Install dependencies
+{% if package_manager == 'pip' %}
+RUN pip install --no-cache-dir -r {{ dependency_file | default('requirements.txt') }}
+{% endif %}
+
+{% if missing_deps %}
+# Auto-heal missing dependencies (Zen Mode)
+RUN pip install --no-cache-dir {{ missing_deps | join(' ') }}
+{% endif %}
+
+COPY . .
+{% endif %}
+
+# Expose the application port
+EXPOSE {{ port | default(8000) }}
+
+# The command to run the application will be in docker-compose.yml
