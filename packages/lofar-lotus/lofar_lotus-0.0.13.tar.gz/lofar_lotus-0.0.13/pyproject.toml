@@ -1,0 +1,131 @@
+#  Copyright (C) 2025 ASTRON (Netherlands Institute for Radio Astronomy)
+#  SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "lofar-lotus"
+description = "Lots of things used somewhere"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dynamic = [
+    "dependencies",
+    "version",
+]
+
+[project.urls]
+homepage = "https://git.astron.nl/lofar2.0/lotus"
+
+[build-system]
+requires = [
+    "setuptools>=70.0",
+    "setuptools_scm[toml]>=8.0",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools.dynamic]
+dependencies = { file = "requirements.txt" }
+
+[tool.setuptools_scm]
+version_file = "lofar_lotus/_version.py"
+
+[tool.pylint]
+ignore = "_version.py"
+
+[tool.ruff]
+exclude = [
+    ".venv",
+    ".git",
+    ".tox",
+    "dist",
+    "docs",
+    "*lib/python*",
+    "*egg",
+    "_version.py"
+]
+
+[tool.ruff.lint]
+select = ["A", "E", "F", "W", "Q", "PL", "ASYNC", "G", "RET", "I"]
+# TODO(Corne): Add "B", "S", "PLR", "ARG"
+ignore = ["PLR", "E203", "S101", "B017"]
+
+[tool.tox]
+# Generative environment list to test all supported Python versions
+requires = ["tox>=4.21"]
+env_list = ["fix", "coverage", "lint", "format", "py{13, 12, 11, 10}"]
+
+[tool.tox.env_run_base]
+package = "editable"
+deps = [
+    "-r{toxinidir}/requirements.txt",
+    "-r{toxinidir}/tests/requirements.txt"]
+set_env = { LANGUAGE = "en_US", LC_ALL = "en_US.UTF-8", PYTHONWARNINGS = "default::DeprecationWarning" }
+commands = [["python", "--version"], ["python", "-m", "pytest"]]
+
+[tool.tox.env.fix]
+description = "format the code base to adhere to our styles, and complain about what we cannot do automatically"
+skip_install = true
+deps = ["pre-commit-uv>=4.1.1"]
+commands = [["pre-commit", "run", "--all-files", "--show-diff-on-failure"]]
+
+[tool.tox.env.coverage]
+commands = [
+    ["python", "--version"],
+    ["python", "-m", "pytest", "--cov-report", "term", "--cov-report", "xml", "--cov-report", "html", "--cov=lofar_lotus"]]
+
+# Command prefixes to reuse the same virtualenv for all linting jobs.
+[tool.tox.env.lint]
+deps = [
+    "ruff",
+    "-r{toxinidir}/tests/requirements.txt"]
+commands = [
+    ["python", "-m", "ruff", "--version"],
+    ["python", "-m", "ruff", "check", { replace = "posargs", default = ["lofar_lotus", "tests"], extend = true }]
+]
+
+[tool.tox.env.format]
+deps = [
+    "ruff",
+    "-r{toxinidir}/tests/requirements.txt"]
+commands = [
+    ["python", "-m", "ruff", "format", "-v", { replace = "posargs", default = ["lofar_lotus", "tests"], extend = true }],
+    ["python", "-m", "ruff", "check", "--fix-only", "-v", { replace = "posargs", default = ["lofar_lotus", "tests"], extend = true }]
+]
+
+[tool.tox.env.docs]
+deps = [
+    "-r{toxinidir}/requirements.txt",
+    "-r{toxinidir}/docs/requirements.txt"]
+# unset LC_ALL / LANGUAGE from testenv, would fail sphinx otherwise
+set_env = ""
+changedir = "{tox_root}"
+commands = [
+    ["python", "docs/cleanup.py"],
+    ["sphinx-build", "-b", "html", "docs/source", "docs/build/html"]
+]
+
+[tool.tox.env.build]
+package = "wheel"
+deps = ["build>=0.8.0"]
+commands = [["python", "-m", "build"]]
