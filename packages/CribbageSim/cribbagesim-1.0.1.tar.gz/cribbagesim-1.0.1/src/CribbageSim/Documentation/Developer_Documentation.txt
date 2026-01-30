@@ -1,0 +1,214 @@
+Cribbage Simulator Project Developer Documentation
+ 
+*** Algorithm steps for playing one deal of cribbage, implemented in CribbageDeal.play(...)
+
+        # Shuffle, that is, rebuild the deck
+        
+   
+        # Deal player and dealer hands from the deck. In a normal game, this would be one card at a time alternating.
+        # However, in this case it is advantageous to deal all six cards to each hand at once, to facilitate using a stacked deck for testing.
+        self.draw_for_player(6)lerer hand: {repr(self._dealer_hand)}")
+        
+        # Apply the player and dealer strategies to have player and dealer select two cards each from their hands to form the crib.
+
+        # Deal the starter card. IFF it is a Jack, peg 2 for the dealer.
+
+        # Set variable that tracks which player will play next.
+        # For the first go round of the deal, the player always leads.    
+            
+        # Loop at this level to play multiple go rounds until the dealt cards for both player and dealer are exhausted 
+            
+            # Set the go round cumulative score to 0
+        
+            # Clear the combined pile of cards played during the go round, as this pile is used for scoring during play
+
+            # If go_declared, then it is a signal that the go round has finished inside this while loop by playing out a go, and it is
+            # time to return to the outside while and launch the next go round. if go_round_count == 31, then it is a signal that the 
+            # go round has finished inside this while loop by play count reaching exactly 31, and again, it is time to return to the outside
+            # while loop.
+
+                # Whoever is next to play follows using their play strategy.
+                        # Assess if any score in play has occured based on the player's or dealer's follow. If so, peg it for the player or dealer.
+                        # Rotate who will play next
+
+                # Has count for the go round reached exactly 31? Then peg 2 for player or dealer who played to reach 31.
+                    continue # Get us out of the while.
+
+                # if (go_declared):
+                    # Instruct the next_to_play to try to play out to 31, by calling go() method of their play strategy
+                            # Score 1 or 2 for the player or dealer, depending on how the player or dealer played out the go
+                    continue # Get us out of the while.
+            
+                # If go has not been declared, then continuing alternating follows, until go is declared, or we run out of cards in both hands
+                # That is, the while should keep cycling
+                # end of while not go_declared:
+        
+        # Play continues until both dealer and player are out of cards.
+        # end of while dealer or player have cards left in their hand
+            
+        # It's time to show (that is, count the hands after playing). During play, the hands have been emptied into the play piles, so score the piles.
+ 
+        # Score the player's hand
+        
+        # Score the dealer's hand
+        
+        # Score the dealer's crib
+
+*** Concept development for deciding which card from hand to lead when playing automatically, implemented in HoyleishCribbagePlayStrategy.lead(...) method
+
+    Any card from hand that is lead as the potential to produce a score for the opponent (quantified as an expected value or EV = probability * point value),
+    and also a potential score for the leader when they play again after their opponent (quantified as an expected value). If we treat the EV for the
+    opponent as a negative number, and the EV for the leader as a positive number, then we can sum them together to get a net value. A net EV value
+    could be generated for each playable card in the hand, and the card to lead would be the one with the most positive net EV. This should
+    incorporate both offensive and defensive thinking into the lead decision. Lets run through some examples:
+
+        Warning: It is likely that a lot of the below is pretty non-rigorous statistical calculations. Just as one example, I give the opponent
+        6 chances at any given card at a constant probability of drawing the needed card. But the numerator keeps assuming they have (52-7) cards to
+        draw from, when in reality that number changes with each draw. So it might be more like:
+
+        (1/(52-7))+(1/(52-8))+(1/(52-9))+(1/(52-10))+(1/(52-11))+(1/(52-12)) = 0.1414
+
+        instead of
+
+        6/(52-7) = 0.13
+
+        But, look, probably close enough for relative prioritization.
+
+        Also, it could be better not to have 6 chances, but rather 4 chances, since two cards were layed off in the crib. But, since all the
+        probability factors are the same for the + and the -, in a relative prioritization maybe it doesn't matter.
+
+        (1) Leader leads one card of a pair they have in their hand. Let's say they have a 3C and a 3D in their hand, and we are calculating net
+        EV for the 3C. We will first assume that they have not layed another 3 off in the crib and that another 3 has not been drawn as the starter,
+        so that, from their knowledge, two 3's remain possible in their opponents hand. The opponent could score 2 for a pair if they had either the
+        3H or 3S in their hand, so the opponent EV is -1 * {probability} * {point value = 2}. Probability is estimated as (6*2)/(52-7). The 7 is the cards
+        the leader has seen from their dealt hand plus the starter card. The 6 in the numerator is the number of cards in the opponents hand, or
+        thus the number of "chances they have" to have been dealt one of the 2 remaining 3's. We are making an assumption here that they didn't lay
+        a 3 off into the crib, just to keep this of reasonable complexity. The scoring opportunity for the leader is that the opponent does have and play
+        one of the other 3's and thus scores a pair. This allows the leader to then follow with the 3D and score 6 for the triplet. The probability for
+        this is the same as for the opponent scoring a pair, since the 2nd 3 in the leader's hand is known. So the net EV of leading one from a pair is:
+        -1 * {12/(52-7)} * 2 + {12/(52-7)} * 6 = 4 * {12/(52-7)} = 1.0667. Note that if this was not the first lead in a go round, then the 7 value in the
+        denominator might be adjusted because more cards have been seen (how ever many cards the opponent has played), but this might not really make
+        a difference in relative prioritization.
+
+        (2) Leader leads one card of a two-card 15 that they have in their had, excluding a 5 paired with a 10 or face card, which will be a separate case.
+        This could be a 7-8 or a 9-6. Let's imagine leading the 7. In this case the opponent could score a 15 for 2 if they played any of the 3 assumed to be
+        unseen 8's. So the opponents EV is -1 * {(6*3)/(52-7)} * 2. The leader's opportunity is to then play their 8 to form a pair. If this happens it is a
+        wash in terms of net points scored, but, it does advance the leader by 2 pegs. So the net EV for this situation is:
+        -1 * {(6*3)/(52-7)} * 2 + {(6*3)/(52-7)} * 2 = 18/(52-7) = 0.0
+
+        (3) Leader has a two-card 15 consisting of a 5 and a 10 or face card. They play the 10 or face card, hoping the opponent plays a 5 for a 15. Then
+        the leader's response is to play their 5 for a pair. Again, net pegging is zero, but, leader advances 2 pegs. The the next EV is:
+        -1 * {(6*3)/(52-7)} * 2 + {(6*3)/(52-7)} * 2 = {(6*3)/(52-7)} = 0.0
+
+        (4) How might we quantify leading to try to induce a run? This is highly speculative, since there might be little to induce the opponent to cooperate
+        by playing on into the run. The exception would be with 6,7,8,9 containing runs, where the opportunity to score a 15 would induce the playing on by
+        the opponent. So, this could be incorporated into scenario 3. Imagine the leader's hand has a 6 and an 8. They lead the 8, and induce a 7 from the
+        the opponent, and then follow up with the 6 for a run of 3 for 3. net EV in this case looks like:
+        -1 * {(6*4)/(52-7)} * 2 + {(6*4)/(52-7)} * 3 = (6*4)/(52-7) = 0.5333
+        There is an equivalent scenario where leader has 7 and 9 in thier hand. They lead the 7 to induce the 8, and then play the 9 to complete the run.
+
+        (5) How might we quantify having a hand with a 2-3-10/face, leading the 3, hoping a 10 or face will be played simply as a high card, and following
+        with the 2 for the 15? Or a A-4-10/face is a same scenario. In this case the opponent inducement is entirely speculative. Their is a very high
+        likelihood of them having a 10 or face to play in the 4 cards in their hand, but no particular reason they should play it, and they might even
+        suspect the low card lead as intended to induce just that mistake on their part. Since a low card lead would not be typical.
+        
+        What do we make of the net EV of 0 for scenarios (2) and (3). These are both recommended as good play strategies by Hoyle. I guess what we make
+        of it is that any typical lead scenario probably has a negative EV. Let's imagine the leader has a hand with no pairs, no 15's, and no potential
+        run generators. Then this opponents opportunity is to generate a pair off whatever the lead is, with EV:
+        -1 * {(6*3)/(52-7)} * 2 = - 0.8
+
+        And what if we take a horrible lead decision of leading a 5, when one does not have another 5? In this case the EV of the opponent getting
+        a 15 by playing a 10 or a face could be as high as:
+        -1 * {(6*16)/(52-7)} * 2 = - 2.133 (okay, that clearly has the problem of being greater than 2, but maybe this is roughly due to assuming the crib
+        lay also provides chances)
+
+        So what might we make of this entire mess. Could we prioritize as follows?
+        (1) If you have any pair but 5's in your hand, lead one of them, hoping to capture a triplet for 6. If you lead from a pair of 5's
+        most likely the opponent will capture a 15 by plaing a 10/face, and you will capture nothing.
+        (2) If you have a 6 and an 8 in your hand, lead the 8, hoping to capture a run of 3 with the 6.
+        (3) If you have a 7 and 9 in your hand, lead the 7, hoping to capture a run of 3 with the 9.
+        (4) If you have a 5 and a 10/face in your hand, lead the 10/face, hoping to capture a pair with the 5.
+        (5) If you have a 6-9 or a 7-8 in your hand, lead one of them, hoping to capture a pair with the other.
+        (6) Lead any card in your hand less than 5, to defend against a 15. With preference running 4 > 3 > 2 > 1
+        (7) Lead any card greater than 5 in your hand. With preference running Face/10 > 9 > 8 > 7 > 6.
+        (8) Very last option would be to lead a 5.
+
+    *** Concept development for using JSON to interact with UI ***
+
+        Some principles:
+        (1) Hope to be able to continue to use logging module by having a custom logger (for example) that generates the JSON
+
+        What kind of messages do we need to send from the CribbageGame to the UI?
+
+        (1) Start a new game (names of players, who will deal first, reset board score to 0-0)
+            information sent: name player1 (string), name player2 (string), first dealer name (string)
+            actions taken: update player names in UI, update dealer name in UI, set board score to 0-0 in UI
+            Note: Should we query for player names?
+        (2) Start a new deal (which player will deal, clear hands, starter, crib, play piles, go round count)
+            information sent: name of player who will deal (string)
+            actions taken: update dealer name in UI, clear hands / crib / starter / play piles / go round count in UI
+        (3) Update Hand(s)
+            information sent: Cards in hand (string, like 'KH AD 2S JC 5H 4H')
+            actions taken: Update Hand(s) in UI
+        (4) Update Starter
+            information sent: card drawn as starter (string, like '7H')
+            actions taken: Update starter card in UI
+        (5) Update Crib
+            information sent: Cards in crib (string, like '2S JC 5H 4H')
+            actions taken: Update Crib in UI
+        (6) Update Combined Play Pile (and count for go round, with option to clear the play pile and zero the count)
+            information sent: card to add to combined pile (string, like '7H'), updated go round count (int)
+            actions taken: Update combined pile in UI, update go round count in UI
+        (7) Update player play pile
+            information sent: card to add to player play pile (string, like '7H')
+            actions taken: Update player play pile in UI
+        (8) Update dealer play pile
+            information sent: card to add to dealer play pile (string, like '7H')
+            actions taken: Update dealer play pile in UI
+        (9) Update player score (including event, like comobo score during play, reaching 31, showing hand, ...)
+            information sent: name of player that scored (string), pegs scored (integer), score event info (dictionary?)
+            action taken: Update player score on board in UI, display score achieved and eveng info (something like 'Peg 2 for playing to 31')
+        (10) Update dealer score (as for player)
+            information sent: name of player that scored (string), pegs scored (integer), score event info (dictionary?)
+            action taken: Update dealer score on board in UI, display score achieved and eveng info (something like 'Peg 2 for playing to 31')
+        
+        What kind of queries do we need to make of the UI?
+
+        Essentially the same as what the UserResponseCollector handles now, which for Cribbage is all menu queries.
+        (1) Menu Query: Query Preface, Dictionary of menu choices
+
+
+*** Concept development for sending a "scoring/pegging" record to the tkinter-based CribbageApp ***
+
+    (1) The idea is that every time pegging happens, a record of why will be logged to info. The GUI will use this record to show the user the details
+    of the scoring. Let's imagine each record during a go round / deal appearing in a listbox, and when the user clicks on an item in the listbox, the 
+    cards associated with the score will be highlighted in the GUI.
+
+        (a) Starter is a Jack, then the starter card is highlighted in the GUI.
+        (b) Playing a card leads to a pair in the play pile, then the pair of cards is highlighted in the GUI.
+        (c) When showing the player's hand, clicking an item in the scoring list will highlight the associated cards in the hand / starter.
+        (d) When showing the crib, clicking an item in the scoring list will highlight teh associated cards in the crib / starter.
+
+    (2) Some issues to sort out:
+
+        (a) Can't use the play pile to show scoring cards after we've advanced to the next go round, within the deal, because the play pile
+            clears at the end of each go round. So the score list will need to clear at the end of each go round.
+        (b) By the time the player's hand is shown, the hand display in the GUI has been emptied, as each card has been played, so it will
+            be necessary to restore the hand in conjunction with the show.
+        (c) GUI currently does not show opponents hand (so you can't cheat), but that means there is no place to show the details of the opponents
+            scoring, which should be visible. A possible solution is using the player hand widget to show the opponent hand, but change the
+            frame label to clarify what is happening.
+        (d) The game engine will shove all show information (both player's hands and the crib) at the GUI sequentially without pause. The GUI will need
+            to cache this info appropriately. I think the fact that the game engine asks at the end of a deal if the user wants to play another deal
+            will provide the "pause" that allows the user to spend time interacting with the show scoring information before moving on to the next
+            deal.
+        (e) Should we pass the scoring record information to the pegging functions and have them do the info logging, so all this is centralized?
+
+    (3) What should a scoring record look like?
+
+        Maybe we can reuse CribbageComboInfo objects (self.combo_name = 'none', self.number_instances = 0, self.score = 0, self.instance_list = [])?
+        This would need to be "extended" for drawing a jack as starter, and for scoring a "go".
+
+
+        
+
