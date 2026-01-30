@@ -1,0 +1,68 @@
+Metadata-Version: 2.4
+Name: t87s
+Version: 0.0.0
+Summary: Declarative cache invalidation for Python
+Author: t87s
+License-Expression: MIT
+Keywords: cache,invalidation,redis,tags
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Typing :: Typed
+Requires-Python: >=3.10
+Provides-Extra: all
+Requires-Dist: httpx>=0.27.0; extra == 'all'
+Requires-Dist: redis>=5.0.0; extra == 'all'
+Requires-Dist: upstash-redis>=1.0.0; extra == 'all'
+Provides-Extra: cloud
+Requires-Dist: httpx>=0.27.0; extra == 'cloud'
+Provides-Extra: dev
+Requires-Dist: mypy>=1.10.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: respx>=0.21.0; extra == 'dev'
+Requires-Dist: ruff>=0.4.0; extra == 'dev'
+Requires-Dist: testcontainers[redis]>=4.0.0; extra == 'dev'
+Provides-Extra: redis
+Requires-Dist: redis>=5.0.0; extra == 'redis'
+Provides-Extra: upstash
+Requires-Dist: upstash-redis>=1.0.0; extra == 'upstash'
+Description-Content-Type: text/markdown
+
+# t87s
+
+Declarative cache invalidation for Python.
+
+## Install
+
+```bash
+pip install t87s              # Core + MemoryAdapter
+pip install t87s[redis]       # + Redis support
+pip install t87s[all]         # Everything
+```
+
+## Quick Start
+
+```python
+from t87s import T87s, MemoryAdapter, define_tags, QueryConfig
+
+tags = define_tags({
+    "user": lambda id: ("user", id),
+})
+
+t87s = T87s(adapter=MemoryAdapter())
+
+@t87s.query
+def get_user(id: str) -> QueryConfig[User]:
+    return QueryConfig(
+        tags=[tags["user"](id)],
+        ttl="5m",
+        fn=lambda: db.get_user(id),
+    )
+```
+
+Full documentation: https://docs.t87s.dev
