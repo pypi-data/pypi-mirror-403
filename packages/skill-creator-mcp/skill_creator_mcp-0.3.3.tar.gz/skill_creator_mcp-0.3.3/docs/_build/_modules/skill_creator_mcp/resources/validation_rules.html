@@ -1,0 +1,336 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>skill_creator_mcp.resources.validation_rules &mdash; Skill Creator MCP Server 0.2.1-alpha documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=648472df"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Skill Creator MCP Server
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Skill Creator MCP Server</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">skill_creator_mcp.resources.validation_rules</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for skill_creator_mcp.resources.validation_rules</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;验证规则资源.</span>
+
+<span class="sd">提供 Agent-Skills 的验证规则和标准。</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Final</span>
+
+<span class="c1"># 验证规则内容</span>
+<span class="n">VALIDATION_RULES_CONTENT</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;# Agent-Skills 验证规则</span>
+
+<span class="s2">## 1. 命名验证规则</span>
+
+<span class="s2">### 1.1 技能名称格式</span>
+<span class="s2">- **正则表达式**: `^[a-z][a-z0-9-]*[a-z0-9]$`</span>
+<span class="s2">- **长度限制**: 1-64 字符</span>
+<span class="s2">- **允许字符**: 小写字母、数字、连字符</span>
+<span class="s2">- **禁止模式**:</span>
+<span class="s2">  - 不能以连字符开头或结尾</span>
+<span class="s2">  - 不能有连续的连字符</span>
+<span class="s2">  - 不能使用大写字母</span>
+<span class="s2">  - 不能使用下划线</span>
+
+<span class="s2">**有效示例**:</span>
+<span class="s2">- `code-analyzer`</span>
+<span class="s2">- `file-helper`</span>
+<span class="s2">- `api-client-v2`</span>
+
+<span class="s2">**无效示例**:</span>
+<span class="s2">- `CodeAnalyzer` (大写字母)</span>
+<span class="s2">- `_helper` (以下划线开头)</span>
+<span class="s2">- `test--name` (连续连字符)</span>
+<span class="s2">- `-prefix` (以连字符开头)</span>
+
+<span class="s2">### 1.2 目录名称一致性</span>
+<span class="s2">- 目录名必须与 SKILL.md 中的 `name` 字段完全一致</span>
+<span class="s2">- 验证函数会检查此匹配</span>
+
+<span class="s2">## 2. 结构验证规则</span>
+
+<span class="s2">### 2.1 必需文件</span>
+<span class="s2">| 文件 | 必需 | 描述 |</span>
+<span class="s2">|------|------|------|</span>
+<span class="s2">| `SKILL.md` | ✅ | 技能主文档 |</span>
+
+<span class="s2">### 2.2 必需目录</span>
+<span class="s2">| 目录 | 必需 | 描述 |</span>
+<span class="s2">|------|------|------|</span>
+<span class="s2">| `references/` | ✅ | 参考文档 |</span>
+<span class="s2">| `examples/` | ✅ | 使用示例 |</span>
+<span class="s2">| `scripts/` | ✅ | 辅助脚本 |</span>
+<span class="s2">| `.claude/` | ✅ | Claude 配置 |</span>
+
+<span class="s2">### 2.3 可选目录</span>
+<span class="s2">| 目录 | 描述 |</span>
+<span class="s2">|------|------|</span>
+<span class="s2">| `src/` | 源代码（如果需要） |</span>
+<span class="s2">| `tests/` | 测试代码 |</span>
+
+<span class="s2">## 3. 内容验证规则</span>
+
+<span class="s2">### 3.1 SKILL.md YAML Frontmatter</span>
+<span class="s2">必需字段：</span>
+<span class="s2">```yaml</span>
+<span class="s2">---</span>
+<span class="s2">name: skill-name              # 必需，符合命名规范</span>
+<span class="s2">description: |               # 必需，多行描述</span>
+<span class="s2">  技能描述内容</span>
+<span class="s2">allowed-tools: Read, Write    # 必需，逗号分隔的列表</span>
+<span class="s2">mcp_servers: []              # 可选，MCP 服务器列表</span>
+<span class="s2">template: minimal            # 可选，模板类型</span>
+<span class="s2">---</span>
+<span class="s2">```</span>
+
+<span class="s2">### 3.2 描述字段要求</span>
+<span class="s2">- 至少包含：功能描述、使用场景、触发词</span>
+<span class="s2">- 推荐格式：</span>
+<span class="s2">  ```yaml</span>
+<span class="s2">  description: |</span>
+<span class="s2">    [一句话功能描述]</span>
+
+<span class="s2">    何时使用：</span>
+<span class="s2">    - [场景1]</span>
+<span class="s2">    - [场景2]</span>
+
+<span class="s2">    触发词：[关键词1, 关键词2]</span>
+<span class="s2">  ```</span>
+
+<span class="s2">### 3.3 allowed-tools 验证</span>
+<span class="s2">有效工具列表：</span>
+<span class="s2">- `Read` - 读取文件</span>
+<span class="s2">- `Write` - 写入文件</span>
+<span class="s2">- `Edit` - 编辑文件</span>
+<span class="s2">- `Bash` - 执行命令</span>
+<span class="s2">- `Glob` - 文件匹配</span>
+<span class="s2">- `Grep` - 内容搜索</span>
+<span class="s2">- `GlobDirectoryTree` - 目录遍历</span>
+
+<span class="s2">## 4. 模板特定验证规则</span>
+
+<span class="s2">### 4.1 minimal 模板</span>
+<span class="s2">- 无额外要求</span>
+<span class="s2">- 适用于简单技能</span>
+
+<span class="s2">### 4.2 tool-based 模板</span>
+<span class="s2">必需引用文件：</span>
+<span class="s2">- `references/tool-integration.md` - 工具集成说明</span>
+<span class="s2">- `references/usage-examples.md` - 使用示例</span>
+
+<span class="s2">### 4.3 workflow-based 模板</span>
+<span class="s2">必需引用文件：</span>
+<span class="s2">- `references/workflow-steps.md` - 工作流步骤</span>
+<span class="s2">- `references/decision-points.md` - 决策点说明</span>
+
+<span class="s2">### 4.4 analyzer-based 模板</span>
+<span class="s2">必需引用文件：</span>
+<span class="s2">- `references/analysis-methods.md` - 分析方法</span>
+<span class="s2">- `references/metrics.md` - 指标说明</span>
+
+<span class="s2">## 5. 质量验证规则</span>
+
+<span class="s2">### 5.1 文档长度</span>
+<span class="s2">- SKILL.md 应该 ≤ 150 行</span>
+<span class="s2">- 超过时应考虑拆分到 references/</span>
+
+<span class="s2">### 5.2 文档完整性</span>
+<span class="s2">检查项：</span>
+<span class="s2">- [ ] 技能概述清晰</span>
+<span class="s2">- [ ] 核心能力列表完整</span>
+<span class="s2">- [ ] 使用方法有示例</span>
+<span class="s2">- [ ] 注意事项已列出</span>
+<span class="s2">- [ ] 参考资源有效</span>
+
+<span class="s2">### 5.3 示例可运行性</span>
+<span class="s2">- examples/ 中的示例应该可以实际运行</span>
+<span class="s2">- 包含预期输出</span>
+
+<span class="s2">## 6. 验证优先级</span>
+
+<span class="s2">| 优先级 | 检查项 | 描述 |</span>
+<span class="s2">|--------|--------|------|</span>
+<span class="s2">| P0 | 必需文件/目录存在 | 基础结构检查 |</span>
+<span class="s2">| P0 | 命名规范 | 名称格式正确 |</span>
+<span class="s2">| P0 | YAML frontmatter 有效性 | 可解析且包含必需字段 |</span>
+<span class="s2">| P1 | 模板特定要求 | 根据模板类型检查 |</span>
+<span class="s2">| P2 | 内容质量 | 描述完整性、示例可运行性 |</span>
+
+<span class="s2">## 7. 验证命令</span>
+
+<span class="s2">### 7.1 使用 validate_skill 工具</span>
+<span class="s2">```python</span>
+<span class="s2">await validate_skill(</span>
+<span class="s2">    skill_path=&quot;/path/to/skill&quot;,</span>
+<span class="s2">    check_structure=True,</span>
+<span class="s2">    check_content=True,</span>
+<span class="s2">)</span>
+<span class="s2">```</span>
+
+<span class="s2">### 7.2 验证输出格式</span>
+<span class="s2">```json</span>
+<span class="s2">{</span>
+<span class="s2">  &quot;success&quot;: true,</span>
+<span class="s2">  &quot;valid&quot;: true,</span>
+<span class="s2">  &quot;skill_path&quot;: &quot;/path/to/skill&quot;,</span>
+<span class="s2">  &quot;skill_name&quot;: &quot;skill-name&quot;,</span>
+<span class="s2">  &quot;template_type&quot;: &quot;tool-based&quot;,</span>
+<span class="s2">  &quot;errors&quot;: [],</span>
+<span class="s2">  &quot;warnings&quot;: [],</span>
+<span class="s2">  &quot;checks&quot;: {</span>
+<span class="s2">    &quot;structure&quot;: true,</span>
+<span class="s2">    &quot;naming&quot;: true,</span>
+<span class="s2">    &quot;content&quot;: true,</span>
+<span class="s2">    &quot;template_requirements&quot;: true</span>
+<span class="s2">  },</span>
+<span class="s2">  &quot;message&quot;: &quot;验证通过&quot;</span>
+<span class="s2">}</span>
+<span class="s2">```</span>
+
+<span class="s2">## 8. 常见验证错误</span>
+
+<span class="s2">### 8.1 结构错误</span>
+<span class="s2">- `缺少必需文件: SKILL.md`</span>
+<span class="s2">- `缺少必需目录: references`</span>
+<span class="s2">- `目录不存在: /path/to/skill`</span>
+
+<span class="s2">### 8.2 命名错误</span>
+<span class="s2">- `目录名不符合规范: Test_Skill`</span>
+<span class="s2">- `name 字段与目录名不一致`</span>
+
+<span class="s2">### 8.3 内容错误</span>
+<span class="s2">- `SKILL.md 文件不存在`</span>
+<span class="s2">- `缺少 YAML frontmatter`</span>
+<span class="s2">- `缺少必需字段: description`</span>
+<span class="s2">- `缺少必需字段: allowed-tools`</span>
+
+<span class="s2">### 8.4 模板特定错误</span>
+<span class="s2">- `缺少必需文件: references/tool-integration.md`</span>
+<span class="s2">- `缺少必需文件: references/workflow-steps.md`</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="get_validation_rules">
+<a class="viewcode-back" href="../../../api/index.html#skill_creator_mcp.resources.get_validation_rules">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_validation_rules</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;获取验证规则文档内容.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        验证规则 Markdown 内容</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VALIDATION_RULES_CONTENT</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_validation_rules_summary</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;获取验证规则摘要.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        包含关键规则的字典</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;naming&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;pattern&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;^[a-z][a-z0-9-]*[a-z0-9]$&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;min_length&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="s2">&quot;max_length&quot;</span><span class="p">:</span> <span class="mi">64</span><span class="p">,</span>
+            <span class="s2">&quot;allowed_chars&quot;</span><span class="p">:</span> <span class="s2">&quot;a-z, 0-9, -&quot;</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;required_files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;SKILL.md&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;required_directories&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;references&quot;</span><span class="p">,</span> <span class="s2">&quot;examples&quot;</span><span class="p">,</span> <span class="s2">&quot;scripts&quot;</span><span class="p">,</span> <span class="s2">&quot;.claude&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;required_fields&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">,</span> <span class="s2">&quot;allowed-tools&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;template_requirements&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;minimal&quot;</span><span class="p">:</span> <span class="p">[],</span>
+            <span class="s2">&quot;tool-based&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;tool-integration.md&quot;</span><span class="p">,</span> <span class="s2">&quot;usage-examples.md&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;workflow-based&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;workflow-steps.md&quot;</span><span class="p">,</span> <span class="s2">&quot;decision-points.md&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;analyzer-based&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;analysis-methods.md&quot;</span><span class="p">,</span> <span class="s2">&quot;metrics.md&quot;</span><span class="p">],</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Skill Creator Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

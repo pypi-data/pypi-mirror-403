@@ -1,0 +1,377 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>skill_creator_mcp.utils.validators &mdash; Skill Creator MCP Server 0.2.1-alpha documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=648472df"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Skill Creator MCP Server
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Skill Creator MCP Server</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">skill_creator_mcp.utils.validators</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for skill_creator_mcp.utils.validators</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;验证器工具函数.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">skill_creator_mcp.logging_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># 模板特定必需文件映射</span>
+<span class="n">TEMPLATE_REQUIREMENTS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;minimal&quot;</span><span class="p">:</span> <span class="p">[],</span>
+    <span class="s2">&quot;tool-based&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;tool-integration.md&quot;</span><span class="p">,</span> <span class="s2">&quot;usage-examples.md&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;workflow-based&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;workflow-steps.md&quot;</span><span class="p">,</span> <span class="s2">&quot;decision-points.md&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;analyzer-based&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;analysis-methods.md&quot;</span><span class="p">,</span> <span class="s2">&quot;metrics.md&quot;</span><span class="p">],</span>
+<span class="p">}</span>
+
+<span class="c1"># 有效工具名称列表</span>
+<span class="n">VALID_TOOLS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;Read&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Write&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Edit&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bash&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Glob&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Grep&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AskUserQuestion&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;TodoWrite&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Skill&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<div class="viewcode-block" id="validate_skill_name">
+<a class="viewcode-back" href="../../../api/index.html#skill_creator_mcp.utils.validate_skill_name">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_skill_name</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;验证技能名称符合规范.</span>
+
+<span class="sd">    规范：</span>
+<span class="sd">    - 只能包含小写字母、数字、连字符</span>
+<span class="sd">    - 不能以连字符开头或结尾</span>
+<span class="sd">    - 不能有连续的连字符</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        name: 技能名称</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: 名称不符合规范时抛出</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pattern</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;^[a-z0-9]+(?:-[a-z0-9]+)*$&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;技能名称 &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; 不符合规范。&quot;</span>
+            <span class="s2">&quot;要求：小写字母、数字、单个连字符，不能以连字符开头或结尾，不能有连续连字符&quot;</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_skill_directory">
+<a class="viewcode-back" href="../../../api/index.html#skill_creator_mcp.utils.validate_skill_directory">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_skill_directory</span><span class="p">(</span><span class="n">skill_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;验证技能目录是否存在且结构正确.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_dir: 技能目录路径</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: 目录结构不正确时抛出</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">skill_dir</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;技能目录不存在: </span><span class="si">{</span><span class="n">skill_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">skill_md</span> <span class="o">=</span> <span class="n">skill_dir</span> <span class="o">/</span> <span class="s2">&quot;SKILL.md&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">skill_md</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;SKILL.md 不存在于: </span><span class="si">{</span><span class="n">skill_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_template_type">
+<a class="viewcode-back" href="../../../api/index.html#skill_creator_mcp.utils.validate_template_type">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_template_type</span><span class="p">(</span><span class="n">template</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;验证模板类型是否有效.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        template: 模板类型</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        验证通过的模板类型</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: 模板类型无效时抛出</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">valid_templates</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;minimal&quot;</span><span class="p">,</span> <span class="s2">&quot;tool-based&quot;</span><span class="p">,</span> <span class="s2">&quot;workflow-based&quot;</span><span class="p">,</span> <span class="s2">&quot;analyzer-based&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">template</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid_templates</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;无效的模板类型: </span><span class="si">{</span><span class="n">template</span><span class="si">}</span><span class="s2">。有效值: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">valid_templates</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">template</span></div>
+
+
+
+<span class="c1"># ==================== validate_skill 专用验证函数 ====================</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_structure</span><span class="p">(</span><span class="n">skill_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;验证技能目录结构.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_dir: 技能目录路径</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        错误列表，空列表表示无错误</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Validating structure for: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">skill_dir</span><span class="p">)</span>
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># 检查必需文件</span>
+    <span class="n">required_files</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;SKILL.md&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">file_name</span> <span class="ow">in</span> <span class="n">required_files</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">skill_dir</span> <span class="o">/</span> <span class="n">file_name</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">error_msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;缺少必需文件: </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">error_msg</span><span class="p">)</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">error_msg</span><span class="p">)</span>
+
+    <span class="c1"># 检查必需目录</span>
+    <span class="n">required_dirs</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;references&quot;</span><span class="p">,</span> <span class="s2">&quot;examples&quot;</span><span class="p">,</span> <span class="s2">&quot;scripts&quot;</span><span class="p">,</span> <span class="s2">&quot;.claude&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">dir_name</span> <span class="ow">in</span> <span class="n">required_dirs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">skill_dir</span> <span class="o">/</span> <span class="n">dir_name</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">error_msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;缺少必需目录: </span><span class="si">{</span><span class="n">dir_name</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">error_msg</span><span class="p">)</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">error_msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">errors</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Structure validation passed for: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">skill_dir</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">errors</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_naming</span><span class="p">(</span><span class="n">skill_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;验证技能命名规范.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_dir: 技能目录路径</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        错误列表，空列表表示无错误</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">skill_name</span> <span class="o">=</span> <span class="n">skill_dir</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="c1"># 验证目录名格式</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">validate_skill_name</span><span class="p">(</span><span class="n">skill_name</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+
+    <span class="c1"># 验证 SKILL.md 中的 name 字段与目录名一致</span>
+    <span class="n">skill_md</span> <span class="o">=</span> <span class="n">skill_dir</span> <span class="o">/</span> <span class="s2">&quot;SKILL.md&quot;</span>
+    <span class="k">if</span> <span class="n">skill_md</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">skill_md</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="c1"># 提取 YAML frontmatter 中的 name 字段</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">content</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;name:&quot;</span><span class="p">):</span>
+                <span class="n">yaml_name</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\&quot;</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">yaml_name</span> <span class="o">!=</span> <span class="n">skill_name</span><span class="p">:</span>
+                    <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;SKILL.md 中的 name 字段 &#39;</span><span class="si">{</span><span class="n">yaml_name</span><span class="si">}</span><span class="s2">&#39; 与目录名 &#39;</span><span class="si">{</span><span class="n">skill_name</span><span class="si">}</span><span class="s2">&#39; 不一致&quot;</span>
+                    <span class="p">)</span>
+                <span class="k">break</span>
+
+    <span class="k">return</span> <span class="n">errors</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_skill_md</span><span class="p">(</span><span class="n">skill_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;验证 SKILL.md 内容格式.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_dir: 技能目录路径</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (错误列表, 警告列表, 模板类型)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">warnings</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">template_type</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">skill_md</span> <span class="o">=</span> <span class="n">skill_dir</span> <span class="o">/</span> <span class="s2">&quot;SKILL.md&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">skill_md</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;SKILL.md 文件不存在&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">errors</span><span class="p">,</span> <span class="n">warnings</span><span class="p">,</span> <span class="n">template_type</span>
+
+    <span class="n">content</span> <span class="o">=</span> <span class="n">skill_md</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 检查 YAML frontmatter</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">content</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;---&quot;</span><span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;SKILL.md 缺少 YAML frontmatter（应以 --- 开头）&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">errors</span><span class="p">,</span> <span class="n">warnings</span><span class="p">,</span> <span class="n">template_type</span>
+
+    <span class="c1"># 解析 frontmatter 内容</span>
+    <span class="n">frontmatter_lines</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">content</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]:</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;---&quot;</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">frontmatter_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+    <span class="n">frontmatter</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">frontmatter_lines</span><span class="p">)</span>
+
+    <span class="c1"># 检查必需字段</span>
+    <span class="n">required_fields</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name:&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;description:&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;allowed-tools&quot;</span><span class="p">:</span> <span class="s2">&quot;allowed-tools:&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_marker</span> <span class="ow">in</span> <span class="n">required_fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">field_marker</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">frontmatter</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;SKILL.md 缺少必需字段: </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 提取模板类型（如果有）</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">frontmatter_lines</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;template:&quot;</span><span class="p">):</span>
+            <span class="n">template_value</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\&quot;</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">template_value</span> <span class="ow">in</span> <span class="n">TEMPLATE_REQUIREMENTS</span><span class="p">:</span>
+                <span class="n">template_type</span> <span class="o">=</span> <span class="n">template_value</span>
+            <span class="k">break</span>
+
+    <span class="c1"># 验证 allowed-tools</span>
+    <span class="k">if</span> <span class="s2">&quot;allowed-tools:&quot;</span> <span class="ow">in</span> <span class="n">frontmatter</span><span class="p">:</span>
+        <span class="c1"># 提取 allowed-tools 的值</span>
+        <span class="n">in_allowed_tools</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">tools_value</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">frontmatter_lines</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;allowed-tools:&quot;</span><span class="p">):</span>
+                <span class="n">in_allowed_tools</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                    <span class="n">tools_value</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">in_allowed_tools</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;  &quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">):</span>
+                    <span class="n">tools_value</span> <span class="o">+=</span> <span class="s2">&quot; &quot;</span> <span class="o">+</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">break</span>
+
+        <span class="c1"># 解析工具列表</span>
+        <span class="k">if</span> <span class="n">tools_value</span><span class="p">:</span>
+            <span class="c1"># 处理方括号格式 [Read, Write, Edit]</span>
+            <span class="n">tools_value</span> <span class="o">=</span> <span class="n">tools_value</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;[]&quot;</span><span class="p">)</span>
+            <span class="n">tools_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;,&#39;</span><span class="se">\&quot;</span><span class="s2">&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tools_value</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+
+            <span class="n">invalid_tools</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tools_list</span> <span class="k">if</span> <span class="n">t</span> <span class="ow">and</span> <span class="n">t</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_TOOLS</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">invalid_tools</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;allowed-tools 包含可能无效的工具: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">invalid_tools</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">errors</span><span class="p">,</span> <span class="n">warnings</span><span class="p">,</span> <span class="n">template_type</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_template_requirements</span><span class="p">(</span><span class="n">skill_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">template_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;验证模板特定要求.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_dir: 技能目录路径</span>
+<span class="sd">        template_type: 模板类型</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        错误列表，空列表表示无错误</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">template_type</span> <span class="ow">or</span> <span class="n">template_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">TEMPLATE_REQUIREMENTS</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">errors</span>
+
+    <span class="n">required_files</span> <span class="o">=</span> <span class="n">TEMPLATE_REQUIREMENTS</span><span class="p">[</span><span class="n">template_type</span><span class="p">]</span>
+    <span class="n">refs_dir</span> <span class="o">=</span> <span class="n">skill_dir</span> <span class="o">/</span> <span class="s2">&quot;references&quot;</span>
+
+    <span class="k">for</span> <span class="n">file_name</span> <span class="ow">in</span> <span class="n">required_files</span><span class="p">:</span>
+        <span class="n">ref_file</span> <span class="o">=</span> <span class="n">refs_dir</span> <span class="o">/</span> <span class="n">file_name</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ref_file</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;模板 &#39;</span><span class="si">{</span><span class="n">template_type</span><span class="si">}</span><span class="s2">&#39; 缺少必需引用文件: references/</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">errors</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Skill Creator Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

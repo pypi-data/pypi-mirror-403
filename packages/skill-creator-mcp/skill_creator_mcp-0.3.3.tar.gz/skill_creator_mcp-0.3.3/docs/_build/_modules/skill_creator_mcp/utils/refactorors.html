@@ -1,0 +1,497 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>skill_creator_mcp.utils.refactorors &mdash; Skill Creator MCP Server 0.2.1-alpha documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=648472df"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Skill Creator MCP Server
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Skill Creator MCP Server</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">skill_creator_mcp.utils.refactorors</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for skill_creator_mcp.utils.refactorors</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;重构建议工具函数.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">..constants</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CODE_SIZE_LARGE_THRESHOLD</span><span class="p">,</span>
+    <span class="n">REFERENCE_FILE_LONG_THRESHOLD</span><span class="p">,</span>
+    <span class="n">REFERENCE_FILE_MAX_LINES</span><span class="p">,</span>
+    <span class="n">REFERENCE_FILE_MIN_LINES</span><span class="p">,</span>
+    <span class="n">SKILL_MD_RECOMMENDED_MAX_LINES</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">..models.skill_config</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+        <span class="n">ComplexityMetrics</span><span class="p">,</span>
+        <span class="n">QualityScore</span><span class="p">,</span>
+        <span class="n">StructureAnalysis</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="generate_refactor_suggestions">
+<a class="viewcode-back" href="../../../api/index.html#skill_creator_mcp.utils.generate_refactor_suggestions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_refactor_suggestions</span><span class="p">(</span>
+    <span class="n">skill_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">structure</span><span class="p">:</span> <span class="s2">&quot;StructureAnalysis&quot;</span><span class="p">,</span>
+    <span class="n">complexity</span><span class="p">:</span> <span class="s2">&quot;ComplexityMetrics&quot;</span><span class="p">,</span>
+    <span class="n">quality</span><span class="p">:</span> <span class="s2">&quot;QualityScore&quot;</span><span class="p">,</span>
+    <span class="n">focus_areas</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;生成重构建议.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_dir: 技能目录路径</span>
+<span class="sd">        structure: 结构分析结果</span>
+<span class="sd">        complexity: 复杂度指标</span>
+<span class="sd">        quality: 质量评分</span>
+<span class="sd">        focus_areas: 重点关注领域（可选）</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        重构建议列表（字典格式）</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">suggestions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># 如果指定了关注领域，只生成相关建议</span>
+    <span class="k">if</span> <span class="n">focus_areas</span><span class="p">:</span>
+        <span class="n">focus_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">area</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">area</span> <span class="ow">in</span> <span class="n">focus_areas</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;structure&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">focus_set</span> <span class="ow">and</span> <span class="s2">&quot;结构&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">focus_set</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_filter_suggestions_by_focus</span><span class="p">(</span><span class="n">suggestions</span><span class="p">,</span> <span class="n">focus_set</span><span class="p">)</span>
+
+    <span class="c1"># 1. 基于结构评分生成建议</span>
+    <span class="k">if</span> <span class="n">quality</span><span class="o">.</span><span class="n">structure_score</span> <span class="o">&lt;</span> <span class="mi">20</span><span class="p">:</span>
+        <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P0&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;structure&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="s2">&quot;项目结构不完整&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="s2">&quot;完善项目结构，添加必需的目录和文件（references、examples、scripts、.claude）&quot;</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># 2. 基于文档评分生成建议</span>
+    <span class="k">if</span> <span class="n">quality</span><span class="o">.</span><span class="n">documentation_score</span> <span class="o">&lt;</span> <span class="mi">15</span><span class="p">:</span>
+        <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P1&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;documentation&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="s2">&quot;文档不足&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="s2">&quot;增加文档和示例，提高代码可读性&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># 3. 基于测试评分生成建议</span>
+    <span class="k">if</span> <span class="n">quality</span><span class="o">.</span><span class="n">test_coverage_score</span> <span class="o">&lt;</span> <span class="mi">15</span><span class="p">:</span>
+        <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P0&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;testing&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="s2">&quot;测试覆盖率低&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="s2">&quot;增加测试用例，提高测试覆盖率至 95% 以上&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># 4. 基于复杂度生成建议</span>
+    <span class="k">if</span> <span class="n">complexity</span><span class="o">.</span><span class="n">cyclomatic_complexity</span> <span class="ow">and</span> <span class="n">complexity</span><span class="o">.</span><span class="n">cyclomatic_complexity</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+        <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P1&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;complexity&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;代码圈复杂度过高 (</span><span class="si">{</span><span class="n">complexity</span><span class="o">.</span><span class="n">cyclomatic_complexity</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="s2">&quot;重构简化复杂逻辑，拆分大函数，减少嵌套层级&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># 5. 基于可维护性指数生成建议</span>
+    <span class="k">if</span> <span class="n">complexity</span><span class="o">.</span><span class="n">maintainability_index</span> <span class="ow">and</span> <span class="n">complexity</span><span class="o">.</span><span class="n">maintainability_index</span> <span class="o">&lt;</span> <span class="mi">50</span><span class="p">:</span>
+        <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P1&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;maintainability&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;可维护性指数低 (</span><span class="si">{</span><span class="n">complexity</span><span class="o">.</span><span class="n">maintainability_index</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="s2">&quot;优化代码结构，增加注释，提高代码可读性&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># 6. 基于文件数量生成建议</span>
+    <span class="k">if</span> <span class="n">structure</span><span class="o">.</span><span class="n">total_files</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">:</span>
+        <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P2&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;modularity&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;文件数量较多 (</span><span class="si">{</span><span class="n">structure</span><span class="o">.</span><span class="n">total_files</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="s2">&quot;考虑模块化拆分，将相关功能组织到独立模块&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># 7. 基于代码行数生成建议</span>
+    <span class="k">if</span> <span class="n">structure</span><span class="o">.</span><span class="n">total_lines</span> <span class="o">&gt;</span> <span class="n">CODE_SIZE_LARGE_THRESHOLD</span><span class="p">:</span>
+        <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P2&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;size&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;代码行数较多 (</span><span class="si">{</span><span class="n">structure</span><span class="o">.</span><span class="n">total_lines</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="s2">&quot;考虑拆分模块或提取独立包&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># 8. SKILL.md 特定建议</span>
+    <span class="n">skill_md</span> <span class="o">=</span> <span class="n">skill_dir</span> <span class="o">/</span> <span class="s2">&quot;SKILL.md&quot;</span>
+    <span class="k">if</span> <span class="n">skill_md</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">skill_md</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">content</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3000</span><span class="p">:</span>
+            <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P2&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;token-efficiency&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="s2">&quot;SKILL.md 过长&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;将详细内容移至 references/ 目录，&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;保持 SKILL.md 在 </span><span class="si">{</span><span class="n">SKILL_MD_RECOMMENDED_MAX_LINES</span><span class="si">}</span><span class="s2"> 行以内&quot;</span>
+                    <span class="p">),</span>
+                    <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+    <span class="c1"># 9. 检查 references 目录结构</span>
+    <span class="n">refs_dir</span> <span class="o">=</span> <span class="n">skill_dir</span> <span class="o">/</span> <span class="s2">&quot;references&quot;</span>
+    <span class="k">if</span> <span class="n">refs_dir</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">ref_file</span> <span class="ow">in</span> <span class="n">refs_dir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*.md&quot;</span><span class="p">):</span>
+            <span class="n">content</span> <span class="o">=</span> <span class="n">ref_file</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">content</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">))</span> <span class="o">&gt;</span> <span class="n">REFERENCE_FILE_LONG_THRESHOLD</span><span class="p">:</span>
+                <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P2&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;documentation&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;参考文档过长: </span><span class="si">{</span><span class="n">ref_file</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="p">(</span>
+                            <span class="sa">f</span><span class="s2">&quot;拆分 </span><span class="si">{</span><span class="n">ref_file</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> 为多个小文件&quot;</span>
+                            <span class="sa">f</span><span class="s2">&quot;（每个 </span><span class="si">{</span><span class="n">REFERENCE_FILE_MIN_LINES</span><span class="si">}</span><span class="s2">-&quot;</span>
+                            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">REFERENCE_FILE_MAX_LINES</span><span class="si">}</span><span class="s2"> 行）&quot;</span>
+                        <span class="p">),</span>
+                        <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+
+    <span class="c1"># 10. 检查是否有重复的模式或代码</span>
+    <span class="n">_check_duplication_patterns</span><span class="p">(</span><span class="n">skill_dir</span><span class="p">,</span> <span class="n">suggestions</span><span class="p">)</span>
+
+    <span class="n">focus_areas_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">area</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">area</span> <span class="ow">in</span> <span class="p">(</span><span class="n">focus_areas</span> <span class="ow">or</span> <span class="p">[]))</span>
+    <span class="k">return</span> <span class="n">_filter_suggestions_by_focus</span><span class="p">(</span><span class="n">suggestions</span><span class="p">,</span> <span class="n">focus_areas_set</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_filter_suggestions_by_focus</span><span class="p">(</span>
+    <span class="n">suggestions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+    <span class="n">focus_set</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;根据关注领域过滤建议.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        suggestions: 所有建议</span>
+<span class="sd">        focus_set: 关注领域集合</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        过滤后的建议列表</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">focus_set</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">suggestions</span>
+
+    <span class="c1"># 创建映射关系</span>
+    <span class="n">focus_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;structure&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;structure&quot;</span><span class="p">,</span> <span class="s2">&quot;结构&quot;</span><span class="p">,</span> <span class="s2">&quot;modularity&quot;</span><span class="p">,</span> <span class="s2">&quot;模块化&quot;</span><span class="p">,</span> <span class="s2">&quot;size&quot;</span><span class="p">,</span> <span class="s2">&quot;大小&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;documentation&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;documentation&quot;</span><span class="p">,</span> <span class="s2">&quot;文档&quot;</span><span class="p">,</span> <span class="s2">&quot;token-efficiency&quot;</span><span class="p">,</span> <span class="s2">&quot;token效率&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;testing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;testing&quot;</span><span class="p">,</span> <span class="s2">&quot;测试&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;complexity&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;complexity&quot;</span><span class="p">,</span> <span class="s2">&quot;复杂度&quot;</span><span class="p">,</span> <span class="s2">&quot;maintainability&quot;</span><span class="p">,</span> <span class="s2">&quot;可维护性&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;code&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;duplication&quot;</span><span class="p">,</span> <span class="s2">&quot;重复&quot;</span><span class="p">,</span> <span class="s2">&quot;quality&quot;</span><span class="p">,</span> <span class="s2">&quot;质量&quot;</span><span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="c1"># 收合所有匹配的关注领域</span>
+    <span class="n">matched_categories</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">focus</span> <span class="ow">in</span> <span class="n">focus_set</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">category</span><span class="p">,</span> <span class="n">keywords</span> <span class="ow">in</span> <span class="n">focus_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">focus</span> <span class="ow">in</span> <span class="n">keywords</span><span class="p">:</span>
+                <span class="n">matched_categories</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">keywords</span><span class="p">)</span>
+
+    <span class="c1"># 过滤建议</span>
+    <span class="n">filtered</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">suggestion</span> <span class="ow">in</span> <span class="n">suggestions</span><span class="p">:</span>
+        <span class="n">category_lower</span> <span class="o">=</span> <span class="n">suggestion</span><span class="p">[</span><span class="s2">&quot;category&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">issue_lower</span> <span class="o">=</span> <span class="n">suggestion</span><span class="p">[</span><span class="s2">&quot;issue&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="c1"># 检查是否有匹配的关注领域</span>
+        <span class="n">has_match</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span>
+            <span class="n">keyword</span> <span class="ow">in</span> <span class="n">category_lower</span> <span class="ow">or</span> <span class="n">keyword</span> <span class="ow">in</span> <span class="n">issue_lower</span> <span class="k">for</span> <span class="n">keyword</span> <span class="ow">in</span> <span class="n">matched_categories</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">has_match</span><span class="p">:</span>
+            <span class="n">filtered</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">suggestion</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">filtered</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_duplication_patterns</span><span class="p">(</span><span class="n">skill_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">suggestions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;检查重复的模式或代码.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_dir: 技能目录路径</span>
+<span class="sd">        suggestions: 建议列表（会直接修改）</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># 检查是否有重复的文档内容</span>
+    <span class="n">refs_dir</span> <span class="o">=</span> <span class="n">skill_dir</span> <span class="o">/</span> <span class="s2">&quot;references&quot;</span>
+    <span class="k">if</span> <span class="n">refs_dir</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">ref_files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">refs_dir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*.md&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_files</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="s2">&quot;P2&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;organization&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;参考文档文件过多 (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ref_files</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="s2">&quot;考虑合并相似主题的文档，或使用子目录组织&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;impact&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;effort&quot;</span><span class="p">:</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+
+<div class="viewcode-block" id="generate_refactor_report">
+<a class="viewcode-back" href="../../../api/index.html#skill_creator_mcp.utils.generate_refactor_report">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_refactor_report</span><span class="p">(</span>
+    <span class="n">skill_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">structure</span><span class="p">:</span> <span class="s2">&quot;StructureAnalysis&quot;</span><span class="p">,</span>
+    <span class="n">complexity</span><span class="p">:</span> <span class="s2">&quot;ComplexityMetrics&quot;</span><span class="p">,</span>
+    <span class="n">quality</span><span class="p">:</span> <span class="s2">&quot;QualityScore&quot;</span><span class="p">,</span>
+    <span class="n">suggestions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;生成重构报告.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        skill_path: 技能路径</span>
+<span class="sd">        structure: 结构分析结果</span>
+<span class="sd">        complexity: 复杂度指标</span>
+<span class="sd">        quality: 质量评分</span>
+<span class="sd">        suggestions: 重构建议</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        重构报告（Markdown 格式）</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">skill_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">skill_path</span><span class="p">)</span>
+    <span class="n">skill_name</span> <span class="o">=</span> <span class="n">skill_dir</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;# 重构分析报告</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;## 当前状态评估</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 基本信息&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 技能名称：`</span><span class="si">{</span><span class="n">skill_name</span><span class="si">}</span><span class="s2">`&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 路径：`</span><span class="si">{</span><span class="n">skill_path</span><span class="si">}</span><span class="s2">`&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 文件数量：</span><span class="si">{</span><span class="n">structure</span><span class="o">.</span><span class="n">total_files</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 代码行数：</span><span class="si">{</span><span class="n">structure</span><span class="o">.</span><span class="n">total_lines</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 质量评分&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 结构质量：</span><span class="si">{</span><span class="n">quality</span><span class="o">.</span><span class="n">structure_score</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">/100&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 文档质量：</span><span class="si">{</span><span class="n">quality</span><span class="o">.</span><span class="n">documentation_score</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">/100&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 测试质量：</span><span class="si">{</span><span class="n">quality</span><span class="o">.</span><span class="n">test_coverage_score</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">/100&quot;</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- **总体评分：</span><span class="si">{</span><span class="n">quality</span><span class="o">.</span><span class="n">overall_score</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">/100**</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">complexity</span><span class="o">.</span><span class="n">cyclomatic_complexity</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 复杂度指标&quot;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 圈复杂度：</span><span class="si">{</span><span class="n">complexity</span><span class="o">.</span><span class="n">cyclomatic_complexity</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">complexity</span><span class="o">.</span><span class="n">maintainability_index</span><span class="p">:</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- 可维持性指数：</span><span class="si">{</span><span class="n">complexity</span><span class="o">.</span><span class="n">maintainability_index</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 按优先级分组建议</span>
+    <span class="n">p0_suggestions</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">suggestions</span> <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="s2">&quot;priority&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;P0&quot;</span><span class="p">]</span>
+    <span class="n">p1_suggestions</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">suggestions</span> <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="s2">&quot;priority&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;P1&quot;</span><span class="p">]</span>
+    <span class="n">p2_suggestions</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">suggestions</span> <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="s2">&quot;priority&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;P2&quot;</span><span class="p">]</span>
+
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;## 发现的问题</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">p0_suggestions</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 严重问题 (P0) - 必须修复&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">p0_suggestions</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">. **</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;issue&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">**&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 类别：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;category&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 建议：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;suggestion&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 影响：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;impact&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> | 工作量：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;effort&#39;</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">p1_suggestions</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 重要问题 (P1) - 建议修复&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">p1_suggestions</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">. **</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;issue&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">**&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 类别：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;category&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 建议：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;suggestion&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 影响：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;impact&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> | 工作量：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;effort&#39;</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">p2_suggestions</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 优化建议 (P2) - 可选优化&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">p2_suggestions</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">. **</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;issue&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">**&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 类别：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;category&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 建议：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;suggestion&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - 影响：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;impact&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> | 工作量：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;effort&#39;</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">suggestions</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;*未发现需要重构的问题，技能质量良好！*</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;## 实施计划</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">p0_suggestions</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 第一阶段（必须）&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">p0_suggestions</span><span class="p">:</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- [ ] 修复：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;issue&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">p1_suggestions</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 第二阶段（建议）&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">p1_suggestions</span><span class="p">:</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- [ ] 修复：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;issue&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">p2_suggestions</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;### 第三阶段（可选）&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">p2_suggestions</span><span class="p">:</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- [ ] 优化：</span><span class="si">{</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;issue&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="estimate_refactor_effort">
+<a class="viewcode-back" href="../../../api/index.html#skill_creator_mcp.utils.estimate_refactor_effort">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">estimate_refactor_effort</span><span class="p">(</span><span class="n">suggestions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;估算重构工作量.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        suggestions: 重构建议列表</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        工作量估算（按优先级分组的小时数）</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">effort_map</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;low&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;medium&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;high&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">}</span>
+
+    <span class="n">p0_effort</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+        <span class="n">effort_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;effort&quot;</span><span class="p">,</span> <span class="s2">&quot;medium&quot;</span><span class="p">),</span> <span class="mi">4</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">suggestions</span> <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="s2">&quot;priority&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;P0&quot;</span>
+    <span class="p">)</span>
+    <span class="n">p1_effort</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+        <span class="n">effort_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;effort&quot;</span><span class="p">,</span> <span class="s2">&quot;medium&quot;</span><span class="p">),</span> <span class="mi">4</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">suggestions</span> <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="s2">&quot;priority&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;P1&quot;</span>
+    <span class="p">)</span>
+    <span class="n">p2_effort</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+        <span class="n">effort_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;effort&quot;</span><span class="p">,</span> <span class="s2">&quot;medium&quot;</span><span class="p">),</span> <span class="mi">4</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">suggestions</span> <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="s2">&quot;priority&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;P2&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;p0_hours&quot;</span><span class="p">:</span> <span class="n">p0_effort</span><span class="p">,</span>
+        <span class="s2">&quot;p1_hours&quot;</span><span class="p">:</span> <span class="n">p1_effort</span><span class="p">,</span>
+        <span class="s2">&quot;p2_hours&quot;</span><span class="p">:</span> <span class="n">p2_effort</span><span class="p">,</span>
+        <span class="s2">&quot;total_hours&quot;</span><span class="p">:</span> <span class="n">p0_effort</span> <span class="o">+</span> <span class="n">p1_effort</span> <span class="o">+</span> <span class="n">p2_effort</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Skill Creator Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
