@@ -1,0 +1,325 @@
+# jvdeploy
+
+A standalone Dockerfile generator and deployment tool for jvagent applications. This tool discovers action dependencies from `info.yaml` files, generates production-ready Dockerfiles with optimized layer caching, and deploys applications to AWS Lambda and Kubernetes.
+
+## Overview
+
+`jvdeploy` is a Python CLI tool that automates Dockerfile generation and deployment for jvagent applications. It:
+- Validates jvagent application structure (requires `app.yaml`)
+- Discovers pip dependencies from all action `info.yaml` files
+- Generates Dockerfiles with separate RUN commands per action for optimal layer caching
+- Extends a customizable base Dockerfile template
+- Deploys applications to AWS Lambda with ECR, IAM, and API Gateway integration
+- Supports Kubernetes deployment (coming soon)
+
+## Installation
+
+### From Source
+
+```bash
+cd jvdeploy
+pip install -e .
+```
+
+### With Deployment Features
+
+```bash
+cd jvdeploy
+pip install -e ".[deploy]"
+```
+
+### For Development
+
+```bash
+cd jvdeploy
+pip install -e ".[dev]"
+```
+
+## Usage
+
+### Dockerfile Generation
+
+Generate Dockerfiles using the `generate` command or the legacy direct invocation:
+
+```bash
+# Generate Dockerfile in current directory
+cd my-jvagent-app
+jvdeploy generate
+
+# Or using legacy syntax
+jvdeploy
+
+# Generate Dockerfile for specific app
+jvdeploy generate /path/to/my-app
+
+# With absolute path
+jvdeploy generate ~/projects/my-jvagent-app
+```
+
+### Deployment
+
+Deploy jvagent applications to AWS Lambda or Kubernetes:
+
+```bash
+# Initialize deployment configuration
+jvdeploy init --lambda
+
+# Deploy to AWS Lambda
+export JVAGENT_ADMIN_PASSWORD="your-secure-password"
+jvdeploy deploy lambda --all
+
+# Check deployment status
+jvdeploy status lambda
+
+# View logs
+jvdeploy logs lambda --follow
+
+# Destroy deployment
+jvdeploy destroy lambda --yes
+```
+
+For complete deployment documentation, see [DEPLOY_README.md](DEPLOY_README.md).
+
+### Quick Deployment Example
+
+```bash
+# 1. Initialize configuration
+cd my-jvagent-app
+jvdeploy init --lambda
+
+# 2. Edit deploy.yaml with your settings
+vim deploy.yaml
+
+# 3. Set required environment variables
+export JVAGENT_ADMIN_PASSWORD="your-password"
+
+# 4. Deploy (dry-run first to test)
+jvdeploy deploy lambda --all --dry-run
+
+# 5. Actual deployment
+jvdeploy deploy lambda --all
+
+# 6. Check the deployment
+jvdeploy status lambda
+
+# 7. View your API URL in the output!
+```
+
+## How It Works
+
+### 1. App Validation
+- Validates that `app.yaml` exists in the app root directory
+- Ensures the directory is a valid jvagent application
+
+### 2. Dependency Discovery
+- Scans `agents/{namespace}/{agent_name}/actions/` directory structure
+- For each action, reads `info.yaml` file
+- Extracts `package.dependencies.pip` list from each action
+- Deduplicates dependencies per action
+
+### 3. Dockerfile Generation
+- Loads base Dockerfile template (`Dockerfile.base`)
+- Generates separate RUN commands per action for pip dependencies
+- Replaces `{{ACTION_DEPENDENCIES}}` placeholder in base template
+- Writes `Dockerfile` to the app directory
+
+## Generated Dockerfile Structure
+
+The generated Dockerfile includes:
+- Base image and environment setup (from `Dockerfile.base`)
+- Action-specific pip dependencies (one RUN command per action)
+- Optimized layer caching for faster rebuilds
+
+Example output:
+
+```dockerfile
+FROM registry.v75inc.dev/jvagent/jvagent-base:latest
+
+WORKDIR /var/task
+COPY . /var/task/
+
+# Action-specific pip dependencies
+# Dependencies for myorg/my_action
+RUN /opt/venv/bin/pip install --no-cache-dir openai>=1.0.0 httpx>=0.24.0
+
+# Dependencies for myorg/another_action
+RUN /opt/venv/bin/pip install --no-cache-dir requests>=2.31.0 pydantic>=2.0.0
+```
+
+## Action Dependency Discovery
+
+The bundler discovers dependencies by:
+1. Scanning `agents/` directory for all agents
+2. For each agent, scanning `actions/{namespace}/{action_name}/` directories
+3. Reading `info.yaml` from each action directory
+4. Extracting `package.dependencies.pip` list
+
+**Example info.yaml structure:**
+
+```yaml
+package:
+  name: jvagent/my_action
+  dependencies:
+    pip:
+      - openai>=1.0.0
+      - httpx>=0.24.0
+```
+
+## Base Template
+
+The base Dockerfile template (`Dockerfile.base`) is included in the package and can be customized. The template must include the `{{ACTION_DEPENDENCIES}}` placeholder where action dependencies will be inserted.
+
+**Default Dockerfile.base:**
+
+```dockerfile
+FROM registry.v75inc.dev/jvagent/jvagent-base:latest
+
+WORKDIR /var/task
+COPY . /var/task/
+
+# {{ACTION_DEPENDENCIES}}
+```
+
+## Customization
+
+You can customize the base template by:
+1. Copying `Dockerfile.base` from the package to your project
+2. Modifying it to suit your needs
+3. Keeping the `{{ACTION_DEPENDENCIES}}` placeholder where you want dependencies inserted
+
+## Project Structure
+
+```
+jvdeploy/
+├── jvdeploy/
+│   ├── __init__.py           # Package initialization
+│   ├── cli.py                # CLI entry point
+│   ├── bundler.py            # Main Bundler class
+│   ├── dockerfile_generator.py  # Dockerfile generation logic
+│   └── Dockerfile.base       # Base Dockerfile template
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py           # pytest fixtures
+│   ├── test_bundler.py       # Bundler tests
+│   └── test_dockerfile_generator.py  # Generator tests
+├── README.md
+├── setup.py
+└── pyproject.toml
+```
+
+## Development
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Running Tests with Coverage
+
+```bash
+pytest --cov=jvdeploy --cov-report=html
+```
+
+### Code Formatting
+
+```bash
+black jvdeploy tests
+```
+
+### Linting
+
+```bash
+ruff check jvdeploy tests
+```
+
+### Type Checking
+
+```bash
+mypy jvdeploy
+```
+
+## API Usage
+
+You can also use `jvdeploy` as a Python library:
+
+```python
+from jvdeploy import Bundler
+
+# Create bundler instance
+bundler = Bundler(app_root="/path/to/jvagent_app")
+
+# Generate Dockerfile
+success = bundler.generate_dockerfile()
+
+if success:
+    print("Dockerfile generated successfully!")
+else:
+    print("Dockerfile generation failed")
+```
+
+## Requirements
+
+### Core Requirements
+- Python >= 3.8
+- PyYAML >= 6.0.0
+
+### Deployment Requirements (optional)
+- boto3 >= 1.28.0 (for AWS Lambda deployment)
+- jinja2 >= 3.1.0 (for Kubernetes templates)
+
+Install deployment dependencies with:
+```bash
+pip install jvdeploy[deploy]
+```
+
+## Features
+
+### Dockerfile Generation
+- ✅ Automatic dependency discovery from action info.yaml files
+- ✅ Optimized Docker layer caching
+- ✅ Customizable base template
+- ✅ Action-specific dependency isolation
+
+### AWS Lambda Deployment
+- ✅ ECR repository management
+- ✅ IAM role creation and management
+- ✅ Lambda function deployment from containers
+- ✅ API Gateway (HTTP API) integration
+- ✅ Environment variable configuration
+- ✅ VPC and EFS support
+- ✅ CloudWatch Logs integration
+- ✅ Dry-run mode for testing
+- ✅ Deployment status checking
+- ✅ Log streaming and viewing
+
+### Kubernetes Deployment (Coming Soon)
+- 🚧 Jinja2 manifest templates
+- 🚧 kubectl integration
+- 🚧 Service, Deployment, ConfigMap support
+- 🚧 Ingress configuration
+- 🚧 Persistent storage support
+
+## Documentation
+
+- [Deployment Guide](DEPLOY_README.md) - Complete guide for deploying applications
+- [Implementation Summary](DEPLOY_IMPLEMENTATION.md) - Technical implementation details
+- [Deployment Specification](DEPLOYMENT_SPEC.md) - Complete technical specification
+- [Quick Reference](DEPLOYMENT_QUICKREF.md) - Command cheat sheet
+
+## License
+
+MIT License
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Related Projects
+
+- [jvagent](https://github.com/your-org/jvagent) - The main jvagent framework
+- [jvspatial](https://github.com/your-org/jvspatial) - Spatial database for jvagent
+
+## Support
+
+For issues and questions, please open an issue on the [GitHub repository](https://github.com/your-org/jvdeploy/issues).
