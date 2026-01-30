@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS2 - Screen Share</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #fff;
+        }
+
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 100;
+        }
+
+        #status.connecting {
+            background: #f59e0b;
+            color: #000;
+        }
+
+        #status.connected {
+            background: #10b981;
+            color: #fff;
+        }
+
+        #status.disconnected {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        #canvas-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        #screen {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 4px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #placeholder {
+            text-align: center;
+            color: #666;
+        }
+
+        #placeholder h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        #placeholder p {
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status" class="connecting">Connecting...</div>
+
+    <div id="canvas-container">
+        <div id="placeholder">
+            <h1>JS2</h1>
+            <p>Waiting for screen capture...</p>
+        </div>
+        <img id="screen" style="display: none;" alt="Screen capture">
+    </div>
+
+    <script>
+        const status = document.getElementById('status');
+        const placeholder = document.getElementById('placeholder');
+        const screen = document.getElementById('screen');
+
+        let ws = null;
+        let reconnectTimeout = null;
+
+        function setStatus(state, message) {
+            status.className = state;
+            status.textContent = message;
+        }
+
+        function connect() {
+            // Build WebSocket URL based on current location
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${location.host}/ws/viewer`;
+
+            setStatus('connecting', 'Connecting...');
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                setStatus('connected', 'Connected');
+                if (reconnectTimeout) {
+                    clearTimeout(reconnectTimeout);
+                    reconnectTimeout = null;
+                }
+            };
+
+            ws.onmessage = (event) => {
+                // Received frame as base64 data URL
+                placeholder.style.display = 'none';
+                screen.style.display = 'block';
+                screen.src = event.data;
+            };
+
+            ws.onclose = () => {
+                setStatus('disconnected', 'Disconnected - Reconnecting...');
+                scheduleReconnect();
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                ws.close();
+            };
+        }
+
+        function scheduleReconnect() {
+            if (reconnectTimeout) return;
+            reconnectTimeout = setTimeout(() => {
+                reconnectTimeout = null;
+                connect();
+            }, 2000);
+        }
+
+        // Start connection
+        connect();
+
+        // Keep-alive ping every 30 seconds
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('ping');
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
