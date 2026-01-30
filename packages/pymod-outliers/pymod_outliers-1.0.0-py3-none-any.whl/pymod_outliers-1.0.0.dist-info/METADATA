@@ -1,0 +1,196 @@
+Metadata-Version: 2.4
+Name: pymod-outliers
+Version: 1.0.0
+Summary: Multivariate Outlier Detection for Solar Photovoltaic Systems
+Author-email: SAAD BASMA <b.saad@uiz.ac.ma>, BOUADA MOHAMED <mohamed.bouada.38@edu.uiz.ac.ma>
+Maintainer-email: SAAD BASMA <b.saad@uiz.ac.ma>
+License: MIT
+Keywords: outlier detection,solar energy,photovoltaic,PV systems,anomaly detection,DBSCAN,data cleaning,time series
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.19.0
+Requires-Dist: pandas>=1.1.0
+Requires-Dist: scipy>=1.5.0
+Requires-Dist: scikit-learn>=0.23.0
+Requires-Dist: matplotlib>=3.3.0
+
+# PYMOD-Outliers
+
+**Multivariate Outlier Detection for Solar Photovoltaic Systems**
+
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Overview
+
+PYMOD-Outliers is a comprehensive Python library for detecting outliers in solar photovoltaic (PV) system data. It combines multiple statistical and machine learning methods to identify anomalous measurements in GHI (Global Horizontal Irradiance) and power output data.
+
+## Features
+
+- **Physical Validation**: Filters impossible GHI-Power combinations
+- **Statistical Analysis**: Z-score and IQR-based outlier detection
+- **Clustering**: DBSCAN algorithm for spatial pattern recognition
+- **Boundary Construction**: Linear interpolation to build efficiency curves
+- **Real-time Classification**: Validate new data points against learned boundaries
+
+## Installation
+
+```bash
+pip install pymod-outliers
+```
+
+## Quick Start
+
+```python
+import pandas as pd
+from pymod_outliers import detect_outliers
+
+# Load your solar PV data
+data = pd.DataFrame({
+    'GHI': [...],           # Global Horizontal Irradiance (W/m²)
+    'Power': [...],         # Active Power output (W)
+    'Version': [...],       # Panel version/identifier
+    'Rating': [...]         # Panel rated power (W)
+})
+
+# Detect outliers
+boundaries, inliers = detect_outliers(
+    data1=data,
+    Version_column='Version',
+    GHI_column='GHI',
+    Power_column='Power',
+    Rating_column='Rating',
+    eps=[0.1, 0.2, 0.3],    # DBSCAN epsilon values to test
+    min_s=[5, 10, 15]       # DBSCAN min_samples values to test
+)
+
+# Get clean data
+clean_data = data.loc[inliers]
+print(f"Detected {len(inliers)} inliers out of {len(data)} total points")
+```
+
+## Detection Pipeline
+
+PYMOD-Outliers uses a 6-step pipeline:
+
+1. **Physical Filtering** (`ghi_p_zeros`): Remove impossible measurements
+   - GHI ≥ 200 W/m² with Power = 0 (panel malfunction)
+   - GHI = 0 with Power > 0 (measurement error)
+
+2. **Z-Score Analysis** (`z_scores`): Statistical outlier detection
+   - Bins data by GHI intervals
+   - Applies IQR filtering within each bin
+
+3. **DBSCAN Clustering** (`dbscan_func`): Spatial pattern recognition
+   - Identifies dense regions of normal operation
+   - Separates outliers based on GHI-Power relationships
+
+4. **Boundary Construction** (`interpolation_func`): Build efficiency curves
+   - Creates upper/lower power limits per GHI interval
+   - Uses linear interpolation between intervals
+
+5. **High Irradiance Validation** (`linear_interpol`): Handle edge cases
+   - Validates points at GHI ≥ 1000 W/m²
+   - Accounts for temperature-induced efficiency drops
+
+6. **Real-time Classification** (`check_inliers_outliers`): Classify new points
+   - Uses learned boundaries to validate new measurements
+   - Returns 0 (inlier) or -1 (outlier)
+
+## API Reference
+
+### Main Functions
+
+#### `detect_outliers(data1, Version_column, GHI_column, Power_column, Rating_column, eps, min_s)`
+
+Complete outlier detection pipeline.
+
+**Parameters:**
+- `data1` (pd.DataFrame): Raw solar data
+- `Version_column` (str): Column name for panel version
+- `GHI_column` (str): Column name for GHI measurements
+- `Power_column` (str): Column name for power output
+- `Rating_column` (str): Column name for panel rated power
+- `eps` (list): DBSCAN epsilon values to test
+- `min_s` (list): DBSCAN min_samples values to test
+
+**Returns:**
+- `tuple`: (boundaries DataFrame, list of inlier indices)
+
+#### `check_inliers_outliers(df_borders, row, pv_power, GHI_column, Power_column, Version_column)`
+
+Classify a single data point using learned boundaries.
+
+**Parameters:**
+- `df_borders` (pd.DataFrame): Boundary coefficients from `detect_outliers()`
+- `row` (pd.Series): Data point to classify
+- `pv_power` (float): Power value to check
+- `GHI_column` (str): Column name for GHI
+- `Power_column` (str): Column name for power
+- `Version_column` (str): Column name for panel version
+
+**Returns:**
+- `int`: 0 (inlier) or -1 (outlier)
+
+## Use Cases
+
+- **Data Quality Control**: Clean historical PV system data
+- **Real-time Monitoring**: Detect sensor malfunctions or anomalies
+- **Performance Analysis**: Identify underperforming panels
+- **Research**: Prepare clean datasets for solar energy studies
+
+## Requirements
+
+- Python ≥ 3.7
+- numpy ≥ 1.19.0
+- pandas ≥ 1.1.0
+- scipy ≥ 1.5.0
+- scikit-learn ≥ 0.23.0
+- matplotlib ≥ 3.3.0
+
+## Citation
+
+If you use PYMOD-Outliers in your research, please cite:
+
+```bibtex
+@software{pymod_outliers,
+  author = {Basma, Saad and Bouada, Mohamed},
+  title = {PYMOD-Outliers: Multivariate Outlier Detection for Solar PV Systems},
+  year = {2026},
+  version = {1.0.0}
+}
+```
+
+## Authors
+
+- **SAAD BASMA** - Primary Author - [b.saad@uiz.ac.ma](mailto:b.saad@uiz.ac.ma)
+- **BOUADA MOHAMED** - Co-Author - [mohamed.bouada.38@edu.uiz.ac.ma](mailto:mohamed.bouada.38@edu.uiz.ac.ma)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please contact the authors for contribution guidelines.
+
+## Support
+
+For issues, questions, or suggestions, please contact the authors:
+- SAAD BASMA: [b.saad@uiz.ac.ma](mailto:b.saad@uiz.ac.ma)
+- BOUADA MOHAMED: [mohamed.bouada.38@edu.uiz.ac.ma](mailto:mohamed.bouada.38@edu.uiz.ac.ma)
