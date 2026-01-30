@@ -1,0 +1,310 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# hyper2kvm/vmware/transports/hyperctl_common.py
+from __future__ import annotations
+
+"""
+hyperctl / hypersdk common helpers for hyper2kvm.
+
+Design goals:
+  - Integrate with hypervisord daemon for high-performance VM exports
+  - Fallback to pyvmomi if hyperctl/daemon not available
+  - Provide both CLI (hyperctl) and API (direct REST) interfaces
+  - Match the govc_common.py pattern for consistency
+"""
+
+import logging
+import os
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from ...core.exceptions import VMwareError
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class HyperCtlConfig:
+    """Configuration for hyperctl CLI tool."""
+    daemon_url: str = "http://localhost:8080"
+    hyperctl_path: str = "hyperctl"
+    timeout: int = 3600
+
+
+class HyperCtlRunner:
+    """
+    Wrapper for hyperctl CLI tool (hypersdk).
+
+    Similar to GovcRunner but for the Go-based provider daemon.
+    """
+
+    def __init__(
+        self,
+        daemon_url: str = "http://localhost:8080",
+        hyperctl_path: str = "hyperctl",
+        timeout: int = 3600,
+    ):
+        self.daemon_url = daemon_url
+        self.hyperctl_path = hyperctl_path
+        self.timeout = timeout
+        self.logger = logging.getLogger(__name__)
+
+    def _run_command(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+        """Run hyperctl command."""
+        # Build command - only add -daemon if not using default
+        # Note: The installed hyperctl binary may not support -daemon flag,
+        # so we rely on default http://localhost:8080
+        cmd = [self.hyperctl_path] + args
+
+        self.logger.debug(f"Running hyperctl: {' '.join(cmd)}")
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                check=check,
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            raise VMwareError(msg=f"hyperctl command timed out after {self.timeout}s") from None
+        except subprocess.CalledProcessError as e:
+            raise VMwareError(msg=f"hyperctl failed: {e.stderr}") from e
+        except FileNotFoundError:
+            raise VMwareError(
+                msg=f"hyperctl not found at {self.hyperctl_path}. "
+                "Install hypersdk or set HYPERCTL_PATH environment variable."
+            ) from None
+
+    def check_daemon_status(self) -> dict[str, Any]:
+        """Check if hypervisord daemon is running and get status."""
+        result = self._run_command(["status"])
+
+        # hyperctl status outputs a table, but we want JSON for parsing
+        # For now, just check if it succeeded
+        if result.returncode == 0:
+            self.logger.info("hypervisord daemon is running")
+            return {"status": "running", "output": result.stdout}
+        else:
+            raise VMwareError(msg="hypervisord daemon not responding")
+
+    def submit_export_job(
+        self,
+        vm_path: str,
+        output_path: str,
+        parallel_downloads: int = 4,
+        remove_cdrom: bool = True,
+    ) -> str:
+        """
+        Submit VM export job to hypervisord daemon.
+
+        Note: The installed hyperctl binary only supports basic submit flags.
+        Options like parallel_downloads and remove_cdrom are configured on the daemon side.
+
+        Returns:
+            job_id: The job ID for tracking progress
+        """
+        args = [
+            "submit",
+            "-vm", vm_path,
+            "-output", output_path,
+        ]
+
+        # Note: -parallel and -remove-cdrom flags are not supported by the installed binary
+        # These options are configured in the daemon's config file
+
+        result = self._run_command(args)
+
+        # Parse job ID from output
+        # Output format: "  - Job ID: <job-id>"
+        for line in result.stdout.split('\n'):
+            if "job id:" in line.lower():
+                job_id = line.split(":")[-1].strip()
+                self.logger.info(f"Export job submitted: {job_id}")
+                return job_id
+
+        raise VMwareError(msg="Failed to parse job ID from hyperctl output")
+
+    def query_job(self, job_id: str) -> dict[str, Any]:
+        """Query job status."""
+        result = self._run_command(["query", "-id", job_id])
+
+        # Parse the table output from hyperctl
+        # Expected format:
+        # JOB_ID    STATUS    PROGRESS    MESSAGE
+        # abc123    running   50%         Exporting disk...
+        job_data = {"job_id": job_id, "output": result.stdout}
+
+        try:
+            lines = result.stdout.strip().split('\n')
+            if len(lines) >= 2:
+                # Skip header line, parse data line
+                header = lines[0].split()
+                data = lines[1].split(None, len(header) - 1)  # Split into header count fields
+
+                # Build dict from header and data
+                for i, field in enumerate(header):
+                    if i < len(data):
+                        job_data[field.lower()] = data[i]
+
+                # Extract common fields
+                if 'STATUS' in header and len(data) > 1:
+                    job_data['status'] = data[1]
+                if 'PROGRESS' in header and len(data) > 2:
+                    progress_str = data[2].rstrip('%')
+                    try:
+                        job_data['progress_percent'] = float(progress_str)
+                    except ValueError:
+                        pass
+        except Exception as e:
+            logger.debug(f"Failed to parse hyperctl query output: {e}")
+
+        return job_data
+
+    def wait_for_job_completion(
+        self,
+        job_id: str,
+        poll_interval: int = 5,
+        timeout: int | None = None,
+        progress_callback: callable | None = None,
+    ) -> dict[str, Any]:
+        """
+        Wait for export job to complete.
+
+        Args:
+            job_id: Job ID to wait for
+            poll_interval: Seconds between status checks
+            timeout: Maximum seconds to wait (None = unlimited)
+            progress_callback: Optional callback(progress_dict) for progress updates
+
+        Returns:
+            Final job status dict
+        """
+        start_time = time.time()
+
+        while True:
+            if timeout and (time.time() - start_time) > timeout:
+                raise VMwareError(msg=f"Job {job_id} timed out after {timeout}s")
+
+            status = self.query_job(job_id)
+
+            # Check if completed (parse from output)
+            if "completed" in status["output"].lower():
+                self.logger.info(f"Job {job_id} completed successfully")
+                return status
+            elif "failed" in status["output"].lower():
+                raise VMwareError(msg=f"Job {job_id} failed")
+            elif "cancelled" in status["output"].lower():
+                raise VMwareError(msg=f"Job {job_id} was cancelled")
+
+            # Call progress callback if provided
+            if progress_callback:
+                try:
+                    progress_callback(status)
+                except Exception as e:
+                    self.logger.warning(f"Progress callback error: {e}")
+
+            time.sleep(poll_interval)
+
+    def export_vm(
+        self,
+        vm_path: str,
+        output_path: str,
+        parallel_downloads: int = 4,
+        remove_cdrom: bool = True,
+        wait: bool = True,
+        progress_callback: callable | None = None,
+    ) -> dict[str, Any]:
+        """
+        Export VM using hypervisord daemon (high-level wrapper).
+
+        Args:
+            vm_path: vSphere VM path (e.g., "/datacenter/vm/my-vm")
+            output_path: Local output directory
+            parallel_downloads: Number of parallel file downloads
+            remove_cdrom: Remove CD/DVD devices before export
+            wait: Wait for job completion
+            progress_callback: Optional progress callback
+
+        Returns:
+            Job result dict
+        """
+        # Ensure output directory exists
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+
+        # Submit job
+        job_id = self.submit_export_job(
+            vm_path=vm_path,
+            output_path=output_path,
+            parallel_downloads=parallel_downloads,
+            remove_cdrom=remove_cdrom,
+        )
+
+        if not wait:
+            return {"job_id": job_id, "status": "submitted"}
+
+        # Wait for completion
+        return self.wait_for_job_completion(
+            job_id=job_id,
+            progress_callback=progress_callback,
+        )
+
+
+# Factory function for easy instantiation
+
+def create_hyperctl_runner(
+    daemon_url: str | None = None,
+    hyperctl_path: str | None = None,
+) -> HyperCtlRunner:
+    """
+    Create HyperCtlRunner with environment variable defaults.
+
+    Environment variables:
+        HYPERVISORD_URL: Daemon URL (default: http://localhost:8080)
+        HYPERCTL_PATH: Path to hyperctl binary (default: hyperctl)
+    """
+    daemon_url = daemon_url or os.getenv("HYPERVISORD_URL", "http://localhost:8080")
+    hyperctl_path = hyperctl_path or os.getenv("HYPERCTL_PATH", "hyperctl")
+
+    return HyperCtlRunner(
+        daemon_url=daemon_url,
+        hyperctl_path=hyperctl_path,
+    )
+
+
+# Convenience function for export
+
+def export_vm_hyperctl(
+    vm_path: str,
+    output_path: str,
+    parallel_downloads: int = 4,
+    remove_cdrom: bool = True,
+    daemon_url: str | None = None,
+    progress_callback: callable | None = None,
+) -> dict[str, Any]:
+    """
+    Export VM using hyperctl (convenience function).
+
+    This is the equivalent of export_vm_govc() but using hypersdk.
+
+    Example:
+        >>> from hyper2kvm.vmware.transports.hyperctl_common import export_vm_hyperctl
+        >>> result = export_vm_hyperctl(
+        ...     vm_path="/datacenter/vm/my-vm",
+        ...     output_path="/tmp/export",
+        ...     parallel_downloads=4,
+        ... )
+        >>> print(result["job_id"])
+    """
+    runner = create_hyperctl_runner(daemon_url=daemon_url)
+
+    return runner.export_vm(
+        vm_path=vm_path,
+        output_path=output_path,
+        parallel_downloads=parallel_downloads,
+        remove_cdrom=remove_cdrom,
+        progress_callback=progress_callback,
+    )
