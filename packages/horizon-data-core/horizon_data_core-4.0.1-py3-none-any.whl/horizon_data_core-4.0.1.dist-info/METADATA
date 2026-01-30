@@ -1,0 +1,298 @@
+Metadata-Version: 2.4
+Name: horizon-data-core
+Version: 4.0.1
+Summary: Horizon’s core data SDK
+Author-email: Spear AI <org@spear.ai>
+Keywords: Horizon,SDK,Spear AI
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: <3.13,>=3.12
+Requires-Dist: confluent-kafka>=2.12.2
+Requires-Dist: dagster-aws>=0.22.1
+Requires-Dist: dagster-iceberg>=0.3.3
+Requires-Dist: dagster-pandera>=0.22.1
+Requires-Dist: dagster>=1.6.1
+Requires-Dist: geojson>=3
+Requires-Dist: pandas>=2
+Requires-Dist: pandera[mypy]>=0.18
+Requires-Dist: polars>=1.33.1
+Requires-Dist: psycopg2-binary>=2.9.10
+Requires-Dist: pyarrow>=21.0.0
+Requires-Dist: pydantic-settings>=2.12.0
+Requires-Dist: pydantic>=2.5
+Requires-Dist: pyiceberg[pyarrow,s3fs]>=0.10
+Requires-Dist: s3path>=0.6
+Requires-Dist: sqlalchemy[mypy]>=2.0.36
+Requires-Dist: structlog>=25.4.0
+Requires-Dist: turfpy>=0.0.7
+Provides-Extra: testing
+Requires-Dist: pytest>=8.3; extra == 'testing'
+Description-Content-Type: text/markdown
+
+# Horizon Data Core SDK
+
+The Horizon Data Core SDK provides a simple interface for working with both PostgreSQL and Iceberg tables in the Horizon system.
+
+## Getting started
+
+Install the SDK:
+
+```sh
+uv add horizon-data-core
+```
+
+## Features
+
+- **Pydantic BaseModels**: Type-safe data models for all entities
+- **PostgreSQL Operations**: Full CRUD operations for PostgreSQL tables
+- **Iceberg Operations**: Write and read operations for Iceberg tables
+- **Automatic Conversion**: Seamless conversion between Pydantic models and SQLAlchemy ORM models
+
+## Quick Start
+
+### 1. Initialize the SDK
+
+```python
+from horizon_data_core.api import initialize_sdk
+from horizon_data_core.client import PostgresClient
+from pyiceberg.catalog import load_catalog
+from uuid import uuid4
+
+# Set up PostgreSQL client
+postgres_client = PostgresClient(
+    organization_id=uuid4(),
+    user="postgres",
+    passwd="password",
+    host="localhost",
+    port=5432,
+    database_name="horizon"
+)
+
+# Set up Iceberg catalog
+iceberg_catalog = load_catalog("rest", uri="http://localhost:8181")
+
+# Initialize the SDK with organization_id
+organization_id = uuid4()  # This should come from your user context
+initialize_sdk(postgres_client, iceberg_catalog, organization_id)
+```
+
+### 2. Working with PostgreSQL Tables
+
+```python
+from horizon_data_core.api import create_entity, read_entity, update_entity, delete_entity, list_entities
+from horizon_data_core.base_types import Entity
+from uuid import uuid4
+from datetime import datetime
+
+# Create a new entity
+entity = Entity(
+    id=uuid4(),
+    name="My Entity",
+    kind_id=uuid4(),
+    # organization_id will be automatically set by the SDK
+)
+created_entity = create_entity(entity)
+
+# Read the entity
+retrieved_entity = read_entity(created_entity.id)
+
+# Update the entity
+retrieved_entity.name = "Updated Entity Name"
+updated_entity = update_entity(retrieved_entity)
+
+# List entities with filters (organization_id is automatically applied)
+entities = list_entities()
+
+# Delete the entity
+delete_entity(updated_entity.id)
+```
+
+### 3. Working with Iceberg Tables
+
+```python
+from horizon_data_core.api import create_data_row, create_metadata_row, list_data_rows, list_metadata_rows
+from horizon_data_core.base_types import DataRow, MetadataRow
+from datetime import datetime
+
+# Create a data row
+data_row = DataRow(
+    data_stream_id="stream-123",
+    datetime=datetime.now(),
+    vector=[1.0, 2.0, 3.0, 4.0, 5.0],
+    data_type="sensor_data",
+    vector_start_bound=0.0,
+    vector_end_bound=10.0
+)
+create_data_row(data_row)
+
+# Create a metadata row
+metadata_row = MetadataRow(
+    data_stream_id="stream-123",
+    datetime=datetime.now(),
+    latitude=40.7128,
+    longitude=-74.0060,
+    altitude=10.5,
+    speed=25.0,
+    heading=90.0
+)
+create_metadata_row(metadata_row)
+
+# List data rows with filters
+data_rows = list_data_rows(data_stream_id="stream-123")
+metadata_rows = list_metadata_rows(data_stream_id="stream-123")
+```
+
+## Available Models
+
+### PostgreSQL Models
+
+- `EntityKind`: A descriptive class of which an `entity` is a physical instantiation of.
+- `Entity`: Core entity instances
+- `DataStream`: Data streams associated with entities
+- `Mission`: Mission definitions
+- `MissionEntity`: Mission-entity relationships
+- `Ontology`: Ontology definitions
+- `OntologyClass`: Classes within ontologies
+- `BeamgramSpecification`: The set of parameters used to specify how a beamgram is constructed
+- `BearingTimeRecordSpecification`: The set of parameters used to specify how a bearing time record is constructed
+- `DataRow`: Time-series data with vector information
+- `MetadataRow`: Location and movement metadata
+
+### Iceberg Models
+
+- `DataRow`: Time-series data with vector information
+- `MetadataRow`: Location and movement metadata
+
+## API Reference
+
+### PostgreSQL Operations
+
+For each PostgreSQL model, the following operations are available:
+
+- `create_[model](model_instance)`: Create a new record
+- `read_[model](id)`: Read a record by ID
+- `read_[model](model_instance)`: Read a record by matching non-id fields
+- `update_[model](model_instance)`: Update an existing record
+- `delete_[model](id)`: Delete a record by ID
+- `list_[models](**filters)`: List records with optional filters
+
+### Iceberg Operations
+
+For Iceberg models, the following operations are available:
+
+- `create_[model](model_instance)`: Create a new record
+- `list_[models](**filters)`: List records with optional filters
+
+Note: Update and delete operations for Iceberg tables require table-specific implementation due to the nature of Iceberg's data model.
+
+## Error Handling
+
+The SDK includes proper error handling for:
+
+- Invalid model data
+- Database connection issues
+- Missing records
+- Iceberg catalog connectivity
+
+## Examples
+
+See below for complete working examples of SDK operations.
+
+```python
+"""Example usage of the Horizon Data Core SDK."""
+
+from datetime import datetime
+from uuid import uuid4
+
+from .api import initialize_sdk
+from .base_types import DataRow, DataStream, Entity, MetadataRow, Mission
+from .client import PostgresClient
+from .helpers import name_to_uuid
+
+
+def example_usage() -> None:
+    """Example of how to use the Horizon Data Core SDK."""
+    # Initialize the SDK
+    postgres_client = PostgresClient(
+        user="postgres",
+        passwd="password",
+        host="localhost",
+        port=5432,
+        database_name="horizon",
+    )
+
+    # Initialize the SDK with organization_id
+    organization_id = uuid4()  # This should come from your user context
+    sdk = initialize_sdk(postgres_client, {}, organization_id)
+
+    # Create a new entity
+    entity = Entity(
+        id=uuid4(),
+        name="Example Entity",
+        kind_id=uuid4(),
+        free_text="This is an example entity",
+        # organization_id will be automatically set by the SDK
+    )
+    created_entity = sdk.create_entity(entity)
+    print(f"Created entity: {created_entity}")
+
+    # Read the entity back
+    assert created_entity.id is not None
+    retrieved_entity = sdk.read_entity(created_entity.id)
+    print(f"Retrieved entity: {retrieved_entity}")
+
+    # List entities with filters (organization_id is automatically applied)
+    entities = sdk.list_entities()
+    print(f"Found {len(entities)} entities")
+
+    # Create a data stream
+    data_stream = DataStream(
+        id=uuid4(),
+        entity_id=created_entity.id,
+        # organization_id will be automatically set by the SDK
+    )
+    created_data_stream = sdk.create_data_stream(data_stream)
+    print(f"Created data stream: {created_data_stream}")
+    assert created_data_stream.id is not None
+    # Create a mission
+    mission = Mission(
+        id=uuid4(),
+        name="Example Mission",
+        start_datetime=datetime.now(),
+        # organization_id will be automatically set by the SDK
+    )
+    created_mission = sdk.create_mission(mission)
+    print(f"Created mission: {created_mission}")
+
+    # Create a data row in Postgres
+    data_row = DataRow(
+        data_stream_id=created_data_stream.id,
+        datetime=datetime.now(),
+        vector=[1.0, 2.0, 3.0, 4.0, 5.0],
+        data_type="example_data",
+        track_id=name_to_uuid(
+            "example_track"
+        ),  # This should be a valid specification/track_id that has been created previously
+        vector_start_bound=0.0,
+        vector_end_bound=10.0,
+    )
+    created_data_row = sdk.create_data_row(data_row)
+    print(f"Created data row: {created_data_row}")
+
+    # Create a metadata row in Iceberg table
+    metadata_row = MetadataRow(
+        data_stream_id=created_data_stream.id,
+        datetime=datetime.now(),
+        latitude=40.7128,
+        longitude=-74.0060,
+        altitude=10.5,
+        speed=25.0,
+        heading=90.0,
+    )
+    created_metadata_row = sdk.create_metadata_row(metadata_row)
+    print(f"Created metadata row: {created_metadata_row}")
+
+
+if __name__ == "__main__":
+    example_usage()
+```
