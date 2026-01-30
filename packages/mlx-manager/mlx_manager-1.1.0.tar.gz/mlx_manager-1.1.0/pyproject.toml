@@ -1,0 +1,119 @@
+[project]
+name = "mlx-manager"
+version = "1.1.0"
+description = "Web-based MLX model manager for Apple Silicon Macs"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11,<3.13"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["mlx", "apple-silicon", "llm", "model-manager", "fastapi"]
+dependencies = [
+    "fastapi>=0.115.0",
+    "python-multipart>=0.0.6",  # Required for OAuth2PasswordRequestForm
+    "uvicorn[standard]>=0.32.0",
+    "sqlmodel>=0.0.22",
+    "aiosqlite>=0.20.0",
+    "greenlet>=3.0.0",
+    "huggingface-hub>=0.27.0",
+    "psutil>=6.0.0",
+    "httpx>=0.28.0",
+    "pydantic-settings>=2.0.0",
+    "transformers>=5.0.0rc1",
+    "typer>=0.12.0",
+    "rapidfuzz>=3.0.0",
+    # macOS-only dependencies (menubar app and MLX server)
+    "rumps>=0.4.0; sys_platform == 'darwin'",
+    "mlx-openai-server>=1.4.0; sys_platform == 'darwin'",
+    "alembic>=1.18.1",
+    "pyjwt>=2.8.0",
+    "pwdlib[argon2]>=0.3.0",
+    "mlx-vlm>=0.3.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "build>=1.0.0",
+    "pre-commit>=3.5.0",
+    "types-psutil>=5.9.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/tumma72/mlx-manager"
+Repository = "https://github.com/tumma72/mlx-manager"
+Documentation = "https://github.com/tumma72/mlx-manager#readme"
+
+[project.scripts]
+mlx-manager = "mlx_manager.cli:main"
+
+[project.gui-scripts]
+mlx-manager-menubar = "mlx_manager.menubar:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mlx_manager*"]
+
+[tool.setuptools.package-data]
+mlx_manager = ["static/**/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+# E402: Module level import not at top of file - main.py configures logging before imports
+per-file-ignores = { "mlx_manager/main.py" = ["E402"] }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.coverage.run]
+source = ["mlx_manager"]
+omit = [
+    # CLI module: Requires interactive terminal, typer commands, and uvicorn server
+    # startup. Testing would require mocking the entire CLI framework and subprocess
+    # management which provides low value compared to testing the underlying services.
+    "mlx_manager/cli.py",
+    # Menubar module: macOS-specific rumps library for status bar apps. Requires
+    # GUI event loop, system notifications, and subprocess management. Cannot be
+    # meaningfully tested in CI without macOS GUI environment.
+    "mlx_manager/menubar.py",
+    # Manager launchd module: macOS launchd service installation. Requires system-level
+    # plist file creation in ~/Library/LaunchAgents and launchctl commands. Testing
+    # would require mocking filesystem and subprocess calls with little added value.
+    "mlx_manager/services/manager_launchd.py",
+]
+
+[tool.coverage.report]
+fail_under = 95
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
