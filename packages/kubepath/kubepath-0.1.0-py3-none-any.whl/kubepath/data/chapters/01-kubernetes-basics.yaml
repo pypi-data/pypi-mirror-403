@@ -1,0 +1,305 @@
+chapter:
+  number: 1
+  title: "What is Kubernetes?"
+  description: "Understand what Kubernetes is and why it matters"
+
+concepts:
+  - title: "The Container Problem"
+    content: |
+      Before we talk about Kubernetes, let's understand the problem it solves.
+
+      **The "Works on My Machine" Problem**
+
+      Imagine you're a chef. You create an amazing recipe at home, but when you
+      try to cook it in a restaurant kitchen, it fails. Why? Different stove,
+      different pots, different ingredients available.
+
+      Software has the same problem. Developers write code on their laptop, but
+      when it runs on a server, things break. Different operating system, different
+      libraries, different configurations.
+
+      **Containers: The Shipping Container Revolution**
+
+      In the 1950s, shipping was chaos. Every port loaded cargo differently.
+      Then came the shipping container - a standard box that works everywhere.
+
+      ```
+      BEFORE CONTAINERS:              AFTER CONTAINERS:
+      ┌─────────────────┐            ┌─────────────────┐
+      │  App depends on │            │ ┌─────────────┐ │
+      │  - OS version   │            │ │    App      │ │
+      │  - Libraries    │   ──────►  │ │  Libraries  │ │
+      │  - Config files │            │ │    OS libs  │ │
+      │  - Runtime      │            │ └─────────────┘ │
+      └─────────────────┘            │   CONTAINER     │
+        "Works on my                 └─────────────────┘
+         machine..."                   Works EVERYWHERE
+      ```
+
+      A **container** packages your app with everything it needs. It runs the
+      same way on your laptop, on a server, or in the cloud.
+
+      **Key insight:** Containers solve "works on my machine" by packaging
+      everything together.
+    key_points:
+      - "Containers package apps with all their dependencies"
+      - "Containers run the same everywhere"
+      - "Think of containers like shipping containers for software"
+
+  - title: "What is Kubernetes?"
+    content: |
+      Now you have containers. Great! But what happens when you have 100 of them?
+      Or 1000? How do you manage them all?
+
+      **The Airport Control Tower Analogy**
+
+      Think of an airport. Planes (containers) need to:
+      - Land and take off (start and stop)
+      - Go to the right gate (run on the right server)
+      - Be rescheduled if there's a problem (handle failures)
+
+      Who manages all this? The **control tower**.
+
+      ```
+      ┌─────────────────────────────────────────┐
+      │           KUBERNETES (Control Tower)     │
+      │                                          │
+      │   "Container 5, go to Server 2"          │
+      │   "Container 3 crashed, restart it"      │
+      │   "We need 5 more containers for traffic"│
+      └─────────────────────────────────────────┘
+                        │
+           ┌────────────┼────────────┐
+           ▼            ▼            ▼
+      ┌─────────┐  ┌─────────┐  ┌─────────┐
+      │ Server1 │  │ Server2 │  │ Server3 │
+      │ [C1][C2]│  │ [C3][C4]│  │ [C5][C6]│
+      └─────────┘  └─────────┘  └─────────┘
+      ```
+
+      **Kubernetes** (K8s for short) is the control tower for containers.
+      It decides where containers run, restarts them if they fail, and scales
+      them up or down based on demand.
+
+      **Why "Kubernetes"?**
+      It's Greek for "helmsman" - the person who steers a ship. Kubernetes
+      steers your containers to where they need to go.
+
+      **Key insight:** Kubernetes manages containers so you don't have to
+      manually start, stop, and monitor each one.
+    key_points:
+      - "Kubernetes orchestrates (manages) containers across multiple servers"
+      - "K8s is short for Kubernetes (K + 8 letters + s)"
+      - "Named after Greek word for helmsman (ship's pilot)"
+
+  - title: "Why Kubernetes Matters"
+    content: |
+      Kubernetes gives you superpowers. Here's what it does automatically:
+
+      **1. Self-Healing**
+      Container crashed? Kubernetes restarts it. No 3am wake-up calls.
+
+      ```
+      [Container A] ──► CRASH! ──► [Container A] (new one!)
+          │                              │
+          └── K8s detects failure ───────┘
+              and creates replacement
+      ```
+
+      **2. Scaling**
+      More users coming? Kubernetes adds more containers. Users leaving?
+      It removes containers. Automatically.
+
+      ```
+      Normal traffic:    [App] [App]
+                           │     │
+      Black Friday:      [App] [App] [App] [App] [App]
+                           │     │     │     │     │
+      After sale:        [App] [App]
+      ```
+
+      **3. Declarative Configuration**
+      You tell Kubernetes WHAT you want, not HOW to do it.
+
+      Instead of:
+      - "Start a container on server 2"
+      - "If it fails, restart it"
+      - "If traffic increases, add more"
+
+      You just say:
+      - "I want 3 copies of this app running, always"
+
+      Kubernetes figures out the HOW.
+
+      **Key insight:** Kubernetes is declarative - you describe the end state,
+      and it makes it happen.
+    key_points:
+      - "Self-healing: Automatically restarts crashed containers"
+      - "Scaling: Adds or removes containers based on demand"
+      - "Declarative: You say WHAT you want, K8s figures out HOW"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Check kubectl Installation"
+    instructions: |
+      **What we're doing:** Verify that kubectl (the Kubernetes command-line tool) is installed.
+
+      **Why this matters:** kubectl is your primary way to interact with Kubernetes.
+      Everything you do with K8s goes through this tool.
+
+      **Memory trick:** kubectl = "kube control" = control your Kubernetes cluster
+
+      Run this command to see your kubectl version:
+    command_hint: "kubectl version --client"
+    validation:
+      type: "command_output"
+      command: "kubectl version --client"
+      expected_contains: "Client Version"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Check Cluster Connection"
+    instructions: |
+      **What we're doing:** Verify your kubectl can talk to a Kubernetes cluster.
+
+      **Why this matters:** Before you can deploy anything, you need to confirm
+      your cluster is accessible.
+
+      **Memory trick:** cluster-info = "tell me about the cluster"
+
+      Run this command to see your cluster details:
+    command_hint: "kubectl cluster-info"
+    validation:
+      type: "command_output"
+      command: "kubectl cluster-info"
+      expected_contains: "Kubernetes"
+    points: 10
+
+  - id: "cmd-03"
+    title: "List Cluster Nodes"
+    instructions: |
+      **What we're doing:** See all the machines (nodes) in your cluster.
+
+      **Why this matters:** Nodes are the workers that run your containers.
+      Knowing how many nodes you have tells you your cluster's capacity.
+
+      **The command pattern:**
+      ```
+      kubectl get <resource>
+             ↑    ↑
+             │    └── WHAT you want (nodes, pods, services...)
+             └────── ACTION (get = list/show)
+      ```
+
+      **Memory trick:** "get" = "show me all the ___"
+
+      Run this command to list your nodes:
+    command_hint: "kubectl get nodes"
+    validation:
+      type: "command_output"
+      command: "kubectl get nodes"
+      expected_contains: "Ready"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Cluster Connection Failed"
+    description: |
+      You're trying to check your cluster, but kubectl isn't responding correctly.
+
+      Your mission: Figure out what's wrong and fix the connection!
+
+      First, try running: `kubectl cluster-info`
+    manifest: |
+      # No manifest needed - this is a kubectl configuration issue
+      # The scenario tests understanding of kubectl config
+    hints:
+      - "The error message mentions 'context' - what does that mean?"
+      - "Try running `kubectl config get-contexts` to see available contexts"
+      - "Use `kubectl config use-context <context-name>` to switch to the right cluster"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl cluster-info"
+      expected_contains: "Kubernetes"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Node Not Ready"
+    description: |
+      Your cluster is running, but when you list nodes, one shows "NotReady".
+
+      Your mission: Investigate why the node isn't ready!
+
+      Run `kubectl get nodes` to see the current state.
+    manifest: |
+      # This scenario requires a NotReady node condition
+      # We'll check if user can diagnose node issues
+    hints:
+      - "Use `kubectl describe node <node-name>` to see more details"
+      - "Look at the 'Conditions' section - what's the status of each condition?"
+      - "Check the 'Events' section at the bottom for recent issues"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get nodes"
+      expected_contains: "Ready"
+      expected_not_contains: "NotReady"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What problem do containers solve?"
+      options:
+        - "Making computers faster"
+        - "Packaging apps with dependencies so they run the same everywhere"
+        - "Replacing virtual machines completely"
+        - "Making code easier to write"
+      correct: 1
+      explanation: "Containers package an app with all its dependencies, solving the 'works on my machine' problem."
+      points: 5
+
+    - type: "true_false"
+      question: "Kubernetes only works with Docker containers."
+      correct: false
+      explanation: "Kubernetes works with multiple container runtimes including containerd, CRI-O, and Docker."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does 'declarative' mean in Kubernetes?"
+      options:
+        - "You write step-by-step instructions for each task"
+        - "You declare victory when deployment succeeds"
+        - "You describe the desired end state, and K8s figures out how to achieve it"
+        - "You must declare all variables before using them"
+      correct: 2
+      explanation: "Declarative means you say WHAT you want (e.g., '3 replicas'), not HOW to get there. Kubernetes handles the how."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to check if your cluster is accessible"
+      expected_contains: "kubectl cluster-info"
+      alternatives:
+        - "kubectl cluster-info"
+      hint: "Think: I want to get info about my cluster"
+      explanation: "`kubectl cluster-info` shows the cluster's API server and DNS addresses."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What is a 'node' in Kubernetes?"
+      options:
+        - "A container running your application"
+        - "A machine (physical or virtual) that runs containers"
+        - "A network connection between containers"
+        - "A configuration file"
+      correct: 1
+      explanation: "A node is a worker machine in Kubernetes. It can be a physical server or a virtual machine."
+      points: 5
+
+    - type: "true_false"
+      question: "Kubernetes can automatically restart a container if it crashes."
+      correct: true
+      explanation: "Self-healing is a core feature. K8s monitors containers and restarts them if they fail."
+      points: 5

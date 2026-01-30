@@ -1,0 +1,441 @@
+chapter:
+  number: 19
+  title: "ConfigMaps Basics"
+  description: "Store and manage non-sensitive configuration data"
+
+concepts:
+  - title: "Why ConfigMaps?"
+    content: |
+      Hardcoding configuration in containers is bad practice.
+      **ConfigMaps** separate configuration from container images.
+
+      **The Restaurant Menu Analogy**
+
+      Imagine a restaurant chain:
+      - BAD: Print menu prices inside each restaurant's walls
+        (Have to rebuild walls to change prices!)
+      - GOOD: Use changeable menu boards
+        (Update once, applies everywhere!)
+
+      **The Problem with Hardcoding:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    HARDCODED CONFIG                         │
+      │                                                             │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │           Container Image                    │          │
+      │   │                                             │          │
+      │   │   DATABASE_HOST = "db.prod.example.com"    │          │
+      │   │   LOG_LEVEL = "info"                       │          │
+      │   │   MAX_CONNECTIONS = 100                    │          │
+      │   │                                             │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Problem: Need to rebuild image for EVERY config change!  │
+      └─────────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    WITH CONFIGMAP                           │
+      │                                                             │
+      │   ┌──────────────────┐      ┌──────────────────┐           │
+      │   │   Container      │      │    ConfigMap     │           │
+      │   │   Image          │◄─────│                  │           │
+      │   │                  │      │  DATABASE_HOST   │           │
+      │   │  (no config      │      │  LOG_LEVEL       │           │
+      │   │   hardcoded)     │      │  MAX_CONNECTIONS │           │
+      │   └──────────────────┘      └──────────────────┘           │
+      │                                                             │
+      │   Benefit: Change config without rebuilding image!         │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **When to Use ConfigMaps:**
+      - Application settings (log levels, feature flags)
+      - Connection strings (non-sensitive)
+      - Configuration files (nginx.conf, app.properties)
+      - Environment-specific values (dev vs prod)
+
+      **When NOT to Use ConfigMaps:**
+      - Passwords, API keys, tokens → Use **Secrets** instead
+      - Binary data larger than 1MB
+
+      **Key insight:** ConfigMaps make your containers portable. Same image
+      works in dev, staging, and production with different configs.
+    key_points:
+      - "ConfigMaps store non-sensitive configuration"
+      - "Separate config from container images"
+      - "Can be updated without rebuilding images"
+      - "Use Secrets for sensitive data instead"
+
+  - title: "Creating ConfigMaps"
+    content: |
+      **Three Ways to Create ConfigMaps:**
+
+      **1. From Literal Values:**
+
+      ```bash
+      kubectl create configmap app-config \
+        --from-literal=DATABASE_HOST=db.example.com \
+        --from-literal=LOG_LEVEL=info \
+        --from-literal=MAX_CONNECTIONS=100
+      ```
+
+      **2. From a File:**
+
+      ```bash
+      # Create config file
+      cat > app.properties <<EOF
+      database.host=db.example.com
+      log.level=info
+      max.connections=100
+      EOF
+
+      # Create ConfigMap from file
+      kubectl create configmap app-config --from-file=app.properties
+      ```
+
+      **3. From YAML (Declarative):**
+
+      ```yaml
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-config
+      data:                          # Key-value pairs
+        DATABASE_HOST: db.example.com
+        LOG_LEVEL: info
+        MAX_CONNECTIONS: "100"       # Numbers must be strings!
+      ```
+
+      **Visual Comparison:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                  CONFIGMAP CREATION METHODS                  │
+      │                                                             │
+      │   --from-literal     --from-file       YAML                │
+      │   ┌───────────┐     ┌───────────┐     ┌───────────┐        │
+      │   │ key=value │     │  file     │     │ data:     │        │
+      │   │ key=value │     │ contents  │     │   k: v    │        │
+      │   └───────────┘     └───────────┘     └───────────┘        │
+      │        │                 │                 │                │
+      │        └─────────────────┴─────────────────┘                │
+      │                          │                                  │
+      │                          ▼                                  │
+      │                   ┌─────────────┐                          │
+      │                   │  ConfigMap  │                          │
+      │                   │             │                          │
+      │                   │  key=value  │                          │
+      │                   │  key=value  │                          │
+      │                   └─────────────┘                          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Viewing ConfigMaps:**
+
+      ```bash
+      kubectl get configmaps              # List all
+      kubectl get cm                      # Short form
+      kubectl describe configmap app-config
+      kubectl get configmap app-config -o yaml
+      ```
+
+      **Key insight:** Use `--from-literal` for quick tests, YAML files
+      for production (version controlled, reproducible).
+    key_points:
+      - "--from-literal for key-value pairs"
+      - "--from-file to load file contents"
+      - "YAML for declarative management"
+      - "Numbers in data must be quoted strings"
+
+  - title: "ConfigMap Data Types"
+    content: |
+      ConfigMaps have two data fields: `data` and `binaryData`.
+
+      **The data Field (Text):**
+
+      ```yaml
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: text-config
+      data:
+        # Simple key-value
+        setting1: value1
+        setting2: value2
+
+        # Multi-line value (config file)
+        nginx.conf: |
+          server {
+            listen 80;
+            location / {
+              root /usr/share/nginx/html;
+            }
+          }
+
+        # Another config file
+        app.properties: |
+          database.url=jdbc:mysql://db:3306/app
+          cache.enabled=true
+      ```
+
+      **Storing Entire Config Files:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    CONFIGMAP WITH FILES                      │
+      │                                                             │
+      │   ConfigMap: nginx-config                                   │
+      │   ┌──────────────────────────────────────────────────────┐ │
+      │   │ data:                                                 │ │
+      │   │   nginx.conf: |                                      │ │
+      │   │     server {                                         │ │
+      │   │       listen 80;                                     │ │
+      │   │       server_name example.com;                       │ │
+      │   │       location / {                                   │ │
+      │   │         proxy_pass http://backend;                   │ │
+      │   │       }                                              │ │
+      │   │     }                                                │ │
+      │   └──────────────────────────────────────────────────────┘ │
+      │                                                             │
+      │   Can be mounted as /etc/nginx/nginx.conf in container     │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **The binaryData Field:**
+
+      For binary files (images, certificates), use base64 encoding:
+
+      ```yaml
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: binary-config
+      binaryData:
+        logo.png: <base64-encoded-data>
+      ```
+
+      **Size Limits:**
+      - Individual ConfigMap: 1MB maximum
+      - Total size of all ConfigMaps/Secrets: Limited by etcd
+
+      **Key insight:** Use `|` (pipe) for multi-line values like config files.
+      This preserves formatting and line breaks.
+    key_points:
+      - "data: for text key-values and config files"
+      - "Use | for multi-line values"
+      - "binaryData: for base64-encoded binary"
+      - "Maximum size: 1MB per ConfigMap"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create ConfigMap from Literals"
+    instructions: |
+      **What we're doing:** Create a ConfigMap with key-value pairs.
+
+      **Why this matters:** This is the quickest way to create config
+      for testing and simple use cases.
+
+      **The command:**
+      ```
+      kubectl create configmap <name> --from-literal=KEY=value
+      ```
+
+      Create a ConfigMap with database settings:
+    command_hint: "kubectl create configmap db-config --from-literal=DB_HOST=localhost --from-literal=DB_PORT=5432"
+    validation:
+      type: "command_output"
+      command: "kubectl get configmap db-config -o yaml"
+      expected_contains: "DB_HOST"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Create ConfigMap from File"
+    instructions: |
+      **What we're doing:** Create a ConfigMap that contains a config file.
+
+      **Why this matters:** Many applications need config files
+      (nginx.conf, application.properties, etc.).
+
+      First create a file, then create the ConfigMap:
+    command_hint: "echo 'log_level=debug' > /tmp/app.conf && kubectl create configmap file-config --from-file=/tmp/app.conf"
+    validation:
+      type: "command_output"
+      command: "kubectl describe configmap file-config"
+      expected_contains: "log_level"
+    points: 10
+
+  - id: "cmd-03"
+    title: "View ConfigMap Contents"
+    instructions: |
+      **What we're doing:** Inspect what's stored in a ConfigMap.
+
+      **Why this matters:** You need to verify your configuration is correct
+      before using it in pods.
+
+      **Two ways to view:**
+      ```
+      kubectl describe configmap <name>
+      kubectl get configmap <name> -o yaml
+      ```
+
+      View the ConfigMap details:
+    command_hint: "kubectl get configmap db-config -o yaml"
+    validation:
+      type: "command_output"
+      command: "kubectl get configmap db-config -o yaml"
+      expected_contains: "data"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "ConfigMap Key Not Found"
+    description: |
+      A pod is failing to start with this error:
+
+      ```
+      Error: configmaps "app-settings" not found
+      ```
+
+      The developer says they created the ConfigMap!
+
+      Your mission: Find and fix the problem!
+    manifest: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-setting
+      data:
+        LOG_LEVEL: debug
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: config-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          envFrom:
+          - configMapRef:
+              name: app-settings
+    hints:
+      - "Compare the ConfigMap name with what the pod references"
+      - "The ConfigMap is 'app-setting' (singular) but pod wants 'app-settings' (plural)"
+      - "Either rename the ConfigMap or update the pod reference"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod config-pod -o jsonpath='{.status.phase}'"
+      expected_contains: "Running"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "ConfigMap Value is a Number"
+    description: |
+      A ConfigMap was created but the application is getting wrong data types.
+      Numbers are being read as strings.
+
+      The ConfigMap shows:
+      ```yaml
+      data:
+        PORT: 8080
+        TIMEOUT: 30
+      ```
+
+      But the YAML is invalid because numbers aren't quoted!
+
+      Your mission: Fix the ConfigMap to be valid YAML!
+    manifest: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-numbers
+      data:
+        APP_NAME: myapp
+    hints:
+      - "In ConfigMap data, ALL values must be strings"
+      - "Numbers need to be quoted: PORT: '8080'"
+      - "Add the numeric values as strings: kubectl edit configmap app-numbers"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get configmap app-numbers -o yaml"
+      expected_contains: "APP_NAME"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "When should you use a ConfigMap instead of a Secret?"
+      options:
+        - "For passwords and API keys"
+        - "For non-sensitive configuration data"
+        - "For TLS certificates"
+        - "For database credentials"
+      correct: 1
+      explanation: "ConfigMaps are for non-sensitive data. Use Secrets for anything sensitive."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to create a ConfigMap named 'app-config' with LOG_LEVEL=debug"
+      expected_contains: "--from-literal"
+      alternatives:
+        - "kubectl create configmap app-config --from-literal=LOG_LEVEL=debug"
+        - "kubectl create cm app-config --from-literal=LOG_LEVEL=debug"
+      hint: "Use --from-literal for key=value pairs"
+      explanation: "`kubectl create configmap app-config --from-literal=LOG_LEVEL=debug`"
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the ConfigMap to store a setting:"
+      yaml_template: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: my-config
+        ____:
+          setting: value
+      expected: "data"
+      explanation: "ConfigMap stores key-values in the 'data' field."
+      points: 10
+
+    - type: "true_false"
+      question: "In a ConfigMap data field, numeric values can be stored without quotes."
+      correct: false
+      explanation: "All values in ConfigMap data must be strings. Numbers need quotes: PORT: '8080'"
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What is the maximum size of a single ConfigMap?"
+      options:
+        - "256KB"
+        - "1MB"
+        - "10MB"
+        - "No limit"
+      correct: 1
+      explanation: "ConfigMaps are limited to 1MB due to etcd storage constraints."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to create a ConfigMap from a file called config.txt"
+      expected_contains: "--from-file"
+      alternatives:
+        - "kubectl create configmap file-config --from-file=config.txt"
+        - "kubectl create cm file-config --from-file=config.txt"
+      hint: "Use --from-file flag"
+      explanation: "`kubectl create configmap file-config --from-file=config.txt`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How do you store a multi-line config file in a ConfigMap YAML?"
+      options:
+        - "Use quotes around the value"
+        - "Use the | character for multi-line"
+        - "Use binaryData field"
+        - "Split into multiple keys"
+      correct: 1
+      explanation: "The | character preserves line breaks for multi-line values."
+      points: 5

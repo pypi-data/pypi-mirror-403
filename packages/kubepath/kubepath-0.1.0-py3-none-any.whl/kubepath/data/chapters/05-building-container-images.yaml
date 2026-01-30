@@ -1,0 +1,359 @@
+chapter:
+  number: 5
+  title: "Building Container Images"
+  description: "Learn how to build and work with container images"
+
+concepts:
+  - title: "What is a Container Image?"
+    content: |
+      A **container image** is a package that contains everything needed to run
+      your application: code, runtime, libraries, and configuration.
+
+      **The Recipe Analogy**
+
+      Think of an image like a recipe:
+      - The **image** is the recipe (instructions + ingredients list)
+      - The **container** is the cooked dish (running instance)
+
+      You can make many dishes (containers) from one recipe (image)!
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                   CONTAINER IMAGE                        │
+      │                    (The Recipe)                          │
+      │  ┌─────────────────────────────────────────────────┐    │
+      │  │ Layer 4: Your App Code          ← You add this  │    │
+      │  ├─────────────────────────────────────────────────┤    │
+      │  │ Layer 3: Dependencies (pip install)             │    │
+      │  ├─────────────────────────────────────────────────┤    │
+      │  │ Layer 2: Python Runtime                         │    │
+      │  ├─────────────────────────────────────────────────┤    │
+      │  │ Layer 1: Base OS (Alpine/Debian)                │    │
+      │  └─────────────────────────────────────────────────┘    │
+      └─────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+               ┌──────────────────────────┐
+               │  Running Container #1    │
+               └──────────────────────────┘
+               ┌──────────────────────────┐
+               │  Running Container #2    │
+               └──────────────────────────┘
+      ```
+
+      **Images are layered:** Each instruction adds a layer. Layers are cached,
+      making builds faster!
+
+      **Key insight:** An image is immutable (read-only). When a container runs,
+      it adds a thin writable layer on top.
+    key_points:
+      - "Image = recipe, Container = cooked dish"
+      - "Images are built in layers (cached for speed)"
+      - "Images are immutable - containers add a writable layer"
+      - "One image can spawn many containers"
+
+  - title: "Understanding Dockerfiles"
+    content: |
+      A **Dockerfile** is a text file with instructions to build an image.
+
+      **The Simplest Dockerfile:**
+
+      ```dockerfile
+      FROM python:3.11-slim    # Start from a base image
+      WORKDIR /app             # Set working directory
+      COPY . .                 # Copy your code
+      RUN pip install -r requirements.txt  # Install dependencies
+      CMD ["python", "app.py"] # Command to run
+      ```
+
+      **Common Instructions:**
+
+      | Instruction | What it does | Example |
+      |-------------|--------------|---------|
+      | FROM | Base image to start from | FROM nginx:latest |
+      | WORKDIR | Set the working directory | WORKDIR /app |
+      | COPY | Copy files into image | COPY src/ /app/ |
+      | RUN | Execute a command (during build) | RUN apt-get update |
+      | ENV | Set environment variable | ENV NODE_ENV=production |
+      | EXPOSE | Document which port the app uses | EXPOSE 8080 |
+      | CMD | Default command to run | CMD ["npm", "start"] |
+
+      **Build the Image:**
+
+      ```bash
+      docker build -t myapp:1.0 .
+                     ↑         ↑
+                     │         └── Build context (current directory)
+                     └────────── Tag: name:version
+      ```
+
+      **Memory trick:** Dockerfile instructions flow TOP to BOTTOM, just like
+      reading a recipe!
+
+      **Key insight:** Each Dockerfile instruction creates a layer. Order matters -
+      put things that change often (like your code) at the bottom.
+    key_points:
+      - "Dockerfile = build instructions for an image"
+      - "FROM sets the base, CMD sets the run command"
+      - "Each instruction creates a cached layer"
+      - "Put frequently changing code at the bottom for faster builds"
+
+  - title: "Image Tags and Registries"
+    content: |
+      **Image Names Explained:**
+
+      ```
+      docker.io/library/nginx:1.21-alpine
+      ───┬────  ──┬───  ──┬── ─────┬─────
+         │        │       │        │
+      Registry  Namespace Image   Tag
+      (where)   (who)     (what)  (version)
+      ```
+
+      **Common Registries:**
+      - **Docker Hub** (docker.io) - Default, public images
+      - **GitHub Container Registry** (ghcr.io) - Tied to GitHub repos
+      - **Google Container Registry** (gcr.io) - For GCP
+      - **Amazon ECR** - For AWS
+      - **Private registries** - Your company's own
+
+      **Tags are Important!**
+
+      ```
+      nginx          ← "latest" tag (implicit, dangerous!)
+      nginx:latest   ← Same as above (explicit)
+      nginx:1.21     ← Specific version (better!)
+      nginx:1.21.3   ← Even more specific (best for prod)
+      ```
+
+      **Why avoid "latest"?**
+      - "latest" can change anytime
+      - Your deployment might suddenly break
+      - You can't tell which version is running
+
+      **Best Practice:**
+      ```
+      # BAD  - what version is this?
+      image: nginx
+
+      # GOOD - specific and reproducible
+      image: nginx:1.21.3
+      ```
+
+      **Key insight:** Always use specific tags in production. "latest" is for
+      development and testing only.
+    key_points:
+      - "Full image name: registry/namespace/image:tag"
+      - "Default registry is Docker Hub (docker.io)"
+      - "Avoid 'latest' tag in production"
+      - "Specific tags = reproducible deployments"
+
+command_practice:
+  - id: "cmd-01"
+    title: "List Local Images"
+    instructions: |
+      **What we're doing:** See container images already on your machine.
+
+      **Why this matters:** Before pulling new images, check what you have locally.
+      Local images load faster in pods!
+
+      **Note:** This uses Docker/containerd directly, not kubectl.
+
+      Run this command to see local images:
+    command_hint: "docker images"
+    validation:
+      type: "command_output"
+      command: "docker images"
+      expected_contains: "REPOSITORY"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Pull an Image"
+    instructions: |
+      **What we're doing:** Download an image from a registry.
+
+      **Why this matters:** Kubernetes pulls images automatically, but sometimes
+      you want to pre-load images for faster pod startup.
+
+      **The command:**
+      ```
+      docker pull <image>:<tag>
+             ↑
+             └── download from registry
+      ```
+
+      Pull a small test image:
+    command_hint: "docker pull nginx:alpine"
+    validation:
+      type: "command_output"
+      command: "docker images nginx"
+      expected_contains: "alpine"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Inspect Image Details"
+    instructions: |
+      **What we're doing:** See detailed information about an image.
+
+      **Why this matters:** Image inspection shows layers, size, environment
+      variables, and the default command - helpful for debugging.
+
+      **The command:**
+      ```
+      docker inspect <image>
+      ```
+
+      For a more readable format:
+      ```
+      docker inspect nginx:alpine --format '{{.Config.Cmd}}'
+      ```
+
+      Inspect the nginx image:
+    command_hint: "docker inspect nginx:alpine"
+    validation:
+      type: "command_output"
+      command: "docker inspect nginx:alpine"
+      expected_contains: "Config"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Fix the ImagePullBackOff"
+    description: |
+      A pod is stuck in ImagePullBackOff. The developer swears the image exists!
+
+      ```
+      NAME       READY   STATUS             RESTARTS   AGE
+      web-app    0/1     ImagePullBackOff   0          2m
+      ```
+
+      Your mission: Figure out why the image can't be pulled!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: web-app
+        namespace: default
+      spec:
+        containers:
+        - name: web
+          image: ngnix:1.21
+    hints:
+      - "Run `kubectl describe pod web-app` and look at the Events section"
+      - "Check the image name carefully - is it spelled correctly?"
+      - "The image is 'ngnix' but should be 'nginx'. Fix with: kubectl delete pod web-app && kubectl run web-app --image=nginx:1.21"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/web-app"
+      state: "Running"
+      timeout: 60
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Private Registry Access"
+    description: |
+      A pod needs to pull from a private registry but keeps failing:
+
+      ```
+      NAME         READY   STATUS             RESTARTS   AGE
+      private-app  0/1     ErrImagePull       0          1m
+      ```
+
+      Error: "unauthorized: authentication required"
+
+      Your mission: Understand why private images need special handling!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: private-app
+        namespace: default
+      spec:
+        containers:
+        - name: app
+          image: my-private-registry.com/app:1.0
+    hints:
+      - "Private registries require authentication"
+      - "Kubernetes uses 'imagePullSecrets' to authenticate with private registries"
+      - "Create a secret with registry credentials, then reference it in the pod spec. For now, you can use a public image: kubectl delete pod private-app && kubectl run private-app --image=nginx:alpine"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/private-app"
+      state: "Running"
+      timeout: 60
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is a container image?"
+      options:
+        - "A running container"
+        - "A package with code, runtime, and dependencies"
+        - "A virtual machine"
+        - "A Kubernetes namespace"
+      correct: 1
+      explanation: "An image is like a recipe - it contains everything needed to run your app. A container is the running instance."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does the FROM instruction in a Dockerfile do?"
+      options:
+        - "Copies files into the image"
+        - "Sets the command to run"
+        - "Specifies the base image to build from"
+        - "Exposes a network port"
+      correct: 2
+      explanation: "FROM sets the base image. All Dockerfiles start with FROM (except scratch images)."
+      points: 5
+
+    - type: "true_false"
+      question: "Using 'latest' tag is recommended for production deployments."
+      correct: false
+      explanation: "'latest' can change anytime, causing unexpected behavior. Use specific version tags in production."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does ImagePullBackOff status mean?"
+      options:
+        - "The container is running slowly"
+        - "Kubernetes can't download the container image"
+        - "The pod is waiting for CPU resources"
+        - "The container keeps crashing"
+      correct: 1
+      explanation: "ImagePullBackOff means K8s can't pull the image - usually a typo, wrong tag, or authentication issue."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the pod spec to use nginx version 1.21:"
+      yaml_template: |
+        containers:
+        - name: web
+          image: nginx:____
+      expected: "1.21"
+      explanation: "Specifying the version tag ensures consistent deployments."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Why are Docker images built in layers?"
+      options:
+        - "To make images smaller"
+        - "For security isolation"
+        - "To cache unchanged layers and speed up builds"
+        - "Because Kubernetes requires it"
+      correct: 2
+      explanation: "Layers are cached. If only your code changes, Docker reuses cached base layers for faster builds."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to pull the alpine version of nginx image"
+      expected_contains: "docker pull nginx"
+      alternatives:
+        - "docker pull nginx:alpine"
+        - "docker image pull nginx:alpine"
+      hint: "Use 'docker pull' with image:tag format"
+      explanation: "`docker pull nginx:alpine` downloads the alpine variant, which is smaller than the default."
+      points: 10

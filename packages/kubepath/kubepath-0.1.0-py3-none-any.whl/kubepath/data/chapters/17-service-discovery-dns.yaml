@@ -1,0 +1,473 @@
+chapter:
+  number: 17
+  title: "Service Discovery & DNS"
+  description: "Master Kubernetes DNS and service discovery mechanisms"
+
+concepts:
+  - title: "How Kubernetes DNS Works"
+    content: |
+      Every Service automatically gets a DNS name. Pods can find services by name.
+
+      **The Yellow Pages Analogy**
+
+      Before Google, you looked up businesses in the Yellow Pages.
+      Kubernetes DNS is your cluster's automatic Yellow Pages:
+      - Every Service registers its "business name"
+      - Pods just look up the name to find the address
+
+      **DNS Resolution Flow:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                      POD                                    │
+      │                                                             │
+      │   App wants to connect to "database" service               │
+      │                        │                                    │
+      │                        ▼                                    │
+      │              ┌─────────────────┐                           │
+      │              │   DNS Query     │                           │
+      │              │ "database"      │                           │
+      │              └────────┬────────┘                           │
+      └───────────────────────┼─────────────────────────────────────┘
+                              │
+                              ▼
+      ┌─────────────────────────────────────────────────────────────┐
+      │                   CoreDNS                                   │
+      │            (kube-system namespace)                          │
+      │                                                             │
+      │   Lookup: database → 10.96.0.50                            │
+      │                                                             │
+      └─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+      ┌─────────────────────────────────────────────────────────────┐
+      │               SERVICE: database                             │
+      │               ClusterIP: 10.96.0.50                        │
+      │                        │                                    │
+      │                        ▼                                    │
+      │                      Pods                                   │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **CoreDNS:**
+      - Runs in kube-system namespace
+      - Automatically watches for Service changes
+      - Updates DNS records when Services are created/deleted
+
+      ```bash
+      # See CoreDNS pods
+      kubectl get pods -n kube-system -l k8s-app=kube-dns
+      ```
+
+      **Key insight:** You never configure DNS manually. Kubernetes handles
+      everything automatically when you create a Service.
+    key_points:
+      - "Every Service gets automatic DNS"
+      - "CoreDNS runs in kube-system"
+      - "Pods resolve service names automatically"
+      - "No manual DNS configuration needed"
+
+  - title: "DNS Name Formats"
+    content: |
+      Kubernetes DNS names follow a specific pattern.
+
+      **Full DNS Name Format:**
+
+      ```
+      <service>.<namespace>.svc.cluster.local
+          │         │       │       │
+          │         │       │       └── Cluster domain
+          │         │       └── Indicates it's a service
+          │         └── Namespace where service lives
+          └── Service name
+      ```
+
+      **Examples:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    DNS NAME EXAMPLES                        │
+      │                                                             │
+      │   Full name:                                                │
+      │   database.production.svc.cluster.local                    │
+      │                                                             │
+      │   Within same cluster (shorter):                           │
+      │   database.production.svc                                  │
+      │                                                             │
+      │   Within same cluster (even shorter):                      │
+      │   database.production                                      │
+      │                                                             │
+      │   Within SAME namespace:                                   │
+      │   database                                                 │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Using DNS in Applications:**
+
+      ```yaml
+      # Pod connecting to a database service
+      env:
+        - name: DATABASE_HOST
+          value: "postgres.database.svc.cluster.local"
+        - name: REDIS_HOST
+          value: "redis"  # Same namespace, short name works
+      ```
+
+      **Cross-Namespace Communication:**
+
+      ```
+      ┌─────────────────┐                    ┌─────────────────┐
+      │ Namespace: web  │                    │ Namespace: db   │
+      │                 │                    │                 │
+      │  ┌───────────┐  │   api.db          │  ┌───────────┐  │
+      │  │  web-app  │──┼──────────────────►│  │    api    │  │
+      │  └───────────┘  │                    │  └───────────┘  │
+      │                 │                    │                 │
+      │  Can't use just │                    │                 │
+      │  "api" - must   │                    │                 │
+      │  specify .db    │                    │                 │
+      └─────────────────┘                    └─────────────────┘
+      ```
+
+      **Key insight:** Within the same namespace, use short names.
+      Across namespaces, add the namespace to the name.
+    key_points:
+      - "Full: service.namespace.svc.cluster.local"
+      - "Same namespace: just use service name"
+      - "Cross-namespace: service.other-namespace"
+      - "Apps should use DNS names, not IPs"
+
+  - title: "Endpoints and Headless Services"
+    content: |
+      **Endpoints** show the actual pod IPs behind a Service.
+
+      **Viewing Endpoints:**
+
+      ```bash
+      $ kubectl get endpoints my-service
+      NAME         ENDPOINTS                         AGE
+      my-service   10.1.0.5:80,10.1.0.6:80,10.1.0.7:80   5m
+                   ↑
+                   Actual pod IPs
+      ```
+
+      **When Endpoints Are Empty:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │  $ kubectl get endpoints broken-svc                        │
+      │  NAME         ENDPOINTS   AGE                              │
+      │  broken-svc   <none>      5m                               │
+      │               ↑                                            │
+      │               No pods match the selector!                  │
+      │                                                            │
+      │  TROUBLESHOOTING:                                          │
+      │  1. Check Service selector                                 │
+      │  2. Check Pod labels                                       │
+      │  3. Make sure pods are Running                             │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Headless Services:**
+
+      A Service with `clusterIP: None` is "headless" - DNS returns pod IPs directly.
+
+      ```yaml
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: headless-svc
+      spec:
+        clusterIP: None      # Headless!
+        selector:
+          app: web
+        ports:
+        - port: 80
+      ```
+
+      **Headless DNS Resolution:**
+
+      ```
+      Normal Service:
+      nslookup my-svc → 10.96.0.50 (single ClusterIP)
+
+      Headless Service:
+      nslookup headless-svc → 10.1.0.5, 10.1.0.6, 10.1.0.7 (all pod IPs)
+      ```
+
+      **When to Use Headless:**
+      - StatefulSets (databases that need stable identities)
+      - When clients need to know all pod IPs
+      - Custom load balancing logic
+
+      **Key insight:** Endpoints = the reality. Service = the abstraction.
+      Check endpoints first when debugging.
+    key_points:
+      - "Endpoints show actual pod IPs"
+      - "Empty endpoints = selector problem"
+      - "Headless services (clusterIP: None) return all pod IPs"
+      - "Check endpoints when debugging connectivity"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Test DNS Resolution"
+    instructions: |
+      **What we're doing:** Verify that DNS resolves service names to IPs.
+
+      **Why this matters:** If DNS doesn't work, pods can't find each other.
+
+      **The nslookup trick:**
+      Run a temporary pod to do DNS lookups inside the cluster.
+
+      First create a service, then test DNS:
+    command_hint: "kubectl create deployment dns-test --image=nginx && kubectl expose deployment dns-test --port=80 && kubectl run dnsutil --image=busybox --rm -it --restart=Never -- nslookup dns-test"
+    validation:
+      type: "command_output"
+      command: "kubectl get svc dns-test"
+      expected_contains: "ClusterIP"
+    points: 10
+
+  - id: "cmd-02"
+    title: "View Service Endpoints"
+    instructions: |
+      **What we're doing:** See the pod IPs that a Service routes to.
+
+      **Why this matters:** No endpoints = no traffic flowing. This is the first
+      thing to check when a Service isn't working.
+
+      **The command:**
+      ```
+      kubectl get endpoints <service-name>
+      ```
+
+      View the endpoints:
+    command_hint: "kubectl get endpoints dns-test"
+    validation:
+      type: "command_output"
+      command: "kubectl get endpoints dns-test"
+      expected_contains: ":"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Create Headless Service"
+    instructions: |
+      **What we're doing:** Create a service that returns pod IPs instead of ClusterIP.
+
+      **Why this matters:** Some applications need direct access to each pod
+      (like databases or caches with custom load balancing).
+
+      Create a headless service using --cluster-ip=None:
+    command_hint: "kubectl create service clusterip headless-demo --clusterip=None --tcp=80:80"
+    validation:
+      type: "command_output"
+      command: "kubectl get svc headless-demo"
+      expected_contains: "None"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "DNS Resolution Failing"
+    description: |
+      An application pod can't connect to the database service.
+      It's getting "Name does not resolve" errors.
+
+      ```
+      $ kubectl exec app-pod -- nslookup database
+      Server:    10.96.0.10
+      Address:   10.96.0.10:53
+
+      ** server can't find database: NXDOMAIN
+      ```
+
+      Your mission: Figure out why DNS isn't working!
+    manifest: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: database
+        namespace: backend
+      spec:
+        selector:
+          app: db
+        ports:
+        - port: 5432
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: db-pod
+        namespace: backend
+        labels:
+          app: db
+      spec:
+        containers:
+        - name: postgres
+          image: postgres:13
+          env:
+          - name: POSTGRES_PASSWORD
+            value: secret
+      ---
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: backend
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: app-pod
+        namespace: default
+      spec:
+        containers:
+        - name: app
+          image: busybox
+          command: ["sleep", "3600"]
+    hints:
+      - "The service is in 'backend' namespace but the app is in 'default'"
+      - "Cross-namespace lookup needs: database.backend or database.backend.svc.cluster.local"
+      - "Test with: kubectl exec app-pod -- nslookup database.backend"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl exec app-pod -- nslookup database.backend"
+      expected_contains: "Address"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Service Endpoints Empty"
+    description: |
+      A Service exists but shows no endpoints:
+
+      ```
+      $ kubectl get endpoints api-svc
+      NAME      ENDPOINTS   AGE
+      api-svc   <none>      10m
+      ```
+
+      The pods are running but the Service can't find them!
+
+      Your mission: Connect the Service to its pods!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: api-pod-1
+        labels:
+          application: api
+          version: v1
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: api-pod-2
+        labels:
+          application: api
+          version: v1
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-svc
+      spec:
+        selector:
+          app: api
+        ports:
+        - port: 80
+    hints:
+      - "Compare the Service selector with Pod labels"
+      - "Service uses 'app: api' but pods have 'application: api'"
+      - "Fix: kubectl patch svc api-svc -p '{\"spec\":{\"selector\":{\"application\":\"api\"}}}'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get endpoints api-svc"
+      expected_not_contains: "<none>"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "fill_yaml"
+      question: "Complete the full DNS name for service 'api' in namespace 'prod':"
+      yaml_template: |
+        api.prod.svc.____________
+      expected: "cluster.local"
+      explanation: "Full DNS: service.namespace.svc.cluster.local"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What runs Kubernetes DNS in the cluster?"
+      options:
+        - "kubelet"
+        - "CoreDNS"
+        - "kube-proxy"
+        - "API Server"
+      correct: 1
+      explanation: "CoreDNS runs in kube-system namespace and provides cluster DNS."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to view endpoints for service 'web'"
+      expected_contains: "endpoints"
+      alternatives:
+        - "kubectl get endpoints web"
+        - "kubectl get ep web"
+      hint: "Use kubectl get endpoints"
+      explanation: "`kubectl get endpoints web` shows pod IPs behind the service."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "If endpoints show '<none>', what's likely wrong?"
+      options:
+        - "The service port is wrong"
+        - "The selector doesn't match any pod labels"
+        - "DNS is not working"
+        - "The cluster IP is invalid"
+      correct: 1
+      explanation: "Empty endpoints usually means the selector doesn't match any running pods."
+      points: 5
+
+    - type: "true_false"
+      question: "A pod in namespace 'dev' can reach service 'api' in namespace 'prod' using just 'api' as the hostname."
+      correct: false
+      explanation: "Cross-namespace requires: api.prod or api.prod.svc.cluster.local"
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the Service spec to make it headless:"
+      yaml_template: |
+        spec:
+          clusterIP: ____
+      expected: "None"
+      explanation: "clusterIP: None makes the service headless, returning pod IPs directly."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What's the shortest DNS name for service 'db' if you're in the same namespace?"
+      options:
+        - "db.default.svc.cluster.local"
+        - "db.default"
+        - "db"
+        - "db.svc"
+      correct: 2
+      explanation: "Within the same namespace, just use the service name: 'db'"
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does a headless service return for DNS queries?"
+      options:
+        - "The ClusterIP"
+        - "All pod IPs directly"
+        - "No response"
+        - "The node IP"
+      correct: 1
+      explanation: "Headless services return all pod IPs instead of a single ClusterIP."
+      points: 5

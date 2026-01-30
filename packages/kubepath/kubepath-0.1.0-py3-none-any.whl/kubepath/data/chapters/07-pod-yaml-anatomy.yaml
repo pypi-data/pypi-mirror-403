@@ -1,0 +1,391 @@
+chapter:
+  number: 7
+  title: "Pod YAML Anatomy"
+  description: "Understand every part of a Kubernetes YAML manifest"
+
+concepts:
+  - title: "The Four Required Fields"
+    content: |
+      Every Kubernetes resource has four required top-level fields.
+
+      **The Form Analogy**
+
+      Think of a Kubernetes YAML like filling out a form:
+      - **apiVersion** = Which form version are you using?
+      - **kind** = What type of thing is this?
+      - **metadata** = What's its name and labels?
+      - **spec** = What should it look like?
+
+      ```yaml
+      apiVersion: v1          # 1. API Version - which API to use
+      kind: Pod               # 2. Kind - what type of resource
+      metadata:               # 3. Metadata - identity information
+        name: my-pod
+        labels:
+          app: web
+      spec:                   # 4. Spec - desired state
+        containers:
+        - name: nginx
+          image: nginx:1.21
+      ```
+
+      **Visual breakdown:**
+
+      ```
+      ┌────────────────────────────────────────────────────────┐
+      │                KUBERNETES YAML STRUCTURE                │
+      │                                                        │
+      │  ┌──────────────┐     ┌──────────────────────────┐    │
+      │  │ apiVersion:  │────►│ Which API? (v1, apps/v1) │    │
+      │  │ v1           │     └──────────────────────────┘    │
+      │  └──────────────┘                                     │
+      │                                                        │
+      │  ┌──────────────┐     ┌──────────────────────────┐    │
+      │  │ kind:        │────►│ What type? (Pod,         │    │
+      │  │ Pod          │     │ Deployment, Service)      │    │
+      │  └──────────────┘     └──────────────────────────┘    │
+      │                                                        │
+      │  ┌──────────────┐     ┌──────────────────────────┐    │
+      │  │ metadata:    │────►│ Identity: name, labels,  │    │
+      │  │   name: ...  │     │ namespace, annotations    │    │
+      │  └──────────────┘     └──────────────────────────┘    │
+      │                                                        │
+      │  ┌──────────────┐     ┌──────────────────────────┐    │
+      │  │ spec:        │────►│ Desired state: containers,│    │
+      │  │   ...        │     │ ports, volumes, etc.      │    │
+      │  └──────────────┘     └──────────────────────────┘    │
+      └────────────────────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Memorize these four fields. Every Kubernetes resource
+      has them!
+    key_points:
+      - "apiVersion: Which API version to use"
+      - "kind: What type of resource"
+      - "metadata: Name, labels, namespace"
+      - "spec: The desired state"
+
+  - title: "Understanding apiVersion and kind"
+    content: |
+      **apiVersion** tells Kubernetes which API to use.
+
+      **Common API Versions:**
+
+      | Resource | apiVersion |
+      |----------|------------|
+      | Pod, Service, ConfigMap, Secret | v1 |
+      | Deployment, ReplicaSet, StatefulSet | apps/v1 |
+      | Ingress | networking.k8s.io/v1 |
+      | Job, CronJob | batch/v1 |
+      | Role, RoleBinding | rbac.authorization.k8s.io/v1 |
+
+      **Why different versions?**
+      - Core resources use `v1` (stable, built-in)
+      - Extended resources use `<group>/v1` (grouped by function)
+      - Alpha/Beta versions exist for testing new features
+
+      **kind** is the resource type:
+
+      ```yaml
+      # These are different kinds with different purposes:
+      kind: Pod          # Single instance of containers
+      kind: Deployment   # Manages multiple pod replicas
+      kind: Service      # Network endpoint for pods
+      kind: ConfigMap    # Configuration data
+      kind: Secret       # Sensitive data
+      ```
+
+      **Finding the right apiVersion:**
+
+      ```bash
+      kubectl api-resources | grep Pod
+      #  NAME    SHORTNAMES   APIVERSION   NAMESPACED   KIND
+      #  pods    po           v1           true         Pod
+      ```
+
+      **Key insight:** Use `kubectl api-resources` to find the correct
+      apiVersion for any resource type.
+    key_points:
+      - "Core resources use 'v1'"
+      - "Extended resources use '<group>/v1'"
+      - "Use 'kubectl api-resources' to find versions"
+      - "Kind is the resource type (Pod, Deployment, etc.)"
+
+  - title: "The Spec Section"
+    content: |
+      The **spec** section defines what you want Kubernetes to create.
+
+      **Pod Spec Structure:**
+
+      ```yaml
+      spec:
+        containers:        # Required: list of containers
+        - name: app        # Container name (required)
+          image: nginx:1.21  # Image to run (required)
+          ports:           # Optional: exposed ports
+          - containerPort: 80
+          env:             # Optional: environment variables
+          - name: ENV
+            value: "production"
+          resources:       # Optional: CPU/memory limits
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+        restartPolicy: Always  # Optional: when to restart
+      ```
+
+      **Visual breakdown of a container spec:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                   CONTAINER SPEC                         │
+      │                                                         │
+      │  name: nginx           ← Required: container identifier │
+      │  image: nginx:1.21     ← Required: what to run          │
+      │                                                         │
+      │  ┌─────────────────────────────────────────────────┐   │
+      │  │ ports:                                          │   │
+      │  │ - containerPort: 80    ← Documents exposed port │   │
+      │  └─────────────────────────────────────────────────┘   │
+      │                                                         │
+      │  ┌─────────────────────────────────────────────────┐   │
+      │  │ env:                                            │   │
+      │  │ - name: DATABASE_URL                            │   │
+      │  │   value: "postgres://..."   ← Environment vars  │   │
+      │  └─────────────────────────────────────────────────┘   │
+      │                                                         │
+      │  ┌─────────────────────────────────────────────────┐   │
+      │  │ resources:                                      │   │
+      │  │   requests:                                     │   │
+      │  │     memory: "64Mi"         ← Minimum needed     │   │
+      │  │   limits:                                       │   │
+      │  │     memory: "128Mi"        ← Maximum allowed    │   │
+      │  └─────────────────────────────────────────────────┘   │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Common spec fields:**
+
+      | Field | Purpose |
+      |-------|---------|
+      | containers | List of containers to run |
+      | volumes | Storage to mount |
+      | restartPolicy | Always, OnFailure, Never |
+      | nodeSelector | Run on specific nodes |
+      | serviceAccountName | Identity for the pod |
+
+      **Key insight:** The spec is where you define what you want.
+      Kubernetes makes it happen.
+    key_points:
+      - "spec.containers is a list (can have multiple)"
+      - "Each container needs name and image"
+      - "ports, env, and resources are optional but common"
+      - "restartPolicy controls what happens on failure"
+
+command_practice:
+  - id: "cmd-01"
+    title: "View Pod YAML"
+    instructions: |
+      **What we're doing:** See the full YAML of an existing pod.
+
+      **Why this matters:** Looking at running pods helps you understand
+      the complete structure Kubernetes uses.
+
+      **The command:**
+      ```
+      kubectl get pod <name> -o yaml
+                              ↑
+                              └── output as YAML
+      ```
+
+      First, create a pod, then view its YAML:
+    command_hint: "kubectl run yaml-test --image=nginx && sleep 5 && kubectl get pod yaml-test -o yaml"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod yaml-test -o yaml"
+      expected_contains: "apiVersion"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Find API Version"
+    instructions: |
+      **What we're doing:** Look up the correct apiVersion for a resource.
+
+      **Why this matters:** You need the correct apiVersion in your YAML.
+      This command shows you what to use.
+
+      **The command:**
+      ```
+      kubectl api-resources | grep <resource>
+      ```
+
+      Find the apiVersion for Deployments:
+    command_hint: "kubectl api-resources | grep -i deployment"
+    validation:
+      type: "command_output"
+      command: "kubectl api-resources | grep -i deployment"
+      expected_contains: "apps/v1"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Explain a Resource"
+    instructions: |
+      **What we're doing:** Get documentation for YAML fields.
+
+      **Why this matters:** `kubectl explain` shows you what fields are
+      available and what they mean.
+
+      **The command:**
+      ```
+      kubectl explain pod.spec.containers
+                           ↑    ↑
+                           │    └── drill down to specific field
+                           └────── top-level resource
+      ```
+
+      This is like built-in documentation!
+
+      Explore the container spec:
+    command_hint: "kubectl explain pod.spec.containers"
+    validation:
+      type: "command_output"
+      command: "kubectl explain pod.spec.containers"
+      expected_contains: "FIELDS"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Wrong apiVersion"
+    description: |
+      You try to apply a YAML file but get an error:
+
+      ```
+      error: unable to recognize "pod.yaml": no matches for kind "Pod" in version "apps/v1"
+      ```
+
+      The apiVersion is wrong for this resource type!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Pod
+      metadata:
+        name: wrong-api
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+    hints:
+      - "The error says 'no matches for kind Pod in version apps/v1'"
+      - "Pods use 'v1', not 'apps/v1'. Check with: kubectl api-resources | grep Pod"
+      - "Change apiVersion from 'apps/v1' to 'v1' in the YAML file"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/wrong-api"
+      state: "Running"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Missing Required Field"
+    description: |
+      A pod YAML is failing validation:
+
+      ```
+      error: error validating "pod.yaml": error validating data:
+      ValidationError(Pod.spec.containers[0]): missing required field "image"
+      ```
+
+      Something is missing from the container spec!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: missing-field
+      spec:
+        containers:
+        - name: app
+    hints:
+      - "The error mentions 'missing required field image'"
+      - "Every container needs both 'name' AND 'image' fields"
+      - "Add 'image: nginx' under the container spec, at the same level as 'name'"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/missing-field"
+      state: "Running"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What are the four required top-level fields in Kubernetes YAML?"
+      options:
+        - "name, image, port, labels"
+        - "apiVersion, kind, metadata, spec"
+        - "type, version, config, data"
+        - "api, resource, name, containers"
+      correct: 1
+      explanation: "Every Kubernetes resource needs: apiVersion, kind, metadata, and spec."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the apiVersion for a Pod:"
+      yaml_template: |
+        apiVersion: ____
+        kind: Pod
+      expected: "v1"
+      explanation: "Pods use apiVersion 'v1' - they're part of the core API."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does the 'spec' section define?"
+      options:
+        - "The resource's name"
+        - "The API version"
+        - "The desired state of the resource"
+        - "The current status"
+      correct: 2
+      explanation: "Spec = specification = what you WANT. Status (not in YAML) shows what IS."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to see a pod's full YAML"
+      expected_contains: "-o yaml"
+      alternatives:
+        - "kubectl get pod nginx -o yaml"
+        - "kubectl get po nginx -o yaml"
+        - "kubectl get pod -o yaml"
+      hint: "Use -o yaml flag with kubectl get"
+      explanation: "`kubectl get pod <name> -o yaml` shows the complete YAML including status."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What apiVersion do Deployments use?"
+      options:
+        - "v1"
+        - "apps/v1"
+        - "deployment/v1"
+        - "core/v1"
+      correct: 1
+      explanation: "Deployments are in the 'apps' API group, so they use 'apps/v1'."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the container spec with the required image field:"
+      yaml_template: |
+        containers:
+        - name: web
+          ____: nginx:1.21
+      expected: "image"
+      explanation: "Every container needs 'name' and 'image' fields."
+      points: 10
+
+    - type: "command_challenge"
+      question: "Write the command to see documentation for pod containers"
+      expected_contains: "kubectl explain"
+      alternatives:
+        - "kubectl explain pod.spec.containers"
+        - "kubectl explain pods.spec.containers"
+      hint: "Use 'kubectl explain' with dot notation to drill down"
+      explanation: "`kubectl explain pod.spec.containers` shows field documentation."
+      points: 10

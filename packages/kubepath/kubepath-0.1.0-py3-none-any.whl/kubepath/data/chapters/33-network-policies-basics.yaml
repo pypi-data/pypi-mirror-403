@@ -1,0 +1,497 @@
+chapter:
+  number: 33
+  title: "Network Policies Basics"
+  description: "Control traffic flow between pods with network policies"
+
+concepts:
+  - title: "Why Network Policies?"
+    content: |
+      By default, all pods can talk to all other pods. **Network Policies**
+      restrict which pods can communicate.
+
+      **The Office Access Card Analogy**
+
+      Without network policies:
+      - Everyone can walk into any office
+      - No access control
+
+      With network policies:
+      - Access cards required
+      - HR can only access HR floor
+      - Engineering can only access Engineering floor
+
+      **Default Kubernetes Networking:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │               DEFAULT: ALLOW ALL                            │
+      │                                                             │
+      │   ┌─────────┐     ┌─────────┐     ┌─────────┐              │
+      │   │Frontend │◄───►│ Backend │◄───►│Database │              │
+      │   └─────────┘     └─────────┘     └─────────┘              │
+      │        ▲               ▲               ▲                    │
+      │        │               │               │                    │
+      │        └───────────────┼───────────────┘                    │
+      │                        │                                    │
+      │        ANY pod can talk to ANY other pod!                  │
+      │        (Even if it shouldn't...)                           │
+      └─────────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────────┐
+      │              WITH NETWORK POLICIES                          │
+      │                                                             │
+      │   ┌─────────┐     ┌─────────┐     ┌─────────┐              │
+      │   │Frontend │────►│ Backend │────►│Database │              │
+      │   └─────────┘     └─────────┘     └─────────┘              │
+      │        │                               ▲                    │
+      │        X               X               │                    │
+      │        │               │               X                    │
+      │   ┌─────────┐     ┌─────────┐         │                    │
+      │   │ Hacker  │     │  Other  │         │                    │
+      │   │   Pod   │     │   App   │─────────┘                    │
+      │   └─────────┘     └─────────┘                              │
+      │                                                             │
+      │   Database only accepts traffic from Backend               │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **When to Use Network Policies:**
+      - Isolate sensitive workloads (databases, payment systems)
+      - Enforce microservice boundaries
+      - Meet compliance requirements
+      - Defense in depth
+
+      **Key insight:** Network Policies are firewall rules for pods.
+      They require a CNI that supports them (Calico, Cilium, etc.).
+    key_points:
+      - "Default: all pods can communicate"
+      - "Network Policies restrict traffic"
+      - "Like firewall rules for pods"
+      - "Requires compatible CNI plugin"
+
+  - title: "Network Policy Structure"
+    content: |
+      **Basic Network Policy:**
+
+      ```yaml
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: db-policy
+        namespace: default
+      spec:
+        podSelector:           # Which pods this policy applies to
+          matchLabels:
+            app: database
+        policyTypes:
+          - Ingress            # Control incoming traffic
+          - Egress             # Control outgoing traffic
+        ingress:               # Rules for incoming traffic
+          - from:
+              - podSelector:
+                  matchLabels:
+                    app: backend
+            ports:
+              - port: 5432
+        egress:                # Rules for outgoing traffic
+          - to:
+              - podSelector:
+                  matchLabels:
+                    app: metrics
+            ports:
+              - port: 9090
+      ```
+
+      **Policy Components:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                NETWORK POLICY STRUCTURE                     │
+      │                                                             │
+      │   podSelector:                                              │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ WHO does this policy apply to?              │          │
+      │   │ (selects pods by labels)                    │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   policyTypes:                                              │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ WHAT traffic to control?                    │          │
+      │   │ - Ingress (incoming)                       │          │
+      │   │ - Egress (outgoing)                        │          │
+      │   │ - or both                                  │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   ingress/egress rules:                                     │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ FROM/TO who is traffic allowed?            │          │
+      │   │ - podSelector (same namespace)             │          │
+      │   │ - namespaceSelector (other namespaces)     │          │
+      │   │ - ipBlock (external IPs)                   │          │
+      │   │                                            │          │
+      │   │ ON what ports?                             │          │
+      │   │ - port, protocol                           │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Traffic Selectors:**
+
+      | Selector | Selects |
+      |----------|---------|
+      | podSelector | Pods by label |
+      | namespaceSelector | Entire namespaces |
+      | ipBlock | External IP ranges |
+
+      **Key insight:** If podSelector is empty `{}`, the policy applies
+      to ALL pods in the namespace.
+    key_points:
+      - "podSelector targets pods the policy applies to"
+      - "policyTypes: Ingress and/or Egress"
+      - "Rules specify allowed from/to and ports"
+      - "Empty podSelector means all pods"
+
+  - title: "Default Deny Policies"
+    content: |
+      **Start with Deny All, then Allow What's Needed.**
+
+      This is the most secure approach: nothing gets through unless
+      explicitly allowed.
+
+      **Deny All Ingress:**
+
+      ```yaml
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: deny-all-ingress
+      spec:
+        podSelector: {}        # Apply to all pods
+        policyTypes:
+          - Ingress            # Block incoming
+        # No ingress rules = deny all incoming
+      ```
+
+      **Deny All Egress:**
+
+      ```yaml
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: deny-all-egress
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Egress
+        # No egress rules = deny all outgoing
+      ```
+
+      **Deny All Both Directions:**
+
+      ```yaml
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: deny-all
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Ingress
+          - Egress
+      ```
+
+      **Security Pattern:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │              SECURITY PATTERN                               │
+      │                                                             │
+      │   Step 1: Apply deny-all                                    │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │     [Pod] X─────X [Pod] X─────X [Pod]      │          │
+      │   │        All traffic blocked                  │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Step 2: Add specific allow policies                      │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │     [Frontend]────►[Backend]────►[DB]      │          │
+      │   │        Only allowed paths work              │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Result: Least privilege networking                       │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Allow DNS (Usually Needed):**
+
+      When blocking egress, pods can't resolve DNS. Allow it:
+
+      ```yaml
+      egress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+          ports:
+            - port: 53
+              protocol: UDP
+            - port: 53
+              protocol: TCP
+      ```
+
+      **Key insight:** Deny-all + explicit allows = zero-trust networking.
+      Always remember to allow DNS when blocking egress!
+    key_points:
+      - "Empty rules = deny all"
+      - "Start with deny-all, add specific allows"
+      - "Remember to allow DNS for egress"
+      - "This is zero-trust networking"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create Deny-All Policy"
+    instructions: |
+      **What we're doing:** Block all incoming traffic to pods in the namespace.
+
+      **Why this matters:** This is the foundation of zero-trust networking.
+
+      Create a deny-all ingress policy:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy deny-all-ingress"
+      expected_contains: "deny-all-ingress"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Allow Specific Traffic"
+    instructions: |
+      **What we're doing:** Allow traffic from frontend to backend pods.
+
+      **Why this matters:** After deny-all, you need explicit allows.
+
+      Create an allow policy:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - port: 8080
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy allow-frontend-to-backend"
+      expected_contains: "allow-frontend-to-backend"
+    points: 10
+
+  - id: "cmd-03"
+    title: "View Network Policies"
+    instructions: |
+      **What we're doing:** List and inspect network policies.
+
+      **Why this matters:** You need to see what policies exist.
+
+      View network policies:
+    command_hint: "kubectl get networkpolicies"
+    validation:
+      type: "command_output"
+      command: "kubectl get networkpolicies"
+      expected_contains: "POLICY"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Pods Can't Communicate"
+    description: |
+      After applying a network policy, frontend can't reach backend:
+
+      ```
+      $ kubectl exec frontend-pod -- curl backend-svc:8080
+      Connection timed out
+      ```
+
+      But they could communicate before the policy!
+
+      Your mission: Fix the network policy to allow this traffic!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: frontend-pod
+        labels:
+          app: frontend
+      spec:
+        containers:
+        - name: curl
+          image: curlimages/curl
+          command: ["sleep", "3600"]
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: backend-pod
+        labels:
+          app: backend
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: backend-policy
+      spec:
+        podSelector:
+          matchLabels:
+            app: backend
+        policyTypes:
+        - Ingress
+        ingress:
+        - from:
+          - podSelector:
+              matchLabels:
+                app: api
+    hints:
+      - "The policy allows traffic from app=api but frontend has app=frontend"
+      - "Check pod labels: kubectl get pods --show-labels"
+      - "Update policy to allow from app=frontend"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy backend-policy -o yaml"
+      expected_contains: "frontend"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "DNS Not Working"
+    description: |
+      After applying egress deny-all, pods can't resolve DNS:
+
+      ```
+      $ kubectl exec my-pod -- nslookup kubernetes
+      ;; connection timed out; no servers could be reached
+      ```
+
+      Your mission: Allow DNS while keeping other egress blocked!
+    manifest: |
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: strict-egress
+      spec:
+        podSelector:
+          matchLabels:
+            app: secure-app
+        policyTypes:
+        - Egress
+    hints:
+      - "Egress is blocked but DNS (port 53) needs to be allowed"
+      - "DNS runs in kube-system namespace"
+      - "Add egress rule allowing UDP/TCP 53 to kube-system"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy strict-egress -o yaml"
+      expected_contains: "53"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the default network policy in Kubernetes?"
+      options:
+        - "Deny all traffic"
+        - "Allow all traffic"
+        - "Allow only within namespace"
+        - "No default, must be configured"
+      correct: 1
+      explanation: "By default, Kubernetes allows all pod-to-pod communication."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the policy to apply to pods with label app=db:"
+      yaml_template: |
+        spec:
+          ___________:
+            matchLabels:
+              app: db
+      expected: "podSelector"
+      explanation: "podSelector identifies which pods the policy applies to."
+      points: 10
+
+    - type: "true_false"
+      question: "An empty podSelector {} selects all pods in the namespace."
+      correct: true
+      explanation: "Empty podSelector means the policy applies to all pods."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What happens with 'policyTypes: [Ingress]' and no ingress rules?"
+      options:
+        - "All ingress is allowed"
+        - "All ingress is denied"
+        - "The policy has no effect"
+        - "Only egress is affected"
+      correct: 1
+      explanation: "Declaring Ingress policy type with no rules = deny all ingress."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to list all network policies"
+      expected_contains: "networkpolic"
+      alternatives:
+        - "kubectl get networkpolicies"
+        - "kubectl get netpol"
+        - "kubectl get networkpolicy"
+      hint: "Use kubectl get"
+      explanation: "`kubectl get networkpolicies` or `kubectl get netpol`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Which CNI plugins support Network Policies?"
+      options:
+        - "All CNI plugins"
+        - "Only Flannel"
+        - "Calico, Cilium, and others (not all)"
+        - "Network policies don't need CNI"
+      correct: 2
+      explanation: "Not all CNIs support policies. Calico, Cilium, Weave do."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the policy to control both ingress and egress:"
+      yaml_template: |
+        spec:
+          policyTypes:
+          - Ingress
+          - ______
+      expected: "Egress"
+      explanation: "policyTypes can include Ingress, Egress, or both."
+      points: 10
+
+    - type: "true_false"
+      question: "Blocking egress also blocks DNS resolution."
+      correct: true
+      explanation: "DNS uses egress. If blocked, you need to explicitly allow port 53."
+      points: 5

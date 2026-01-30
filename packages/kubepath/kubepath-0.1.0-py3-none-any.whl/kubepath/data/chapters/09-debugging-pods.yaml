@@ -1,0 +1,382 @@
+chapter:
+  number: 9
+  title: "Debugging Pods"
+  description: "Master the essential debugging commands for Kubernetes"
+
+concepts:
+  - title: "The Debugging Toolkit"
+    content: |
+      When a pod isn't working, you have four main tools to investigate.
+
+      **The Detective Toolkit:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │              KUBERNETES DEBUGGING TOOLKIT                │
+      │                                                         │
+      │  ┌───────────────────────────────────────────────────┐  │
+      │  │ 1. kubectl get pods        → "Is it running?"    │  │
+      │  │    See status at a glance                        │  │
+      │  └───────────────────────────────────────────────────┘  │
+      │                                                         │
+      │  ┌───────────────────────────────────────────────────┐  │
+      │  │ 2. kubectl describe pod    → "What happened?"    │  │
+      │  │    Events, conditions, configuration             │  │
+      │  └───────────────────────────────────────────────────┘  │
+      │                                                         │
+      │  ┌───────────────────────────────────────────────────┐  │
+      │  │ 3. kubectl logs           → "What did it say?"   │  │
+      │  │    Container output (stdout/stderr)              │  │
+      │  └───────────────────────────────────────────────────┘  │
+      │                                                         │
+      │  ┌───────────────────────────────────────────────────┐  │
+      │  │ 4. kubectl exec           → "Let me look inside" │  │
+      │  │    Run commands in the container                 │  │
+      │  └───────────────────────────────────────────────────┘  │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **The Debug Flow:**
+
+      ```
+      Problem!
+         │
+         ▼
+      kubectl get pods ──► "What's the status?"
+         │
+         ▼
+      kubectl describe pod ──► "What events occurred?"
+         │
+         ▼
+      kubectl logs ──► "What did the app output?"
+         │
+         ▼
+      kubectl exec ──► "Let me investigate inside"
+      ```
+
+      **Memory trick:** Get → Describe → Logs → Exec
+      (Get the Description of Logs while Executing)
+
+      **Key insight:** Start with `get` to see status, then drill down with
+      `describe`, `logs`, and `exec` based on what you find.
+    key_points:
+      - "get: Quick status check"
+      - "describe: Detailed events and configuration"
+      - "logs: Container stdout/stderr output"
+      - "exec: Run commands inside the container"
+
+  - title: "Reading Pod Status and Events"
+    content: |
+      The `describe` command is your best friend for debugging.
+
+      **Understanding Status:**
+
+      ```
+      $ kubectl get pods
+      NAME    READY   STATUS             RESTARTS   AGE
+      web     0/1     CrashLoopBackOff   5          10m
+            │   │         │              │
+            │   │         │              └── How many times it restarted
+            │   │         └── What went wrong
+            │   └── Ready containers / Total containers
+            └── Pod name
+      ```
+
+      **Common Status Values:**
+
+      | Status | Meaning | What to check |
+      |--------|---------|---------------|
+      | Pending | Waiting for node | describe → Events |
+      | Running | Container is up | Good! (but check Ready) |
+      | CrashLoopBackOff | Container keeps crashing | logs |
+      | ImagePullBackOff | Can't get image | describe → Events |
+      | Error | Container failed | logs |
+      | Completed | Container finished | Normal for Jobs |
+
+      **The Events Section:**
+
+      ```
+      $ kubectl describe pod web
+      ...
+      Events:
+        Type     Reason     Message
+        ────     ──────     ───────
+        Normal   Scheduled  Successfully assigned to node-1
+        Normal   Pulling    Pulling image "nginx"
+        Normal   Pulled     Successfully pulled image
+        Normal   Created    Created container
+        Warning  Failed     Error: CrashLoopBackOff ← Problem here!
+                            ↑
+                    Warning events = investigate!
+      ```
+
+      **Key insight:** Events tell the story of what happened. Look for
+      Warning events - they usually point to the problem.
+    key_points:
+      - "Status tells you the current state"
+      - "READY shows running vs total containers"
+      - "Events show what happened chronologically"
+      - "Warning events usually indicate the problem"
+
+  - title: "Logs and Interactive Debugging"
+    content: |
+      **Viewing Logs:**
+
+      ```bash
+      # Basic logs
+      kubectl logs my-pod
+
+      # Follow logs in real-time (like tail -f)
+      kubectl logs my-pod -f
+
+      # Previous container's logs (if crashed)
+      kubectl logs my-pod --previous
+
+      # Last 100 lines
+      kubectl logs my-pod --tail=100
+
+      # Logs from last hour
+      kubectl logs my-pod --since=1h
+
+      # Specific container in multi-container pod
+      kubectl logs my-pod -c sidecar
+      ```
+
+      **Interactive Debugging with exec:**
+
+      ```bash
+      # Run a command
+      kubectl exec my-pod -- ls /app
+
+      # Interactive shell
+      kubectl exec -it my-pod -- /bin/sh
+                   ↑
+                   └── -i = interactive, -t = terminal
+
+      # In a specific container
+      kubectl exec -it my-pod -c sidecar -- /bin/sh
+      ```
+
+      **Common Debug Commands Inside a Container:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │             INSIDE THE CONTAINER                         │
+      │                                                         │
+      │  Check processes:     ps aux                            │
+      │  Check network:       curl localhost:8080               │
+      │  Check DNS:           nslookup kubernetes               │
+      │  Check files:         ls -la /app                       │
+      │  Check env vars:      env | grep DATABASE               │
+      │  Check connectivity:  nc -zv database 5432              │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Use `-it` for interactive shells, `--` to separate
+      kubectl args from the command you want to run.
+    key_points:
+      - "logs -f follows logs in real-time"
+      - "logs --previous shows crashed container's logs"
+      - "exec -it opens interactive shell"
+      - "Use -- to separate kubectl flags from the command"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Check Pod Status"
+    instructions: |
+      **What we're doing:** Get a quick overview of pod health.
+
+      **Why this matters:** The first step in debugging is understanding
+      the current state.
+
+      **Useful flags:**
+      - `-o wide` shows more details (node, IP)
+      - `-w` watches for changes
+
+      Create a test pod and check its status:
+    command_hint: "kubectl run debug-test --image=nginx && kubectl get pods"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods debug-test"
+      expected_contains: "Running"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Describe Pod Details"
+    instructions: |
+      **What we're doing:** Get detailed information about a pod.
+
+      **Why this matters:** Describe shows events, conditions, and
+      configuration - essential for understanding failures.
+
+      **What to look for:**
+      - Events section (especially Warnings)
+      - Conditions (Ready, Initialized)
+      - Container status
+
+      Describe the test pod:
+    command_hint: "kubectl describe pod debug-test"
+    validation:
+      type: "command_output"
+      command: "kubectl describe pod debug-test"
+      expected_contains: "Events"
+    points: 10
+
+  - id: "cmd-03"
+    title: "View Container Logs"
+    instructions: |
+      **What we're doing:** See what the container is outputting.
+
+      **Why this matters:** Application errors and startup messages
+      appear in logs. This is often where you find the root cause.
+
+      View the nginx access logs:
+    command_hint: "kubectl logs debug-test"
+    validation:
+      type: "command_output"
+      command: "kubectl logs debug-test"
+      expected_contains: ""
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Debug CrashLoopBackOff"
+    description: |
+      A pod is in CrashLoopBackOff - it keeps crashing and restarting:
+
+      ```
+      NAME        READY   STATUS             RESTARTS   AGE
+      crashing    0/1     CrashLoopBackOff   5          3m
+      ```
+
+      Your mission: Find out why it's crashing and what the error is!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: crashing
+        namespace: default
+      spec:
+        containers:
+        - name: app
+          image: busybox
+          command: ['sh', '-c', 'echo "Starting..." && exit 1']
+    hints:
+      - "Check the pod description for events: `kubectl describe pod crashing`"
+      - "Look at the container logs: `kubectl logs crashing`"
+      - "The logs show 'Starting...' then exit 1 - the command is designed to fail. Fix by using a command that keeps running"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl logs crashing"
+      expected_contains: "Starting"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Debug Network Connectivity"
+    description: |
+      A pod can't connect to another service. You need to debug from inside
+      the container.
+
+      Your mission: Use exec to test network connectivity!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: network-debug
+        namespace: default
+      spec:
+        containers:
+        - name: debug
+          image: busybox
+          command: ['sh', '-c', 'sleep 3600']
+    hints:
+      - "Use `kubectl exec -it network-debug -- sh` to get a shell"
+      - "Inside the container, try: `nslookup kubernetes` to test DNS"
+      - "Use `wget -qO- http://kubernetes:443` to test HTTPS (will fail but shows connectivity)"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl exec network-debug -- nslookup kubernetes"
+      expected_contains: "Address"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What should you check first when a pod isn't working?"
+      options:
+        - "kubectl delete the pod"
+        - "kubectl get pods to see status"
+        - "kubectl exec into the pod"
+        - "Restart the cluster"
+      correct: 1
+      explanation: "Start with 'get' to see the status, then drill down with describe, logs, exec."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to see detailed information about pod 'web'"
+      expected_contains: "kubectl describe"
+      alternatives:
+        - "kubectl describe pod web"
+        - "kubectl describe pods web"
+      hint: "The 'describe' command shows full details"
+      explanation: "`kubectl describe pod web` shows events, conditions, and configuration."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "CrashLoopBackOff means:"
+      options:
+        - "The image can't be pulled"
+        - "The container keeps starting and crashing"
+        - "The pod is waiting for a node"
+        - "The network is disconnected"
+      correct: 1
+      explanation: "CrashLoopBackOff = container crashes, restarts, crashes again. Check logs for the error."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to follow logs in real-time for pod 'app'"
+      expected_contains: "-f"
+      alternatives:
+        - "kubectl logs app -f"
+        - "kubectl logs -f app"
+      hint: "Use -f flag to follow logs"
+      explanation: "`kubectl logs -f` streams logs like 'tail -f'."
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the command to get a shell inside a pod:"
+      yaml_template: |
+        kubectl exec ____ my-pod -- /bin/sh
+      expected: "-it"
+      explanation: "-i = interactive, -t = allocate terminal. Together they give you a shell."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How do you see logs from a crashed container?"
+      options:
+        - "kubectl logs pod --crashed"
+        - "kubectl logs pod --previous"
+        - "kubectl describe pod"
+        - "kubectl get logs pod"
+      correct: 1
+      explanation: "`--previous` shows logs from the previous container instance (before it crashed)."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to run 'ls /app' inside pod 'web'"
+      expected_contains: "kubectl exec"
+      alternatives:
+        - "kubectl exec web -- ls /app"
+        - "kubectl exec -it web -- ls /app"
+      hint: "Use 'kubectl exec pod -- command'"
+      explanation: "Use `--` to separate kubectl flags from the command to run."
+      points: 10
+
+    - type: "true_false"
+      question: "In 'kubectl logs', the --tail=N flag shows the last N lines."
+      correct: true
+      explanation: "Correct! `kubectl logs --tail=100` shows only the last 100 lines."
+      points: 5

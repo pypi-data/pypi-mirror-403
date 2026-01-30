@@ -1,0 +1,411 @@
+chapter:
+  number: 4
+  title: "Understanding Pods"
+  description: "Learn about pods - the smallest deployable unit in Kubernetes"
+
+concepts:
+  - title: "What is a Pod?"
+    content: |
+      A **Pod** is the smallest thing you can deploy in Kubernetes. It's a wrapper
+      around one or more containers.
+
+      **The House Analogy**
+
+      Think of a Pod like a house:
+      - **Containers** are roommates living in the house
+      - Roommates share the **kitchen** (network - same IP address)
+      - Roommates share the **storage room** (volumes)
+      - The house has one **address** (IP address)
+
+      ```
+      ┌─────────────────────────────────────────┐
+      │              POD (The House)            │
+      │        IP: 10.1.2.3                     │
+      │                                         │
+      │   ┌───────────┐     ┌───────────┐      │
+      │   │ Container │     │ Container │      │
+      │   │  (App)    │     │  (Logs)   │      │
+      │   │           │     │           │      │
+      │   │  Port 80  │────►│ Port 8080 │      │
+      │   └───────────┘     └───────────┘      │
+      │         │                 │            │
+      │         └────────┬────────┘            │
+      │                  │                     │
+      │         ┌────────┴────────┐            │
+      │         │ Shared Storage  │            │
+      │         └─────────────────┘            │
+      └─────────────────────────────────────────┘
+      ```
+
+      **Key characteristics:**
+      - Containers in a Pod share the same network (can talk via localhost)
+      - Containers in a Pod share storage volumes
+      - A Pod has one IP address (shared by all containers)
+      - Pods are **ephemeral** - they can be deleted and recreated anytime
+
+      **Most common pattern:** One container per Pod. Multi-container pods are
+      for special cases (sidecars, log collectors).
+
+      **Key insight:** A Pod is not a container - it's a container's home.
+      The Pod provides the environment where containers live together.
+    key_points:
+      - "Pod is the smallest deployable unit (not container!)"
+      - "Containers in a Pod share network and storage"
+      - "Pods get one IP address shared by all containers"
+      - "Pods are ephemeral - Kubernetes can replace them anytime"
+
+  - title: "Pod Lifecycle"
+    content: |
+      Pods go through different states during their life. Understanding these
+      helps you debug problems.
+
+      **The Pod State Machine:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                                                             │
+      │   PENDING ────────► RUNNING ────────► SUCCEEDED             │
+      │      │                 │                                    │
+      │      │                 │                                    │
+      │      │                 ▼                                    │
+      │      │              FAILED                                  │
+      │      │                                                      │
+      │      └──► (scheduling failed - stays Pending)               │
+      │                                                             │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **States Explained:**
+
+      | State | What it means | Common causes |
+      |-------|--------------|---------------|
+      | **Pending** | Waiting to be scheduled | No node available, image pulling |
+      | **Running** | At least one container is up | Normal operation |
+      | **Succeeded** | All containers exited with code 0 | Job completed |
+      | **Failed** | At least one container failed | Crash, bad command |
+      | **Unknown** | Can't get pod status | Node communication lost |
+
+      **Common Error States (within Running):**
+
+      ```
+      ┌──────────────────────────────────────────────────────────────┐
+      │ CrashLoopBackOff: Container keeps crashing and restarting   │
+      │    └── Usually: bad command, missing file, app error        │
+      │                                                              │
+      │ ImagePullBackOff: Can't download container image            │
+      │    └── Usually: typo in image name, private registry        │
+      │                                                              │
+      │ ErrImagePull: First-time image pull failure                 │
+      │    └── Same causes as ImagePullBackOff                      │
+      └──────────────────────────────────────────────────────────────┘
+      ```
+
+      **Memory trick for debugging:**
+      - Pending = **Scheduling** problem (where to run?)
+      - ImagePull* = **Image** problem (what to run?)
+      - CrashLoop* = **App** problem (how it runs)
+
+      **Key insight:** The pod state tells you WHERE to look for problems.
+    key_points:
+      - "Pending: Waiting for a node (scheduling issue)"
+      - "Running: Container is up"
+      - "ImagePullBackOff: Can't download the image"
+      - "CrashLoopBackOff: Container keeps crashing"
+
+  - title: "Creating a Pod"
+    content: |
+      There are two ways to create pods: **imperative** and **declarative**.
+
+      **1. Imperative: Quick one-liner**
+
+      Use `kubectl run` for quick experiments:
+
+      ```bash
+      kubectl run nginx --image=nginx
+      ```
+
+      This says: "Create a pod named 'nginx' using the nginx image."
+
+      **2. Declarative: YAML file**
+
+      For real deployments, use YAML files:
+
+      ```yaml
+      apiVersion: v1          # API version
+      kind: Pod               # Type of resource
+      metadata:
+        name: nginx           # Pod name
+      spec:
+        containers:           # List of containers
+        - name: nginx         # Container name
+          image: nginx:1.21   # Container image
+          ports:
+          - containerPort: 80 # Exposed port
+      ```
+
+      **The YAML Structure:**
+
+      ```
+      apiVersion ─── Which API to use (v1 for pods)
+            │
+           kind ─── What type of thing (Pod, Deployment, Service)
+            │
+        metadata ─── Name and labels (identity)
+            │
+          spec ─── The desired state (what you want)
+      ```
+
+      **Apply the YAML:**
+
+      ```bash
+      kubectl apply -f pod.yaml
+      ```
+
+      **When to use which?**
+      - `kubectl run` → Quick tests, learning
+      - YAML + `kubectl apply` → Production, version control, reproducible
+
+      **Key insight:** Declarative (YAML) is the "Kubernetes way" - you describe
+      what you want, and K8s makes it happen.
+    key_points:
+      - "Imperative: kubectl run <name> --image=<image>"
+      - "Declarative: Write YAML, apply with kubectl apply -f"
+      - "YAML has 4 parts: apiVersion, kind, metadata, spec"
+      - "Use YAML for anything beyond quick tests"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a Pod Imperatively"
+    instructions: |
+      **What we're doing:** Create your first pod using a single command.
+
+      **Why this matters:** Quick pod creation is perfect for learning and testing.
+      You'll use this pattern constantly when experimenting.
+
+      **The command pattern:**
+      ```
+      kubectl run <pod-name> --image=<image-name>
+                    ↑               ↑
+                    │               └── Docker image to use
+                    └────────────────── name for your pod
+      ```
+
+      **Memory trick:** "run" = start running a container
+
+      Create an nginx pod:
+    command_hint: "kubectl run my-nginx --image=nginx"
+    validation:
+      type: "resource_state"
+      resource: "pod/my-nginx"
+      state: "Running"
+      timeout: 60
+    points: 10
+
+  - id: "cmd-02"
+    title: "List and Watch Pods"
+    instructions: |
+      **What we're doing:** See your pod's status and watch it change.
+
+      **Why this matters:** You need to verify pods are running correctly.
+      The `-w` flag lets you watch changes in real-time.
+
+      **The command:**
+      ```
+      kubectl get pods
+      ```
+
+      **Add -w to watch changes:**
+      ```
+      kubectl get pods -w
+                       ↑
+                       └── "watch" - shows updates in real-time
+      ```
+
+      Press Ctrl+C to stop watching.
+
+      List your pods:
+    command_hint: "kubectl get pods"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods"
+      expected_contains: "my-nginx"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Delete a Pod"
+    instructions: |
+      **What we're doing:** Clean up by deleting the pod we created.
+
+      **Why this matters:** Always clean up test resources. In production,
+      you wouldn't manually delete pods - Deployments manage that.
+
+      **The command:**
+      ```
+      kubectl delete pod <pod-name>
+                    ↑        ↑
+                    │        └── specific pod to delete
+                    └────────── verb: remove something
+      ```
+
+      **Tip:** Add `--now` for faster deletion (skips grace period):
+      ```
+      kubectl delete pod my-nginx --now
+      ```
+
+      Delete the nginx pod:
+    command_hint: "kubectl delete pod my-nginx"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods"
+      expected_not_contains: "my-nginx"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Fix the ImagePullBackOff"
+    description: |
+      A developer deployed a pod, but it's stuck in ImagePullBackOff.
+
+      First, let's create the broken pod and investigate:
+
+      ```
+      NAME        READY   STATUS             RESTARTS   AGE
+      broken-app  0/1     ImagePullBackOff   0          30s
+      ```
+
+      Your mission: Fix the pod so it runs successfully!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: broken-app
+        namespace: default
+      spec:
+        containers:
+        - name: app
+          image: ngnix:latest
+    hints:
+      - "Run `kubectl describe pod broken-app` and look at the Events section"
+      - "The error mentions 'Failed to pull image'. Look at the image name carefully."
+      - "The image is spelled 'ngnix' but should be 'nginx'. Fix it with: kubectl delete pod broken-app && kubectl run broken-app --image=nginx"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/broken-app"
+      state: "Running"
+      timeout: 60
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Debug CrashLoopBackOff"
+    description: |
+      Another pod keeps crashing. It shows CrashLoopBackOff:
+
+      ```
+      NAME         READY   STATUS             RESTARTS   AGE
+      crash-pod    0/1     CrashLoopBackOff   5          2m
+      ```
+
+      Your mission: Figure out why it's crashing and fix it!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: crash-pod
+        namespace: default
+      spec:
+        containers:
+        - name: app
+          image: busybox
+          command: ["exit", "1"]
+    hints:
+      - "Use `kubectl logs crash-pod` to see what the container output before crashing"
+      - "Use `kubectl describe pod crash-pod` and check the 'Last State' section"
+      - "The command is 'exit 1' which immediately exits with an error. Delete and recreate with a valid command: kubectl delete pod crash-pod && kubectl run crash-pod --image=busybox --command -- sleep 3600"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/crash-pod"
+      state: "Running"
+      timeout: 60
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is a Pod in Kubernetes? (Think: house analogy)"
+      options:
+        - "A single container running by itself"
+        - "The smallest deployable unit - a group of containers sharing resources"
+        - "Another name for a virtual machine"
+        - "A namespace for organizing resources"
+      correct: 1
+      explanation: "A Pod is like a house where container 'roommates' share network and storage."
+      points: 5
+
+    - type: "true_false"
+      question: "A Pod can contain multiple containers."
+      correct: true
+      explanation: "Yes! Containers in a Pod share the same network namespace and can share storage volumes."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does 'Pending' status mean for a pod?"
+      options:
+        - "The container crashed"
+        - "The pod is waiting to be scheduled to a node"
+        - "The pod is running successfully"
+        - "Kubernetes is deleting the pod"
+      correct: 1
+      explanation: "Pending means the pod is waiting for a node. Common causes: no capacity, image still downloading."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to create a pod named 'web' using the nginx image"
+      expected_contains: "kubectl run"
+      alternatives:
+        - "kubectl run web --image=nginx"
+        - "kubectl run web --image nginx"
+      hint: "Use 'kubectl run' with --image flag"
+      explanation: "`kubectl run web --image=nginx` creates a pod imperatively."
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete this pod spec to use the 'nginx' image:"
+      yaml_template: |
+        spec:
+          containers:
+          - name: web
+            image: ____
+      expected: "nginx"
+      explanation: "The image field specifies which container image to use."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does ImagePullBackOff mean?"
+      options:
+        - "The container is running but slow"
+        - "Kubernetes can't download the container image"
+        - "The pod is out of memory"
+        - "The container completed successfully"
+      correct: 1
+      explanation: "ImagePullBackOff means K8s can't pull the image. Usually a typo in the image name or private registry issue."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to delete a pod named 'old-app'"
+      expected_contains: "kubectl delete pod"
+      alternatives:
+        - "kubectl delete pod old-app"
+        - "kubectl delete pods old-app"
+        - "kubectl delete po old-app"
+      hint: "Use 'delete' verb with 'pod' noun"
+      explanation: "`kubectl delete pod old-app` removes the pod from the cluster."
+      points: 10
+
+    - type: "true_false"
+      question: "Containers in the same Pod share the same IP address."
+      correct: true
+      explanation: "Yes! All containers in a Pod share one IP. They communicate via localhost."
+      points: 5

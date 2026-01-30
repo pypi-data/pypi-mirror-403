@@ -1,0 +1,443 @@
+chapter:
+  number: 29
+  title: "Storage Classes"
+  description: "Enable dynamic provisioning of persistent volumes"
+
+concepts:
+  - title: "What are Storage Classes?"
+    content: |
+      **StorageClasses** enable dynamic provisioning of PersistentVolumes.
+      Instead of admins pre-creating PVs, they're created automatically.
+
+      **The Car Rental Analogy**
+
+      Static provisioning (PVs):
+      - Rental company pre-parks cars in the lot
+      - You pick from available cars
+      - Limited to what's already there
+
+      Dynamic provisioning (StorageClasses):
+      - You describe what car you need
+      - Company fetches a matching car automatically
+      - Always get exactly what you request
+
+      **Static vs Dynamic:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                STATIC PROVISIONING                          │
+      │                                                             │
+      │   Admin pre-creates PVs:                                    │
+      │   ┌──────┐ ┌──────┐ ┌──────┐                               │
+      │   │ PV-1 │ │ PV-2 │ │ PV-3 │  ← Must exist before PVC     │
+      │   │ 10Gi │ │ 20Gi │ │ 5Gi  │                               │
+      │   └──────┘ └──────┘ └──────┘                               │
+      │       ↑                                                     │
+      │       └─── PVC binds to existing PV                        │
+      └─────────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────────┐
+      │                DYNAMIC PROVISIONING                         │
+      │                                                             │
+      │   StorageClass: "fast-ssd"                                  │
+      │   ┌──────────────────────────────────────┐                 │
+      │   │  provisioner: kubernetes.io/aws-ebs  │                 │
+      │   │  parameters: type=gp3                │                 │
+      │   └──────────────────────────────────────┘                 │
+      │                        │                                    │
+      │   PVC requests "fast-ssd"                                   │
+      │   ┌────────────────────▼───────────────────┐               │
+      │   │                                        │               │
+      │   │    PV created automatically!           │               │
+      │   │    Exactly the size requested          │               │
+      │   └────────────────────────────────────────┘               │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Benefits of Dynamic Provisioning:**
+      - No admin intervention for each PVC
+      - PVs sized exactly as requested
+      - Automatic cleanup (if reclaimPolicy: Delete)
+      - Different storage tiers (fast, slow, encrypted)
+
+      **Key insight:** StorageClasses describe "classes" of storage.
+      Users choose a class, and the system provisions matching storage.
+    key_points:
+      - "StorageClasses enable dynamic PV provisioning"
+      - "No need to pre-create PVs"
+      - "Different classes for different needs"
+      - "Provisioner creates PVs on demand"
+
+  - title: "StorageClass Configuration"
+    content: |
+      **StorageClass YAML:**
+
+      ```yaml
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: fast-storage
+      provisioner: kubernetes.io/aws-ebs    # Cloud-specific
+      parameters:
+        type: gp3                           # SSD type
+        fsType: ext4
+      reclaimPolicy: Delete
+      allowVolumeExpansion: true
+      volumeBindingMode: WaitForFirstConsumer
+      ```
+
+      **Key Fields:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │               STORAGECLASS FIELDS                           │
+      │                                                             │
+      │   provisioner:                                              │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ WHO creates the PV                          │          │
+      │   │ • kubernetes.io/aws-ebs  (AWS)             │          │
+      │   │ • kubernetes.io/gce-pd   (GCP)             │          │
+      │   │ • kubernetes.io/azure-disk (Azure)         │          │
+      │   │ • rancher.io/local-path  (local)           │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   parameters:                                               │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ HOW to create the storage                   │          │
+      │   │ • Disk type (SSD, HDD)                     │          │
+      │   │ • IOPS, throughput                         │          │
+      │   │ • Encryption settings                      │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   volumeBindingMode:                                        │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ WHEN to create the PV                       │          │
+      │   │ • Immediate: Create PV when PVC created    │          │
+      │   │ • WaitForFirstConsumer: Wait for pod       │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Common Provisioners:**
+
+      | Platform | Provisioner |
+      |----------|-------------|
+      | AWS EBS | kubernetes.io/aws-ebs |
+      | GCP PD | kubernetes.io/gce-pd |
+      | Azure Disk | kubernetes.io/azure-disk |
+      | Local (dev) | rancher.io/local-path |
+      | NFS | Various CSI drivers |
+
+      **Using a StorageClass:**
+
+      ```yaml
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: my-pvc
+      spec:
+        storageClassName: fast-storage    # Request this class
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+      ```
+
+      **Key insight:** `WaitForFirstConsumer` prevents zone/topology
+      issues by creating storage where the pod runs.
+    key_points:
+      - "provisioner: what creates the storage"
+      - "parameters: storage-specific options"
+      - "reclaimPolicy: Delete or Retain"
+      - "WaitForFirstConsumer: smart placement"
+
+  - title: "Default Storage Class"
+    content: |
+      One StorageClass can be marked as **default**. PVCs without a
+      storageClassName use it automatically.
+
+      **Setting Default:**
+
+      ```yaml
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: standard
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "true"
+      provisioner: kubernetes.io/gce-pd
+      ```
+
+      **Behavior:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                DEFAULT STORAGE CLASS                        │
+      │                                                             │
+      │   PVC with no storageClassName:                             │
+      │   ┌─────────────────────────────────────┐                  │
+      │   │ spec:                               │                  │
+      │   │   # no storageClassName specified  │                  │
+      │   │   resources:                       │                  │
+      │   │     requests:                      │                  │
+      │   │       storage: 10Gi               │                  │
+      │   └─────────────────────────────────────┘                  │
+      │                      │                                      │
+      │                      ▼                                      │
+      │   Uses default StorageClass automatically!                  │
+      │                                                             │
+      │   PVC with storageClassName: "":                            │
+      │   ┌─────────────────────────────────────┐                  │
+      │   │ spec:                               │                  │
+      │   │   storageClassName: ""     ← Empty!│                  │
+      │   └─────────────────────────────────────┘                  │
+      │                      │                                      │
+      │                      ▼                                      │
+      │   NO StorageClass used (static provisioning only)          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Viewing StorageClasses:**
+
+      ```bash
+      $ kubectl get storageclass
+      NAME                 PROVISIONER           RECLAIMPOLICY   DEFAULT
+      standard (default)   k8s.io/gce-pd         Delete          true
+      fast-ssd             k8s.io/gce-pd         Delete          false
+      slow-hdd             k8s.io/gce-pd         Delete          false
+
+      $ kubectl describe sc standard
+      ```
+
+      **Volume Expansion:**
+
+      If `allowVolumeExpansion: true`, you can grow PVCs:
+
+      ```bash
+      kubectl patch pvc my-pvc -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
+      ```
+
+      **Key insight:** Most managed Kubernetes clusters have a default
+      StorageClass. Check with `kubectl get sc`.
+    key_points:
+      - "Default class used when storageClassName omitted"
+      - "Empty string '' means no dynamic provisioning"
+      - "allowVolumeExpansion enables PVC resizing"
+      - "Check default with kubectl get sc"
+
+command_practice:
+  - id: "cmd-01"
+    title: "List Storage Classes"
+    instructions: |
+      **What we're doing:** See what storage classes are available.
+
+      **Why this matters:** You need to know what storage options exist
+      before creating PVCs.
+
+      List all storage classes:
+    command_hint: "kubectl get storageclass"
+    validation:
+      type: "command_output"
+      command: "kubectl get storageclass 2>/dev/null || echo 'No resources found'"
+      expected_contains: ""
+    points: 10
+
+  - id: "cmd-02"
+    title: "Create PVC with Storage Class"
+    instructions: |
+      **What we're doing:** Create a PVC that uses dynamic provisioning.
+
+      **Why this matters:** This is the modern way to request storage.
+
+      Create a PVC (uses default StorageClass if available):
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dynamic-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get pvc dynamic-pvc"
+      expected_contains: "dynamic-pvc"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Check PVC Status"
+    instructions: |
+      **What we're doing:** Verify if the PVC got bound to a dynamically
+      provisioned PV.
+
+      **Why this matters:** Pending PVCs indicate provisioning issues.
+
+      Check PVC details:
+    command_hint: "kubectl describe pvc dynamic-pvc"
+    validation:
+      type: "command_output"
+      command: "kubectl describe pvc dynamic-pvc"
+      expected_contains: "StorageClass"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "No Default StorageClass"
+    description: |
+      A PVC is stuck pending with no matching PV:
+
+      ```
+      $ kubectl get pvc
+      NAME       STATUS    VOLUME   CAPACITY
+      app-pvc    Pending
+
+      $ kubectl describe pvc app-pvc
+      Warning  ProvisioningFailed  no matching default storage class
+      ```
+
+      Your mission: Fix the storage provisioning!
+    manifest: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: no-class-pvc
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+    hints:
+      - "The PVC doesn't specify storageClassName and there's no default"
+      - "Either set a default StorageClass or specify one in the PVC"
+      - "Create a StorageClass and reference it in the PVC"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pvc no-class-pvc -o jsonpath='{.spec.storageClassName}'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Wrong StorageClass"
+    description: |
+      A PVC requests a StorageClass that doesn't exist:
+
+      ```
+      $ kubectl get pvc
+      NAME        STATUS    VOLUME   STORAGECLASS
+      fancy-pvc   Pending            premium-ssd
+
+      $ kubectl get sc premium-ssd
+      Error: storageclasses "premium-ssd" not found
+      ```
+
+      Your mission: Fix the StorageClass reference!
+    manifest: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: wrong-class-pvc
+      spec:
+        storageClassName: nonexistent-class
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+    hints:
+      - "The PVC references a StorageClass that doesn't exist"
+      - "Check available StorageClasses: kubectl get sc"
+      - "Update the PVC to use an existing StorageClass"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get storageclass 2>/dev/null || echo 'checked'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the main benefit of StorageClasses?"
+      options:
+        - "They make storage faster"
+        - "They enable automatic (dynamic) PV provisioning"
+        - "They encrypt all data"
+        - "They replace the need for PVCs"
+      correct: 1
+      explanation: "StorageClasses allow PVs to be created automatically when PVCs are made."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the StorageClass annotation to make it default:"
+      yaml_template: |
+        annotations:
+          storageclass.kubernetes.io/______________: "true"
+      expected: "is-default-class"
+      explanation: "The is-default-class annotation marks a StorageClass as default."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does 'WaitForFirstConsumer' volumeBindingMode do?"
+      options:
+        - "Waits for admin approval"
+        - "Creates PV when PVC is created"
+        - "Creates PV only when a pod uses the PVC"
+        - "Waits for storage to become available"
+      correct: 2
+      explanation: "WaitForFirstConsumer delays PV creation until a pod needs the PVC."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to list all StorageClasses"
+      expected_contains: "get"
+      alternatives:
+        - "kubectl get storageclass"
+        - "kubectl get sc"
+        - "kubectl get storageclasses"
+      hint: "Use kubectl get with storageclass or sc"
+      explanation: "`kubectl get sc` or `kubectl get storageclass`"
+      points: 10
+
+    - type: "true_false"
+      question: "If no storageClassName is specified in a PVC, it won't be provisioned."
+      correct: false
+      explanation: "PVCs without storageClassName use the default StorageClass if one exists."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the StorageClass to allow volume expansion:"
+      yaml_template: |
+        apiVersion: storage.k8s.io/v1
+        kind: StorageClass
+        metadata:
+          name: expandable
+        provisioner: kubernetes.io/aws-ebs
+        _________________: true
+      expected: "allowVolumeExpansion"
+      explanation: "allowVolumeExpansion: true enables resizing PVCs."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What is the 'provisioner' field in a StorageClass?"
+      options:
+        - "The admin who created it"
+        - "The plugin that creates the actual storage"
+        - "The reclaim policy"
+        - "The storage type"
+      correct: 1
+      explanation: "The provisioner is the plugin that actually creates the storage backend."
+      points: 5
+
+    - type: "true_false"
+      question: "You can have multiple default StorageClasses in a cluster."
+      correct: false
+      explanation: "Only one StorageClass should be marked as default to avoid ambiguity."
+      points: 5

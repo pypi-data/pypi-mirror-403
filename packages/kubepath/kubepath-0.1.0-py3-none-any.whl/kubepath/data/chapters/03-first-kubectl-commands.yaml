@@ -1,0 +1,344 @@
+chapter:
+  number: 3
+  title: "Your First kubectl Commands"
+  description: "Learn the kubectl command pattern and essential commands"
+
+concepts:
+  - title: "The kubectl Pattern"
+    content: |
+      Every kubectl command follows a simple pattern. Once you understand it,
+      you can figure out almost any command!
+
+      **The Pattern: VERB + NOUN**
+
+      Just like English sentences have a verb (action) and a noun (thing):
+
+      ```
+      kubectl   get      pods
+         ↑       ↑        ↑
+         │       │        └── NOUN: what thing?
+         │       └────────── VERB: what action?
+         └────────────────── the tool
+      ```
+
+      **Common Verbs (Actions):**
+
+      | Verb     | What it does                          | Example                    |
+      |----------|---------------------------------------|----------------------------|
+      | get      | List things (summary view)            | kubectl get pods           |
+      | describe | Show details about ONE thing          | kubectl describe pod nginx |
+      | create   | Create a new resource                 | kubectl create namespace dev |
+      | apply    | Create or update from a file          | kubectl apply -f pod.yaml  |
+      | delete   | Remove a resource                     | kubectl delete pod nginx   |
+      | logs     | View container logs                   | kubectl logs nginx         |
+      | exec     | Run a command inside a container      | kubectl exec nginx -- ls   |
+
+      **Common Nouns (Resources):**
+
+      | Noun (singular) | Short name | What it is                    |
+      |-----------------|------------|-------------------------------|
+      | pods            | po         | Your running containers       |
+      | services        | svc        | Network endpoints for pods    |
+      | deployments     | deploy     | Manages replica sets of pods  |
+      | nodes           | no         | Machines in your cluster      |
+      | namespaces      | ns         | Logical groupings             |
+
+      **Memory trick:** "kubectl VERB NOUN" = "kubectl DO-SOMETHING TO-SOMETHING"
+
+      **Key insight:** Learn the pattern, not individual commands. You can
+      combine any verb with any noun!
+    key_points:
+      - "Pattern: kubectl <verb> <noun> [options]"
+      - "Verbs: get, describe, create, apply, delete, logs, exec"
+      - "You can use short names: pods = po, services = svc"
+
+  - title: "Namespaces - Organizing Your Cluster"
+    content: |
+      **What are Namespaces?**
+
+      Think of namespaces like folders on your computer. They help organize
+      resources and keep things separate.
+
+      **The Folder Analogy:**
+
+      ```
+      Your Cluster
+      │
+      ├── default/           (your stuff goes here by default)
+      │   ├── my-app
+      │   └── my-database
+      │
+      ├── kube-system/       (Kubernetes system components)
+      │   ├── coredns
+      │   └── kube-proxy
+      │
+      ├── production/        (production apps)
+      │   └── web-app
+      │
+      └── development/       (dev environment)
+          └── web-app        (same name, different namespace!)
+      ```
+
+      **Why use namespaces?**
+
+      1. **Organization** - Group related resources
+      2. **Isolation** - Teams don't step on each other
+      3. **Same names** - You can have "web-app" in both prod and dev
+
+      **The -n Flag:**
+
+      To specify a namespace, use `-n` (short for `--namespace`):
+
+      ```
+      kubectl get pods -n kube-system
+                        ↑
+                        └── "in the kube-system namespace"
+      ```
+
+      Without `-n`, kubectl uses the "default" namespace.
+
+      **Tip:** Use `-A` to see resources in ALL namespaces:
+
+      ```
+      kubectl get pods -A
+                        ↑
+                        └── "in ALL namespaces"
+      ```
+
+      **Key insight:** Namespaces are virtual clusters within your cluster.
+      Always check which namespace you're working in!
+    key_points:
+      - "Namespaces organize resources like folders"
+      - "Use -n <namespace> to specify namespace"
+      - "Use -A to see all namespaces at once"
+      - "Default namespace is called 'default'"
+
+command_practice:
+  - id: "cmd-01"
+    title: "List All Namespaces"
+    instructions: |
+      **What we're doing:** See all namespaces in your cluster.
+
+      **Why this matters:** Before deploying anything, know what namespaces exist.
+      The system namespaces (kube-system, kube-public) contain critical components.
+
+      **The command:**
+      ```
+      kubectl get namespaces
+              ↑    ↑
+              │    └── the NOUN (what we want to see)
+              └────── the VERB (list them)
+      ```
+
+      **Short form:** You can also use `kubectl get ns` (ns = namespaces)
+
+      Run this command:
+    command_hint: "kubectl get namespaces"
+    validation:
+      type: "command_output"
+      command: "kubectl get namespaces"
+      expected_contains: "default"
+    points: 10
+
+  - id: "cmd-02"
+    title: "View System Pods"
+    instructions: |
+      **What we're doing:** See the pods running Kubernetes itself.
+
+      **Why this matters:** Understanding what runs in kube-system helps you
+      troubleshoot cluster issues. These are the pods that keep K8s running!
+
+      **Common system pods you'll see:**
+      - **coredns** - DNS for the cluster
+      - **kube-proxy** - Network routing
+      - **etcd** - Database (if running locally)
+
+      **The command:**
+      ```
+      kubectl get pods -n kube-system
+                        ↑
+                        └── "-n" means "in this namespace"
+      ```
+
+      Run this command:
+    command_hint: "kubectl get pods -n kube-system"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods -n kube-system"
+      expected_contains: "Running"
+    points: 10
+
+  - id: "cmd-03"
+    title: "See Everything at Once"
+    instructions: |
+      **What we're doing:** View all common resources in the current namespace.
+
+      **Why this matters:** Quick way to see pods, services, and deployments
+      all at once. Great for getting an overview.
+
+      **The command:**
+      ```
+      kubectl get all
+                  ↑
+                  └── special keyword that shows common resources
+      ```
+
+      **Note:** "all" doesn't actually show EVERYTHING (secrets, configmaps are excluded).
+      But it shows: pods, services, deployments, replicasets, statefulsets, jobs.
+
+      Run this command:
+    command_hint: "kubectl get all"
+    validation:
+      type: "command_output"
+      command: "kubectl get all"
+      expected_contains: "NAME"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Find the Missing Pod"
+    description: |
+      A colleague says they deployed a pod called "my-app" but you can't find it
+      when you run `kubectl get pods`.
+
+      Your mission: Find where the pod is hiding!
+    manifest: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: dev-team
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: my-app
+        namespace: dev-team
+      spec:
+        containers:
+        - name: app
+          image: nginx:latest
+    hints:
+      - "By default, kubectl only looks in the 'default' namespace"
+      - "The pod might be in a different namespace. Try `kubectl get pods -A`"
+      - "Once you find it, use `-n <namespace>` to interact with it"
+    solution_validation:
+      type: "resource_exists"
+      resource: "pod/my-app"
+      namespace: "dev-team"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Command Typo Trouble"
+    description: |
+      You're trying to list pods but keep getting errors.
+
+      You tried: `kubectl gets pod` and got "unknown command"
+      You tried: `kubectl get pod` and got only one pod
+
+      What's going wrong?
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: web-1
+        namespace: default
+      spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: web-2
+        namespace: default
+      spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+    hints:
+      - "The verb is 'get', not 'gets'. Check your spelling!"
+      - "'get pod' (singular) shows ONE pod. 'get pods' (plural) shows all pods"
+      - "Both singular and plural work, but plural is more common: `kubectl get pods`"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pods"
+      expected_contains: "web-1"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "command_challenge"
+      question: "Write the command to list all namespaces"
+      expected_contains: "kubectl get"
+      alternatives:
+        - "kubectl get namespaces"
+        - "kubectl get ns"
+        - "kubectl get namespace"
+      hint: "Namespaces is the NOUN. What's the VERB for listing?"
+      explanation: "Use `kubectl get namespaces` or the short form `kubectl get ns`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does the 'get' verb do in kubectl?"
+      options:
+        - "Downloads something from the internet"
+        - "Lists resources (shows a summary table)"
+        - "Creates a new resource"
+        - "Deletes a resource"
+      correct: 1
+      explanation: "'get' lists resources in a table format. Use 'describe' for details about one resource."
+      points: 5
+
+    - type: "true_false"
+      question: "The flag '-n' is used to specify a namespace."
+      correct: true
+      explanation: "-n is short for --namespace. Example: `kubectl get pods -n production`"
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What is the default namespace called?"
+      options:
+        - "main"
+        - "primary"
+        - "default"
+        - "root"
+      correct: 2
+      explanation: "The default namespace is literally named 'default'. Resources go here if you don't specify a namespace."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to see pods in the kube-system namespace"
+      expected_contains: "kubectl get pods -n kube-system"
+      alternatives:
+        - "kubectl get pod -n kube-system"
+        - "kubectl get po -n kube-system"
+        - "kubectl -n kube-system get pods"
+      hint: "You need the -n flag to specify the namespace"
+      explanation: "Use `-n kube-system` to look in the kube-system namespace."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does 'kubectl describe' show compared to 'kubectl get'?"
+      options:
+        - "Both show the same information"
+        - "'describe' shows a summary, 'get' shows details"
+        - "'get' shows a summary, 'describe' shows detailed info about ONE resource"
+        - "'describe' only works with pods"
+      correct: 2
+      explanation: "'get' lists many resources briefly. 'describe' gives complete details about one specific resource."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "How do you see pods in ALL namespaces at once?"
+      options:
+        - "kubectl get pods --everywhere"
+        - "kubectl get pods -n all"
+        - "kubectl get pods -A"
+        - "kubectl get pods --global"
+      correct: 2
+      explanation: "The -A flag (short for --all-namespaces) shows resources across all namespaces."
+      points: 5

@@ -1,0 +1,483 @@
+chapter:
+  number: 34
+  title: "Network Policy Rules"
+  description: "Master complex network policy selectors and rules"
+
+concepts:
+  - title: "Ingress Rules Deep Dive"
+    content: |
+      **Ingress rules** control incoming traffic to selected pods.
+
+      **Rule Structure:**
+
+      ```yaml
+      ingress:
+        - from:                    # Who can send traffic
+            - podSelector: {}      # Option 1: Pods
+            - namespaceSelector: {}# Option 2: Namespaces
+            - ipBlock: {}          # Option 3: External IPs
+          ports:                   # On which ports
+            - port: 80
+              protocol: TCP
+      ```
+
+      **Combining Selectors (AND vs OR):**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 SELECTOR LOGIC                              │
+      │                                                             │
+      │   OR Logic (separate array items):                         │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ from:                                       │          │
+      │   │   - podSelector:        # Rule 1           │          │
+      │   │       matchLabels:                         │          │
+      │   │         app: frontend                      │          │
+      │   │   - podSelector:        # OR Rule 2        │          │
+      │   │       matchLabels:                         │          │
+      │   │         app: api                           │          │
+      │   │                                            │          │
+      │   │ Result: frontend OR api pods allowed       │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   AND Logic (same array item):                             │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ from:                                       │          │
+      │   │   - namespaceSelector:  # Must match       │          │
+      │   │       matchLabels:      # AND              │          │
+      │   │         env: production                    │          │
+      │   │     podSelector:        # Must match       │          │
+      │   │       matchLabels:                         │          │
+      │   │         app: frontend                      │          │
+      │   │                                            │          │
+      │   │ Result: production namespace AND frontend  │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Port Specifications:**
+
+      ```yaml
+      ports:
+        - port: 80
+          protocol: TCP          # TCP is default
+        - port: 443
+        - port: 53
+          protocol: UDP
+        - port: 8000
+          endPort: 8100          # Port range 8000-8100
+      ```
+
+      **Key insight:** Dashes `-` create OR conditions. Properties in the
+      same block create AND conditions.
+    key_points:
+      - "Separate array items = OR logic"
+      - "Same item properties = AND logic"
+      - "Ports can be specific or ranges"
+      - "Protocol defaults to TCP"
+
+  - title: "Egress Rules"
+    content: |
+      **Egress rules** control outgoing traffic from selected pods.
+
+      **Egress Structure:**
+
+      ```yaml
+      egress:
+        - to:                      # Where traffic can go
+            - podSelector: {}
+            - namespaceSelector: {}
+            - ipBlock: {}
+          ports:
+            - port: 443
+      ```
+
+      **Common Egress Patterns:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                COMMON EGRESS PATTERNS                       │
+      │                                                             │
+      │   Allow DNS:                                                │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ egress:                                     │          │
+      │   │   - to:                                     │          │
+      │   │       - namespaceSelector:                  │          │
+      │   │           matchLabels:                      │          │
+      │   │             kubernetes.io/metadata.name:    │          │
+      │   │               kube-system                   │          │
+      │   │     ports:                                  │          │
+      │   │       - port: 53                           │          │
+      │   │         protocol: UDP                       │          │
+      │   │       - port: 53                           │          │
+      │   │         protocol: TCP                       │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Allow External HTTPS:                                     │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ egress:                                     │          │
+      │   │   - to:                                     │          │
+      │   │       - ipBlock:                            │          │
+      │   │           cidr: 0.0.0.0/0     # All IPs    │          │
+      │   │           except:                           │          │
+      │   │             - 10.0.0.0/8       # Not internal│         │
+      │   │             - 192.168.0.0/16                │          │
+      │   │     ports:                                  │          │
+      │   │       - port: 443                           │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **ipBlock for External Traffic:**
+
+      ```yaml
+      egress:
+        - to:
+            - ipBlock:
+                cidr: 10.0.0.0/8         # Allow this range
+            - ipBlock:
+                cidr: 0.0.0.0/0          # Allow internet
+                except:
+                  - 169.254.0.0/16       # Except metadata service
+      ```
+
+      **Key insight:** Egress policies should almost always allow DNS.
+      Use ipBlock for external/internet access.
+    key_points:
+      - "Egress controls outbound traffic"
+      - "Always allow DNS (port 53)"
+      - "ipBlock for external IP ranges"
+      - "Use 'except' to exclude IP ranges"
+
+  - title: "Cross-Namespace Policies"
+    content: |
+      **namespaceSelector** allows traffic from/to other namespaces.
+
+      **Allow from Specific Namespace:**
+
+      ```yaml
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-from-monitoring
+        namespace: production       # Policy in production namespace
+      spec:
+        podSelector:
+          matchLabels:
+            app: api
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    name: monitoring   # Allow from monitoring namespace
+      ```
+
+      **Cross-Namespace Flow:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                CROSS-NAMESPACE ACCESS                       │
+      │                                                             │
+      │   Namespace: monitoring                                     │
+      │   labels: {name: monitoring}                               │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  [Prometheus]  [Grafana]  [Alertmanager]   │          │
+      │   └──────────────────┬──────────────────────────┘          │
+      │                      │                                      │
+      │                      │ Allowed by policy                   │
+      │                      ▼                                      │
+      │   Namespace: production                                     │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  [API Pod]          Policy allows from     │          │
+      │   │  app: api           monitoring namespace   │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                      │                                      │
+      │                      X Blocked                             │
+      │                      │                                      │
+      │   Namespace: development                                    │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  [Dev Pods]    No policy allowing this     │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Combine Namespace AND Pod Selectors:**
+
+      ```yaml
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  name: production
+              podSelector:              # AND this pod selector
+                matchLabels:
+                  role: frontend
+      ```
+
+      **Allow from Any Namespace with Label:**
+
+      ```yaml
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  environment: trusted   # Any namespace with this label
+      ```
+
+      **Key insight:** Namespace labels are key for cross-namespace policies.
+      Label your namespaces for easier policy writing.
+    key_points:
+      - "namespaceSelector for cross-namespace traffic"
+      - "Label namespaces for easier policies"
+      - "Combine with podSelector using AND"
+      - "Policies only affect the namespace they're in"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create Multi-Source Ingress"
+    instructions: |
+      **What we're doing:** Allow traffic from multiple sources (OR logic).
+
+      **Why this matters:** Real apps often need access from multiple sources.
+
+      Create a policy allowing frontend OR monitoring:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: multi-source-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    - podSelector:
+        matchLabels:
+          role: monitoring
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy multi-source-ingress -o yaml"
+      expected_contains: "monitoring"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Create Egress to External"
+    instructions: |
+      **What we're doing:** Allow pods to access external HTTPS endpoints.
+
+      **Why this matters:** Apps often need to call external APIs.
+
+      Create egress policy for HTTPS:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-https
+spec:
+  podSelector:
+    matchLabels:
+      app: api-client
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 192.168.0.0/16
+    ports:
+    - port: 443
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy allow-external-https -o yaml"
+      expected_contains: "443"
+    points: 10
+
+  - id: "cmd-03"
+    title: "View Policy Details"
+    instructions: |
+      **What we're doing:** Inspect the rules in a network policy.
+
+      **Why this matters:** Understanding existing policies is crucial
+      for debugging.
+
+      Describe a network policy:
+    command_hint: "kubectl describe networkpolicy multi-source-ingress"
+    validation:
+      type: "command_output"
+      command: "kubectl describe networkpolicy multi-source-ingress"
+      expected_contains: "Allowing ingress traffic"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Wrong Selector Logic"
+    description: |
+      A policy should allow traffic from frontend pods in production namespace,
+      but it's allowing all frontend pods from any namespace:
+
+      ```yaml
+      from:
+        - namespaceSelector:
+            matchLabels:
+              env: production
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ```
+
+      Your mission: Fix the policy to use AND logic!
+    manifest: |
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: wrong-logic
+      spec:
+        podSelector:
+          matchLabels:
+            app: backend
+        ingress:
+        - from:
+          - namespaceSelector:
+              matchLabels:
+                env: production
+          - podSelector:
+              matchLabels:
+                app: frontend
+    hints:
+      - "Separate items (-) create OR logic"
+      - "For AND logic, put both selectors in the same item"
+      - "Remove the dash before podSelector to make it AND"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy wrong-logic -o yaml"
+      expected_contains: "namespaceSelector"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "External API Access Blocked"
+    description: |
+      A pod needs to call an external API but egress is blocked:
+
+      ```
+      $ kubectl exec api-pod -- curl https://api.example.com
+      Connection timed out
+      ```
+
+      The pod has an egress policy that only allows internal traffic.
+
+      Your mission: Add a rule to allow external HTTPS!
+    manifest: |
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: strict-egress-external
+      spec:
+        podSelector:
+          matchLabels:
+            app: external-client
+        policyTypes:
+        - Egress
+        egress:
+        - to:
+          - podSelector:
+              matchLabels:
+                app: internal-api
+          ports:
+          - port: 8080
+    hints:
+      - "Current policy only allows internal-api on port 8080"
+      - "Need to add ipBlock rule for external traffic"
+      - "Add egress rule with ipBlock cidr: 0.0.0.0/0 and port 443"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get networkpolicy strict-egress-external -o yaml"
+      expected_contains: "443"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What logic applies when you have two items in the 'from' array?"
+      options:
+        - "AND - both must match"
+        - "OR - either can match"
+        - "XOR - exactly one must match"
+        - "NOT - neither should match"
+      correct: 1
+      explanation: "Separate array items (-) create OR logic."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the ipBlock to allow all external IPs:"
+      yaml_template: |
+        ipBlock:
+          ____: 0.0.0.0/0
+      expected: "cidr"
+      explanation: "cidr specifies the IP range in CIDR notation."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How do you allow traffic from a pod in another namespace?"
+      options:
+        - "Use podSelector only"
+        - "Use namespaceSelector"
+        - "Use ipBlock"
+        - "Impossible with NetworkPolicy"
+      correct: 1
+      explanation: "namespaceSelector allows specifying source namespaces."
+      points: 5
+
+    - type: "true_false"
+      question: "To create AND logic, put namespaceSelector and podSelector in the same array item."
+      correct: true
+      explanation: "Properties in the same block are ANDed together."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the egress rule to block IP range 10.0.0.0/8:"
+      yaml_template: |
+        ipBlock:
+          cidr: 0.0.0.0/0
+          ______:
+            - 10.0.0.0/8
+      expected: "except"
+      explanation: "except excludes specific ranges from the cidr."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What port should you allow for DNS in egress policies?"
+      options:
+        - "80"
+        - "443"
+        - "53"
+        - "8080"
+      correct: 2
+      explanation: "DNS uses port 53 for both UDP and TCP."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to describe network policy 'my-policy'"
+      expected_contains: "describe"
+      alternatives:
+        - "kubectl describe networkpolicy my-policy"
+        - "kubectl describe netpol my-policy"
+      hint: "Use kubectl describe"
+      explanation: "`kubectl describe networkpolicy my-policy`"
+      points: 10
+
+    - type: "true_false"
+      question: "A NetworkPolicy in namespace A can block traffic in namespace B."
+      correct: false
+      explanation: "Network policies only affect pods in the namespace where they're defined."
+      points: 5

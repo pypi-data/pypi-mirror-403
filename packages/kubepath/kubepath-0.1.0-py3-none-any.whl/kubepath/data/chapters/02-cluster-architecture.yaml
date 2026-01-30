@@ -1,0 +1,348 @@
+chapter:
+  number: 2
+  title: "Cluster Architecture"
+  description: "Understand how a Kubernetes cluster is organized"
+
+concepts:
+  - title: "The Two-Part Structure"
+    content: |
+      A Kubernetes cluster has two main parts: the **Control Plane** and **Worker Nodes**.
+
+      **The Company Analogy**
+
+      Think of a Kubernetes cluster like a company:
+      - **Control Plane** = Company Headquarters (makes decisions)
+      - **Worker Nodes** = Factories (where the actual work happens)
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    CONTROL PLANE (HQ)                       │
+      │                                                             │
+      │   "Where should this       "Is everything      "Store all  │
+      │    container run?"          running OK?"        the data"  │
+      │                                                             │
+      └─────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+                    ▼               ▼               ▼
+             ┌───────────┐   ┌───────────┐   ┌───────────┐
+             │  WORKER   │   │  WORKER   │   │  WORKER   │
+             │  NODE 1   │   │  NODE 2   │   │  NODE 3   │
+             │           │   │           │   │           │
+             │  [Pod]    │   │  [Pod]    │   │  [Pod]    │
+             │  [Pod]    │   │  [Pod]    │   │  [Pod]    │
+             └───────────┘   └───────────┘   └───────────┘
+                           (The Factories)
+
+      (Pods are containers running your apps - we'll cover them in detail in Chapter 4)
+      ```
+
+      **The Control Plane** makes all the decisions:
+      - Where should each container run?
+      - Is everything healthy?
+      - What's the current state of the cluster?
+
+      **Worker Nodes** do the actual work:
+      - Run your containers
+      - Report their status back to the control plane
+
+      **Key insight:** The control plane is the brain, worker nodes are the muscles.
+    key_points:
+      - "Control Plane = decision makers (the brain)"
+      - "Worker Nodes = where containers run (the muscles)"
+      - "They communicate constantly to keep the cluster healthy"
+
+  - title: "Control Plane Components"
+    content: |
+      The Control Plane has four main components. Think of them as departments in HQ.
+
+      **1. API Server - The Front Desk**
+
+      Every request goes through the API Server first. When you run `kubectl get pods`,
+      it goes to the API Server.
+
+      ```
+      You (kubectl) ──► API Server ──► Responds with data
+      ```
+
+      It's the ONLY way to interact with the cluster. Everything talks to the API Server.
+
+      **2. Scheduler - The HR Department**
+
+      When a new container needs to run, the Scheduler decides which node should run it.
+
+      ```
+      New Pod arrives ──► Scheduler asks: "Which node has capacity?"
+                        └──► Assigns Pod to Node 2
+      ```
+
+      It considers: available resources (CPU, memory), constraints (like "needs 2GB RAM"),
+      and policies (like "don't run on node-1").
+
+      **3. Controller Manager - The Operations Team**
+
+      Controllers watch the cluster and make sure reality matches what you asked for.
+
+      ```
+      You said: "I want 3 replicas" (copies of your app)
+      Reality:   Only 2 running
+      Controller: "Let me create 1 more!"
+      ```
+
+      **4. etcd - The Company Database**
+
+      Stores ALL cluster data: what pods exist, their status, configurations, secrets.
+
+      ```
+      ┌──────────────────────────────┐
+      │           etcd               │
+      │  ┌──────────────────────┐   │
+      │  │ pods: [pod1, pod2]   │   │
+      │  │ nodes: [n1, n2, n3]  │   │
+      │  │ configs: {...}       │   │
+      │  └──────────────────────┘   │
+      └──────────────────────────────┘
+      ```
+
+      If etcd dies, you lose your cluster state!
+
+      **Key insight:** API Server is the gateway, Scheduler assigns work,
+      Controllers ensure desired state, etcd stores everything.
+    key_points:
+      - "API Server: All requests go through here"
+      - "Scheduler: Decides where pods run"
+      - "Controller Manager: Ensures actual state matches desired state"
+      - "etcd: Stores all cluster state (critical!)"
+
+  - title: "Worker Node Components"
+    content: |
+      Each worker node has three main components that run your containers.
+
+      **1. kubelet - The Factory Manager**
+
+      The kubelet is an agent on every node. It:
+      - Receives instructions from the API Server
+      - Makes sure containers are running
+      - Reports status back to the control plane
+
+      ```
+      API Server: "Run this pod on Node 2"
+           │
+           ▼
+      kubelet (on Node 2): "Got it! Starting container..."
+           │
+           ▼
+      kubelet: "Container is running. Reporting success."
+      ```
+
+      **2. Container Runtime - The Machines**
+
+      The software that actually runs containers. Common ones:
+      - **containerd** (most common, used by Docker under the hood)
+      - **CRI-O** (used by OpenShift)
+
+      kubelet tells the runtime: "Start this container"
+
+      **3. kube-proxy - The Network Switchboard**
+
+      Handles networking for pods - like a switchboard operator routing calls:
+      - Makes sure pods can talk to each other
+      - Routes traffic to the right containers
+      - Load balances requests across multiple pods
+
+      ```
+      ┌────────────────────────────────────────┐
+      │              WORKER NODE                │
+      │                                         │
+      │  ┌─────────┐                           │
+      │  │ kubelet │◄── "Run this pod"         │
+      │  └────┬────┘                           │
+      │       │                                 │
+      │       ▼                                 │
+      │  ┌──────────────────┐                  │
+      │  │ Container Runtime │                  │
+      │  │   (containerd)    │                  │
+      │  └────────┬─────────┘                  │
+      │           │                             │
+      │           ▼                             │
+      │      ┌─────────┐   ┌─────────┐         │
+      │      │  Pod A  │◄─►│  Pod B  │         │
+      │      └─────────┘   └─────────┘         │
+      │           ▲                             │
+      │           │                             │
+      │      ┌────┴─────┐                      │
+      │      │kube-proxy│ (handles networking) │
+      │      └──────────┘                      │
+      └────────────────────────────────────────┘
+      ```
+
+      **Key insight:** kubelet manages containers, runtime runs them,
+      kube-proxy handles networking.
+    key_points:
+      - "kubelet: Agent that manages pods on the node"
+      - "Container Runtime: Actually runs containers (containerd, CRI-O)"
+      - "kube-proxy: Handles pod networking and service routing"
+
+command_practice:
+  - id: "cmd-01"
+    title: "View Node Details"
+    instructions: |
+      **What we're doing:** Get detailed information about your cluster nodes.
+
+      **Why this matters:** Understanding node capacity and status helps you
+      troubleshoot deployment issues and plan resource allocation.
+
+      **The -o wide flag:**
+      Adding `-o wide` gives you more columns: IP addresses, OS, kernel version.
+
+      ```
+      kubectl get <resource> -o wide
+                              ↑
+                              └── "wide output" = more details
+      ```
+
+      Run this command to see detailed node info:
+    command_hint: "kubectl get nodes -o wide"
+    validation:
+      type: "command_output"
+      command: "kubectl get nodes -o wide"
+      expected_contains: "STATUS"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Describe a Node"
+    instructions: |
+      **What we're doing:** Deep dive into a specific node's configuration and status.
+
+      **Why this matters:** `describe` shows you everything about a resource:
+      conditions, capacity, allocated resources, and recent events.
+
+      **get vs describe:**
+      - `get` = List view (summary of many resources)
+      - `describe` = Detail view (everything about ONE resource)
+
+      ```
+      kubectl describe <resource> <name>
+                  ↑           ↑       ↑
+                  │           │       └── specific item name
+                  │           └────────── type of thing
+                  └────────────────────── "tell me everything about..."
+      ```
+
+      Run this command (replace <node-name> with your actual node name):
+    command_hint: "kubectl describe node <node-name>"
+    validation:
+      type: "command_output"
+      command: "kubectl describe node"
+      expected_contains: "Conditions:"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Control Plane Unreachable"
+    description: |
+      You're trying to run kubectl commands, but getting connection errors.
+
+      The error says: "The connection to the server was refused"
+
+      Your mission: Understand what's happening and diagnose the issue!
+    manifest: |
+      # This scenario tests understanding of control plane
+      # No manifest needed - conceptual exercise
+    hints:
+      - "What component handles all kubectl requests? (Think: front desk)"
+      - "The API Server must be running for kubectl to work"
+      - "Check if your cluster is running: `minikube status` or `kind get clusters`"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl cluster-info"
+      expected_contains: "Kubernetes"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Node Shows NotReady"
+    description: |
+      You run `kubectl get nodes` and see one node is "NotReady".
+
+      ```
+      NAME           STATUS     ROLES    AGE
+      node-1         Ready      master   5d
+      node-2         NotReady   worker   5d
+      ```
+
+      Your mission: Diagnose why the node isn't ready!
+    manifest: |
+      # Conceptual scenario - requires understanding of node components
+    hints:
+      - "Which component on the worker node reports status to the control plane?"
+      - "The kubelet is the agent - if it's not running, the node shows NotReady"
+      - "Use `kubectl describe node node-2` and check the Conditions section"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get nodes"
+      expected_contains: "Ready"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "Where does the Scheduler run?"
+      options:
+        - "On every worker node"
+        - "On the control plane"
+        - "Inside each pod"
+        - "On your local machine"
+      correct: 1
+      explanation: "The Scheduler is a control plane component. It runs on the master/control plane nodes."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "Which component stores all cluster state and configuration?"
+      options:
+        - "API Server"
+        - "kubelet"
+        - "etcd"
+        - "Container Runtime"
+      correct: 2
+      explanation: "etcd is the key-value store that holds all cluster data. If etcd fails, you lose cluster state."
+      points: 5
+
+    - type: "true_false"
+      question: "Worker nodes make scheduling decisions about where pods should run."
+      correct: false
+      explanation: "The Scheduler (on the control plane) makes scheduling decisions. Worker nodes just run what they're told."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to see detailed information about a specific node"
+      expected_contains: "kubectl describe node"
+      alternatives:
+        - "kubectl describe nodes"
+        - "kubectl describe node <node-name>"
+      hint: "Think: 'describe' gives you details about ONE thing"
+      explanation: "`kubectl describe node <name>` shows capacity, conditions, events, and more."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does the kubelet do?"
+      options:
+        - "Stores cluster configuration"
+        - "Schedules pods to nodes"
+        - "Ensures containers are running on its node"
+        - "Routes network traffic"
+      correct: 2
+      explanation: "The kubelet is an agent on each node that manages containers and reports status to the API Server."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "In this node output, what value goes in the blank for a healthy node?"
+      yaml_template: |
+        NAME     STATUS    ROLES
+        node-1   ____      worker
+      expected: "Ready"
+      explanation: "A healthy node shows 'Ready' status. 'NotReady' indicates a problem with the node."
+      points: 10

@@ -1,0 +1,393 @@
+chapter:
+  number: 13
+  title: "Scaling & Rolling Updates"
+  description: "Scale your applications and update them without downtime"
+
+concepts:
+  - title: "Scaling Deployments"
+    content: |
+      **Scaling** means changing the number of pod replicas.
+
+      **The Restaurant Staffing Analogy**
+
+      - **Scale up**: Busy night → hire more waiters
+      - **Scale down**: Slow night → send waiters home
+      - Kubernetes does this automatically or on command
+
+      **Scaling Methods:**
+
+      ```bash
+      # Imperative scaling
+      kubectl scale deployment web --replicas=5
+
+      # Edit the deployment
+      kubectl edit deployment web
+      # Change replicas: 3 to replicas: 5
+
+      # Patch the deployment
+      kubectl patch deployment web -p '{"spec":{"replicas":5}}'
+      ```
+
+      **What happens when you scale:**
+
+      ```
+      Before: replicas=3          After: replicas=5
+
+      ┌────────┐                   ┌────────┐
+      │ Pod 1  │                   │ Pod 1  │
+      └────────┘                   └────────┘
+      ┌────────┐                   ┌────────┐
+      │ Pod 2  │     ────────►     │ Pod 2  │
+      └────────┘                   └────────┘
+      ┌────────┐                   ┌────────┐
+      │ Pod 3  │                   │ Pod 3  │
+      └────────┘                   └────────┘
+                                   ┌────────┐
+                                   │ Pod 4  │  ← New!
+                                   └────────┘
+                                   ┌────────┐
+                                   │ Pod 5  │  ← New!
+                                   └────────┘
+      ```
+
+      **Scale to Zero:**
+
+      You can scale to 0 replicas to "pause" a deployment:
+      ```bash
+      kubectl scale deployment web --replicas=0
+      ```
+      This stops all pods but keeps the deployment definition.
+
+      **Key insight:** Scaling is instant - Kubernetes creates or removes
+      pods to match the desired count.
+    key_points:
+      - "kubectl scale deployment <name> --replicas=N"
+      - "Scale up adds pods, scale down removes pods"
+      - "Scale to 0 stops all pods but keeps deployment"
+      - "Scaling is fast and automatic"
+
+  - title: "Rolling Updates"
+    content: |
+      **Rolling updates** let you update pods without downtime.
+
+      **The Assembly Line Analogy**
+
+      Imagine updating workers on an assembly line:
+      - You don't send everyone home at once
+      - Replace one worker at a time
+      - Production never stops
+
+      **How Rolling Updates Work:**
+
+      ```
+      Updating from nginx:1.19 to nginx:1.21
+
+      Step 1: Create new pod          Step 2: New pod ready
+      ┌────────────┐                  ┌────────────┐
+      │ nginx:1.19 │                  │ nginx:1.19 │
+      ├────────────┤                  ├────────────┤
+      │ nginx:1.19 │   ──────────►    │ nginx:1.19 │
+      ├────────────┤                  ├────────────┤
+      │ nginx:1.19 │                  │ nginx:1.21 │ ✓ Ready!
+      ├────────────┤                  └────────────┘
+      │ nginx:1.21 │ (starting...)
+      └────────────┘
+
+      Step 3: Remove old pod          Step 4: Repeat until done
+      ┌────────────┐                  ┌────────────┐
+      │ nginx:1.19 │ (terminating)    │ nginx:1.21 │ ✓
+      ├────────────┤   ──────────►    ├────────────┤
+      │ nginx:1.21 │ ✓                │ nginx:1.21 │ ✓
+      ├────────────┤                  ├────────────┤
+      │ nginx:1.21 │ ✓                │ nginx:1.21 │ ✓
+      └────────────┘                  └────────────┘
+      ```
+
+      **Trigger an Update:**
+
+      ```bash
+      # Method 1: Update image
+      kubectl set image deployment/web nginx=nginx:1.21
+
+      # Method 2: Edit deployment
+      kubectl edit deployment web
+
+      # Method 3: Apply updated YAML
+      kubectl apply -f deployment.yaml
+      ```
+
+      **Key insight:** During a rolling update, both old and new versions
+      run simultaneously. Traffic continues flowing.
+    key_points:
+      - "Rolling updates replace pods gradually"
+      - "No downtime during updates"
+      - "Old and new versions run together briefly"
+      - "Use 'kubectl set image' for quick updates"
+
+  - title: "Monitoring Rollouts"
+    content: |
+      **kubectl rollout** commands let you monitor and control updates.
+
+      **Check Rollout Status:**
+
+      ```bash
+      # See current status
+      kubectl rollout status deployment/web
+
+      # Example output:
+      Waiting for deployment "web" rollout to finish: 1 out of 3 new replicas updated...
+      Waiting for deployment "web" rollout to finish: 2 out of 3 new replicas updated...
+      deployment "web" successfully rolled out
+      ```
+
+      **View Rollout History:**
+
+      ```bash
+      kubectl rollout history deployment/web
+
+      # Output:
+      REVISION  CHANGE-CAUSE
+      1         <none>
+      2         kubectl set image deployment/web nginx=nginx:1.21
+      3         kubectl set image deployment/web nginx=nginx:1.22
+      ```
+
+      **Record Changes (for better history):**
+
+      ```bash
+      kubectl set image deployment/web nginx=nginx:1.21 --record
+      # This saves the command in CHANGE-CAUSE
+      ```
+
+      **Rollout Commands:**
+
+      | Command | What it does |
+      |---------|--------------|
+      | `rollout status` | Watch update progress |
+      | `rollout history` | See past versions |
+      | `rollout pause` | Pause an update |
+      | `rollout resume` | Continue a paused update |
+      | `rollout undo` | Rollback (next chapter!) |
+
+      **Key insight:** Always check `rollout status` after updates.
+      It tells you if something went wrong.
+    key_points:
+      - "kubectl rollout status shows update progress"
+      - "kubectl rollout history shows past versions"
+      - "Use --record to document why changes were made"
+      - "Pause and resume give you control over updates"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Scale a Deployment"
+    instructions: |
+      **What we're doing:** Increase the number of running pods.
+
+      **Why this matters:** Scaling is how you handle increased load
+      or reduce costs during quiet periods.
+
+      First create a deployment, then scale it:
+    command_hint: "kubectl create deployment scaler --image=nginx --replicas=2 && kubectl scale deployment scaler --replicas=5"
+    validation:
+      type: "command_output"
+      command: "kubectl get deployment scaler"
+      expected_contains: "5/5"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Update Deployment Image"
+    instructions: |
+      **What we're doing:** Change the container image to trigger a rolling update.
+
+      **Why this matters:** This is how you deploy new versions of your app.
+
+      **The command:**
+      ```
+      kubectl set image deployment/<name> <container>=<new-image>
+      ```
+
+      Update the deployment to use nginx:alpine:
+    command_hint: "kubectl set image deployment/scaler nginx=nginx:alpine"
+    validation:
+      type: "command_output"
+      command: "kubectl describe deployment scaler"
+      expected_contains: "nginx:alpine"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Watch Rollout Status"
+    instructions: |
+      **What we're doing:** Monitor the progress of a rolling update.
+
+      **Why this matters:** You need to verify updates complete successfully.
+
+      **The command:**
+      ```
+      kubectl rollout status deployment/<name>
+      ```
+
+      Check the rollout status:
+    command_hint: "kubectl rollout status deployment/scaler"
+    validation:
+      type: "command_output"
+      command: "kubectl rollout status deployment/scaler"
+      expected_contains: "successfully rolled out"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Handle Traffic Spike"
+    description: |
+      Your website is getting more traffic than expected!
+
+      Currently running: 2 replicas
+      You need: 10 replicas
+
+      Your mission: Scale up quickly!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: traffic-spike
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: traffic
+        template:
+          metadata:
+            labels:
+              app: traffic
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+    hints:
+      - "Use kubectl scale to change the number of replicas"
+      - "The command is: kubectl scale deployment traffic-spike --replicas=10"
+      - "Verify with: kubectl get deployment traffic-spike"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get deployment traffic-spike"
+      expected_contains: "10/10"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Stuck Rollout"
+    description: |
+      A deployment update seems stuck. The rollout status shows:
+
+      ```
+      Waiting for deployment "stuck" rollout to finish: 1 old replicas pending termination...
+      ```
+
+      Your mission: Investigate and fix the stuck rollout!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: stuck
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: stuck
+        template:
+          metadata:
+            labels:
+              app: stuck
+          spec:
+            containers:
+            - name: app
+              image: nginx:1.19
+    hints:
+      - "Check the deployment events: kubectl describe deployment stuck"
+      - "Check if new pods are running: kubectl get pods -l app=stuck"
+      - "The update might need more resources or have an image issue. Check pod status."
+    solution_validation:
+      type: "command_output"
+      command: "kubectl rollout status deployment/stuck"
+      expected_contains: "successfully"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "command_challenge"
+      question: "Write the command to scale deployment 'api' to 10 replicas"
+      expected_contains: "--replicas=10"
+      alternatives:
+        - "kubectl scale deployment api --replicas=10"
+        - "kubectl scale deploy api --replicas=10"
+      hint: "Use 'kubectl scale deployment'"
+      explanation: "`kubectl scale deployment api --replicas=10`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What happens during a rolling update?"
+      options:
+        - "All old pods are deleted, then new ones created"
+        - "New pods are created gradually while old ones are removed"
+        - "The deployment stops completely"
+        - "Nothing happens automatically"
+      correct: 1
+      explanation: "Rolling updates gradually replace pods - some old and new run together."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to update the nginx container in deployment 'web' to nginx:1.22"
+      expected_contains: "kubectl set image"
+      alternatives:
+        - "kubectl set image deployment/web nginx=nginx:1.22"
+        - "kubectl set image deployment web nginx=nginx:1.22"
+      hint: "Use 'kubectl set image deployment/<name> <container>=<image>'"
+      explanation: "`kubectl set image deployment/web nginx=nginx:1.22`"
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the command to check rollout status:"
+      yaml_template: |
+        kubectl _______ status deployment/web
+      expected: "rollout"
+      explanation: "`kubectl rollout status` monitors update progress."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does 'kubectl scale deployment web --replicas=0' do?"
+      options:
+        - "Deletes the deployment"
+        - "Stops all pods but keeps the deployment"
+        - "Throws an error"
+        - "Restarts all pods"
+      correct: 1
+      explanation: "Scaling to 0 stops all pods but keeps the deployment definition intact."
+      points: 5
+
+    - type: "true_false"
+      question: "During a rolling update, there is zero downtime."
+      correct: true
+      explanation: "Yes! Old pods serve traffic until new pods are ready."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to view the rollout history of deployment 'app'"
+      expected_contains: "rollout history"
+      alternatives:
+        - "kubectl rollout history deployment/app"
+        - "kubectl rollout history deployment app"
+      hint: "Use 'kubectl rollout history'"
+      explanation: "`kubectl rollout history deployment/app` shows past revisions."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Which command triggers a rolling update?"
+      options:
+        - "kubectl restart deployment"
+        - "kubectl set image deployment/web nginx=nginx:1.21"
+        - "kubectl update deployment"
+        - "kubectl refresh deployment"
+      correct: 1
+      explanation: "Changing the image with 'set image' triggers a rolling update."
+      points: 5

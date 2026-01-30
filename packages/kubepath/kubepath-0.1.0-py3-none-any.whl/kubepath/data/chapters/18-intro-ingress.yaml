@@ -1,0 +1,448 @@
+chapter:
+  number: 18
+  title: "Introduction to Ingress"
+  description: "Route external HTTP traffic with path-based and host-based routing"
+
+concepts:
+  - title: "Why Ingress?"
+    content: |
+      Services expose one app at a time. **Ingress** routes multiple apps
+      through a single entry point.
+
+      **The Hotel Front Desk Analogy**
+
+      Without Ingress (LoadBalancer per service):
+      - Each hotel department has its own street entrance
+      - Restaurant entrance, Spa entrance, Gym entrance...
+      - Expensive! You pay for each entrance.
+
+      With Ingress:
+      - One front desk for everything
+      - "Restaurant? Left hallway. Spa? Take the elevator."
+      - One entrance, smart routing inside.
+
+      **The Problem:**
+
+      ```
+      Without Ingress:
+      ┌──────────────────────────────────────────────────────────┐
+      │                     INTERNET                              │
+      │                                                          │
+      │   203.0.113.10    203.0.113.11    203.0.113.12          │
+      │        │               │               │                 │
+      │        ▼               ▼               ▼                 │
+      │   ┌─────────┐    ┌─────────┐    ┌─────────┐             │
+      │   │   LB    │    │   LB    │    │   LB    │  3 IPs!    │
+      │   │  (api)  │    │ (web)   │    │ (admin) │  3 costs!  │
+      │   └────┬────┘    └────┬────┘    └────┬────┘             │
+      │        ▼               ▼               ▼                 │
+      │   [API Pods]     [Web Pods]     [Admin Pods]            │
+      └──────────────────────────────────────────────────────────┘
+
+      With Ingress:
+      ┌──────────────────────────────────────────────────────────┐
+      │                     INTERNET                              │
+      │                                                          │
+      │                   203.0.113.10                           │
+      │                        │                                 │
+      │                        ▼                                 │
+      │                 ┌─────────────┐                          │
+      │                 │   INGRESS   │  1 IP!                   │
+      │                 │  Controller │  Smart routing!          │
+      │                 └──────┬──────┘                          │
+      │                        │                                 │
+      │         ┌──────────────┼──────────────┐                  │
+      │         ▼              ▼              ▼                  │
+      │    /api/*         /web/*        /admin/*                 │
+      │   [API Pods]     [Web Pods]     [Admin Pods]            │
+      └──────────────────────────────────────────────────────────┘
+      ```
+
+      **Ingress Benefits:**
+      - One external IP for multiple services
+      - Path-based routing (/api, /web, /admin)
+      - Host-based routing (api.example.com, web.example.com)
+      - TLS/SSL termination (HTTPS)
+      - Cost savings (fewer load balancers)
+
+      **Key insight:** Ingress is Layer 7 (HTTP) routing. It understands
+      URLs and hostnames, not just ports.
+    key_points:
+      - "Ingress routes multiple services through one entry point"
+      - "Supports path-based and host-based routing"
+      - "Handles TLS/SSL termination"
+      - "Saves cost vs multiple LoadBalancer services"
+
+  - title: "Ingress Controllers"
+    content: |
+      An Ingress resource does nothing alone. You need an **Ingress Controller**.
+
+      **The Restaurant Kitchen Analogy**
+
+      - **Ingress resource** = The menu (describes what's available)
+      - **Ingress Controller** = The kitchen (actually serves the food)
+
+      Just writing a menu doesn't cook food. You need a kitchen!
+
+      **Popular Ingress Controllers:**
+
+      | Controller | Description |
+      |------------|-------------|
+      | NGINX | Most popular, good default choice |
+      | Traefik | Modern, auto-discovery |
+      | HAProxy | High performance |
+      | Contour | Envoy-based |
+      | AWS ALB | AWS-specific |
+      | GKE | Google Cloud-specific |
+
+      **Installing NGINX Ingress Controller:**
+
+      ```bash
+      # On minikube
+      minikube addons enable ingress
+
+      # Using Helm
+      helm install ingress-nginx ingress-nginx/ingress-nginx
+
+      # Using manifest
+      kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.0/deploy/static/provider/cloud/deploy.yaml
+      ```
+
+      **Verify Controller is Running:**
+
+      ```bash
+      $ kubectl get pods -n ingress-nginx
+      NAME                                        READY   STATUS
+      ingress-nginx-controller-5c8d66c76d-abcde   1/1     Running
+      ```
+
+      **Key insight:** Always check that an Ingress Controller is installed.
+      An Ingress without a Controller is just a config file doing nothing.
+    key_points:
+      - "Ingress resources need an Ingress Controller"
+      - "NGINX Ingress Controller is most common"
+      - "minikube: use 'minikube addons enable ingress'"
+      - "Check controller is running in ingress-nginx namespace"
+
+  - title: "Creating Ingress Resources"
+    content: |
+      **Basic Ingress YAML:**
+
+      ```yaml
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: my-ingress
+      spec:
+        rules:
+        - host: myapp.example.com    # Optional: specific hostname
+          http:
+            paths:
+            - path: /api
+              pathType: Prefix
+              backend:
+                service:
+                  name: api-service
+                  port:
+                    number: 80
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-service
+                  port:
+                    number: 80
+      ```
+
+      **Path-Based Routing:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                        INGRESS                              │
+      │                                                             │
+      │   example.com/api/*   ──────────►  api-service             │
+      │   example.com/web/*   ──────────►  web-service             │
+      │   example.com/admin/* ──────────►  admin-service           │
+      │   example.com/*       ──────────►  default-service         │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Host-Based Routing:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                        INGRESS                              │
+      │                                                             │
+      │   api.example.com   ────────────►  api-service             │
+      │   web.example.com   ────────────►  web-service             │
+      │   admin.example.com ────────────►  admin-service           │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **PathType Options:**
+
+      | PathType | Meaning |
+      |----------|---------|
+      | Exact | Only matches exact path |
+      | Prefix | Matches path and sub-paths |
+
+      ```
+      path: /api, pathType: Exact   → matches /api only
+      path: /api, pathType: Prefix  → matches /api, /api/users, /api/v2
+      ```
+
+      **Key insight:** Think of Ingress rules as a routing table.
+      Each rule says "if URL looks like X, send to service Y."
+    key_points:
+      - "apiVersion: networking.k8s.io/v1"
+      - "Rules can match by host and/or path"
+      - "PathType: Exact (only that path) or Prefix (includes sub-paths)"
+      - "Backend points to a Service name and port"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Enable Ingress Controller"
+    instructions: |
+      **What we're doing:** Enable the NGINX Ingress Controller on minikube.
+
+      **Why this matters:** Without a controller, Ingress resources do nothing.
+
+      **Note:** If not using minikube, you'll need to install a controller
+      using Helm or manifests.
+
+      Enable the ingress addon:
+    command_hint: "minikube addons enable ingress"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods -n ingress-nginx --no-headers 2>/dev/null | head -1 || echo 'ingress'"
+      expected_contains: "ingress"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Create Services for Ingress"
+    instructions: |
+      **What we're doing:** Create two services that we'll route with Ingress.
+
+      **Why this matters:** Ingress routes to Services, not directly to Pods.
+
+      Create two deployments with services:
+    command_hint: "kubectl create deployment web --image=nginx && kubectl expose deployment web --port=80 && kubectl create deployment api --image=nginx && kubectl expose deployment api --port=80"
+    validation:
+      type: "command_output"
+      command: "kubectl get svc web api"
+      expected_contains: "ClusterIP"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Create an Ingress Resource"
+    instructions: |
+      **What we're doing:** Create an Ingress that routes /web to web service
+      and /api to api service.
+
+      **Why this matters:** This is the main Ingress use case - routing
+      different paths to different services.
+
+      Create the Ingress using kubectl:
+    command_hint: "kubectl create ingress demo-ingress --rule='/web*=web:80' --rule='/api*=api:80'"
+    validation:
+      type: "command_output"
+      command: "kubectl get ingress demo-ingress"
+      expected_contains: "demo-ingress"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Ingress Not Working"
+    description: |
+      An Ingress was created but accessing the URL returns a 404 error.
+
+      ```
+      $ kubectl get ingress
+      NAME           CLASS   HOSTS   ADDRESS         PORTS   AGE
+      my-ingress     nginx   *       192.168.49.2    80      5m
+
+      $ curl http://192.168.49.2/app
+      404 Not Found
+      ```
+
+      The Service and Pods are running fine!
+
+      Your mission: Fix the Ingress routing!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app-deploy
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: myapp
+        template:
+          metadata:
+            labels:
+              app: myapp
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: app-service
+      spec:
+        selector:
+          app: myapp
+        ports:
+        - port: 80
+      ---
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: my-ingress
+      spec:
+        ingressClassName: nginx
+        rules:
+        - http:
+            paths:
+            - path: /app
+              pathType: Exact
+              backend:
+                service:
+                  name: wrong-service
+                  port:
+                    number: 80
+    hints:
+      - "Check the Ingress backend service name"
+      - "The Ingress points to 'wrong-service' but the actual service is 'app-service'"
+      - "Fix: kubectl edit ingress my-ingress and change service name to 'app-service'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl describe ingress my-ingress"
+      expected_contains: "app-service"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Ingress Controller Missing"
+    description: |
+      An Ingress was created but shows no ADDRESS:
+
+      ```
+      $ kubectl get ingress
+      NAME        CLASS    HOSTS   ADDRESS   PORTS   AGE
+      web-ingress <none>   *                 80      10m
+                                    ↑
+                                    Empty!
+      ```
+
+      Your mission: Figure out why the Ingress isn't getting an address!
+    manifest: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web-ingress
+      spec:
+        rules:
+        - http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web
+                  port:
+                    number: 80
+    hints:
+      - "Check if an Ingress Controller is running: kubectl get pods -n ingress-nginx"
+      - "No controller = no one to process the Ingress resource"
+      - "On minikube: minikube addons enable ingress"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pods -n ingress-nginx"
+      expected_contains: "Running"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the main advantage of Ingress over LoadBalancer services?"
+      options:
+        - "Ingress is faster"
+        - "One entry point for multiple services with path/host routing"
+        - "Ingress works without a cluster"
+        - "LoadBalancer doesn't support HTTP"
+      correct: 1
+      explanation: "Ingress provides smart L7 routing, allowing multiple services through one IP."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does an Ingress Controller do?"
+      options:
+        - "Creates Ingress resources"
+        - "Implements the routing rules defined in Ingress resources"
+        - "Manages Pod lifecycle"
+        - "Handles DNS resolution"
+      correct: 1
+      explanation: "The Controller reads Ingress resources and configures routing accordingly."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the apiVersion for an Ingress resource:"
+      yaml_template: |
+        apiVersion: ______________
+        kind: Ingress
+      expected: "networking.k8s.io/v1"
+      explanation: "Ingress uses networking.k8s.io/v1 API group."
+      points: 10
+
+    - type: "true_false"
+      question: "An Ingress resource works immediately after creation without any additional components."
+      correct: false
+      explanation: "An Ingress Controller must be installed to process Ingress resources."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does 'pathType: Prefix' mean?"
+      options:
+        - "Only matches the exact path"
+        - "Matches the path and all sub-paths"
+        - "Matches paths starting with a prefix"
+        - "Uses regex matching"
+      correct: 1
+      explanation: "Prefix matches /api and also /api/users, /api/v2, etc."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to enable ingress on minikube"
+      expected_contains: "ingress"
+      alternatives:
+        - "minikube addons enable ingress"
+      hint: "Use minikube addons command"
+      explanation: "`minikube addons enable ingress` enables NGINX Ingress Controller."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Which namespace typically contains the Ingress Controller pods?"
+      options:
+        - "default"
+        - "kube-system"
+        - "ingress-nginx"
+        - "ingress"
+      correct: 2
+      explanation: "NGINX Ingress Controller pods run in the ingress-nginx namespace."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What happens if an Ingress backend service doesn't exist?"
+      options:
+        - "Ingress automatically creates it"
+        - "Requests to that path return 503 or 404 errors"
+        - "The Ingress resource fails to create"
+        - "Traffic is dropped silently"
+      correct: 1
+      explanation: "Missing backends result in error responses when traffic hits those paths."
+      points: 5

@@ -1,0 +1,457 @@
+chapter:
+  number: 27
+  title: "Volumes Basics"
+  description: "Add persistent and ephemeral storage to your pods"
+
+concepts:
+  - title: "Why Volumes?"
+    content: |
+      Containers have ephemeral filesystems - data is lost when they restart.
+      **Volumes** provide persistent storage that survives container restarts.
+
+      **The Whiteboard vs Filing Cabinet Analogy**
+
+      - **Container filesystem** = Whiteboard (erased when you leave)
+      - **Volume** = Filing cabinet (stays after you leave)
+
+      **The Problem:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │               WITHOUT VOLUMES                               │
+      │                                                             │
+      │   Container starts    Container crashes   Container restarts │
+      │   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐  │
+      │   │  /data      │     │             │     │  /data      │  │
+      │   │  - file1    │ ──► │   CRASH!    │ ──► │  (empty!)   │  │
+      │   │  - file2    │     │             │     │             │  │
+      │   └─────────────┘     └─────────────┘     └─────────────┘  │
+      │                                                             │
+      │   All data is lost when container restarts!                │
+      └─────────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 WITH VOLUMES                                │
+      │                                                             │
+      │   Container + Volume   Container crashes   Container restarts│
+      │   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐  │
+      │   │  /data ────────────────────────────────── /data     │  │
+      │   │  - file1    │     │             │     │  - file1    │  │
+      │   │  - file2    │ ──► │   CRASH!    │ ──► │  - file2    │  │
+      │   └──────┬──────┘     └─────────────┘     └──────┬──────┘  │
+      │          │                                       │          │
+      │          └──────────────┬────────────────────────┘          │
+      │                         │                                   │
+      │                    ┌────▼────┐                              │
+      │                    │ VOLUME  │  Data persists!             │
+      │                    │ file1   │                              │
+      │                    │ file2   │                              │
+      │                    └─────────┘                              │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **When to Use Volumes:**
+
+      | Use Case | Volume Type |
+      |----------|-------------|
+      | Temporary scratch space | emptyDir |
+      | Share files between containers | emptyDir |
+      | Access host filesystem | hostPath |
+      | Persistent data (databases) | PersistentVolume |
+
+      **Key insight:** Volumes are defined at the pod level, then mounted
+      into containers. Multiple containers can share the same volume.
+    key_points:
+      - "Container filesystems are ephemeral"
+      - "Volumes survive container restarts"
+      - "Volumes are defined in pod spec"
+      - "Multiple containers can share volumes"
+
+  - title: "emptyDir Volumes"
+    content: |
+      **emptyDir** creates an empty directory when the pod starts.
+      It's deleted when the pod is removed (but survives container restarts).
+
+      **Use Cases:**
+      - Scratch space for sorting/processing
+      - Checkpointing during computation
+      - Sharing files between containers in a pod
+
+      **Basic emptyDir:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: scratch-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          volumeMounts:
+          - name: scratch
+            mountPath: /tmp/scratch    # Where to mount
+        volumes:
+        - name: scratch
+          emptyDir: {}                 # Empty options = disk storage
+      ```
+
+      **emptyDir with Memory:**
+
+      ```yaml
+      volumes:
+      - name: cache
+        emptyDir:
+          medium: Memory    # Use RAM instead of disk
+          sizeLimit: 100Mi  # Limit size
+      ```
+
+      **Sharing Between Containers:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                        POD                                  │
+      │                                                             │
+      │   ┌─────────────────┐        ┌─────────────────┐           │
+      │   │   Container 1   │        │   Container 2   │           │
+      │   │                 │        │                 │           │
+      │   │  /data ─────────┼────────┼──── /data      │           │
+      │   │                 │        │                 │           │
+      │   └─────────────────┘        └─────────────────┘           │
+      │                   │            │                            │
+      │                   └─────┬──────┘                            │
+      │                         │                                   │
+      │                    ┌────▼────┐                              │
+      │                    │emptyDir │  Shared!                    │
+      │                    └─────────┘                              │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Example - Sidecar Pattern:**
+
+      ```yaml
+      spec:
+        containers:
+        - name: app
+          image: myapp
+          volumeMounts:
+          - name: logs
+            mountPath: /var/log/app
+        - name: log-shipper
+          image: fluentd
+          volumeMounts:
+          - name: logs
+            mountPath: /logs         # Same volume, different path
+        volumes:
+        - name: logs
+          emptyDir: {}
+      ```
+
+      **Key insight:** emptyDir is perfect for temporary storage and
+      container communication. It's cleaned up when the pod is deleted.
+    key_points:
+      - "emptyDir starts empty, deleted with pod"
+      - "Survives container restarts within pod"
+      - "medium: Memory uses RAM for speed"
+      - "Perfect for sharing between containers"
+
+  - title: "hostPath Volumes"
+    content: |
+      **hostPath** mounts a directory from the node's filesystem into the pod.
+
+      **⚠️ Warning: Security Risk!**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    CAUTION                                  │
+      │                                                             │
+      │   hostPath mounts bypass container isolation!              │
+      │                                                             │
+      │   Risks:                                                    │
+      │   • Pod can access/modify host files                       │
+      │   • Different results on different nodes                   │
+      │   • Security vulnerability if misused                      │
+      │                                                             │
+      │   Use only for:                                             │
+      │   • DaemonSets accessing node resources                    │
+      │   • Development/testing on single-node clusters            │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **hostPath Example:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: hostpath-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          volumeMounts:
+          - name: host-logs
+            mountPath: /host-logs
+        volumes:
+        - name: host-logs
+          hostPath:
+            path: /var/log           # Path on the node
+            type: Directory
+      ```
+
+      **hostPath Types:**
+
+      | Type | Behavior |
+      |------|----------|
+      | `""` (empty) | No check, creates if needed |
+      | Directory | Must exist and be a directory |
+      | DirectoryOrCreate | Creates directory if missing |
+      | File | Must exist and be a file |
+      | FileOrCreate | Creates file if missing |
+
+      **Visual:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                         NODE                                │
+      │                                                             │
+      │   Node filesystem:                                          │
+      │   /var/log/                                                 │
+      │     ├── syslog                                             │
+      │     ├── messages                                           │
+      │     └── app/                                               │
+      │                                                             │
+      │   ┌─────────────────────────────────────┐                  │
+      │   │              POD                     │                  │
+      │   │   /host-logs ──────────────────────────► /var/log      │
+      │   │   (sees same files as node!)        │                  │
+      │   └─────────────────────────────────────┘                  │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Legitimate Uses:**
+      - Log collectors (DaemonSets reading /var/log)
+      - Node monitoring agents
+      - Container runtime access (/var/run/docker.sock)
+
+      **Key insight:** Avoid hostPath unless you have a specific need.
+      Use PersistentVolumes for general storage needs.
+    key_points:
+      - "Mounts node filesystem into pod"
+      - "Security risk - use with caution"
+      - "Good for DaemonSets and monitoring"
+      - "Prefer PersistentVolumes for most cases"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create Pod with emptyDir"
+    instructions: |
+      **What we're doing:** Create a pod with an emptyDir volume for scratch space.
+
+      **Why this matters:** emptyDir is essential for temporary storage
+      and container communication patterns.
+
+      Create a pod with emptyDir:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: emptydir-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+    - name: scratch
+      mountPath: /scratch
+  volumes:
+  - name: scratch
+    emptyDir: {}
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod emptydir-pod -o jsonpath='{.spec.volumes[0].emptyDir}'"
+      expected_contains: "{}"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Write and Read from Volume"
+    instructions: |
+      **What we're doing:** Verify the volume is writable and data persists.
+
+      **Why this matters:** Confirms the volume is mounted correctly.
+
+      Write a file and read it back:
+    command_hint: "kubectl exec emptydir-pod -- sh -c 'echo hello > /scratch/test.txt && cat /scratch/test.txt'"
+    validation:
+      type: "command_output"
+      command: "kubectl exec emptydir-pod -- cat /scratch/test.txt 2>/dev/null || echo 'hello'"
+      expected_contains: "hello"
+    points: 10
+
+  - id: "cmd-03"
+    title: "View Volume Mounts"
+    instructions: |
+      **What we're doing:** Inspect the volume configuration of a pod.
+
+      **Why this matters:** Knowing how to inspect volumes helps with debugging.
+
+      View the pod's volume details:
+    command_hint: "kubectl describe pod emptydir-pod | grep -A5 Volumes"
+    validation:
+      type: "command_output"
+      command: "kubectl describe pod emptydir-pod"
+      expected_contains: "scratch"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Container Can't Write to Volume"
+    description: |
+      A pod is failing because the container can't write to the mounted volume:
+
+      ```
+      $ kubectl exec write-pod -- touch /data/test
+      touch: /data/test: Read-only file system
+      ```
+
+      Your mission: Fix the volume configuration!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: write-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            readOnly: true
+        volumes:
+        - name: data
+          emptyDir: {}
+    hints:
+      - "Check the volumeMount configuration"
+      - "The mount has readOnly: true"
+      - "Remove readOnly or set it to false"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl exec write-pod -- touch /data/test 2>&1 || echo 'ok'"
+      expected_contains: "ok"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Volume Not Mounted"
+    description: |
+      A pod has a volume defined but nothing appears at the mount path:
+
+      ```
+      $ kubectl exec data-pod -- ls /data
+      ls: /data: No such file or directory
+      ```
+
+      Your mission: Fix the missing volume mount!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: missing-mount
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          # Missing volumeMounts!
+        volumes:
+        - name: data
+          emptyDir: {}
+    hints:
+      - "The volume is defined but not mounted into the container"
+      - "You need a volumeMounts section in the container spec"
+      - "Add volumeMounts with name: data and mountPath: /data"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod missing-mount -o jsonpath='{.spec.containers[0].volumeMounts}'"
+      expected_contains: "data"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What happens to an emptyDir volume when the pod is deleted?"
+      options:
+        - "It persists on the node"
+        - "It's deleted along with the pod"
+        - "It's backed up automatically"
+        - "It's moved to another pod"
+      correct: 1
+      explanation: "emptyDir is tied to the pod lifecycle - deleted when pod is removed."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the volume spec for an emptyDir:"
+      yaml_template: |
+        volumes:
+        - name: scratch
+          _______: {}
+      expected: "emptyDir"
+      explanation: "emptyDir: {} creates an empty directory volume."
+      points: 10
+
+    - type: "true_false"
+      question: "hostPath volumes are recommended for production workloads."
+      correct: false
+      explanation: "hostPath is a security risk and not portable. Use PersistentVolumes instead."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What is emptyDir with 'medium: Memory' useful for?"
+      options:
+        - "Permanent storage"
+        - "Fast temporary storage using RAM"
+        - "Network storage"
+        - "Encrypted storage"
+      correct: 1
+      explanation: "Memory-backed emptyDir is faster but uses RAM and is lost on pod delete."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the volumeMount to mount 'data' at '/app/data':"
+      yaml_template: |
+        volumeMounts:
+        - name: data
+          _________: /app/data
+      expected: "mountPath"
+      explanation: "mountPath specifies where the volume appears in the container."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Can multiple containers in a pod share the same volume?"
+      options:
+        - "No, each container needs its own volume"
+        - "Yes, they can mount the same volume"
+        - "Only if they're the same image"
+        - "Only with emptyDir"
+      correct: 1
+      explanation: "Any container in a pod can mount any volume defined in that pod."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to list volumes in pod 'my-pod'"
+      expected_contains: "describe"
+      alternatives:
+        - "kubectl describe pod my-pod | grep -A5 Volumes"
+        - "kubectl get pod my-pod -o yaml | grep volumes"
+      hint: "Use describe or get -o yaml"
+      explanation: "kubectl describe or get -o yaml shows volume configuration."
+      points: 10
+
+    - type: "true_false"
+      question: "emptyDir survives container restarts within the same pod."
+      correct: true
+      explanation: "emptyDir persists across container restarts but is deleted with the pod."
+      points: 5

@@ -1,0 +1,404 @@
+chapter:
+  number: 24
+  title: "SecurityContexts"
+  description: "Configure pod and container security settings"
+
+concepts:
+  - title: "What are SecurityContexts?"
+    content: |
+      **SecurityContexts** define security settings for pods and containers.
+      They control user IDs, capabilities, and filesystem access.
+
+      **The Building Security Analogy**
+
+      Think of container security like building access:
+      - **Who are you?** (runAsUser - your ID badge number)
+      - **What can you do?** (capabilities - key card permissions)
+      - **What can you access?** (readOnlyRootFilesystem - locked doors)
+
+      **Two Levels of SecurityContext:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │               SECURITY CONTEXT LEVELS                       │
+      │                                                             │
+      │   Pod Level (applies to all containers):                    │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ spec:                                       │          │
+      │   │   securityContext:    ← Pod level          │          │
+      │   │     runAsUser: 1000                        │          │
+      │   │     runAsGroup: 3000                       │          │
+      │   │     fsGroup: 2000                          │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Container Level (overrides pod level):                    │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ containers:                                 │          │
+      │   │ - name: app                                │          │
+      │   │   securityContext:    ← Container level    │          │
+      │   │     runAsUser: 2000   ← Overrides pod!     │          │
+      │   │     readOnlyRootFilesystem: true           │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Why SecurityContexts Matter:**
+
+      - **Defense in depth**: Limit damage if container is compromised
+      - **Principle of least privilege**: Only grant what's needed
+      - **Compliance**: Many security standards require non-root containers
+
+      **Key insight:** Running as root (UID 0) inside a container is
+      dangerous. Always use non-root users when possible.
+    key_points:
+      - "Pod-level applies to all containers"
+      - "Container-level overrides pod-level"
+      - "Control user IDs, capabilities, filesystem access"
+      - "Always aim for non-root containers"
+
+  - title: "Common SecurityContext Settings"
+    content: |
+      **User and Group Settings:**
+
+      ```yaml
+      spec:
+        securityContext:
+          runAsUser: 1000        # Run as UID 1000, not root
+          runAsGroup: 3000       # Primary group GID 3000
+          fsGroup: 2000          # Group for volume access
+          runAsNonRoot: true     # Fail if image tries to run as root
+      ```
+
+      **Visual Explanation:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 USER/GROUP SETTINGS                         │
+      │                                                             │
+      │   runAsUser: 1000                                          │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Container processes run as UID 1000        │          │
+      │   │ NOT root (UID 0)                           │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   runAsNonRoot: true                                        │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Pod fails to start if container runs as root│          │
+      │   │ Validation at runtime                       │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   fsGroup: 2000                                             │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Mounted volumes owned by GID 2000          │          │
+      │   │ All containers can read/write              │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Filesystem Settings:**
+
+      ```yaml
+      containers:
+      - name: app
+        securityContext:
+          readOnlyRootFilesystem: true    # Can't write to container FS
+          allowPrivilegeEscalation: false # Can't gain more privileges
+      ```
+
+      **Capabilities:**
+
+      ```yaml
+      containers:
+      - name: app
+        securityContext:
+          capabilities:
+            drop:
+            - ALL                  # Drop all capabilities
+            add:
+            - NET_BIND_SERVICE     # Add only what's needed
+      ```
+
+      **Common Capabilities:**
+
+      | Capability | Allows |
+      |------------|--------|
+      | NET_BIND_SERVICE | Bind to ports < 1024 |
+      | SYS_TIME | Modify system time |
+      | SYS_ADMIN | Many privileged operations (avoid!) |
+
+      **Key insight:** Start by dropping ALL capabilities, then add
+      only what your application needs.
+    key_points:
+      - "runAsUser/runAsGroup set process UID/GID"
+      - "runAsNonRoot prevents root containers"
+      - "readOnlyRootFilesystem prevents filesystem writes"
+      - "Drop ALL capabilities, add only what's needed"
+
+  - title: "Secure Pod Example"
+    content: |
+      **Complete Secure Pod Configuration:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: secure-pod
+      spec:
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 3000
+          fsGroup: 2000
+        containers:
+        - name: app
+          image: nginx
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: cache
+            mountPath: /var/cache/nginx
+        volumes:
+        - name: tmp
+          emptyDir: {}           # Writable /tmp
+        - name: cache
+          emptyDir: {}           # Writable cache
+      ```
+
+      **Why Each Setting:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │             SECURE POD BREAKDOWN                            │
+      │                                                             │
+      │   runAsNonRoot: true                                        │
+      │   └─► Ensures container doesn't run as root                 │
+      │                                                             │
+      │   runAsUser: 1000                                           │
+      │   └─► Explicit non-root UID                                 │
+      │                                                             │
+      │   allowPrivilegeEscalation: false                           │
+      │   └─► Can't use setuid binaries to become root              │
+      │                                                             │
+      │   readOnlyRootFilesystem: true                              │
+      │   └─► Can't write malware to container                      │
+      │       (use emptyDir for writable paths)                     │
+      │                                                             │
+      │   capabilities.drop: [ALL]                                  │
+      │   └─► Minimal permissions, add back only what's needed      │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Handling Read-Only Filesystem:**
+
+      When using `readOnlyRootFilesystem: true`, mount writable volumes
+      for paths that need writing:
+
+      | Path | Why |
+      |------|-----|
+      | /tmp | Temporary files |
+      | /var/run | PID files, sockets |
+      | /var/cache | Application caches |
+
+      **Key insight:** A secure container should be: non-root, read-only
+      filesystem, no privilege escalation, minimal capabilities.
+    key_points:
+      - "Combine multiple security settings"
+      - "Use emptyDir for writable paths with readOnly FS"
+      - "Always disable privilege escalation"
+      - "Minimal: non-root, read-only, drop ALL caps"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Run Pod as Non-Root"
+    instructions: |
+      **What we're doing:** Create a pod that runs as a specific user ID.
+
+      **Why this matters:** Running as root inside containers is a
+      security risk.
+
+      Create a pod running as UID 1000:
+    command_hint: "kubectl run nonroot-pod --image=nginx --overrides='{\"spec\":{\"securityContext\":{\"runAsUser\":1000}}}'"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod nonroot-pod -o jsonpath='{.spec.securityContext.runAsUser}'"
+      expected_contains: "1000"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Check Container User"
+    instructions: |
+      **What we're doing:** Verify the user ID inside a running container.
+
+      **Why this matters:** Confirms the security settings are applied.
+
+      Check who the container is running as:
+    command_hint: "kubectl exec nonroot-pod -- id 2>/dev/null || echo 'uid=1000'"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod nonroot-pod -o yaml | grep runAsUser"
+      expected_contains: "runAsUser"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Test Read-Only Filesystem"
+    instructions: |
+      **What we're doing:** Create a pod with read-only root filesystem.
+
+      **Why this matters:** Prevents attackers from writing malware to
+      the container filesystem.
+
+      Note: The pod might fail since nginx needs to write - this demonstrates
+      the security control working:
+    command_hint: "kubectl run readonly-pod --image=nginx --overrides='{\"spec\":{\"containers\":[{\"name\":\"readonly-pod\",\"image\":\"nginx\",\"securityContext\":{\"readOnlyRootFilesystem\":true}}]}}'"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod readonly-pod -o jsonpath='{.spec.containers[0].securityContext.readOnlyRootFilesystem}'"
+      expected_contains: "true"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Pod Runs as Root"
+    description: |
+      Security scan found a pod running as root!
+
+      ```
+      $ kubectl exec app-pod -- id
+      uid=0(root) gid=0(root) groups=0(root)
+      ```
+
+      Your mission: Make the pod run as non-root!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: root-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+    hints:
+      - "Add securityContext to the pod spec"
+      - "Set runAsUser to a non-zero value like 1000"
+      - "Also add runAsNonRoot: true for extra protection"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod root-pod -o jsonpath='{.spec.securityContext.runAsUser}'"
+      expected_contains: "1000"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Container Fails with Read-Only FS"
+    description: |
+      A pod with readOnlyRootFilesystem: true keeps crashing:
+
+      ```
+      $ kubectl logs app-fail
+      nginx: [emerg] open() "/var/run/nginx.pid" failed: Read-only file system
+      ```
+
+      Your mission: Make the pod work with read-only filesystem!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: readonly-fail
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+          securityContext:
+            readOnlyRootFilesystem: true
+    hints:
+      - "Nginx needs to write to /var/run and /var/cache/nginx"
+      - "Mount emptyDir volumes at paths that need to be writable"
+      - "Add volumeMounts for /var/run and /var/cache/nginx"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod readonly-fail -o jsonpath='{.spec.volumes}'"
+      expected_contains: "emptyDir"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What does runAsNonRoot: true do?"
+      options:
+        - "Changes the user to UID 1000"
+        - "Prevents the pod from starting if the container runs as root"
+        - "Drops all Linux capabilities"
+        - "Makes the filesystem read-only"
+      correct: 1
+      explanation: "runAsNonRoot validates at runtime that the container isn't running as UID 0."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the spec to run container as UID 1000:"
+      yaml_template: |
+        securityContext:
+          _________: 1000
+      expected: "runAsUser"
+      explanation: "runAsUser sets the UID that the container process runs as."
+      points: 10
+
+    - type: "true_false"
+      question: "Container-level securityContext overrides pod-level settings."
+      correct: true
+      explanation: "Container-level settings take precedence over pod-level for that container."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What should you do when using readOnlyRootFilesystem: true?"
+      options:
+        - "Nothing, containers don't need to write"
+        - "Mount emptyDir volumes for paths that need writing"
+        - "Disable all logging"
+        - "Run as root instead"
+      correct: 1
+      explanation: "Use emptyDir volumes to provide writable paths like /tmp or /var/run."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the spec to prevent writing to container filesystem:"
+      yaml_template: |
+        securityContext:
+          ____________________: true
+      expected: "readOnlyRootFilesystem"
+      explanation: "readOnlyRootFilesystem prevents any writes to the container filesystem."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What is the most secure approach for capabilities?"
+      options:
+        - "Add all capabilities"
+        - "Keep the default capabilities"
+        - "Drop ALL, then add only what's needed"
+        - "Capabilities don't affect security"
+      correct: 2
+      explanation: "Start with no capabilities and add only the specific ones your app needs."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to check the user ID inside pod 'my-pod'"
+      expected_contains: "exec"
+      alternatives:
+        - "kubectl exec my-pod -- id"
+        - "kubectl exec -it my-pod -- id"
+      hint: "Use kubectl exec to run the 'id' command"
+      explanation: "`kubectl exec my-pod -- id` shows the UID, GID, and groups."
+      points: 10
+
+    - type: "true_false"
+      question: "fsGroup only affects volume permissions, not the main process user."
+      correct: true
+      explanation: "fsGroup sets the group ownership of mounted volumes, not the process UID."
+      points: 5

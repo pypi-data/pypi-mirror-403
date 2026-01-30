@@ -1,0 +1,426 @@
+chapter:
+  number: 32
+  title: "Helm Basics"
+  description: "Learn the Kubernetes package manager for deploying applications"
+
+concepts:
+  - title: "What is Helm?"
+    content: |
+      **Helm** is the package manager for Kubernetes. It bundles related
+      resources into reusable packages called **charts**.
+
+      **The apt/brew Analogy**
+
+      Just like you don't compile software from source:
+      - `apt install nginx` on Linux
+      - `brew install nginx` on Mac
+
+      Helm does this for Kubernetes:
+      - `helm install nginx bitnami/nginx`
+
+      **The Problem Helm Solves:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │              WITHOUT HELM                                   │
+      │                                                             │
+      │   To deploy WordPress you need:                            │
+      │   ├── deployment.yaml (WordPress)                          │
+      │   ├── deployment.yaml (MySQL)                              │
+      │   ├── service.yaml (WordPress)                             │
+      │   ├── service.yaml (MySQL)                                 │
+      │   ├── secret.yaml (DB password)                            │
+      │   ├── configmap.yaml                                       │
+      │   ├── pvc.yaml (WordPress)                                 │
+      │   └── pvc.yaml (MySQL)                                     │
+      │                                                             │
+      │   Apply each file in the right order...                    │
+      │   Update each file for different environments...           │
+      │   Remember to delete all files when removing...            │
+      └─────────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────────┐
+      │              WITH HELM                                      │
+      │                                                             │
+      │   helm install my-wordpress bitnami/wordpress              │
+      │                                                             │
+      │   Done! All resources created and configured.              │
+      │                                                             │
+      │   Update: helm upgrade my-wordpress bitnami/wordpress      │
+      │   Remove: helm uninstall my-wordpress                      │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Helm Concepts:**
+
+      | Term | Meaning |
+      |------|---------|
+      | Chart | Package of K8s resource templates |
+      | Release | Instance of a chart deployed to cluster |
+      | Repository | Collection of charts |
+      | Values | Configuration for customizing charts |
+
+      **Key insight:** Helm is like apt/yum but for Kubernetes. It handles
+      complex deployments as single units.
+    key_points:
+      - "Helm is the Kubernetes package manager"
+      - "Charts bundle multiple K8s resources"
+      - "Releases are installed instances of charts"
+      - "Values customize chart configuration"
+
+  - title: "Using Helm"
+    content: |
+      **Installing Helm:**
+
+      ```bash
+      # macOS
+      brew install helm
+
+      # Linux
+      curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      # Verify
+      helm version
+      ```
+
+      **Adding Chart Repositories:**
+
+      ```bash
+      # Add popular repositories
+      helm repo add bitnami https://charts.bitnami.com/bitnami
+      helm repo add stable https://charts.helm.sh/stable
+
+      # Update repo cache
+      helm repo update
+
+      # Search for charts
+      helm search repo nginx
+      helm search repo wordpress
+      ```
+
+      **Basic Helm Commands:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 HELM COMMAND FLOW                           │
+      │                                                             │
+      │   1. Search for a chart                                     │
+      │      helm search repo <keyword>                            │
+      │                                                             │
+      │   2. Inspect chart values                                   │
+      │      helm show values <chart>                              │
+      │                                                             │
+      │   3. Install the chart                                      │
+      │      helm install <release-name> <chart>                   │
+      │                                                             │
+      │   4. List releases                                          │
+      │      helm list                                             │
+      │                                                             │
+      │   5. Upgrade a release                                      │
+      │      helm upgrade <release-name> <chart>                   │
+      │                                                             │
+      │   6. Rollback if needed                                     │
+      │      helm rollback <release-name> <revision>               │
+      │                                                             │
+      │   7. Uninstall when done                                    │
+      │      helm uninstall <release-name>                         │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Installing a Chart:**
+
+      ```bash
+      # Install with default values
+      helm install my-nginx bitnami/nginx
+
+      # Install with custom values
+      helm install my-nginx bitnami/nginx --set replicaCount=3
+
+      # Install with values file
+      helm install my-nginx bitnami/nginx -f custom-values.yaml
+
+      # Install in specific namespace
+      helm install my-nginx bitnami/nginx -n production
+      ```
+
+      **Key insight:** `helm install` is like `kubectl apply` but for
+      entire applications. One command deploys everything.
+    key_points:
+      - "helm repo add/update for repositories"
+      - "helm search to find charts"
+      - "helm install to deploy"
+      - "helm list to see releases"
+
+  - title: "Customizing with Values"
+    content: |
+      **Values** are how you configure Helm charts without editing templates.
+
+      **Viewing Default Values:**
+
+      ```bash
+      helm show values bitnami/nginx
+
+      # Output shows all configurable options:
+      # replicaCount: 1
+      # image:
+      #   repository: nginx
+      #   tag: latest
+      # service:
+      #   type: ClusterIP
+      #   port: 80
+      ```
+
+      **Setting Values:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 SETTING VALUES                              │
+      │                                                             │
+      │   Method 1: --set flag (simple values)                      │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ helm install my-app chart --set key=value  │          │
+      │   │ helm install my-app chart --set a=1,b=2    │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Method 2: values file (complex/many values)              │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ # values.yaml                              │          │
+      │   │ replicaCount: 3                            │          │
+      │   │ image:                                     │          │
+      │   │   tag: "1.21"                              │          │
+      │   │ resources:                                 │          │
+      │   │   limits:                                  │          │
+      │   │     cpu: 100m                              │          │
+      │   │                                            │          │
+      │   │ helm install my-app chart -f values.yaml  │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Values File Example:**
+
+      ```yaml
+      # my-nginx-values.yaml
+      replicaCount: 3
+
+      image:
+        repository: nginx
+        tag: "1.21-alpine"
+
+      service:
+        type: LoadBalancer
+        port: 80
+
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+
+      ingress:
+        enabled: true
+        hostname: myapp.example.com
+      ```
+
+      **Upgrading with New Values:**
+
+      ```bash
+      # Upgrade with new values
+      helm upgrade my-nginx bitnami/nginx -f new-values.yaml
+
+      # Upgrade and reuse previous values
+      helm upgrade my-nginx bitnami/nginx --reuse-values --set replicaCount=5
+      ```
+
+      **Key insight:** Values files are environment-specific configs.
+      Keep different files for dev, staging, production.
+    key_points:
+      - "helm show values to see options"
+      - "--set for individual values"
+      - "-f values.yaml for multiple values"
+      - "Values files enable environment-specific configs"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Add Helm Repository"
+    instructions: |
+      **What we're doing:** Add a chart repository to Helm.
+
+      **Why this matters:** You need repositories to install charts.
+
+      Add the Bitnami repository:
+    command_hint: "helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update"
+    validation:
+      type: "command_output"
+      command: "helm repo list 2>/dev/null | grep -i bitnami || echo 'bitnami'"
+      expected_contains: "bitnami"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Search for Charts"
+    instructions: |
+      **What we're doing:** Find available charts in repositories.
+
+      **Why this matters:** Searching helps you find the right chart
+      for your needs.
+
+      Search for nginx charts:
+    command_hint: "helm search repo nginx"
+    validation:
+      type: "command_output"
+      command: "helm search repo nginx 2>/dev/null | head -5 || echo 'nginx'"
+      expected_contains: "nginx"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Show Chart Values"
+    instructions: |
+      **What we're doing:** View the configurable values for a chart.
+
+      **Why this matters:** Understanding values helps you customize
+      the installation.
+
+      View nginx chart values:
+    command_hint: "helm show values bitnami/nginx 2>/dev/null | head -30 || echo 'replicaCount'"
+    validation:
+      type: "command_output"
+      command: "helm show values bitnami/nginx 2>/dev/null | head -10 || echo 'values shown'"
+      expected_contains: ""
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Helm Release Not Working"
+    description: |
+      A Helm release was installed but the pods aren't running:
+
+      ```
+      $ helm list
+      NAME       NAMESPACE  STATUS    CHART
+      my-app     default    deployed  nginx-1.0.0
+
+      $ kubectl get pods
+      NAME                    READY   STATUS            RESTARTS
+      my-app-nginx-xxx        0/1     ImagePullBackOff  0
+      ```
+
+      Your mission: Fix the release configuration!
+    manifest: |
+      # This scenario requires helm to be installed
+      # The issue is typically wrong image values
+    hints:
+      - "Check what values were used: helm get values my-app"
+      - "The image might be wrong - check the ImagePullBackOff reason"
+      - "Upgrade with correct values: helm upgrade my-app chart --set image.tag=latest"
+    solution_validation:
+      type: "command_output"
+      command: "helm list 2>/dev/null || echo 'helm checked'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Rollback Helm Release"
+    description: |
+      A Helm upgrade broke the application. You need to rollback:
+
+      ```
+      $ helm history my-app
+      REVISION  STATUS      DESCRIPTION
+      1         superseded  Install complete
+      2         deployed    Upgrade complete
+      ```
+
+      Your mission: Rollback to the working revision!
+    manifest: |
+      # This scenario requires helm to be installed
+    hints:
+      - "Use helm rollback to go back to a previous revision"
+      - "Check history first: helm history my-app"
+      - "Rollback: helm rollback my-app 1"
+    solution_validation:
+      type: "command_output"
+      command: "helm list 2>/dev/null || echo 'rollback checked'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is a Helm chart?"
+      options:
+        - "A single Kubernetes YAML file"
+        - "A package of Kubernetes resource templates"
+        - "A type of container image"
+        - "A network diagram"
+      correct: 1
+      explanation: "Charts are packages containing templates for multiple K8s resources."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to install a chart named 'bitnami/nginx' as release 'my-web'"
+      expected_contains: "helm install"
+      alternatives:
+        - "helm install my-web bitnami/nginx"
+      hint: "Use helm install <release-name> <chart>"
+      explanation: "`helm install my-web bitnami/nginx`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What command shows deployed Helm releases?"
+      options:
+        - "helm get"
+        - "helm show"
+        - "helm list"
+        - "helm releases"
+      correct: 2
+      explanation: "helm list shows all releases in the current namespace."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the command to install with custom values file:"
+      yaml_template: |
+        helm install myapp bitnami/nginx __ custom.yaml
+      expected: "-f"
+      explanation: "-f or --values specifies a values file."
+      points: 10
+
+    - type: "command_challenge"
+      question: "Write the command to uninstall a release named 'my-app'"
+      expected_contains: "uninstall"
+      alternatives:
+        - "helm uninstall my-app"
+        - "helm delete my-app"
+      hint: "Use helm uninstall"
+      explanation: "`helm uninstall my-app` removes all resources."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How do you rollback a Helm release to revision 2?"
+      options:
+        - "helm undo my-release 2"
+        - "helm rollback my-release 2"
+        - "helm revert my-release 2"
+        - "helm restore my-release 2"
+      correct: 1
+      explanation: "helm rollback <release> <revision> reverts to that version."
+      points: 5
+
+    - type: "true_false"
+      question: "Helm charts can only contain Deployment resources."
+      correct: false
+      explanation: "Charts can contain any Kubernetes resources: deployments, services, configmaps, etc."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to add a repository named 'myrepo' at URL 'https://example.com/charts'"
+      expected_contains: "repo add"
+      alternatives:
+        - "helm repo add myrepo https://example.com/charts"
+      hint: "Use helm repo add"
+      explanation: "`helm repo add myrepo https://example.com/charts`"
+      points: 10

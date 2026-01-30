@@ -1,0 +1,427 @@
+chapter:
+  number: 8
+  title: "Multi-Container Pods"
+  description: "Learn about sidecar patterns and init containers"
+
+concepts:
+  - title: "Why Multiple Containers?"
+    content: |
+      Sometimes one container isn't enough. Multiple containers in a pod can
+      work together as a team.
+
+      **The Restaurant Kitchen Analogy**
+
+      Think of a pod as a kitchen station:
+      - **Main container** = The chef (does the main work)
+      - **Sidecar** = Kitchen assistant (helps the chef)
+      - **Init container** = Prep cook (prepares before service)
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                         POD                              │
+      │                                                         │
+      │   ┌─────────────────────────────────────────────────┐   │
+      │   │              INIT CONTAINER                      │   │
+      │   │         (runs first, then exits)                 │   │
+      │   │   - Download config files                        │   │
+      │   │   - Wait for database to be ready                │   │
+      │   │   - Set up permissions                           │   │
+      │   └─────────────────────────────────────────────────┘   │
+      │                         │                               │
+      │                         ▼ (after init completes)        │
+      │   ┌─────────────┐   ┌───────────────┐                  │
+      │   │   MAIN      │   │   SIDECAR     │                  │
+      │   │ CONTAINER   │◄─►│   CONTAINER   │                  │
+      │   │             │   │               │                  │
+      │   │ (your app)  │   │ (log shipper, │                  │
+      │   │             │   │  proxy, etc)  │                  │
+      │   └─────────────┘   └───────────────┘                  │
+      │         │                   │                           │
+      │         └───────────────────┘                           │
+      │              Shared Network & Storage                   │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **When to use multiple containers:**
+      - **Sidecar**: Log collection, proxies, config sync
+      - **Init**: Database migrations, wait for dependencies, setup
+
+      **Key insight:** Containers in a pod share network (localhost) and
+      can share storage (volumes). They live and die together.
+    key_points:
+      - "Containers in a pod share network and can share storage"
+      - "Init containers run BEFORE the main containers"
+      - "Sidecars run alongside the main container"
+      - "All containers in a pod start and stop together"
+
+  - title: "Init Containers"
+    content: |
+      **Init containers** run before your main containers and must complete
+      successfully.
+
+      **Use Cases:**
+      - Wait for a database to be ready
+      - Download configuration files
+      - Set up file permissions
+      - Run database migrations
+
+      **Init Container YAML:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: init-demo
+      spec:
+        initContainers:        # Runs FIRST
+        - name: wait-for-db
+          image: busybox
+          command: ['sh', '-c', 'until nc -z database 5432; do sleep 2; done']
+
+        containers:            # Runs AFTER init completes
+        - name: app
+          image: my-app:1.0
+      ```
+
+      **How init containers work:**
+
+      ```
+      Pod Created
+           │
+           ▼
+      ┌──────────────┐
+      │ Init #1      │ ──► Success ──► Continue
+      └──────────────┘         │
+           │                   │
+           ▼                   │
+      ┌──────────────┐         │
+      │ Init #2      │ ──► Success ──► Continue
+      └──────────────┘         │
+           │                   │
+           ▼                   │
+      ┌──────────────┐         │
+      │ Main + Sidecar│◄───────┘
+      │  Containers   │
+      └──────────────┘
+      ```
+
+      **If an init container fails:** The pod restarts and tries again.
+
+      **Key insight:** Init containers guarantee things are ready before
+      your app starts. They're like a pre-flight checklist.
+    key_points:
+      - "Init containers run before main containers"
+      - "They must complete successfully (exit 0)"
+      - "Multiple init containers run in order"
+      - "Pod restarts if init container fails"
+
+  - title: "Sidecar Containers"
+    content: |
+      **Sidecar containers** run alongside your main container and provide
+      supporting functionality.
+
+      **Common Sidecar Patterns:**
+
+      | Pattern | What it does | Example |
+      |---------|--------------|---------|
+      | Log shipper | Collects and forwards logs | Fluentd, Filebeat |
+      | Proxy | Handles network traffic | Envoy, Istio |
+      | Config sync | Updates config dynamically | git-sync |
+      | Adapter | Transforms data formats | Prometheus exporter |
+
+      **Sidecar Example - Log Collector:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: sidecar-demo
+      spec:
+        containers:
+        - name: app                    # Main container
+          image: my-app:1.0
+          volumeMounts:
+          - name: logs
+            mountPath: /var/log/app
+
+        - name: log-shipper            # Sidecar container
+          image: fluentd:latest
+          volumeMounts:
+          - name: logs
+            mountPath: /var/log/app    # Same volume!
+
+        volumes:                        # Shared storage
+        - name: logs
+          emptyDir: {}
+      ```
+
+      **How they communicate:**
+
+      ```
+      ┌─────────────────────────────────────────────────┐
+      │                      POD                         │
+      │                                                 │
+      │   ┌─────────┐              ┌─────────────┐     │
+      │   │   App   │──writes───►  │ Shared      │     │
+      │   │         │   logs       │ Volume      │     │
+      │   │ :8080   │              │ (/var/log)  │     │
+      │   └─────────┘              └──────┬──────┘     │
+      │        ▲                          │            │
+      │        │                          ▼            │
+      │        │                   ┌─────────────┐    │
+      │   localhost                │ Log Shipper │    │
+      │   connection               │ (sidecar)   │────►│ External
+      │        │                   └─────────────┘    │  System
+      │        │                                      │
+      └────────┼──────────────────────────────────────┘
+               │
+       Both use same network namespace
+       (can communicate via localhost)
+      ```
+
+      **Key insight:** Sidecars extend your app's functionality without
+      modifying your app's code.
+    key_points:
+      - "Sidecars run alongside the main container"
+      - "They share network (localhost) and can share volumes"
+      - "Common uses: logging, proxies, config sync"
+      - "Keeps concerns separated - app doesn't need logging code"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create Pod with Init Container"
+    instructions: |
+      **What we're doing:** Create a pod that waits for something before starting.
+
+      **Why this matters:** Init containers ensure dependencies are ready
+      before your app tries to use them.
+
+      Create a YAML file with an init container, then apply it:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-demo
+spec:
+  initContainers:
+  - name: init-wait
+    image: busybox
+    command: ['sh', '-c', 'echo Initializing... && sleep 5 && echo Done!']
+  containers:
+  - name: app
+    image: nginx
+EOF"
+    validation:
+      type: "resource_state"
+      resource: "pod/init-demo"
+      state: "Running"
+      timeout: 60
+    points: 10
+
+  - id: "cmd-02"
+    title: "View Init Container Logs"
+    instructions: |
+      **What we're doing:** Check what happened in the init container.
+
+      **Why this matters:** Init container logs help you debug startup issues.
+
+      **The command:**
+      ```
+      kubectl logs <pod> -c <container-name>
+                         ↑
+                         └── specify which container
+      ```
+
+      View the init container logs:
+    command_hint: "kubectl logs init-demo -c init-wait"
+    validation:
+      type: "command_output"
+      command: "kubectl logs init-demo -c init-wait"
+      expected_contains: "Done"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Create Multi-Container Pod"
+    instructions: |
+      **What we're doing:** Create a pod with two containers that share a volume.
+
+      **Why this matters:** This is the foundation for sidecar patterns.
+
+      Create a pod with main app and sidecar:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-demo
+spec:
+  containers:
+  - name: main
+    image: nginx
+    volumeMounts:
+    - name: shared
+      mountPath: /usr/share/nginx/html
+  - name: sidecar
+    image: busybox
+    command: ['sh', '-c', 'while true; do echo $(date) > /data/index.html; sleep 10; done']
+    volumeMounts:
+    - name: shared
+      mountPath: /data
+  volumes:
+  - name: shared
+    emptyDir: {}
+EOF"
+    validation:
+      type: "resource_state"
+      resource: "pod/sidecar-demo"
+      state: "Running"
+      timeout: 60
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Init Container Stuck"
+    description: |
+      A pod is stuck in "Init:0/1" status and never becomes Ready:
+
+      ```
+      NAME           READY   STATUS     RESTARTS   AGE
+      stuck-init     0/1     Init:0/1   0          5m
+      ```
+
+      Your mission: Figure out why the init container isn't completing!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: stuck-init
+        namespace: default
+      spec:
+        initContainers:
+        - name: wait-forever
+          image: busybox
+          command: ['sh', '-c', 'sleep 3600']
+        containers:
+        - name: app
+          image: nginx
+    hints:
+      - "Check init container logs: `kubectl logs stuck-init -c wait-forever`"
+      - "The init container is running 'sleep 3600' (1 hour) - it will never complete"
+      - "Delete and recreate with a proper init command: kubectl delete pod stuck-init"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pods"
+      expected_not_contains: "Init:0/1"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Wrong Container Logs"
+    description: |
+      You're trying to view logs from a multi-container pod but getting the wrong container's output.
+
+      The pod has containers: main, sidecar
+
+      Your mission: Get logs from the correct container!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: multi-logs
+        namespace: default
+      spec:
+        containers:
+        - name: main
+          image: nginx
+        - name: sidecar
+          image: busybox
+          command: ['sh', '-c', 'while true; do echo "Sidecar running"; sleep 5; done']
+    hints:
+      - "When a pod has multiple containers, you need to specify which one"
+      - "Use the -c flag: `kubectl logs multi-logs -c sidecar`"
+      - "To see all containers in the pod: `kubectl describe pod multi-logs`"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl logs multi-logs -c sidecar"
+      expected_contains: "Sidecar"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "When do init containers run?"
+      options:
+        - "After main containers start"
+        - "At the same time as main containers"
+        - "Before main containers, and must complete first"
+        - "Only when the pod is deleted"
+      correct: 2
+      explanation: "Init containers run first and must complete successfully before main containers start."
+      points: 5
+
+    - type: "true_false"
+      question: "Containers in the same pod share the same network namespace."
+      correct: true
+      explanation: "Yes! They can communicate via localhost and share the same IP address."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What happens if an init container fails?"
+      options:
+        - "The pod continues with main containers"
+        - "The pod restarts and tries the init container again"
+        - "The pod is deleted"
+        - "Nothing - init containers are optional"
+      correct: 1
+      explanation: "If an init container fails, Kubernetes restarts the pod to try again."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the spec to add an init container:"
+      yaml_template: |
+        spec:
+          ____________:
+          - name: init-setup
+            image: busybox
+      expected: "initContainers"
+      explanation: "Init containers are defined in the 'initContainers' field, separate from 'containers'."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Which is a common use case for sidecar containers?"
+      options:
+        - "Running the main application"
+        - "Log collection and forwarding"
+        - "Storing persistent data"
+        - "Scheduling pods to nodes"
+      correct: 1
+      explanation: "Sidecars commonly handle logging, proxying, config sync - supporting tasks for the main app."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to view logs from a specific container named 'sidecar' in pod 'myapp'"
+      expected_contains: "-c sidecar"
+      alternatives:
+        - "kubectl logs myapp -c sidecar"
+        - "kubectl logs -c sidecar myapp"
+      hint: "Use the -c flag to specify the container"
+      explanation: "`kubectl logs <pod> -c <container>` shows logs from a specific container."
+      points: 10
+
+    - type: "true_false"
+      question: "Init containers can share volumes with main containers."
+      correct: true
+      explanation: "Yes! Init containers can prepare data in a volume that main containers then use."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "If a pod has 3 init containers, in what order do they run?"
+      options:
+        - "All at the same time (parallel)"
+        - "In order, one after another (sequential)"
+        - "Random order"
+        - "Main containers first, then init"
+      correct: 1
+      explanation: "Init containers run sequentially in the order they're defined. Each must complete before the next starts."
+      points: 5

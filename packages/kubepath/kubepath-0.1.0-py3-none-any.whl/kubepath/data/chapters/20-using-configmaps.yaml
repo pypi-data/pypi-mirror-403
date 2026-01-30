@@ -1,0 +1,494 @@
+chapter:
+  number: 20
+  title: "Using ConfigMaps"
+  description: "Inject configuration into pods as environment variables or files"
+
+concepts:
+  - title: "ConfigMaps as Environment Variables"
+    content: |
+      The most common way to use ConfigMaps: inject as environment variables.
+
+      **Method 1: Individual Keys**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: app-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          env:
+          - name: DATABASE_HOST      # Env var name in container
+            valueFrom:
+              configMapKeyRef:
+                name: db-config      # ConfigMap name
+                key: DB_HOST         # Key in ConfigMap
+          - name: LOG_LEVEL
+            valueFrom:
+              configMapKeyRef:
+                name: app-config
+                key: LOG_LEVEL
+      ```
+
+      **Method 2: All Keys at Once**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: app-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          envFrom:                   # Load all keys
+          - configMapRef:
+              name: app-config       # Every key becomes an env var
+      ```
+
+      **Visual Comparison:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    ENV INJECTION METHODS                     │
+      │                                                             │
+      │   ConfigMap: app-config                                     │
+      │   ┌─────────────────┐                                       │
+      │   │ DB_HOST: mydb   │                                       │
+      │   │ PORT: 5432      │                                       │
+      │   │ LOG: debug      │                                       │
+      │   └─────────────────┘                                       │
+      │            │                                                │
+      │   ┌────────┴────────┐                                       │
+      │   │                 │                                       │
+      │   ▼                 ▼                                       │
+      │ valueFrom        envFrom                                    │
+      │ (pick keys)      (all keys)                                 │
+      │                                                             │
+      │ env:             envFrom:                                   │
+      │ - name: HOST     - configMapRef:                           │
+      │   valueFrom:         name: app-config                      │
+      │     configMapKeyRef:                                       │
+      │       name: app-config    Container gets:                  │
+      │       key: DB_HOST        DB_HOST=mydb                     │
+      │                           PORT=5432                        │
+      │ Container gets:           LOG=debug                        │
+      │ HOST=mydb                                                  │
+      │ (only selected keys)      (ALL keys)                       │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **When to Use Which:**
+
+      | Method | Use When |
+      |--------|----------|
+      | `valueFrom` | Need specific keys, rename vars, mix sources |
+      | `envFrom` | Want all config as env vars, simple setup |
+
+      **Key insight:** Use `envFrom` for simplicity. Use `valueFrom`
+      when you need to cherry-pick or rename variables.
+    key_points:
+      - "valueFrom.configMapKeyRef for individual keys"
+      - "envFrom.configMapRef for all keys at once"
+      - "Keys become environment variable names"
+      - "envFrom is simpler but less flexible"
+
+  - title: "ConfigMaps as Volumes"
+    content: |
+      Mount ConfigMaps as files in your container.
+
+      **Why Mount as Files?**
+      - Application expects config files (nginx.conf, app.properties)
+      - Need to preserve file structure
+      - Config too complex for environment variables
+
+      **Basic Volume Mount:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: nginx-pod
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+          volumeMounts:
+          - name: config-volume
+            mountPath: /etc/nginx/conf.d    # Where to mount
+        volumes:
+        - name: config-volume
+          configMap:
+            name: nginx-config              # ConfigMap name
+      ```
+
+      **How It Works:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │  ConfigMap: nginx-config                                    │
+      │  ┌──────────────────────────────────────────────────────┐  │
+      │  │ data:                                                 │  │
+      │  │   default.conf: |                                    │  │
+      │  │     server { listen 80; }                            │  │
+      │  │   mime.types: |                                      │  │
+      │  │     text/html html;                                  │  │
+      │  └──────────────────────────────────────────────────────┘  │
+      │                          │                                  │
+      │                          ▼                                  │
+      │  Container filesystem:                                      │
+      │  ┌──────────────────────────────────────────────────────┐  │
+      │  │ /etc/nginx/conf.d/                                   │  │
+      │  │   ├── default.conf    ← file with server { ... }    │  │
+      │  │   └── mime.types      ← file with text/html...      │  │
+      │  └──────────────────────────────────────────────────────┘  │
+      │                                                             │
+      │  Each key becomes a file!                                   │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Mount Specific Keys:**
+
+      ```yaml
+      volumes:
+      - name: config-volume
+        configMap:
+          name: nginx-config
+          items:                    # Only mount these keys
+          - key: default.conf
+            path: site.conf         # Rename the file
+      ```
+
+      **Mount as Single File:**
+
+      ```yaml
+      volumeMounts:
+      - name: config-volume
+        mountPath: /etc/nginx/nginx.conf
+        subPath: nginx.conf        # Mount single file, not directory
+      ```
+
+      **Key insight:** Without `subPath`, mounting replaces the entire
+      directory. Use `subPath` to add a single file without replacing others.
+    key_points:
+      - "Each ConfigMap key becomes a file"
+      - "Mount entire ConfigMap or specific items"
+      - "Use subPath to mount single file"
+      - "Files are updated when ConfigMap changes (except subPath)"
+
+  - title: "ConfigMap Updates and Best Practices"
+    content: |
+      **Live Updates:**
+
+      Volume-mounted ConfigMaps update automatically (eventually).
+      Environment variables do NOT update - pod restart required.
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │               CONFIGMAP UPDATE BEHAVIOR                      │
+      │                                                             │
+      │   Volume Mount:                                             │
+      │   ┌─────────────────────────────────────────────────────┐  │
+      │   │  ConfigMap updated ──► Files update automatically   │  │
+      │   │  (within ~1 minute, kubelet sync period)            │  │
+      │   │                                                     │  │
+      │   │  ⚠️  Exception: subPath mounts DON'T auto-update    │  │
+      │   └─────────────────────────────────────────────────────┘  │
+      │                                                             │
+      │   Environment Variables:                                    │
+      │   ┌─────────────────────────────────────────────────────┐  │
+      │   │  ConfigMap updated ──► Pod still has old values     │  │
+      │   │                                                     │  │
+      │   │  Must restart pod to pick up changes!               │  │
+      │   └─────────────────────────────────────────────────────┘  │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Best Practices:**
+
+      **1. Use Descriptive Names:**
+      ```yaml
+      name: api-config           # Good
+      name: config1              # Bad - not descriptive
+      ```
+
+      **2. Version Your ConfigMaps:**
+      ```yaml
+      name: api-config-v2        # Can rollback by switching versions
+      ```
+
+      **3. Use Labels:**
+      ```yaml
+      metadata:
+        name: api-config
+        labels:
+          app: api
+          version: v2
+      ```
+
+      **4. Set Immutable When Possible:**
+      ```yaml
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: static-config
+      immutable: true            # Can't be changed, better performance
+      data:
+        KEY: value
+      ```
+
+      **Common Patterns:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    CONFIGMAP PATTERNS                        │
+      │                                                             │
+      │   Env vars for simple settings:                             │
+      │   LOG_LEVEL, DEBUG_MODE, MAX_RETRIES                       │
+      │                                                             │
+      │   Volume for config files:                                  │
+      │   nginx.conf, application.yml, prometheus.yml              │
+      │                                                             │
+      │   Combined approach:                                        │
+      │   - Env vars for runtime settings                          │
+      │   - Volume for static config files                         │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Env vars are simpler but require restarts.
+      Volumes are more complex but can hot-reload configs.
+    key_points:
+      - "Volume mounts auto-update, env vars don't"
+      - "subPath mounts don't auto-update"
+      - "Use immutable: true for better performance"
+      - "Version ConfigMaps for easy rollbacks"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Use ConfigMap in Env Vars"
+    instructions: |
+      **What we're doing:** Create a pod that reads ConfigMap as environment variables.
+
+      **Why this matters:** This is how most applications consume configuration.
+
+      First create a ConfigMap, then a pod that uses it:
+    command_hint: "kubectl create configmap env-demo --from-literal=APP_MODE=production --from-literal=LOG_LEVEL=info && kubectl run env-pod --image=nginx --dry-run=client -o yaml | kubectl apply -f - && kubectl set env pod/env-pod --from=configmap/env-demo"
+    validation:
+      type: "command_output"
+      command: "kubectl exec env-pod -- env 2>/dev/null | grep -E 'APP_MODE|LOG_LEVEL' || kubectl get configmap env-demo"
+      expected_contains: "APP_MODE"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Mount ConfigMap as Volume"
+    instructions: |
+      **What we're doing:** Mount a ConfigMap as files in a container.
+
+      **Why this matters:** Applications often expect config files at
+      specific paths (like /etc/nginx/nginx.conf).
+
+      This requires YAML - let's generate and apply:
+    command_hint: "kubectl create configmap file-cm --from-literal=app.conf='debug=true' && kubectl run vol-pod --image=nginx --dry-run=client -o yaml > /tmp/vol-pod.yaml"
+    validation:
+      type: "command_output"
+      command: "kubectl get configmap file-cm"
+      expected_contains: "file-cm"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Verify ConfigMap in Pod"
+    instructions: |
+      **What we're doing:** Check that the ConfigMap values are visible in the pod.
+
+      **Why this matters:** Always verify your configuration is correctly
+      injected before assuming it works.
+
+      Check the environment variables in the pod:
+    command_hint: "kubectl exec env-pod -- printenv | grep -E 'APP_MODE|LOG_LEVEL'"
+    validation:
+      type: "command_output"
+      command: "kubectl get configmap env-demo -o yaml"
+      expected_contains: "production"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "ConfigMap Key Missing"
+    description: |
+      A pod fails with:
+
+      ```
+      CreateContainerConfigError: configmap key "DATABASE_URL" not found
+      ```
+
+      The ConfigMap exists but the pod can't find the key!
+
+      Your mission: Fix the configuration mismatch!
+    manifest: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-config
+      data:
+        DB_URL: postgres://localhost:5432/mydb
+        LOG_LEVEL: info
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: broken-env-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          env:
+          - name: DATABASE_URL
+            valueFrom:
+              configMapKeyRef:
+                name: app-config
+                key: DATABASE_URL
+    hints:
+      - "Check the ConfigMap keys vs what the pod expects"
+      - "ConfigMap has 'DB_URL' but pod wants 'DATABASE_URL'"
+      - "Either update ConfigMap key or pod's configMapKeyRef.key"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod broken-env-pod -o jsonpath='{.status.phase}'"
+      expected_contains: "Running"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "ConfigMap Not Updating"
+    description: |
+      You updated a ConfigMap but the application isn't picking up the changes.
+
+      ```
+      $ kubectl edit configmap app-config
+      # Changed LOG_LEVEL from "info" to "debug"
+
+      $ kubectl exec app-pod -- printenv | grep LOG
+      LOG_LEVEL=info  ← Still shows old value!
+      ```
+
+      Your mission: Make the pod see the updated config!
+    manifest: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: update-config
+      data:
+        LOG_LEVEL: info
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: update-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          env:
+          - name: LOG_LEVEL
+            valueFrom:
+              configMapKeyRef:
+                name: update-config
+                key: LOG_LEVEL
+    hints:
+      - "Environment variables are set at pod start time"
+      - "Unlike volume mounts, env vars don't auto-update"
+      - "You need to restart the pod: kubectl delete pod update-pod"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get configmap update-config -o yaml"
+      expected_contains: "LOG_LEVEL"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What's the difference between 'env' with configMapKeyRef and 'envFrom'?"
+      options:
+        - "env is faster than envFrom"
+        - "env loads one key at a time, envFrom loads all keys"
+        - "envFrom only works with Secrets"
+        - "There is no difference"
+      correct: 1
+      explanation: "env/valueFrom selects specific keys, envFrom loads everything at once."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the spec to load all ConfigMap keys as env vars:"
+      yaml_template: |
+        spec:
+          containers:
+          - name: app
+            _______:
+            - configMapRef:
+                name: my-config
+      expected: "envFrom"
+      explanation: "envFrom loads all keys from a ConfigMap or Secret."
+      points: 10
+
+    - type: "true_false"
+      question: "ConfigMaps mounted as volumes automatically update when the ConfigMap changes."
+      correct: true
+      explanation: "Volume mounts update automatically (except subPath). Env vars require pod restart."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "How do you mount only specific keys from a ConfigMap?"
+      options:
+        - "Use the 'only' field"
+        - "Use the 'items' array in the volume spec"
+        - "Create a separate ConfigMap"
+        - "It's not possible"
+      correct: 1
+      explanation: "Use 'items' to select and optionally rename specific keys."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the kubectl command to see environment variables in a running pod called 'app'"
+      expected_contains: "exec"
+      alternatives:
+        - "kubectl exec app -- env"
+        - "kubectl exec app -- printenv"
+        - "kubectl exec -it app -- env"
+      hint: "Use kubectl exec to run a command in the pod"
+      explanation: "`kubectl exec app -- env` or `kubectl exec app -- printenv`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What happens if you use subPath to mount a ConfigMap file?"
+      options:
+        - "The file auto-updates when ConfigMap changes"
+        - "The file does NOT auto-update when ConfigMap changes"
+        - "The entire directory is replaced"
+        - "subPath is not valid with ConfigMaps"
+      correct: 1
+      explanation: "subPath mounts are an exception - they don't receive automatic updates."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the ConfigMap to prevent modifications:"
+      yaml_template: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: static-config
+        _________: true
+        data:
+          KEY: value
+      expected: "immutable"
+      explanation: "immutable: true prevents changes and improves performance."
+      points: 10
+
+    - type: "true_false"
+      question: "Environment variables from ConfigMaps update automatically without pod restart."
+      correct: false
+      explanation: "Env vars are set at pod startup. You must restart the pod to pick up changes."
+      points: 5

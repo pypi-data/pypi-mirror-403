@@ -1,0 +1,433 @@
+chapter:
+  number: 22
+  title: "Resource Requests & Limits"
+  description: "Control CPU and memory allocation for your pods"
+
+concepts:
+  - title: "Why Resources Matter"
+    content: |
+      Without resource settings, pods can consume unlimited CPU and memory,
+      starving other pods or crashing nodes.
+
+      **The Pizza Party Analogy**
+
+      Imagine ordering pizza for a party:
+      - **No limits**: One person eats all 10 pizzas, others starve
+      - **Requests**: "I need at least 2 slices to be satisfied"
+      - **Limits**: "But I can't have more than 4 slices total"
+
+      **The Problem:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 NODE (8GB RAM)                              │
+      │                                                             │
+      │   Without limits:                                           │
+      │   ┌─────────────────────────────────────────────────┐      │
+      │   │ Pod A: "I'll take 6GB!"                         │      │
+      │   │ Pod B: "I need 3GB!"                            │      │
+      │   │ Pod C: "Me too, 2GB!"                           │      │
+      │   │                                                 │      │
+      │   │ Total: 11GB requested... Node only has 8GB!     │      │
+      │   │                                                 │      │
+      │   │ Result: OOMKilled! 💀                           │      │
+      │   └─────────────────────────────────────────────────┘      │
+      │                                                             │
+      │   With requests & limits:                                   │
+      │   ┌─────────────────────────────────────────────────┐      │
+      │   │ Pod A: Requests 1GB, Limit 2GB ✓               │      │
+      │   │ Pod B: Requests 1GB, Limit 2GB ✓               │      │
+      │   │ Pod C: Requests 1GB, Limit 2GB ✓               │      │
+      │   │                                                 │      │
+      │   │ Total requests: 3GB (fits in 8GB node)         │      │
+      │   │ Max possible: 6GB (still fits!)                 │      │
+      │   └─────────────────────────────────────────────────┘      │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Key Terms:**
+
+      | Term | Meaning |
+      |------|---------|
+      | **Request** | Guaranteed minimum resources |
+      | **Limit** | Maximum resources allowed |
+      | **CPU** | Measured in cores (1, 0.5, 100m) |
+      | **Memory** | Measured in bytes (128Mi, 1Gi) |
+
+      **Key insight:** Requests determine scheduling, limits prevent
+      resource hogging. Always set both!
+    key_points:
+      - "Requests = guaranteed minimum"
+      - "Limits = maximum allowed"
+      - "Scheduler uses requests for placement"
+      - "Limits prevent resource starvation"
+
+  - title: "CPU and Memory Units"
+    content: |
+      Understanding resource units is crucial for correct configuration.
+
+      **CPU Units:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    CPU UNITS                                │
+      │                                                             │
+      │   1 CPU = 1 AWS vCPU = 1 GCP Core = 1 Azure Core           │
+      │                                                             │
+      │   Formats:                                                  │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  1      = 1 full CPU core                   │          │
+      │   │  0.5    = half a CPU core                   │          │
+      │   │  500m   = 500 millicores = 0.5 cores       │          │
+      │   │  100m   = 100 millicores = 0.1 cores       │          │
+      │   │  1000m  = 1000 millicores = 1 core         │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Memory trick: "m" = millicores (1/1000 of a core)        │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Memory Units:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                   MEMORY UNITS                              │
+      │                                                             │
+      │   Base-2 (binary, use these!):                             │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  Ki  = Kibibyte = 1024 bytes               │          │
+      │   │  Mi  = Mebibyte = 1024 Ki = 1,048,576 bytes│          │
+      │   │  Gi  = Gibibyte = 1024 Mi                  │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Base-10 (decimal, less common):                          │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  K   = Kilobyte = 1000 bytes               │          │
+      │   │  M   = Megabyte = 1000 K                   │          │
+      │   │  G   = Gigabyte = 1000 M                   │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Memory trick: "i" in unit = binary (power of 2)          │
+      │                 Use Mi, Gi for clarity!                    │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Common Examples:**
+
+      | Application Type | CPU Request | Memory Request |
+      |-----------------|-------------|----------------|
+      | Small web app | 100m | 128Mi |
+      | Medium API | 250m | 256Mi |
+      | Heavy processing | 500m | 512Mi |
+      | Database | 1000m | 1Gi |
+
+      **Key insight:** Use millicores (m) for CPU and Mebibytes (Mi) for
+      memory. These are the most common formats you'll see.
+    key_points:
+      - "CPU: 1 core = 1000m (millicores)"
+      - "Memory: Use Mi (mebibytes) and Gi (gibibytes)"
+      - "100m CPU = 0.1 cores = 10% of a core"
+      - "256Mi = 256 mebibytes ≈ 268MB"
+
+  - title: "Setting Resources in Pods"
+    content: |
+      **Basic Resource Configuration:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: resource-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          resources:
+            requests:
+              cpu: "100m"        # Minimum guaranteed
+              memory: "128Mi"
+            limits:
+              cpu: "500m"        # Maximum allowed
+              memory: "256Mi"
+      ```
+
+      **What Happens When Limits Are Exceeded:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │              EXCEEDING LIMITS                               │
+      │                                                             │
+      │   CPU Limit Exceeded:                                       │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  Container is THROTTLED                     │          │
+      │   │  - Still runs, but slower                   │          │
+      │   │  - Won't get more CPU time                  │          │
+      │   │  - Not killed!                              │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Memory Limit Exceeded:                                    │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │  Container is OOMKilled! 💀                 │          │
+      │   │  - Process is terminated immediately        │          │
+      │   │  - Pod restarts (if restartPolicy allows)   │          │
+      │   │  - Can cause CrashLoopBackOff              │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **QoS Classes (Automatically Assigned):**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                QOS CLASSES                                  │
+      │                                                             │
+      │   Guaranteed (highest priority):                            │
+      │   - Requests = Limits for all containers                   │
+      │   - Last to be evicted                                     │
+      │                                                             │
+      │   Burstable (medium priority):                              │
+      │   - At least one container has requests                    │
+      │   - Limits may be higher than requests                     │
+      │                                                             │
+      │   BestEffort (lowest priority):                             │
+      │   - No requests or limits set                              │
+      │   - First to be evicted when node is under pressure        │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Best Practice:**
+
+      ```yaml
+      # Good: Guaranteed QoS (most stable)
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "100m"        # Same as request!
+          memory: "128Mi"    # Same as request!
+      ```
+
+      **Key insight:** Memory limits are hard - exceed them and you're killed.
+      CPU limits are soft - you just get throttled. Set limits slightly higher
+      than typical usage.
+    key_points:
+      - "CPU over-limit = throttled (still runs)"
+      - "Memory over-limit = OOMKilled (process dies)"
+      - "Guaranteed QoS: requests = limits"
+      - "BestEffort pods are evicted first"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create Pod with Resources"
+    instructions: |
+      **What we're doing:** Create a pod with CPU and memory limits.
+
+      **Why this matters:** All production pods should have resource settings
+      to prevent resource starvation.
+
+      Create a pod with resource specifications:
+    command_hint: "kubectl run resource-pod --image=nginx --requests='cpu=100m,memory=128Mi' --limits='cpu=200m,memory=256Mi'"
+    validation:
+      type: "command_output"
+      command: "kubectl describe pod resource-pod | grep -A5 Limits"
+      expected_contains: "cpu"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Check Pod Resource Usage"
+    instructions: |
+      **What we're doing:** See how much CPU and memory a pod is using.
+
+      **Why this matters:** Compare actual usage to limits to tune settings.
+
+      **Note:** This requires metrics-server to be installed.
+
+      Check resource usage:
+    command_hint: "kubectl top pod resource-pod 2>/dev/null || echo 'metrics-server not installed - that is OK for this practice'"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod resource-pod -o jsonpath='{.spec.containers[0].resources.limits}'"
+      expected_contains: "cpu"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Check QoS Class"
+    instructions: |
+      **What we're doing:** Verify the QoS class assigned to the pod.
+
+      **Why this matters:** QoS class determines eviction priority under
+      resource pressure.
+
+      Check the pod's QoS class:
+    command_hint: "kubectl get pod resource-pod -o jsonpath='{.status.qosClass}'"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod resource-pod -o yaml"
+      expected_contains: "qosClass"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Pod OOMKilled"
+    description: |
+      A pod keeps getting killed with OOMKilled status:
+
+      ```
+      $ kubectl get pods
+      NAME        READY   STATUS      RESTARTS
+      memory-hog  0/1     OOMKilled   5
+
+      $ kubectl describe pod memory-hog
+      Last State: Terminated
+      Reason: OOMKilled
+      ```
+
+      Your mission: Fix the memory limit to prevent OOMKilled!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: memory-hog
+      spec:
+        containers:
+        - name: stress
+          image: nginx
+          resources:
+            limits:
+              memory: "10Mi"
+          command: ["/bin/sh", "-c"]
+          args: ["echo 'Running with low memory' && sleep 3600"]
+    hints:
+      - "OOMKilled means the container tried to use more memory than its limit"
+      - "The limit is only 10Mi which is too low for nginx"
+      - "Increase the memory limit: kubectl patch pod memory-hog -p '{\"spec\":{\"containers\":[{\"name\":\"stress\",\"resources\":{\"limits\":{\"memory\":\"128Mi\"}}}]}}'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod memory-hog -o jsonpath='{.spec.containers[0].resources.limits.memory}'"
+      expected_contains: "Mi"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Pod Stuck Pending"
+    description: |
+      A pod is stuck in Pending status:
+
+      ```
+      $ kubectl get pods
+      NAME            READY   STATUS    RESTARTS   AGE
+      greedy-pod      0/1     Pending   0          5m
+
+      $ kubectl describe pod greedy-pod
+      Events:
+        Warning  FailedScheduling  Insufficient cpu
+      ```
+
+      Your mission: Fix the resource request to allow scheduling!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: greedy-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          resources:
+            requests:
+              cpu: "100"
+              memory: "128Mi"
+    hints:
+      - "Check the CPU request - 100 means 100 full cores!"
+      - "The request should be 100m (millicores) not 100"
+      - "Fix: Change cpu request from '100' to '100m'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod greedy-pod -o jsonpath='{.status.phase}'"
+      expected_contains: "Running"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What happens when a container exceeds its CPU limit?"
+      options:
+        - "The container is killed (OOMKilled)"
+        - "The container is throttled (still runs, but slower)"
+        - "The pod is evicted from the node"
+        - "Nothing, CPU limits are just suggestions"
+      correct: 1
+      explanation: "CPU limits cause throttling, not termination. Memory limits cause OOMKilled."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the spec to request 256 mebibytes of memory:"
+      yaml_template: |
+        resources:
+          requests:
+            memory: "______"
+      expected: "256Mi"
+      explanation: "Use Mi for mebibytes. 256Mi = 256 mebibytes."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does 500m CPU mean?"
+      options:
+        - "500 megabytes of memory"
+        - "500 millicores = 0.5 CPU cores"
+        - "500 minutes of CPU time"
+        - "500 maximum CPU"
+      correct: 1
+      explanation: "'m' means millicores. 500m = 500/1000 = 0.5 cores."
+      points: 5
+
+    - type: "true_false"
+      question: "A pod with no resource requests or limits gets the 'Guaranteed' QoS class."
+      correct: false
+      explanation: "No resources = BestEffort. Guaranteed requires requests = limits."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the kubectl command to see resource usage of pod 'web'"
+      expected_contains: "top"
+      alternatives:
+        - "kubectl top pod web"
+        - "kubectl top pods web"
+      hint: "Use kubectl top"
+      explanation: "`kubectl top pod web` shows CPU and memory usage (requires metrics-server)."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Which QoS class has the highest eviction priority (evicted last)?"
+      options:
+        - "BestEffort"
+        - "Burstable"
+        - "Guaranteed"
+        - "Premium"
+      correct: 2
+      explanation: "Guaranteed pods are evicted last. BestEffort pods are evicted first."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the spec to limit container to 200 millicores:"
+      yaml_template: |
+        resources:
+          limits:
+            cpu: "_____"
+      expected: "200m"
+      explanation: "200m = 200 millicores = 0.2 CPU cores."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What status indicates a container was killed for using too much memory?"
+      options:
+        - "CrashLoopBackOff"
+        - "ImagePullBackOff"
+        - "OOMKilled"
+        - "Evicted"
+      correct: 2
+      explanation: "OOMKilled (Out Of Memory Killed) means the container exceeded its memory limit."
+      points: 5

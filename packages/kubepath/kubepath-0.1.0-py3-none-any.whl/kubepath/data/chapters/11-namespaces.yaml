@@ -1,0 +1,411 @@
+chapter:
+  number: 11
+  title: "Namespaces"
+  description: "Organize and isolate resources in your cluster"
+
+concepts:
+  - title: "What are Namespaces?"
+    content: |
+      **Namespaces** are virtual clusters within your Kubernetes cluster.
+      They provide isolation and organization.
+
+      **The Office Building Analogy**
+
+      Think of your cluster as an office building:
+      - The **building** = your Kubernetes cluster
+      - Each **floor** = a namespace
+      - **Offices on a floor** = resources in that namespace
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                 KUBERNETES CLUSTER                       │
+      │                 (Office Building)                        │
+      │                                                         │
+      │  Floor 4: production namespace                          │
+      │  ┌─────────────────────────────────────────────────┐   │
+      │  │  [web-app]  [api-server]  [database]           │   │
+      │  └─────────────────────────────────────────────────┘   │
+      │                                                         │
+      │  Floor 3: staging namespace                             │
+      │  ┌─────────────────────────────────────────────────┐   │
+      │  │  [web-app]  [api-server]  [database]           │   │
+      │  └─────────────────────────────────────────────────┘   │
+      │                                                         │
+      │  Floor 2: development namespace                         │
+      │  ┌─────────────────────────────────────────────────┐   │
+      │  │  [web-app]  [api-server]                        │   │
+      │  └─────────────────────────────────────────────────┘   │
+      │                                                         │
+      │  Floor 1: kube-system namespace (building management)  │
+      │  ┌─────────────────────────────────────────────────┐   │
+      │  │  [coredns]  [kube-proxy]  [controller]         │   │
+      │  └─────────────────────────────────────────────────┘   │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Why use namespaces?**
+
+      | Reason | Example |
+      |--------|---------|
+      | Environment separation | dev, staging, production |
+      | Team isolation | team-a, team-b |
+      | Resource quotas | Limit CPU/memory per team |
+      | Access control | Different RBAC per namespace |
+
+      **Key insight:** Same resource names can exist in different namespaces.
+      `web-app` in `production` is different from `web-app` in `staging`.
+    key_points:
+      - "Namespaces are virtual clusters within a cluster"
+      - "Provide isolation between environments/teams"
+      - "Same names can exist in different namespaces"
+      - "Enable resource quotas and access control"
+
+  - title: "Default Namespaces"
+    content: |
+      Every Kubernetes cluster comes with built-in namespaces.
+
+      **Built-in Namespaces:**
+
+      ```
+      $ kubectl get namespaces
+      NAME              STATUS   AGE
+      default           Active   10d    ← Your stuff goes here
+      kube-system       Active   10d    ← Kubernetes components
+      kube-public       Active   10d    ← Publicly readable
+      kube-node-lease   Active   10d    ← Node heartbeats
+      ```
+
+      **What's in each?**
+
+      | Namespace | Purpose | What's inside |
+      |-----------|---------|---------------|
+      | default | Your resources (if no NS specified) | Your pods, services |
+      | kube-system | Kubernetes system components | coredns, kube-proxy |
+      | kube-public | Publicly readable resources | Cluster info |
+      | kube-node-lease | Node health tracking | Lease objects |
+
+      **The default namespace:**
+
+      When you run commands without `-n`, they use `default`:
+
+      ```bash
+      kubectl get pods              # Uses 'default' namespace
+      kubectl get pods -n default   # Same thing, explicit
+      ```
+
+      **Danger Zone:**
+
+      ```
+      ⚠️  NEVER delete kube-system namespace!
+      ⚠️  It contains critical cluster components.
+      ⚠️  Your cluster will break.
+      ```
+
+      **Key insight:** Use custom namespaces for your apps. Keep `default`
+      clean or use it only for quick tests.
+    key_points:
+      - "default: Where your resources go by default"
+      - "kube-system: Critical K8s components (don't touch!)"
+      - "Always specify namespace explicitly in production"
+      - "Create custom namespaces for organization"
+
+  - title: "Working with Namespaces"
+    content: |
+      **Creating Namespaces:**
+
+      ```bash
+      # Imperative
+      kubectl create namespace staging
+
+      # Declarative
+      kubectl apply -f - <<EOF
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: staging
+      EOF
+      ```
+
+      **Specifying Namespace:**
+
+      ```bash
+      # Per-command with -n
+      kubectl get pods -n staging
+      kubectl apply -f pod.yaml -n staging
+
+      # In YAML file
+      metadata:
+        name: my-pod
+        namespace: staging    ← Pod goes to staging
+      ```
+
+      **Switching Default Namespace:**
+
+      Tired of typing `-n staging` every time?
+
+      ```bash
+      # Set default namespace for current context
+      kubectl config set-context --current --namespace=staging
+
+      # Now all commands use staging by default
+      kubectl get pods  # Shows pods in staging
+      ```
+
+      **Namespace in Resource References:**
+
+      ```
+      ┌────────────────────────────────────────────────────────┐
+      │  Cross-namespace DNS:                                   │
+      │                                                        │
+      │  <service>.<namespace>.svc.cluster.local              │
+      │                                                        │
+      │  Examples:                                             │
+      │  - database.production.svc.cluster.local              │
+      │  - api.staging.svc.cluster.local                      │
+      └────────────────────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Resources in different namespaces can talk to each
+      other using the full DNS name: `service.namespace.svc.cluster.local`
+    key_points:
+      - "Create with 'kubectl create namespace'"
+      - "Use -n flag or set in YAML metadata"
+      - "Can change default namespace with kubectl config"
+      - "Cross-namespace: service.namespace.svc.cluster.local"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a Namespace"
+    instructions: |
+      **What we're doing:** Create a new namespace for organizing resources.
+
+      **Why this matters:** Namespaces let you separate environments (dev, staging, prod)
+      or teams (team-a, team-b).
+
+      **The command:**
+      ```
+      kubectl create namespace <name>
+      ```
+
+      Create a namespace called 'practice':
+    command_hint: "kubectl create namespace practice"
+    validation:
+      type: "command_output"
+      command: "kubectl get namespace practice"
+      expected_contains: "Active"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Deploy to a Namespace"
+    instructions: |
+      **What we're doing:** Create a pod in a specific namespace.
+
+      **Why this matters:** You need to know how to deploy resources to the
+      correct namespace.
+
+      **Two ways to specify namespace:**
+      ```
+      kubectl run nginx --image=nginx -n practice
+      # OR
+      kubectl run nginx --image=nginx --namespace=practice
+      ```
+
+      Create a pod in the 'practice' namespace:
+    command_hint: "kubectl run ns-pod --image=nginx -n practice"
+    validation:
+      type: "resource_state"
+      resource: "pod/ns-pod"
+      namespace: "practice"
+      state: "Running"
+      timeout: 60
+    points: 10
+
+  - id: "cmd-03"
+    title: "List Resources Across Namespaces"
+    instructions: |
+      **What we're doing:** See resources in all namespaces at once.
+
+      **Why this matters:** Quickly find resources without knowing which
+      namespace they're in.
+
+      **The -A flag:**
+      ```
+      kubectl get pods -A
+                       ↑
+                       └── All namespaces
+      ```
+
+      List all pods across all namespaces:
+    command_hint: "kubectl get pods -A"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods -A"
+      expected_contains: "practice"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Resource Not Found... Or Is It?"
+    description: |
+      You're looking for a pod called 'api-server' but can't find it:
+
+      ```
+      $ kubectl get pod api-server
+      Error from server (NotFound): pods "api-server" not found
+      ```
+
+      But your colleague says it's definitely running!
+
+      Your mission: Find the missing pod!
+    manifest: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: backend
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: api-server
+        namespace: backend
+      spec:
+        containers:
+        - name: api
+          image: nginx
+    hints:
+      - "The pod might be in a different namespace"
+      - "Try listing all pods across all namespaces: kubectl get pods -A"
+      - "The pod is in the 'backend' namespace. Use: kubectl get pod api-server -n backend"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod api-server -n backend"
+      expected_contains: "Running"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Clean Up a Namespace"
+    description: |
+      You need to delete all resources in the 'test' namespace without
+      deleting the namespace itself.
+
+      Your mission: Remove all pods in the test namespace!
+    manifest: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: test
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: test-pod-1
+        namespace: test
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: test-pod-2
+        namespace: test
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+    hints:
+      - "You can delete all pods in a namespace with: kubectl delete pods --all -n <namespace>"
+      - "The command is: kubectl delete pods --all -n test"
+      - "Alternatively, use: kubectl delete pod -n test --all"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pods -n test"
+      expected_contains: "No resources found"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is a namespace in Kubernetes?"
+      options:
+        - "A type of pod"
+        - "A virtual cluster within a cluster for isolation"
+        - "A network configuration"
+        - "A storage class"
+      correct: 1
+      explanation: "Namespaces are virtual clusters that provide isolation and organization within a cluster."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to create a namespace called 'production'"
+      expected_contains: "kubectl create namespace"
+      alternatives:
+        - "kubectl create namespace production"
+        - "kubectl create ns production"
+      hint: "Use 'kubectl create namespace'"
+      explanation: "`kubectl create namespace production` creates a new namespace."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Which namespace contains Kubernetes system components?"
+      options:
+        - "default"
+        - "kube-public"
+        - "kube-system"
+        - "system"
+      correct: 2
+      explanation: "kube-system contains critical components like coredns, kube-proxy, etc."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the pod spec to deploy to the 'staging' namespace:"
+      yaml_template: |
+        metadata:
+          name: my-app
+          _________: staging
+      expected: "namespace"
+      explanation: "The 'namespace' field in metadata specifies where the resource goes."
+      points: 10
+
+    - type: "command_challenge"
+      question: "Write the command to list pods in all namespaces"
+      expected_contains: "-A"
+      alternatives:
+        - "kubectl get pods -A"
+        - "kubectl get pods --all-namespaces"
+        - "kubectl get pod -A"
+      hint: "Use the -A flag (or --all-namespaces)"
+      explanation: "`kubectl get pods -A` shows pods across all namespaces."
+      points: 10
+
+    - type: "true_false"
+      question: "Resources with the same name can exist in different namespaces."
+      correct: true
+      explanation: "Yes! 'web-app' in production is separate from 'web-app' in staging."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "How do pods in namespace A talk to a service in namespace B?"
+      options:
+        - "They can't communicate across namespaces"
+        - "Using the full DNS: service.namespace.svc.cluster.local"
+        - "By IP address only"
+        - "They need special permissions"
+      correct: 1
+      explanation: "Cross-namespace communication uses: service.namespace.svc.cluster.local"
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to get pods in the 'development' namespace"
+      expected_contains: "-n development"
+      alternatives:
+        - "kubectl get pods -n development"
+        - "kubectl get pod -n development"
+        - "kubectl get pods --namespace development"
+      hint: "Use -n to specify namespace"
+      explanation: "`kubectl get pods -n development` lists pods in that namespace."
+      points: 10

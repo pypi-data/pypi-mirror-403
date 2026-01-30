@@ -1,0 +1,470 @@
+chapter:
+  number: 35
+  title: "Health Probes"
+  description: "Configure liveness, readiness, and startup probes for robust applications"
+
+concepts:
+  - title: "Why Health Probes?"
+    content: |
+      Kubernetes needs to know if your application is healthy.
+      **Probes** are health checks that tell Kubernetes what to do.
+
+      **The Restaurant Kitchen Analogy**
+
+      - **Liveness**: "Is the chef alive?" (If not, replace them)
+      - **Readiness**: "Is the chef ready to cook?" (If not, don't send orders)
+      - **Startup**: "Has the chef finished warming up?" (Wait before checking)
+
+      **The Three Probe Types:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    PROBE TYPES                              │
+      │                                                             │
+      │   LIVENESS PROBE                                            │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Question: "Is the container still alive?"   │          │
+      │   │ If fails: Container is RESTARTED           │          │
+      │   │ Use case: Detect deadlocks, infinite loops │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   READINESS PROBE                                           │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Question: "Can the container serve traffic?"│          │
+      │   │ If fails: Removed from Service endpoints   │          │
+      │   │ Use case: Warm-up time, dependency checks  │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   STARTUP PROBE                                             │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Question: "Has the container finished starting?"│      │
+      │   │ If fails: Container killed (after timeout) │          │
+      │   │ Use case: Slow-starting applications       │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Probe Flow:**
+
+      ```
+      Container starts
+            │
+            ▼
+      ┌─────────────────┐
+      │  Startup Probe  │──► If fails: Kill and restart
+      │  (if defined)   │
+      └────────┬────────┘
+               │ Success
+               ▼
+      ┌─────────────────────────────────────────┐
+      │                                         │
+      │  ┌─────────────┐    ┌─────────────┐    │
+      │  │  Liveness   │    │  Readiness  │    │
+      │  │   Probe     │    │   Probe     │    │
+      │  └──────┬──────┘    └──────┬──────┘    │
+      │         │                  │           │
+      │    If fails:          If fails:        │
+      │    Restart           Remove from       │
+      │    container         Service           │
+      └─────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Readiness affects traffic routing. Liveness affects
+      container lifecycle. Startup protects slow starters.
+    key_points:
+      - "Liveness: restart if unhealthy"
+      - "Readiness: remove from traffic if not ready"
+      - "Startup: wait for slow apps to start"
+      - "Different actions for different probe failures"
+
+  - title: "Liveness vs Readiness"
+    content: |
+      **When to Use Each:**
+
+      | Situation | Use Probe |
+      |-----------|-----------|
+      | App crashed/hung | Liveness |
+      | App starting up | Readiness |
+      | App temporarily overloaded | Readiness |
+      | App needs restart to recover | Liveness |
+      | App can recover on its own | Readiness |
+
+      **Example: Database Connection**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │            READINESS FOR TEMPORARY ISSUES                   │
+      │                                                             │
+      │   Database temporarily unavailable:                         │
+      │                                                             │
+      │   Time 0:  [App Ready] ────────► In Service endpoints      │
+      │                                                             │
+      │   Time 1:  DB goes down                                    │
+      │            [App NOT Ready] ──X─► Removed from endpoints    │
+      │                                                             │
+      │   Time 2:  DB comes back                                   │
+      │            [App Ready] ────────► Added back to endpoints   │
+      │                                                             │
+      │   Result: No restart needed, just temporary traffic stop   │
+      └─────────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────────┐
+      │            LIVENESS FOR DEAD APPLICATIONS                   │
+      │                                                             │
+      │   Application deadlocked:                                   │
+      │                                                             │
+      │   [App Stuck] ──► Liveness fails ──► Container RESTARTED   │
+      │                                                             │
+      │   Result: Fresh container replaces broken one              │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Common Mistake: Using Liveness Instead of Readiness**
+
+      ```
+      BAD: Liveness probe checks database connection
+      ┌─────────────────────────────────────────────┐
+      │ Database down → Liveness fails → Restart   │
+      │ New container starts → DB still down →     │
+      │ Liveness fails → Restart (infinite loop!)  │
+      └─────────────────────────────────────────────┘
+
+      GOOD: Readiness probe checks database connection
+      ┌─────────────────────────────────────────────┐
+      │ Database down → Readiness fails →          │
+      │ Pod removed from Service (no traffic)      │
+      │ Database recovers → Readiness passes →     │
+      │ Pod added back to Service                  │
+      └─────────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Liveness = "restart will fix it".
+      Readiness = "waiting will fix it".
+    key_points:
+      - "Liveness: for issues that need restart"
+      - "Readiness: for temporary issues"
+      - "Don't use liveness for dependency checks"
+      - "Readiness failure = no traffic, no restart"
+
+  - title: "Startup Probes"
+    content: |
+      **Startup probes** protect slow-starting containers from being
+      killed by liveness probes before they're ready.
+
+      **The Problem:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │            WITHOUT STARTUP PROBE                            │
+      │                                                             │
+      │   Java app needs 60 seconds to start                       │
+      │   Liveness probe starts after 10 seconds                   │
+      │                                                             │
+      │   0s:   Container starts...                                │
+      │   10s:  Liveness probe fails (app still starting)          │
+      │   10s:  Container killed and restarted!                    │
+      │   20s:  Liveness probe fails again                         │
+      │   20s:  Container killed again!                            │
+      │   ...   CrashLoopBackOff                                   │
+      └─────────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────────┐
+      │            WITH STARTUP PROBE                               │
+      │                                                             │
+      │   Java app needs 60 seconds to start                       │
+      │   Startup probe: check every 10s, fail after 30 tries      │
+      │                                                             │
+      │   0s:   Container starts, startup probe begins             │
+      │   10s:  Startup probe fails (expected, app starting)       │
+      │   20s:  Startup probe fails (still starting)               │
+      │   ...                                                      │
+      │   60s:  Startup probe passes!                              │
+      │   61s:  Liveness and readiness probes begin                │
+      │                                                             │
+      │   Result: App has time to start before being checked       │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Startup Probe Configuration:**
+
+      ```yaml
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        failureThreshold: 30      # 30 attempts
+        periodSeconds: 10         # Every 10 seconds
+        # Total: 30 × 10 = 300 seconds (5 minutes) to start
+      ```
+
+      **When Startup Probe Passes:**
+
+      - Startup probe is disabled (never runs again)
+      - Liveness probe begins
+      - Readiness probe begins
+
+      **Key insight:** Startup probes give slow apps time to initialize
+      without fighting against liveness probes.
+    key_points:
+      - "Delays liveness/readiness until app started"
+      - "failureThreshold × periodSeconds = max startup time"
+      - "Only runs until first success"
+      - "Use for apps with long initialization"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Add Liveness Probe"
+    instructions: |
+      **What we're doing:** Add a liveness probe to detect crashed applications.
+
+      **Why this matters:** Without liveness probes, hung applications
+      won't be automatically restarted.
+
+      Create a pod with a liveness probe:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 10
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod liveness-pod -o jsonpath='{.spec.containers[0].livenessProbe}'"
+      expected_contains: "httpGet"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Add Readiness Probe"
+    instructions: |
+      **What we're doing:** Add a readiness probe to control traffic routing.
+
+      **Why this matters:** Ensures traffic only goes to ready pods.
+
+      Create a pod with a readiness probe:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readiness-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod readiness-pod -o jsonpath='{.spec.containers[0].readinessProbe}'"
+      expected_contains: "httpGet"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Check Probe Status"
+    instructions: |
+      **What we're doing:** View probe results and events.
+
+      **Why this matters:** Helps debug when probes fail.
+
+      Describe the pod to see probe events:
+    command_hint: "kubectl describe pod liveness-pod | grep -A5 Liveness"
+    validation:
+      type: "command_output"
+      command: "kubectl describe pod liveness-pod"
+      expected_contains: "Liveness"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Pod Keeps Restarting"
+    description: |
+      A pod is in CrashLoopBackOff due to liveness probe failures:
+
+      ```
+      $ kubectl get pods
+      NAME       READY   STATUS             RESTARTS
+      slow-app   0/1     CrashLoopBackOff   5
+
+      $ kubectl describe pod slow-app
+      Liveness probe failed: connection refused
+      ```
+
+      The app needs 30 seconds to start, but liveness starts at 5 seconds!
+
+      Your mission: Fix the probe timing!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: slow-starter
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          command: ["sh", "-c", "sleep 30 && nginx -g 'daemon off;'"]
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+    hints:
+      - "The app needs 30s to start but probe starts at 5s"
+      - "Increase initialDelaySeconds or add startupProbe"
+      - "Set initialDelaySeconds: 35 or add startup probe with longer threshold"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod slow-starter -o jsonpath='{.spec.containers[0].livenessProbe.initialDelaySeconds}'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Pod Not Receiving Traffic"
+    description: |
+      A pod is running but not receiving any traffic:
+
+      ```
+      $ kubectl get endpoints my-service
+      NAME         ENDPOINTS
+      my-service   <none>
+      ```
+
+      The pod is Running but shows 0/1 Ready!
+
+      Your mission: Fix the readiness probe!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: not-ready-pod
+        labels:
+          app: myapp
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 5
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: my-service
+      spec:
+        selector:
+          app: myapp
+        ports:
+        - port: 80
+    hints:
+      - "The readiness probe checks /healthz but nginx only serves /"
+      - "Either change the probe path or create the /healthz endpoint"
+      - "Change httpGet path from /healthz to /"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod not-ready-pod -o jsonpath='{.spec.containers[0].readinessProbe.httpGet.path}'"
+      expected_contains: "/"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What happens when a liveness probe fails?"
+      options:
+        - "Pod is removed from Service endpoints"
+        - "Container is restarted"
+        - "Pod is deleted"
+        - "Nothing happens"
+      correct: 1
+      explanation: "Liveness failure causes the container to be restarted."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What happens when a readiness probe fails?"
+      options:
+        - "Container is restarted"
+        - "Pod is removed from Service endpoints"
+        - "Pod is deleted"
+        - "Startup probe begins"
+      correct: 1
+      explanation: "Readiness failure removes the pod from Service endpoints (no traffic)."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the probe to check /health endpoint:"
+      yaml_template: |
+        livenessProbe:
+          _______:
+            path: /health
+            port: 8080
+      expected: "httpGet"
+      explanation: "httpGet performs an HTTP GET request to the specified path."
+      points: 10
+
+    - type: "true_false"
+      question: "Startup probe runs continuously throughout the pod's lifetime."
+      correct: false
+      explanation: "Startup probe only runs until it succeeds once, then it's disabled."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "When should you use a startup probe?"
+      options:
+        - "For all containers"
+        - "For slow-starting applications"
+        - "Instead of liveness probes"
+        - "Only for database containers"
+      correct: 1
+      explanation: "Startup probes protect slow-starting apps from being killed early."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete to wait 30 seconds before first probe:"
+      yaml_template: |
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          __________________: 30
+      expected: "initialDelaySeconds"
+      explanation: "initialDelaySeconds delays the first probe execution."
+      points: 10
+
+    - type: "command_challenge"
+      question: "Write the command to see probe events for pod 'my-pod'"
+      expected_contains: "describe"
+      alternatives:
+        - "kubectl describe pod my-pod"
+      hint: "Use kubectl describe"
+      explanation: "`kubectl describe pod my-pod` shows events including probe results."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What should you check with a liveness probe?"
+      options:
+        - "Database connectivity"
+        - "External API availability"
+        - "Application's internal health (deadlock, crash)"
+        - "Available disk space"
+      correct: 2
+      explanation: "Liveness checks if the app itself is healthy, not its dependencies."
+      points: 5
