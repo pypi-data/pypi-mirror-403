@@ -1,0 +1,281 @@
+# Client API (Advanced)
+
+> **Note**: For most users, we recommend using the [Notebook API](notebook.md) with the `lui` interface. This page documents the lower-level client API for advanced use cases.
+
+## Overview
+
+The LouieClient is the core class that handles communication with the Louie.ai service. While it's now an internal class (`louieai._client.LouieClient`), you can still access its functionality through the public API.
+
+## Creating a Client
+
+### Using the louie() Factory (Recommended)
+
+```python
+from louieai import louie
+import graphistry
+
+# First authenticate with Graphistry
+graphistry.register(api=3, username="your_user", password="your_pass")
+
+# Create a callable cursor
+lui = louie()
+
+# Use it like the notebook API
+response = lui("Analyze the network patterns in my dataset")
+print(lui.text)
+```
+
+### Direct Instantiation (Advanced)
+
+For advanced use cases where you need direct access to the client:
+
+```python
+from louieai import louie
+import graphistry
+
+# Authenticate and get graphistry client
+g = graphistry.register(api=3, username="your_user", password="your_pass")
+
+# Create cursor with specific configuration
+lui = louie(g)
+
+# Access the underlying client if needed
+client = lui._client  # Note: This is accessing internal API
+```
+
+## Thread Management
+
+### Using the Cursor API
+
+```python
+from louieai import louie
+
+# Create cursor
+lui = louie()
+
+# Threads are managed automatically
+lui("Start analyzing the network data")
+thread_id = lui._client._current_thread_id  # Access current thread
+
+# Continue in same thread
+lui("Focus on the largest connected component")
+
+# Start a new thread
+lui("", display=False)  # Empty query creates new thread
+lui("New topic here")
+```
+
+### Low-Level Thread Operations
+
+If you need direct thread control:
+
+```python
+from louieai import louie
+lui = louie()
+
+# Access the internal client
+client = lui._client
+
+# List threads (optionally filter by folder)
+threads = client.list_threads(folder="Investigations/Q4")
+for thread in threads:
+    print(f"{thread.id}: {thread.name}")
+
+# Get specific thread
+thread = client.get_thread(thread_id)
+
+# Get by name (server resolves name -> thread)
+thread = client.get_thread_by_name("Sales Analysis")
+```
+
+## Response Handling
+
+Responses are automatically parsed and made available through the cursor interface:
+
+```python
+from louieai import louie
+lui = louie()
+
+# Make a query
+lui("Generate a summary report of the data")
+
+# Access different response types
+if lui.text:
+    print("Text response:", lui.text)
+
+if lui.df is not None:
+    print("DataFrame shape:", lui.df.shape)
+
+# Access raw response elements
+for element in lui.elements:
+    print(f"Element type: {element['type']}")
+```
+
+## Error Handling
+
+```python
+from louieai import louie
+# Example showing error handling (requires authentication)
+# lui = louie()
+# 
+# try:
+#     lui("Query the sales database")
+# except RuntimeError as e:
+#     if "No Graphistry API token" in str(e):
+#         print("Please authenticate with graphistry.register() first")
+#     elif "API returned error" in str(e):
+#         print(f"Server error: {e}")
+#     elif "Failed to connect" in str(e):
+#         print(f"Network error: {e}")
+
+# Working example with mock authentication
+import os
+os.environ['GRAPHISTRY_USERNAME'] = 'test'
+os.environ['GRAPHISTRY_PASSWORD'] = 'test'
+# In practice, use real credentials or graphistry.register()
+```
+
+## Configuration Options
+
+### Custom Server URL
+
+```python
+from louieai import louie
+
+# Use a custom Louie server
+lui = louie(server_url="https://custom.louie.ai")
+
+# Use a custom Graphistry auth server alongside Louie
+lui = louie(
+    server_url="https://louie.your-company.com",
+    graphistry_server="your-company.graphistry.com",
+)
+```
+
+### Authentication Methods
+
+```python
+from louieai import louie
+
+# Username/Password
+lui = louie(username="user", password="pass")
+
+# Personal Key (Service Account)
+lui = louie(
+    personal_key_id="pk_123",
+    personal_key_secret="sk_456",
+    org_name="my-org"
+)
+
+# API Key (Legacy)
+lui = louie(api_key="your_api_key")
+
+# Direct bearer token (Graphistry or anonymous)
+lui = louie(token="<token>")
+
+# Anonymous auth (desktop/local, if enabled)
+# Use the Tornado/UI port so /auth/anonymous is available
+lui = louie(server_url="http://localhost:8513", anonymous=True)
+```
+
+Anonymous auth is optional on the server and cannot be combined with Graphistry credentials.
+
+### Trace Control
+
+```python
+from louieai import louie
+lui = louie()
+
+# Enable traces for debugging
+lui.traces = True
+lui("Complex analysis query")
+
+# Or per-query
+lui("Another query", traces=True)
+```
+
+### Timeout Configuration
+
+Agentic flows can take significant time to complete. The client provides configurable timeouts:
+
+```python
+from louieai import louie
+
+# Default timeouts (5 minutes total, 2 minutes per streaming chunk)
+lui = louie()
+
+# Custom timeouts for long-running analysis
+lui = louie(
+    timeout=600,  # 10 minutes total
+    streaming_timeout=180  # 3 minutes per chunk
+)
+
+# Using environment variables
+# export LOUIE_TIMEOUT=600
+# export LOUIE_STREAMING_TIMEOUT=180
+lui = louie()  # Will use env var settings
+```
+
+### Table AI Overrides
+
+When you need to steer Table AI’s semantic map/reduce behaviour or pick specific models, pass a `TableAIOverrides` dataclass through the `louie()` cursor (it propagates to `LouieClient.add_cell()`):
+
+```python
+from louieai import louie, TableAIOverrides
+
+lui = louie()
+overrides = TableAIOverrides(
+    semantic_mode="map",
+    output_column="semantic_map",
+    ask_model="gpt-4o-mini",
+    evidence_model="gpt-4o",
+    options={"max_rows": 5},
+)
+
+response = lui(
+    "Summarize customer cohorts",
+    table_ai_overrides=overrides,
+)
+
+for element in response.elements:
+    print(element["type"], element.get("text"))
+```
+
+Uploads support the same overrides:
+
+```python
+df_response = lui._client.upload_dataframe(
+    prompt="Cluster transactions by geography",
+    df=df,
+    table_ai_overrides=TableAIOverrides(
+        semantic_mode="reduce",
+        output_column="semantic_reduce",
+        ask_options={"temperature": 0.2},
+    ),
+)
+```
+
+If you see timeout errors, the client will provide helpful guidance about increasing timeouts.
+
+## Migration from Direct LouieClient
+
+If you have code using the old `LouieClient` directly:
+
+```python
+# Old way (no longer public)
+# from louieai import LouieClient
+# client = LouieClient()
+# response = client.add_cell("", "Query")
+
+# New way
+from louieai import louie
+lui = louie()
+lui("Query")
+response = lui._response  # If you need the raw response
+```
+
+## See Also
+
+- [Notebook API Reference](notebook.md) - Recommended high-level API
+- [Response Types](response-types.md) - Understanding response formats
+- [Authentication Guide](../guides/authentication.md) - Detailed auth setup
