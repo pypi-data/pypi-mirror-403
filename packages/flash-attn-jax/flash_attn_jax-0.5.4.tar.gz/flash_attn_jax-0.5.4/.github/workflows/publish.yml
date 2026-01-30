@@ -1,0 +1,147 @@
+# This workflow will:
+# - Build wheels for supported architectures
+# - Create a new Github release and upload wheels
+# - Release the static code to PyPi
+# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+
+name: Build wheels and deploy
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and release (e.g., v0.5.1)'
+        required: true
+        type: string
+
+# Ensure we can get the tag name consistently whether triggered by push or workflow_dispatch
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build_wheels:
+    name: Build Wheel
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['cp311', 'cp312', 'cp313', 'cp314']
+        cuda-version: ['12.8', '12.9', '13.0']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          submodules: recursive
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set CUDA major version
+        run: |
+          echo "MATRIX_CUDA_MAJOR=$(echo ${{ matrix.cuda-version }} | awk -F \. {'print $1'})" >> $GITHUB_ENV
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+
+      - name: Set up swap space
+        uses: pierotofy/set-swap-space@v1.0
+        with:
+          swap-size-gb: 10
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.3.1
+        env:
+          CIBW_BUILD: ${{ matrix.python-version }}-manylinux_x86_64
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_BEFORE_ALL: bash scripts/install-cuda-linux.sh ${{ matrix.cuda-version }}
+          CIBW_ENVIRONMENT: PATH=/usr/local/cuda/bin:/opt/rh/gcc-toolset-13/root/usr/bin:$PATH CUDA_HOME=/usr/local/cuda
+          CIBW_BUILD_VERBOSITY: 1
+
+      - name: Rename wheel with CUDA tag
+        run: |
+          python3 set_tag_in_wheels.py "+cu${{ matrix.cuda-version }}" wheelhouse/*.whl
+          ls wheelhouse
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.python-version }}-cu${{ matrix.cuda-version }}
+          path: ./wheelhouse/*.whl
+
+  create_release:
+    name: Create Release
+    needs: [build_wheels]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: wheels/
+          pattern: wheel-*
+          merge-multiple: true
+
+      - name: List wheels
+        run: ls -la wheels/
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          files: wheels/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish_package:
+    name: Publish package
+    needs: [create_release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install uv
+
+      - name: Build core package
+        run: |
+          uv build --sdist
+
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: wheel-*-cu12.8
+          merge-multiple: true
+
+      - name: Remove CUDA tag for pypi
+        run: |
+          python3 set_tag_in_wheels.py "" dist/*+cu12.8*.whl
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
