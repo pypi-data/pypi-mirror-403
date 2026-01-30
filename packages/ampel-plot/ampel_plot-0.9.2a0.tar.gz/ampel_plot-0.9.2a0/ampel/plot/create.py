@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# File:                Ampel-plot/ampel-plot/ampel/plot/create.py
+# License:             BSD-3-Clause
+# Author:              valery brinnel <firstname.lastname@gmail.com>
+# Date:                17.05.2019
+# Last Modified Date:  26.01.2023
+# Last Modified By:    valery brinnel <firstname.lastname@gmail.com>
+
+import io
+import matplotlib as plt
+from typing import Any
+from matplotlib.figure import Figure
+
+from ampel.types import Tag, OneOrMany
+from ampel.content.NewSVGRecord import NewSVGRecord
+from ampel.protocol.LoggerProtocol import LoggerProtocol
+from ampel.util.compression import TCompression, compress as compress_func
+from ampel.util.tag import merge_tags
+
+
+def fig_to_record(
+	mpl_fig: Figure,
+	file_name: str,
+	title: None | str = None,
+	tags: None | OneOrMany[Tag] = None,
+	extra: None | dict[str, Any] = None,
+	compression_behavior: int = 1,
+	compression_alg: TCompression = "ZIP_DEFLATED",
+	compression_level: int = 9,
+	width: None | int = None,
+	height: None | int = None,
+	close: bool = True,
+	fig_include_title: None | bool = False,
+	detached: bool = True,
+	logger: None | LoggerProtocol = None,
+) -> NewSVGRecord:
+	"""
+	:param mpl_fig: matplotlib figure
+	:param tags: one or many plot tags
+	:param compression_behavior:
+		0: no compression, 'svg' value will be a string
+		1: compression_behavior svg, 'svg' value will be compressed bytes (usage: store plots into db)
+		2: compression_behavior svg and include uncompressed string into key 'sgv_str'
+		(useful for saving plots into db and additionaly to disk for offline analysis)
+	:param width: figure width, for example 10 inches
+	:param height: figure height, for example 10 inches
+	:returns: svg dict instance
+	"""
+
+	if logger:
+		logger.info("Saving plot %s" % file_name)
+
+	imgdata = io.StringIO()
+
+	if width is not None and height is not None:
+		mpl_fig.set_size_inches(width, height)
+
+	if title and fig_include_title:
+		mpl_fig.suptitle(title)
+
+	mpl_fig.savefig(imgdata, format='svg', bbox_inches='tight')
+	if close:
+		plt.pyplot.close(mpl_fig)
+
+	ret: NewSVGRecord = {'name': file_name}
+
+	if tags:
+		ret['tag'] = tags
+
+	if title:
+		ret['title'] = title
+
+	if extra:
+		ret['extra'] = extra
+
+	ret['detached'] = detached
+
+	if compression_behavior == 0:
+		ret['svg'] = imgdata.getvalue()
+		return ret
+
+	ret['svg'] = compress_func(
+		imgdata.getvalue().encode('utf8'),
+		file_name,
+		alg = compression_alg,
+		compression_level = compression_level
+	)
+
+	if compression_behavior == 2:
+		ret['svg_str'] = imgdata.getvalue()
+
+	return ret
+
+
+def get_tags_as_str(
+	plot_tag: None | OneOrMany[Tag] = None,
+	extra_tags: None | OneOrMany[Tag] = None
+) -> str:
+
+	if plot_tag:
+		t = merge_tags(plot_tag, extra_tags) if extra_tags else plot_tag # type: ignore
+	elif extra_tags:
+		t = extra_tags
+	else:
+		return ""
+
+	if isinstance(t, (int, str)):
+		return "[%s]" % t
+
+	return "[%s]" % ", ".join([
+		str(el) if isinstance(el, int) else el
+		for el in t
+	])
