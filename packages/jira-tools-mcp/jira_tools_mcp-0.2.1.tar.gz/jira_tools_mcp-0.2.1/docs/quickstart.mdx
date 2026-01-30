@@ -1,0 +1,292 @@
+---
+title: "Quickstart - Install Jira MCP"
+description: "Get started with Jira MCP, the best MCP server for Jira integration. Install and configure in minutes on Linux, macOS, or Windows."
+sidebarTitle: "Quickstart"
+---
+
+Get the best Jira MCP server up and running in just a few minutes. Jira MCP provides seamless AI-powered Jira integration for Cursor, Claude, Windsurf, and other LLM clients.
+
+## Prerequisites
+
+Before installing Jira MCP, you need to set up the Jira CLI that the MCP server uses to execute commands.
+
+<Steps>
+<Step title="Install jira-cli">
+
+Follow the installation instructions for your operating system from the [jira-cli repository](https://github.com/ankitpokhrel/jira-cli?tab=readme-ov-file#installation).
+
+</Step>
+
+<Step title="Get Jira API credentials">
+
+Depending on your Jira implementation (Cloud or Self-Hosted), you will need to use a different authentication type.
+
+Add these to your `.bashrc`, `.zshrc`, or other shell configuration file:
+
+```bash
+# https://id.atlassian.com/manage-profile/security/api-tokens
+export JIRA_API_TOKEN=""
+
+# `bearer` for token,
+# `basic` for Jira account API token
+# `password` for Jira account password
+export JIRA_AUTH_TYPE="basic"
+```
+
+Make sure to source the file after adding the credentials:
+
+```bash
+source ~/.bashrc
+```
+
+<Note>
+  See [alternative credential
+  methods](https://github.com/ankitpokhrel/jira-cli/discussions/356) for other
+  ways to configure authentication.
+</Note>
+
+<Warning>
+  GUI applications like Cursor and Windsurf do not inherit shell environment
+  variables from `.bashrc` or `.zshrc`. It is recommended to pass these
+  variables explicitly in the MCP configuration using the `env` field (shown in
+  the examples below).
+</Warning>
+
+</Step>
+
+<Step title="Initialize jira-cli">
+
+```bash
+jira init
+```
+
+This will prompt you for your Jira URL and credentials.
+
+</Step>
+
+<Step title="Test jira-cli">
+
+```bash
+jira issue list
+```
+
+This should return a list of issues in Jira.
+
+</Step>
+</Steps>
+
+## Install the MCP server
+
+Choose your preferred installation method:
+
+<Tabs>
+<Tab title="Download binary (Recommended)">
+
+Download the latest release for your operating system from the [Releases page](https://github.com/xcollantes/jira-mcp/releases).
+
+| Operating System      | Binary                               |
+| --------------------- | ------------------------------------ |
+| Linux                 | `jira-mcp-linux`                     |
+| Windows               | `jira-mcp-windows.exe`               |
+| macOS (Apple Silicon) | `jira-mcp-macos-apple-silicon-arm64` |
+| macOS (Intel)         | `jira-mcp-macos-x64`                 |
+
+<AccordionGroup>
+<Accordion title="Linux">
+
+```bash
+# Download the binary
+curl -L -o jira-mcp https://github.com/xcollantes/jira-mcp/releases/latest/download/jira-mcp-linux
+
+# Make it executable
+chmod +x jira-mcp
+
+# Move to a directory in your PATH (optional)
+sudo mv jira-mcp /usr/local/bin/
+```
+
+Add to your LLM client configuration:
+
+```json
+{
+  "mcpServers": {
+    "jira": {
+      "command": "/usr/local/bin/jira-mcp",
+      "env": {
+        "JIRA_API_TOKEN": "your-api-token",
+        "JIRA_AUTH_TYPE": "basic"
+      }
+    }
+  }
+}
+```
+
+<Note>
+  Replace `/usr/local/bin/jira-mcp` with the path to the binary on your machine
+  if you moved it to a different location.
+</Note>
+
+</Accordion>
+
+<Accordion title="macOS">
+
+```bash
+# For Apple Silicon (M1/M2/M3)
+curl -L -o jira-mcp https://github.com/xcollantes/jira-mcp/releases/latest/download/jira-mcp-macos-apple-silicon-arm64
+
+# For Intel Macs
+curl -L -o jira-mcp https://github.com/xcollantes/jira-mcp/releases/latest/download/jira-mcp-macos-x64
+
+# Make it executable
+chmod +x jira-mcp
+
+# Move to a directory in your PATH (optional)
+sudo mv jira-mcp /usr/local/bin/
+```
+
+<Warning>
+macOS may block the binary on first run. If you see a security warning, go to **System Settings > Privacy & Security** and click **Allow Anyway**, or run:
+
+```bash
+xattr -d com.apple.quarantine /usr/local/bin/jira-mcp
+```
+
+</Warning>
+
+Add to your LLM client configuration:
+
+```json
+{
+  "mcpServers": {
+    "jira": {
+      "command": "/usr/local/bin/jira-mcp",
+      "env": {
+        "JIRA_API_TOKEN": "your-api-token",
+        "JIRA_AUTH_TYPE": "basic"
+      }
+    }
+  }
+}
+```
+
+<Note>
+  Replace `/usr/local/bin/jira-mcp` with the path to the binary on your machine
+  if you moved it to a different location.
+</Note>
+
+</Accordion>
+
+<Accordion title="Windows">
+
+1. Download `jira-mcp-windows.exe` from the [Releases page](https://github.com/xcollantes/jira-mcp/releases).
+2. Move the executable to a convenient location (e.g., `C:\Program Files\jira-mcp\`).
+
+Add to your LLM client configuration:
+
+```json
+{
+  "mcpServers": {
+    "jira": {
+      "command": "C:\\Program Files\\jira-mcp\\jira-mcp-windows.exe",
+      "env": {
+        "JIRA_API_TOKEN": "your-api-token",
+        "JIRA_AUTH_TYPE": "basic"
+      }
+    }
+  }
+}
+```
+
+<Note>
+  Replace `C:\\Program Files\\jira-mcp\\jira-mcp-windows.exe` with the path to
+  the binary on your machine if you moved it to a different location.
+</Note>
+
+</Accordion>
+</AccordionGroup>
+
+</Tab>
+
+<Tab title="Development setup with uv">
+
+Clone the repository:
+
+```bash
+git clone https://github.com/xcollantes/jira-mcp.git
+cd jira-mcp
+```
+
+Add MCP server to your LLM client configuration:
+
+```json
+{
+  "mcpServers": {
+    "jira": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/ABSOLUTE/PATH/TO/REPO/ROOT",
+        "run",
+        "python",
+        "-m",
+        "src.main"
+      ],
+      "env": {
+        "JIRA_API_TOKEN": "your-api-token",
+        "JIRA_AUTH_TYPE": "basic"
+      }
+    }
+  }
+}
+```
+
+This tells your LLM client that there is a tool that can be called by running `uv --directory /ABSOLUTE/PATH/TO/REPO run python -m src.main`.
+
+<Note>
+  Install UV if you haven't already: [UV installation
+  guide](https://docs.astral.sh/uv/getting-started/installation/)
+</Note>
+
+</Tab>
+
+<Tab title="Install globally with pipx">
+
+```bash
+# Install pipx if you haven't already
+brew install pipx
+pipx ensurepath
+
+# Clone and install the MCP server
+git clone https://github.com/xcollantes/jira-mcp.git
+cd jira-mcp
+pipx install -e .
+```
+
+</Tab>
+</Tabs>
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="Configure Cursor" icon="arrow-pointer" href="/ai-tools/cursor">
+  Set up Jira MCP in Cursor IDE.
+</Card>
+
+<Card
+  title="Configure Claude Code"
+  icon="asterisk"
+  href="/ai-tools/claude-code"
+>
+  Set up Jira MCP with Claude Code CLI.
+</Card>
+
+<Card title="Configure Windsurf" icon="water" href="/ai-tools/windsurf">
+  Set up Jira MCP in Windsurf.
+</Card>
+
+<Card title="Development" icon="code" href="/development">
+  Contribute to Jira MCP development.
+</Card>
+
+</CardGroup>
