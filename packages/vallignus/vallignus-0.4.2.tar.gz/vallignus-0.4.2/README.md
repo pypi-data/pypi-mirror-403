@@ -1,0 +1,200 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/jacobgadek/vallignus/main/docs/vallignuslogo.svg" alt="Vallignus" width="200">
+</div>
+
+# Vallignus
+
+**Zero-Trust Runtime for Autonomous Agents**
+
+Deterministic Execution Governance & Forensic Attribution for AI Workflows.
+
+[![PyPI version](https://badge.fury.io/py/vallignus.svg)](https://badge.fury.io/py/vallignus)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+Vallignus is a process supervisor designed to enforce Least Privilege access controls on autonomous agents (CrewAI, AutoGen, LangChain). It wraps the agent runtime in a monitored shell, enforcing strict boundaries on execution time, output volume, and process lifecycle to prevent uncontrolled behavior, infinite loops, and resource exhaustion.
+
+---
+
+## Mission
+
+Autonomous agents are effectively "untrusted insiders." Relying on LLM prompts for safety is insufficient for critical infrastructure. Vallignus provides an external, deterministic control layer that cannot be bypassed by prompt injection or model hallucination.
+
+---
+
+## Core Capabilities
+
+### 1. Compartmented Execution
+
+- **Process Isolation**: Runs agents in a dedicated process group.
+- **Zombie Containment**: Enforces `SIGTERM` -> `SIGKILL` escalation on the entire process tree, guaranteeing no "ghost" workers remain active after mission termination.
+
+### 2. Deterministic Termination
+
+- **Wall-Clock Hard Limits**: Enforces strict temporal boundaries on agent operation.
+- **Output Flood Protection**: Monitors `stdout`/`stderr` volume to detect and sever infinite regeneration loops before they flood logs or upstream APIs.
+- **Request Throttling**: Caps total HTTP requests to prevent runaway API consumption (firewall mode).
+
+### 3. Forensic Attribution
+
+- **Immutable Audit Trail**: Captures a separate, append-only JSONL stream of all agent emissions.
+- **Replayability**: Preserves the exact state of `stdout`/`stderr` at the moment of failure for post-incident analysis.
+- **Termination Metadata**: Records violation type, threshold, and observed value for every forced termination.
+
+### 4. Network Policy Enforcement (Optional)
+
+- **Domain Allowlisting**: Restrict agent network access to pre-approved endpoints.
+- **Request-Level Audit**: Log every outbound request with allow/deny decision.
+- **Budget Controls**: Enforce spend limits on API calls.
+
+---
+
+## Quick Start
+
+### Install
+
+```bash
+pip install vallignus
+```
+
+### Basic Supervision
+
+```bash
+# Enforce 5-minute maximum runtime
+vallignus run --max-runtime 300 -- python agent.py
+
+# Enforce output volume limit
+vallignus run --max-output-lines 10000 -- python agent.py
+
+# Combine constraints
+vallignus run --max-runtime 300 --max-output-lines 10000 -- python agent.py
+```
+
+### Session Forensics
+
+```bash
+# List recent executions
+vallignus sessions list
+
+# Inspect execution metadata
+vallignus sessions show <session-id>
+
+# Replay exact output stream
+vallignus replay <session-id>
+```
+
+---
+
+## Demo: Deterministic Termination and Replay
+
+![Runtime Demo](https://raw.githubusercontent.com/jacobgadek/vallignus/main/docs/demo_runtime.png)
+
+## Demo: Network Policy Enforcement
+
+![Firewall Demo](https://raw.githubusercontent.com/jacobgadek/vallignus/main/docs/demo.png)
+
+---
+
+## Governance Policy (Architecture Preview)
+
+Upcoming in v0.5.0: Define granular permissions via `vallignus.policy.yaml`:
+
+```yaml
+# /etc/vallignus/policy.yaml
+security_context:
+  level: "strict"
+  user: "nobody"
+
+constraints:
+  max_runtime: 300s
+  max_output_bytes: 50MB
+  network:
+    allow_domains: ["api.openai.com", "internal-db.local"]
+    default_policy: "deny"
+
+violation_protocol:
+  action: "kill_process_group"
+  alert_webhook: "https://security-ops.example.com/alerts"
+```
+
+---
+
+## Session Artifacts
+
+Each execution produces an immutable forensic record:
+
+```
+~/.vallignus/sessions/<session-id>/
+  ├── session.json    # Execution metadata, exit code, termination reason
+  ├── events.jsonl    # Timestamped event stream (append-only)
+  ├── stdout.log      # Raw stdout capture
+  └── stderr.log      # Raw stderr capture
+```
+
+---
+
+## Network Policy Mode
+
+For environments requiring network-level controls:
+
+```bash
+# Initialize policy infrastructure
+vallignus auth init
+
+# Define agent identity
+vallignus auth create-agent --agent-id deployment-agent --owner "ops@company.com"
+
+# Create network policy
+vallignus auth create-policy \
+  --policy-id production \
+  --max-spend-usd 100 \
+  --allowed-domains "api.openai.com,internal.company.com"
+
+# Execute with policy enforcement
+export VALLIGNUS_TOKEN=$(vallignus auth issue-token \
+  --agent-id deployment-agent \
+  --policy-id production)
+
+vallignus run --max-runtime 300 -- python agent.py
+```
+
+---
+
+## CLI Reference
+
+```bash
+# Supervised Execution
+vallignus run [OPTIONS] -- <command>
+  --max-runtime <seconds>      Temporal containment
+  --max-output-lines <n>       Output flood protection
+  --max-requests <n>           Request throttling (policy mode)
+  --token <token>              Enable network policy enforcement
+  --no-session                 Disable forensic logging
+
+# Forensics
+vallignus sessions list        List execution records
+vallignus sessions show <id>   Inspect session metadata
+vallignus replay <id>          Replay output stream
+
+# Policy Infrastructure
+vallignus auth init            Initialize policy storage
+vallignus auth create-agent    Register agent identity
+vallignus auth create-policy   Define permission policy
+vallignus auth issue-token     Generate execution token
+vallignus auth revoke-token    Revoke active authorization
+vallignus auth rotate-key      Rotate signing keys
+```
+
+---
+
+## Requirements
+
+- Python 3.8+
+- Local execution only (no external dependencies, no telemetry)
+
+---
+
+## License
+
+MIT
