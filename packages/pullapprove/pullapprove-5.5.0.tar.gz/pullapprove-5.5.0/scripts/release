@@ -1,0 +1,16 @@
+#!/bin/sh -e
+uv version --bump "$1"
+rm -rf dist
+uv build
+uv publish
+
+# Sync root uv.lock with the new version
+pushd ..
+uv sync
+popd
+
+# Commit and push the version bump
+VERSION=$(grep '^version' pyproject.toml | cut -d'"' -f2)
+git add pyproject.toml uv.lock ../uv.lock
+git commit -m "Release pullapprove $VERSION"
+git push

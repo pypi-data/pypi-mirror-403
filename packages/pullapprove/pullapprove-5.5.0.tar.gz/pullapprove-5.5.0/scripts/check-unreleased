@@ -1,0 +1,26 @@
+#!/bin/bash -e
+
+# Find the last release commit by searching for "Release pullapprove" in git log
+LAST_RELEASE=$(git log --oneline --grep="Release pullapprove" -n 1 | cut -d' ' -f1)
+
+if [ -z "$LAST_RELEASE" ]; then
+    echo "No release commit found in git history"
+    exit 1
+fi
+
+# Check for source changes since that commit (excludes tests/scripts)
+CHANGES=$(git diff --stat "$LAST_RELEASE"..HEAD -- pullapprove/src/)
+
+if [ -n "$CHANGES" ]; then
+    echo "Unreleased changes in pullapprove/src/ since $LAST_RELEASE:"
+    echo ""
+    echo "Commits:"
+    git log --oneline "$LAST_RELEASE"..HEAD -- pullapprove/src/
+    echo ""
+    echo "Files:"
+    echo "$CHANGES"
+    exit 1
+fi
+
+echo "No unreleased changes in pullapprove/src/"
+exit 0
