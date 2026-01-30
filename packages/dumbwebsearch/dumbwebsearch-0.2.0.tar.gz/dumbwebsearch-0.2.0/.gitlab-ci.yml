@@ -1,0 +1,72 @@
+variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    PYTHONDEVMODE: "1"
+    RUNNER_GENERATE_ARTIFACTS_METADATA: "true"
+    SLSA_PROVENANCE_SCHEMA_VERSION: "v1"
+
+cache:
+    paths:
+        - ".cache/pip"
+
+default:
+    image: "docker.io/python:3"
+
+build:
+    stage: "build"
+    script:
+        - "pip install build"
+        - "python3 -m build ."
+    artifacts:
+        paths:
+            - "dist/*"
+        expire_in: "1 week"
+
+install:
+    stage: "test"
+    script:
+        - "pip install dist/*.whl"
+
+check build:
+    stage: "test"
+    script:
+        - "pip install twine"
+        - "twine check dist/*"
+
+lint:
+    stage: "test"
+    script:
+        - "pip install flake8 flake8-pyproject"
+        - "flake8 ."
+
+test:
+    stage: "test"
+    script:
+        - "pip install pytest"
+        - "PYTHONPATH=. pytest ."
+
+build-image:
+    stage: "build"
+    image: "docker:20.10.16"
+    services:
+        - "docker:20.10.16-dind"
+    script:
+        - "docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY"
+        - 'docker build --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" --label "org.opencontainers.image.created=$CI_JOB_STARTED_AT" -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA -f Containerfile .'
+        - "docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+tag-image:
+    stage: "deploy"
+    needs:
+        - "build-image"
+    image: "docker:20.10.16"
+    services:
+        - "docker:20.10.16-dind"
+    script:
+        - "docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY"
+        - "docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+        - "docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME"
+        - "docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest"
+        - "docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME"
+        - "docker push $CI_REGISTRY_IMAGE:latest"
+    rules:
+        - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/'
