@@ -1,0 +1,786 @@
+# ADC Toolkit
+
+**A Python framework for validated data pipelines in data science and ML projects.**
+
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Coverage](https://img.shields.io/badge/coverage-90%25+-brightgreen)
+![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)
+![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Initializing the Catalog](#initializing-the-catalog)
+- [Configuration Files](#configuration-files)
+- [Using the ValidatedDataCatalog](#using-the-validateddatacatalog)
+- [Data Validation](#data-validation)
+  - [Choosing a Validator](#choosing-a-validator)
+- [Processing Pipeline](#processing-pipeline)
+- [Logging](#logging)
+- [Module Architecture](#module-architecture)
+- [API Reference](#api-reference)
+- [CLI Reference](#cli-reference)
+- [Development](#development)
+- [Project Structure](#project-structure)
+- [Limitations](#limitations)
+- [Contributing](#contributing)
+- [License](#license)
+- [Authors](#authors)
+
+---
+
+## Overview
+
+**adc-toolkit** is a Python framework designed for data science and machine learning projects. It provides a structured approach to data handling with built-in validation, ensuring data quality throughout your pipeline.
+
+The toolkit combines the power of [Kedro's DataCatalog](https://docs.kedro.org/en/stable/data/data_catalog.html) for data I/O with automatic schema validation using either [Great Expectations](https://greatexpectations.io/) or [Pandera](https://pandera.readthedocs.io/). This means every time you load or save data, it gets validated against your defined schema automatically.
+
+**Core value proposition:**
+
+- Load data with automatic validation
+- Save data with automatic validation
+- No manual validation code required
+- Schema "freezing" on first run prevents silent data drift
+
+---
+
+## Key Features
+
+- **ValidatedDataCatalog** - Combines Kedro DataCatalog (I/O) with data validators for seamless validated data pipelines
+- **Dual Validator Support** - Choose between Great Expectations (GX) or Pandera for schema validation
+- **Auto Schema Detection** - Automatically generates and enforces schemas on first data load
+- **Processing Pipeline** - Chainable, reusable data transformation steps
+- **Flexible Logging** - Unified logging interface with Python logging and Loguru backends
+- **Hydra Configuration** - YAML-based hierarchical configuration management
+- **Cloud Support** - AWS, GCP, and Azure data context support for Great Expectations
+- **Spark Support** - PySpark DataFrame validation (optional)
+- **CLI Tools** - Scaffold catalog structure with a single command
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python 3.10 or higher (< 3.14)
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+
+### Basic Installation
+
+```bash
+# Using pip
+pip install adc-toolkit
+
+# Using uv (recommended)
+uv add adc-toolkit
+```
+
+### Optional Dependencies
+
+The toolkit uses optional dependency groups to keep the base installation lightweight. Install only what you need:
+
+| Group           | Description                       | Install Command                     |
+| --------------- | --------------------------------- | ----------------------------------- |
+| `kedro`         | Kedro DataCatalog for data I/O    | `uv add adc-toolkit[kedro]`         |
+| `gx`            | Great Expectations validation     | `uv add adc-toolkit[gx]`            |
+| `pandera`       | Pandera validation                | `uv add adc-toolkit[pandera]`       |
+| `eda`           | Exploratory data analysis tools   | `uv add adc-toolkit[eda]`           |
+| `spark`         | PySpark support                   | `uv add adc-toolkit[spark]`         |
+| `gcp`           | Google Cloud Platform integration | `uv add adc-toolkit[gcp]`           |
+| `logging`       | Loguru logging backend            | `uv add adc-toolkit[logging]`       |
+| `preprocessing` | scikit-learn transformations      | `uv add adc-toolkit[preprocessing]` |
+
+**Recommended installation for most use cases:**
+
+```bash
+# Install with Kedro and Great Expectations
+uv add adc-toolkit[kedro,gx]
+
+# Or with Kedro and Pandera
+uv add adc-toolkit[kedro,pandera]
+
+# Install all optional dependencies
+uv add adc-toolkit[kedro,gx,pandera,eda,spark,gcp,logging,preprocessing]
+```
+
+### Development Installation
+
+```bash
+git clone https://github.com/ADC-Consulting/adc-toolkit.git
+cd adc-toolkit
+uv sync --all-extras
+```
+
+---
+
+## Quick Start
+
+### Using the CLI
+
+```bash
+# Initialize the catalog folder structure
+adc-toolkit init-catalog ./config
+
+# This creates:
+# config/base/globals.yml
+# config/base/catalog.yml
+# config/local/credentials.yml
+```
+
+### Using Python
+
+```python
+from adc_toolkit.data.catalog import ValidatedDataCatalog
+
+# Initialize catalog pointing to your config directory
+catalog = ValidatedDataCatalog.in_directory("./config")
+
+# Load data with automatic validation
+df = catalog.load("my_dataset.raw")
+
+# Save data with automatic validation
+catalog.save("my_dataset.processed", df)
+```
+
+---
+
+## Initializing the Catalog
+
+Before using the `ValidatedDataCatalog`, you need to set up the configuration folder structure.
+
+### Required Folder Structure
+
+```
+config/
+├── base/
+│   ├── globals.yml      # Global variables (bucket paths, dataset types)
+│   └── catalog.yml      # Dataset definitions
+└── local/
+    └── credentials.yml  # Secrets and credentials (gitignored)
+```
+
+### Method 1: Using the CLI (Recommended)
+
+```bash
+# Initialize in current directory
+adc-toolkit init-catalog
+
+# Initialize in a specific path
+adc-toolkit init-catalog ./config
+
+# Overwrite existing files
+adc-toolkit init-catalog ./config --overwrite
+
+# Skip specific files
+adc-toolkit init-catalog ./config --no-credentials
+```
+
+### Method 2: Using Python
+
+```python
+from adc_toolkit.data.catalogs.kedro import KedroDataCatalog
+
+result = KedroDataCatalog.init_catalog(
+    "./config",
+    overwrite=False,
+    include_globals=True,
+    include_catalog=True,
+    include_credentials=True,
+)
+
+print(f"Created {len(result.created_files)} files")
+print(f"Skipped {len(result.skipped_files)} files (already exist)")
+```
+
+### Generated Files Description
+
+| File                    | Purpose                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `base/globals.yml`      | Global variables for templating (bucket names, dataset type mappings, folder paths) |
+| `base/catalog.yml`      | Kedro dataset definitions with file paths and types                                 |
+| `local/credentials.yml` | Secrets like API keys and database credentials (auto-added to .gitignore)           |
+
+---
+
+## Configuration Files
+
+### globals.yml
+
+Define global variables that can be referenced in `catalog.yml`:
+
+```yaml
+# Global configuration for the Kedro data catalog
+# Variables are referenced using ${globals:variable_name} syntax
+
+bucket_prefix: "gs" # "gs" for GCP, "s3" for AWS, "abfs" for Azure
+bucket_name: "your-project-data-bucket"
+
+datasets:
+  pandas:
+    csv: "pandas.CSVDataset"
+    parquet: "pandas.ParquetDataset"
+    bq: "pandas.GBQQueryDataset"
+  spark:
+    parquet: "spark.ParquetDataset"
+
+folders:
+  raw: "raw"
+  int: "intermediate"
+  pri: "primary"
+  fea: "feature"
+```
+
+### catalog.yml
+
+Define your datasets with their types and file paths:
+
+```yaml
+# Dataset definitions
+# See: https://docs.kedro.org/en/stable/data/data_catalog.html
+
+# Load from local CSV file
+my_data.extract:
+  type: "${globals:datasets.pandas.csv}"
+  filepath: data/raw/my_data.csv
+
+# Load from SQL query (BigQuery example)
+my_data.from_sql:
+  type: "${globals:datasets.pandas.bq}"
+  sql: data/queries/my_data.sql
+
+# Save to cloud storage with versioning
+my_data.raw:
+  type: "${globals:datasets.pandas.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/${globals:folders.raw}/my_data.parquet"
+  versioned: true
+
+my_data.processed:
+  type: "${globals:datasets.pandas.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/${globals:folders.pri}/my_data.parquet"
+  versioned: true
+
+# Pattern-based factory (matches any dataset_name.layer combination)
+"{dataset_name}.{layer}@pandas":
+  type: "${globals:datasets.pandas.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/{layer}/{dataset_name}.parquet"
+  versioned: true
+```
+
+### credentials.yml
+
+Store sensitive information (never commit this file):
+
+```yaml
+# Credentials Configuration
+# IMPORTANT: This file should NEVER be committed to version control
+
+gcp:
+  client_kwargs:
+    project: your-gcp-project-id
+
+aws_s3:
+  client_kwargs:
+    aws_access_key_id: YOUR_ACCESS_KEY
+    aws_secret_access_key: YOUR_SECRET_KEY
+
+database:
+  con: postgresql://user:password@host:port/database
+```
+
+---
+
+## Using the ValidatedDataCatalog
+
+### Basic Usage
+
+```python
+from adc_toolkit.data.catalog import ValidatedDataCatalog
+
+# Initialize with default validators (GX if available, then Pandera)
+catalog = ValidatedDataCatalog.in_directory("./config")
+
+# Load data - automatically validated after loading
+df = catalog.load("house_prices.raw")
+
+# Save data - automatically validated before saving
+catalog.save("house_prices.processed", df)
+```
+
+### Specifying a Validator
+
+```python
+from adc_toolkit.data.catalog import ValidatedDataCatalog
+from adc_toolkit.data.validators.gx import GXValidator
+from adc_toolkit.data.validators.pandera import PanderaValidator
+
+# Use Great Expectations
+catalog = ValidatedDataCatalog.in_directory(
+    "./config",
+    validator_class=GXValidator
+)
+
+# Use Pandera
+catalog = ValidatedDataCatalog.in_directory(
+    "./config",
+    validator_class=PanderaValidator
+)
+```
+
+### Dynamic Query Parameters
+
+For SQL-based datasets, you can pass parameters at load time:
+
+```python
+# If your SQL file contains placeholders like {min_price}
+df = catalog.load(
+    "house_prices.from_sql",
+    min_price=100000,
+    max_price=500000
+)
+```
+
+### How Validation Works
+
+1. **First Load**: The validator "freezes" the DataFrame schema (columns and types)
+2. **Subsequent Loads/Saves**: Data is validated against the frozen schema
+3. **Schema Drift Detection**: If the data structure changes, validation fails with a clear error
+
+---
+
+## Data Validation
+
+### Great Expectations (GX)
+
+Great Expectations is the default validator when installed. It provides powerful data validation with automatic expectation suite generation.
+
+#### How GX Validation Works
+
+1. On first validation, GX creates an expectation suite named `{dataset_name}_suite`
+2. The schema is "frozen" with column and type expectations
+3. Every load/save runs a checkpoint to validate the data
+
+#### Adding Custom Expectations
+
+```python
+from adc_toolkit.data.validators.gx import (
+    BatchManager,
+    ConfigurationBasedExpectationAddition,
+)
+from adc_toolkit.data.validators.gx.data_context.repo import RepoDataContext
+
+# Load your data
+catalog = ValidatedDataCatalog.in_directory("./config")
+df = catalog.load("house_prices.raw")
+
+# Create batch manager for adding expectations
+data_context = RepoDataContext("./config").create()
+batch_manager = BatchManager("house_prices.raw", df, data_context)
+
+# Define custom expectations
+expectations = [
+    {"expect_column_values_to_not_be_null": {"column": "SalePrice"}},
+    {"expect_column_values_to_be_between": {
+        "column": "SalePrice",
+        "min_value": 0,
+        "max_value": 1000000,
+    }},
+    {"expect_column_values_to_be_unique": {"column": "Id"}},
+]
+
+# Add expectations to the suite
+expectation_adder = ConfigurationBasedExpectationAddition()
+expectation_adder.add_expectations(batch_manager, expectations)
+```
+
+### Pandera
+
+Pandera provides DataFrame validation using Python type annotations and is lighter-weight than GX.
+
+#### How Pandera Validation Works
+
+1. On first validation, Pandera auto-generates a schema from the DataFrame
+2. The schema is saved as a Python file in `config/pandera_schemas/{dataset_name}.py`
+3. Every load/save validates against the stored schema
+
+#### Pandera Folder Structure
+
+```
+config/
+├── base/
+│   └── ...
+├── local/
+│   └── ...
+└── pandera_schemas/           # Auto-created by Pandera
+    ├── house_prices.raw.py
+    ├── house_prices.processed.py
+    └── ...
+```
+
+#### Configuring Pandera
+
+```python
+from adc_toolkit.data.catalog import ValidatedDataCatalog
+from adc_toolkit.data.catalogs.kedro import KedroDataCatalog
+from adc_toolkit.data.validators.pandera import PanderaValidator
+from adc_toolkit.data.validators.pandera.parameters import PanderaParameters
+
+# Disable lazy validation
+parameters = PanderaParameters(lazy=False)
+
+# Create validator with custom parameters
+validator = PanderaValidator.in_directory("./config", parameters=parameters)
+
+# Create catalog with custom validator
+catalog = ValidatedDataCatalog(
+    catalog=KedroDataCatalog.in_directory("./config"),
+    validator=validator,
+)
+```
+
+### Choosing a Validator
+
+Which validator you choose is largely a matter of preference. Both Great Expectations and Pandera are mature, well-maintained libraries that will serve you well.
+
+**If your project already uses one of them**, stick with it. There's no need to switch or maintain two validation systems.
+
+**If you're starting fresh and have no preference**, we recommend **Pandera** for most use cases:
+
+- **Easier to use** - Pandera schemas are defined in Python code, making them easier to write, read, and maintain
+- **Script-based validation** - Schemas are stored as `.py` files that you can version control, review in PRs, and modify directly
+- **Lighter weight** - Pandera has fewer dependencies and a simpler setup
+
+Great Expectations is a better fit if you need:
+
+- JSON/YAML-based expectation suites (useful for non-technical stakeholders)
+- Built-in data documentation and profiling features
+- Integration with the broader GX ecosystem (Data Docs, checkpoints, etc.)
+
+---
+
+## Processing Pipeline
+
+The processing module provides chainable data transformation steps.
+
+### Basic Pipeline Usage
+
+```python
+from adc_toolkit.processing.pipeline import ProcessingPipeline
+from adc_toolkit.processing.steps.pandas import (
+    fill_missing_values,
+    remove_duplicates,
+    make_columns_snake_case,
+    select_columns,
+    filter_rows,
+)
+
+# Create and chain pipeline steps
+pipeline = ProcessingPipeline()
+pipeline = (
+    pipeline
+    .add(remove_duplicates, subset=["id"])
+    .add(fill_missing_values, method="median", columns=["price", "area"])
+    .add(make_columns_snake_case)
+    .add(filter_rows, condition=lambda df: df["price"] > 0)
+    .add(select_columns, columns=["id", "price", "area", "bedrooms"])
+)
+
+# Run the pipeline
+df_processed = pipeline.run(df)
+```
+
+### Available Processing Steps
+
+| Function                       | Description                          | Key Parameters                                              |
+| ------------------------------ | ------------------------------------ | ----------------------------------------------------------- |
+| `remove_duplicates`            | Remove duplicate rows                | `subset`, `keep`                                            |
+| `fill_missing_values`          | Fill NaN values                      | `method` (mean/median/mode/constant/interpolate), `columns` |
+| `make_columns_snake_case`      | Normalize column names to snake_case | -                                                           |
+| `filter_rows`                  | Filter rows by condition             | `condition` (callable)                                      |
+| `select_columns`               | Select specific columns              | `columns` (list)                                            |
+| `scale_data`                   | Scale numeric columns                | `columns`, `method` (minmax/standard)                       |
+| `encode_categorical`           | Encode categorical variables         | `columns`, `method` (onehot/label)                          |
+| `divide_one_column_by_another` | Create ratio column                  | `numerator`, `denominator`, `new_column_name`               |
+| `group_and_aggregate`          | Group by and aggregate               | `group_by_columns`, `agg_funcs`                             |
+
+### Custom Steps
+
+The pipeline accepts **any callable** that takes a DataFrame as its first argument and returns a DataFrame. This means you can easily create custom steps or use pandas functions directly:
+
+```python
+import pandas as pd
+from adc_toolkit.processing.pipeline import ProcessingPipeline
+
+# Define a custom processing function
+def add_price_category(df: pd.DataFrame, threshold: int = 200000) -> pd.DataFrame:
+    df = df.copy()
+    df["price_category"] = df["price"].apply(lambda x: "high" if x > threshold else "low")
+    return df
+
+# Create pipeline with custom steps and pandas functions
+pipeline = ProcessingPipeline()
+pipeline = (
+    pipeline
+    .add(add_price_category, threshold=300000)       # Custom function with kwargs
+    .add(lambda df: df.dropna(subset=["price"]))     # Lambda wrapping pandas method
+    .add(pd.merge, right=other_df, on="id")          # Pandas function (df is passed as first arg)
+    .add(lambda df: df.reset_index(drop=True))       # Lambda for quick transformations
+)
+
+df_processed = pipeline.run(df)
+```
+
+Any function with the signature `(df: DataFrame, **kwargs) -> DataFrame` works as a pipeline step. The DataFrame is always passed as the first positional argument.
+
+---
+
+## Logging
+
+The toolkit provides a unified logging interface with support for multiple backends.
+
+### Basic Usage
+
+```python
+from adc_toolkit.logger import Logger
+
+# Create logger
+logger = Logger()
+
+# Log messages
+logger.debug("Debug message")
+logger.info("Info message")
+logger.warning("Warning message")
+logger.error("Error message")
+```
+
+### Configuration
+
+```python
+from adc_toolkit.logger import Logger
+
+# Set global log level
+Logger.set_level("debug")  # or "info", "warning", "error"
+
+# Configure format options
+Logger.set_options(
+    use_log_filepath=True,
+    log_filepath="./logs/app.log"
+)
+
+# Reset to defaults
+Logger.reset_options()
+```
+
+### Backend Selection
+
+The logger automatically selects the best available backend:
+
+- **Loguru** (if installed via `adc-toolkit[logging]`) - Colorful, feature-rich logging
+- **Python logging** (fallback) - Standard library logging
+
+---
+
+## Module Architecture
+
+| Module                                | Description            | Key Classes/Functions                |
+| ------------------------------------- | ---------------------- | ------------------------------------ |
+| `adc_toolkit.data`                    | Validated data catalog | `ValidatedDataCatalog`               |
+| `adc_toolkit.data.catalogs.kedro`     | Kedro integration      | `KedroDataCatalog`                   |
+| `adc_toolkit.data.validators.gx`      | Great Expectations     | `GXValidator`, `BatchManager`        |
+| `adc_toolkit.data.validators.pandera` | Pandera validation     | `PanderaValidator`                   |
+| `adc_toolkit.processing`              | Data pipelines         | `ProcessingPipeline`, `PipelineStep` |
+| `adc_toolkit.logger`                  | Logging interface      | `Logger`                             |
+| `adc_toolkit.eda`                     | Exploratory analysis   | `TimeSeries` (in development)        |
+| `adc_toolkit.configuration`           | Hydra configs          | Base YAML templates                  |
+
+### Architecture Diagram
+
+```
+                    ValidatedDataCatalog
+                            |
+            +---------------+---------------+
+            |                               |
+       DataCatalog                    DataValidator
+       (Kedro I/O)                   (Validation)
+            |                               |
+     +------+------+              +---------+---------+
+     |             |              |         |         |
+   Local        Cloud           GX      Pandera   NoValidator
+   Files       Storage
+     |             |
+   CSV/         GCS/S3/
+  Parquet       Azure
+```
+
+---
+
+## API Reference
+
+Full API documentation is available at: [adc-toolkit API Reference](https://adc-consulting.github.io/adc-toolkit/adc_toolkit.html)
+
+---
+
+## CLI Reference
+
+```bash
+adc-toolkit --version                    # Show version
+adc-toolkit --help                       # Show help
+
+adc-toolkit init-catalog [PATH]          # Initialize catalog structure
+    --overwrite                          # Overwrite existing files
+    --no-globals                         # Skip globals.yml
+    --no-catalog                         # Skip catalog.yml
+    --no-credentials                     # Skip credentials.yml
+```
+
+### Examples
+
+```bash
+# Initialize in current directory
+adc-toolkit init-catalog
+
+# Initialize in specific path
+adc-toolkit init-catalog ./my_project/config
+
+# Reinitialize and overwrite existing files
+adc-toolkit init-catalog ./config --overwrite
+
+# Initialize without credentials file
+adc-toolkit init-catalog ./config --no-credentials
+```
+
+---
+
+## Development
+
+### Prerequisites
+
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv) package manager
+- Java 17 (for Spark tests only)
+
+### Setup
+
+```bash
+git clone https://github.com/ADC-Consulting/adc-toolkit.git
+cd adc-toolkit
+uv sync --all-extras
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run tests with coverage report
+make coverage
+
+# Run specific test file
+uv run pytest src/adc_toolkit/data/tests/test_catalog.py
+
+# Run specific test function
+uv run pytest src/adc_toolkit/data/tests/test_catalog.py::test_function_name
+
+# CI/CD command (90% coverage required)
+uv run pytest --cov=src/adc_toolkit/ --cov-fail-under=90
+```
+
+### Code Quality
+
+```bash
+# Run all linters and pre-commit hooks
+make lint
+
+# Or directly
+uv run pre-commit run --all --all-files
+```
+
+---
+
+## Project Structure
+
+```
+adc-toolkit/
+├── src/adc_toolkit/
+│   ├── __init__.py
+│   ├── cli/                    # Command-line interface
+│   ├── data/                   # Data catalog and validation
+│   │   ├── catalog.py          # ValidatedDataCatalog
+│   │   ├── catalogs/kedro/     # Kedro integration
+│   │   └── validators/         # GX, Pandera, NoValidator
+│   ├── eda/                    # Exploratory data analysis
+│   ├── logger/                 # Logging infrastructure
+│   ├── processing/             # Data transformation pipelines
+│   ├── configuration/          # Hydra config templates
+│   └── utils/                  # Utility functions
+├── examples/
+│   ├── configs/                # Example configurations
+│   ├── notebooks/              # Example Jupyter notebooks
+│   └── scripts/                # Example scripts
+├── pyproject.toml
+└── README.md
+```
+
+---
+
+## Limitations
+
+- **EDA Module**: The exploratory data analysis module is partially implemented and shows a `FutureWarning` on import
+- **Great Expectations Version**: GX is constrained to version `<1.0.0` due to API changes in GX 1.0
+- **Kedro Required**: The `kedro` optional dependency is required for the `ValidatedDataCatalog` to function
+
+---
+
+## Contributing
+
+### Code Style Requirements
+
+- **Ruff** for linting and formatting (line length: 120)
+- **mypy** for type checking (strict mode)
+- **90%+ test coverage** enforced in CI/CD
+- **Google-style docstrings** required for all public functions
+
+### Pre-commit Hooks
+
+The following checks run automatically on commit:
+
+- Ruff linting with auto-fix
+- autoflake (removes unused imports)
+- mypy type checking
+- isort import sorting
+- black-jupyter formatting
+- nbstripout (removes notebook outputs)
+
+### Pull Request Process
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Ensure `make lint` and `make test` pass
+5. Submit a pull request
+
+---
+
+## License
+
+MIT License - see [LICENCE](LICENCE) file for details.
+
+---
+
+## Authors
+
+- Ivan Konovalov (ivan.k@adc-consulting.com)
+- Jakob Damen (jakob.d@adc-consulting.com)
+- Marc Nientker (marc@adc-consulting.com)
+- Martijn Blom (martijn.b@adc-consulting.com)
+- Niek van der Laan (niek.vdl@adc-consulting.com)
+- Nils Jaranovs (nils.j@adc-consulting.com)
+- Rutger Lit (rutger.l@adc-consulting.com)
+- Noortje Mentink (noortje.m@adc-consulting.com)
+- Ron Kremer (ron.k@adc-consulting.com)

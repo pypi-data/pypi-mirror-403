@@ -1,0 +1,85 @@
+name: Sync Dev with Main
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-dev:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for existing PR
+        id: check-pr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          EXISTING_PR=$(gh pr list --base dev --head main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "pr_exists=true" >> "$GITHUB_OUTPUT"
+            echo "pr_number=$EXISTING_PR" >> "$GITHUB_OUTPUT"
+            echo "PR #$EXISTING_PR already exists"
+          else
+            echo "pr_exists=false" >> "$GITHUB_OUTPUT"
+            echo "No existing PR found"
+          fi
+
+      - name: Check if dev is up to date with main
+        id: check-diff
+        run: |
+          git fetch origin dev
+          DIFF=$(git rev-list --count origin/dev..origin/main)
+          if [ "$DIFF" -eq 0 ]; then
+            echo "needs_sync=false" >> "$GITHUB_OUTPUT"
+            echo "dev is already up to date with main"
+          else
+            echo "needs_sync=true" >> "$GITHUB_OUTPUT"
+            echo "dev is $DIFF commit(s) behind main"
+          fi
+
+      - name: Create PR to sync dev with main
+        if: steps.check-pr.outputs.pr_exists == 'false' && steps.check-diff.outputs.needs_sync == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr create \
+            --base dev \
+            --head main \
+            --title "Sync dev with main" \
+            --body "Automated PR to keep \`dev\` branch in sync with \`main\`.
+
+          This PR was created automatically after a push to \`main\`.
+
+          **Trigger commit:** ${{ github.sha }}"
+
+      - name: Job Summary
+        if: always()
+        run: |
+          echo "## Sync Dev with Main Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Trigger Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.check-diff.outputs.needs_sync }}" == "false" ]; then
+            echo "| **Status** | ✅ Already in sync |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.check-pr.outputs.pr_exists }}" == "true" ]; then
+            echo "| **Status** | ⏭️ PR #${{ steps.check-pr.outputs.pr_number }} already exists |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Status** | ✅ PR created |" >> $GITHUB_STEP_SUMMARY
+          fi

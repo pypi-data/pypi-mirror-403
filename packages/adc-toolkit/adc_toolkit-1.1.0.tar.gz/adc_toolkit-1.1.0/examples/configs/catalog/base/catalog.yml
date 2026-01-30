@@ -1,0 +1,43 @@
+elnino.extract:
+  type: "${globals:datasets.pandas.csv}"
+  filepath: examples/data/tables/elnino.csv
+
+house_prices.extract:
+  type: "${globals:datasets.pandas.bq}"
+  sql: examples/data/queries/house_prices.sql
+  # sql: SELECT * FROM sample-project-351217.house_prices.train_data_date
+
+house_prices.extract_dynamic:
+  type: "${globals:datasets.pandas.bq}"
+  sql: examples/data/queries/house_prices_template.sql
+
+house_prices.raw:
+  type: "${globals:datasets.pandas.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/${globals:folders.raw}/house_prices.parquet"
+  versioned: True
+
+house_prices.intermediate:
+  type: "${globals:datasets.pandas.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/${globals:folders.int}/house_prices.parquet"
+  versioned: True
+
+house_prices.processed:
+  type: "${globals:datasets.pandas.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/${globals:folders.pri}/house_prices.parquet"
+  versioned: True
+
+#######################
+### FACTORIES
+#######################
+
+# factory for files that default to using pandas with parquet files
+"{dataset_name}.{layer}@pandas":
+  type: "${globals:datasets.pandas.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/{layer}/{dataset_name}.parquet"
+  versioned: True
+
+# factory for files that default to using spark with parquet files
+"{dataset_name}.{layer}@spark":
+  type: "${globals:datasets.spark.parquet}"
+  filepath: "${globals:bucket_prefix}://${globals:bucket_name}/{layer}/{dataset_name}.parquet"
+  versioned: True
