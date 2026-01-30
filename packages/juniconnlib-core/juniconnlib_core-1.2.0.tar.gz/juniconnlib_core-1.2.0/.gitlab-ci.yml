@@ -1,0 +1,81 @@
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+variables:
+ FF_NETWORK_PER_BUILD: 1 # Necessary for the FIWARE stack created during testing
+
+.ci_component_job_mode: &ci_component_job_mode "artifacts"
+
+
+include:
+  - project: iek-10/public/developer-tools/gitlab-ci-templates
+    ref: main
+    file:
+      - services/fiware-services.yml
+  - component: $CI_SERVER_FQDN/iek-10/public/developer-tools/gitlab-ci-components/python/lint@v2.7.1
+    inputs:
+      allow_stage_failure: false
+  - component: $CI_SERVER_FQDN/iek-10/public/developer-tools/gitlab-ci-components/python/build@v2.7.1
+    inputs:
+      image_tag: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/python:3.12
+      job_mode: *ci_component_job_mode
+  - component: $CI_SERVER_FQDN/iek-10/public/developer-tools/gitlab-ci-components/python/test@v2.7.1
+    inputs:
+      job_mode: *ci_component_job_mode
+      pytest_services:
+        - !reference [.fiware-services, services]
+      pytest_python_versions:
+        - "3.11"
+        - "3.12"
+      pytest_before_script:
+        - |
+          cat <<EOF > tests/configs/keycloak_inttest_credentials_file.json
+          {
+          "username": "${KEYCLOAK_INTTEST_USERNAME}",
+          "password": "${KEYCLOAK_INTTEST_PASSWORD}"
+           }
+          EOF
+        - !reference [.fiware-services, validation]
+        - !reference [.fiware-services, test]
+      pytest_disable_parallel_testing: true
+      # Currently Tests can only run sequential to prevent test failing, e.g.:
+      # - FAILED tests/test_int_ocb_communicators.py::TestIntegrationHttpCommunicatorWithOAuth::test_posting_attribute_updates - AttributeError: 'ContextEntity' object has no attribute 'classicAttribute'
+      # - FAILED tests/test_int_subscription_handler.py::TestIntegrationMqttHandler::test_posting_with_oauth - AssertionError: assert 0 == 1
+      # - ERROR tests/test_int_ocb_communicators.py::TestIntegrationHttpCommunicatorWithOAuth::test_entity_callback - requests.exceptions.HTTPError: 404
+  - component: $CI_SERVER_FQDN/iek-10/public/developer-tools/gitlab-ci-components/python/security@v2.7.1
+    inputs:
+      allow_stage_failure: false
+      job_mode: *ci_component_job_mode
+  - component: $CI_SERVER_FQDN/iek-10/public/developer-tools/gitlab-ci-components/python/doc@v2.7.1
+    inputs:
+      generate_doc_versioned_doc: true
+      generate_doc_versioned_doc_selection:
+        - v*
+        - main
+      always_publish_docs: true
+      fileserver_publish_enabled: true
+  - component: $CI_SERVER_FQDN/iek-10/public/developer-tools/gitlab-ci-components/python/publish@v2.7.1
+    inputs:
+      trigger_on_tags_only: false
+      job_mode: *ci_component_job_mode
+  - component: $CI_SERVER_FQDN/iek-10/public/developer-tools/gitlab-ci-components/python/publish@v2.7.1
+    inputs:
+      job_name: publish-pypi
+      twine_url: $PYPI_URL
+      twine_username: __token__
+      twine_password: $PYPI_TOKEN
+      trigger_on_tags_only: true
+
+
+stages:
+  - lint
+  - doc
+  - build
+  - test
+  - security
+  - publish
