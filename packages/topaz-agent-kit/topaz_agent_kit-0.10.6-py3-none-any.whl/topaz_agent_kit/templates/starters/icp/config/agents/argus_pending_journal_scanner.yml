@@ -1,0 +1,41 @@
+# =============================================================================
+# PENDING JOURNAL SCANNER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent queries the journal_entries database table to identify all
+# pending journal entries (status = 'pending') and groups them by transaction_id
+# (debit/credit pairs). It generates a run_id for tracking this processing batch.
+#
+# =============================================================================
+id: argus_pending_journal_scanner
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/argus_pending_journal_scanner
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.argus.argus_tools
+  toolkits: ["argus"]
+  tools: ["argus.get_pending_journals"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/argus_pending_journal_scanner.jinja
+  inputs:
+    inline: |
+      - User Request: {{user_text}}
+      - Project Directory: {{project_dir}}

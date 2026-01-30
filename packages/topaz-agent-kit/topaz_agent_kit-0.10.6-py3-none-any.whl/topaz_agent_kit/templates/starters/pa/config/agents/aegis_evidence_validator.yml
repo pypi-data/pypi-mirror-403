@@ -1,0 +1,56 @@
+# =============================================================================
+# EVIDENCE VALIDATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent validates that all required evidence documents are present and
+# complete. It checks against evidence requirements from the database and
+# verifies that timesheets, completion certificates, vessel logs, and equipment
+# logs are provided as needed.
+#
+# Note: Evidence extraction is done by the Invoice Extractor. This agent only
+# validates the extracted evidence data.
+#
+# =============================================================================
+id: aegis_evidence_validator
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_evidence_validator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.aegis.aegis_tools
+  toolkits: ["aegis"]
+  tools: ["aegis.get_evidence_requirements"]
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["agentos_memory"]
+      tools: ["agentos_shell"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_evidence_validator.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Extracted Data (use translated if available, otherwise original): {{aegis_translator.translated_data if aegis_translator else aegis_invoice_extractor.extracted_data}}
+      - Database Path: {{aegis_pending_invoice_scanner.database_path}}
+      - Project Directory: {{project_dir}}

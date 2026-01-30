@@ -1,0 +1,403 @@
+# =============================================================================
+# PIPELINE CONFIGURATION
+# =============================================================================
+#
+# Pipeline parameters:
+# - name (str, required): human-readable pipeline name
+# - description (str, required): detailed description of pipeline purpose
+#
+# =============================================================================
+
+name: "Covenant"
+description: "Enterprise-grade contract lifecycle intelligence system that automates contract processing from pre-contract discussions through WBS generation. Routes work to specialized branches based on contract lifecycle stage."
+
+# =============================================================================
+# EVENT TRIGGERS CONFIGURATION
+# =============================================================================
+#
+# Event-based trigger configuration for automatic pipeline execution.
+# If this section is present, triggers are enabled for this pipeline.
+#
+# Parameters:
+# - event_triggers (dict | list[dict]): Single trigger config (dict) or multiple trigger configs (list)
+#   Each trigger config supports:
+#   - event_triggers[].type (str, required): Type of trigger ("file_watcher")
+#   - event_triggers[].watch_directories (str | list[str], required): Directory(ies) to watch (relative to project_dir)
+#     - Can be a single string (e.g., "data/covenant") or list of strings (e.g., ["data/covenant/pre_contract", "data/covenant/draft_contracts"])
+# - event_triggers.file_patterns (list[str], optional): File patterns to match using fnmatch wildcards
+#   - Supports: "*" (any), "?" (single char), "[seq]" (character class)
+#   - Examples: ["*.txt"], ["*.pdf", "*.docx"], ["math_*.txt", "problem_*.txt"]
+#   - Default: ["*"] (all files)
+# - event_triggers.event_types (list[str], optional): File system events to trigger on
+#   - Options: "created", "modified", "deleted", "moved"
+#   - Default: ["created"]
+# - event_triggers.trigger_mode (str, optional): How to handle multiple file events
+#   - "single": Trigger immediately for each file event (no batching)
+#   - "batch": Batch multiple file events within time window, trigger once
+#   - "directory": When triggered, collect all files in the directory (orchestrator handles this)
+#   - Default: "single"
+# - event_triggers.debounce_seconds (float, optional): Wait time in seconds before triggering after last event
+#   - Only used when trigger_mode is "batch"
+#   - Default: 2.0
+# - event_triggers.exclude_directories (list[str], optional): Directory patterns to exclude from triggering
+#   - Uses fnmatch patterns relative to each watch_directory
+#   - When multiple watch_directories are specified, exclusions apply to each watch directory independently
+#   - Examples: 
+#     - ["reports"] excludes "reports" subdirectory in each watch directory
+#     - ["artifacts", "outputs"] excludes both "artifacts" and "outputs" subdirectories
+#     - ["*/reports"] excludes any "reports" directory at any level
+#   - Default: [] (no exclusions)
+# - event_triggers.exclude_patterns (list[str], optional): File patterns to exclude from triggering
+#   - Uses fnmatch patterns for filenames or relative paths
+#   - Examples: ["*.md"], ["*_summary*.json"], ["reports/*.md"]
+#   - Default: [] (no exclusions)
+# - event_triggers.extract_context (object, optional): Context extraction configuration
+#   - extract_context.user_text_template (str, optional): Jinja2 template for user_text
+#     - Available variables: {{source}} (file_path), {{file_name}}, {{event_type}}
+#     - Default: "Process file: {{source}}"
+# - event_triggers.session_strategy (str, optional): Session management strategy
+#   - "per_file": New session for each file event (isolated, no shared context)
+#   - "per_pipeline": One session for all events (accumulates context across files)
+#   - "use_current": Use the most recent active session (if none exists, creates new)
+#   - "custom": Pipeline-specific logic (e.g., per contract_id, per user_id)
+#   - Default: "per_file"
+# - event_triggers.ui_mode (str, optional): Execution mode
+#   - "background": Runs silently without UI (no session/chat_turn records)
+#   - "ui": Creates session and chat_turn records, visible in UI
+#   - Default: "background"
+#
+# =============================================================================
+
+# Example: Single trigger configuration (using new grouped structure)
+event_triggers:
+  type: "file_watcher"
+  # New grouped structure (recommended):
+  directories:
+    watch: "data/covenant"  # Single directory (string) or ["dir1", "dir2"] for multiple
+    exclude:  # Subdirectories to exclude within watch directories (relative to each watch directory)
+      - "reports"  # Exclude reports directory (pipeline output)
+      - "artifacts"  # Exclude artifacts directory (pipeline intermediate outputs)
+  files:
+    include: ["*"]  # File patterns to include (default: ["*"])
+    exclude:  # File patterns to exclude
+      - "reports/*.md"  # Exclude markdown files in reports directory (reports dir already excluded, but this is extra safety)
+      - "*_summary*.json"  # Exclude summary JSON files
+  # Trigger mode configuration:
+  #   - "single": Trigger immediately for each file event (no batching)
+  #   - "batch": Batch multiple file events within time window, trigger once
+  #   - "directory": When triggered, collect all files in the directory (orchestrator handles this)
+  # Default: "single"
+  trigger_mode: "batch"  # Batch events for pre-contract synthesis (multiple files created together)
+  debounce_seconds: 2.0  # Wait time in seconds before triggering after last event (only used when trigger_mode is "batch")
+  event_types:
+    - "created"
+    - "modified"
+  extract_context:
+    user_text_template: |
+      Process contract files from folder: {{folder_path}}
+      Event: {{event_type}}
+      Files: {{file_count}} file(s)
+      {% if file_paths %}
+      File paths:
+      {% for path in file_paths %}
+      - {{path}}
+      {% endfor %}
+      {% endif %}
+  pass_files_as_uploads: false  # Files are referenced in user_text, agent uses tools to read from disk
+  session_strategy: "use_current"
+  ui_mode: "ui"
+
+# Alternative: Old flat structure (still supported for backward compatibility)
+# event_triggers:
+#   type: "file_watcher"
+#   watch_directories: "data/covenant"
+#   exclude_directories: ["reports", "artifacts"]
+#   file_patterns: ["*"]
+#   exclude_patterns: ["*.md", "*_summary*.json"]
+#   trigger_mode: "batch"
+#   debounce_seconds: 2.0
+#   event_types: ["created", "modified"]
+#   session_strategy: "use_current"
+#   ui_mode: "ui"
+
+# Example: Multiple trigger configurations (each with its own settings)
+# Uncomment and customize as needed:
+# event_triggers:
+#   - type: "file_watcher"
+#     watch_directories: "data/covenant/pre_contract"  # Single directory as string
+#     trigger_mode: "batch"
+#     debounce_seconds: 2.0
+#     file_patterns: ["*.txt", "*.md", "*.pdf", "*.docx"]
+#     exclude_directories: ["reports", "artifacts"]
+#     session_strategy: "use_current"
+#     ui_mode: "ui"
+#     extract_context:
+#       user_text_template: "Process pre-contract file: {{file_path}}"
+#   - type: "file_watcher"
+#     watch_directories: ["data/covenant/draft_contracts", "data/covenant/signed_contracts"]  # Multiple directories as list
+#     trigger_mode: "single"
+#     file_patterns: ["*.pdf"]
+#     exclude_directories: ["reports", "artifacts"]
+#     session_strategy: "use_current"
+#     ui_mode: "ui"
+#     extract_context:
+#       user_text_template: "Process contract: {{file_path}}"
+
+# =============================================================================
+# EXECUTION SETTINGS
+# =============================================================================
+#
+# Execution settings for async HITL mode
+#
+# =============================================================================
+
+execution_settings:
+  hitl_mode: "async"
+  checkpoint_expiry_days: 7
+
+# =============================================================================
+# CASE MANAGEMENT
+# =============================================================================
+#
+# Case management configuration for async HITL
+#
+# =============================================================================
+
+case_management:
+  config_file: "cases/covenant_draft_validation.yml"
+  tracking_variables:
+    hitl_queued: "hitl_queued_cases"
+    completed: "completed_cases"
+
+# =============================================================================
+# PIPELINE PATTERN CONFIGURATION
+# =============================================================================
+#
+# Define the execution flow explicitly using one of these constructs:
+#   - sequential: run children in order
+#   - parallel: run children concurrently (wait_all)
+#   - loop: repeat body up to max_iterations
+#   - repeat: run same agent multiple times in parallel (new pattern)
+#   - switch: route by field value
+#
+# NODES REGISTRY (REQUIRED)
+# - nodes (list[object], required)
+#   - nodes[].id (str, required): agent identifier
+#   - nodes[].config_file (str, required): path to agent configuration file (relative to config/)
+#
+# PATTERN (REQUIRED)
+# - pattern (object, required): one of sequential | parallel | loop | repeat | switch
+#
+# STEP (LEAF)
+# - node (str, required): "agent_id"
+#
+# SEQUENTIAL
+# - type: sequential (required)
+# - steps: list of (step | pattern) (required, >=1)
+#
+# SWITCH
+# - type: switch (required)
+# - switch_field (str, required): field to switch on (e.g., "{{agent_id.field}}")
+# - cases (list[object], required): list of case values and their steps
+#   - cases[].value (str, required): value to match
+#   - cases[].steps (list, required): steps to execute if value matches
+#
+# NOTES
+# - Context model unchanged: each node writes to context.upstream[node_id]
+# - Gates and outputs are configured in their respective sections below
+#
+# =============================================================================
+
+nodes:
+  - id: covenant_orchestrator
+    config_file: "agents/covenant_orchestrator.yml"
+  - id: covenant_pre_contract_analyzer
+    config_file: "agents/covenant_pre_contract_analyzer.yml"
+  - id: covenant_pre_contract_synthesizer
+    config_file: "agents/covenant_pre_contract_synthesizer.yml"
+  - id: covenant_draft_extractor
+    config_file: "agents/covenant_draft_extractor.yml"
+  - id: covenant_draft_validator
+    config_file: "agents/covenant_draft_validator.yml"
+  - id: covenant_risk_assessor
+    config_file: "agents/covenant_risk_assessor.yml"
+  - id: covenant_signed_extractor
+    config_file: "agents/covenant_signed_extractor.yml"
+  - id: covenant_signed_analyzer
+    config_file: "agents/covenant_signed_analyzer.yml"
+  - id: covenant_wbs_analyzer
+    config_file: "agents/covenant_wbs_analyzer.yml"
+  - id: covenant_wbs_generator
+    config_file: "agents/covenant_wbs_generator.yml"
+  - id: covenant_change_order_extractor
+    config_file: "agents/covenant_change_order_extractor.yml"
+  - id: covenant_change_order_comparator
+    config_file: "agents/covenant_change_order_comparator.yml"
+  - id: covenant_change_order_risk_assessor
+    config_file: "agents/covenant_change_order_risk_assessor.yml"
+
+pattern:
+  type: sequential
+  name: "Covenant Contract Lifecycle Intelligence"
+  description: |
+    ## Covenant Contract Lifecycle Intelligence Pipeline
+    
+    This pipeline orchestrates contract lifecycle management from pre-contract discussions through WBS generation.
+    
+    **Flow**:
+    1. **Orchestrator** analyzes user request or file event, extracts contract_id, collects all relevant files in directory, and determines which branch to route to
+    2. **Switch Pattern** routes to the appropriate sequential branch based on orchestrator decision
+    3. **Sequential Branch** executes all agents in order for the selected branch
+    4. **Branch completes** independently with markdown report output(s)
+    
+    **Branches**:
+    - **Pre-Contract Synthesis**: Analyzes and synthesizes all pre-contract artifacts in the directory (batch processing)
+    - **Draft Validation**: Validates draft contract against pre-contract summary with risk assessment
+    - **Signed Intelligence & WBS**: Extracts and analyzes signed contract, then generates WBS sequentially
+    - **Change Order Review**: Reviews change orders against signed SOW, identifies modified terms, and assesses risks
+  steps:
+    - node: covenant_orchestrator
+    - type: switch
+      field: "covenant_orchestrator.selected_branch"
+      name: "Branch Router"
+      description: |
+        Routes to appropriate sequential branch based on orchestrator decision.
+      cases:
+        pre_contract_synthesis:
+          - type: sequential
+            name: "Pre-Contract Synthesis Branch"
+            description: |
+              Analyzes all pre-contract artifacts in the directory and synthesizes findings into structured summary.
+              Orchestrator collects all files in pre_contract/{{contract_id}}/ directory for batch processing.
+            steps:
+              - node: covenant_pre_contract_analyzer
+              - node: covenant_pre_contract_synthesizer
+                
+        draft_validation:
+          - type: sequential
+            name: "Draft Validation Branch"
+            description: |
+              Extracts structured data from draft contract, validates against pre-contract summary, 
+              assesses risk of deviations, and provides HITL review for high-risk cases.
+            steps:
+              - node: covenant_draft_extractor
+              - node: covenant_draft_validator
+              - node: covenant_risk_assessor
+              - gate: covenant_draft_risk_review
+                condition: "covenant_risk_assessor.risk_assessment.high_risk == true"
+                  
+        signed_intelligence_and_wbs:
+          - type: sequential
+            name: "Signed Intelligence & WBS Generation Branch"
+            description: |
+              First extracts and analyzes signed contract to create structured summary.
+              Then sequentially generates WBS using the signed contract summary.
+            steps:
+              - node: covenant_signed_extractor
+              - node: covenant_signed_analyzer
+              - node: covenant_wbs_analyzer
+              - node: covenant_wbs_generator
+              
+        change_order_review:
+          - type: sequential
+            name: "Change Order Review Branch"
+            description: |
+              Extracts structured data from change order document, compares against signed SOW,
+              identifies modified terms clause-by-clause, and assesses risks of changes.
+              Provides HITL review for high-risk change orders.
+            steps:
+              - node: covenant_change_order_extractor
+              - node: covenant_change_order_comparator
+              - node: covenant_change_order_risk_assessor
+              - gate: covenant_change_order_risk_review
+                condition: "covenant_change_order_risk_assessor.risk_assessment.high_risk == true"
+
+# =============================================================================
+# HITL SECTION - Human-in-the-loop gates
+# =============================================================================
+#
+# Human-in-the-Loop gates configuration (optional)
+# Parameters:
+# - gates (list[object], optional): human-in-the-loop pause points
+#   - gates[].id (str, required): unique gate id
+#   - gates[].type (str, required): "approval" | "input" | "selection"
+#   - gates[].title (str, optional): UI title
+#   - gates[].description (str, optional): UI description
+#   - gates[].fields (list[object], optional): form fields for input gates
+#   - gates[].options (list[object], optional): selection options for selection gates
+#   - gates[].target_agents (list[str], optional): which agents receive this data
+#   - gates[].context_key (str, optional): key to store data in context
+#   - gates[].timeout_ms (int, optional): wait timeout; default 300000
+#   - gates[].on_timeout (str, optional): "approve" | "reject" | "skip" | "default"
+#   - gates[].description (str | object, optional): UI description - can be inline string or object with jinja property
+#     - gates[].description.jinja (str, optional): path to Jinja2 template relative to config/ directory
+#
+# =============================================================================
+
+gates:
+  - id: covenant_draft_risk_review
+    type: selection
+    title: "Review High-Risk Deviations"
+    description:
+      jinja: "hitl/covenant_draft_risk_review.jinja"
+    options:
+      - value: "approve"
+        label: "Approve as-is"
+        description: "Accept the draft contract with identified deviations"
+      - value: "request_changes"
+        label: "Request changes"
+        description: "Request modifications to address high-risk deviations"
+      - value: "escalate"
+        label: "Escalate for review"
+        description: "Escalate to senior review for decision"
+    timeout_ms: 300000
+    on_timeout: "skip"
+  - id: covenant_change_order_risk_review
+    type: selection
+    title: "Review High-Risk Change Order"
+    description:
+      jinja: "hitl/covenant_change_order_risk_review.jinja"
+    options:
+      - value: "approve"
+        label: "Approve change order"
+        description: "Accept the change order with identified risks"
+      - value: "request_revision"
+        label: "Request revision"
+        description: "Request modifications to address high-risk changes"
+      - value: "reject"
+        label: "Reject change order"
+        description: "Reject the change order due to unacceptable risks"
+      - value: "escalate"
+        label: "Escalate for review"
+        description: "Escalate to senior review for decision"
+    timeout_ms: 300000
+    on_timeout: "skip"
+
+# =============================================================================
+# OUTPUTS CONFIGURATION
+# =============================================================================
+#
+# Pipeline output configuration for final and intermediate results
+#
+# Parameters:
+# - outputs.final (object, required): final pipeline output
+#   - outputs.final.node (str, required): agent ID that produces final output
+#   - outputs.final.selectors (list[str], optional): JSONPath selectors to extract specific fields
+#   - outputs.final.transform (str, optional): transformation expression
+# - outputs.intermediate (list[object], optional): intermediate outputs for debugging/monitoring
+#   - outputs.intermediate[].node (str, required): agent ID that produces intermediate output
+#   - outputs.intermediate[].selectors (list[str], optional): JSONPath selectors
+#   - outputs.intermediate[].transform (str, optional): transformation expression
+#
+# Note: Different branches produce different final outputs. The output configuration
+# will be determined by which branch executes.
+#
+# =============================================================================
+
+outputs:
+  final:
+    node: covenant_pre_contract_synthesizer
+    selectors:
+      - report_md
+      - contract_id
+    transform: "{{ value }}"

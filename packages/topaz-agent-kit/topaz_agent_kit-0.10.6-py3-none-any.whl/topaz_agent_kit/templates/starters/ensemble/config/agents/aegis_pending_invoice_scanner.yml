@@ -1,0 +1,41 @@
+# =============================================================================
+# PENDING INVOICE SCANNER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent queries the incoming_invoices database table to identify all
+# pending invoices (status = 'pending') and generates a run_id for tracking
+# this processing batch.
+#
+# =============================================================================
+id: aegis_pending_invoice_scanner
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_pending_invoice_scanner
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.aegis.aegis_tools
+  toolkits: ["aegis"]
+  tools: ["aegis.get_pending_invoices"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_pending_invoice_scanner.jinja
+  inputs:
+    inline: |
+      - User Request: {{user_text}}
+      - Project Directory: {{project_dir}}
