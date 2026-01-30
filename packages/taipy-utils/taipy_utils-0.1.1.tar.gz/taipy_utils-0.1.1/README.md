@@ -1,0 +1,142 @@
+# taipy-utils
+
+[![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Python](https://img.shields.io/badge/python-3.9--3.12-blue.svg)](https://www.python.org/downloads/)
+[![codecov](https://codecov.io/github/enarroied/taipy_utils/branch/master/graph/badge.svg?token=HLZVB6WFMT)](https://codecov.io/github/enarroied/taipy_utils)
+![Tests](https://github.com/enarroied/taipy_utils/actions/workflows/tests.yml/badge.svg)
+- [taipy-utils](#taipy-utils)
+  - [Installation](#installation)
+  - [The Initial Problem](#the-initial-problem)
+  - [The Solution](#the-solution)
+  - [Why This Package?](#why-this-package)
+  - [Features](#features)
+    - [`@taipy_callback`](#taipy_callback)
+    - [`@hold_control_during_execution`](#hold_control_during_execution)
+    - [Combine Decorators](#combine-decorators)
+  - [License](#license)
+  - [Contributing](#contributing)
+
+Utility decorators for cleaner Taipy GUI applications.
+
+## Installation
+
+```bash
+pip install taipy-utils
+# or
+uv add taipy-utils
+```
+
+## The Initial Problem
+
+Taipy callbacks often become messy when mixing framework code with business logic. The following code comes from a personal project that uses Taipy, before adding the decorator:
+
+```python
+def make_qr_code(state):
+    with state as s:
+        message = s.qr_code_input
+        if len(message) > 1500:
+            notify(s, "e", "Text too long")  # Framework-specific error handling
+            return
+        # ... 20 more lines of business logic mixed with state management
+```
+
+**Issues:**
+
+- Long, hard-to-read functions
+- Business logic **tightly coupled to Taipy**
+- Can't reuse logic outside Taipy
+- Difficult to test
+
+## The Solution
+
+**Separate concerns** with decorators:
+
+```python
+from taipy_utils import taipy_callback
+
+def generate_qr_code(message: str, add_logo: bool, ...) -> str:
+    if len(message) > 1500:
+        raise ValueError("Text too long")  # Standard Python error handling
+    # ... Rest of code
+    return file_path
+
+@taipy_callback
+def make_qr_code(state):
+    state.image_path = generate_qr_code(
+        message=state.qr_code_input,
+        add_logo=state.add_logo,
+        ...
+    )
+```
+
+**Benefits:**
+
+- Separation of concerns: The UI stuff in one side, the business logic in another.
+- Pythonic error handling (standard exceptions using `ValueError`)
+- Reusable logic across frameworks
+- Easy to test
+- Automatic user notifications if a function raises an exception
+
+## Why This Package?
+
+After creating `@taipy_callback`, I built `@hold_control_during_execution` for convenience. With several Taipy projects, making a package made sense:
+
+1. Version control separate from individual projects
+2. Share code across projects without copy-paste (DRY principle)
+3. Might help others in the Taipy community
+
+## Features
+
+### `@taipy_callback`
+
+Automatically translates Python exceptions into Taipy notifications:
+
+```python
+from taipy_utils import taipy_callback
+
+@taipy_callback
+def on_submit(state):
+    if state.age < 18:
+        raise ValueError("Must be 18 or older")  # Shows warning notification
+    process_data(state.data)  # Any other exception shows error notification
+```
+
+- `ValueError` → Warning notification (doesn't stop execution)
+- Other exceptions → Error notification (re-raised for debugging)
+
+### `@hold_control_during_execution`
+
+This decorator triggers the `hold_control()` function before a callback execution, and the `resume_control()` at the end.
+
+```python
+from taipy_utils import hold_control_during_execution
+
+@hold_control_during_execution("Loading data...")
+def on_load_data(state):
+    # calls hold_control()
+    data = fetch_from_api()
+    state.data = data
+    # calls resume_control()
+```
+
+### Combine Decorators
+
+You can combine decorators if you wish:
+
+```python
+@taipy_callback
+@hold_control_during_execution("Processing...")
+def on_process(state):
+    if not state.file:
+        raise ValueError("Please select a file")
+    result = process_file(state.file)
+    state.result = result
+```
+
+## License
+
+[MIT](https://github.com/enarroied/taipy_utils/blob/master/LICENSE).
+
+## Contributing
+
+Issues welcome at [github.com/enarroied/taipy_utils](https://github.com/enarroied/taipy_utils).
