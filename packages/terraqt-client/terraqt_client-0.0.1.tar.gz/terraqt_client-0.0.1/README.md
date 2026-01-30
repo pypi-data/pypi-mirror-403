@@ -1,0 +1,296 @@
+# TerraQT Client
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Type Checked](https://img.shields.io/badge/type--checked-mypy-blue.svg)](https://mypy-lang.org/)
+
+A professional, type-safe Python client for querying TerraQT weather forecast data sources.
+
+## Features
+
+- 🚀 **Async-first**: Built on `aiohttp` for efficient concurrent API requests
+- 🔧 **Flexible Grouping**: Group locations by any criteria (solar, wind, custom categories)
+- 📊 **Multiple Variable Sets**: Configure different variable sets per model and group
+- 🛡️ **Type-safe**: Full type hints with strict mypy compliance
+- 🔄 **Retry Logic**: Automatic retry with exponential backoff
+- 📦 **Modern Packaging**: UV-compatible with PEP 621 compliance
+
+## Installation
+
+### Using UV (Recommended)
+
+```bash
+# Install from source
+uv pip install .
+
+# Install with development dependencies
+uv pip install -e ".[dev]"
+```
+
+### Using pip
+
+```bash
+pip install terraqt
+```
+
+## Quick Start
+
+```python
+import asyncio
+from terraqt import TerraQT, SOLAR, WIND
+
+async def main():
+    # Initialize client
+    tqt = TerraQT(api_token="your_api_token")
+
+    # Register locations with groups
+    tqt.locations.register(
+        "station_1", lon=106.5, lat=37.5, weight=0.6, groups=SOLAR
+    )
+    tqt.locations.register(
+        "station_2", lon=105.5, lat=36.5, weight=0.4, groups=SOLAR
+    )
+
+    # Fetch data using fluent query builder
+    async with tqt.client() as client:
+        # Option 1: Use variable group from model config
+        collection = await (
+            tqt.query(client)
+            .models(["gfs_surface", "aifs_surface"])
+            .locations_by_group(SOLAR)
+            .execute()
+        )
+        
+        # Option 2: Specify raw variables directly
+        collection = await (
+            tqt.query(client)
+            .models(["gfs_surface"])
+            .locations(["station_1", "station_2"])
+            .variables(["ws100m", "tcc"])
+            .execute()
+        )
+
+    # Access forecast data
+    for model in collection.models():
+        for location in collection.locations(model):
+            df = collection.get(model, location)
+            print(f"{model} at {location}: {df.shape}")
+
+asyncio.run(main())
+```
+
+## Location Management
+
+### Registering Locations
+
+```python
+from terraqt import TerraQT, SOLAR, WIND
+
+tqt = TerraQT(api_token="your_token")
+
+# Single group
+tqt.locations.register("solar_site_1", lon=106.5, lat=37.5, groups=SOLAR)
+
+# Multiple groups (location can belong to multiple categories)
+tqt.locations.register(
+    "hybrid_site", 
+    lon=105.5, 
+    lat=36.5, 
+    groups=[SOLAR, WIND, "priority"]
+)
+
+# With weights for aggregation
+tqt.locations.register(
+    "station_1", 
+    lon=107.0, 
+    lat=38.0, 
+    weight=0.7, 
+    groups=WIND
+)
+```
+
+### Loading from CSV
+
+```python
+# CSV file with columns: lon, lat, weight
+tqt.locations.load_from_csv(
+    "locations.csv",
+    prefix="site",
+    groups=SOLAR  # or groups=[SOLAR, "priority"]
+)
+```
+
+### Querying Locations
+
+```python
+# Get all locations in a group
+solar_locs = tqt.locations.get_locations(SOLAR)
+
+# Get all registered groups
+all_groups = tqt.locations.get_groups()
+
+# Get location objects
+location_objs = tqt.locations.get_location_objects(SOLAR)
+```
+
+## Model Configuration
+
+### Default Models
+
+The client comes with pre-configured models:
+
+```python
+from terraqt import DEFAULT_MODEL_CONFIGS
+
+# Available models:
+# - aifs_surface
+# - gfs_surface  
+# - cfs_h6_surface
+```
+
+### Custom Model Configuration
+
+```python
+from terraqt import TerraQT, ModelConfig, SOLAR, WIND
+
+tqt = TerraQT(api_token="your_token")
+
+# Register a custom model with variable groups
+custom_model = ModelConfig(
+    name="my_model",
+    variable_groups={
+        WIND: ("ws100m", "wd100m"),
+        SOLAR: ("ssrd", "tcc", "dswrf"),
+        "temperature": ("t2m", "tmax", "tmin"),
+    },
+    model_type="forecast"
+)
+
+tqt.config.register_model(custom_model)
+```
+
+## Query Builder
+
+### Basic Usage
+
+```python
+async with tqt.client() as client:
+    # Query by group (uses variable group from model config)
+    collection = await (
+        tqt.query(client)
+        .models(["gfs_surface"])
+        .locations_by_group(SOLAR)  # Fetches solar variables
+        .execute()
+    )
+    
+    # Query specific locations
+    collection = await (
+        tqt.query(client)
+        .models(["gfs_surface"])
+        .locations(["site_1", "site_2"])
+        .variable_group(WIND)  # Specify which variable group to use
+        .execute()
+    )
+    
+    # Query with raw variables (bypasses model config)
+    collection = await (
+        tqt.query(client)
+        .models(["gfs_surface"])
+        .locations(["site_1"])
+        .variables(["ws100m", "tcc", "t2m"])  # Custom variables
+        .execute()
+    )
+```
+
+## Configuration
+
+### From Environment Variables
+
+```python
+from terraqt import TerraQT
+
+# Reads TERRAQT_API_TOKEN from environment
+tqt = TerraQT.from_env()
+```
+
+### Programmatic Configuration
+
+```python
+from terraqt import TerraQT, TerraQTConfig
+
+config = TerraQTConfig(
+    api_token="your_token",
+    api_base_url="https://api-pro-openet.terraqt.com/v1",
+    timeout_total=120.0,
+    timeout_connect=10.0,
+    timeout_read=60.0,
+    max_concurrency=20,
+    retry_attempts=5,
+    retry_backoff=1.0,
+)
+
+tqt = TerraQT(config=config)
+```
+
+## Architecture
+
+```
+src/terraqt/
+├── __init__.py      # Public API exports
+├── _version.py      # Version information
+├── core.py          # Main TerraQT entry point
+├── models.py        # Data models (Location, ForecastResult, etc.)
+├── locations.py     # Location registry management
+├── client.py        # Async HTTP client
+├── config.py        # Configuration management
+└── py.typed         # PEP 561 marker
+```
+
+## Development
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/terraqt/terraqt-client.git
+cd terraqt-client
+
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src/terraqt --cov-report=html
+
+# Run specific test file
+pytest tests/test_processing.py -v
+```
+
+### Code Quality
+
+```bash
+# Format code
+ruff format
+
+# Lint code
+ruff check --fix
+
+# Type check
+mypy src/terraqt
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
