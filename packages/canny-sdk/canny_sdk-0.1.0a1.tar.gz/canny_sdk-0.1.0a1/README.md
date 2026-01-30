@@ -1,0 +1,291 @@
+# canny-sdk
+
+[![CI](https://github.com/AsyncAlchemist/canny-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/AsyncAlchemist/canny-sdk/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/AsyncAlchemist/canny-sdk/graph/badge.svg)](https://codecov.io/gh/AsyncAlchemist/canny-sdk)
+[![PyPI version](https://badge.fury.io/py/canny-sdk.svg)](https://badge.fury.io/py/canny-sdk)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+
+Unofficial Python SDK for [Canny's](https://canny.io) REST API.
+
+## Features
+
+- Full support for Canny API v1 and v2 endpoints
+- Both synchronous and asynchronous clients
+- Type hints and Pydantic models for all API objects
+- Automatic pagination helpers
+- Webhook signature verification
+- **Read-only mode** (default) to prevent accidental data modifications
+
+## Installation
+
+```bash
+pip install canny-sdk
+```
+
+For development:
+
+```bash
+pip install canny-sdk[dev]
+```
+
+## Quick Start
+
+```python
+from canny import CannyClient
+
+# Initialize client (reads CANNY_API_KEY from environment)
+client = CannyClient()
+
+# Or with explicit API key
+client = CannyClient(api_key="your_api_key")
+
+# List all boards
+boards = client.boards.list()
+for board in boards.boards:
+    print(f"{board.name}: {board.post_count} posts")
+
+# List posts with automatic pagination
+for post in client.posts.list_all(board_id="..."):
+    print(post.title)
+```
+
+## Safety: Read-Only Mode
+
+**By default, the client operates in read-only mode.** This prevents accidental modifications to your production data.
+
+```python
+# Default: read_only=True - write operations will raise CannyReadOnlyError
+client = CannyClient()
+
+# To enable write operations, explicitly set read_only=False
+client = CannyClient(read_only=False)
+```
+
+## Async Client
+
+```python
+import asyncio
+from canny import CannyAsyncClient
+
+async def main():
+    async with CannyAsyncClient() as client:
+        # List boards
+        boards = await client.boards.list()
+
+        # Concurrent requests
+        boards, users = await asyncio.gather(
+            client.boards.list(),
+            client.users.list()
+        )
+
+asyncio.run(main())
+```
+
+## API Resources
+
+### Boards
+
+```python
+# List all boards
+boards = client.boards.list()
+
+# Retrieve a specific board
+board = client.boards.retrieve(id="board_id")
+```
+
+### Posts
+
+```python
+# List posts with filtering
+posts = client.posts.list(
+    board_id="...",
+    status="open",
+    sort="newest",
+    limit=20
+)
+
+# Iterate over all posts (automatic pagination)
+for post in client.posts.list_all(board_id="..."):
+    print(post.title, post.score)
+
+# Retrieve a specific post
+post = client.posts.retrieve(id="post_id")
+
+# Create a post (requires read_only=False)
+post_id = client.posts.create(
+    author_id="user_id",
+    board_id="board_id",
+    title="Feature Request",
+    details="Please add this feature..."
+)
+```
+
+### Users
+
+```python
+# List users (v2 cursor-based pagination)
+users = client.users.list(limit=100)
+
+# Iterate over all users
+for user in client.users.list_all():
+    print(user.name, user.email)
+
+# Retrieve a user
+user = client.users.retrieve(id="user_id")
+user = client.users.retrieve(email="user@example.com")
+```
+
+### Comments
+
+```python
+# List comments for a post
+comments = client.comments.list(post_id="...")
+
+# Iterate over all comments
+for comment in client.comments.list_all(post_id="..."):
+    print(comment.author.name, comment.value)
+```
+
+### Votes
+
+```python
+# List votes for a post
+votes = client.votes.list(post_id="...")
+```
+
+### Categories & Tags
+
+```python
+# List categories for a board
+categories = client.categories.list(board_id="...")
+
+# List tags for a board
+tags = client.tags.list(board_id="...")
+```
+
+### Companies
+
+```python
+# List companies
+companies = client.companies.list(search="acme")
+```
+
+## Webhook Verification
+
+Verify incoming webhooks from Canny:
+
+```python
+from canny import verify_webhook, WebhookVerifier
+from canny.exceptions import CannyWebhookVerificationError
+
+# Option 1: Standalone function
+try:
+    verify_webhook(
+        api_key="your_api_key",
+        nonce=request.headers["Canny-Nonce"],
+        signature=request.headers["Canny-Signature"],
+        timestamp=int(request.headers.get("Canny-Timestamp", 0))
+    )
+except CannyWebhookVerificationError as e:
+    return {"error": str(e)}, 401
+
+# Option 2: Verifier class (reusable)
+verifier = WebhookVerifier(api_key="your_api_key")
+verifier.verify(nonce, signature, timestamp)
+
+# Parse the event
+event = verifier.parse_event(request.json)
+print(event.type)  # e.g., "post.created"
+print(event.object)  # The post/comment/vote object
+```
+
+### Flask Example
+
+```python
+from flask import Flask, request
+from canny import WebhookVerifier
+from canny.exceptions import CannyWebhookVerificationError
+
+app = Flask(__name__)
+verifier = WebhookVerifier(api_key="your_api_key")
+
+@app.route("/webhook", methods=["POST"])
+def handle_webhook():
+    try:
+        verifier.verify(
+            nonce=request.headers.get("Canny-Nonce"),
+            signature=request.headers.get("Canny-Signature"),
+            timestamp=int(request.headers.get("Canny-Timestamp", 0))
+        )
+    except CannyWebhookVerificationError as e:
+        return {"error": str(e)}, 401
+
+    event = verifier.parse_event(request.json)
+
+    if event.type == "post.created":
+        handle_new_post(event.object)
+    elif event.type == "vote.created":
+        handle_new_vote(event.object)
+
+    return {"status": "ok"}
+```
+
+## Error Handling
+
+```python
+from canny import CannyClient
+from canny.exceptions import (
+    CannyAPIError,
+    CannyAuthenticationError,
+    CannyNotFoundError,
+    CannyRateLimitError,
+    CannyReadOnlyError,
+)
+
+client = CannyClient()
+
+try:
+    post = client.posts.retrieve(id="nonexistent")
+except CannyNotFoundError:
+    print("Post not found")
+except CannyAuthenticationError:
+    print("Invalid API key")
+except CannyRateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after} seconds")
+except CannyReadOnlyError:
+    print("Write operation blocked in read-only mode")
+except CannyAPIError as e:
+    print(f"API error: {e.status_code} - {e.message}")
+```
+
+## Configuration
+
+```python
+from canny import CannyClient
+
+client = CannyClient(
+    api_key="your_api_key",      # Or set CANNY_API_KEY env var
+    read_only=True,              # Default: True (safe mode)
+    timeout=30.0,                # Request timeout in seconds
+)
+```
+
+## Environment Variables
+
+- `CANNY_API_KEY`: Your Canny API key (used if not provided directly)
+
+## Running Tests
+
+```bash
+# Unit tests (no API key needed)
+pytest tests/ -v --ignore=tests/integration
+
+# Integration tests (requires CANNY_API_KEY)
+CANNY_API_KEY=your_key pytest tests/integration/ -v
+```
+
+**Note:** Integration tests are read-only and do not modify any data.
+
+## License
+
+MIT
