@@ -1,0 +1,161 @@
+# MCP Server for JIRA
+
+A Model Context Protocol (MCP) server that provides seamless integration with Jira. This server enables AI assistants to retrieve issue information, comments, and attachments from any Jira instance.
+
+## Features
+
+- 🎫 **Get Issue Information**: Retrieve detailed issue descriptions and comments
+- 📎 **Download Attachments**: Access and download issue attachments
+- 🔒 **Secure Authentication**: Uses Jira API tokens for secure access
+- 🌐 **Universal Compatibility**: Works with Jira Cloud, Server, and Data Center
+
+## Installation
+
+### Using uvx (Recommended)
+
+```bash
+uvx mcp-jira
+```
+
+### Using pip
+
+```bash
+pip install mcp-jira
+```
+
+## Prerequisites
+
+- Python 3.10 or higher
+- Jira account with API access
+- Jira API token ([How to create](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/))
+
+## Configuration
+
+### Environment Variables
+
+The server requires three environment variables:
+
+- `JIRA_URL`: Your Jira instance URL (e.g., `https://your-company.atlassian.net/`)
+- `JIRA_EMAIL`: Your Jira account email
+- `JIRA_TOKEN`: Your Jira API token
+
+### MCP Client Configuration
+
+Add to your MCP client configuration (e.g., Claude Desktop, Bob):
+
+```json
+{
+  "mcpServers": {
+    "jira": {
+      "command": "uvx",
+      "args": ["mcp-jira"],
+      "env": {
+        "JIRA_URL": "https://your-jira-instance.com/",
+        "JIRA_EMAIL": "your-email@company.com",
+        "JIRA_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+## Available Tools
+
+### `get_jira_ticket_info`
+
+Retrieves comprehensive information about a Jira issue.
+
+**Parameters:**
+- `issue_key` (string): The Jira issue key (e.g., "PROJ-123")
+
+**Returns:**
+- Issue description
+- All comments with author and timestamp
+- Comment bodies
+
+**Example:**
+```python
+get_jira_ticket_info("PROJ-123")
+```
+
+### `get_jira_ticket_attachments`
+
+Downloads and retrieves attachments from a Jira issue.
+
+**Parameters:**
+- `issue_key` (string): The Jira issue key (e.g., "PROJ-123")
+
+**Returns:**
+- List of attachments with filenames and content
+
+**Example:**
+```python
+get_jira_ticket_attachments("PROJ-456")
+```
+
+## Development
+
+### Setup
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   uv sync
+   ```
+
+3. Create a `.env` file based on `env.template`:
+   ```bash
+   cp env.template .env
+   # Edit .env with your credentials
+   ```
+
+### Running Locally
+
+```bash
+uv run server.py
+```
+
+### Testing
+
+```bash
+# Run tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov
+```
+
+## Use Cases
+
+- **AI-Assisted Development**: Let AI assistants fetch and analyze Jira issues
+- **Automated Workflows**: Integrate Jira data into automated processes
+- **Context-Aware Coding**: Provide issue context to AI coding assistants
+- **Documentation**: Auto-generate documentation from Jira issues
+
+## Roadmap
+
+- [ ] Support for creating and updating issues
+- [ ] Advanced search capabilities
+- [ ] Support for Jira workflows and transitions
+- [ ] Enhanced attachment handling (PDFs, images)
+- [ ] Bulk operations support
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/IBM/mcp-jira/issues)
+- **Documentation**: [Full Documentation](https://github.com/IBM/mcp-jira)
+
+## Acknowledgments
+
+Built with:
+- [FastMCP](https://github.com/jlowin/fastmcp) - Fast MCP server framework
+- [jira-python](https://github.com/pycontribs/jira) - Python Jira library
+- [Model Context Protocol](https://modelcontextprotocol.io/) - MCP specification
