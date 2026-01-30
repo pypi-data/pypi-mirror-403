@@ -1,0 +1,1031 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexAgent</title>
+    <!-- 网页图标 -->
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="stylesheet" href="style.css">
+    <!-- Remix Icon -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.8.0/fonts/remixicon.css" rel="stylesheet">
+    <!-- Markdown 渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- LaTeX 公式渲染 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+</head>
+
+<body>
+    <!-- Toast 通知容器 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Alert 对话框 -->
+    <div class="alert-modal" id="alertModal">
+        <div class="alert-content">
+            <div class="alert-header">
+                <i class="alert-icon" id="alertIcon"></i>
+                <h4 id="alertTitle">提示</h4>
+            </div>
+            <div class="alert-body" id="alertBody"></div>
+            <div class="alert-actions">
+                <button class="alert-btn-ok" onclick="closeAlert()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 记忆详情模态框 -->
+    <div class="alert-modal" id="memoryDetailModal">
+        <div class="alert-content" style="min-width:380px;">
+            <div class="alert-header">
+                <i class="ri-brain-line alert-icon info"></i>
+                <h4>记忆详情</h4>
+            </div>
+            <div class="alert-body" style="text-align:left;">
+                <div style="font-size:0.85rem;color:var(--text2);margin-bottom:8px;">内容:</div>
+                <div id="memoryDetailContent"
+                    style="background:var(--card);padding:12px;border-radius:var(--radius-sm);font-size:0.9rem;line-height:1.6;max-height:150px;overflow-y:auto;">
+                </div>
+                <div id="memoryDetailMeta" style="font-size:0.85rem;color:var(--text2);margin-top:12px;"></div>
+            </div>
+            <div class="alert-actions">
+                <button class="alert-btn-ok" style="background:var(--card);color:var(--text);"
+                    onclick="closeMemoryDetail()">关闭</button>
+                <button class="alert-btn-ok" style="background:var(--error);"
+                    onclick="deleteCurrentMemory()">删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 移动端侧边栏遮罩 -->
+    <div class="mobile-sidebar-overlay" id="mobileSidebarOverlay" onclick="closeMobileSidebar()"></div>
+
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2><i class="ri-user-line"></i>角色</h2>
+            <button class="btn-new" onclick="showNewSessionModal()"><i class="ri-add-line"></i><span>新建</span></button>
+        </div>
+        <div class="search-bar">
+            <div class="search-input-wrap">
+                <i class="ri-search-line search-icon"></i>
+                <input type="text" class="search-input" id="sessionSearch" placeholder="搜索..."
+                    oninput="filterPersonaList()">
+            </div>
+            <button class="btn-refresh" id="refreshSessionsBtn" onclick="refreshPersonaList()" title="刷新列表">
+                <i class="ri-refresh-line"></i>
+            </button>
+        </div>
+        <div class="persona-list" id="personaList"></div>
+        <div class="sidebar-footer">
+            <button class="btn-settings" onclick="openSettings()">
+                <i class="ri-settings-3-line"></i>
+                设置
+            </button>
+        </div>
+    </div>
+    <div class="main">
+        <div class="header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <h1 id="sessionTitle">NexAgent</h1>
+                <span id="currentPersonaName" style="font-size:0.85rem;color:var(--text2);"></span>
+            </div>
+            <div class="header-right">
+                <div class="dropdown" id="modelDropdown" style="display:none;">
+                    <button class="dropdown-btn" onclick="toggleModelDropdown()">
+                        <span id="currentModelName">选择模型</span>
+                        <i class="ri-arrow-down-s-line"></i>
+                    </button>
+                    <div class="dropdown-menu" id="modelMenu"></div>
+                </div>
+                <!-- 移动端按钮 -->
+                <button class="mobile-header-btn" id="mobileSessionsBtn" onclick="toggleMobileSidebar()">
+                    <i class="ri-menu-line"></i>
+                    <span>会话</span>
+                </button>
+                <button class="mobile-header-btn mobile-settings-btn" id="mobileSettingsBtn" onclick="openSettings()">
+                    <i class="ri-settings-3-line"></i>
+                </button>
+            </div>
+        </div>
+        <div class="messages" id="msgs"></div>
+        <div class="input-area">
+            <div class="input-toolbar">
+                <!-- 模型选择 -->
+                <div class="toolbar-dropdown" id="toolbarModelDropdown">
+                    <button class="toolbar-btn" onclick="toggleToolbarDropdown('toolbarModelDropdown');loadToolbarModels()">
+                        <i class="ri-stack-line"></i>
+                        <span id="toolbarModelName">模型</span>
+                        <i class="ri-arrow-up-s-line"></i>
+                    </button>
+                    <div class="toolbar-dropdown-menu" id="toolbarModelMenu"></div>
+                </div>
+
+                <!-- 思考程度（仅思考模型显示） -->
+                <div class="toolbar-dropdown" id="toolbarReasoningDropdown" style="display:none;">
+                    <button class="toolbar-btn" onclick="toggleToolbarDropdown('toolbarReasoningDropdown')">
+                        <i class="ri-brain-line"></i>
+                        <span id="toolbarReasoningLevel">默认</span>
+                        <i class="ri-arrow-up-s-line"></i>
+                    </button>
+                    <div class="toolbar-dropdown-menu" id="toolbarReasoningMenu">
+                        <div class="toolbar-dropdown-header">思考设置</div>
+                        <div class="toolbar-dropdown-item" onclick="selectThinkingOption('default')">
+                            <div class="toolbar-dropdown-item-icon"><i class="ri-checkbox-blank-circle-line"></i></div>
+                            <div class="toolbar-dropdown-item-text">默认</div>
+                        </div>
+                        <div class="toolbar-dropdown-item" onclick="selectThinkingOption('auto')">
+                            <div class="toolbar-dropdown-item-icon"><i class="ri-magic-line"></i></div>
+                            <div class="toolbar-dropdown-item-text">自动</div>
+                        </div>
+                        <div class="toolbar-dropdown-item" onclick="selectThinkingOption('disabled')">
+                            <div class="toolbar-dropdown-item-icon"><i class="ri-close-circle-line"></i></div>
+                            <div class="toolbar-dropdown-item-text">关闭</div>
+                        </div>
+                        <div class="toolbar-dropdown-item" onclick="selectThinkingOption('minimal')">
+                            <div class="toolbar-dropdown-item-icon"><i class="ri-speed-mini-line"></i></div>
+                            <div class="toolbar-dropdown-item-text">最低</div>
+                        </div>
+                        <div class="toolbar-dropdown-item" onclick="selectThinkingOption('low')">
+                            <div class="toolbar-dropdown-item-icon"><i class="ri-speed-line"></i></div>
+                            <div class="toolbar-dropdown-item-text">低</div>
+                        </div>
+                        <div class="toolbar-dropdown-item" onclick="selectThinkingOption('medium')">
+                            <div class="toolbar-dropdown-item-icon"><i class="ri-dashboard-line"></i></div>
+                            <div class="toolbar-dropdown-item-text">中</div>
+                        </div>
+                        <div class="toolbar-dropdown-item" onclick="selectThinkingOption('high')">
+                            <div class="toolbar-dropdown-item-icon"><i class="ri-rocket-line"></i></div>
+                            <div class="toolbar-dropdown-item-text">高</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 工具列表 -->
+                <div class="toolbar-dropdown" id="toolbarToolsDropdown">
+                    <button class="toolbar-btn"
+                        onclick="toggleToolbarDropdown('toolbarToolsDropdown');loadToolbarTools()">
+                        <i class="ri-tools-line"></i>
+                        工具
+                        <span class="badge" id="toolbarToolsCount">0</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu" id="toolbarToolsMenu"></div>
+                </div>
+
+                <div class="toolbar-divider"></div>
+
+                <!-- 清空消息 -->
+                <button class="toolbar-btn" onclick="clearMsgs()" title="清空当前会话消息">
+                    <i class="ri-delete-bin-line"></i>
+                    清空
+                </button>
+
+                <!-- 用户名 -->
+                <div class="toolbar-dropdown" id="toolbarUserDropdown">
+                    <button class="toolbar-btn" onclick="toggleToolbarDropdown('toolbarUserDropdown')">
+                        <i class="ri-user-line"></i>
+                        <span id="toolbarUserName">guest</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu" id="toolbarUserMenu" style="min-width:200px;">
+                        <div class="toolbar-dropdown-header">用户管理</div>
+                        <div style="padding:10px;border-bottom:1px solid var(--border);">
+                            <div style="display:flex;gap:6px;">
+                                <input type="text" id="usernameInput" placeholder="输入用户名"
+                                    style="flex:1;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.85rem;"
+                                    onkeyup="if(event.key==='Enter')saveAndSwitchUser()">
+                                <button onclick="saveAndSwitchUser()" 
+                                    style="padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:0.85rem;">
+                                    <i class="ri-save-line"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="userList" style="max-height:300px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+
+                <!-- 系统提示词开关 -->
+                <button class="toolbar-btn" id="systemPromptToggle" onclick="toggleSystemPrompt()" title="启用/禁用系统提示词">
+                    <i class="ri-chat-3-line"></i>
+                    系统提示
+                </button>
+
+                <div class="toolbar-divider"></div>
+
+                <!-- TTS 自动播放按钮 -->
+                <button class="toolbar-btn" id="ttsAutoPlayBtn" onclick="toggleAutoPlay()" title="自动播放语音" style="display:none;">
+                    <i class="ri-volume-mute-line"></i>
+                    自动朗读
+                </button>
+            </div>
+            <div class="input-wrap">
+                <button class="voice-btn" id="voiceBtn" title="语音输入" 
+                    onclick="toggleVoiceInput()" 
+                    onmousedown="startVoiceHold(event)" 
+                    onmouseup="stopVoiceHold(event)" 
+                    onmouseleave="stopVoiceHold(event)"
+                    ontouchstart="startVoiceHold(event)" 
+                    ontouchend="stopVoiceHold(event)">
+                    <i class="ri-voice-ai-line"></i>
+                </button>
+                <textarea id="inp" placeholder="输入消息..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true"></textarea>
+                <button class="send-btn" id="btn" onclick="send()" title="发送">
+                    <i class="ri-send-plane-fill"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑会话弹窗 -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <h3 id="editModalTitle"></h3>
+            <input type="text" id="editSessionName" placeholder="会话名称">
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeEditModal()">取消</button>
+                <button class="btn-confirm" onclick="saveSessionName()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建会话弹窗 -->
+    <div class="modal" id="newSessionModal">
+        <div class="modal-content">
+            <h3>新建会话</h3>
+            <label>选择角色卡</label>
+            <div class="custom-select" id="newSessionPersonaSelect">
+                <button class="custom-select-btn" onclick="toggleCustomSelect('newSessionPersonaSelect')">
+                    <span class="custom-select-text">默认（通用助手）</span>
+                    <i class="ri-arrow-down-s-line"></i>
+                </button>
+                <div class="custom-select-menu" id="newSessionPersonaMenu"></div>
+                <input type="hidden" id="newSessionPersonaValue" value="">
+            </div>
+            <label>会话名称（可选）</label>
+            <input type="text" id="newSessionName" placeholder="留空自动生成">
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeNewSessionModal()">取消</button>
+                <button class="btn-confirm" onclick="createNewSession()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content settings-modal-content">
+            <div class="settings-modal-header">
+                <h3 style="margin:0;font-size:1.1rem;">设置</h3>
+                <button onclick="closeSettings()"
+                    style="background:none;border:none;color:var(--text2);cursor:pointer;padding:4px;">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <div class="settings-container">
+                <!-- 第一层：导航 -->
+                <div class="settings-nav">
+                    <!-- 关于 -->
+                    <button class="settings-nav-item active" onclick="switchSettingsNav('about')">
+                        <i class="ri-information-line"></i>
+                        关于
+                    </button>
+                    <button class="settings-nav-item" onclick="switchSettingsNav('plugins')">
+                        <i class="ri-puzzle-line"></i>
+                        插件系统
+                    </button>
+                    
+                    <!-- 模型设置 分组 -->
+                    <div class="settings-nav-group">
+                        <div class="settings-nav-group-title">模型设置</div>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('providers')">
+                            <i class="ri-server-line"></i>
+                            供应商
+                        </button>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('stt')">
+                            <i class="ri-speech-to-text-line"></i>
+                            语音识别
+                        </button>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('tts')">
+                            <i class="ri-text-to-speech-line"></i>
+                            语音合成
+                        </button>
+                    </div>
+                    
+                    <!-- 模型能力 分组 -->
+                    <div class="settings-nav-group">
+                        <div class="settings-nav-group-title">模型能力</div>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('tools')">
+                            <i class="ri-tools-line"></i>
+                            工具
+                        </button>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('mcp')">
+                            <i class="ri-link"></i>
+                            MCP
+                        </button>
+                    </div>
+                    
+                    <!-- 模型知识 分组 -->
+                    <div class="settings-nav-group">
+                        <div class="settings-nav-group-title">模型知识</div>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('personas')">
+                            <i class="ri-user-line"></i>
+                            角色卡
+                        </button>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('memory')">
+                            <i class="ri-brain-line"></i>
+                            向量记忆
+                        </button>
+                    </div>
+                    
+                    <!-- 第三方应用 分组 -->
+                    <div class="settings-nav-group">
+                        <div class="settings-nav-group-title">第三方应用</div>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('openapi')">
+                            <i class="ri-broadcast-line"></i>
+                            API Server
+                        </button>
+                    </div>
+                    
+                    <!-- 应用设置 分组 -->
+                    <div class="settings-nav-group">
+                        <div class="settings-nav-group-title">应用设置</div>
+                        <button class="settings-nav-item" onclick="switchSettingsNav('style')">
+                            <i class="ri-palette-line"></i>
+                            主题样式
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 第二层：服务商列表 -->
+                <div class="settings-panel" id="panel-providers">
+                    <div class="settings-panel-header">
+                        <h4>供应商</h4>
+                        <button class="btn-add-small" onclick="showAddProvider()"><i class="ri-add-line"></i><span>添加</span></button>
+                    </div>
+                    <div class="settings-panel-content" id="providerListPanel"></div>
+                </div>
+
+                <!-- 第二层：工具管理 -->
+                <div class="settings-panel" id="panel-tools">
+                    <div class="settings-panel-header">
+                        <h4>工具管理</h4>
+                        <button class="btn-add-small" onclick="reloadToolsFromSettings()"><i class="ri-refresh-line"></i><span>重载</span></button>
+                    </div>
+                    <div class="settings-panel-content" id="toolsListPanel"></div>
+                </div>
+
+                <!-- 第二层：MCP列表 -->
+                <div class="settings-panel" id="panel-mcp">
+                    <div class="settings-panel-header">
+                        <h4>MCP 服务器</h4>
+                        <button class="btn-add-small" onclick="showAddMCPInline()"><i class="ri-add-line"></i><span>添加</span></button>
+                    </div>
+                    <div class="settings-panel-content" id="mcpListPanel"></div>
+                </div>
+
+                <!-- 第二层：角色卡列表 -->
+                <div class="settings-panel" id="panel-personas">
+                    <div class="settings-panel-header">
+                        <h4>角色卡管理</h4>
+                        <button class="btn-add-small" onclick="showAddPersona()"><i class="ri-add-line"></i><span>添加</span></button>
+                    </div>
+                    <div class="settings-panel-content" id="personaListPanel"></div>
+                </div>
+
+                <!-- 第二层：向量记忆 -->
+                <div class="settings-panel" id="panel-memory">
+                    <div class="settings-panel-header">
+                        <h4>向量记忆</h4>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <div class="toolbar-dropdown" id="embedModelDropdown" style="position:relative;">
+                                <button class="toolbar-btn" onclick="toggleEmbedModelDropdown(event)"
+                                    style="padding:4px 10px;height:26px;">
+                                    <i class="ri-cpu-line"></i>
+                                    <span id="embedModelName"
+                                        style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.75rem;">嵌入模型</span>
+                                    <i class="ri-arrow-down-s-line"></i>
+                                </button>
+                                <div class="toolbar-dropdown-menu" id="embedModelMenu"
+                                    style="bottom:auto;top:calc(100% + 6px);z-index:1200;"></div>
+                            </div>
+                            <button class="btn-add-small" onclick="showAddMemory()"><i class="ri-add-line"></i><span>添加</span></button>
+                        </div>
+                    </div>
+                    <div class="settings-panel-content">
+                        <!-- 记忆开关 -->
+                        <div
+                            style="padding:14px;background:var(--card);border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);">
+                            <div>
+                                <div style="font-weight:500;font-size:0.9rem;">启用向量记忆</div>
+                                <div style="font-size:0.8rem;color:var(--text2);margin-top:4px;">AI 将记住用户的重要信息</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="memoryEnabledToggle"
+                                    onchange="toggleMemoryEnabled(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <!-- 记忆列表 -->
+                        <div id="memoryListPanel" style="max-height:280px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+
+                <!-- 第二层：OpenAI兼容配置列表 -->
+                <div class="settings-panel" id="panel-openapi">
+                    <div class="settings-panel-header">
+                        <h4>OpenAI 兼容 API</h4>
+                        <button class="btn-add-small" onclick="showAddOpenAPIConfig()"><i class="ri-add-line"></i><span>添加</span></button>
+                    </div>
+                    <div class="settings-panel-content" id="openAPIListPanel"></div>
+                </div>
+
+                <!-- 第二层：语音识别(STT)设置 -->
+                <div class="settings-panel" id="panel-stt">
+                    <div class="settings-panel-header">
+                        <h4>语音识别</h4>
+                        <div class="toolbar-dropdown" id="sttImportDropdown" style="position:relative;">
+                            <button class="btn-add-small" onclick="toggleSTTImportDropdown(event)"><i class="ri-download-line"></i><span>从供应商导入</span></button>
+                            <div class="toolbar-dropdown-menu" id="sttImportMenu" style="bottom:auto;top:calc(100% + 4px);right:0;left:auto;min-width:160px;"></div>
+                        </div>
+                    </div>
+                    <div class="settings-panel-content" style="padding:16px;">
+                        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:16px;">
+                            配置 OpenAI 兼容的语音转文字(Transcription) API
+                        </div>
+                        
+                        <!-- STT 配置表单 -->
+                        <div class="settings-form" style="background:var(--card);padding:16px;border-radius:var(--radius-sm);border:1px solid var(--border);">
+                            <label>Base URL</label>
+                            <input type="text" id="sttBaseUrl" placeholder="https://api.openai.com/v1">
+                            <label>API Key</label>
+                            <input type="password" id="sttApiKey" placeholder="sk-...">
+                            <label>模型名称</label>
+                            <input type="text" id="sttModel" placeholder="whisper-1">
+                            <div class="settings-form-actions" style="margin-top:16px;">
+                                <button class="btn-confirm" onclick="saveSTTSettings()"><i class="ri-save-line"></i><span>保存配置</span></button>
+                            </div>
+                            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                                <button class="btn-danger full-width" onclick="clearSTTConfig()" style="padding:10px 16px;">
+                                    <i class="ri-delete-bin-line"></i><span>清空配置</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 测试区域 -->
+                        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+                            <label class="style-label">测试语音识别</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <button class="btn-add-small" id="sttTestBtn" onclick="testSTT()"><i class="ri-mic-line"></i><span>录音测试</span></button>
+                                <span id="sttTestStatus" style="font-size:0.8rem;color:var(--text2);"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第二层：语音合成(TTS)设置 -->
+                <div class="settings-panel" id="panel-tts">
+                    <div class="settings-panel-header">
+                        <h4>语音合成</h4>
+                        <div class="toolbar-dropdown" id="ttsImportDropdown" style="position:relative;">
+                            <button class="btn-add-small" onclick="toggleTTSImportDropdown(event)"><i class="ri-download-line"></i><span>从供应商导入</span></button>
+                            <div class="toolbar-dropdown-menu" id="ttsImportMenu" style="bottom:auto;top:calc(100% + 4px);right:0;left:auto;min-width:160px;"></div>
+                        </div>
+                    </div>
+                    <div class="settings-panel-content" style="padding:16px;">
+                        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:16px;">
+                            配置 OpenAI 兼容的文字转语音(Speech) API
+                        </div>
+                        
+                        <!-- TTS 配置表单 -->
+                        <div class="settings-form" style="background:var(--card);padding:16px;border-radius:var(--radius-sm);border:1px solid var(--border);">
+                            <label>Base URL</label>
+                            <input type="text" id="ttsBaseUrl" placeholder="https://api.openai.com/v1">
+                            <label>API Key</label>
+                            <input type="password" id="ttsApiKey" placeholder="sk-...">
+                            <label>模型名称</label>
+                            <input type="text" id="ttsModel" placeholder="tts-1">
+                            <label>语音</label>
+                            <input type="text" id="ttsVoice" placeholder="alloy">
+                            
+                            <!-- 朗读模式选择 -->
+                            <label style="margin-top:12px;">朗读模式</label>
+                            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                                <button class="style-option" id="ttsModeContinuous" onclick="setTTSMode('continuous')" style="flex:1;">
+                                    <i class="ri-file-text-line"></i>
+                                    <span>连续</span>
+                                </button>
+                                <button class="style-option" id="ttsModeSentence" onclick="setTTSMode('sentence')" style="flex:1;">
+                                    <i class="ri-list-unordered"></i>
+                                    <span>分句</span>
+                                </button>
+                            </div>
+                            <div style="font-size:0.75rem;color:var(--text2);margin-bottom:12px;">
+                                连续：一次性合成全部文本 | 分句：每个句子单独合成
+                            </div>
+                            
+                            <div class="settings-form-actions" style="margin-top:16px;">
+                                <button class="btn-confirm" onclick="saveTTSSettings()"><i class="ri-save-line"></i><span>保存配置</span></button>
+                            </div>
+                            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                                <button class="btn-danger full-width" onclick="clearTTSConfig()" style="padding:10px 16px;">
+                                    <i class="ri-delete-bin-line"></i><span>清空配置</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 测试区域 -->
+                        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+                            <label class="style-label">测试语音合成</label>
+                            <div style="margin-bottom:12px;">
+                                <input type="text" id="ttsTestText" placeholder="输入要合成的文本..." style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.9rem;">
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <button class="btn-add-small" id="ttsTestBtn" onclick="testTTS()"><i class="ri-volume-up-line"></i><span>合成测试</span></button>
+                                <span id="ttsTestStatus" style="font-size:0.8rem;color:var(--text2);"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第二层：关于 -->
+                <div class="settings-panel active" id="panel-about">
+                    <div class="settings-panel-header">
+                        <h4>关于 NexAgent</h4>
+                    </div>
+                    <div class="settings-panel-content" style="padding:20px;">
+                        <div style="text-align:center;margin-bottom:24px;">
+                            <div style="font-size:2rem;font-weight:700;color:var(--accent);margin-bottom:8px;">NexAgent</div>
+                            <div style="font-size:0.9rem;color:var(--text2);">版本 <span id="appVersion" style="color:var(--accent);font-weight:500;">-</span></div>
+                        </div>
+                        <div style="background:var(--card);padding:16px;border-radius:var(--radius-sm);margin-bottom:16px;">
+                            <div style="font-size:0.9rem;line-height:1.8;color:var(--text);">
+                                AI 对话框架，支持多服务商、多模型切换、深度思考、工具调用、MCP 服务器、流式输出、多会话管理。
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;font-size:0.85rem;">
+                            <div style="background:var(--card);padding:12px;border-radius:var(--radius-sm);text-align:center;">
+                                <i class="ri-server-line" style="font-size:1.5rem;color:var(--accent);display:block;margin-bottom:6px;"></i>
+                                <div style="color:var(--text2);">多服务商</div>
+                            </div>
+                            <div style="background:var(--card);padding:12px;border-radius:var(--radius-sm);text-align:center;">
+                                <i class="ri-stack-line" style="font-size:1.5rem;color:var(--accent);display:block;margin-bottom:6px;"></i>
+                                <div style="color:var(--text2);">多模型</div>
+                            </div>
+                            <div style="background:var(--card);padding:12px;border-radius:var(--radius-sm);text-align:center;">
+                                <i class="ri-tools-line" style="font-size:1.5rem;color:var(--accent);display:block;margin-bottom:6px;"></i>
+                                <div style="color:var(--text2);">工具调用</div>
+                            </div>
+                            <div style="background:var(--card);padding:12px;border-radius:var(--radius-sm);text-align:center;">
+                                <i class="ri-link" style="font-size:1.5rem;color:var(--accent);display:block;margin-bottom:6px;"></i>
+                                <div style="color:var(--text2);">MCP 支持</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第二层：插件系统 -->
+                <div class="settings-panel" id="panel-plugins">
+                    <div class="settings-panel-header">
+                        <h4>插件系统</h4>
+                        <button class="btn-add-small" onclick="reloadPlugins()"><i class="ri-refresh-line"></i><span>重载</span></button>
+                    </div>
+                    <div class="settings-panel-content" id="pluginsListPanel"></div>
+                </div>
+
+                <!-- 第二层：样式设置 -->
+                <div class="settings-panel" id="panel-style">
+                    <div class="settings-panel-header">
+                        <h4>样式设置</h4>
+                    </div>
+                    <div class="settings-panel-content" style="padding:16px;">
+                        <!-- 主题选择 -->
+                        <div class="style-section">
+                            <label class="style-label">主题模式</label>
+                            <div class="style-options">
+                                <button class="style-option" id="themeLight" onclick="setThemeMode('light')">
+                                    <i class="ri-sun-line"></i>
+                                    浅色
+                                </button>
+                                <button class="style-option" id="themeDark" onclick="setThemeMode('dark')">
+                                    <i class="ri-moon-line"></i>
+                                    深色
+                                </button>
+                                <button class="style-option" id="themeAuto" onclick="setThemeMode('auto')">
+                                    <i class="ri-computer-line"></i>
+                                    跟随系统
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 主题色选择 -->
+                        <div class="style-section">
+                            <label class="style-label">主题色</label>
+                            <div class="color-options">
+                                <button class="color-option" style="--color:#6366f1" onclick="setAccentColor('#6366f1')"
+                                    title="靛蓝"></button>
+                                <button class="color-option" style="--color:#8b5cf6" onclick="setAccentColor('#8b5cf6')"
+                                    title="紫色"></button>
+                                <button class="color-option" style="--color:#ec4899" onclick="setAccentColor('#ec4899')"
+                                    title="粉色"></button>
+                                <button class="color-option" style="--color:#ef4444" onclick="setAccentColor('#ef4444')"
+                                    title="红色"></button>
+                                <button class="color-option" style="--color:#f97316" onclick="setAccentColor('#f97316')"
+                                    title="橙色"></button>
+                                <button class="color-option" style="--color:#eab308" onclick="setAccentColor('#eab308')"
+                                    title="黄色"></button>
+                                <button class="color-option" style="--color:#22c55e" onclick="setAccentColor('#22c55e')"
+                                    title="绿色"></button>
+                                <button class="color-option" style="--color:#14b8a6" onclick="setAccentColor('#14b8a6')"
+                                    title="青色"></button>
+                                <button class="color-option" style="--color:#0ea5e9" onclick="setAccentColor('#0ea5e9')"
+                                    title="蓝色"></button>
+                                <button class="color-option custom" id="customColorBtn" onclick="showCustomColorInput()"
+                                    title="自定义颜色">
+                                    <span class="custom-icon">+</span>
+                                </button>
+                            </div>
+                            <!-- 自定义颜色输入区域 -->
+                            <div class="custom-color-input" id="customColorInput" style="display:none;">
+                                <div class="custom-color-preview-box" id="customColorPreviewBox"></div>
+                                <input type="text" id="customColorText" placeholder="#000000" maxlength="7"
+                                    oninput="previewCustomColor(this.value)">
+                                <button class="btn-apply-color" onclick="applyCustomColorFromInput()">应用</button>
+                            </div>
+                        </div>
+
+                        <!-- 字体大小 -->
+                        <div class="style-section">
+                            <label class="style-label">界面字体大小</label>
+                            <div class="style-options">
+                                <button class="style-option" onclick="setFontSize('small')">小</button>
+                                <button class="style-option" onclick="setFontSize('medium')">中</button>
+                                <button class="style-option" onclick="setFontSize('large')">大</button>
+                            </div>
+                        </div>
+
+                        <!-- 助手头像设置 -->
+                        <div class="style-section">
+                            <label class="style-label">助手头像</label>
+                            <div class="style-options" style="flex-direction:column;gap:8px;">
+                                <button class="style-option" id="avatarIcon" onclick="setAvatarMode('icon')" style="justify-content:flex-start;text-align:left;">
+                                    <span>消息图标模式</span>
+                                    <span style="font-size:0.75rem;color:var(--text2);margin-left:8px;">使用消息气泡图标</span>
+                                </button>
+                                <button class="style-option" id="avatarText" onclick="setAvatarMode('text')" style="justify-content:flex-start;text-align:left;">
+                                    <span>文字头像模式</span>
+                                    <span style="font-size:0.75rem;color:var(--text2);margin-left:8px;">显示角色名首字母</span>
+                                </button>
+                                <button class="style-option" id="avatarHide" onclick="setAvatarMode('hide')" style="justify-content:flex-start;text-align:left;">
+                                    <span>隐藏</span>
+                                    <span style="font-size:0.75rem;color:var(--text2);margin-left:8px;">不显示头像</span>
+                                </button>
+                            </div>
+                            <div style="font-size:0.75rem;color:var(--text2);margin-top:8px;">自定义头像请在角色卡设置中上传</div>
+                        </div>
+
+                        <!-- 重置按钮 -->
+                        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
+                            <button class="btn-reset-style" onclick="resetStyleSettings()">
+                                <i class="ri-refresh-line"></i><span>恢复默认设置</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第三层：服务商详情/编辑 -->
+                <div class="settings-detail" id="detail-provider">
+                    <div class="settings-detail-header">
+                        <h4 id="providerDetailTitle">服务商详情</h4>
+                        <button onclick="closeProviderDetail()"
+                            style="background:none;border:none;color:var(--text2);cursor:pointer;padding:4px;">
+                            <i class="ri-close-line"></i>
+                        </button>
+                    </div>
+                    <div class="settings-detail-content">
+                        <!-- 查看模式：信息卡片和模型列表 -->
+                        <div id="providerViewMode">
+                            <div class="provider-info-card">
+                                <div class="provider-info-header">
+                                    <div>
+                                        <div class="provider-info-name" id="providerViewName"></div>
+                                        <div class="provider-info-detail" id="providerViewUrl"></div>
+                                        <div class="provider-info-detail" id="providerViewKey"></div>
+                                    </div>
+                                    <button class="btn-edit-small" onclick="switchToProviderEditMode()">
+                                        <i class="ri-edit-line"></i><span>编辑</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="model-list-section" style="margin-top:16px;padding-top:0;border-top:none;">
+                                <h5>模型列表
+                                    <div style="display:flex;gap:6px;">
+                                        <button class="btn-outline-small" onclick="showProviderModelsModal()">
+                                            <i class="ri-apps-line"></i><span>浏览</span>
+                                        </button>
+                                        <button class="btn-add-small" onclick="showAddModelForProvider()"><i class="ri-add-line"></i><span>添加</span></button>
+                                    </div>
+                                </h5>
+                                <div id="providerModelsList"></div>
+                            </div>
+                        </div>
+
+                        <!-- 编辑模式：表单 -->
+                        <div id="providerEditMode" style="display:none;">
+                            <div class="settings-form">
+                                <label>服务商ID</label>
+                                <input type="text" id="providerIdInput" placeholder="如: openai">
+                                <label>显示名称</label>
+                                <input type="text" id="providerNameInput" placeholder="如: OpenAI">
+                                <label>API Key</label>
+                                <input type="password" id="providerApiKeyInput" placeholder="sk-...">
+                                <label>Base URL</label>
+                                <input type="text" id="providerBaseUrlInput" placeholder="https://api.openai.com/v1">
+                                <div class="settings-form-actions">
+                                    <button class="btn-cancel" onclick="cancelProviderEdit()">取消</button>
+                                    <button class="btn-confirm" onclick="saveProviderInline()">保存</button>
+                                </div>
+                                <div id="providerDeleteRow" style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);display:none;">
+                                    <button class="btn-danger full-width" onclick="deleteCurrentProvider()" id="btnDeleteProvider">
+                                        <i class="ri-delete-bin-line"></i><span>删除此服务商</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第三层：MCP详情/编辑 -->
+                <div class="settings-detail" id="detail-mcp">
+                    <div class="settings-detail-header">
+                        <h4 id="mcpDetailTitle">MCP 服务器</h4>
+                        <button onclick="closeMCPDetail()"
+                            style="background:none;border:none;color:var(--text2);cursor:pointer;padding:4px;">
+                            <i class="ri-close-line"></i>
+                        </button>
+                    </div>
+                    <div class="settings-detail-content">
+                        <div class="settings-form">
+                            <label>服务器ID</label>
+                            <input type="text" id="mcpIdInput" placeholder="如: my-mcp">
+                            <label>显示名称</label>
+                            <input type="text" id="mcpNameInput" placeholder="如: 我的MCP">
+                            <label>服务器类型</label>
+                            <select id="mcpTypeInput">
+                                <option value="sse">SSE</option>
+                                <option value="streamable_http">Streamable HTTP</option>
+                            </select>
+                            <label>服务器URL</label>
+                            <input type="text" id="mcpUrlInput" placeholder="http://localhost:3000/mcp">
+                            <label>请求头 (JSON, 可选)</label>
+                            <textarea id="mcpHeadersInput" rows="3"
+                                placeholder='{"Authorization": "Bearer ..."}'></textarea>
+                            <div class="settings-form-actions">
+                                <button class="btn-cancel" onclick="closeMCPDetail()">取消</button>
+                                <button class="btn-confirm" onclick="saveMCPInline()">保存</button>
+                            </div>
+                            <div id="mcpDeleteRow" style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);display:none;">
+                                <button class="btn-danger full-width" onclick="deleteCurrentMCP()" id="btnDeleteMCP">
+                                    <i class="ri-delete-bin-line"></i><span>删除此MCP服务器</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第三层：角色卡详情/编辑 -->
+                <div class="settings-detail" id="detail-persona">
+                    <div class="settings-detail-header">
+                        <h4 id="personaDetailTitle">角色卡</h4>
+                        <button onclick="closePersonaDetail()"
+                            style="background:none;border:none;color:var(--text2);cursor:pointer;padding:4px;">
+                            <i class="ri-close-line"></i>
+                        </button>
+                    </div>
+                    <div class="settings-detail-content">
+                        <div class="settings-form">
+                            <label>角色名称</label>
+                            <input type="text" id="personaNameInput" placeholder="如: Python专家">
+                            
+                            <label>角色头像</label>
+                            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                                <div id="personaAvatarPreview" style="width:48px;height:48px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border);">
+                                    <span id="personaAvatarLetter" style="color:white;font-weight:600;font-size:1rem;">P</span>
+                                </div>
+                                <input type="file" id="personaAvatarUpload" accept="image/*" style="display:none;" onchange="previewPersonaAvatar(this)">
+                                <button class="btn-add-small" onclick="document.getElementById('personaAvatarUpload').click()">上传图片</button>
+                                <button class="btn-add-small" onclick="clearPersonaAvatar()" style="background:transparent;border:1px solid var(--border);color:var(--text2);">清除</button>
+                            </div>
+                            <input type="hidden" id="personaAvatarData">
+                            
+                            <label>系统提示词</label>
+                            <textarea id="personaPromptInput" rows="6" placeholder="你是一个专业的Python开发专家..."></textarea>
+                            <label>最大输出长度 (max_tokens)</label>
+                            <input type="number" id="personaMaxTokensInput" placeholder="留空使用默认值 (4000)">
+                            <label>温度 (temperature: 0-2)</label>
+                            <input type="number" id="personaTemperatureInput" step="0.1" min="0" max="2"
+                                placeholder="留空使用默认值 (0.7)">
+                            <label>Top P (0-1)</label>
+                            <input type="number" id="personaTopPInput" step="0.1" min="0" max="1" placeholder="留空不设置">
+                            <div class="settings-form-actions">
+                                <button class="btn-cancel" onclick="closePersonaDetail()">取消</button>
+                                <button class="btn-confirm" onclick="savePersonaInline()">保存</button>
+                            </div>
+                            <div id="personaDeleteRow" style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);display:none;">
+                                <button class="btn-danger full-width" onclick="deletePersonaInline()" id="deletePersonaBtn">
+                                    <i class="ri-delete-bin-line"></i><span>删除此角色卡</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第三层：模型编辑 -->
+                <div class="settings-detail" id="detail-model">
+                    <div class="settings-detail-header">
+                        <h4 id="modelDetailTitle">模型设置</h4>
+                        <button onclick="closeModelDetail()"
+                            style="background:none;border:none;color:var(--text2);cursor:pointer;padding:4px;">
+                            <i class="ri-close-line"></i>
+                        </button>
+                    </div>
+                    <div class="settings-detail-content">
+                        <div class="settings-form">
+                            <label>模型类型</label>
+                            <select id="modelTypeInput" onchange="onModelTypeChange()">
+                                <option value="chat">对话模型</option>
+                                <option value="embedding">嵌入模型</option>
+                            </select>
+                            <label>模型ID</label>
+                            <input type="text" id="modelIdInput" placeholder="如: gpt-4">
+                            <label>显示名称</label>
+                            <input type="text" id="modelDisplayNameInput" placeholder="如: GPT-4">
+                            <div id="modelTagsSection">
+                                <label>模型能力</label>
+                                <div class="tag-checkbox-group" id="modelTagsGroup">
+                                    <div class="tag-checkbox" data-tag="tool"><input type="checkbox" value="tool"><i class="ri-tools-line"></i>工具</div>
+                                    <div class="tag-checkbox" data-tag="reasoning"><input type="checkbox" value="reasoning"><i class="ri-lightbulb-ai-line"></i>推理</div>
+                                    <div class="tag-checkbox" data-tag="vision"><input type="checkbox" value="vision"><i class="ri-eye-line"></i>视觉</div>
+                                </div>
+                            </div>
+                            <div class="settings-form-actions">
+                                <button class="btn-cancel" onclick="closeModelDetail()">取消</button>
+                                <button class="btn-confirm" onclick="saveModelInline()">保存</button>
+                            </div>
+                            <div id="modelDeleteRow" style="margin-top:24px;padding-top:24px;border-top:1px solid var(--border);display:none;">
+                                <button class="btn-danger full-width" onclick="deleteModelInline()" id="deleteModelBtn">
+                                    <i class="ri-delete-bin-line"></i><span>删除此模型</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第三层：OpenAPI配置详情 -->
+                <div class="settings-detail" id="detail-openapi">
+                    <div class="settings-detail-header">
+                        <h4 id="openAPIDetailTitle">OpenAPI配置</h4>
+                        <button onclick="closeOpenAPIDetail()" class="btn-text">关闭</button>
+                    </div>
+                    <div class="settings-detail-content">
+                        <div class="settings-form">
+                            <label>API模型ID *</label>
+                            <input type="text" id="openAPIModelIdInput" placeholder="例如: gpt-4">
+
+                            <label>内部模型 *</label>
+                            <div class="custom-select" id="openAPIInternalModelSelect">
+                                <button class="custom-select-btn" onclick="toggleCustomSelect('openAPIInternalModelSelect')">
+                                    <span class="custom-select-text">选择内部模型</span>
+                                    <i class="ri-arrow-down-s-line"></i>
+                                </button>
+                                <div class="custom-select-menu" id="openAPIInternalModelMenu"></div>
+                                <input type="hidden" id="openAPIInternalModelValue" value="">
+                            </div>
+
+                            <label>角色卡</label>
+                            <div class="custom-select" id="openAPIPersonaSelect">
+                                <button class="custom-select-btn" onclick="toggleCustomSelect('openAPIPersonaSelect')">
+                                    <span class="custom-select-text">默认（无角色卡）</span>
+                                    <i class="ri-arrow-down-s-line"></i>
+                                </button>
+                                <div class="custom-select-menu" id="openAPIPersonaMenu"></div>
+                                <input type="hidden" id="openAPIPersonaValue" value="">
+                            </div>
+
+                            <label class="custom-checkbox">
+                                <input type="checkbox" id="openAPIUseSystemPrompt">
+                                <span class="checkmark"></span>
+                                <span class="checkbox-text">启用系统提示词注入</span>
+                            </label>
+
+                            <div class="settings-form-actions">
+                                <button class="btn-cancel" onclick="closeOpenAPIDetail()">取消</button>
+                                <button class="btn-danger" onclick="deleteOpenAPIConfig()"
+                                    id="deleteOpenAPIBtn">删除</button>
+                                <button class="btn-confirm" onclick="saveOpenAPIConfig()">保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认弹窗 -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-content">
+            <h3 id="confirmModalTitle"></h3>
+            <p id="confirmText" style="color:var(--text2);margin-bottom:20px"></p>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeConfirm()">取消</button>
+                <button class="btn-danger" id="confirmBtn" onclick="doConfirm()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 删除确认对话框 -->
+    <div class="alert-modal" id="deleteConfirmModal">
+        <div class="alert-content" style="min-width:400px;">
+            <div class="alert-header">
+                <i class="ri-error-warning-line alert-icon error"></i>
+                <h4 id="deleteConfirmTitle">确认删除</h4>
+            </div>
+            <div class="alert-body">
+                <p id="deleteConfirmText" style="color:var(--text2);line-height:1.6;"></p>
+            </div>
+            <div class="alert-actions">
+                <button class="alert-btn-cancel" onclick="closeDeleteConfirm()">取消</button>
+                <button class="alert-btn-danger" onclick="doDeleteConfirm()">
+                    <i class="ri-delete-bin-line"></i><span>删除</span>
+                </button>
+            </div>
+        </div>
+    </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑消息弹窗 -->
+    <div class="modal" id="editMsgModal">
+        <div class="modal-content wide">
+            <h3 id="editMsgModalTitle"></h3>
+            <label>消息内容</label>
+            <textarea id="editMsgContent"
+                style="width:100%;min-height:120px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:12px;border-radius:var(--radius-sm);font-size:0.95rem;resize:vertical;font-family:inherit;"></textarea>
+            <div class="modal-actions" style="flex-wrap:wrap;gap:8px;">
+                <button class="btn-cancel" onclick="closeEditMsgModal()">取消</button>
+                <button class="btn-confirm" onclick="saveEditedMsg(false)">仅保存</button>
+                <button class="btn-confirm" style="background:var(--success)"
+                    onclick="saveEditedMsg(true)">保存并重新生成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 供应商模型列表弹窗 -->
+    <div class="modal" id="providerModelsModal">
+        <div class="modal-content"
+            style="min-width:600px;max-width:720px;max-height:85vh;display:flex;flex-direction:column;padding:0;">
+            <!-- 标题栏 -->
+            <div class="modal-header-bar">
+                <h3 id="providerModelsModalTitle">模型列表</h3>
+                <button class="modal-close-btn" onclick="closeProviderModelsModal()">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <!-- 搜索栏 -->
+            <div class="modal-search-bar">
+                <div class="modal-search-wrap">
+                    <i class="ri-search-line modal-search-icon"></i>
+                    <input type="text" class="modal-search-input" id="providerModelsSearch" placeholder="搜索模型名称..."
+                        oninput="filterProviderModels()">
+                </div>
+                <button class="modal-search-refresh" id="refreshModelsBtn" onclick="refreshProviderModels()" title="刷新">
+                    <i class="ri-refresh-line"></i>
+                </button>
+            </div>
+            <!-- 标签页筛选 -->
+            <div class="modal-filter-tabs">
+                <button class="modal-filter-tab active" data-filter="all" onclick="setModelFilter('all')">全部</button>
+                <button class="modal-filter-tab" data-filter="reasoning"
+                    onclick="setModelFilter('reasoning')">推理</button>
+                <button class="modal-filter-tab" data-filter="vision" onclick="setModelFilter('vision')">视觉</button>
+                <button class="modal-filter-tab" data-filter="tool" onclick="setModelFilter('tool')">工具</button>
+                <button class="modal-filter-tab" data-filter="embedding"
+                    onclick="setModelFilter('embedding')">嵌入</button>
+            </div>
+            <!-- 模型列表 -->
+            <div id="providerModelsListContent" style="flex:1;overflow-y:auto;background:var(--bg);"></div>
+            <!-- 底部状态栏 -->
+            <div class="modal-footer-bar">
+                <span id="providerModelsCount"></span>
+                <button class="modal-action-btn" onclick="closeProviderModelsModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="app.js"></script>
+</body>
+
+</html>
