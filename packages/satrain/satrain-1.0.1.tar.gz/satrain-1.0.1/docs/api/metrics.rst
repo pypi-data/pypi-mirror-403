@@ -1,0 +1,2 @@
+.. automodule:: satrain.metrics
+    :members:

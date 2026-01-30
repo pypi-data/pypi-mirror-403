@@ -1,0 +1,2 @@
+.. automodule:: satrain.pytorch
+    :members:

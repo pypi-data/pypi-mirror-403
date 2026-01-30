@@ -1,0 +1,2 @@
+.. automodule:: satrain.input
+    :members:
