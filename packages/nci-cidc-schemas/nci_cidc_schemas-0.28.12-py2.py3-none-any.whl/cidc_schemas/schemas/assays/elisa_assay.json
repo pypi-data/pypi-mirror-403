@@ -1,0 +1,80 @@
+{
+  "$schema": "metaschema/strict_meta_schema.json#",
+  "$id": "elisa_assay",
+  "title": "ELISA Assay",
+  "type": "object",
+
+	"$comment": "description used in docs/index.html and docs/assays.elisa.html",
+  "description": "Enzyme-linked immunosorbent assay (ELISA).",
+  
+  "allOf": [
+      {"$ref": "assays/components/assay_core.json"}
+  ],
+  "definitions": {
+    "antigen": {
+      "description": "Data specific to antigen preparation on the ELISA assay.",
+      "additionalProperties": false,
+      "type": "object",
+      "mergeStrategy": "objectMerge",
+  
+      "required": ["antigen", "antigen_type"],
+      "properties": {
+        "antigen": {
+          "description": "Identifying name for the antigen.",
+          "type": "string"
+        },
+        "antigen_type": {
+          "description": "The type of antigen, either protein or peptide",
+          "type": "string",
+          "enum": ["protein","peptide"]
+        },
+        "final_concentration": {
+          "description": "The concentration of the antigen after dilution.",
+          "type": "number"
+        },
+        "final_concentration_units": {
+          "description": "The concentration units for the antigen after dilution.",
+          "type": "string",
+          "enum": [
+              "Nanogram per Microliter",
+              "Milligram per Milliliter",
+              "Micrograms per Microliter",
+              "Nanomolar",
+              "Micromolar",
+              "Millimolar",
+              "Not Reported",
+              "Other"
+          ]
+        }
+      }
+    }
+  },
+
+  "properties": {
+    "assay_creator": {"$ref": "assays/components/assay_core.json#properties/assay_creator"},
+    "batch_id": {
+      "description": "Batch identification number. Unique to every upload.",
+      "type": "string"
+    },
+    "optional_id": {
+      "description": "User provided optional id. Currently comes from CIDC Submission ID",
+      "type": "string"
+    },
+    "assay_xlsx": {
+      "$ref": "artifacts/artifact_elisa_xlsx.json"
+    },
+    "antigens": {
+      "type": "array",
+      "mergeStrategy": "arrayMergeById",
+      "mergeOptions": {
+        "idRef": "antigen"
+      },
+      "items": {
+        "$ref": "assays/elisa_assay.json#definitions/antigen"
+      }
+    }
+  },
+  "mergeStrategy": "objectMerge",
+  "additionalProperties": false,
+  "required": ["batch_id", "assay_xlsx", "antigens"]
+}
