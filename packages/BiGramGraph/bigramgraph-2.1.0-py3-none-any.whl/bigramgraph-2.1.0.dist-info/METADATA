@@ -1,0 +1,297 @@
+Metadata-Version: 2.4
+Name: BiGramGraph
+Version: 2.1.0
+Summary: Implementations of concepts presented in the paper 'On Bi Gram Graph attributes'
+Project-URL: Homepage, https://github.com/MuteJester/BiGramGraph
+Project-URL: Documentation, https://github.com/MuteJester/BiGramGraph#readme
+Project-URL: Repository, https://github.com/MuteJester/BiGramGraph.git
+Project-URL: Issues, https://github.com/MuteJester/BiGramGraph/issues
+Author-email: Thomas Konstantinovsky <thomaskon90@gmail.com>, Matan Mizrachi <matt8ac@gmail.com>
+License-Expression: MIT
+License-File: LICENSE
+Keywords: Graph Theory,Machine Learning,Metrics,NLP,Text Generation
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Text Processing :: Linguistic
+Classifier: Typing :: Typed
+Requires-Python: >=3.11
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: networkx>=3.0
+Requires-Dist: nltk>=3.8.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: pydot>=1.4.0
+Requires-Dist: pyenchant>=3.2.0
+Requires-Dist: pyvis>=0.3.0
+Requires-Dist: scikit-learn>=1.2.0
+Requires-Dist: seaborn>=0.12.0
+Requires-Dist: spacy>=3.5.0
+Requires-Dist: tqdm>=4.65.0
+Requires-Dist: wordcloud>=1.9.0
+Provides-Extra: dev
+Requires-Dist: mypy>=1.0.0; extra == 'dev'
+Requires-Dist: pre-commit>=3.0.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# BiGramGraph
+
+A Python library for analyzing text corpora using graph theory. Transforms text into directed graphs where nodes represent words and edges represent bigram (word pair) relationships.
+
+## Features
+
+- **Graph-based text analysis** - Convert any text corpus into a directed graph representation
+- **Chromatic coloring** - Automatic graph coloring for word categorization
+- **Text vectorization** - Transform text into numerical vectors using chromatic colors
+- **Text generation** - Generate synthetic text using random walks on the graph
+- **Graph metrics** - Compute cycles, paths, strongly connected components, and more
+- **NLP enrichment** - Add part-of-speech and named entity tags via spaCy
+- **Visualization** - Interactive HTML graph visualizations with PyVis
+
+## Installation
+
+```bash
+pip install BiGramGraph
+```
+
+For development:
+```bash
+git clone https://github.com/MuteJester/BiGramGraph.git
+cd BiGramGraph
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+### Create a Graph from Text
+
+```python
+from BiGramGraph import BiGramGraph
+
+texts = [
+    "the quick brown fox jumps over the lazy dog",
+    "the dog runs fast",
+    "quick fox is clever",
+]
+
+graph = BiGramGraph(texts)
+
+print(graph)
+# BiGramGraph(name='BiGramGraph', nodes=12, edges=15, chromatic_number=4)
+```
+
+### Explore Graph Properties
+
+```python
+# Basic properties
+print(f"Nodes: {graph.num_nodes}")
+print(f"Edges: {graph.num_edges}")
+print(f"Chromatic number: {graph.chromatic_number}")
+print(f"Is DAG: {graph.is_dag}")
+print(f"Strongly connected: {graph.is_strongly_connected}")
+
+# Degree statistics
+print(f"Max in-degree: {graph.degree_stats.in_max}")
+print(f"Max out-degree: {graph.degree_stats.out_max}")
+
+# Find paths
+path = graph.shortest_path("the", "fox")
+print(f"Shortest path: {' -> '.join(path)}")
+
+# Check if word exists
+if "quick" in graph:
+    print(graph["quick"])  # Get word attributes
+```
+
+### Vectorize Text
+
+```python
+from BiGramGraph import Vectorizer
+
+vectorizer = Vectorizer(graph)
+
+# Single text
+vec = vectorizer.transform("the quick brown")
+print(vec)  # array([1., 3., 2.])
+
+# Batch with padding
+vectors = vectorizer.transform_batch(
+    ["the quick", "brown fox jumps"],
+    max_length=5,
+    pad_value=0
+)
+print(vectors.shape)  # (2, 5)
+```
+
+### Generate Text
+
+```python
+from BiGramGraph import TextGenerator
+
+generator = TextGenerator(graph)
+
+# Generate using different strategies
+text = generator.generate(
+    num_colors=5,        # Number of color transitions
+    search_depth=10,     # Search depth for path finding
+    strategy="heaviest"  # Options: heaviest, lightest, max_density, min_density
+)
+print(text)
+```
+
+### Visualize the Graph
+
+```python
+from BiGramGraph import visualize
+
+# Create interactive HTML visualization
+visualize(
+    graph,
+    output_path="my_graph.html",
+    directed=True,
+    show_weights=True,
+    height=600,
+    width=1000
+)
+```
+
+### Add NLP Enrichment
+
+```python
+# Requires: python -m spacy download en_core_web_sm
+
+# Add part-of-speech tags
+graph.enrich_pos()
+print(graph.node_data[["word", "color", "pos"]].head())
+
+# Add named entity tags
+graph.enrich_entities()
+```
+
+### Save and Load Graphs
+
+```python
+# Save to file
+graph.save("my_graph.pkl")
+
+# Load from file
+loaded_graph = BiGramGraph.load("my_graph.pkl")
+
+# Or use dict serialization
+state = graph.to_dict()
+restored = BiGramGraph.from_dict(state)
+```
+
+### Compare Graphs
+
+```python
+from BiGramGraph import chromatic_distance, graph_similarity_report
+
+graph1 = BiGramGraph(corpus1)
+graph2 = BiGramGraph(corpus2)
+
+# Basic similarity report
+report = graph_similarity_report(graph1, graph2)
+print(f"Jaccard similarity: {report['jaccard_similarity']:.2f}")
+print(f"Overlapping words: {report['overlapping_words']}")
+
+# Chromatic distance (requires POS enrichment)
+graph1.enrich_pos()
+graph2.enrich_pos()
+distance = chromatic_distance(graph1, graph2)
+print(f"Chromatic distance: {distance:.2f}")
+```
+
+## API Reference
+
+### Core Classes
+
+| Class | Description |
+|-------|-------------|
+| `BiGramGraph` | Main class for creating and analyzing bigram graphs |
+| `Vectorizer` | Transform text to numerical vectors using chromatic coloring |
+| `TextGenerator` | Generate synthetic text via chromatic random walks |
+
+### Analysis Functions
+
+| Function | Description |
+|----------|-------------|
+| `calculate_path_weight()` | Compute total edge weight along a path |
+| `calculate_path_density()` | Compute density based on node degrees |
+| `chromatic_distance()` | Similarity metric between two graphs |
+| `graph_similarity_report()` | Comprehensive comparison of two graphs |
+
+### Visualization
+
+| Function | Description |
+|----------|-------------|
+| `visualize()` | Create interactive HTML graph visualization |
+| `visualize_subgraph()` | Visualize a subset of nodes |
+
+## Research Paper
+
+This library implements concepts from the paper **"On Bi-gram Graph Attributes"** by Thomas Konstantinovsky and Matan Mizrachi:
+
+> We propose a new approach to text semantic analysis and general corpus analysis using, as termed in this article, a "bi-gram graph" representation of a corpus. The different attributes derived from graph theory are measured and analyzed as unique insights or against other corpus graphs. We observe a vast domain of tools and algorithms that can be developed on top of the graph representation; creating such a graph proves to be computationally cheap, and much of the heavy lifting is achieved via basic graph calculations. Furthermore, we showcase the different use-cases for the bi-gram graphs and how scalable it proves to be when dealing with large datasets.
+
+**DOI:** [10.5539/cis.v14n3p78](http://dx.doi.org/10.5539/cis.v14n3p78)
+
+**arXiv:** [2107.02128](https://arxiv.org/abs/2107.02128)
+
+### Citation
+
+```bibtex
+@article{Konstantinovsky2021,
+  title = {On Bi-gram Graph Attributes},
+  volume = {14},
+  ISSN = {1913-8989},
+  url = {http://dx.doi.org/10.5539/cis.v14n3p78},
+  DOI = {10.5539/cis.v14n3p78},
+  number = {3},
+  journal = {Computer and Information Science},
+  publisher = {Canadian Center of Science and Education},
+  author = {Konstantinovsky, Thomas and Mizrachi, Matan},
+  year = {2021},
+  month = jul,
+  pages = {78}
+}
+```
+
+## Requirements
+
+- Python 3.11+
+- networkx
+- pandas
+- numpy
+- nltk
+- spacy (optional, for NLP enrichment)
+- pyvis (for visualization)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Authors
+
+- Thomas Konstantinovsky
+- Matan Mizrachi
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Run tests (`pytest tests/`)
+4. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
