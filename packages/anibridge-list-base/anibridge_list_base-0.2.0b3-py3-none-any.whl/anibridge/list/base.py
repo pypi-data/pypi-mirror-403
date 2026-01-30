@@ -1,0 +1,457 @@
+"""List provider base classes and contracts."""
+
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import StrEnum
+from typing import ClassVar, Self, TypeVar, cast
+
+__all__ = [
+    "ListEntity",
+    "ListEntry",
+    "ListMedia",
+    "ListMediaType",
+    "ListProvider",
+    "ListProviderT",
+    "ListStatus",
+    "ListTarget",
+    "ListUser",
+    "MappingDescriptor",
+]
+
+
+ListProviderT = TypeVar("ListProviderT", bound="ListProvider", covariant=True)
+MappingDescriptor = tuple[str, str, str | None]  # (provider, entry_id, entry_scope)
+
+
+class ListMediaType(StrEnum):
+    """Supported media types in a list."""
+
+    TV = "TV"
+    MOVIE = "MOVIE"
+
+
+class ListStatus(StrEnum):
+    """Supported statuses for media items in a list."""
+
+    COMPLETED = "completed"
+    CURRENT = "current"
+    DROPPED = "dropped"
+    PAUSED = "paused"
+    PLANNING = "planning"
+    REPEATING = "repeating"
+
+    __PRIORITY: ClassVar[dict[str, int]] = {
+        "completed": 3,
+        "repeating": 3,
+        "current": 2,
+        "paused": 2,
+        "dropped": 2,
+        "planning": 1,
+    }
+
+    @property
+    def priority(self) -> int:
+        """Get the priority of the ListStatus for comparison purposes."""
+        return self.__PRIORITY[self.value]
+
+    def __eq__(self, other: object) -> bool:
+        """Check equality with another ListStatus (not based on priority)."""
+        if not isinstance(other, ListStatus):
+            return NotImplemented
+        return self.value == other.value
+
+    def __lt__(self, other: object) -> bool:
+        """Check if this ListStatus has lower priority than another."""
+        if not isinstance(other, ListStatus):
+            return NotImplemented
+        return self.priority < other.priority
+
+    def __le__(self, other: object) -> bool:
+        """Check if this ListStatus has lower or equal priority than another."""
+        if not isinstance(other, ListStatus):
+            return NotImplemented
+        return self.priority <= other.priority
+
+    def __gt__(self, other: object) -> bool:
+        """Check if this ListStatus has higher priority than another."""
+        if not isinstance(other, ListStatus):
+            return NotImplemented
+        return self.priority > other.priority
+
+    def __ge__(self, other: object) -> bool:
+        """Check if this ListStatus has higher or equal priority than another."""
+        if not isinstance(other, ListStatus):
+            return NotImplemented
+        return self.priority >= other.priority
+
+
+@dataclass(frozen=True, slots=True)
+class ListUser:
+    """User information for a list provider."""
+
+    key: str
+    title: str = field(compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class ListTarget:
+    """Resolved mapping descriptor to a list media key."""
+
+    descriptor: MappingDescriptor
+    media_key: str
+
+
+@dataclass(slots=True, eq=False)
+class ListEntity[ProviderT: ListProvider](ABC):
+    """Base class for list entities."""
+
+    _provider: ProviderT = field(repr=False, compare=False)
+    _key: str
+    _title: str = field(compare=False)
+
+    @property
+    def key(self) -> str:
+        """Return the unique key for this entity."""
+        return self._key
+
+    def provider(self) -> ProviderT:
+        """Return the provider associated with this entity."""
+        return self._provider
+
+    @property
+    def title(self) -> str:
+        """Return the title of this entity."""
+        return self._title
+
+    def __hash__(self) -> int:
+        """Compute a hash based on the provider namespace, class name, and key."""
+        return hash((self._provider.NAMESPACE, self.__class__.__name__, self.key))
+
+    def __eq__(self, other: object) -> bool:
+        """Check equality with another ListEntity based on provider and key."""
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        other_ent = cast(ListEntity, other)
+        return (
+            self._provider.NAMESPACE == other_ent._provider.NAMESPACE
+            and self.key == other_ent.key
+        )
+
+    def __repr__(self) -> str:
+        """Return a string representation of the ListEntity."""
+        return (
+            f"<{self.__class__.__name__}:{self._provider.NAMESPACE}:{self.key}:"
+            f"{self.title[:32]}>"
+        )
+
+
+class ListMedia[ProviderT: ListProvider](ListEntity[ProviderT], ABC):
+    """Base class for media items in a provider list.
+
+    Subclasses should call the base constructor and may override properties if
+    they need custom behaviour; defaults store values provided at init time.
+    """
+
+    @property
+    def external_url(self) -> str | None:
+        """URL to the provider's media item, if available."""
+        return None
+
+    @property
+    def labels(self) -> Sequence[str]:
+        """Display labels such as season or release year."""
+        return ()
+
+    @property
+    @abstractmethod
+    def media_type(self) -> ListMediaType:
+        """Type of media (e.g., TV, MOVIE)."""
+        ...
+
+    @property
+    def poster_image(self) -> str | None:
+        """Poster or cover image URL, if provided by the provider."""
+        return None
+
+    @property
+    @abstractmethod
+    def total_units(self) -> int | None:
+        """Total number of units (episodes/chapters) for the media."""
+        ...
+
+
+class ListEntry[ProviderT: ListProvider](ListEntity[ProviderT], ABC):
+    """Base class for list entries for a given media item."""
+
+    @property
+    @abstractmethod
+    def progress(self) -> int | None:
+        """Progress integer (e.g., episodes watched)."""
+        ...
+
+    @progress.setter
+    @abstractmethod
+    def progress(self, value: int | None) -> None: ...
+
+    @property
+    @abstractmethod
+    def repeats(self) -> int | None:
+        """Repeat count for the entry."""
+        ...
+
+    @repeats.setter
+    @abstractmethod
+    def repeats(self, value: int | None) -> None: ...
+
+    @property
+    @abstractmethod
+    def review(self) -> str | None:
+        """User review text, if any."""
+        ...
+
+    @review.setter
+    @abstractmethod
+    def review(self, value: str | None) -> None: ...
+
+    @property
+    @abstractmethod
+    def status(self) -> ListStatus | None:
+        """Watch status for the entry."""
+        ...
+
+    @status.setter
+    @abstractmethod
+    def status(self, value: ListStatus | None) -> None:
+        """Update the status for the entry."""
+        ...
+
+    @property
+    @abstractmethod
+    def user_rating(self) -> int | None:
+        """User rating on a 0-100 scale."""
+        ...
+
+    @user_rating.setter
+    @abstractmethod
+    def user_rating(self, value: int | None) -> None:
+        """Update the user rating for the entry."""
+        ...
+
+    @property
+    @abstractmethod
+    def started_at(self) -> datetime | None:
+        """Timestamp when the user started the entry (timezone-aware)."""
+        ...
+
+    @started_at.setter
+    @abstractmethod
+    def started_at(self, value: datetime | None) -> None:
+        """Update the started_at timestamp for the entry."""
+        ...
+
+    @property
+    @abstractmethod
+    def finished_at(self) -> datetime | None:
+        """Timestamp when the user first completed the entry (timezone-aware)."""
+        ...
+
+    @finished_at.setter
+    @abstractmethod
+    def finished_at(self, value: datetime | None) -> None:
+        """Update the finished_at timestamp for the entry."""
+        ...
+
+    @abstractmethod
+    def media(self) -> ListMedia[ProviderT]:
+        """Get the media item associated with this entry.
+
+        For an efficient implementation, this should return a cached media item if
+        possible, rather than fetching it anew each time.
+
+        Returns:
+            ListMedia: The media item associated with this entry.
+        """
+        ...
+
+
+class ListProvider(ABC):
+    """Abstract base provider that exposes a user media list."""
+
+    NAMESPACE: ClassVar[str]
+    MAPPING_PROVIDERS: ClassVar[frozenset[str]]
+
+    def __init__(self, *, config: dict | None = None) -> None:
+        """Initialize the provider with optional configuration.
+
+        Args:
+            config (dict | None): Any configuration options that were detected with the
+                provider's namespace as a prefix.
+        """
+        return None
+
+    async def initialize(self) -> None:
+        """Asynchronous initialization hook.
+
+        Put any async logic that should be run after construction here.
+        """
+        return None
+
+    async def backup_list(self) -> str:
+        """Backup the entire list from the provider.
+
+        It is up to the implementation to decide the format of the backup data. Whatever
+        format, it should be serializable/deserializable as a string.
+
+        Backup capabilities are optional. If a provider does not support backups, this
+        method should raise a NotImplementedError.
+
+        Returns:
+            str: A serialized string representation of all list entries.
+        """
+        raise NotImplementedError(f"{self.NAMESPACE} does not support backup_list()")
+
+    async def clear_cache(self) -> None:
+        """Clear any cached data held by the provider.
+
+        For more efficient implementations, it is a good idea to cache data
+        fetched from the provider to minimize network requests. AniBridge uses
+        this method occasionally to clear such caches.
+        """
+        return None
+
+    async def close(self) -> None:
+        """Close the provider and release resources."""
+        return None
+
+    @abstractmethod
+    async def delete_entry(self, key: str) -> None:
+        """Delete a list entry by its media key.
+
+        Args:
+            key (str): The unique key of the media item to delete.
+        """
+        ...
+
+    @abstractmethod
+    async def resolve_mapping_descriptors(
+        self, descriptors: Sequence[MappingDescriptor]
+    ) -> Sequence[ListTarget]:
+        """Resolve mapping descriptors into list media keys.
+
+        Implementations should return one ListTarget for each mapping descriptor that
+        can be resolved into a list media key. Multiple list keys may be returned for a
+        single descriptor.
+
+        Args:
+            descriptors (Sequence[MappingDescriptor]): Mapping descriptors to resolve.
+
+        Returns:
+            Sequence[ListTarget]: The resolved descriptor/key pairs.
+        """
+        ...
+
+    @abstractmethod
+    async def get_entry(self, key: str) -> ListEntry[Self] | None:
+        """Retrieve a list entry by its media key.
+
+        Only return None if the media item does not exist on the provider.
+
+        Args:
+            key (str): The unique key of the media item to retrieve.
+
+        Returns:
+            ListEntry | None: The list entry if found, otherwise None.
+        """
+        ...
+
+    async def get_entries_batch(
+        self, keys: Sequence[str]
+    ) -> Sequence[ListEntry[Self] | None]:
+        """Retrieve multiple list entries by their media keys.
+
+        The order of the returned sequence must match the order of the input keys.
+
+        Args:
+            keys (Sequence[str]): The unique keys of the media items to retrieve.
+
+        Returns:
+            Sequence[ListEntry | None]: A sequence of list entries, with None for any
+                not found.
+        """
+        entries: list[ListEntry[Self] | None] = []
+        for key in keys:
+            try:
+                entry = await self.get_entry(key)
+            except Exception:
+                entry = None
+            entries.append(entry)
+        return entries
+
+    async def restore_list(self, backup: str) -> None:
+        """Restore list entries from a backup string.
+
+        The format of the backup string is determined by the implementation
+        of `backup_list`.
+
+        Args:
+            backup (str): The serialized string representation of the list entries.
+        """
+        return None
+
+    async def search(self, query: str) -> Sequence[ListEntry[Self]]:
+        """Search the provider for entries matching the query.
+
+        Args:
+            query (str): The search query string.
+
+        Returns:
+            Sequence[ListEntry]: A sequence of matching list entries.
+        """
+        return []
+
+    @abstractmethod
+    async def update_entry(
+        self, key: str, entry: ListEntry[Self]
+    ) -> ListEntry[Self] | None:
+        """Update a list entry with new information.
+
+        Args:
+            key (str): The unique key of the media item to update.
+            entry (ListEntry): The updated entry information.
+
+        Returns:
+            ListEntry | None: The updated list entry, or None if the update failed.
+        """
+        ...
+
+    async def update_entries_batch(
+        self, entries: Sequence[ListEntry[Self]]
+    ) -> Sequence[ListEntry[Self] | None]:
+        """Update multiple list entries in a single operation.
+
+        Args:
+            entries (Sequence[ListEntry]): The list entries to update.
+
+        Returns:
+            Sequence[ListEntry | None]: A sequence of updated list entries, with None
+                for any that could not be updated.
+        """
+        updated_entries: list[ListEntry[Self] | None] = []
+        for entry in entries:
+            try:
+                updated_entry = await self.update_entry(entry.media().key, entry)
+            except Exception:
+                updated_entry = None
+            updated_entries.append(updated_entry)
+        return updated_entries
+
+    @abstractmethod
+    def user(self) -> ListUser | None:
+        """Return the associated user object, if any.
+
+        Returns:
+            User | None: The associated user object, if any.
+        """
+        ...
