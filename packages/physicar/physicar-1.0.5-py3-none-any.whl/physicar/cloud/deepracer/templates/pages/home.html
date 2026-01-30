@@ -1,0 +1,346 @@
+{% extends "_base.html" %}
+
+{% set title = _("home.title") %}
+{% set current_page = "home" %}
+
+{% block content %}
+<div class="row row-deck row-cards">
+  
+  <!-- Welcome Card -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="subheader">{{ _("home.welcome") }}</div>
+        </div>
+        <p class="text-secondary mt-2">
+          {{ _("home.welcome_desc") }}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="subheader">{{ _("home.your_models") }}</div>
+        </div>
+        <div class="h1 mb-3">{{ stats.models | default(0) }}</div>
+        <div class="d-flex mb-2">
+          <div>
+            <a href="/models" class="text-primary">{{ _("home.view_all_models") }}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="subheader">{{ _("home.active_races") }}</div>
+        </div>
+        <div class="h1 mb-3">{{ stats.active_races | default(0) }}</div>
+        <div class="d-flex mb-2">
+          <div>
+            <a href="/races" class="text-primary">{{ _("home.view_races") }}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="subheader">{{ _("home.training_hours") }}</div>
+        </div>
+        <div class="h1 mb-3">{{ stats.training_hours | default(0) }}h</div>
+        <div class="d-flex mb-2">
+          <div>
+            <span class="text-green d-inline-flex align-items-center lh-1">
+              {{ _("home.this_month") }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="subheader">{{ _("home.best_lap_time") }}</div>
+        </div>
+        <div class="h1 mb-3">{{ stats.best_lap | default('--:--') }}</div>
+        <div class="d-flex mb-2">
+          <div>
+            <a href="/leaderboard" class="text-primary">{{ _("home.leaderboard") }}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">{{ _("home.quick_actions") }}</h3>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-auto">
+            <a href="/pages/models/create" class="btn btn-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" 
+                stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                <path d="M12 5l0 14"></path>
+                <path d="M5 12l14 0"></path>
+              </svg>
+              {{ _("home.create_model") }}
+            </a>
+          </div>
+          <div class="col-auto">
+            <a href="/races/create" class="btn btn-outline-primary">
+              {{ _("home.create_race") }}
+            </a>
+          </div>
+          <div class="col-auto">
+            <a href="/learn/tutorial" class="btn btn-outline-secondary">
+              {{ _("home.view_tutorial") }}
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Jobs (Training/Evaluation) -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title mb-0">{{ _("home.active_jobs") }}</h3>
+        <div class="d-flex align-items-center gap-3">
+          <span class="text-muted">{{ _("home.cpu") }}:</span>
+          <span id="cpu-used" class="badge bg-secondary">-</span>
+          <span class="text-muted">/</span>
+          <span id="cpu-total" class="badge bg-secondary">-</span>
+          <span class="text-muted ms-2">{{ _("home.available") }}:</span>
+          <span id="cpu-available" class="badge bg-success">-</span>
+          <button type="button" id="refresh-jobs-btn" class="btn btn-sm btn-ghost-secondary ms-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" 
+              stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+              <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
+              <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th>{{ _("home.run_id") }}</th>
+              <th>{{ _("home.type") }}</th>
+              <th>{{ _("home.model") }}</th>
+              <th>{{ _("home.workers") }}</th>
+              <th>{{ _("home.cpu") }}</th>
+              <th>{{ _("home.remaining") }}</th>
+              <th>{{ _("common.actions") }}</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-table-body">
+            <tr id="no-jobs-row">
+              <td colspan="7" class="text-center text-muted py-4">{{ _("home.no_active_jobs") }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Models -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">{{ _("home.recent_models") }}</h3>
+      </div>
+      <div class="list-group list-group-flush">
+        {% if recent_models %}
+          {% for model in recent_models %}
+          <div class="list-group-item">
+            <div class="row align-items-center">
+              <div class="col-auto">
+                <span class="avatar bg-blue-lt">{{ model.name[:2] | upper }}</span>
+              </div>
+              <div class="col text-truncate">
+                <a href="/models/{{ model.id }}" class="text-reset d-block">{{ model.name }}</a>
+                <div class="d-block text-secondary text-truncate mt-n1">
+                  {{ model.track }} • {{ model.created_at }}
+                </div>
+              </div>
+              <div class="col-auto">
+                <span class="badge bg-{{ 'green' if model.status == 'ready' else 'yellow' }}-lt">
+                  {{ model.status }}
+                </span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="list-group-item text-center text-secondary py-4">
+            {{ _("home.no_models_yet") }} <a href="/models/create">{{ _("home.create_first_model") }}</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Upcoming Races -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Upcoming Races</h3>
+      </div>
+      <div class="list-group list-group-flush">
+        {% if upcoming_races %}
+          {% for race in upcoming_races %}
+          <div class="list-group-item">
+            <div class="row align-items-center">
+              <div class="col-auto">
+                <span class="avatar bg-purple-lt">🏎️</span>
+              </div>
+              <div class="col text-truncate">
+                <a href="/races/{{ race.id }}" class="text-reset d-block">{{ race.name }}</a>
+                <div class="d-block text-secondary text-truncate mt-n1">
+                  {{ race.track }} • Starts {{ race.start_time }}
+                </div>
+              </div>
+              <div class="col-auto">
+                <a href="/races/{{ race.id }}/join" class="btn btn-sm btn-primary">Join</a>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="list-group-item text-center text-secondary py-4">
+            No upcoming races. <a href="/races">Browse races</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // 타임아웃이 있는 fetch (기본 10초)
+  async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return response;
+    } catch (e) {
+      clearTimeout(id);
+      throw e;
+    }
+  }
+  
+  async function refreshJobs() {
+    try {
+      const res = await fetchWithTimeout('/api/jobs');
+      const data = await res.json();
+      
+      // CPU 상태 업데이트
+      document.getElementById('cpu-used').textContent = data.cpu.used;
+      document.getElementById('cpu-total').textContent = data.cpu.total;
+      const availEl = document.getElementById('cpu-available');
+      availEl.textContent = data.cpu.available;
+      availEl.className = data.cpu.available > 0 ? 'badge bg-success' : 'badge bg-danger';
+      
+      // 테이블 업데이트
+      const tbody = document.getElementById('jobs-table-body');
+      if (data.jobs.length === 0) {
+        tbody.innerHTML = '<tr id="no-jobs-row"><td colspan="7" class="text-center text-muted py-4">No active jobs</td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = data.jobs.map(job => `
+        <tr>
+          <td><span class="badge bg-blue-lt">${job.run_id}</span></td>
+          <td><span class="badge ${job.job_type === 'training' ? 'bg-green' : 'bg-purple'}">${job.job_type}</span></td>
+          <td><strong>${job.model_name}</strong></td>
+          <td>${job.worker_count}</td>
+          <td>${job.cpu_usage} cores</td>
+          <td>${job.remaining_minutes !== null ? job.remaining_minutes + ' min' : '-'}</td>
+          <td>
+            <button class="btn btn-sm btn-danger stop-job-btn" 
+                    data-run-id="${job.run_id}" 
+                    data-job-type="${job.job_type}">
+              Stop
+            </button>
+          </td>
+        </tr>
+      `).join('');
+      
+      // Stop 버튼 이벤트 연결
+      tbody.querySelectorAll('.stop-job-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const runId = this.dataset.runId;
+          const jobType = this.dataset.jobType;
+          const endpoint = jobType === 'training' 
+            ? `/api/training/${runId}/stop` 
+            : `/api/evaluation/${runId}/stop`;
+          
+          const result = await Swal.fire({
+            title: 'Stop Job?',
+            text: `Stop ${jobType} (Run ID: ${runId})?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Stop',
+          });
+          
+          if (result.isConfirmed) {
+            try {
+              const res = await fetch(endpoint, { method: 'POST' });
+              const data = await res.json();
+              if (res.ok) {
+                Swal.fire('Stopped!', data.message, 'success');
+                refreshJobs();
+              } else {
+                throw new Error(data.detail || 'Failed to stop');
+              }
+            } catch (e) {
+              Swal.fire('Error', e.message, 'error');
+            }
+          }
+        });
+      });
+    } catch (e) {
+      console.error('Failed to fetch jobs:', e);
+    }
+  }
+  
+  // 페이지 로드 시 & 10초마다 자동 갱신
+  refreshJobs();
+  setInterval(refreshJobs, 10000);
+  
+  // Refresh 버튼
+  document.getElementById('refresh-jobs-btn')?.addEventListener('click', refreshJobs);
+});
+</script>
+{% endblock %}

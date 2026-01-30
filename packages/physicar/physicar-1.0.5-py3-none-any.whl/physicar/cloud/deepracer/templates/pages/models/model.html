@@ -1,0 +1,983 @@
+{% extends "_base.html" %}
+
+{% set title = model_name %}
+
+{% block styles %}
+<style>
+    /* 상태 배지 스타일 */
+    #training-status-badge {
+        display: inline-block;
+        padding: 0.3em 0.5em;
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: middle;
+        border-radius: 50rem;
+        color: #fff;
+        background-color: #6c7a91;
+    }
+    #training-status-badge.ready { background-color: #5eba00; }
+    #training-status-badge.training { background-color: #4299e1; }
+    #training-status-badge.evaluating { background-color: #9b59b6; }
+    #training-status-badge.failed { background-color: #cd201f; }
+    
+    /* 페이지 탭 */
+    .page-header-tabs {
+        margin-bottom: 1.5rem;
+        border-bottom: 1px solid rgba(101, 109, 119, .16);
+        display: flex;
+        list-style: none;
+        padding-left: 0;
+    }
+    .page-header-tabs .page-tab-item { margin-bottom: -1px; }
+    .page-header-tabs .page-tab-link {
+        display: block;
+        padding: .75rem 1.25rem;
+        font-weight: 500;
+        color: #6c7a91;
+        text-decoration: none;
+        border: 1px solid transparent;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+    }
+    .page-header-tabs .page-tab-link:hover { color: #206bc4; }
+    .page-header-tabs .page-tab-link.active {
+        color: #206bc4;
+        background: #f0f4f9;
+        border-color: rgba(101, 109, 119, .16);
+        border-bottom-color: #f0f4f9;
+    }
+    
+    /* 시뮬레이션 탭 */
+    #simulation-tabs .nav-link { padding: 0.5rem 1rem; }
+    
+    /* 2x2 그리드 레이아웃 - 5:4 비율 */
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: 5fr 4fr;
+        grid-template-rows: auto auto;
+        gap: 0.5rem;
+    }
+    /* Simulation Info 그리드 - metrics-grid와 동일한 5:4 비율 */
+    .sim-info-grid {
+        display: grid;
+        grid-template-columns: 5fr 4fr;
+        gap: 0.5rem;
+        align-items: start;
+    }
+    .sim-info-grid .sim-thumbnail {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    /* 모바일: 열 순서대로 (Reward -> Progress -> Chase -> Front) */
+    @media (max-width: 991px) {
+        .metrics-grid {
+            grid-template-columns: 1fr;
+        }
+        .metrics-grid .grid-reward { order: 1; }
+        .metrics-grid .grid-progress { order: 2; }
+        .metrics-grid .grid-chase { order: 3; }
+        .metrics-grid .grid-front { order: 4; }
+        .sim-info-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    /* 차트 wrap - 영상과 동일 높이를 위해 aspect-ratio 사용 */
+    .chart-wrap {
+        position: relative;
+        aspect-ratio: 16 / 9;
+    }
+    .chart-wrap canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100% !important;
+        height: 100% !important;
+    }
+    
+    /* 훈련 이미지 영역 - 개별 이미지 */
+    .training-image-single {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+    }
+    .training-image-single img {
+        width: 100%;
+        height: auto;
+        border-radius: 4px;
+        background: #1e1e1e;
+    }
+    .training-image-single .loading-image {
+        aspect-ratio: 16 / 9;
+        width: 100%;
+    }
+    
+    /* 훈련 이미지 영역 */
+    .training-image-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        height: 100%;
+        padding: 0;
+    }
+    .training-image-wrapper img {
+        flex: 1 1 50%;
+        height: 50%;
+        display: block;
+        object-fit: cover;
+        border-radius: 4px;
+        background: #f8f9fa;
+    }
+    
+    /* 로딩 플레이스홀더 */
+    .loading-image {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        font-size: 14px;
+        color: #6c7a91;
+        background: #f8f9fa;
+        border-radius: 4px;
+        width: 100%;
+        height: 100%;
+        min-height: 200px;
+    }
+    .loading-spinner {
+        width: 50px;
+        height: 50px;
+        margin-bottom: 10px;
+    }
+    .loading-spinner svg {
+        width: 100%;
+        height: 100%;
+        animation: rotate 2s linear infinite;
+    }
+    .loading-spinner circle {
+        fill: none;
+        stroke: #206bc4;
+        stroke-width: 4;
+        stroke-dasharray: 150, 200;
+        stroke-dashoffset: -10;
+        stroke-linecap: round;
+        animation: dash 1.5s ease-in-out infinite;
+    }
+    @keyframes rotate { 100% { transform: rotate(360deg); } }
+    @keyframes dash {
+        0% { stroke-dasharray: 1, 200; stroke-dashoffset: 0; }
+        50% { stroke-dasharray: 90, 200; stroke-dashoffset: -35; }
+        100% { stroke-dasharray: 90, 200; stroke-dashoffset: -125; }
+    }
+    
+    /* 훈련 완료 표시 */
+    .training-complete {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: #f8f9fa;
+        border-radius: 4px;
+        width: 100%;
+        padding: 20px;
+    }
+    .training-complete svg { width: 55px; height: 55px; margin-bottom: 12px; }
+    .training-complete .check-circle, .training-complete .check {
+        fill: none; stroke: #5eba00; stroke-width: 4;
+    }
+    .training-complete .check { stroke-linecap: round; stroke-linejoin: round; }
+    .training-complete-text { font-size: 16px; font-weight: 500; color: #343a40; margin: 8px 0 4px; }
+    .training-complete-subtext { font-size: 13px; color: #6c7a91; margin: 0; }
+    
+    /* 테이블 스타일 */
+    .table-key { background: #f5f6fa !important; width: 40%; }
+    
+    /* Reward Function 코드 */
+    .reward-code {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 1rem;
+        border-radius: 4px;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.85rem;
+        overflow-x: auto;
+        max-height: 400px;
+        white-space: pre;
+    }
+    
+    /* 훈련 시간 */
+    #training-time {
+        margin-top: 0.25rem;
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    /* 드롭다운 서브메뉴 스타일 */
+    .dropdown-submenu {
+        position: relative;
+    }
+    .dropdown-submenu:hover > .dropdown-menu {
+        display: block;
+    }
+    .dropdown-submenu > .dropdown-menu {
+        top: 0;
+        left: auto;
+        right: 100%;
+        margin-top: -1px;
+        border-radius: 4px;
+    }
+    .dropdown-submenu > a::before {
+        content: "";
+        border: solid #6c7a91;
+        border-width: 0 2px 2px 0;
+        display: inline-block;
+        padding: 3px;
+        transform: rotate(135deg);
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        margin-top: -4px;
+    }
+    .dropdown-submenu:hover > a::before {
+        border-color: #206bc4;
+    }
+    .dropdown-submenu .dropdown-item {
+        padding-left: 30px;
+    }
+    
+    /* 평가 아코디언 삼각형 아이콘 */
+    #eval-accordion-container .accordion-button {
+        padding-left: 2rem;
+    }
+    #eval-accordion-container .accordion-button::before {
+        content: "";
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%) rotate(45deg);
+        border: solid #333;
+        border-width: 0 2px 2px 0;
+        padding: 4px;
+        transition: transform 0.2s ease;
+    }
+    #eval-accordion-container .accordion-button.collapsed::before {
+        transform: translateY(-50%) rotate(-45deg);
+    }
+    #eval-accordion-container .accordion-button::after {
+        display: none; /* Bootstrap 기본 화살표 숨김 */
+    }
+    /* 아코디언 타임스탬프 크기 */
+    #eval-accordion-container .accordion-button strong {
+        font-size: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block header %}
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col d-flex align-items-center gap-2">
+                <h2 class="page-title mb-0">{{ title }}</h2>
+                <span id="training-status-badge" style="display: none;"></span>
+            </div>
+            <div class="col-auto">
+                <div class="dropdown">
+                    <button class="btn dropdown-toggle align-text-top" 
+                            data-bs-toggle="dropdown" aria-expanded="false">{{ _("model_detail.actions") }}</button>
+                    <div class="dropdown-menu dropdown-menu-end" data-bs-popper="static">
+                        <a class="dropdown-item" href="/pages/models/evaluation?model_name={{ model_name }}" id="start-eval-menu">
+                            {{ _("model_detail.start_evaluation") }}
+                        </a>
+                        <a class="dropdown-item" href="#" id="clone-model-menu" onclick="cloneModel('{{ model_name }}'); return false;">{{ _("model_detail.clone_model") }}</a>
+                        <a class="dropdown-item" href="#" id="download-logs-btn" onclick="downloadLogs('{{ model_name }}'); return false;">{{ _("model_detail.download_logs") }}</a>
+                        <li class="dropdown-submenu">
+                            <a class="dropdown-item" href="#" id="download-physical-car-menu">{{ _("model_detail.download_physical_car") }}</a>
+                            <ul class="dropdown-menu" id="physical-car-submenu">
+                                <li><a class="dropdown-item physical-car-item" href="#" data-type="best" onclick="downloadPhysicalCarModel('{{ model_name }}', 'best'); return false;">{{ _("model_detail.best_checkpoint") }}</a></li>
+                                <li><a class="dropdown-item physical-car-item" href="#" data-type="last" onclick="downloadPhysicalCarModel('{{ model_name }}', 'last'); return false;">{{ _("model_detail.last_checkpoint") }}</a></li>
+                            </ul>
+                        </li>
+                        <div class="dropdown-divider"></div>
+                        <a class="dropdown-item text-danger" href="#" id="delete-model-btn" data-model-name="{{ model_name }}">{{ _("model_detail.delete") }}</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- 상단 페이지 탭 UI -->
+<div class="mb-4">
+    <ul class="page-header-tabs">
+        <li class="page-tab-item">
+            <a href="javascript:void(0);" class="page-tab-link active" id="training-tab">
+                <i class="fas fa-chart-line me-2"></i>{{ _("model_detail.training_tab") }}
+            </a>
+        </li>
+        <li class="page-tab-item">
+            <a href="javascript:void(0);" class="page-tab-link" id="evaluation-tab">
+                <i class="fas fa-vial me-2"></i>{{ _("model_detail.evaluation_tab") }}
+            </a>
+        </li>
+    </ul>
+</div>
+
+<!-- 훈련 시간 표시 -->
+<div id="training-time" class="mb-3" style="margin-left:10px; margin-top:-10px;">
+    {{ _("model_detail.training_time") }}: <span id="training-time-value">--:--:--</span>
+    <span id="max-training-time-display" style="margin-left:10px; color:#888;"></span>
+    <button class="btn btn-danger btn-sm" id="stop-training-btn" style="display:none; float:right; font-size:0.9rem; padding:0.3rem;">
+        <i class="fas fa-stop me-1"></i>{{ _("model_detail.stop_training") }}
+    </button>
+</div>
+
+<!-- Evaluation 탭 영역 (숨김) -->
+<div id="evaluation-wrapper" style="display: none;">
+    <!-- 평가 목록 (아코디언 스타일) -->
+    <div id="eval-accordion-container" class="accordion">
+        <!-- 로딩 -->
+        <div id="eval-loading" class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+        </div>
+        <!-- 비어있음 -->
+        <div id="eval-empty" class="text-center py-4 text-muted" style="display: none;">
+            <i class="fas fa-inbox fa-3x mb-3"></i>
+            <p>{{ _("model_detail.no_evaluation_results") }}</p>
+        </div>
+        <!-- 평가 항목들이 여기에 동적으로 추가됨 -->
+    </div>
+</div>
+
+<!-- Training 탭 영역 -->
+<div id="training-wrapper" style="display: block;">
+    <div class="card">
+        <div class="card-header">
+            <ul id="simulation-tabs" class="nav nav-tabs card-header-tabs" data-bs-toggle="tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <a href="#tabs-main" class="nav-link active" data-bs-toggle="tab" aria-selected="true" role="tab">{{ _("simulation.main") }}</a>
+                </li>
+                <!-- 하위 시뮬레이션 탭 (동적으로 표시, 최대 6개) -->
+                <li class="nav-item d-none" id="tab-item-sub1" role="presentation">
+                    <a href="#tabs-sub1" class="nav-link" data-bs-toggle="tab" role="tab">Sub1</a>
+                </li>
+                <li class="nav-item d-none" id="tab-item-sub2" role="presentation">
+                    <a href="#tabs-sub2" class="nav-link" data-bs-toggle="tab" role="tab">Sub2</a>
+                </li>
+                <li class="nav-item d-none" id="tab-item-sub3" role="presentation">
+                    <a href="#tabs-sub3" class="nav-link" data-bs-toggle="tab" role="tab">Sub3</a>
+                </li>
+                <li class="nav-item d-none" id="tab-item-sub4" role="presentation">
+                    <a href="#tabs-sub4" class="nav-link" data-bs-toggle="tab" role="tab">Sub4</a>
+                </li>
+                <li class="nav-item d-none" id="tab-item-sub5" role="presentation">
+                    <a href="#tabs-sub5" class="nav-link" data-bs-toggle="tab" role="tab">Sub5</a>
+                </li>
+                <li class="nav-item d-none" id="tab-item-sub6" role="presentation">
+                    <a href="#tabs-sub6" class="nav-link" data-bs-toggle="tab" role="tab">Sub6</a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="card-body">
+            <div class="tab-content">
+                <!-- Main Tab -->
+                <div class="tab-pane fade active show" id="tabs-main" role="tabpanel">
+                    <div class="metrics-grid">
+                        <!-- Row 1, Col 1: Reward -->
+                        <div class="grid-reward">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">{{ _("training.reward") }}</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="reward-chart-main"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Row 1, Col 2: Chase View -->
+                        <div class="grid-chase">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Chase View</div>
+                                <div class="training-image-single" id="training-image-1-wrapper">
+                                    <div class="loading-image" id="training-image-1-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>{{ _("common.loading") }}</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-1" style="display:none;" src="" alt="Chase View">
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Row 2, Col 1: Progress -->
+                        <div class="grid-progress">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">{{ _("training.progress") }} (%)</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="progress-chart-main"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Row 2, Col 2: Front View -->
+                        <div class="grid-front">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Front View</div>
+                                <div class="training-image-single" id="training-image-2-wrapper">
+                                    <div class="loading-image" id="training-image-2-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>{{ _("common.loading") }}</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-2" style="display:none;" src="" alt="Front View">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 즉시 로딩 상태 보장 스크립트 -->
+                    <script>
+                    (function() {
+                        // 페이지 로드 즉시 실행 - 빈 화면 방지
+                        function immediateLoadingState() {
+                            // 모든 이미지를 숨기고 로딩만 표시
+                            const imageIds = ['training-image-1', 'training-image-2'];
+                            imageIds.forEach(function(imgId) {
+                                const img = document.getElementById(imgId);
+                                const loading = document.getElementById(imgId + '-loading');
+                                if (img) {
+                                    img.style.display = 'none';
+                                    img.src = '';
+                                }
+                                if (loading) {
+                                    loading.style.display = 'flex';
+                                }
+                            });
+                        }
+                        
+                        // 즉시 실행
+                        immediateLoadingState();
+                        
+                        // DOM 완전 로드 시에도 한 번 더 확인
+                        if (document.readyState === 'loading') {
+                            document.addEventListener('DOMContentLoaded', immediateLoadingState);
+                        }
+                    })();
+                    </script>
+                    
+                    <!-- Main Simulation Info -->
+                    <div class="sim-info-grid mt-3">
+                        <div>
+                            <table class="table table-bordered mb-2">
+                                <tbody>
+                                    <tr><td class="table-key" style="width:160px;">{{ _("simulation.choose_track") }}</td><td id="sim-main-track-name">-</td></tr>
+                                    <tr><td class="table-key">{{ _("simulation.direction") }}</td><td id="sim-main-direction">-</td></tr>
+                                    <tr><td class="table-key">{{ _("simulation.alternate_direction") }}</td><td id="sim-main-alternate">-</td></tr>
+                                    <tr><td class="table-key">{{ _("simulation.race_type") }}</td><td id="sim-main-race-type">-</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="sim-main-oa-card" style="display:none;">
+                                <table class="table table-bordered mb-2">
+                                    <tbody>
+                                        <tr><td class="table-key" style="width:160px;">{{ _("object_avoidance.object_type") }}</td><td id="sim-main-object-type">-</td></tr>
+                                        <tr><td class="table-key">{{ _("object_avoidance.number_of_objects") }}</td><td id="sim-main-num-objects">-</td></tr>
+                                        <tr><td class="table-key">{{ _("object_avoidance.randomize_locations") }}</td><td id="sim-main-randomize">-</td></tr>
+                                    </tbody>
+                                </table>
+                                <div id="sim-main-positions-card" style="display:none;">
+                                    <h6 class="mb-1">{{ _("object_avoidance.object_locations") }}</h6>
+                                    <table class="table table-bordered table-sm mb-0">
+                                        <thead><tr><th style="width:50px;">IDX</th><th>{{ _("training.progress") }} (%)</th><th>LANE</th></tr></thead>
+                                        <tbody id="sim-main-positions"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sim-thumbnail">
+                            <img id="sim-main-thumbnail" src="" alt="Track" class="img-fluid rounded" style="max-width:100%;max-height:200px;">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sub1 Tab -->
+                <div class="tab-pane fade" id="tabs-sub1" role="tabpanel">
+                    <div class="metrics-grid">
+                        <div class="grid-reward">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Reward (Sub1)</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="reward-chart-sub1"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-chase">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Chase View (Sub1)</div>
+                                <div class="training-image-single" id="training-image-sub1-chase-wrapper">
+                                    <div class="loading-image" id="training-image-sub1-chase-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>Please wait...</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-sub1-chase" style="display:none;" src="" alt="Chase View (Sub1)">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-progress">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Progress (Sub1) %</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="progress-chart-sub1"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-front">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Front View (Sub1)</div>
+                                <div class="training-image-single" id="training-image-sub1-front-wrapper">
+                                    <div class="loading-image" id="training-image-sub1-front-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>Please wait...</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-sub1-front" style="display:none;" src="" alt="Front View (Sub1)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Sub1 Simulation Info -->
+                    <div class="sim-info-grid mt-3">
+                        <div>
+                            <table class="table table-bordered mb-2">
+                                <tbody>
+                                    <tr><td class="table-key" style="width:160px;">Track</td><td id="sim-sub1-track-name">-</td></tr>
+                                    <tr><td class="table-key">Direction</td><td id="sim-sub1-direction">-</td></tr>
+                                    <tr><td class="table-key">Alternate Direction</td><td id="sim-sub1-alternate">-</td></tr>
+                                    <tr><td class="table-key">Race Type</td><td id="sim-sub1-race-type">-</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="sim-sub1-oa-card" style="display:none;">
+                                <table class="table table-bordered mb-2">
+                                    <tbody>
+                                        <tr><td class="table-key" style="width:160px;">Object Type</td><td id="sim-sub1-object-type">-</td></tr>
+                                        <tr><td class="table-key">Number of Objects</td><td id="sim-sub1-num-objects">-</td></tr>
+                                        <tr><td class="table-key">Randomize Locations</td><td id="sim-sub1-randomize">-</td></tr>
+                                    </tbody>
+                                </table>
+                                <div id="sim-sub1-positions-card" style="display:none;">
+                                    <h6 class="mb-1">Object Locations</h6>
+                                    <table class="table table-bordered table-sm mb-0">
+                                        <thead><tr><th style="width:50px;">IDX</th><th>PROGRESS (%)</th><th>LANE</th></tr></thead>
+                                        <tbody id="sim-sub1-positions"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sim-thumbnail">
+                            <img id="sim-sub1-thumbnail" src="" alt="Track" class="img-fluid rounded" style="max-width:100%;max-height:200px;">
+                        </div>
+                    </div>
+                </div>
+                <!-- Sub2 Tab -->
+                <div class="tab-pane fade" id="tabs-sub2" role="tabpanel">
+                    <div class="metrics-grid">
+                        <div class="grid-reward">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Reward (Sub2)</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="reward-chart-sub2"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-chase">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Chase View (Sub2)</div>
+                                <div class="training-image-single" id="training-image-sub2-chase-wrapper">
+                                    <div class="loading-image" id="training-image-sub2-chase-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>Please wait...</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-sub2-chase" style="display:none;" src="" alt="Chase View (Sub2)">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-progress">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Progress (Sub2) %</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="progress-chart-sub2"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-front">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Front View (Sub2)</div>
+                                <div class="training-image-single" id="training-image-sub2-front-wrapper">
+                                    <div class="loading-image" id="training-image-sub2-front-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>Please wait...</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-sub2-front" style="display:none;" src="" alt="Front View (Sub2)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Sub2 Simulation Info -->
+                    <div class="sim-info-grid mt-3">
+                        <div>
+                            <table class="table table-bordered mb-2">
+                                <tbody>
+                                    <tr><td class="table-key" style="width:160px;">Track</td><td id="sim-sub2-track-name">-</td></tr>
+                                    <tr><td class="table-key">Direction</td><td id="sim-sub2-direction">-</td></tr>
+                                    <tr><td class="table-key">Alternate Direction</td><td id="sim-sub2-alternate">-</td></tr>
+                                    <tr><td class="table-key">Race Type</td><td id="sim-sub2-race-type">-</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="sim-sub2-oa-card" style="display:none;">
+                                <table class="table table-bordered mb-2">
+                                    <tbody>
+                                        <tr><td class="table-key" style="width:160px;">Object Type</td><td id="sim-sub2-object-type">-</td></tr>
+                                        <tr><td class="table-key">Number of Objects</td><td id="sim-sub2-num-objects">-</td></tr>
+                                        <tr><td class="table-key">Randomize Locations</td><td id="sim-sub2-randomize">-</td></tr>
+                                    </tbody>
+                                </table>
+                                <div id="sim-sub2-positions-card" style="display:none;">
+                                    <h6 class="mb-1">Object Locations</h6>
+                                    <table class="table table-bordered table-sm mb-0">
+                                        <thead><tr><th style="width:50px;">IDX</th><th>PROGRESS (%)</th><th>LANE</th></tr></thead>
+                                        <tbody id="sim-sub2-positions"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sim-thumbnail">
+                            <img id="sim-sub2-thumbnail" src="" alt="Track" class="img-fluid rounded" style="max-width:100%;max-height:200px;">
+                        </div>
+                    </div>
+                </div>
+                <!-- Sub3 Tab -->
+                <div class="tab-pane fade" id="tabs-sub3" role="tabpanel">
+                    <div class="metrics-grid">
+                        <div class="grid-reward">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Reward (Sub3)</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="reward-chart-sub3"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-chase">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Chase View (Sub3)</div>
+                                <div class="training-image-single" id="training-image-sub3-chase-wrapper">
+                                    <div class="loading-image" id="training-image-sub3-chase-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>Please wait...</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-sub3-chase" style="display:none;" src="" alt="Chase View (Sub3)">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-progress">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Progress (Sub3) %</div>
+                                <div class="chart-wrap p-1">
+                                    <canvas id="progress-chart-sub3"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-front">
+                            <div class="card card-sm h-100">
+                                <div class="card-header py-1 px-2" style="font-size:13px;">Front View (Sub3)</div>
+                                <div class="training-image-single" id="training-image-sub3-front-wrapper">
+                                    <div class="loading-image" id="training-image-sub3-front-loading">
+                                        <div>
+                                            <div class="loading-spinner">
+                                                <svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg>
+                                            </div>
+                                            <div>Please wait...</div>
+                                        </div>
+                                    </div>
+                                    <img id="training-image-sub3-front" style="display:none;" src="" alt="Front View (Sub3)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Sub3 Simulation Info -->
+                    <div class="sim-info-grid mt-3">
+                        <div>
+                            <table class="table table-bordered mb-2">
+                                <tbody>
+                                    <tr><td class="table-key" style="width:160px;">Track</td><td id="sim-sub3-track-name">-</td></tr>
+                                    <tr><td class="table-key">Direction</td><td id="sim-sub3-direction">-</td></tr>
+                                    <tr><td class="table-key">Alternate Direction</td><td id="sim-sub3-alternate">-</td></tr>
+                                    <tr><td class="table-key">Race Type</td><td id="sim-sub3-race-type">-</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="sim-sub3-oa-card" style="display:none;">
+                                <table class="table table-bordered mb-2">
+                                    <tbody>
+                                        <tr><td class="table-key" style="width:160px;">Object Type</td><td id="sim-sub3-object-type">-</td></tr>
+                                        <tr><td class="table-key">Number of Objects</td><td id="sim-sub3-num-objects">-</td></tr>
+                                        <tr><td class="table-key">Randomize Locations</td><td id="sim-sub3-randomize">-</td></tr>
+                                    </tbody>
+                                </table>
+                                <div id="sim-sub3-positions-card" style="display:none;">
+                                    <h6 class="mb-1">Object Locations</h6>
+                                    <table class="table table-bordered table-sm mb-0">
+                                        <thead><tr><th style="width:50px;">IDX</th><th>PROGRESS (%)</th><th>LANE</th></tr></thead>
+                                        <tbody id="sim-sub3-positions"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sim-thumbnail">
+                            <img id="sim-sub3-thumbnail" src="" alt="Track" class="img-fluid rounded" style="max-width:100%;max-height:200px;">
+                        </div>
+                    </div>
+                </div>
+                <!-- Sub4 Tab -->
+                <div class="tab-pane fade" id="tabs-sub4" role="tabpanel">
+                    <div class="metrics-grid">
+                        <div class="grid-reward"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Reward (Sub4)</div><div class="chart-wrap p-1"><canvas id="reward-chart-sub4"></canvas></div></div></div>
+                        <div class="grid-chase"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Chase View (Sub4)</div><div class="training-image-single" id="training-image-sub4-chase-wrapper"><div class="loading-image" id="training-image-sub4-chase-loading"><div><div class="loading-spinner"><svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg></div><div>Please wait...</div></div></div><img id="training-image-sub4-chase" style="display:none;" src="" alt="Chase View (Sub4)"></div></div></div>
+                        <div class="grid-progress"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Progress (Sub4) %</div><div class="chart-wrap p-1"><canvas id="progress-chart-sub4"></canvas></div></div></div>
+                        <div class="grid-front"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Front View (Sub4)</div><div class="training-image-single" id="training-image-sub4-front-wrapper"><div class="loading-image" id="training-image-sub4-front-loading"><div><div class="loading-spinner"><svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg></div><div>Please wait...</div></div></div><img id="training-image-sub4-front" style="display:none;" src="" alt="Front View (Sub4)"></div></div></div>
+                    </div>
+                    <!-- Sub4 Simulation Info -->
+                    <div class="sim-info-grid mt-3">
+                        <div>
+                            <table class="table table-bordered mb-2">
+                                <tbody>
+                                    <tr><td class="table-key" style="width:160px;">Track</td><td id="sim-sub4-track-name">-</td></tr>
+                                    <tr><td class="table-key">Direction</td><td id="sim-sub4-direction">-</td></tr>
+                                    <tr><td class="table-key">Alternate Direction</td><td id="sim-sub4-alternate">-</td></tr>
+                                    <tr><td class="table-key">Race Type</td><td id="sim-sub4-race-type">-</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="sim-sub4-oa-card" style="display:none;">
+                                <table class="table table-bordered mb-2">
+                                    <tbody>
+                                        <tr><td class="table-key" style="width:160px;">Object Type</td><td id="sim-sub4-object-type">-</td></tr>
+                                        <tr><td class="table-key">Number of Objects</td><td id="sim-sub4-num-objects">-</td></tr>
+                                        <tr><td class="table-key">Randomize Locations</td><td id="sim-sub4-randomize">-</td></tr>
+                                    </tbody>
+                                </table>
+                                <div id="sim-sub4-positions-card" style="display:none;">
+                                    <h6 class="mb-1">Object Locations</h6>
+                                    <table class="table table-bordered table-sm mb-0">
+                                        <thead><tr><th style="width:50px;">IDX</th><th>PROGRESS (%)</th><th>LANE</th></tr></thead>
+                                        <tbody id="sim-sub4-positions"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sim-thumbnail">
+                            <img id="sim-sub4-thumbnail" src="" alt="Track" class="img-fluid rounded" style="max-width:100%;max-height:200px;">
+                        </div>
+                    </div>
+                </div>
+                <!-- Sub5 Tab -->
+                <div class="tab-pane fade" id="tabs-sub5" role="tabpanel">
+                    <div class="metrics-grid">
+                        <div class="grid-reward"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Reward (Sub5)</div><div class="chart-wrap p-1"><canvas id="reward-chart-sub5"></canvas></div></div></div>
+                        <div class="grid-chase"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Chase View (Sub5)</div><div class="training-image-single" id="training-image-sub5-chase-wrapper"><div class="loading-image" id="training-image-sub5-chase-loading"><div><div class="loading-spinner"><svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg></div><div>Please wait...</div></div></div><img id="training-image-sub5-chase" style="display:none;" src="" alt="Chase View (Sub5)"></div></div></div>
+                        <div class="grid-progress"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Progress (Sub5) %</div><div class="chart-wrap p-1"><canvas id="progress-chart-sub5"></canvas></div></div></div>
+                        <div class="grid-front"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Front View (Sub5)</div><div class="training-image-single" id="training-image-sub5-front-wrapper"><div class="loading-image" id="training-image-sub5-front-loading"><div><div class="loading-spinner"><svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg></div><div>Please wait...</div></div></div><img id="training-image-sub5-front" style="display:none;" src="" alt="Front View (Sub5)"></div></div></div>
+                    </div>
+                    <!-- Sub5 Simulation Info -->
+                    <div class="sim-info-grid mt-3">
+                        <div>
+                            <table class="table table-bordered mb-2">
+                                <tbody>
+                                    <tr><td class="table-key" style="width:160px;">Track</td><td id="sim-sub5-track-name">-</td></tr>
+                                    <tr><td class="table-key">Direction</td><td id="sim-sub5-direction">-</td></tr>
+                                    <tr><td class="table-key">Alternate Direction</td><td id="sim-sub5-alternate">-</td></tr>
+                                    <tr><td class="table-key">Race Type</td><td id="sim-sub5-race-type">-</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="sim-sub5-oa-card" style="display:none;">
+                                <table class="table table-bordered mb-2">
+                                    <tbody>
+                                        <tr><td class="table-key" style="width:160px;">Object Type</td><td id="sim-sub5-object-type">-</td></tr>
+                                        <tr><td class="table-key">Number of Objects</td><td id="sim-sub5-num-objects">-</td></tr>
+                                        <tr><td class="table-key">Randomize Locations</td><td id="sim-sub5-randomize">-</td></tr>
+                                    </tbody>
+                                </table>
+                                <div id="sim-sub5-positions-card" style="display:none;">
+                                    <h6 class="mb-1">Object Locations</h6>
+                                    <table class="table table-bordered table-sm mb-0">
+                                        <thead><tr><th style="width:50px;">IDX</th><th>PROGRESS (%)</th><th>LANE</th></tr></thead>
+                                        <tbody id="sim-sub5-positions"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sim-thumbnail">
+                            <img id="sim-sub5-thumbnail" src="" alt="Track" class="img-fluid rounded" style="max-width:100%;max-height:200px;">
+                        </div>
+                    </div>
+                </div>
+                <!-- Sub6 Tab -->
+                <div class="tab-pane fade" id="tabs-sub6" role="tabpanel">
+                    <div class="metrics-grid">
+                        <div class="grid-reward"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Reward (Sub6)</div><div class="chart-wrap p-1"><canvas id="reward-chart-sub6"></canvas></div></div></div>
+                        <div class="grid-chase"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Chase View (Sub6)</div><div class="training-image-single" id="training-image-sub6-chase-wrapper"><div class="loading-image" id="training-image-sub6-chase-loading"><div><div class="loading-spinner"><svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg></div><div>Please wait...</div></div></div><img id="training-image-sub6-chase" style="display:none;" src="" alt="Chase View (Sub6)"></div></div></div>
+                        <div class="grid-progress"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Progress (Sub6) %</div><div class="chart-wrap p-1"><canvas id="progress-chart-sub6"></canvas></div></div></div>
+                        <div class="grid-front"><div class="card card-sm h-100"><div class="card-header py-1 px-2" style="font-size:13px;">Front View (Sub6)</div><div class="training-image-single" id="training-image-sub6-front-wrapper"><div class="loading-image" id="training-image-sub6-front-loading"><div><div class="loading-spinner"><svg viewBox="25 25 50 50"><circle cx="50" cy="50" r="20"></circle></svg></div><div>Please wait...</div></div></div><img id="training-image-sub6-front" style="display:none;" src="" alt="Front View (Sub6)"></div></div></div>
+                    </div>
+                    <!-- Sub6 Simulation Info -->
+                    <div class="sim-info-grid mt-3">
+                        <div>
+                            <table class="table table-bordered mb-2">
+                                <tbody>
+                                    <tr><td class="table-key" style="width:160px;">Track</td><td id="sim-sub6-track-name">-</td></tr>
+                                    <tr><td class="table-key">Direction</td><td id="sim-sub6-direction">-</td></tr>
+                                    <tr><td class="table-key">Alternate Direction</td><td id="sim-sub6-alternate">-</td></tr>
+                                    <tr><td class="table-key">Race Type</td><td id="sim-sub6-race-type">-</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="sim-sub6-oa-card" style="display:none;">
+                                <table class="table table-bordered mb-2">
+                                    <tbody>
+                                        <tr><td class="table-key" style="width:160px;">Object Type</td><td id="sim-sub6-object-type">-</td></tr>
+                                        <tr><td class="table-key">Number of Objects</td><td id="sim-sub6-num-objects">-</td></tr>
+                                        <tr><td class="table-key">Randomize Locations</td><td id="sim-sub6-randomize">-</td></tr>
+                                    </tbody>
+                                </table>
+                                <div id="sim-sub6-positions-card" style="display:none;">
+                                    <h6 class="mb-1">Object Locations</h6>
+                                    <table class="table table-bordered table-sm mb-0">
+                                        <thead><tr><th style="width:50px;">IDX</th><th>PROGRESS (%)</th><th>LANE</th></tr></thead>
+                                        <tbody id="sim-sub6-positions"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sim-thumbnail">
+                            <img id="sim-sub6-thumbnail" src="" alt="Track" class="img-fluid rounded" style="max-width:100%;max-height:200px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Vehicles 정보 카드 -->
+    <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title">Vehicle</h3></div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table table-bordered mb-0">
+                        <tbody>
+                            <tr><td class="table-key">Vehicle Type</td><td id="vehicle-type">-</td></tr>
+                            <tr><td class="table-key">Sensor</td><td id="vehicle-sensor">-</td></tr>
+                            <tr><td class="table-key">Action Space Type</td><td id="vehicle-action-space-type">-</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h5>Action Space</h5>
+                    <div style="max-height: 200px; overflow-y: auto;">
+                        <table class="table table-bordered table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="width:50px;">#</th>
+                                    <th>Steering Angle (°)</th>
+                                    <th>Speed (m/s)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="action-space-table">
+                                <tr><td colspan="3" class="text-center text-muted">-</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Training 정보 카드 -->
+    <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title">{{ _("training.title") }}</h3></div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>{{ _("training.hyperparameters") }}</h5>
+                    <table class="table table-bordered">
+                        <tbody>
+                            <tr><td class="table-key">{{ _("training.batch_size") }}</td><td id="batch-size">-</td></tr>
+                            <tr><td class="table-key">{{ _("training.discount_factor") }}</td><td id="discount-factor">-</td></tr>
+                            <tr><td class="table-key">{{ _("training.learning_rate") }}</td><td id="learning-rate">-</td></tr>
+                            <tr><td class="table-key">{{ _("training.loss_type") }}</td><td id="loss-type">-</td></tr>
+                            <tr><td class="table-key">{{ _("training.entropy") }}</td><td id="entropy">-</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h5>{{ _("training.title") }}</h5>
+                    <table class="table table-bordered">
+                        <tbody>
+                            <tr><td class="table-key">{{ _("training.best_model_metric") }}</td><td id="best-model-metric">-</td></tr>
+                            <tr><td class="table-key">{{ _("training.max_training_time") }}</td><td id="max-training-time">-</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Reward Function 카드 -->
+    <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title">{{ _("training.reward_function") }}</h3></div>
+        <div class="card-body p-0">
+            <pre class="mb-0"><code id="reward-function-content" class="language-python"></code></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script>
+// 모델명을 전역에서 접근 가능하게 설정
+window.MODEL_NAME = '{{ model_name }}';
+</script>
+<script>
+{% include "js/model-page.js" %}
+</script>
+{% endblock %}
