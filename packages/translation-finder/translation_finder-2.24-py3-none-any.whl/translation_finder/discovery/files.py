@@ -1,0 +1,808 @@
+# Copyright © Michal Čihař <michal@weblate.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""Individual discovery rules for translation formats."""
+
+from __future__ import annotations
+
+import json
+import re
+import tomllib
+import warnings
+from typing import TYPE_CHECKING, ClassVar
+
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError, YAMLFutureWarning
+
+from translation_finder.api import register_discovery
+
+from .base import (
+    BaseDiscovery,
+    EncodingDiscovery,
+    EnglishVariantsDiscovery,
+    MonoTemplateDiscovery,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+    from pathlib import PurePath
+
+    from .result import DiscoveryResult, ResultDict
+
+LARAVEL_RE = re.compile(r"=>.*\|")
+
+
+@register_discovery
+class GettextDiscovery(BaseDiscovery):
+    """Gettext PO files discovery."""
+
+    file_format = "po"
+    mask = "*.po"
+    new_base_mask = "*.pot"
+
+    def discover(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[DiscoveryResult]:
+        """Yield translation configurations matching this discovery."""
+        for result in super().discover(eager=eager, hint=hint):
+            if "template" not in result:
+                yield result
+                continue
+            bi = result.copy()
+            del bi["template"]
+            yield bi
+            mono = result.copy()
+            mono["file_format"] = "po-mono"
+            yield mono
+
+    def fill_in_new_base(self, result: ResultDict) -> None:
+        """Extend the result for new_base and intermediate parameters."""
+        super().fill_in_new_base(result)
+        if "new_base" not in result:
+            pot_names = [
+                result["filemask"].replace("po/*/", "pot/") + "t",
+                result["filemask"].replace("*", "templates") + "t",
+                result["filemask"].replace(".*", ""),
+                result["filemask"].replace("_*", ""),
+                result["filemask"].replace("-*", ""),
+            ]
+            for pot_name in pot_names:
+                if self.finder.has_file(pot_name):
+                    result["new_base"] = pot_name
+                    break
+
+
+@register_discovery
+class QtDiscovery(BaseDiscovery):
+    """Qt Linguist files discovery."""
+
+    file_format = "ts"
+    mask = "*.ts"
+    new_base_mask = "*.ts"
+
+
+@register_discovery
+class XliffDiscovery(BaseDiscovery):
+    """XLIFF files discovery."""
+
+    file_format = "xliff"
+    mask = ("*.xliff", "*.xlf", "*.sdlxliff", "*.mxliff", "*.poxliff")
+
+    def adjust_format(self, result: ResultDict) -> None:
+        """Override detected format, based on the file content."""
+        base = result["template"] if "template" in result else result["filemask"]
+
+        path = next(iter(self.finder.mask_matches(base)))
+
+        if not hasattr(path, "open"):
+            return
+
+        with self.finder.open(path, "r") as handle:
+            content = handle.read()
+            # Check for XLIFF 2.0 first
+            if 'version="2.0"' in content or 'version="2.1"' in content:
+                if "<pc" in content or "<sc" in content or "<ec" in content:
+                    result["file_format"] = "xliff2-placeables"
+                else:
+                    result["file_format"] = "xliff2"
+            elif 'restype="x-gettext' in content:
+                result["file_format"] = "poxliff"
+            elif "<x " not in content and "<g " not in content:
+                result["file_format"] = "plainxliff"
+
+
+@register_discovery
+class JoomlaDiscovery(BaseDiscovery):
+    """Joomla files discovery."""
+
+    file_format = "joomla"
+    mask = "*.ini"
+
+
+@register_discovery
+class CSVDiscovery(MonoTemplateDiscovery):
+    """CSV files discovery."""
+
+    file_format = "csv"
+    mask = "*.csv"
+
+    def discover(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[DiscoveryResult]:
+        """Yield translation configurations matching this discovery."""
+        for result in super().discover(eager=eager, hint=hint):
+            if "template" not in result:
+                yield result
+                continue
+            bilingual = result.copy()
+            del bilingual["template"]
+            yield bilingual
+            yield result
+
+
+@register_discovery
+class WebExtensionDiscovery(BaseDiscovery):
+    """web extension files discovery."""
+
+    file_format = "webextension"
+    mask = "messages.json"
+
+
+@register_discovery
+class AndroidDiscovery(BaseDiscovery):
+    """Android string files discovery."""
+
+    file_format = "aresource"
+
+    def get_masks(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[ResultDict]:
+        """
+        Return all file masks found in the directory.
+
+        It is expected to contain duplicates.
+        """
+        for path in self.finder.filter_files(
+            r"(strings.*|.*strings)\.xml", ".*/values"
+        ):
+            # Skip Compose Multiplatform resources
+            if "composeResources" in path.as_posix():
+                continue
+
+            mask = list(path.parts)
+            mask[-2] = "values-*"
+
+            yield {"filemask": "/".join(mask), "template": path.as_posix()}
+
+    def adjust_format(self, result: ResultDict) -> None:
+        """Override detected format, based on the file content."""
+        if "template" not in result:
+            return
+
+        path = next(iter(self.finder.mask_matches(result["template"])))
+
+        if not hasattr(path, "open"):
+            return
+
+        with self.finder.open(path, "r") as handle:
+            content = handle.read()
+            if "<plural " in content:
+                result["file_format"] = "moko-resource"
+
+
+@register_discovery
+class MOKODiscovery(BaseDiscovery):
+    """Mobile Kotlin resources discovery."""
+
+    file_format = "moko-resource"
+
+    def get_masks(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[ResultDict]:
+        """
+        Return all file masks found in the directory.
+
+        It is expected to contain duplicates.
+        """
+        for path in self.finder.filter_files(
+            r"(strings|plurals)\.xml",
+            ".*/resources/mr/base",
+        ):
+            mask = list(path.parts)
+            mask[-2] = "*"
+
+            yield {"filemask": "/".join(mask), "template": path.as_posix()}
+
+
+@register_discovery
+class OSXDiscovery(EncodingDiscovery):
+    """OSX string properties files discovery."""
+
+    file_format: ClassVar[str] = "strings-utf8"
+    encoding_map: ClassVar[dict[str, str]] = {
+        "utf_16": "strings",
+    }
+
+    def possible_templates(self, language: str, mask: str) -> Generator[str]:
+        """Yield possible template filenames."""
+        yield mask.replace("*", "Base")
+        yield from super().possible_templates(language, mask)
+
+    def get_masks(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[ResultDict]:
+        """
+        Return all file masks found in the directory.
+
+        It is expected to contain duplicates.
+        """
+        for path in self.finder.filter_files(
+            r".*\.strings",
+            r".*/(base|en(-[a-z]{2})?)\.lproj",
+        ):
+            mask = list(path.parts)
+            mask[-2] = "*.lproj"
+
+            yield {"filemask": "/".join(mask), "template": path.as_posix()}
+
+        for path in self.finder.filter_files(r"base\.strings"):
+            mask = list(path.parts)
+            mask[-1] = "*.strings"
+
+            yield {"filemask": "/".join(mask), "template": path.as_posix()}
+
+
+@register_discovery
+class StringsdictDiscovery(BaseDiscovery):
+    """Stringsdict files discovery."""
+
+    file_format = "stringsdict"
+
+    def get_masks(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[ResultDict]:
+        """
+        Return all file masks found in the directory.
+
+        It is expected to contain duplicates.
+        """
+        for path in self.finder.filter_files(
+            r".*\.stringsdict",
+            r".*/(base|en)\.lproj",
+        ):
+            mask = list(path.parts)
+            mask[-2] = "*.lproj"
+
+            yield {"filemask": "/".join(mask), "template": path.as_posix()}
+
+
+@register_discovery
+class JavaDiscovery(EncodingDiscovery):
+    """Java string properties files discovery."""
+
+    file_format = "properties"
+    encoding_map: ClassVar[dict[str, str]] = {
+        "utf_8": "properties-utf8",
+        "utf_16": "properties-utf16",
+    }
+    mask = ("*_*.properties", "*.properties")
+
+    def possible_templates(self, language: str, mask: str) -> Generator[str]:
+        """Yield possible template filenames."""
+        yield mask.replace("_*", "")
+        yield from super().possible_templates(language, mask)
+
+
+@register_discovery
+class RESXDiscovery(BaseDiscovery):
+    """RESX files discovery."""
+
+    file_format = "resx"
+    mask = "resources.res[xw]"
+
+    def possible_templates(self, language: str, mask: str) -> Generator[str]:
+        """Yield possible template filenames."""
+        yield mask.replace(".*", "")
+        yield from super().possible_templates(language, mask)
+
+    def get_masks(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[ResultDict]:
+        """
+        Return all file masks found in the directory.
+
+        It is expected to contain duplicates.
+        """
+        for path in self.finder.filter_files(r".*\..*\.res[xw]"):
+            mask = list(path.parts)
+            base, code, ext = mask[-1].rsplit(".", 2)
+            if not self.is_language_code(code):
+                continue
+            mask[-1] = f"{base}.*.{ext}"
+            yield {"filemask": "/".join(mask)}
+        yield from super().get_masks(eager=eager, hint=hint)
+
+
+@register_discovery
+class ResourceDictionaryDiscovery(BaseDiscovery):
+    """ResourceDictionary files discovery."""
+
+    file_format = "resourcedictionary"
+    mask = "*.xaml"
+    new_base_mask = "*.xaml"
+
+
+@register_discovery
+class AppStoreDiscovery(EnglishVariantsDiscovery):
+    """App store metadata."""
+
+    file_format = "appstore"
+    mask = ""
+
+    def filter_files(self) -> Generator[PurePath]:
+        """Filter possible file matches."""
+        for path in self.finder.filter_files(
+            "short_description.txt|full_description.txt|title.txt|description.txt|name.txt",
+        ):
+            yield path.parent
+        for path in self.finder.filter_files(r".*\.txt", ".*/changelogs"):
+            yield path.parent.parent
+
+    def has_storage(self, name: str) -> bool:
+        """Check whether finder has a storage."""
+        return self.finder.has_dir(name)
+
+
+@register_discovery
+class JSONDiscovery(BaseDiscovery):
+    """JSON files discovery."""
+
+    file_format = "json-nested"
+    mask = "*.json"
+
+    @staticmethod
+    def is_go_i18n_v2_dict(data: dict) -> bool:
+        """Check if dict matches go-i18n-v2 format pattern."""
+        return "hash" in data and (
+            "message" in data or "one" in data or "other" in data
+        )
+
+    def _detect_top_level_format(self, data: dict) -> str | None:
+        """Detect formats that are only determined from the top-level object."""
+        if "lang" in data and "messages" in data:
+            return "gotext-json"
+        # go-i18n-v2 detection at top level
+        if self.is_go_i18n_v2_dict(data):
+            return "go-i18n-json-v2"
+        # Nextcloud JSON format detection
+        if (
+            "translations" in data
+            and isinstance(data["translations"], list)
+            and len(data["translations"]) > 0
+        ):
+            first = data["translations"][0]
+            if isinstance(first, dict) and "key" in first:
+                return "nextcloud-json"
+        # RESJSON format detection
+        if "_strings" in data or "_locales" in data:
+            return "resjson"
+        return None
+
+    def _detect_first_level_format(self, value: dict) -> str | None:
+        if "message" in value and "description" in value:
+            return "webextension"
+        if "defaultMessage" in value and "description" in value:
+            return "formatjs"
+        # go-i18n-v2 detection in nested objects
+        if self.is_go_i18n_v2_dict(value):
+            return "go-i18n-json-v2"
+        return None
+
+    def _detect_nested_format(self, data: dict, level: int) -> str | None:
+        all_strings = True
+        i18next = False
+        i18nextv4 = False
+
+        # Single loop to detect nested formats and i18next patterns
+        for key, value in data.items():
+            # Check for nested formats at level 0
+            if (
+                level == 0
+                and isinstance(value, dict)
+                and (detected := self._detect_first_level_format(value))
+            ):
+                return detected
+
+            # Check for i18next patterns
+            if not isinstance(key, str):
+                all_strings = False
+                break
+            if not isinstance(value, str):
+                all_strings = False
+                if isinstance(value, dict):
+                    detected = self._detect_nested_format(value, level + 1)
+                    i18next |= detected == "i18next"
+                    i18nextv4 |= detected == "i18nextv4"
+                    # "json" is intentionally ignored here as the format is already nested at this level
+            elif key.endswith(("_one", "_many", "_other")):
+                i18nextv4 = True
+            elif key.endswith("_plural") or "{{" in value:
+                i18next = True
+        if i18nextv4:
+            return "i18nextv4"
+        if i18next:
+            return "i18next"
+        if all_strings:
+            return "json"
+        return None
+
+    def detect_dict(self, data: dict) -> str | None:
+        """Detect JSON variant based on JSON content."""
+        top_level_format = self._detect_top_level_format(data)
+        if top_level_format is not None:
+            return top_level_format
+
+        return self._detect_nested_format(data, 0)
+
+    def adjust_format(self, result: ResultDict) -> None:
+        """Override detected format, based on the file content."""
+        if "template" not in result:
+            return
+
+        path = next(iter(self.finder.mask_matches(result["template"])))
+
+        if not hasattr(path, "open"):
+            return
+
+        with self.finder.open(path, "r") as handle:
+            try:
+                data = json.load(handle)
+            except ValueError as error:
+                warnings.warn(f"Could not parse JSON: {error}", stacklevel=0)
+                return
+            if isinstance(data, list) and len(data) > 0 and "id" in data[0]:
+                result["file_format"] = "go-i18n-json"
+                return
+            if not isinstance(data, dict):
+                return
+
+            detected = self.detect_dict(data)
+
+            if detected is not None:
+                result["file_format"] = detected
+
+
+@register_discovery
+class FluentDiscovery(BaseDiscovery):
+    """Fluent files discovery."""
+
+    file_format = "fluent"
+    mask = "*.ftl"
+
+    def get_language_aliases(self, language: str) -> list[str]:
+        """Language code aliases."""
+        result = super().get_language_aliases(language)
+        if language == "en":
+            result.append("en-US")
+        return result
+
+
+@register_discovery
+class YAMLDiscovery(BaseDiscovery):
+    """YAML files discovery."""
+
+    file_format = "yaml"
+    mask = ("*.yml", "*.yaml")
+
+    def adjust_format(self, result: ResultDict) -> None:
+        """Override detected format, based on the file content."""
+        if "template" not in result:
+            return
+
+        path = next(iter(self.finder.mask_matches(result["template"])))
+
+        if not hasattr(path, "open"):
+            return
+
+        with self.finder.open(path, "rb") as handle:
+            yaml = YAML()
+            try:
+                data = yaml.load(handle)
+            except (YAMLError, YAMLFutureWarning):
+                return
+            except (OSError, UnicodeError, TypeError, ValueError) as error:
+                # Weird errors can happen when parsing YAML, handle them gracefully, but
+                # emit a warning
+                warnings.warn(f"Could not parse YAML: {error}", stacklevel=0)
+                return
+            if isinstance(data, dict) and len(data) == 1:
+                key = next(iter(data.keys()))
+                if "filemask" in result:
+                    if result["filemask"].replace("*", key) == result["template"]:
+                        result["file_format"] = "ruby-yaml"
+                elif key in result["template"]:
+                    result["file_format"] = "ruby-yaml"
+
+
+@register_discovery
+class SRTDiscovery(MonoTemplateDiscovery):
+    """SRT subtitle files discovery."""
+
+    file_format = "srt"
+    mask = "*.srt"
+
+
+@register_discovery
+class SUBDiscovery(MonoTemplateDiscovery):
+    """SUB subtitle files discovery."""
+
+    file_format = "sub"
+    mask = "*.sub"
+
+
+@register_discovery
+class ASSDiscovery(MonoTemplateDiscovery):
+    """ASS subtitle files discovery."""
+
+    file_format = "ass"
+    mask = "*.ass"
+
+
+@register_discovery
+class SSADiscovery(MonoTemplateDiscovery):
+    """SSA subtitle files discovery."""
+
+    file_format = "ssa"
+    mask = "*.ssa"
+
+
+@register_discovery
+class PHPDiscovery(MonoTemplateDiscovery):
+    """PHP files discovery."""
+
+    file_format = "php"
+    mask = "*.php"
+
+    def adjust_format(self, result: ResultDict) -> None:
+        """Override detected format, based on the file content."""
+        if "template" not in result:
+            return
+
+        path = next(iter(self.finder.mask_matches(result["template"])))
+
+        if not hasattr(path, "open"):
+            return
+
+        with self.finder.open(path, "r") as handle:
+            content = handle.read()
+            if "return [" in content and LARAVEL_RE.search(content):
+                result["file_format"] = "laravel"
+
+
+@register_discovery
+class IDMLDiscovery(MonoTemplateDiscovery):
+    """IDML files discovery."""
+
+    file_format = "idml"
+    mask = "*.idml"
+
+
+@register_discovery
+class HTMLDiscovery(MonoTemplateDiscovery):
+    """HTML files discovery."""
+
+    file_format = "html"
+    mask = ("*.html", "*.htm")
+
+
+@register_discovery
+class TXTDiscovery(MonoTemplateDiscovery, EnglishVariantsDiscovery):
+    """TXT files discovery."""
+
+    file_format = "txt"
+    mask = "*.txt"
+
+
+@register_discovery
+class ODFDiscovery(MonoTemplateDiscovery):
+    """ODF files discovery."""
+
+    file_format = "odf"
+    mask = (
+        "*.sxw",
+        "*.odt",
+        "*.ods",
+        "*.odp",
+        "*.odg",
+        "*.odc",
+        "*.odf",
+        "*.odi",
+        "*.odm",
+        "*.ott",
+        "*.ots",
+        "*.otp",
+        "*.otg",
+        "*.otc",
+        "*.otf",
+        "*.oti",
+        "*.oth",
+    )
+
+
+@register_discovery
+class INIDiscovery(BaseDiscovery):
+    """INI files discovery."""
+
+    file_format = "ini"
+    mask = "*.ini"
+
+
+@register_discovery
+class InnoSetupDiscovery(BaseDiscovery):
+    """InnoSetup files discovery."""
+
+    file_format = "islu"
+    mask = "*.islu"
+
+
+@register_discovery
+class TOMLDiscovery(BaseDiscovery):
+    """TOML files discovery."""
+
+    file_format = "toml"
+    mask = "*.toml"
+
+    def adjust_format(self, result: ResultDict) -> None:
+        """Override detected format, based on the file content."""
+        if "template" not in result:
+            return
+
+        path = next(iter(self.finder.mask_matches(result["template"])))
+
+        if not hasattr(path, "open"):
+            return
+
+        with self.finder.open(path, "rb") as handle:
+            try:
+                data = tomllib.load(handle)
+            except (tomllib.TOMLDecodeError, OSError) as error:
+                warnings.warn(f"Could not parse TOML: {error}", stacklevel=0)
+                return
+            # go-i18n-toml detection - has messages array with 'id' field
+            messages = data.get("messages") if isinstance(data, dict) else None
+            if (
+                isinstance(messages, list)
+                and len(messages) > 0
+                and isinstance(messages[0], dict)
+                and "id" in messages[0]
+            ):
+                result["file_format"] = "go-i18n-toml"
+
+
+@register_discovery
+class ARBDiscovery(BaseDiscovery):
+    """ARB files discovery."""
+
+    file_format = "arb"
+    mask = "*.arb"
+
+    def fill_in_new_base(self, result: ResultDict) -> None:
+        """Extend the result for new_base and intermediate parameters."""
+        super().fill_in_new_base(result)
+        if "intermediate" not in result:
+            # Flutter intermediate files
+            intermediate = result["filemask"].replace("*", "messages")
+            if self.finder.has_file(intermediate):
+                result["intermediate"] = intermediate
+
+
+@register_discovery
+class RCDiscovery(MonoTemplateDiscovery):
+    """RC files discovery."""
+
+    file_format = "rc"
+    mask = ("*.rc",)
+
+    def get_language_aliases(self, language: str) -> list[str]:
+        """Language code aliases."""
+        if language == "en":
+            return [language, "enu", "ENU"]
+        return super().get_language_aliases(language)
+
+
+@register_discovery
+class TBXDiscovery(BaseDiscovery):
+    """TBX files discovery."""
+
+    file_format = "tbx"
+    mask = "*.tbx"
+
+
+@register_discovery
+class MarkdownDiscovery(MonoTemplateDiscovery):
+    """Markdown files discovery."""
+
+    file_format = "markdown"
+    mask = ("*.md", "*.markdown")
+
+
+@register_discovery
+class FormatJSDiscovery(BaseDiscovery):
+    """Format.JS JSON files discovery."""
+
+    file_format = "formatjs"
+
+    def get_masks(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[ResultDict]:
+        """
+        Return all file masks found in the directory.
+
+        It is expected to contain duplicates.
+        """
+        for path in self.finder.filter_files(r"en.json", ".*/extracted"):
+            mask = list(path.parts)
+            mask[-1] = "*.json"
+            mask[-2] = "lang"
+
+            yield {"filemask": "/".join(mask), "template": path.as_posix()}
+
+
+@register_discovery
+class DTDDiscovery(BaseDiscovery):
+    """DTD files discovery."""
+
+    file_format = "dtd"
+    mask = "*.dtd"
+
+
+@register_discovery
+class FlatXMLDiscovery(MonoTemplateDiscovery):
+    """Flat XML files discovery."""
+
+    file_format = "flatxml"
+    mask = "*.xml"
+
+
+@register_discovery
+class CatkeysDiscovery(BaseDiscovery):
+    """Haiku catkeys files discovery."""
+
+    file_format = "catkeys"
+    mask = "*.catkeys"
+
+
+@register_discovery
+class CMPDiscovery(BaseDiscovery):
+    """Compose Multiplatform Resource files discovery."""
+
+    file_format = "cmp-resource"
+
+    def get_masks(
+        self, *, eager: bool = False, hint: str | None = None
+    ) -> Generator[ResultDict]:
+        """
+        Return all file masks found in the directory.
+
+        It is expected to contain duplicates.
+        """
+        for path in self.finder.filter_files(
+            r"(strings.*|.*strings)\.xml", ".*/values"
+        ):
+            # Only match files in composeResources directories
+            if "composeResources" not in path.as_posix():
+                continue
+
+            mask = list(path.parts)
+            mask[-2] = "values-*"
+
+            yield {"filemask": "/".join(mask), "template": path.as_posix()}
+
+
+@register_discovery
+class Mi18nDiscovery(BaseDiscovery):
+    """@draggable/i18n lang files discovery."""
+
+    file_format = "mi18n-lang"
+    mask = "*.lang"
