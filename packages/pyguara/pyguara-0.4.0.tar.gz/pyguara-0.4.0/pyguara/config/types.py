@@ -1,0 +1,171 @@
+"""Configuration data structures."""
+
+from dataclasses import dataclass, field, asdict
+from enum import Enum
+from typing import Dict, Any
+from pyguara.common.types import Color
+from pyguara.log.types import LogLevel
+
+
+class RenderingBackend(Enum):
+    """Available rendering backend options.
+
+    PYGAME: Software rendering using Pygame's SDL2 backend.
+            Compatible with all systems, lower performance.
+
+    MODERNGL: GPU-accelerated rendering using ModernGL.
+              Requires OpenGL 3.3+, higher performance with hardware instancing.
+    """
+
+    PYGAME = "pygame"
+    MODERNGL = "moderngl"
+
+
+@dataclass
+class WindowConfig:
+    """Display and rendering configuration."""
+
+    screen_width: int = 1200
+    screen_height: int = 800
+    fps_target: int = 60
+    fullscreen: bool = False
+    vsync: bool = True
+    ui_scale: float = 1.0
+    default_color: Color = field(default_factory=lambda: Color(0, 0, 0))
+    title: str = "Pyguara Engine"
+    backend: RenderingBackend = RenderingBackend.PYGAME
+
+
+@dataclass
+class AudioConfig:
+    """Audio configuration."""
+
+    master_volume: float = 1.0
+    sfx_volume: float = 0.8
+    music_volume: float = 0.6
+    muted: bool = False
+
+
+@dataclass
+class InputConfig:
+    """Input configuration."""
+
+    mouse_sensitivity: float = 1.0
+    gamepad_enabled: bool = True
+    gamepad_deadzone: float = 0.2
+
+
+@dataclass
+class PhysicsConfig:
+    """Physics simulation configuration."""
+
+    # Fixed timestep for physics updates (Hz)
+    # 60 Hz is standard for most games, 120 Hz for precision
+    fixed_timestep_hz: int = 60
+
+    # Maximum frame time to prevent spiral of death
+    # If a frame takes longer than this, we clamp the accumulator
+    max_frame_time: float = 0.25
+
+    # Gravity for platformers (pixels/second^2). Use (0,0) for top-down.
+    gravity_x: float = 0.0
+    gravity_y: float = 0.0
+
+    @property
+    def fixed_dt(self) -> float:
+        """Get the fixed delta time in seconds."""
+        return 1.0 / self.fixed_timestep_hz
+
+
+@dataclass
+class DebugConfig:
+    """Engine debugging and logging configuration."""
+
+    # Logging
+    log_level: LogLevel = LogLevel.INFO
+    log_to_file: bool = True
+    log_file_path: str = "logs/engine.log"
+    console_logging: bool = True
+
+    # Tooling
+    enable_profiler: bool = False
+    enable_inspector: bool = False
+
+    # Visual Debugging
+    show_colliders: bool = False
+    show_fps: bool = False
+
+
+@dataclass
+class GameConfig:
+    """Master configuration container."""
+
+    display: WindowConfig = field(default_factory=WindowConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
+    input: InputConfig = field(default_factory=InputConfig)
+    physics: PhysicsConfig = field(default_factory=PhysicsConfig)
+    debug: DebugConfig = field(default_factory=DebugConfig)
+
+    # Metadata
+    version: str = "1.0"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize config to dictionary."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GameConfig":
+        """Create config from dictionary (manual for safety/speed)."""
+        cfg = cls()
+
+        # Display
+        if "display" in data:
+            d = data["display"].copy()
+            # Handle backend enum conversion from string
+            if "backend" in d and isinstance(d["backend"], str):
+                d["backend"] = RenderingBackend(d["backend"])
+            cfg.display = WindowConfig(
+                **{k: v for k, v in d.items() if k in WindowConfig.__annotations__}
+            )
+
+        # Audio
+        if "audio" in data:
+            a = data["audio"]
+            cfg.audio = AudioConfig(
+                **{k: v for k, v in a.items() if k in AudioConfig.__annotations__}
+            )
+
+        # Input
+        if "input" in data:
+            i = data["input"]
+            cfg.input = InputConfig(
+                **{k: v for k, v in i.items() if k in InputConfig.__annotations__}
+            )
+
+        # Physics
+        if "physics" in data:
+            p = data["physics"]
+            cfg.physics = PhysicsConfig(
+                **{k: v for k, v in p.items() if k in PhysicsConfig.__annotations__}
+            )
+
+        # Debug
+        if "debug" in data:
+            d = data["debug"]
+            # Handle Enum conversion manually if needed
+            if "log_level" in d and isinstance(d["log_level"], (str, int)):
+                # If string "DEBUG", convert to LogLevel.DEBUG
+                # If int 10, convert to LogLevel(10)
+                try:
+                    if isinstance(d["log_level"], str):
+                        d["log_level"] = LogLevel[d["log_level"].upper()]
+                    else:
+                        d["log_level"] = LogLevel(d["log_level"])
+                except (KeyError, ValueError):
+                    d["log_level"] = LogLevel.INFO
+
+            cfg.debug = DebugConfig(
+                **{k: v for k, v in d.items() if k in DebugConfig.__annotations__}
+            )
+
+        return cfg
