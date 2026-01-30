@@ -1,0 +1,50 @@
+name: RIFFT Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  bench:
+    runs-on: ubuntu-22.04
+    env:
+      RUSTFLAGS: -C target-cpu=native
+      RUSTUP_TOOLCHAIN: nightly
+      RIFFT_FEATURES: "python"
+      RIFFT_BENCH_TUNE: "1"
+      CUDA_VISIBLE_DEVICES: ""   # global CUDA disable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Rust (nightly)
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Create virtualenv
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip wheel setuptools maturin
+          pip install "numpy<2" # fix because of pytorch compatibility
+          pip install pytest
+          pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Build & run RIFFT benchmark
+        env:
+          RIFFT_USE_VENV: "1"
+        run: |
+          source .venv/bin/activate
+          ./scripts/build_and_bench.sh --locked
+
+      - name: Upload benchmark result
+        uses: actions/upload-artifact@v4
+        with:
+          name: rifft-benchmark
+          path: results/rifft_benchmark.json
