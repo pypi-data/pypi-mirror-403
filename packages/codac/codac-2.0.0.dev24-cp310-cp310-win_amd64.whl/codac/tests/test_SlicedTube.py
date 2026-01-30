@@ -1,0 +1,562 @@
+#!/usr/bin/env python
+
+#  Codac tests
+# ----------------------------------------------------------------------------
+#  \date       2024
+#  \author     Simon Rohou
+#  \copyright  Copyright 2024 Codac Team
+#  \license    GNU Lesser General Public License (LGPL)
+
+import unittest
+from codac import *
+import sys
+import math
+
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+import codac2_tests_predefined_tubes as predef
+
+def return_a_tube():
+  return SlicedTube(
+    create_tdomain(Interval(0,2),0.5,False),
+    IntervalVector.constant(3,Interval(-1.5,1)))
+
+class TestSlicedTube(unittest.TestCase):
+
+  def test_tdomain_with_sampling_and_values(self):
+
+    tdomain = create_tdomain()
+    self.assertTrue(tdomain.nb_tslices() == 1)
+    self.assertTrue(tdomain.t0_tf() == Interval(-oo,oo))
+    x = SlicedTube(tdomain, IntervalVector(1))
+    x.set(IntervalVector([[1,5]]), [0,1])
+    x.set(IntervalVector([[2,8]]), [1,2])
+    x.set(IntervalVector([[6,9]]), [2,3])
+
+    # Checking structure
+    v = []
+    for s in x:
+      v.append(s)
+
+    self.assertTrue(v[0].t0_tf() == Interval(-oo,0))
+    self.assertTrue(v[0].codomain() == IntervalVector([[-oo,oo]]))
+    self.assertTrue(v[1].t0_tf() == Interval(0,1))
+    self.assertTrue(v[1].codomain() == IntervalVector([[1,5]]))
+    self.assertTrue(v[2].t0_tf() == Interval(1,2))
+    self.assertTrue(v[2].codomain() == IntervalVector([[2,8]]))
+    self.assertTrue(v[3].t0_tf() == Interval(2,3))
+    self.assertTrue(v[3].codomain() == IntervalVector([[6,9]]))
+    self.assertTrue(v[4].t0_tf() == Interval(3,oo))
+    self.assertTrue(v[4].codomain() == IntervalVector([[-oo,oo]]))
+
+    self.assertTrue(tdomain.tslice(-1.) == Interval(-oo,0))
+    self.assertTrue(tdomain.tslice(0.) == Interval(0,1))
+    self.assertTrue(tdomain.tslice(0.01) == Interval(0,1))
+    self.assertTrue(tdomain.tslice(1) == Interval(1,2))
+    self.assertTrue(tdomain.tslice(2) == Interval(2,3))
+    self.assertTrue(tdomain.tslice(prev_float(3.)) == Interval(2,3))
+    self.assertTrue(tdomain.tslice(3) == Interval(3,oo))
+    self.assertTrue(tdomain.tslice(next_float(3.)) == Interval(3,oo))
+
+    self.assertTrue(tdomain.nb_tslices() == 5) # with [-oo,0] and [3,oo]
+    self.assertTrue(x(Interval(0,3)) == IntervalVector([[1,9]]))
+    self.assertTrue(x(-1) == IntervalVector(1))
+    self.assertTrue(x(0.5) == IntervalVector([[1,5]]))
+    self.assertTrue(x(1.5) == IntervalVector([[2,8]]))
+    self.assertTrue(x(2.5) == IntervalVector([[6,9]]))
+    # No gates: testing values between slices
+    self.assertTrue(x(1.) == IntervalVector([[2,5]]))
+    self.assertTrue(x(2.) == IntervalVector([[6,8]]))
+    self.assertTrue(x(3.) == IntervalVector([[6,9]]))
+    self.assertTrue(x(999.) == IntervalVector(1))
+    
+    s0 = x.first_slice()
+    self.assertTrue(s0.t0_tf() == Interval(-oo,0))
+    self.assertTrue(s0.codomain() == IntervalVector([[-oo,oo]]))
+    s1 = s0.next_slice()
+    self.assertTrue(s1.t0_tf() == Interval(0,1))
+    self.assertTrue(s1.codomain() == IntervalVector([[1,5]]))
+    s2 = s1.next_slice()
+    self.assertTrue(s2.t0_tf() == Interval(1,2))
+    self.assertTrue(s2.codomain() == IntervalVector([[2,8]]))
+    s3 = s2.next_slice()
+    self.assertTrue(s3.t0_tf() == Interval(2,3))
+    self.assertTrue(s3.codomain() == IntervalVector([[6,9]]))
+    s4 = s3.next_slice()
+    self.assertTrue(s4.t0_tf() == Interval(3,oo))
+    self.assertTrue(s4.codomain() == IntervalVector([[-oo,oo]]))
+
+    self.assertTrue(tdomain.nb_tslices() == 5)
+    tdomain.sample(1.3)
+    self.assertTrue(tdomain.nb_tslices() == 6)
+    self.assertTrue(s2.t0_tf() == Interval(1,1.3))
+    self.assertTrue(s2.codomain() == IntervalVector([[2,8]]))
+    s2bis = s2.next_slice()
+    self.assertTrue(s2bis.t0_tf() == Interval(1.3,2))
+    self.assertTrue(s2bis.codomain() == IntervalVector([[2,8]]))
+    self.assertTrue(s3.t0_tf() == Interval(2,3))
+    self.assertTrue(s3.codomain() == IntervalVector([[6,9]]))
+  
+  def test_sampling_inside_tdomain(self):
+
+    tdomain = create_tdomain()
+    self.assertTrue(tdomain.t0_tf() == Interval(-oo,oo))
+    self.assertTrue(tdomain.nb_tslices() == 1)
+    tdomain.sample(1., False)
+    self.assertTrue(tdomain.t0_tf() == Interval(-oo,oo))
+    self.assertTrue(tdomain.nb_tslices() == 2)
+    tdomain.sample(1., False)
+    self.assertTrue(tdomain.t0_tf() == Interval(-oo,oo))
+    self.assertTrue(tdomain.nb_tslices() == 2)
+    tdomain.sample(1., True)
+    self.assertTrue(tdomain.t0_tf() == Interval(-oo,oo))
+    self.assertTrue(tdomain.nb_tslices() == 3)
+    it = tdomain.sample(10., True)
+    self.assertTrue(tdomain.t0_tf() == Interval(-oo,oo))
+    self.assertTrue(tdomain.nb_tslices() == 5)
+    self.assertTrue(it == Interval(10.))
+    it = tdomain.sample(15., False)
+    self.assertTrue(tdomain.t0_tf() == Interval(-oo,oo))
+    self.assertTrue(tdomain.nb_tslices() == 6)
+    self.assertTrue(it == Interval(15.,oo))
+
+  def test_sampling_outside_tdomain(self):
+
+    tdomain = create_tdomain(Interval(0,0.5))
+    self.assertTrue(tdomain.t0_tf() == Interval(0,0.5))
+    self.assertTrue(tdomain.nb_tslices() == 1)
+    tdomain.sample(1., False)
+    self.assertTrue(tdomain.t0_tf() == Interval(0,1))
+    self.assertTrue(tdomain.nb_tslices() == 2)
+    tdomain.sample(1., False)
+    self.assertTrue(tdomain.t0_tf() == Interval(0,1))
+    self.assertTrue(tdomain.nb_tslices() == 2)
+    tdomain.sample(1., False)
+    self.assertTrue(tdomain.t0_tf() == Interval(0,1))
+    self.assertTrue(tdomain.nb_tslices() == 2)
+    tdomain.sample(1., True)
+    self.assertTrue(tdomain.t0_tf() == Interval(0,1))
+    self.assertTrue(tdomain.nb_tslices() == 3)
+    it = tdomain.sample(10., True)
+    self.assertTrue(tdomain.t0_tf() == Interval(0,10))
+    self.assertTrue(tdomain.nb_tslices() == 5)
+    self.assertTrue(it == Interval(10.))
+    it = tdomain.sample(15., False)
+    self.assertTrue(tdomain.t0_tf() == Interval(0,15))
+    self.assertTrue(tdomain.nb_tslices() == 6)
+    self.assertTrue(it == Interval(10,15))
+
+  def test_basic_SlicedTube(self):
+
+    tdomain = create_tdomain(Interval(0,1), 0.1, False)
+    x = SlicedTube(tdomain, IntervalVector(3))
+
+    self.assertTrue(x.size() == 3)
+    self.assertTrue(x.tdomain() == tdomain)
+    self.assertTrue(x.t0_tf() == Interval(0,1))
+    self.assertTrue(x.nb_slices() == tdomain.nb_tslices())
+    self.assertTrue(x.nb_slices() == 10)
+    self.assertTrue(x.first_slice().t0_tf() == Interval(0,0.1))
+    self.assertTrue(Approx(x.last_slice().t0_tf()) == Interval(0.9,1))
+    self.assertTrue(x.codomain() == IntervalVector(3))
+    x.set(IntervalVector.constant(3, Interval(-10,10)))
+    self.assertTrue(x.codomain() == IntervalVector.constant(3, Interval(-10,10)))
+
+    # Eval
+    self.assertTrue(tdomain.nb_tubes() == 1)
+    self.assertTrue(x(Interval(-oo,oo)) == IntervalVector(3))
+    self.assertTrue(x(Interval(-1,1)) == IntervalVector(3))
+    self.assertTrue(x(tdomain.t0_tf()) == x.codomain())
+    self.assertTrue(x(-42.) == IntervalVector(3))
+
+    # Eval: affectation at scalar t
+    self.assertTrue(tdomain.nb_tslices() == 10)
+    x.set(IntervalVector.constant(3,Interval(2.,3.)), -42.)
+    self.assertTrue(tdomain.nb_tslices() == 12)
+
+    # Checking structure
+    v = []
+    for s in x:
+      v.append(s)
+    self.assertTrue(v[0].t0_tf() == Interval(-42.))
+    self.assertTrue(v[0].codomain() == IntervalVector.constant(3,Interval(2.,3.)))
+    self.assertTrue(v[1].t0_tf() == Interval(-42.,0.))
+    self.assertTrue(v[1].codomain() == IntervalVector(3))
+    self.assertTrue(v[2].t0_tf() == Interval(0.,0.1))
+    self.assertTrue(v[2].codomain() == IntervalVector.constant(3,Interval(-10,10)))
+    self.assertTrue(v[3].t0_tf() == Interval(0.1,0.2))
+    self.assertTrue(v[3].codomain() == IntervalVector.constant(3,Interval(-10,10)))
+
+    self.assertTrue(x(-42.) == IntervalVector.constant(3,Interval(2.,3.)))
+    self.assertTrue(x(prev_float(-42.)) == IntervalVector(3))
+    self.assertTrue(x(next_float(-42.)) == IntervalVector(3))
+
+    # Eval: affectation at interval t
+    self.assertTrue(x.codomain() == IntervalVector(3))
+    self.assertTrue(tdomain.nb_tslices() == 12)
+    x.set(IntervalVector.constant(3,Interval(9.,10.)), Interval(44,55))
+    self.assertTrue(tdomain.nb_tslices() == 14)
+
+    v.clear()
+    for s in x:
+      v.append(s)
+    self.assertTrue(Approx(v[11].t0_tf()) == Interval(0.9,1))
+    self.assertTrue(v[11].codomain() == IntervalVector.constant(3,Interval(-10,10)))
+    self.assertTrue(v[12].t0_tf() == Interval(1,44))
+    self.assertTrue(v[12].codomain() == IntervalVector(3))
+    self.assertTrue(v[13].t0_tf() == Interval(44,55))
+    self.assertTrue(v[13].codomain() == IntervalVector.constant(3,Interval(9.,10.)))
+
+    self.assertTrue(x(Interval(44,55)) == IntervalVector.constant(3,Interval(9.,10.)))
+    self.assertTrue(x(prev_float(44.)) == IntervalVector(3))
+    self.assertTrue(x(next_float(55.)) == IntervalVector(3))
+
+  def test_sliceT(self):
+
+    tdomain = create_tdomain(Interval(0,1), 0.1, False)
+    x = SlicedTube(tdomain, IntervalVector(2))
+    self.assertTrue(x.nb_slices() == 10)
+    # C++ like: self.assertTrue(tdomain.tslice(-oo) == tdomain.end())
+    # C++ like: self.assertTrue(tdomain.tslice(oo) == tdomain.end())
+
+    for s in x:
+      s.set(IntervalVector.constant(2,s.t0_tf()))
+
+    v = []
+    for s in x:
+      v.append(s)
+
+    self.assertTrue(v[0].t0_tf() == Interval(0,0.1))
+    self.assertTrue(v[0].input_gate() == IntervalVector.constant(2,Interval(0.,0.1))) # nothing before
+    self.assertTrue(v[0].codomain() == IntervalVector.constant(2,Interval(0,0.1)))
+    self.assertTrue(v[0].output_gate() == IntervalVector.constant(2,Interval(0.1)))
+
+    self.assertTrue(Approx(v[9].t0_tf()) == Interval(0.9,1.))
+    self.assertTrue(v[9].input_gate() == v[8].output_gate())
+    self.assertTrue(Approx(v[9].codomain()) == IntervalVector.constant(2,Interval(0.9,1.)))
+    self.assertTrue(Approx(v[9].input_gate()) == IntervalVector.constant(2,Interval(0.9)))
+    self.assertTrue(Approx(v[9].output_gate()) == IntervalVector.constant(2,Interval(0.9,1.))) # nothing after
+
+  def test_again_1(self):
+
+    tdomain = create_tdomain(Interval(1,10), 0.01, True) # last argument creates "gates" (degenerated slices at scalar timesteps)
+    t = ScalarVar()
+    x = SlicedTube(tdomain, AnalyticFunction(
+      [t],
+      [
+        sin(sqrt(t)+((t-5)^2)*Interval(-0.01,0.01)),
+        cos(t)+sin(t/0.2)*Interval(-0.1,0.1)
+      ]))
+    u = SlicedTube(tdomain, IntervalVector(2))
+    self.assertTrue(x.size() == 2)
+    self.assertTrue(Approx(x.codomain(),1e-4) == IntervalVector([[-0.267392,1],[-1.06721,1.06721]]))
+
+  def test_function_returning_a_tube(self):
+  
+    x = return_a_tube()
+    self.assertTrue(x.tdomain().t0_tf() == Interval(0,2))
+    self.assertTrue(x.size() == 3)
+    self.assertTrue(x.codomain()[1] == Interval(-1.5,1))
+  
+  def test_setting_values(self):
+
+    tdomain = create_tdomain(Interval(0,10),1.,True) # with gates
+    x = SlicedTube(tdomain, Interval(-10,10))
+    self.assertTrue(x.codomain() == Interval(-10,10))
+    self.assertTrue(x(0.) == Interval(-10,10))
+    self.assertTrue(x(Interval(0,1)) == Interval(-10,10))
+    self.assertTrue(x(Interval(1,1)) == Interval(-10,10))
+
+  def test_validity_copy_of_tubes(self):
+
+    tdomain = create_tdomain(Interval(0,5), 0.01, True)
+
+    x1 = SlicedTube(tdomain, Interval(-1,1))
+    x2 = SlicedTube(tdomain, Interval(1))
+    cx1 = SlicedTube(x1) # copy
+    cx2 = SlicedTube(x2) # copy
+
+    self.assertTrue(cx1 == x1)
+    self.assertTrue(cx2 == x2)
+    self.assertTrue(cx1 != x2)
+    self.assertTrue(cx2 != x1)
+
+    cx1.set(Interval(42))
+    cx2.set(Interval(-3))
+
+    self.assertTrue(cx1 != x1)
+    self.assertTrue(cx2 != x2)
+
+  def test_tube_not_empty_if_built_from_a_AnalyticFunction(self):
+
+    tdomain = create_tdomain(Interval(0,5), 0.01, True)
+    t = ScalarVar()
+    f = AnalyticFunction([t], 5*sin(2*t)+t)
+    aa1 = SlicedTube(tdomain, f)
+    self.assertTrue(not aa1.is_empty())
+
+  def test_tube_evaluation(self):
+
+    tdomain = create_tdomain(Interval(0,5), 0.1, True)
+    t = ScalarVar()
+    f = AnalyticFunction([t], 10*cos(t)+t)
+    a = SlicedTube(tdomain, f)
+    self.assertTrue(Approx(tdomain.tslice(2.)) == Interval(1.900000000000001, 2.000000000000002))
+    self.assertTrue(Approx(a(Interval(1,2)),1e-4) == Interval(-2.17496, 7.13757))
+
+  def test_specific_detected_bug_from_sampling(self):
+
+    tdomain = create_tdomain([0.,46.], 0.5, False)
+    x = SlicedTube(tdomain, Interval())
+    tdomain.sample(46, False)
+    x.set([-1,3], [30,31])
+    self.assertTrue(x([30,31]) == Interval(-1,3))
+    x.set([-1,3], [45,46])
+    self.assertTrue(x([45,46]) == Interval(-1,3))
+    self.assertTrue(x([45.5,46]) == Interval(-1,3))
+    self.assertTrue(x(45.8) == Interval(-1,3))
+    self.assertTrue(x(45.2) == Interval(-1,3))
+
+  def test_SlicedTube_as_operator_1dcase(self):
+
+    t = ScalarVar()
+    f = AnalyticFunction([t], cos(t))
+    analytic_traj = AnalyticTraj(f, [-PI,PI])
+    sampled_traj = analytic_traj.sampled(1e-2)
+    tdomain = create_tdomain([-PI,PI],1e-2,False)
+    tube = SlicedTube(tdomain, sampled_traj)
+    g = tube.as_function()
+
+    h = AnalyticFunction([t], g(t))
+
+    t_ = -math.pi
+    while t_ < math.pi:
+      self.assertTrue(Approx(h.real_eval(t_),1e-4) == math.cos(t_))
+      t_=t_+1e-2
+
+  def test_SlicedTube_as_operator_ndcase(self):
+
+    t = ScalarVar()
+    f = AnalyticFunction(
+      [t],
+      vec(2*cos(t),sin(2*t))
+    )
+
+    analytic_traj = AnalyticTraj(f, [0,5])
+    sampled_traj = analytic_traj.sampled(1e-2)
+    tdomain = create_tdomain([0,5],1e-3,False)
+    tube = SlicedTube(tdomain, sampled_traj)
+    g = tube.as_function()
+
+    h = AnalyticFunction(
+      [t],
+      g(t)
+    )
+
+    t_ = 0
+    while t_ < 5:
+      self.assertTrue(Approx(h.eval(t_),1e-2) == IntervalVector([2*math.cos(t_),math.sin(2*t_)]))
+      t_=t_+1e-2
+
+    h = AnalyticFunction(
+      [t],
+      [ g(t)[0],g(t)[1] ]
+    )
+
+    t_ = 0
+    while t_ < 5:
+      self.assertTrue(Approx(h.eval(t_),1e-2) == IntervalVector([2*math.cos(t_),math.sin(2*t_)]))
+      t_=t_+1e-2
+
+
+  def test_inversion_scalar_tube(self):
+
+    x = predef.tube_test_1()
+    x.set_ith_slice(Interval(-4,2), 14) # to test primitives pre-computation
+
+    self.assertTrue(x.invert([0], x.tdomain().t0_tf()) == Interval(3,46))
+    self.assertTrue(x.invert([-7], x.tdomain().t0_tf()) == Interval(4,12))
+    self.assertTrue(x.invert(Interval(), x.tdomain().t0_tf()) == Interval(0,46))
+    self.assertTrue(x.invert([-12,14], x.tdomain().t0_tf()) == Interval(0,46))
+    self.assertTrue(x.invert([-20,-18], x.tdomain().t0_tf()) == Interval.empty())
+    self.assertTrue(x.invert([-1,1], x.tdomain().t0_tf()) == Interval(2,46))
+    self.assertTrue(x.invert([-10.5], x.tdomain().t0_tf()) == Interval(7,8))
+    self.assertTrue(x.invert([-12,-7], x.tdomain().t0_tf()) == Interval(4,12))
+    self.assertTrue(x.invert([10,11], x.tdomain().t0_tf()) == Interval(20,27))
+    self.assertTrue(x.invert([6.01,7], x.tdomain().t0_tf()) == Interval(0,30))
+    self.assertTrue(x.invert([6,7], x.tdomain().t0_tf()) == Interval(0,43))
+    self.assertTrue(x.invert([5.9,7], x.tdomain().t0_tf()) == Interval(0,43))
+
+  
+  def test_inversion_scalar_tube_subsets(self):
+
+    x = predef.tube_test_1()
+    x.set_ith_slice(Interval(-4,2), 14) # to test primitives pre-computation
+
+    v = []
+
+    x.invert(Interval(0), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 4)
+
+    if len(v) == 4:
+      self.assertTrue(v[0] == Interval(3,4))
+      self.assertTrue(v[1] == Interval(14,17))
+      self.assertTrue(v[2] == Interval(37,42))
+      self.assertTrue(v[3] == Interval(43,46))
+
+    # The same, with a custom domain:
+    x.invert(Interval(0), v, Interval(3.8,42.5))
+    self.assertTrue(len(v) == 3)
+
+    if len(v) == 3:
+      self.assertTrue(v[0] == Interval(3.8,4))
+      self.assertTrue(v[1] == Interval(14,17))
+      self.assertTrue(v[2] == Interval(37,42))
+
+    x.invert(Interval(-1,1), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 4)
+
+    if len(v) == 4:
+      self.assertTrue(v[0] == Interval(2,5))
+      self.assertTrue(v[1] == Interval(13,17))
+      self.assertTrue(v[2] == Interval(34,35))
+      self.assertTrue(v[3] == Interval(36,46))
+
+    # The same, with a custom domain (empty):
+    x.invert(Interval(-1,1), v, Interval.empty())
+    self.assertTrue(len(v) == 0)
+
+    x.invert(Interval(-6.9999), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 2)
+
+    if len(v) == 2:
+      self.assertTrue(v[0] == Interval(4,7))
+      self.assertTrue(v[1] == Interval(8,12))
+
+    x.invert(Interval(), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 1)
+
+    if len(v) == 1:
+      self.assertTrue(v[0] == Interval(0,46))
+
+    x.invert(Interval(-30,-29), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 0)
+
+    x.invert(Interval(3.5), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 5)
+
+    if len(v) == 5:
+      self.assertTrue(v[0] == Interval(1,4))
+      self.assertTrue(v[1] == Interval(15,18))
+      self.assertTrue(v[2] == Interval(26,27))
+      self.assertTrue(v[3] == Interval(30,38))
+      self.assertTrue(v[4] == Interval(40,45))
+
+    x.invert(Interval(9.5,30), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 1)
+
+    if len(v) == 1:
+      self.assertTrue(v[0] == Interval(20,27))
+
+    x.invert(Interval(12,13), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 1)
+
+    if len(v) == 1:
+      self.assertTrue(v[0] == Interval(22,25))
+
+    x.invert(Interval(-4,-3), v, x.tdomain().t0_tf())
+    self.assertTrue(len(v) == 3)
+
+    if len(v) == 3:
+      self.assertTrue(v[0] == Interval(3,5))
+      self.assertTrue(v[1] == Interval(9,10))
+      self.assertTrue(v[2] == Interval(11,15))
+
+
+  def test_inversion_derivative(self):
+
+    tdomain = create_tdomain([0,5],1.)
+    x = SlicedTube(tdomain, Interval())
+    v = SlicedTube(tdomain, Interval())
+
+    x.set([0], 0)
+    x.set([4], 5)
+
+    v.set_ith_slice([1,2], 0*2+1)
+    v.set_ith_slice((Interval(1)/2) | (Interval(3)/2), 1*2+1)
+    v.set_ith_slice(Interval(0) | (Interval(1)/2), 2*2+1)
+    v.set_ith_slice([0], 3*2+1)
+    v.set_ith_slice((Interval(-1)/2) | (Interval(1)/2), 4*2+1)
+
+    ctc = CtcDeriv(TimePropag.FWD_BWD)
+    ctc.contract(x, v)
+    ctc.contract(x, v)
+    ctc.contract(x, v)
+
+    self.assertTrue(x.invert(x.codomain(), x.tdomain().t0_tf()) == x.tdomain().t0_tf())
+    self.assertTrue(x.invert(Interval(), x.tdomain().t0_tf()) == x.tdomain().t0_tf())
+
+    # Using derivative
+    self.assertTrue(x.invert(x.codomain(), v, x.tdomain().t0_tf()) == x.tdomain().t0_tf())
+    self.assertTrue(x.invert(Interval(), v, x.tdomain().t0_tf()) == x.tdomain().t0_tf())
+    self.assertTrue(x.invert(Interval(0.), v, x.tdomain().t0_tf()) == Interval(0))
+    self.assertTrue(Approx(x.slice(tdomain.tslice(4.5)).invert(Interval(4.25), v.slice(tdomain.tslice(4.5)), tdomain.tslice(4.5)),1e-10) == Interval(9)/2)
+    self.assertTrue(x.invert(Interval(17)/4, v, x.tdomain().t0_tf()) == Interval(Interval(9)/2))
+    self.assertTrue(Approx(x.invert(Interval(4), v, x.tdomain().t0_tf()),1e-10) == Interval(3,5))
+
+    self.assertTrue(Approx(x.slice(tdomain.tslice(4.5)).invert(Interval(41)/10, v.slice(tdomain.tslice(4.5)), tdomain.tslice(4.5)),1e-10) == ((Interval(21)/5)|(Interval(24)/5)))
+
+    self.assertTrue(Approx(x.invert(Interval(41)/10, v, x.tdomain().t0_tf()),1e-10) == ((Interval(21)/5)|(Interval(24)/5)))
+    self.assertTrue(x.invert((Interval(7)/2), v, x.tdomain().t0_tf()) == Interval(2,4))
+    self.assertTrue(x.invert(Interval.empty(), v, x.tdomain().t0_tf()) == Interval.empty())
+    self.assertTrue(x.invert(Interval(10), v, x.tdomain().t0_tf()) == Interval.empty())
+    self.assertTrue(x.invert(Interval(2,3), v, x.tdomain().t0_tf()) == Interval(1,2))
+    self.assertTrue(x.invert(Interval(1), v, x.tdomain().t0_tf()) == Interval(0.5,0.75))
+    self.assertTrue(x.invert((Interval(7)/2) | Interval(4), v, x.tdomain().t0_tf()) == Interval(2,5))
+  
+
+  def test_inversion_another_test(self):
+
+    tdomain = create_tdomain([-20,20],0.05)
+    t = ScalarVar()
+    f = AnalyticFunction([t], Interval(-1,1)*((t^2)+1))
+    x = SlicedTube(tdomain, f)
+    self.assertTrue(x.invert(0., x.tdomain().t0_tf()) == x.tdomain().t0_tf())
+
+
+  def test_inversion_vector_tube(self):
+
+    x0 = predef.tube_test_1()
+    x = SlicedTube(x0.tdomain(), IntervalVector(2))
+
+    for xi, x0i in zip(x, x0):
+      xi.set(cart_prod(x0i.codomain(), x0i.codomain() - 3), False)
+
+    inv_val = IntervalVector.constant(2,[0.5,0.5])
+    v_t = []
+    x.invert(inv_val, v_t, x.tdomain().t0_tf())
+
+    self.assertTrue(len(v_t) == 5)
+    self.assertTrue(v_t[0] == Interval(3,4))
+    self.assertTrue(v_t[1] == Interval(15,17))
+    self.assertTrue(v_t[2] == Interval(37,38))
+    self.assertTrue(v_t[3] == Interval(40,42))
+    self.assertTrue(v_t[4] == Interval(43,45))
+
+    # Union inversion:
+    inv = x.invert(inv_val, x.tdomain().t0_tf())
+    self.assertTrue(inv == Interval(3,45))
+
+    # Restricted domain
+    restricted = Interval(15.2,39)
+    x.invert(inv_val, v_t, restricted)
+    self.assertTrue(len(v_t) == 2)
+    self.assertTrue(v_t[0] == Interval(15.2,17))
+    self.assertTrue(v_t[1] == Interval(37,38))
+
+    inv = x.invert(inv_val, restricted)
+    self.assertTrue(inv == Interval(15.2,38))
+
+
+if __name__ ==  '__main__':
+  unittest.main()
