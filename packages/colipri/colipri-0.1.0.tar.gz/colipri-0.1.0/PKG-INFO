@@ -1,0 +1,204 @@
+Metadata-Version: 2.3
+Name: colipri
+Version: 0.1.0
+Summary: Vision-language encoder for chest CT scans and reports.
+Author: Microsoft Health Futures
+Author-email: Microsoft Health Futures <innereyedev@microsoft.com>
+Requires-Dist: accelerate
+Requires-Dist: dynamic-network-architectures>=0.4.3
+Requires-Dist: huggingface-hub
+Requires-Dist: hydra-core
+Requires-Dist: jaxtyping
+Requires-Dist: safetensors
+Requires-Dist: timm<1.0.23
+Requires-Dist: torchio>=0.21.1
+Requires-Dist: tqdm
+Requires-Dist: transformers
+Requires-Dist: typer
+Requires-Dist: lovely-tensors ; extra == 'demo'
+Requires-Dist: matplotlib ; extra == 'demo'
+Requires-Dist: scikit-learn ; extra == 'demo'
+Requires-Dist: torchinfo ; extra == 'demo'
+Requires-Python: >=3.10
+Project-URL: Homepage, https://huggingface.co/microsoft/colipri
+Project-URL: Source, https://huggingface.co/microsoft/colipri
+Project-URL: Issue tracker, https://huggingface.co/microsoft/colipri/discussions/new
+Project-URL: Documentation, https://huggingface.co/microsoft/colipri/blob/main/README.md
+Provides-Extra: demo
+Description-Content-Type: text/markdown
+
+---
+license: mit
+language:
+- en
+pipeline_tag: zero-shot-image-classification
+---
+
+# COLIPRI
+
+<!-- Provide a quick summary of what the model is/does. -->
+
+COLIPRI is a 3D vision&ndash;language transformer model trained to encode chest CT scans and reports.
+
+## Model description
+
+<!-- Provide a longer summary of what this model is. -->
+
+COLIPRI was trained using tens of thousands of chest CT scans and reports, without any annotations, using multiple objectives to learn strong joint representations of 3D images and text.
+The procedure is described in detail in our manuscript, [_Comprehensive language-image pre-training for 3D medical image understanding_](https://arxiv.org/abs/2510.15042) (Wald et al. 2026).
+
+The weights shared here correspond to our best-performing model, COLIPRI-CRM.
+
+- **Developed by:** Microsoft Health Futures
+- **Model type:** 3D vision&ndash;language encoder
+- **License:** [MIT](./LICENSE)
+
+## Uses
+
+<!-- Address questions around how the model is intended to be used, including the foreseeable users of the model and those affected by the model. -->
+
+COLIPRI is shared for research purposes only.
+It is **not meant to be used for clinical practice**.
+
+The encoders be plugged to other models, or used independently or jointly for many downstream tasks, such as:
+
+- Image classification with text prompts
+- Image clustering
+- Text clustering
+- Text-to-image retrieval
+- Image-to-image retrieval
+- Image-to-text retrieval
+- Text-to-text retrieval
+- Image classification with a classifier
+- Text classification with a classifier
+- Image segmentation with a decoder
+- Report generation with a language decoder
+
+Fine-tuning COLIPRI is typically not necessary to obtain good performance in downstream tasks.
+
+## Getting started
+
+### Installation
+
+```shell
+pip install colipri
+```
+
+### Usage examples
+
+Below we share some usage snippets to get started with COLIPRI.
+A more complete [Jupyter notebook](./COLIPRI_demo.ipynb) is also available.
+
+First, let's get a 3D chest CT we can use for demonstration.
+The plotted slices intersect a lung nodule near the heart.
+
+```python
+>>> from colipri import load_sample_ct
+>>> image = load_sample_ct()
+>>> image
+ScalarImage(shape: (1, 512, 512, 139); spacing: (0.76, 0.76, 2.50); orientation: LPS+; dtype: torch.IntTensor; memory: 139.0 MiB)
+```
+
+The image looks like this:
+
+![Input CT](assets/input.png)
+
+Now, let's instantiate the model and processor.
+
+```python
+>>> from colipri import get_model
+>>> from colipri import get_processor
+>>> model = get_model().cuda()
+>>> processor = get_processor()
+```
+
+#### Zero-shot classification
+
+```python
+>>> from colipri import ZeroShotImageClassificationPipeline
+>>> pipeline = ZeroShotImageClassificationPipeline(model, processor)
+>>> pipeline(image, ["No lung nodules", "Lung nodules"])
+[
+    {'score': 0.005, 'label': 'No lung nodules'},
+    {'score': 0.995, 'label': 'Lung nodules'}
+]
+```
+
+#### Feature extraction
+
+```python
+>>> import torch
+>>> preprocessed_images = processor.process_images(image)
+>>> preprocessed_images[0]
+ScalarImage(shape: (1, 192, 192, 192); spacing: (2.00, 2.00, 2.00); orientation: SAR+; dtype: torch.FloatTensor; memory: 27.0 MiB)
+>>> images_batch = processor.to_images_batch(preprocessed_images)
+images_batch.shape
+torch.Size([1, 1, 192, 192, 192])
+>>> with torch.no_grad():
+...     patch_embeddings = model.encode_image(images_batch)
+>>> patch_embeddings.shape
+torch.Size([1, 768, 24, 24, 24])
+>>> with torch.no_grad():
+...     pooled_embeddings = model.encode_image(images_batch, pool=True, project=True)
+>>> pooled_embeddings.shape
+torch.Size([1, 768])
+```
+
+## Biases, risks, and limitations
+
+<!-- This section is meant to convey both technical and sociotechnical limitations. -->
+
+COLIPRI was trained with data from Turkey and the USA only, therefore it might be biased towards population in the training data.
+Underlying biases of the training datasets may not be well characterized.
+
+## Environmental impact
+
+<!-- Total emissions (in grams of CO2eq) and additional considerations, such as electricity usage, go here. Edit the suggested text below accordingly -->
+
+- **Hardware type:** NVIDIA A100 GPUs
+- **Hours used:** 72 hours × 4 GPUs = 288 GPU-hours
+- **Cloud provider:** Azure
+- **Compute region:** West US 2
+- **Carbon emitted:** 21.6 kg CO₂ eq.
+
+### Compute infrastructure
+
+COLIPRI was trained on [Azure Machine Learning](https://azure.microsoft.com/en-us/products/machine-learning).
+
+#### Hardware
+
+| Stage | Node type | Num. nodes | GPU type | GPUs per node |
+| --- | --- | --- | --- | --- |
+| Pre-training | [`Standard_NC96ads_A100_v4`](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nca100v4-series?tabs=sizeaccelerators) | 1 | NVIDIA A100 (80 GB) | 4 |
+| Evaluation | [`Standard_NC24ads_A100_v4`](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nca100v4-series?tabs=sizeaccelerators) | 1 | NVIDIA A100 (80 GB) | 1 |
+
+#### Software
+
+The main software libraries used in this work were [nnSSL](https://github.com/MIC-DKFZ/nnssl) for training, [TorchIO](https://torchio.org/) for preprocessing and augmentation, [`nifti-zarr-py`](https://github.com/neuroscales/nifti-zarr-py) for data loading, and [nnU-Net](https://github.com/MIC-DKFZ/nnUNet) for segmentation evaluation.
+
+## Citation
+
+<!-- If there is a paper or blog post introducing the model, the APA and Bibtex information for that should go in this section. -->
+
+### BibTeX
+
+```bibtex
+@misc{
+    wald2026_colipri,
+    title={Comprehensive language-image pre-training for 3D medical image understanding},
+    author={Tassilo Wald and Ibrahim Ethem Hamamci and Yuan Gao and Sam Bond-Taylor and Harshita Sharma and Maximilian Ilse and Cynthia Lo and Olesya Melnichenko and Anton Schwaighofer and Noel C. F. Codella and Maria Teodora Wetscherek and Klaus H. Maier-Hein and Panagiotis Korfiatis and Valentina Salvatelli and Javier Alvarez-Valle and P{\'e}rez-Garc{\'i}a},
+    year={2026},
+    eprint={2510.15042},
+    archivePrefix={arXiv},
+    primaryClass={cs.CV},
+    url={https://arxiv.org/abs/2510.15042},
+}
+```
+
+### APA
+
+> Wald, T., Hamamci, I. E., Gao, Y., Bond-Taylor, S., Sharma, H., Ilse, M., Lo, C., Melnichenko, O., Schwaighofer, A., Codella, N. C. F., Wetscherek, M. T., Maier-Hein, K. H., Korfiatis, P., Salvatelli, V., Alvarez-Valle, J., & Pérez-García, F. (2026). Comprehensive language-image pre-training for 3D medical image understanding. arXiv. <https://doi.org/10.48550/ARXIV.2510.15042>
+
+## Model card contact
+
+Fernando Pérez-García ([`fperezgarcia@microsoft.com`](mailto:fperezgarcia@microsoft.com)).
