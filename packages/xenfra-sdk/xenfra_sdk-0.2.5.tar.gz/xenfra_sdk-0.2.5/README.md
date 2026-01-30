@@ -1,0 +1,82 @@
+# Xenfra SDK (The Engine) 📦
+
+[![PyPI](https://img.shields.io/pypi/v/xenfra-sdk)](https://pypi.org/project/xenfra-sdk/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/pypi/pyversions/xenfra-sdk.svg)](https://pypi.org/project/xenfra-sdk/)
+
+The core infrastructure automation engine behind **Xenfra** (The Sovereign Cloud OS). This SDK provides the primitives for deploying, managing, and diagnosing applications on DigitalOcean with "Zen Mode" auto-healing.
+
+## 🚀 Features
+
+- **InfraEngine**: A robust 9-phase deployment pipeline (Setup -> Asset Gen -> Droplet -> Code -> Build -> Health).
+- **Dockerizer**: Deterministic Dockerfile and Compose generation using Jinja2 templates.
+- **Zen Mode**: Utilities to automatically heal common failures (e.g., locked dpkg, exhausted ports).
+- **Privacy-First**: Built-in PII scrubbing for logs before they touch any AI services.
+- **Security**: Fernet encryption for tokens and RS256 JWT validation helpers.
+
+## 📦 Installation
+
+```bash
+pip install xenfra-sdk
+# or with uv
+uv add xenfra-sdk
+```
+
+## 🛠️ Usage
+
+### 1. Initialize the Engine
+
+```python
+from xenfra_sdk import XenfraClient, InfraEngine
+
+# Authenticate (Token usually comes from the CLI)
+client = XenfraClient(token="xenfra_...")
+engine = InfraEngine(client)
+```
+
+### 2. Deploy a Project
+
+```python
+project_path = "/path/to/my-fastapi-app"
+
+# The engine handles detection (Python/Node), dockerization, and provisioning
+deployment = await engine.deploy(
+    path=project_path,
+    project_id="proj_123",
+    env_vars={"DATABASE_URL": "..."}
+)
+
+print(f"🚀 Deployed successfully to: http://{deployment.ip_address}")
+```
+
+### 3. Diagnose a Failure
+
+```python
+from xenfra_sdk.intelligence import diagnose_failure
+
+logs = client.deployments.get_logs(deployment.id)
+analysis = await diagnose_failure(logs)
+
+print(f"Diagnosis: {analysis.root_cause}")
+print(f"Suggested Fix: {analysis.suggestion}")
+```
+
+## 🔗 The Xenfra Ecosystem
+
+This SDK is the "Body" of the Xenfra Open Core architecture:
+
+- **[xenfra-cli](https://github.com/xenfracloud/xenfra-cli)**: The Terminal Interface (Uses this SDK).
+- **[xenfra-mcp](https://github.com/xenfracloud/xenfra-mcp)**: The AI Agent Interface (Uses this SDK).
+- **xenfra-platform**: The Private SaaS Backend (Uses this SDK).
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+1.  Clone: `git clone https://github.com/xenfracloud/xenfra-sdk`
+2.  Install: `uv sync`
+3.  Test: `pytest`
+
+## 📄 License
+
+MIT © [Xenfra Cloud](https://xenfra.tech)

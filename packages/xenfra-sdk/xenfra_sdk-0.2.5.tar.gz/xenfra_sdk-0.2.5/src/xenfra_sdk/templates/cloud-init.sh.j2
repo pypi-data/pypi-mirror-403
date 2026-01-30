@@ -1,0 +1,90 @@
+#!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+LOG="/root/setup.log"
+touch $LOG
+
+echo "--------------------------------" >> $LOG
+echo "🧘 XENFRA: Context-Aware Boot" >> $LOG
+echo "--------------------------------" >> $LOG
+
+# Create App Directory
+mkdir -p /root/app
+cd /root/app
+
+# --- MERCILESS FIX: TERMINATE BACKGROUND PROCESSES ---
+echo "⚔️  [0/6] Mercilessly Terminating Background Processes..." >> $LOG
+
+kill_apt_processes() {
+  echo "🎯 Killing processes holding apt/dpkg locks..." >> $LOG
+  fuser -k /var/lib/dpkg/lock >/dev/null 2>&1
+  fuser -k /var/lib/apt/lists/lock >/dev/null 2>&1
+  fuser -k /var/lib/dpkg/lock-frontends >/dev/null 2>&1
+}
+
+# Explicitly stop and disable services that cause locks
+systemctl stop unattended-upgrades.service || true
+systemctl disable unattended-upgrades.service || true
+systemctl stop apt-daily.service || true
+systemctl disable apt-daily.service || true
+systemctl stop apt-daily-upgrade.service || true
+systemctl disable apt-daily-upgrade.service || true
+
+# Forcefully kill any remaining lock holders
+kill_apt_processes
+
+# Force remove locks if they still exist (The Nuclear Option)
+rm -f /var/lib/dpkg/lock*
+rm -f /var/lib/apt/lists/lock*
+rm -f /var/cache/apt/archives/lock
+dpkg --configure -a || true
+# -----------------------------------------------
+
+# 1. System Updates
+echo "🔄 [1/5] Refreshing Package Lists..." >> $LOG
+apt-get update
+apt-get install -y python3-pip git curl
+
+# 2. Setup Environment
+{% if is_dockerized %}
+echo "🐳 [2/5] Installing Docker..." >> $LOG
+apt-get install -y docker.io || (curl -fsSL https://get.docker.com | sh)
+echo "🎶 [3/5] Installing Docker Compose..." >> $LOG
+apt-get install -y docker-compose-v2
+{% else %}
+echo "🐍 [2/5] Setting up host-based Python environment..." >> $LOG
+apt-get install -y python3-venv python3-dev build-essential
+{% endif %}
+
+# 3. Setup Reverse Proxy
+{% if is_dockerized or install_caddy %}
+echo "📦 [3/5] Installing Caddy..." >> $LOG
+apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -LsSf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -LsSf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt-get update
+apt-get install -y caddy
+{% else %}
+echo "🛡️ [3/5] Skipping Caddy for host deployment (setup manual reverse proxy if needed)." >> $LOG
+{% endif %}
+
+{% if domain %}
+# Dynamically generate Caddyfile content
+echo "🔒 Writing Caddyfile for {{ domain }}..." >> $LOG
+cat << EOF > /etc/caddy/Caddyfile
+{{ domain }}:80, {{ domain }}:443 {
+    reverse_proxy localhost:{{ port | default(8000) }}
+    tls {{ email }}
+}
+EOF
+{% endif %}
+
+{% if domain %}
+echo "🚀 [5/5] Starting Caddy..." >> $LOG
+systemctl restart caddy
+{% else %}
+echo "✅ [5/5] Skipping Caddy start (no domain specified)." >> $LOG
+{% endif %}
+
+# Finish
+echo "✅ SETUP SCRIPT COMPLETE" >> $LOG
+touch /root/setup_complete
