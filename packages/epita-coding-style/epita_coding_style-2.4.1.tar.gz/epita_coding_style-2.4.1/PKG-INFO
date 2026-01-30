@@ -1,0 +1,118 @@
+Metadata-Version: 2.4
+Name: epita-coding-style
+Version: 2.4.1
+Summary: EPITA C Coding Style Checker - validates C code against EPITA coding standards
+Project-URL: Homepage, https://github.com/KazeTachinuu/coding-style
+Project-URL: Repository, https://github.com/KazeTachinuu/coding-style
+Project-URL: Issues, https://github.com/KazeTachinuu/coding-style/issues
+Author: Hugo
+License-Expression: MIT
+Keywords: c,checker,coding-style,epita,linter
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: C
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Quality Assurance
+Requires-Python: >=3.10
+Requires-Dist: tomli>=2.0.0; python_version < '3.11'
+Requires-Dist: tree-sitter-c>=0.23.0
+Requires-Dist: tree-sitter>=0.23.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# EPITA C Coding Style Checker
+
+A fast C linter for EPITA coding style rules. Uses [tree-sitter](https://tree-sitter.github.io/) for robust AST-based parsing.
+
+## Installation
+
+```bash
+pipx install epita-coding-style
+```
+
+## Quick Start
+
+```bash
+epita-coding-style src/           # Check files/directories
+epita-coding-style --list-rules   # List all rules with descriptions
+epita-coding-style --show-config  # Show current configuration
+epita-coding-style --help         # Full usage info
+```
+
+## Configuration
+
+Configuration is auto-detected from (in order):
+- `.epita-style`
+- `.epita-style.toml`
+- `epita-style.toml`
+- `[tool.epita-coding-style]` in `pyproject.toml`
+
+**Priority:** CLI flags > config file > preset > defaults
+
+### Generate a Config File
+
+```bash
+epita-coding-style --show-config --no-color > .epita-style.toml
+```
+
+This outputs a complete, commented TOML config you can customize.
+
+### Presets
+
+```bash
+epita-coding-style --preset 42sh src/      # 40 lines, goto/cast allowed
+epita-coding-style --preset noformat src/  # Same + skip clang-format
+```
+
+### Example Config
+
+```toml
+# .epita-style.toml
+max_lines = 40
+
+[rules]
+"keyword.goto" = false  # Allow goto
+"cast" = false          # Allow casts
+```
+
+Or in `pyproject.toml`:
+
+```toml
+[tool.epita-coding-style]
+max_lines = 40
+
+[tool.epita-coding-style.rules]
+"keyword.goto" = false
+```
+
+## clang-format
+
+The `format` rule uses `clang-format` to check code formatting. Requires `clang-format` to be installed.
+
+The checker looks for `.clang-format` in the file's directory (walking up to root), or uses the bundled EPITA config.
+
+To disable: set `"format" = false` in your config, or use `--preset noformat`.
+
+## Pre-commit Hook
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/KazeTachinuu/epita-coding-style
+    rev: v2.3.0
+    hooks:
+      - id: epita-coding-style
+        args: [--preset, 42sh]  # optional
+```
+
+## License
+
+MIT
