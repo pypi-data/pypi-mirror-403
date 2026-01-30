@@ -1,0 +1,37 @@
+name: RulesGuard Security Scan
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Run RulesGuard
+        uses: NOTTIBOY137/RulesGuard/.github/actions/rulesguard@v0.1.6
+        with:
+          path: ${{ github.workspace }}
+          fail_on: critical
+          format: sarif
+          output: rulesguard-results.sarif
+          baseline: .rulesguard.baseline.json
+      
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: rulesguard-results.sarif
