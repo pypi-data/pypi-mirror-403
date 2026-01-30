@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: © 2025 DSLab - Fondazione Bruno Kessler
+#
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+from digitalhub_runtime_modelserve.entities.task.vllmserve_serve.spec import (
+    TaskSpecVllmserveServe,
+    TaskValidatorVllmserveServe,
+)
+
+
+class TaskSpecVllmservepollingServe(TaskSpecVllmserveServe):
+    """
+    TaskSpecVllmservepollingServe specifications.
+    """
+
+
+class TaskValidatorVllmservepollingServe(TaskValidatorVllmserveServe):
+    """
+    TaskValidatorVllmservepollingServe validator.
+    """
