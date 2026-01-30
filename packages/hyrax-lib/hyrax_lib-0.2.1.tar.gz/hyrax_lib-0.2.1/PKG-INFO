@@ -1,0 +1,221 @@
+Metadata-Version: 2.4
+Name: hyrax-lib
+Version: 0.2.1
+Summary: Lightweight distributed training for multi-dataset workflows on local hardware
+Author-email: Baljinder Hothi <baljinderh.cs@gmail.com>
+Project-URL: Homepage, https://github.com/BaljinderHothi/hyrax-lib
+Project-URL: Documentation, https://github.com/BaljinderHothi/hyrax-lib/blob/main/docs/quickstart.md
+Project-URL: Bug Tracker, https://github.com/BaljinderHothi/hyrax-lib/issues
+Project-URL: Source, https://github.com/BaljinderHothi/hyrax-lib
+Keywords: machine-learning,distributed-training,pytorch,gpu,multi-gpu
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: System :: Distributed Computing
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: torch>=2.0.0
+Requires-Dist: psutil>=5.9.0
+Requires-Dist: tensorboard>=2.11.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Dynamic: license-file
+
+# hyrax
+
+[![PyPI version](https://badge.fury.io/py/hyrax-lib.svg)](https://badge.fury.io/py/hyrax-lib)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Lightweight distributed training for multi-dataset workflows on local hardware.
+```
+ _                            
+| |__  _   _ _ __ __ ___  __ 
+| '_ \| | | | '__/ _` \ \/ / 
+| | | | |_| | | | (_| |>  <  
+|_| |_|\__, |_|  \__,_/_/\_\ 
+       |___/
+```
+
+## Overview
+
+Hyrax enables concurrent training of models across multiple datasets on local multi-GPU setups without the complexity of Kubernetes or distributed computing frameworks. It automatically detects available hardware, intelligently schedules jobs, and monitors training progress.
+
+**Key features:**
+- Automatic GPU detection and allocation (CUDA, MPS, CPU)
+- Intelligent job scheduling with bin-packing optimization
+- Real-time training monitoring via TensorBoard
+- Dataset-agnostic interface (Minari, HDF5, pickle, custom loaders)
+- Zero-configuration deployment for local machines
+- Offline-first design
+
+## Installation
+```bash
+pip install hyrax-lib
+```
+
+**Requirements:**
+- Python 3.8+
+- PyTorch 2.0+
+- CUDA-capable GPU (optional, CPU and Apple Silicon supported)
+
+## Quick Start
+
+Train a behavioral cloning model on three MuJoCo datasets concurrently:
+```python
+from hyrax import DistributedTrainer
+import minari
+
+trainer = DistributedTrainer(
+    model=BehavioralCloningModel,
+    datasets=[
+        "mujoco/humanoid/expert-v0",
+        "mujoco/halfcheetah/expert-v0",
+        "mujoco/hopper/expert-v0"
+    ],
+    dataset_loader=minari.load_dataset,
+)
+
+results = trainer.train(epochs=200)
+```
+
+Hyrax automatically:
+1. Detects available GPUs and memory
+2. Schedules jobs to minimize resource contention
+3. Distributes datasets across workers
+4. Monitors training progress
+5. Returns aggregated results
+
+## Usage
+
+### Basic Usage
+```python
+from hyrax import DistributedTrainer
+
+trainer = DistributedTrainer(
+    model=YourModel,
+    datasets=["dataset1", "dataset2", "dataset3"]
+)
+
+results = trainer.train(epochs=100)
+```
+
+### Custom Dataset Loaders
+```python
+def load_custom_data(path):
+    # your loading logic
+    return dataset
+
+trainer = DistributedTrainer(
+    model=YourModel,
+    datasets=["path/to/data1", "path/to/data2"],
+    dataset_loader=load_custom_data
+)
+```
+
+### Pre-loaded Datasets
+```python
+datasets = [load_data(x) for x in paths]
+
+trainer = DistributedTrainer(
+    model=YourModel,
+    datasets=datasets  # already loaded
+)
+```
+
+### Memory Estimation
+
+Provide memory estimates for better scheduling:
+```python
+trainer = DistributedTrainer(
+    model=YourModel,
+    datasets=datasets,
+    job_size_estimates=[2*1024**3, 3*1024**3, 2*1024**3]  # bytes
+)
+```
+
+## Monitoring
+
+Hyrax automatically logs training metrics to TensorBoard:
+```bash
+tensorboard --logdir=runs
+```
+
+Navigate to `http://localhost:6006` to view real-time training progress across all workers.
+
+## Architecture
+
+Hyrax consists of four main components:
+
+- **ResourceManager**: Detects GPUs, CPUs, and available memory
+- **LoadBalancer**: Schedules jobs using bin-packing optimization
+- **TrainingWorker**: Executes training on assigned hardware
+- **TrainingMonitor**: Logs metrics and progress via TensorBoard
+
+## Supported Backends
+
+- **CUDA**: NVIDIA GPUs
+- **MPS**: Apple Silicon (M1/M2/M3)
+- **CPU**: Fallback for systems without GPUs
+
+## When to Use Hyrax
+
+**Good for:**
+- Training the same model on multiple datasets simultaneously
+- Local multi-GPU workstations
+- Offline training environments
+- Rapid prototyping and experimentation
+
+**Not suitable for:**
+- Multi-node distributed training (use Ray, DeepSpeed, or Kubernetes)
+- Model parallelism across GPUs
+- Production inference serving
+
+## Examples
+
+See [`examples/`](examples/) for complete working examples:
+- [`mujoco_example.py`](examples/mujoco_example.py): Behavioral cloning with Minari datasets
+- [`custom_dataset_example.py`](examples/custom_dataset_example.py): Using custom data loaders
+- [`basic_usage.py`](examples/basic_usage.py): Minimal example
+
+## Documentation
+
+- [Quick Start Guide](docs/quickstart.md)
+- [API Reference](docs/api.md)
+- [Examples](examples/)
+
+## Contributing
+
+Contributions welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Citation
+
+If you use Hyrax in your research, please cite:
+```bibtex
+@software{hyrax2026,
+  author = {Hothi, Baljinder},
+  title = {Hyrax: Lightweight Distributed Training for Local Hardware},
+  year = {2026},
+  url = {https://github.com/BaljinderHothi/hyrax-lib}
+}
+```
+
+## Acknowledgments
+
+Named after the rock hyrax, a small mammal thats really cute
