@@ -1,0 +1,376 @@
+import asyncio
+import re
+import zipfile
+from typing import Callable, Awaitable
+
+from pathlib import Path
+from collections import defaultdict
+
+from pdf2image import convert_from_path
+from openai import AsyncOpenAI
+from PIL import Image
+from spire.doc import Document, ImageType
+
+from pdf_to_markdown_llm.config import cfg
+from pdf_to_markdown_llm.logger import logger
+from pdf_to_markdown_llm.model.process_results import ProcessResult, ProcessResults
+from pdf_to_markdown_llm.model.conversion import (
+    ConversionInput,
+    SupportedFormat,
+    FILE_EXTENSION,
+    RecursiveConversionInput,
+)
+from pdf_to_markdown_llm.service.conversion_support import (
+    encode_file,
+    process_folders,
+    convert_single_file,
+    convert_image_to_file,
+    convert_all_recursively,
+)
+
+
+CANNOT_CONVERT = "Cannot convert"
+
+
+CONVERSION_PROMPTS = {
+    SupportedFormat.MARKDOWN: f"""Convert this pdf into markdown following these rules:
+- IGNORE HEADERS AND FOOTERS.
+- if you cannot convert the image to markdown, then just convert the image to plain text
+- if you cannot convert the image to plain text, write exaclty: "{CANNOT_CONVERT}" and in the line below specify the reason.
+    """,
+    SupportedFormat.HTML: f"""Convert this pdf into html following these rules:
+- IGNORE HEADERS AND FOOTERS.
+- if you cannot convert the image to html, then just convert the image to plain text
+- if you cannot convert the image to plain text, write exaclty: "{CANNOT_CONVERT}" and in the line below specify the reason.
+- Do not add <head> or <body> elements, just generate the html that you otherwise would include in an existing <body> element.
+    """,
+}
+
+openai_client = AsyncOpenAI()
+
+
+async def convert_compact_pdfs(
+    folders: list[Path | str], delete_previous: bool = False
+) -> ProcessResults:
+    process_result_list = await convert_all_recursively(
+        RecursiveConversionInput(
+            folders=folders,
+            convert_single_file=convert_file,
+            delete_previous=delete_previous,
+            extensions=[".pdf"],
+        )
+    )
+    files_dict = await compact_files(folders)
+    return ProcessResults(
+        process_result_list=process_result_list, files_dict=files_dict
+    )
+
+
+ConversionFunction = Callable[[ConversionInput], Awaitable[ProcessResult]]
+
+
+def convert_file(file: Path, format: SupportedFormat) -> ProcessResult:
+    """
+    Convert a single file to the specified format using appropriate conversion functions.
+
+    Args:
+        file: Path to the file to convert
+        format: Target format for conversion
+
+    Returns:
+        ProcessResult containing conversion results and any errors
+
+    Raises:
+        ValueError: If file format is not supported
+    """
+    try:
+        return convert_single_file(
+            file,
+            format,
+            convert_pdf_to_markdown,
+            convert_word_to_markdown,
+        )
+    except Exception as e:
+        logger.exception(f"Failed to convert file {file}: {str(e)}")
+        raise
+
+
+async def convert_word_to_markdown(conversion_input: ConversionInput) -> ProcessResult:
+    """
+    Convert an MS Word file to markdown using OpenAI's API.
+
+    Args:
+        file (Path): The path to the PDF file to convert.
+        current_date_time (int): The current date and time.
+        new_file_name (str): The name of the new file.
+        format (SupportedFormat): The format to convert the PDF to.
+    """
+    file, current_date_time, new_file_name, format = (
+        conversion_input.file,
+        conversion_input.current_date_time,
+        conversion_input.new_file_name,
+        conversion_input.format,
+    )
+    document = Document()
+    document.LoadFromFile(file.as_posix())
+    process_result = ProcessResult([], [])
+    for i, image_stream in enumerate(document.SaveImageToStreams(ImageType.Bitmap)):
+        try:
+            page_file = file.parent / f"{new_file_name}_{current_date_time}_{i+1}.jpg"
+            page_file.write_bytes(image_stream.ToArray())
+            page_image = Image.open(page_file)
+            process_result_temp = await __process_page(
+                file,
+                current_date_time,
+                new_file_name,
+                i,
+                page_image,
+                format,
+            )
+            process_result.exceptions.extend(process_result_temp.exceptions)
+            process_result.paths.extend(process_result_temp.paths)
+
+            append_to_markdown_file(file, conversion_input, process_result.paths)
+
+        except Exception as e:
+            logger.exception(f"Cannot process {file}")
+            process_result.exceptions.append(e)
+    document.Close()
+    return process_result
+
+
+async def convert_pdf_to_markdown(conversion_input: ConversionInput) -> ProcessResult:
+    """
+    Convert a PDF file to markdown using OpenAI's API.
+
+    Args:
+        file (Path): The path to the PDF file to convert.
+        current_date_time (int): The current date and time.
+        new_file_name (str): The name of the new file.
+        format (SupportedFormat): The format to convert the PDF to.
+    """
+    file, current_date_time, new_file_name, format = (
+        conversion_input.file,
+        conversion_input.current_date_time,
+        conversion_input.new_file_name,
+        conversion_input.format,
+    )
+    process_result = ProcessResult([], [])
+    try:
+        pages = convert_from_path(file.resolve())
+        batches = [
+            pages[i : i + cfg.batch_size] for i in range(0, len(pages), cfg.batch_size)
+        ]
+
+        for i, batch in enumerate(batches):
+            asynch_batch = [
+                __process_page(
+                    file,
+                    current_date_time,
+                    new_file_name,
+                    j + cfg.batch_size * i,
+                    page,
+                    format,
+                )
+                for j, page in enumerate(batch)
+            ]
+            results: list[ProcessResult] = await asyncio.gather(*asynch_batch)
+            for pr in results:
+                process_result.exceptions.extend(pr.exceptions)
+                process_result.paths.extend(pr.paths)
+
+            process_result.final_path = append_to_markdown_file(file, conversion_input, process_result.paths)
+
+    except Exception as e:
+        logger.exception(f"Cannot process {file}")
+        process_result.exceptions.append(e)
+    return process_result
+
+
+def append_to_markdown_file(
+    file: Path, conversion_input: ConversionInput, paths: list[Path]
+):
+    target_file = (
+        file.parent.resolve()
+        / f"{conversion_input.new_file_name}.{FILE_EXTENSION[conversion_input.format]}"
+    )
+    with open(target_file, "at", encoding="utf-8") as f:
+        for path in paths:
+            if path.exists():
+                content = remove_markdown_tags(path, True, conversion_input.format)
+                if content != CANNOT_CONVERT:
+                    f.write(content)
+                path.unlink()
+            else:
+                logger.warning(f"File {path} does not exist.")
+    return target_file
+
+
+async def __process_page(
+    file: Path,
+    current_date_time: str,
+    new_file_name: str,
+    i: int,
+    page: Image.Image,
+    format: SupportedFormat,
+    delete_page_file: bool = True,
+) -> ProcessResult:
+    logger.info(f"Format: {format}.")
+    success = False
+    retry_count = 0
+    process_result = ProcessResult([], [])
+    page_file = (
+        file.parent / f"{new_file_name}_{current_date_time.replace(':', '').replace('.', '')}_{i+1}.jpg"
+    ).resolve()
+    while not success and retry_count < cfg.max_retries:
+        try:
+            page_file = convert_image_to_file(page, page_file)
+            image_data = encode_file(page_file)
+            file_extension = FILE_EXTENSION[format]
+            new_file = file.parent / f"{new_file_name}_{i+1}.{file_extension}"
+            new_file = new_file.resolve()
+            if not new_file.exists():
+                messages = __build_messages(image_data, format)
+                response = await openai_client.chat.completions.create(
+                    model=cfg.openai_model, messages=messages
+                )
+                markdown = response.choices[0].message.content
+                new_file.write_text(markdown, encoding="utf-8")
+            else:
+                logger.warning(f"File {new_file} already exists.")
+            process_result.paths.append(new_file)
+            success = True
+        except Exception as e:
+            logger.exception("Failed to process image.")
+            retry_count += 1
+            process_result.exceptions.append(e)
+    if delete_page_file and page_file.exists():
+        page_file.unlink(missing_ok=True)
+    return process_result
+
+
+def __build_messages(image_data: str, format: SupportedFormat):
+
+    messages = [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are a powerful AI system that can convert PDFs to markdown.",
+                }
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": CONVERSION_PROMPTS[format],
+                },
+                {
+                    "type": "text",
+                    "text": "use your built-in gpt-4 machine vision to extract and describe the text contents of my attached picture",
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_data}",
+                    },
+                },
+            ],
+        },
+    ]
+    return messages
+
+
+async def compact_files(
+    folders: list[str], format: SupportedFormat = SupportedFormat.MARKDOWN
+) -> dict[Path, list[Path]]:
+    all_aggregate_files = {}
+    for path in process_folders(folders):
+        file_extension = FILE_EXTENSION[format]
+        previous_files = path.rglob(f"**/*_aggregate.{file_extension}")
+        for pf in previous_files:
+            pf.unlink()  # Delete previous files
+        files = path.rglob(f"**/*{file_extension}")
+        aggregate_dict = defaultdict(list)
+        for file in files:
+            if "_aggregate" not in file.name and re.match(
+                r".+\d+\." + file_extension, file.name
+            ):
+                key = re.sub(r"(.+)\_\d+\." + file_extension, r"\1", file.name)
+                aggregate_dict[
+                    file.parent / (f"{key}_aggregate." + file_extension)
+                ].append(file)
+        all_aggregate_files[path] = compact_markdown_files(aggregate_dict, format)
+    return all_aggregate_files
+
+
+def compact_markdown_files(
+    aggregate_dict: dict[Path, list[Path]],
+    format: SupportedFormat = SupportedFormat.MARKDOWN,
+) -> list[Path]:
+    aggregate_files = []
+    for target_file, pages in aggregate_dict.items():
+        with open(target_file, "wt", encoding="utf-8") as f:
+            for page in pages:
+                content = page.read_text(encoding="utf-8")
+                if CANNOT_CONVERT not in content:
+                    f.write(content)
+            f.write("\n")
+        remove_markdown_tags(target_file, True, format)
+        logger.info(f"Finished {target_file}")
+        aggregate_files.append(target_file)
+    return aggregate_files
+
+
+def compact_markdown_files_from_list(
+    markdown_file: Path,
+    paths: list[Path],
+    format: SupportedFormat = SupportedFormat.MARKDOWN,
+) -> Path | None:
+    target_file = (
+        markdown_file.parent / f"{markdown_file.stem}.{FILE_EXTENSION[format]}"
+    )
+    aggregate_dict = {target_file: paths}
+    file_list = compact_markdown_files(aggregate_dict, format)
+    if len(file_list):
+        return file_list[0]
+    return None
+
+
+def remove_markdown_tags(
+    markdown_file: Path,
+    override: bool = False,
+    format: SupportedFormat = SupportedFormat.MARKDOWN,
+):
+    output = []
+    markdown_start = f"```{format}"
+    with open(markdown_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if markdown_start in line:
+                output.append(line.replace(markdown_start, ""))
+            elif line.startswith("```"):
+                output.append(line.replace("```", ""))
+            else:
+                output.append(line)
+    clean = "".join(output)
+    if override:
+        markdown_file.write_text(clean, encoding="utf-8")
+    return clean
+
+
+def zip_md_files(files_dict: dict[Path, list[Path]]) -> list[Path]:
+    zipped_files = []
+    for folder, files in files_dict.items():
+        output_zip = folder.parent / f"{folder.name}.zip"
+        with zipfile.ZipFile(
+            output_zip,
+            "w",
+            zipfile.ZIP_LZMA if len(files) > cfg.lzma_limit else zipfile.ZIP_DEFLATED,
+        ) as zipf:
+            for file in files:
+                zipf.write(file, arcname=file.relative_to(folder.parent))
+        zipped_files.append(output_zip)
+    return zipped_files
