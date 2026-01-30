@@ -1,0 +1,59 @@
+# =============================================================================
+# SUMMARY REPORTER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent generates a summary report of invoice processing results for this run.
+# It uses completed_cases and hitl_queued_cases (automatically populated by LoopRunner)
+# to track straight-through vs pending review counts, and provides a link to the
+# Operations Center for detailed case management.
+#
+# =============================================================================
+id: aegis_summary_reporter
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# RESUME BEHAVIOR CONFIGURATION
+# =============================================================================
+# Controls when this agent runs after resuming from checkpoint
+# Options:
+#   - "always" (default): Run normally, skip only if output already in upstream
+#   - "skip_on_resume": Always skip when resuming from checkpoint
+#   - "run_only_when_complete": Only run when all loop iterations are complete
+# 
+# NOTE: Changed to "always" to handle case where all iterations go into async HITL.
+# The agent will check if all invoices are processed and generate summary accordingly.
+# =============================================================================
+resume_behavior: "always"
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_summary_reporter
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["sqlite", "filesystem"]
+      tools: ["sqlite.*", "fs_*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_summary_reporter.jinja
+  inputs:
+    inline: |
+      - Run ID: {{run_id}}
+      - Total Pending Count: {{aegis_pending_invoice_scanner.total_pending_count}}
+      - Completed Cases: {{completed_cases}}
+      - HITL Queued Cases: {{hitl_queued_cases}}
+      - Project Directory: {{project_dir}}

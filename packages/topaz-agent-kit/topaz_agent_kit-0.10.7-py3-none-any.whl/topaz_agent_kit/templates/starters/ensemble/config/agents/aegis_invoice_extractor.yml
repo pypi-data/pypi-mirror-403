@@ -1,0 +1,45 @@
+# =============================================================================
+# INVOICE EXTRACTOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent extracts structured data from invoice PDF files using document
+# extraction tools. It processes the invoice file path from the current invoice
+# and extracts all relevant fields including invoice number, vendor, amounts,
+# line items, dates, and supporting document references.
+#
+# =============================================================================
+id: aegis_invoice_extractor
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_invoice_extractor
+  timeout: 60000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["doc_extract", "filesystem"]
+      tools: ["doc_extract.*", "fs_*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_invoice_extractor.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Invoice File Path: {{current_invoice.invoice_file_path}}
+      - Evidence Documents: {{current_invoice.evidence_documents}}
+      - Invoice Document Language: {{current_invoice.document_language}}
+      - Project Directory: {{project_dir}}

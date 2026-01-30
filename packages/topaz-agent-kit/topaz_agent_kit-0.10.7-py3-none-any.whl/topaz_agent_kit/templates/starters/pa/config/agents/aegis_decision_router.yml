@@ -1,0 +1,35 @@
+# =============================================================================
+# DECISION ROUTER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent determines the routing path based on exception detection results.
+# It generates dynamic HITL gate options based on exception types and provides
+# recommendations for which action to take. For straight-through invoices, it
+# routes directly to results recording.
+#
+# =============================================================================
+id: aegis_decision_router
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_decision_router
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_decision_router.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Exception Detection Results: {{aegis_exception_detector.exception_details}}
+      - Has Exceptions: {{aegis_exception_detector.has_exceptions}}
+      - Exception Types: {{aegis_exception_detector.exception_types}}

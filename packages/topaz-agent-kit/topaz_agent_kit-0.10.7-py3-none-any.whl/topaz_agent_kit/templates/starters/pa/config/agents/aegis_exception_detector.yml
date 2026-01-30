@@ -1,0 +1,47 @@
+# =============================================================================
+# EXCEPTION DETECTOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent aggregates validation results from all validators and identifies
+# exceptions. It determines if any exceptions exist, categorizes them by type,
+# and provides detailed exception information for downstream processing.
+#
+# =============================================================================
+id: aegis_exception_detector
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_exception_detector
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: []
+      tools: []
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_exception_detector.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Invoice Type: {{aegis_invoice_extractor.extracted_data.invoice_type}}
+      - Rate Card Validation: {% if aegis_rate_card_validator.validation_result %}{{aegis_rate_card_validator.validation_result}}{% else %}NOT_RUN{% endif %}
+      - Retention Validation: {% if aegis_retention_validator.validation_result %}{{aegis_retention_validator.validation_result}}{% else %}NOT_RUN{% endif %}
+      - LD Validation: {% if aegis_ld_validator.validation_result %}{{aegis_ld_validator.validation_result}}{% else %}NOT_RUN{% endif %}
+      - WBS Budget Validation: {% if aegis_wbs_budget_validator.validation_result %}{{aegis_wbs_budget_validator.validation_result}}{% else %}NOT_RUN{% endif %}
+      - Evidence Validation: {% if aegis_evidence_validator.validation_result %}{{aegis_evidence_validator.validation_result}}{% else %}NOT_RUN{% endif %}
+      - Anomaly Validation: {% if aegis_anomaly_validator.validation_result %}{{aegis_anomaly_validator.validation_result}}{% else %}NOT_RUN{% endif %}

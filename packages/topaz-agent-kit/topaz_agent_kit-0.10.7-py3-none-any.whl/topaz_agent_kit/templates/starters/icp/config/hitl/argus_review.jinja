@@ -1,0 +1,147 @@
+**Transaction ID:** {{ argus_journal_extractor.extracted_entry.transaction_id if argus_journal_extractor.extracted_entry else current_journal.transaction_id }}
+
+## Transaction Summary
+
+{%- if argus_journal_extractor.extracted_entry %}
+| Field | Value |
+|-------|-------|
+| Transaction ID | {{ argus_journal_extractor.extracted_entry.transaction_id }} |
+| Company Code | {{ argus_journal_extractor.extracted_entry.company_code }} |
+| Posting Date | {{ argus_journal_extractor.extracted_entry.posting_date }} |
+| Document Date | {{ argus_journal_extractor.extracted_entry.document_date or 'N/A' }} |
+| Header Text | {{ argus_journal_extractor.extracted_entry.header_text or 'N/A' }} |
+| Reference | {{ argus_journal_extractor.extracted_entry.reference or 'N/A' }} |
+| Transaction Amount | {{ argus_journal_extractor.extracted_entry.amount }} {{ argus_journal_extractor.extracted_entry.document_currency }} |
+{%- else %}
+| Field | Value |
+|-------|-------|
+| Transaction ID | {{ current_journal.transaction_id }} |
+| Company Code | {{ current_journal.company_code }} |
+| Posting Date | {{ current_journal.posting_date }} |
+| Document Date | {{ current_journal.document_date or 'N/A' }} |
+| Header Text | {{ current_journal.header_text or 'N/A' }} |
+| Transaction Amount | {{ current_journal.amount }} GBP |
+{%- endif %}
+
+## Journal Entry Pair
+
+{%- if argus_journal_extractor.extracted_entry %}
+### Debit Entry
+| Field | Value |
+|-------|-------|
+| Journal ID | {{ argus_journal_extractor.extracted_entry.debit_entry.journal_id }} |
+| GL Account | {{ argus_journal_extractor.extracted_entry.debit_entry.gl_account }} |
+| Posting Key | {{ argus_journal_extractor.extracted_entry.debit_entry.posting_key }} |
+| Amount | {{ argus_journal_extractor.extracted_entry.debit_entry.amount }} |
+| Business Area | {{ argus_journal_extractor.extracted_entry.debit_entry.business_area or 'N/A' }} |
+| Tax Code | {{ argus_journal_extractor.extracted_entry.debit_entry.tax_code or 'N/A' }} |
+| Profit Center | {{ argus_journal_extractor.extracted_entry.debit_entry.profit_center or 'N/A' }} |
+| Cost Center | {{ argus_journal_extractor.extracted_entry.debit_entry.cost_center or 'N/A' }} |
+| Plant | {{ argus_journal_extractor.extracted_entry.debit_entry.plant or 'N/A' }} |
+| Order | {{ argus_journal_extractor.extracted_entry.debit_entry.order or 'N/A' }} |
+| WBS Element | {{ argus_journal_extractor.extracted_entry.debit_entry.wbs_element or 'N/A' }} |
+
+### Credit Entry
+| Field | Value |
+|-------|-------|
+| Journal ID | {{ argus_journal_extractor.extracted_entry.credit_entry.journal_id }} |
+| GL Account | {{ argus_journal_extractor.extracted_entry.credit_entry.gl_account }} |
+| Posting Key | {{ argus_journal_extractor.extracted_entry.credit_entry.posting_key }} |
+| Amount | {{ argus_journal_extractor.extracted_entry.credit_entry.amount }} |
+| Business Area | {{ argus_journal_extractor.extracted_entry.credit_entry.business_area or 'N/A' }} |
+| Tax Code | {{ argus_journal_extractor.extracted_entry.credit_entry.tax_code or 'N/A' }} |
+| Profit Center | {{ argus_journal_extractor.extracted_entry.credit_entry.profit_center or 'N/A' }} |
+| Cost Center | {{ argus_journal_extractor.extracted_entry.credit_entry.cost_center or 'N/A' }} |
+| Plant | {{ argus_journal_extractor.extracted_entry.credit_entry.plant or 'N/A' }} |
+| Order | {{ argus_journal_extractor.extracted_entry.credit_entry.order or 'N/A' }} |
+| WBS Element | {{ argus_journal_extractor.extracted_entry.credit_entry.wbs_element or 'N/A' }} |
+{%- else %}
+### Debit Entry
+| Field | Value |
+|-------|-------|
+| Journal ID | {{ current_journal.journal_id }} |
+| GL Account | {{ current_journal.gl_account }} |
+| Amount | {{ current_journal.amount }} |
+{%- endif %} |
+
+## Detected Anomaly
+
+{%- if argus_anomaly_detector.anomaly_detected %}
+**Anomaly Type:** {% if argus_anomaly_detector.anomaly_type == "capital_revenue_misclassification" or argus_anomaly_detector.anomaly_type == "CAPITAL_REVENUE_MISCLASSIFICATION" %}CAPITAL/REVENUE MISCLASSIFICATION{% elif argus_anomaly_detector.anomaly_type == "lease_rou_misclassification" or argus_anomaly_detector.anomaly_type == "LEASE_ROU_MISCLASSIFICATION" %}LEASE/ROU MISCLASSIFICATION{% else %}{{ argus_anomaly_detector.anomaly_type }}{% endif %}
+
+**Reasoning:**
+{{ argus_anomaly_detector.reasoning }}
+
+**Confidence Score:** {{ argus_anomaly_detector.confidence_score }}
+
+{%- if argus_correction_suggester %}
+## Suggested Correction
+
+**Corrected Entry:**
+```json
+{{ argus_correction_suggester.corrected_entry | tojson(indent=2) }}
+```
+
+**Correction Reasoning:**
+{{ argus_correction_suggester.correction_reasoning }}
+
+**Impact Analysis:**
+{{ argus_correction_suggester.impact_analysis }}
+{%- else %}
+**No correction suggestion available**
+{%- endif %}
+
+{%- else %}
+**No anomalies detected** - Journal entry passed all validations.
+{%- endif %}
+
+## Account Classification
+
+{%- if argus_journal_extractor.extracted_entry %}
+**Debit Entry:**
+- GL Account: {{ argus_journal_extractor.extracted_entry.debit_entry.gl_account }}
+- Amount: {{ argus_journal_extractor.extracted_entry.debit_entry.amount }}
+- Cost Center: {{ argus_journal_extractor.extracted_entry.debit_entry.cost_center or 'N/A' }}
+- Profit Center: {{ argus_journal_extractor.extracted_entry.debit_entry.profit_center or 'N/A' }}
+
+**Credit Entry:**
+- GL Account: {{ argus_journal_extractor.extracted_entry.credit_entry.gl_account }}
+- Amount: {{ argus_journal_extractor.extracted_entry.credit_entry.amount }}
+- Cost Center: {{ argus_journal_extractor.extracted_entry.credit_entry.cost_center or 'N/A' }}
+- Profit Center: {{ argus_journal_extractor.extracted_entry.credit_entry.profit_center or 'N/A' }}
+{%- endif %}
+
+## Historical Patterns
+
+{%- if argus_anomaly_detector.anomaly_detected %}
+**Historical Analysis for GL Account {{ argus_journal_extractor.extracted_entry.debit_entry.gl_account if argus_journal_extractor.extracted_entry else current_journal.gl_account }}:**
+
+{%- if argus_anomaly_detector.tools_used and argus_anomaly_detector.tools_used.get('argus.get_historical_patterns', 0) > 0 %}
+*Historical patterns were analyzed during anomaly detection. The anomaly detector found that this transaction deviates from typical usage patterns for this account.*
+
+**Key Findings:**
+- The transaction amount and description were compared against historical patterns
+- The account's posting rules and typical usage were evaluated
+- This analysis contributed to the anomaly detection confidence score of {{ argus_anomaly_detector.confidence_score }}
+
+*Note: Detailed historical pattern data (average amounts, frequency, typical descriptions) was used by the anomaly detector but is not displayed here. The reasoning above summarizes the key findings.*
+{%- else %}
+*Historical patterns were not available or could not be retrieved for this account.*
+{%- endif %}
+{%- else %}
+*No historical pattern analysis available (no anomaly detected).*
+{%- endif %}
+
+## Recommended Action
+
+{%- if argus_decision_router.recommended_action %}
+**Recommended:** <span style="color: #3b82f6; font-weight: bold;">{{ argus_decision_router.recommended_action }}</span>
+
+**Reasoning:** Based on the anomaly type detected, the system recommends this action to address the identified issue.
+{%- else %}
+**No recommendation available**
+{%- endif %}
+
+---
+
+Review all findings above and select the appropriate action for this journal entry.

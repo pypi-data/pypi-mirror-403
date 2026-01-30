@@ -1,0 +1,359 @@
+# =============================================================================
+# CASE CONFIGURATION - Aegis
+# =============================================================================
+#
+# Defines how cases are displayed and managed for the Aegis pipeline.
+# Each invoice with exceptions is tracked as an individual case for async HITL review.
+#
+# =============================================================================
+
+identity:
+  # Each invoice gets its own case ID
+  # Format: AEGIS-{invoice_id}
+  prefix: "AEGIS"
+  uniqueness: "invoice_id"  # Uses invoice_id from current_invoice
+
+# =============================================================================
+# LIST VIEW - Case List Display (Tabbed View)
+# =============================================================================
+#
+# Defines pipeline-specific fields and column order for the Aegis pipeline tab.
+#
+# Common fields (always available, don't need to define):
+#   - case_id, pipeline_id, status, hitl_gate_title, hitl_description,
+#     hitl_status, hitl_decision, responded_by, created_at, updated_at, actions
+#
+# When "ALL" tab is selected: Only common fields are shown (default order)
+# When "Aegis" tab is selected: Columns are shown in the order specified in
+#   column_order, mixing common fields and pipeline-specific fields
+
+list_view:
+  # Define pipeline-specific fields (extracted from upstream context)
+  pipeline_fields:
+    - key: "invoice_number"
+      field: "aegis_translator.translated_data.invoice_data.invoice_number if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.invoice_number"
+      label: "Invoice Number"
+      type: text
+    - key: "invoice_type"
+      field: "aegis_invoice_extractor.extracted_data.invoice_type"
+      label: "Invoice Type"
+      type: text
+    - key: "vendor_name"
+      field: "aegis_translator.translated_data.invoice_data.vendor_name if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.vendor_name"
+      label: "Vendor Name"
+      type: text
+    - key: "invoice_date"
+      field: "aegis_translator.translated_data.invoice_data.invoice_date if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.invoice_date"
+      label: "Invoice Date"
+      type: text
+    - key: "total_amount"
+      field: "aegis_translator.translated_data.invoice_data.total_amount if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.total_amount"
+      label: "Invoice Amount"
+      type: number
+    - key: "currency"
+      field: "aegis_translator.translated_data.invoice_data.currency if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.currency"
+      label: "Currency"
+      type: text
+    - key: "exception_count"
+      field: "aegis_exception_detector.exception_count"
+      label: "Exception Count"
+      type: number
+    - key: "has_exceptions"
+      field: "aegis_exception_detector.has_exceptions"
+      label: "Has Exceptions"
+      type: boolean
+  
+  # Column order for Aegis pipeline tab
+  # Mix common field keys (case_id, status, etc.) and pipeline field keys (invoice_id, vendor_name, etc.)
+  # Only columns listed here will be shown on the pipeline tab
+  column_order:
+    - "case_id"           # Common field (contains invoice_id: AEGIS-{invoice_id})
+    - "invoice_number"    # Pipeline field (actual invoice number from document)
+    - "invoice_type"     # Pipeline field
+    - "status"           # Common field
+    - "vendor_name"       # Pipeline field
+    - "total_amount"     # Pipeline field
+    - "currency"          # Pipeline field
+    - "exception_count"  # Pipeline field
+    - "has_exceptions"   # Pipeline field
+    - "hitl_status"     # Common field
+    - "created_at"       # Common field
+    - "updated_at"       # Common field
+    - "actions"          # Common field (action buttons)
+
+# =============================================================================
+# DOCUMENTS - Case Documents Tab
+# =============================================================================
+#
+# Defines which documents to display in the Documents tab.
+# Documents can be conditionally shown based on invoice type or other fields.
+# If a document file is missing, a message will be shown.
+
+documents:
+  - key: "invoice_file"
+    label: "Invoice Document"
+    field: "current_invoice.invoice_file_path"
+    type: "pdf"  # pdf, image, or other
+    condition: null  # Always show
+    missing_message: "Invoice document not available"
+  
+  - key: "evidence_documents"
+    label: "Evidence Documents"
+    field: "current_invoice.evidence_documents"
+    type: "list"  # For arrays of documents
+    # No condition - always show, even if empty (will show missing_message)
+    missing_message: "No evidence documents available"
+    # For list type, each item should have file_path field
+    item_label_field: "evidence_type"  # Field to use as label for each item
+    item_path_field: "evidence_file_path"  # Field containing the file path
+
+# =============================================================================
+# DETAIL VIEW - Case Detail Display
+# =============================================================================
+
+detail_view:
+  sections:
+    - name: "Invoice Information"
+      fields:
+        - field: "aegis_translator.translated_data.invoice_data.invoice_number if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.invoice_number"
+          label: "Invoice Number"
+          type: text
+        - field: "current_invoice.invoice_file_path"
+          label: "Invoice File"
+          type: file_path
+        - field: "aegis_invoice_extractor.extracted_data.invoice_type"
+          label: "Invoice Type"
+          type: text
+        # Uses translated data if translator ran, otherwise extracted data
+        - field: "aegis_translator.translated_data.invoice_data.invoice_number if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.invoice_number"
+          label: "Invoice Number"
+          type: text
+        - field: "aegis_translator.translated_data.invoice_data.vendor_name if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.vendor_name"
+          label: "Vendor Name"
+          type: text
+        - field: "aegis_translator.translated_data.invoice_data.invoice_date if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.invoice_date"
+          label: "Invoice Date"
+          type: text
+        - field: "aegis_translator.translated_data.invoice_data.total_amount if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.total_amount"
+          label: "Invoice Amount"
+          type: number
+        - field: "aegis_translator.translated_data.invoice_data.currency if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.currency"
+          label: "Currency"
+          type: text
+        - field: "aegis_translator.translated_data.invoice_data.po_reference if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.po_reference"
+          label: "PO Number"
+          type: text
+        - field: "aegis_translator.translated_data.invoice_data.sow_reference if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.sow_reference"
+          label: "SOW ID"
+          type: text
+        - field: "aegis_translator.translated_data.invoice_data.project_reference if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.project_reference"
+          label: "Project ID"
+          type: text
+    
+    - name: "Processing Status"
+      fields:
+        - field: "aegis_exception_detector.has_exceptions"
+          label: "Has Exceptions"
+          type: boolean
+        - field: "aegis_exception_detector.exception_count"
+          label: "Exception Count"
+          type: number
+        - field: "aegis_exception_detector.exception_types"
+          label: "Exception Types"
+          type: list
+    
+    - name: "Validation Results Summary"
+      fields:
+        # Anomaly Validator - runs for all invoice types
+        - field: "aegis_anomaly_validator.validation_result.validation_passed"
+          label: "Anomaly Validation"
+          type: boolean
+          condition: "aegis_anomaly_validator IS NOT NULL"
+          key: "anomaly_validation_status"
+        - field: "aegis_anomaly_validator.validation_result.checks_table"
+          label: "Anomaly Validation Details"
+          type: markdown
+          condition: "aegis_anomaly_validator.validation_result.checks_table IS NOT NULL"
+          collapsible: true
+          collapsible_after: "anomaly_validation_status"
+          summary: "Anomaly Validation Details"
+        # Evidence Validator - runs for all invoice types
+        - field: "aegis_evidence_validator.validation_result.validation_passed"
+          label: "Evidence Validation"
+          type: boolean
+          condition: "aegis_evidence_validator IS NOT NULL"
+          key: "evidence_validation_status"
+        - field: "aegis_evidence_validator.validation_result.checks_table"
+          label: "Evidence Validation Details"
+          type: markdown
+          condition: "aegis_evidence_validator.validation_result.checks_table IS NOT NULL"
+          collapsible: true
+          collapsible_after: "evidence_validation_status"
+          summary: "Evidence Validation Details"
+        # Rate Card Validator - runs for LABOR and PROFORMA
+        - field: "aegis_rate_card_validator.validation_result.validation_passed"
+          label: "Rate Card Validation"
+          type: boolean
+          condition: "aegis_rate_card_validator IS NOT NULL"
+          key: "rate_card_validation_status"
+        - field: "aegis_rate_card_validator.validation_result.checks_table"
+          label: "Rate Card Validation Details"
+          type: markdown
+          condition: "aegis_rate_card_validator.validation_result.checks_table IS NOT NULL"
+          collapsible: true
+          collapsible_after: "rate_card_validation_status"
+          summary: "Rate Card Validation Details"
+        # WBS Budget Validator - runs for MATERIAL and PROFORMA
+        - field: "aegis_wbs_budget_validator.validation_result.validation_passed"
+          label: "WBS Budget Validation"
+          type: boolean
+          condition: "aegis_wbs_budget_validator IS NOT NULL"
+          key: "wbs_budget_validation_status"
+        - field: "aegis_wbs_budget_validator.validation_result.checks_table"
+          label: "WBS Budget Validation Details"
+          type: markdown
+          condition: "aegis_wbs_budget_validator.validation_result.checks_table IS NOT NULL"
+          collapsible: true
+          collapsible_after: "wbs_budget_validation_status"
+          summary: "WBS Budget Validation Details"
+        # Retention Validator - runs for PROFORMA only
+        - field: "aegis_retention_validator.validation_result.validation_passed"
+          label: "Retention Validation"
+          type: boolean
+          condition: "aegis_retention_validator IS NOT NULL"
+          key: "retention_validation_status"
+        - field: "aegis_retention_validator.validation_result.checks_table"
+          label: "Retention Validation Details"
+          type: markdown
+          condition: "aegis_retention_validator.validation_result.checks_table IS NOT NULL"
+          collapsible: true
+          collapsible_after: "retention_validation_status"
+          summary: "Retention Validation Details"
+        # LD Validator - runs for PROFORMA only
+        - field: "aegis_ld_validator.validation_result.validation_passed"
+          label: "LD Validation"
+          type: boolean
+          condition: "aegis_ld_validator IS NOT NULL"
+          key: "ld_validation_status"
+        - field: "aegis_ld_validator.validation_result.checks_table"
+          label: "LD Validation Details"
+          type: markdown
+          condition: "aegis_ld_validator.validation_result.checks_table IS NOT NULL"
+          collapsible: true
+          collapsible_after: "ld_validation_status"
+          summary: "LD Validation Details"
+    
+    - name: "Evidence Files"
+      fields:
+        - field: "current_invoice.evidence_documents"
+          label: "Evidence Documents"
+          type: list
+        - field: "aegis_evidence_validator.validation_result.checks_table"
+          label: "Evidence Validation Status"
+          type: markdown
+        - field: "aegis_evidence_validator.validation_result.issues_found"
+          label: "Evidence Issues"
+          type: list
+
+# =============================================================================
+# DASHBOARD - Pipeline-Specific Analytics Cards
+# =============================================================================
+#
+# Defines analytics cards to display in the Operations dashboard for this pipeline.
+# Cards are filtered by the same criteria as the list view (pipeline, time range, status, search).
+#
+# Card Types:
+#   - metric: Numeric metric (count, sum, avg, min, max)
+#   - percentage: Percentage with numerator/denominator
+#   - donut: Distribution chart grouped by field value
+#   - bar: Bar chart (same as donut, different visualization)
+#   - timeline: Time-based distribution
+#
+# Field paths use dot notation to access case_data fields (e.g., "agent_id.field").
+# Special fields: "status", "created_at", "total"
+
+dashboard:
+  # Enable dashboard for this pipeline
+  enabled: true
+  
+  # Cards to display (order matters)
+  cards:
+    # Card 1: Exception Detection Rate
+    - type: "percentage"
+      title: "Exception Detection Rate"
+      icon: "AlertCircle"
+      numerator:
+        field: "aegis_exception_detector.has_exceptions"
+        filter: true
+      denominator:
+        field: "total"
+      color: "amber"
+      show_breakdown: true
+      footer:
+        type: "text"
+        content: "Based on {{totalCases}} processed invoices"
+    
+    # Card 2: Total Invoice Amount
+    - type: "metric"
+      title: "Total Invoice Amount"
+      icon: "DollarSign"
+      field: "aegis_translator.translated_data.invoice_data.total_amount if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data.total_amount"
+      aggregation: "sum"
+      format: "currency"
+      color: "green"
+      visualization: "none"  # Clean display for cumulative amounts without max value
+      footer:
+        - label: "Invoices"
+          value: "{{totalCases}}"
+        - label: "Currency"
+          value: "Mixed"
+    
+    # Card 3: Average Exception Count
+    - type: "metric"
+      title: "Average Exception Count"
+      icon: "AlertTriangle"
+      field: "aegis_exception_detector.exception_count"
+      aggregation: "avg"
+      format: "number"
+      decimals: 1
+      color: "red"
+      visualization: "progress"
+      footer:
+        type: "legend"
+        items:
+          - label: "Cases with Exceptions"
+          - label: "Average per Invoice"
+            value: "{{formatted}}"
+    
+    # Card 4: Invoice Types Distribution
+    - type: "donut"
+      title: "Invoice Types"
+      icon: "PieChart"
+      field: "aegis_invoice_extractor.extracted_data.invoice_type"
+      show_legend: true
+      show_percentages: true
+      colors:
+        "LABOR": "blue"
+        "MATERIAL": "green"
+        "PROFORMA": "amber"
+    
+    # Card 5: Cases Timeline (uses full timeline component like "All" tab)
+    - type: "timeline"
+      title: "Cases Timeline"
+      icon: "Calendar"
+      # When type is timeline, cases are passed directly - no field needed
+    
+    # Card 6: Response Method (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "response_method"
+      title: "Response Method"
+    
+    # Card 7: Auto-Resolution Rate (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "auto_resolution_rate"
+      title: "Auto-Resolution Rate"
+    
+    # Card 8: Success Rate (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "success_rate"
+      title: "Success Rate"

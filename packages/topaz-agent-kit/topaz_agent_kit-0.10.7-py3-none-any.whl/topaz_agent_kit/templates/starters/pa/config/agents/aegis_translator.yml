@@ -1,0 +1,43 @@
+# =============================================================================
+# TRANSLATION AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent translates extracted invoice and evidence data from non-English
+# languages to English. It only runs when needs_translation is true.
+# The agent translates both invoice data and evidence data while preserving
+# the structure and formatting of the extracted data.
+#
+# =============================================================================
+id: aegis_translator
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_translator
+  timeout: 60000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: []
+      tools: []
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_translator.jinja
+  inputs:
+    inline: |
+      - Extracted Data: {{aegis_invoice_extractor.extracted_data}}
+      - Needs Translation: {{aegis_invoice_extractor.extracted_data.needs_translation}}
+      - Detected Language: {{aegis_invoice_extractor.extracted_data.detected_language}}
