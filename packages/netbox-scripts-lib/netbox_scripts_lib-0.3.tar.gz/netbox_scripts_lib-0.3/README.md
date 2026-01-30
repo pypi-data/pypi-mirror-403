@@ -1,0 +1,124 @@
+# NetBox Scripts Library
+
+A shared library of utility functions and tools for NetBox Custom Scripts.
+
+## Overview
+
+This package provides reusable utilities for NetBox custom scripts, including:
+- Email notification and validation
+- URL generation for NetBox objects
+- Markdown link formatting
+
+## Installation
+
+```bash
+pip install netbox_scripts_lib
+```
+
+Or from source:
+
+```bash
+git clone <repository-url>
+cd netbox_scripts_lib
+pip install .
+```
+
+For development:
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+Import the utilities in your NetBox custom scripts:
+
+```python
+from netbox_scripts_lib import prepare_and_send_email, get_markdown_link, get_object_url
+from extras.scripts import Script
+
+class MyScript(Script):
+    def run(self, data, commit):
+        # Your script logic here
+        results = []
+        status = "Failed"  # or "Success"
+
+        # Send notification email on failure
+        prepare_and_send_email(
+            script=self,
+            subject="Script Execution Alert",
+            emails="admin@example.com;team@example.com",
+            status=status,
+            all_results=results
+        )
+
+        # Generate markdown links for NetBox objects
+        link = get_markdown_link(some_netbox_object)
+        self.log_info(f"Created: {link}")
+```
+
+## Available Functions
+
+### `prepare_and_send_email(script, subject, emails, status, all_results, sender=SENDER)`
+
+Sends email notifications for script execution. Only sends emails when status is NOT "Success" (notification-on-failure pattern).
+
+**Parameters:**
+- `script`: NetBox Script instance (self)
+- `subject`: Email subject line
+- `emails`: Semicolon-separated email addresses (e.g., "user1@example.com;user2@example.com")
+- `status`: Script execution status (sends only if not "Success")
+- `all_results`: List of result messages to include in email body
+- `sender`: Email sender address (optional, defaults to "noreply@cesnet.cz")
+
+**Returns:** Status message string
+
+### `is_valid_email(email)`
+
+Validates an email address using regex pattern.
+
+**Parameters:**
+- `email`: Email address string
+
+**Returns:** Boolean
+
+### `get_object_url(object)`
+
+Generates the full URL for a NetBox object.
+
+**Parameters:**
+- `object`: NetBox model instance (optional)
+
+**Returns:** Full URL string or empty string if object is None
+
+### `get_markdown_link(object)`
+
+Generates a markdown-formatted link for a NetBox object.
+
+**Parameters:**
+- `object`: NetBox model instance (optional)
+
+**Returns:** Markdown link string in format `[#id name](url)` or empty string if object is None
+
+## Requirements
+
+- Django >= 3.0
+- NetBox (must be run within a NetBox environment)
+
+## Building
+
+To build a distribution package:
+
+```bash
+python setup.py sdist
+```
+
+Built package will be in `dist/` directory.
+
+## Author
+
+Jiri Vrany (jiri.vrany@cesnet.cz)
+
+## License
+
+See LICENSE file for details.
