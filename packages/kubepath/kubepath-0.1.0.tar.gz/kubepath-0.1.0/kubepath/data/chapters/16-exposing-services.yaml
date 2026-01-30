@@ -1,0 +1,448 @@
+chapter:
+  number: 16
+  title: "Exposing Services"
+  description: "Learn NodePort and LoadBalancer service types for external access"
+
+concepts:
+  - title: "NodePort Services"
+    content: |
+      **NodePort** exposes your Service on every node's IP at a static port.
+
+      **The Reception Desk Analogy**
+
+      ClusterIP is like an internal phone extension - only works inside.
+      NodePort is like the main reception number - anyone can call it.
+
+      **How NodePort Works:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    EXTERNAL ACCESS                          │
+      │                                                             │
+      │   User at 192.168.1.50 ─────────────────────────────────┐  │
+      │                                                          │  │
+      │   Connects to: <any-node-ip>:30080                      │  │
+      │                          │                               │  │
+      └──────────────────────────┼───────────────────────────────┘  │
+                                 │                                   │
+      ┌──────────────────────────┼───────────────────────────────────┘
+      │                          ▼
+      │  ┌────────────┐    ┌────────────┐    ┌────────────┐
+      │  │  Node 1    │    │  Node 2    │    │  Node 3    │
+      │  │  :30080    │    │  :30080    │    │  :30080    │
+      │  │     │      │    │     │      │    │     │      │
+      │  │     ▼      │    │     ▼      │    │     ▼      │
+      │  │ ┌───────┐  │    │ ┌───────┐  │    │ ┌───────┐  │
+      │  │ │Service│  │    │ │Service│  │    │ │Service│  │
+      │  │ │:80    │  │    │ │:80    │  │    │ │:80    │  │
+      │  │ └───┬───┘  │    │ └───┬───┘  │    │ └───┬───┘  │
+      │  │     ▼      │    │     ▼      │    │     ▼      │
+      │  │   Pods     │    │   Pods     │    │   Pods     │
+      │  └────────────┘    └────────────┘    └────────────┘
+      │
+      └─── Port range: 30000-32767 (default)
+      ```
+
+      **NodePort YAML:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: my-nodeport-svc
+      spec:
+        type: NodePort
+        selector:
+          app: web
+        ports:
+        - port: 80           # Service port (internal)
+          targetPort: 8080   # Pod port
+          nodePort: 30080    # External port (optional, auto-assigned if omitted)
+      ```
+
+      **Key insight:** NodePort = ClusterIP + external port on every node.
+      Traffic to any node's IP:nodePort reaches the Service.
+    key_points:
+      - "NodePort exposes service on all nodes at same port"
+      - "Port range: 30000-32767"
+      - "Access via <node-ip>:<nodePort>"
+      - "Builds on top of ClusterIP"
+
+  - title: "LoadBalancer Services"
+    content: |
+      **LoadBalancer** provisions an external load balancer (cloud provider).
+
+      **The Valet Parking Analogy**
+
+      - **NodePort**: You find parking yourself (pick a node)
+      - **LoadBalancer**: Valet handles it (cloud provides the IP)
+
+      **How LoadBalancer Works:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    INTERNET                                 │
+      │                                                             │
+      │              http://203.0.113.50                           │
+      │                       │                                     │
+      └───────────────────────┼─────────────────────────────────────┘
+                              │
+                              ▼
+      ┌─────────────────────────────────────────────────────────────┐
+      │              CLOUD LOAD BALANCER                            │
+      │              (Provisioned automatically)                    │
+      │              External IP: 203.0.113.50                     │
+      │                       │                                     │
+      │         ┌─────────────┼─────────────┐                      │
+      │         ▼             ▼             ▼                      │
+      │    ┌─────────┐   ┌─────────┐   ┌─────────┐                │
+      │    │ Node 1  │   │ Node 2  │   │ Node 3  │                │
+      │    │ :30080  │   │ :30080  │   │ :30080  │                │
+      │    └────┬────┘   └────┬────┘   └────┬────┘                │
+      │         │             │             │                      │
+      │         └─────────────┼─────────────┘                      │
+      │                       ▼                                    │
+      │                   Service                                  │
+      │                       │                                    │
+      │                    Pods                                    │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **LoadBalancer YAML:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: my-lb-svc
+      spec:
+        type: LoadBalancer
+        selector:
+          app: web
+        ports:
+        - port: 80
+          targetPort: 8080
+      ```
+
+      **After creation:**
+
+      ```bash
+      $ kubectl get svc my-lb-svc
+      NAME        TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)
+      my-lb-svc   LoadBalancer   10.96.0.100     203.0.113.50    80:30080/TCP
+                                                 ↑
+                                                 Cloud-assigned IP
+      ```
+
+      **Key insight:** LoadBalancer = NodePort + cloud load balancer.
+      Perfect for production, but only works with cloud providers (or MetalLB locally).
+    key_points:
+      - "LoadBalancer provisions external load balancer"
+      - "Gets real external IP from cloud provider"
+      - "Builds on NodePort and ClusterIP"
+      - "Use for production external access"
+
+  - title: "Service Type Comparison"
+    content: |
+      **When to use each type:**
+
+      ```
+      ┌────────────────────────────────────────────────────────────┐
+      │                SERVICE TYPE DECISION TREE                   │
+      │                                                            │
+      │  Need external access?                                     │
+      │        │                                                   │
+      │        ├── NO ──► ClusterIP (default)                      │
+      │        │          Internal only                            │
+      │        │                                                   │
+      │        └── YES ──► Running in cloud?                       │
+      │                    │                                       │
+      │                    ├── YES ──► LoadBalancer                │
+      │                    │          Gets real external IP        │
+      │                    │                                       │
+      │                    └── NO ──► NodePort                     │
+      │                               Use node IP + port           │
+      └────────────────────────────────────────────────────────────┘
+      ```
+
+      **Comparison Table:**
+
+      | Type | Access | Use Case |
+      |------|--------|----------|
+      | ClusterIP | Internal only | Pod-to-pod communication |
+      | NodePort | <node-ip>:port | Dev/test, on-prem |
+      | LoadBalancer | External IP | Production in cloud |
+
+      **The Building Analogy (Complete):**
+
+      ```
+      ClusterIP    = Internal phone extension (ext. 4532)
+                     Only employees can call it
+
+      NodePort     = Direct office number (555-1234)
+                     Anyone can call, but you need to know which office
+
+      LoadBalancer = Company's main number (1-800-COMPANY)
+                     Receptionist routes your call automatically
+      ```
+
+      **Quick Reference:**
+
+      ```bash
+      # Create ClusterIP (default)
+      kubectl expose deployment web --port=80
+
+      # Create NodePort
+      kubectl expose deployment web --port=80 --type=NodePort
+
+      # Create LoadBalancer
+      kubectl expose deployment web --port=80 --type=LoadBalancer
+      ```
+
+      **Key insight:** Start with ClusterIP for internal, add NodePort or
+      LoadBalancer when you need external access.
+    key_points:
+      - "ClusterIP: internal only (default)"
+      - "NodePort: external via node IP + port"
+      - "LoadBalancer: external via cloud IP"
+      - "Each type builds on the previous"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a NodePort Service"
+    instructions: |
+      **What we're doing:** Expose a deployment externally using NodePort.
+
+      **Why this matters:** NodePort is the simplest way to get external access
+      without cloud infrastructure.
+
+      First create a deployment, then expose it with NodePort:
+    command_hint: "kubectl create deployment nodeport-demo --image=nginx && kubectl expose deployment nodeport-demo --port=80 --type=NodePort"
+    validation:
+      type: "command_output"
+      command: "kubectl get svc nodeport-demo"
+      expected_contains: "NodePort"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Find the NodePort"
+    instructions: |
+      **What we're doing:** Discover which port was assigned to the Service.
+
+      **Why this matters:** You need the nodePort to access the service externally.
+
+      **Reading the output:**
+      ```
+      PORT(S)
+      80:31234/TCP
+         ↑
+         This is your nodePort
+      ```
+
+      Get the service details:
+    command_hint: "kubectl get svc nodeport-demo -o wide"
+    validation:
+      type: "command_output"
+      command: "kubectl get svc nodeport-demo"
+      expected_contains: "80:"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Create with Specific NodePort"
+    instructions: |
+      **What we're doing:** Create a NodePort Service with a specific port number.
+
+      **Why this matters:** Sometimes you need a predictable port for firewall rules
+      or documentation.
+
+      Create a service YAML with nodePort specified:
+    command_hint: "kubectl create service nodeport specific-port --tcp=80:80 --node-port=30100 --dry-run=client -o yaml | kubectl apply -f -"
+    validation:
+      type: "command_output"
+      command: "kubectl get svc specific-port"
+      expected_contains: "30100"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "NodePort Not Accessible"
+    description: |
+      A NodePort service was created but external access isn't working.
+      The service shows as running but connections timeout.
+
+      ```
+      $ kubectl get svc web-np
+      NAME     TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)
+      web-np   NodePort   10.96.0.100    <none>        80:30080/TCP
+
+      $ curl <node-ip>:30080
+      Connection timed out
+      ```
+
+      Your mission: Investigate why the service isn't accessible!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-np-deploy
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: web-application
+        template:
+          metadata:
+            labels:
+              app: web-application
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-np
+      spec:
+        type: NodePort
+        selector:
+          app: wrong-web
+        ports:
+        - port: 80
+          targetPort: 80
+          nodePort: 30080
+    hints:
+      - "Check if the service has endpoints: kubectl get endpoints web-np"
+      - "The selector doesn't match the pod labels - compare them"
+      - "Fix: kubectl patch svc web-np -p '{\"spec\":{\"selector\":{\"app\":\"web-application\"}}}'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get endpoints web-np"
+      expected_not_contains: "<none>"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "LoadBalancer Stuck Pending"
+    description: |
+      A LoadBalancer service shows EXTERNAL-IP as <pending> indefinitely:
+
+      ```
+      $ kubectl get svc my-lb
+      NAME    TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)
+      my-lb   LoadBalancer   10.96.0.101    <pending>     80:30090/TCP
+      ```
+
+      Your mission: Understand why and find a workaround!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: lb-demo
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: lb-app
+        template:
+          metadata:
+            labels:
+              app: lb-app
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: my-lb
+      spec:
+        type: LoadBalancer
+        selector:
+          app: lb-app
+        ports:
+        - port: 80
+          targetPort: 80
+    hints:
+      - "LoadBalancer requires cloud provider or MetalLB. Check your environment."
+      - "On minikube: run 'minikube tunnel' in another terminal"
+      - "Alternative: Change to NodePort if you don't have load balancer support"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get svc my-lb"
+      expected_contains: "LoadBalancer"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the default port range for NodePort services?"
+      options:
+        - "1-1024"
+        - "8000-9000"
+        - "30000-32767"
+        - "Any port"
+      correct: 2
+      explanation: "NodePort uses ports 30000-32767 by default to avoid conflicts."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does LoadBalancer type do that NodePort doesn't?"
+      options:
+        - "Provides internal access"
+        - "Creates endpoints"
+        - "Provisions external IP from cloud provider"
+        - "Supports multiple ports"
+      correct: 2
+      explanation: "LoadBalancer automatically provisions an external IP through your cloud provider."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to create a NodePort service for deployment 'api'"
+      expected_contains: "--type=NodePort"
+      alternatives:
+        - "kubectl expose deployment api --port=80 --type=NodePort"
+        - "kubectl expose deploy api --port=80 --type=NodePort"
+      hint: "Use kubectl expose with --type flag"
+      explanation: "`kubectl expose deployment api --port=80 --type=NodePort`"
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the Service spec for external access via node IP:"
+      yaml_template: |
+        spec:
+          type: ________
+      expected: "NodePort"
+      explanation: "NodePort type exposes the service on each node's IP."
+      points: 10
+
+    - type: "true_false"
+      question: "LoadBalancer services work on any Kubernetes cluster without additional setup."
+      correct: false
+      explanation: "LoadBalancer requires cloud provider integration or tools like MetalLB."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "In the output 'PORT(S): 80:31234/TCP', what is 31234?"
+      options:
+        - "The pod port"
+        - "The cluster IP port"
+        - "The nodePort for external access"
+        - "The container port"
+      correct: 2
+      explanation: "The second number (31234) is the nodePort - the port exposed on each node."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "Which service type should you use for internal microservice communication?"
+      options:
+        - "NodePort"
+        - "LoadBalancer"
+        - "ClusterIP"
+        - "ExternalName"
+      correct: 2
+      explanation: "ClusterIP is for internal-only access, perfect for service-to-service communication."
+      points: 5

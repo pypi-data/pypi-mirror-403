@@ -1,0 +1,409 @@
+chapter:
+  number: 12
+  title: "Introduction to Deployments"
+  description: "Learn how Deployments manage and maintain your pods"
+
+concepts:
+  - title: "Why Deployments?"
+    content: |
+      Pods alone are fragile. If a pod dies, it stays dead.
+      **Deployments** ensure your pods are always running.
+
+      **The Restaurant Manager Analogy**
+
+      Think of a Deployment like a restaurant manager:
+      - You say: "I need 3 waiters on shift"
+      - Manager ensures 3 waiters are always working
+      - If one calls in sick, manager finds a replacement
+      - If you need more for a busy night, manager hires more
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                    DEPLOYMENT                            │
+      │            "I want 3 replicas running"                  │
+      │                                                         │
+      │                        │                                │
+      │                        ▼                                │
+      │              ┌─────────────────┐                        │
+      │              │   ReplicaSet    │                        │
+      │              │  (current: 3)   │                        │
+      │              └────────┬────────┘                        │
+      │                       │                                 │
+      │         ┌─────────────┼─────────────┐                   │
+      │         ▼             ▼             ▼                   │
+      │    ┌─────────┐   ┌─────────┐   ┌─────────┐             │
+      │    │  Pod 1  │   │  Pod 2  │   │  Pod 3  │             │
+      │    └─────────┘   └─────────┘   └─────────┘             │
+      │                                                         │
+      │    If Pod 2 dies... ────────────────────────┐          │
+      │                                              ▼          │
+      │    ┌─────────┐   ┌─────────┐   ┌─────────┐             │
+      │    │  Pod 1  │   │  Pod 2  │   │  Pod 3  │   ← NEW!   │
+      │    └─────────┘   │  (new)  │   └─────────┘             │
+      │                  └─────────┘                            │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Pod vs Deployment:**
+
+      | Feature | Pod | Deployment |
+      |---------|-----|------------|
+      | Self-healing | No | Yes |
+      | Scaling | Manual | Automatic |
+      | Rolling updates | No | Yes |
+      | Rollback | No | Yes |
+      | Use case | Testing | Production |
+
+      **Key insight:** Never use bare Pods in production. Always use Deployments
+      for self-healing and easy updates.
+    key_points:
+      - "Deployments ensure desired number of pods run"
+      - "Self-healing: dead pods are replaced"
+      - "Enable scaling, updates, and rollbacks"
+      - "Use Deployments for production, not bare Pods"
+
+  - title: "Deployment YAML"
+    content: |
+      A Deployment has a **template** that describes the pods it creates.
+
+      **Deployment Structure:**
+
+      ```yaml
+      apiVersion: apps/v1          # Note: apps/v1, not v1!
+      kind: Deployment
+      metadata:
+        name: web-deployment
+      spec:
+        replicas: 3                # How many pods?
+        selector:                  # How to find pods
+          matchLabels:
+            app: web
+        template:                  # Pod template
+          metadata:
+            labels:
+              app: web             # Must match selector!
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:1.21
+      ```
+
+      **Visual breakdown:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │ Deployment                                              │
+      │                                                         │
+      │   replicas: 3  ────────────► "Keep 3 pods running"     │
+      │                                                         │
+      │   selector:                                             │
+      │     matchLabels:                                        │
+      │       app: web ────────────► "Manage pods with         │
+      │                               app=web label"            │
+      │                                                         │
+      │   template: ───────────────► "Create pods like this"   │
+      │     metadata:                                           │
+      │       labels:                                           │
+      │         app: web  ─────────► Must match selector!      │
+      │     spec:                                               │
+      │       containers:                                       │
+      │       - name: nginx                                     │
+      │         image: nginx:1.21                               │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Critical Rule:** Pod template labels MUST match the selector.
+      Otherwise, the Deployment can't find its pods!
+
+      **Key insight:** The template is like a cookie cutter. The Deployment
+      uses it to stamp out identical pods.
+    key_points:
+      - "apiVersion is apps/v1 (not v1)"
+      - "replicas sets the number of pods"
+      - "selector.matchLabels finds pods to manage"
+      - "template.metadata.labels MUST match selector"
+
+  - title: "Creating Deployments"
+    content: |
+      **Imperative (Quick):**
+
+      ```bash
+      kubectl create deployment nginx --image=nginx --replicas=3
+      ```
+
+      **Generate YAML (Recommended):**
+
+      ```bash
+      kubectl create deployment nginx --image=nginx --replicas=3 \
+        --dry-run=client -o yaml > deployment.yaml
+      ```
+
+      **Declarative (Production):**
+
+      ```bash
+      kubectl apply -f deployment.yaml
+      ```
+
+      **Verify Deployment:**
+
+      ```bash
+      # See deployment status
+      kubectl get deployments
+      kubectl get deploy       # Short form
+
+      # See pods created by deployment
+      kubectl get pods
+
+      # See deployment details
+      kubectl describe deployment nginx
+
+      # See ReplicaSet (created by deployment)
+      kubectl get replicasets
+      kubectl get rs           # Short form
+      ```
+
+      **The Deployment → ReplicaSet → Pod hierarchy:**
+
+      ```
+      Deployment
+         │
+         └── Creates & manages ──► ReplicaSet
+                                      │
+                                      └── Creates & manages ──► Pods
+      ```
+
+      You usually only interact with the Deployment. It handles the rest!
+
+      **Key insight:** Use `--dry-run=client -o yaml` to generate Deployment
+      YAML quickly. This is essential for CKAD!
+    key_points:
+      - "kubectl create deployment for quick creation"
+      - "Use --dry-run to generate YAML"
+      - "Deployment creates ReplicaSet, which creates Pods"
+      - "kubectl get deploy shows deployment status"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a Deployment"
+    instructions: |
+      **What we're doing:** Create your first Deployment.
+
+      **Why this matters:** Deployments are the standard way to run
+      applications in production.
+
+      **The command:**
+      ```
+      kubectl create deployment <name> --image=<image> --replicas=<n>
+      ```
+
+      Create a deployment with 3 replicas:
+    command_hint: "kubectl create deployment web --image=nginx --replicas=3"
+    validation:
+      type: "command_output"
+      command: "kubectl get deployment web"
+      expected_contains: "3/3"
+    points: 10
+
+  - id: "cmd-02"
+    title: "View Deployment Details"
+    instructions: |
+      **What we're doing:** Inspect the Deployment to understand its status.
+
+      **Why this matters:** Describe shows you events, conditions, and
+      the current state of your deployment.
+
+      **The command:**
+      ```
+      kubectl describe deployment <name>
+      ```
+
+      Describe the web deployment:
+    command_hint: "kubectl describe deployment web"
+    validation:
+      type: "command_output"
+      command: "kubectl describe deployment web"
+      expected_contains: "Replicas"
+    points: 10
+
+  - id: "cmd-03"
+    title: "View Pods Created by Deployment"
+    instructions: |
+      **What we're doing:** See the pods that the Deployment created.
+
+      **Why this matters:** Understanding the relationship between
+      Deployments and Pods is crucial for debugging.
+
+      **Notice:** Pod names include the deployment name and random suffix:
+      ```
+      web-7d9c4b5f8-abc12
+      ↑   ↑         ↑
+      │   │         └── Random pod ID
+      │   └── ReplicaSet hash
+      └── Deployment name
+      ```
+
+      List pods created by the deployment:
+    command_hint: "kubectl get pods -l app=web"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods -l app=web"
+      expected_contains: "Running"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Self-Healing in Action"
+    description: |
+      A Deployment has 3 replicas running. Let's see what happens when
+      a pod dies!
+
+      Your mission: Delete one pod and watch the Deployment replace it!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: healing-demo
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: healer
+        template:
+          metadata:
+            labels:
+              app: healer
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+    hints:
+      - "First, get the pod names: kubectl get pods -l app=healer"
+      - "Delete one pod: kubectl delete pod <pod-name>"
+      - "Watch the deployment recover: kubectl get pods -l app=healer -w"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get deployment healing-demo"
+      expected_contains: "3/3"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Deployment Selector Mismatch"
+    description: |
+      A deployment was created but shows 0/3 ready pods:
+
+      ```
+      NAME    READY   UP-TO-DATE   AVAILABLE
+      broken  0/3     0            0
+      ```
+
+      The selector doesn't match the pod template labels!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: broken
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: myapp
+        template:
+          metadata:
+            labels:
+              app: wrongapp
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+    hints:
+      - "Check the deployment: kubectl describe deployment broken"
+      - "The selector says 'app=myapp' but template labels say 'app=wrongapp'"
+      - "Delete and recreate with matching labels, or edit: kubectl edit deployment broken"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get deployment broken"
+      expected_contains: "3/3"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the main advantage of a Deployment over a Pod?"
+      options:
+        - "Deployments use less memory"
+        - "Deployments provide self-healing and scaling"
+        - "Deployments are faster to start"
+        - "Pods can't run containers"
+      correct: 1
+      explanation: "Deployments automatically replace dead pods and enable scaling/updates."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the apiVersion for a Deployment:"
+      yaml_template: |
+        apiVersion: ______
+        kind: Deployment
+      expected: "apps/v1"
+      explanation: "Deployments use 'apps/v1', not 'v1' like Pods."
+      points: 10
+
+    - type: "command_challenge"
+      question: "Write the command to create a deployment named 'api' with image 'node' and 2 replicas"
+      expected_contains: "--replicas=2"
+      alternatives:
+        - "kubectl create deployment api --image=node --replicas=2"
+        - "kubectl create deploy api --image=node --replicas=2"
+      hint: "Use kubectl create deployment with --replicas"
+      explanation: "`kubectl create deployment api --image=node --replicas=2`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What creates and manages Pods in a Deployment?"
+      options:
+        - "The Deployment directly"
+        - "The ReplicaSet"
+        - "The Scheduler"
+        - "kubelet"
+      correct: 1
+      explanation: "Deployment → ReplicaSet → Pods. ReplicaSet actually manages the pods."
+      points: 5
+
+    - type: "true_false"
+      question: "The pod template labels must match the selector in a Deployment."
+      correct: true
+      explanation: "Yes! If they don't match, the Deployment can't find its pods."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to list all deployments"
+      expected_contains: "kubectl get"
+      alternatives:
+        - "kubectl get deployments"
+        - "kubectl get deployment"
+        - "kubectl get deploy"
+      hint: "Use 'kubectl get' with the resource type"
+      explanation: "`kubectl get deployments` or `kubectl get deploy` for short."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "If a pod managed by a Deployment is deleted, what happens?"
+      options:
+        - "Nothing, the pod is gone"
+        - "You must manually create a new pod"
+        - "The Deployment creates a new pod automatically"
+        - "The cluster shuts down"
+      correct: 2
+      explanation: "Self-healing! The Deployment detects the missing pod and creates a replacement."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the Deployment spec to run 5 replicas:"
+      yaml_template: |
+        spec:
+          ________: 5
+      expected: "replicas"
+      explanation: "The 'replicas' field specifies how many pods to maintain."
+      points: 10

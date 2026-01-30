@@ -1,0 +1,397 @@
+chapter:
+  number: 14
+  title: "Rollbacks"
+  description: "Learn how to undo deployments when things go wrong"
+
+concepts:
+  - title: "Why Rollbacks?"
+    content: |
+      Sometimes deployments fail. Rollbacks let you quickly return to a
+      working version.
+
+      **The Undo Button Analogy**
+
+      Think of rollbacks like Ctrl+Z in a document:
+      - You made a mistake → Undo!
+      - New version has a bug → Rollback!
+      - Customer complaints after update → Rollback!
+
+      **When to Rollback:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │              ROLLBACK SCENARIOS                          │
+      │                                                         │
+      │  ⚠️  New version crashes                                │
+      │      → Pods stuck in CrashLoopBackOff                  │
+      │                                                         │
+      │  ⚠️  New version is slower                              │
+      │      → User complaints, high latency                   │
+      │                                                         │
+      │  ⚠️  New version has bugs                               │
+      │      → Errors in logs, wrong behavior                  │
+      │                                                         │
+      │  ⚠️  Wrong image deployed                               │
+      │      → Oops, pushed wrong tag!                         │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Kubernetes Keeps History:**
+
+      Every time you update a deployment, Kubernetes saves the previous
+      version. By default, it keeps the last 10 revisions.
+
+      ```
+      Revision 1: nginx:1.19  ← Original
+      Revision 2: nginx:1.20  ← First update
+      Revision 3: nginx:1.21  ← Second update
+      Revision 4: nginx:buggy ← Current (broken!)
+                   ↓
+           ROLLBACK TO 3!
+                   ↓
+      Revision 5: nginx:1.21  ← Back to working
+      ```
+
+      **Key insight:** Rollbacks are fast because Kubernetes just switches
+      back to the old ReplicaSet configuration.
+    key_points:
+      - "Rollbacks undo failed deployments quickly"
+      - "Kubernetes keeps revision history (default: 10)"
+      - "Use when new version crashes or has bugs"
+      - "Rollback creates a NEW revision (doesn't delete history)"
+
+  - title: "Rollback Commands"
+    content: |
+      **View Rollout History:**
+
+      ```bash
+      kubectl rollout history deployment/web
+
+      # Output:
+      REVISION  CHANGE-CAUSE
+      1         <none>
+      2         kubectl set image deployment/web nginx=nginx:1.20
+      3         kubectl set image deployment/web nginx=nginx:1.21
+      4         kubectl set image deployment/web nginx=nginx:buggy
+      ```
+
+      **Rollback to Previous Version:**
+
+      ```bash
+      kubectl rollout undo deployment/web
+      # Goes back one revision (3 → 4 becomes 3)
+      ```
+
+      **Rollback to Specific Revision:**
+
+      ```bash
+      kubectl rollout undo deployment/web --to-revision=2
+      # Goes back to revision 2 specifically
+      ```
+
+      **View Specific Revision Details:**
+
+      ```bash
+      kubectl rollout history deployment/web --revision=2
+      # Shows what was in revision 2
+      ```
+
+      **How Rollback Works:**
+
+      ```
+      Before Rollback (Current: Rev 4)        After Rollback
+      ┌───────────────────────────┐          ┌───────────────────────────┐
+      │ ReplicaSet (Rev 4) ✓     │          │ ReplicaSet (Rev 4)        │
+      │   nginx:buggy             │          │   nginx:buggy             │
+      │   3 pods running          │    →     │   0 pods (scaled down)    │
+      │                           │          │                           │
+      │ ReplicaSet (Rev 3)        │          │ ReplicaSet (Rev 5) ✓     │
+      │   nginx:1.21              │          │   nginx:1.21              │
+      │   0 pods (scaled down)    │          │   3 pods running          │
+      └───────────────────────────┘          └───────────────────────────┘
+      ```
+
+      **Key insight:** Rollback is just another rolling update - but going
+      backwards to a known good version.
+    key_points:
+      - "kubectl rollout undo goes back one version"
+      - "--to-revision=N goes to a specific version"
+      - "View history with kubectl rollout history"
+      - "Rollback creates a new revision (not a time machine)"
+
+  - title: "Revision History Settings"
+    content: |
+      **Controlling History Length:**
+
+      By default, Kubernetes keeps 10 revisions. You can change this:
+
+      ```yaml
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        revisionHistoryLimit: 5    # Keep only 5 revisions
+        replicas: 3
+        # ... rest of spec
+      ```
+
+      **Why limit history?**
+      - Old ReplicaSets consume resources (etcd storage)
+      - Usually don't need to rollback beyond a few versions
+      - Set to 0 if you never want to rollback (not recommended)
+
+      **Recording Changes:**
+
+      To see meaningful change descriptions:
+
+      ```bash
+      # Old way (deprecated but still works)
+      kubectl set image deployment/web nginx=nginx:1.21 --record
+
+      # New way: use annotations
+      kubectl annotate deployment/web kubernetes.io/change-cause="Updated to nginx 1.21"
+      ```
+
+      **Best Practices:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │              ROLLBACK BEST PRACTICES                    │
+      │                                                         │
+      │  1. Always check rollout status after updates          │
+      │     kubectl rollout status deployment/web              │
+      │                                                         │
+      │  2. Document changes with --record or annotations      │
+      │                                                         │
+      │  3. Keep enough history for safety (5-10 revisions)    │
+      │                                                         │
+      │  4. Test in staging before production                  │
+      │                                                         │
+      │  5. Have monitoring to detect when rollback needed     │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Good change documentation makes rollbacks easier
+      because you can see exactly what each revision contains.
+    key_points:
+      - "revisionHistoryLimit controls how many revisions to keep"
+      - "Use --record or annotations to document changes"
+      - "Keep 5-10 revisions for safety"
+      - "Check rollout status to catch failures early"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create Deployment with History"
+    instructions: |
+      **What we're doing:** Create a deployment and update it to build history.
+
+      **Why this matters:** You need multiple revisions to practice rollbacks.
+
+      Create and update a deployment:
+    command_hint: "kubectl create deployment rollback-demo --image=nginx:1.19 && sleep 5 && kubectl set image deployment/rollback-demo nginx=nginx:1.20 && sleep 5 && kubectl set image deployment/rollback-demo nginx=nginx:1.21"
+    validation:
+      type: "command_output"
+      command: "kubectl rollout history deployment/rollback-demo"
+      expected_contains: "REVISION"
+    points: 10
+
+  - id: "cmd-02"
+    title: "View Rollout History"
+    instructions: |
+      **What we're doing:** See all the revisions of the deployment.
+
+      **Why this matters:** Before rolling back, you need to know what
+      versions are available.
+
+      **The command:**
+      ```
+      kubectl rollout history deployment/<name>
+      ```
+
+      View the deployment history:
+    command_hint: "kubectl rollout history deployment/rollback-demo"
+    validation:
+      type: "command_output"
+      command: "kubectl rollout history deployment/rollback-demo"
+      expected_contains: "REVISION"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Perform a Rollback"
+    instructions: |
+      **What we're doing:** Rollback to the previous version.
+
+      **Why this matters:** This is how you recover from a bad deployment.
+
+      **The command:**
+      ```
+      kubectl rollout undo deployment/<name>
+      ```
+
+      Rollback the deployment:
+    command_hint: "kubectl rollout undo deployment/rollback-demo"
+    validation:
+      type: "command_output"
+      command: "kubectl rollout status deployment/rollback-demo"
+      expected_contains: "successfully"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Bad Image Deployed"
+    description: |
+      Someone deployed a broken image and pods are crashing:
+
+      ```
+      NAME                         READY   STATUS             RESTARTS
+      bad-deploy-7d9f4b5f8-abc12   0/1     ImagePullBackOff   0
+      bad-deploy-7d9f4b5f8-def34   0/1     ImagePullBackOff   0
+      ```
+
+      Your mission: Rollback to fix the broken deployment!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: bad-deploy
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: bad
+        template:
+          metadata:
+            labels:
+              app: bad
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:doesnotexist
+    hints:
+      - "Check the current status: kubectl get pods -l app=bad"
+      - "View the history: kubectl rollout history deployment/bad-deploy"
+      - "Rollback: kubectl rollout undo deployment/bad-deploy"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get deployment bad-deploy"
+      expected_contains: "2/2"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Rollback to Specific Version"
+    description: |
+      You need to rollback to revision 1, not just the previous version.
+
+      Current: Revision 3
+      Previous: Revision 2 (also has issues)
+      Target: Revision 1 (the known good version)
+
+      Your mission: Rollback to revision 1!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: multi-revision
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: multi
+        template:
+          metadata:
+            labels:
+              app: multi
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:1.19
+    hints:
+      - "Check revision history: kubectl rollout history deployment/multi-revision"
+      - "Use --to-revision flag to specify exact revision"
+      - "Command: kubectl rollout undo deployment/multi-revision --to-revision=1"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl describe deployment multi-revision"
+      expected_contains: "nginx:1.19"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "command_challenge"
+      question: "Write the command to rollback deployment 'api' to the previous version"
+      expected_contains: "rollout undo"
+      alternatives:
+        - "kubectl rollout undo deployment/api"
+        - "kubectl rollout undo deployment api"
+      hint: "Use 'kubectl rollout undo'"
+      explanation: "`kubectl rollout undo deployment/api` goes back one revision."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does 'kubectl rollout undo' do?"
+      options:
+        - "Deletes the deployment"
+        - "Reverts to the previous revision"
+        - "Scales down to zero"
+        - "Pauses the deployment"
+      correct: 1
+      explanation: "'rollout undo' reverts to the previous working version."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to rollback to revision 2"
+      expected_contains: "--to-revision=2"
+      alternatives:
+        - "kubectl rollout undo deployment/web --to-revision=2"
+      hint: "Use --to-revision flag"
+      explanation: "`--to-revision=2` rolls back to a specific revision."
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the command to view deployment history:"
+      yaml_template: |
+        kubectl rollout _______ deployment/web
+      expected: "history"
+      explanation: "`kubectl rollout history` shows all past revisions."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How many revisions does Kubernetes keep by default?"
+      options:
+        - "2"
+        - "5"
+        - "10"
+        - "Unlimited"
+      correct: 2
+      explanation: "Default is 10 revisions. Change with revisionHistoryLimit."
+      points: 5
+
+    - type: "true_false"
+      question: "A rollback deletes the failed revision from history."
+      correct: false
+      explanation: "No! Rollback creates a NEW revision. Old ones stay in history."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to see details of revision 3"
+      expected_contains: "--revision=3"
+      alternatives:
+        - "kubectl rollout history deployment/web --revision=3"
+      hint: "Add --revision flag to history command"
+      explanation: "`kubectl rollout history deployment/web --revision=3` shows that revision."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "When should you rollback?"
+      options:
+        - "After every deployment"
+        - "When the new version has bugs or crashes"
+        - "Only on weekends"
+        - "Never - always fix forward"
+      correct: 1
+      explanation: "Rollback when the new version is broken. It's faster than debugging."
+      points: 5

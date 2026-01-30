@@ -1,0 +1,470 @@
+chapter:
+  number: 26
+  title: "Admission Control Overview"
+  description: "Understand how Kubernetes validates and modifies resources"
+
+concepts:
+  - title: "What is Admission Control?"
+    content: |
+      **Admission controllers** intercept API requests after authentication
+      but before the resource is stored. They can validate or modify requests.
+
+      **The Security Checkpoint Analogy**
+
+      Think of admission control like airport security:
+      1. **Authentication**: Check your ID (who are you?)
+      2. **Authorization (RBAC)**: Check your ticket (can you fly?)
+      3. **Admission Control**: Scan your bags (is this allowed?)
+
+      **Request Flow:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 API REQUEST FLOW                            │
+      │                                                             │
+      │   kubectl apply ──► API Server                             │
+      │                         │                                   │
+      │                    ┌────▼────┐                              │
+      │                    │  AuthN   │  Who are you?              │
+      │                    └────┬────┘                              │
+      │                         │                                   │
+      │                    ┌────▼────┐                              │
+      │                    │  AuthZ   │  Are you allowed? (RBAC)   │
+      │                    └────┬────┘                              │
+      │                         │                                   │
+      │            ┌────────────▼────────────┐                      │
+      │            │   Admission Control     │                      │
+      │            │                         │                      │
+      │            │  ┌─────────────────┐   │                      │
+      │            │  │    Mutating     │   │  Modify request      │
+      │            │  └────────┬────────┘   │                      │
+      │            │           │            │                      │
+      │            │  ┌────────▼────────┐   │                      │
+      │            │  │   Validating    │   │  Accept or reject    │
+      │            │  └─────────────────┘   │                      │
+      │            └────────────┬────────────┘                      │
+      │                         │                                   │
+      │                    ┌────▼────┐                              │
+      │                    │  etcd   │  Store resource             │
+      │                    └─────────┘                              │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Two Types:**
+
+      | Type | When | Purpose |
+      |------|------|---------|
+      | Mutating | First | Modify the request |
+      | Validating | Second | Accept or reject |
+
+      **Key insight:** Admission controllers enforce policies beyond RBAC.
+      They can require labels, inject sidecars, or block insecure configs.
+    key_points:
+      - "Runs after authentication and authorization"
+      - "Mutating controllers modify requests"
+      - "Validating controllers accept or reject"
+      - "Enforces policies beyond RBAC"
+
+  - title: "Common Admission Controllers"
+    content: |
+      Kubernetes includes many built-in admission controllers.
+
+      **Important Built-in Controllers:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │             COMMON ADMISSION CONTROLLERS                    │
+      │                                                             │
+      │   NamespaceLifecycle                                        │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Prevents creating resources in non-existent │          │
+      │   │ namespaces or deleting system namespaces    │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   LimitRanger                                               │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Enforces resource limits defined in         │          │
+      │   │ LimitRange objects                          │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   ResourceQuota                                             │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Enforces quotas defined in ResourceQuota   │          │
+      │   │ objects per namespace                       │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   PodSecurity                                               │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Enforces Pod Security Standards            │          │
+      │   │ (Privileged, Baseline, Restricted)         │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   DefaultStorageClass                                       │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Adds default StorageClass to PVCs that     │          │
+      │   │ don't specify one                           │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **LimitRange Example:**
+
+      ```yaml
+      apiVersion: v1
+      kind: LimitRange
+      metadata:
+        name: cpu-memory-limits
+        namespace: default
+      spec:
+        limits:
+        - type: Container
+          default:           # Default limits if not specified
+            cpu: "500m"
+            memory: "256Mi"
+          defaultRequest:    # Default requests if not specified
+            cpu: "100m"
+            memory: "128Mi"
+          max:               # Maximum allowed
+            cpu: "2"
+            memory: "1Gi"
+          min:               # Minimum allowed
+            cpu: "50m"
+            memory: "64Mi"
+      ```
+
+      **ResourceQuota Example:**
+
+      ```yaml
+      apiVersion: v1
+      kind: ResourceQuota
+      metadata:
+        name: namespace-quota
+        namespace: dev
+      spec:
+        hard:
+          pods: "10"
+          requests.cpu: "4"
+          requests.memory: "8Gi"
+          limits.cpu: "8"
+          limits.memory: "16Gi"
+      ```
+
+      **Key insight:** LimitRange sets defaults and boundaries per container.
+      ResourceQuota limits total resources in a namespace.
+    key_points:
+      - "LimitRange: default and max limits per container"
+      - "ResourceQuota: total limits per namespace"
+      - "PodSecurity: security policy enforcement"
+      - "Most are enabled by default in managed K8s"
+
+  - title: "Pod Security Standards"
+    content: |
+      **Pod Security Standards (PSS)** define security levels for pods.
+      They replaced the deprecated PodSecurityPolicy.
+
+      **Three Security Levels:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │              POD SECURITY STANDARDS                         │
+      │                                                             │
+      │   PRIVILEGED (most permissive)                              │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ • No restrictions                           │          │
+      │   │ • Use for system components only            │          │
+      │   │ • Example: kube-system pods                 │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   BASELINE (moderate)                                       │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ • Blocks known privilege escalations        │          │
+      │   │ • Allows most workloads                     │          │
+      │   │ • Good default for most apps                │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   RESTRICTED (most secure)                                  │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ • Strictest security                        │          │
+      │   │ • Non-root, drop capabilities               │          │
+      │   │ • Read-only root filesystem encouraged      │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Applying to Namespaces:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: production
+        labels:
+          pod-security.kubernetes.io/enforce: restricted
+          pod-security.kubernetes.io/audit: restricted
+          pod-security.kubernetes.io/warn: restricted
+      ```
+
+      **Three Modes:**
+
+      | Mode | Behavior |
+      |------|----------|
+      | enforce | Block violating pods |
+      | audit | Log violations but allow |
+      | warn | Show warning but allow |
+
+      **What Restricted Requires:**
+
+      - `runAsNonRoot: true`
+      - `allowPrivilegeEscalation: false`
+      - Drop all capabilities (except NET_BIND_SERVICE)
+      - Seccomp profile set
+      - No hostNetwork, hostPID, hostIPC
+
+      **Key insight:** Use `warn` mode first to find violations,
+      then switch to `enforce` once pods are compliant.
+    key_points:
+      - "Three levels: Privileged, Baseline, Restricted"
+      - "Apply via namespace labels"
+      - "enforce blocks, audit logs, warn displays"
+      - "Start with warn, move to enforce"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a LimitRange"
+    instructions: |
+      **What we're doing:** Set default resource limits for a namespace.
+
+      **Why this matters:** Prevents pods from consuming unlimited resources
+      and ensures every pod has resource settings.
+
+      Create a LimitRange:
+    command_hint: "kubectl create -f - <<EOF
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+spec:
+  limits:
+  - type: Container
+    default:
+      cpu: 500m
+      memory: 256Mi
+    defaultRequest:
+      cpu: 100m
+      memory: 128Mi
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get limitrange default-limits"
+      expected_contains: "default-limits"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Create a ResourceQuota"
+    instructions: |
+      **What we're doing:** Limit total resources in a namespace.
+
+      **Why this matters:** Prevents one team/namespace from consuming
+      all cluster resources.
+
+      Create a ResourceQuota:
+    command_hint: "kubectl create quota namespace-quota --hard=pods=5,requests.cpu=2,requests.memory=4Gi"
+    validation:
+      type: "command_output"
+      command: "kubectl get resourcequota namespace-quota"
+      expected_contains: "namespace-quota"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Check Quota Usage"
+    instructions: |
+      **What we're doing:** See how much of the quota is used.
+
+      **Why this matters:** Monitor resource consumption to avoid hitting limits.
+
+      View quota details:
+    command_hint: "kubectl describe resourcequota namespace-quota"
+    validation:
+      type: "command_output"
+      command: "kubectl describe resourcequota namespace-quota"
+      expected_contains: "Used"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Pod Rejected by LimitRange"
+    description: |
+      A pod creation fails with:
+
+      ```
+      Error: pods "big-pod" is forbidden: maximum cpu usage per Container
+      is 1, but limit is 2
+      ```
+
+      Your mission: Understand and fix the LimitRange issue!
+    manifest: |
+      apiVersion: v1
+      kind: LimitRange
+      metadata:
+        name: strict-limits
+      spec:
+        limits:
+        - type: Container
+          max:
+            cpu: "1"
+            memory: "512Mi"
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: big-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          resources:
+            limits:
+              cpu: "2"
+              memory: "256Mi"
+    hints:
+      - "The LimitRange sets max CPU to 1 but the pod requests 2"
+      - "Either increase the LimitRange max or decrease the pod's CPU limit"
+      - "Edit the pod to use cpu: 1 or less"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod big-pod -o jsonpath='{.spec.containers[0].resources.limits.cpu}'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Quota Exceeded"
+    description: |
+      Trying to create a pod but getting quota error:
+
+      ```
+      Error: pods "extra-pod" is forbidden: exceeded quota: namespace-quota,
+      requested: pods=1, used: pods=5, limited: pods=5
+      ```
+
+      Your mission: Investigate and resolve the quota issue!
+    manifest: |
+      apiVersion: v1
+      kind: ResourceQuota
+      metadata:
+        name: tight-quota
+      spec:
+        hard:
+          pods: "2"
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: pod-1
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: pod-2
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+    hints:
+      - "The quota only allows 2 pods and both are used"
+      - "Either delete a pod or increase the quota"
+      - "kubectl patch resourcequota tight-quota -p '{\"spec\":{\"hard\":{\"pods\":\"5\"}}}'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get resourcequota tight-quota -o jsonpath='{.spec.hard.pods}'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "When does admission control run in the request flow?"
+      options:
+        - "Before authentication"
+        - "Before authorization"
+        - "After authorization, before storage"
+        - "After the resource is stored"
+      correct: 2
+      explanation: "Admission runs after AuthN and AuthZ but before the resource is persisted."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What's the difference between mutating and validating admission?"
+      options:
+        - "Mutating rejects requests, validating modifies them"
+        - "Mutating modifies requests, validating accepts or rejects"
+        - "They are the same thing"
+        - "Mutating runs after validating"
+      correct: 1
+      explanation: "Mutating can modify requests; validating can only accept or reject them."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the LimitRange to set default CPU to 200m:"
+      yaml_template: |
+        spec:
+          limits:
+          - type: Container
+            _______:
+              cpu: "200m"
+      expected: "default"
+      explanation: "The 'default' field sets default limits for containers."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does ResourceQuota limit?"
+      options:
+        - "Limits per container"
+        - "Total resources in a namespace"
+        - "API request rate"
+        - "Network bandwidth"
+      correct: 1
+      explanation: "ResourceQuota sets aggregate limits for an entire namespace."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to view ResourceQuota 'dev-quota' details"
+      expected_contains: "describe"
+      alternatives:
+        - "kubectl describe resourcequota dev-quota"
+        - "kubectl describe quota dev-quota"
+      hint: "Use kubectl describe"
+      explanation: "`kubectl describe resourcequota dev-quota` shows usage and limits."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Which Pod Security Standard is most restrictive?"
+      options:
+        - "Privileged"
+        - "Baseline"
+        - "Restricted"
+        - "Standard"
+      correct: 2
+      explanation: "Restricted is the strictest, requiring non-root, no capabilities, etc."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the namespace label to enforce restricted security:"
+      yaml_template: |
+        labels:
+          pod-security.kubernetes.io/_______: restricted
+      expected: "enforce"
+      explanation: "enforce mode blocks pods that violate the policy."
+      points: 10
+
+    - type: "true_false"
+      question: "LimitRange can set default values for containers that don't specify resources."
+      correct: true
+      explanation: "LimitRange can inject default requests and limits for containers."
+      points: 5

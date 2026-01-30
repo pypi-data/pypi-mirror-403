@@ -1,0 +1,521 @@
+chapter:
+  number: 36
+  title: "Probe Configuration"
+  description: "Configure HTTP, TCP, and exec probes with proper timing"
+
+concepts:
+  - title: "Probe Types"
+    content: |
+      Kubernetes supports three probe mechanisms: HTTP, TCP, and exec.
+
+      **HTTP Probe (Most Common):**
+
+      ```yaml
+      livenessProbe:
+        httpGet:
+          path: /healthz
+          port: 8080
+          httpHeaders:            # Optional headers
+          - name: Custom-Header
+            value: Awesome
+          scheme: HTTP            # or HTTPS
+      ```
+
+      **TCP Probe:**
+
+      ```yaml
+      livenessProbe:
+        tcpSocket:
+          port: 3306              # Just checks if port is open
+      ```
+
+      **Exec Probe:**
+
+      ```yaml
+      livenessProbe:
+        exec:
+          command:
+          - cat
+          - /tmp/healthy
+      ```
+
+      **Comparison:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                   PROBE TYPES                               │
+      │                                                             │
+      │   HTTP Probe:                                               │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ ✓ Best for web applications                 │          │
+      │   │ ✓ Can check specific endpoints             │          │
+      │   │ ✓ Status 200-399 = success                 │          │
+      │   │ ✗ Requires HTTP endpoint                   │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   TCP Probe:                                                │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ ✓ Works for any TCP service                │          │
+      │   │ ✓ Good for databases, caches              │          │
+      │   │ ✓ Low overhead                             │          │
+      │   │ ✗ Only checks port, not app health        │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Exec Probe:                                               │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ ✓ Most flexible                            │          │
+      │   │ ✓ Can run any command                      │          │
+      │   │ ✓ Exit 0 = success                         │          │
+      │   │ ✗ Spawns process (overhead)                │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Key insight:** Use HTTP for web apps, TCP for databases/caches,
+      exec for complex custom checks.
+    key_points:
+      - "HTTP: check endpoint, 2xx/3xx = success"
+      - "TCP: just check if port is open"
+      - "Exec: run command, exit 0 = success"
+      - "Choose based on your application type"
+
+  - title: "Timing Parameters"
+    content: |
+      **Probe timing** determines how quickly failures are detected
+      and how often checks run.
+
+      **Timing Fields:**
+
+      ```yaml
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 15    # Wait before first probe
+        periodSeconds: 10          # How often to probe
+        timeoutSeconds: 3          # Timeout for each probe
+        successThreshold: 1        # Successes to be "healthy"
+        failureThreshold: 3        # Failures to be "unhealthy"
+      ```
+
+      **Visual Timeline:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    PROBE TIMELINE                           │
+      │                                                             │
+      │   Container starts                                          │
+      │   │                                                         │
+      │   ├── 0s:  Container running                               │
+      │   │                                                         │
+      │   │   (initialDelaySeconds: 15)                            │
+      │   │                                                         │
+      │   ├── 15s: First probe ──► Success ✓                       │
+      │   │                                                         │
+      │   │   (periodSeconds: 10)                                  │
+      │   │                                                         │
+      │   ├── 25s: Second probe ──► Success ✓                      │
+      │   │                                                         │
+      │   ├── 35s: Third probe ──► Fail ✗ (1/3)                   │
+      │   │                                                         │
+      │   ├── 45s: Fourth probe ──► Fail ✗ (2/3)                  │
+      │   │                                                         │
+      │   ├── 55s: Fifth probe ──► Fail ✗ (3/3)                   │
+      │   │                                                         │
+      │   └── 55s: Container restarted!                            │
+      │                                                             │
+      │   Time to detect failure: 40 seconds (from first failure)  │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Failure Detection Time:**
+
+      ```
+      Time to restart = initialDelaySeconds +
+                        (failureThreshold × periodSeconds)
+
+      Example:
+        initialDelaySeconds: 15
+        failureThreshold: 3
+        periodSeconds: 10
+
+      Worst case: 15 + (3 × 10) = 45 seconds
+      ```
+
+      **Best Practices:**
+
+      | Probe | initialDelay | period | timeout | failure |
+      |-------|-------------|--------|---------|---------|
+      | Liveness | App startup | 10-30s | 1-5s | 3 |
+      | Readiness | 0-5s | 5-10s | 1-3s | 3 |
+      | Startup | 0 | 5-10s | 1-3s | 30+ |
+
+      **Key insight:** Balance detection speed vs false positives.
+      Aggressive probes can cause unnecessary restarts.
+    key_points:
+      - "initialDelaySeconds: wait before first check"
+      - "periodSeconds: interval between checks"
+      - "failureThreshold: failures before action"
+      - "Balance speed vs stability"
+
+  - title: "Real-World Probe Examples"
+    content: |
+      **Web Application:**
+
+      ```yaml
+      containers:
+      - name: web
+        image: nginx
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 3
+      ```
+
+      **Database (MySQL):**
+
+      ```yaml
+      containers:
+      - name: mysql
+        image: mysql:8
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - mysql
+            - -h
+            - localhost
+            - -e
+            - "SELECT 1"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      ```
+
+      **Slow-Starting Java App:**
+
+      ```yaml
+      containers:
+      - name: java-app
+        image: java-app:latest
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          failureThreshold: 30     # 30 × 10 = 300s (5 min) to start
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          periodSeconds: 5
+      ```
+
+      **gRPC Service:**
+
+      ```yaml
+      containers:
+      - name: grpc-server
+        image: grpc-app:latest
+        livenessProbe:
+          grpc:                    # gRPC health check (K8s 1.24+)
+            port: 50051
+          initialDelaySeconds: 10
+        readinessProbe:
+          grpc:
+            port: 50051
+      ```
+
+      **Key insight:** Match your probe type to your application.
+      Use exec for complex checks, HTTP for web apps.
+    key_points:
+      - "Use app-specific health endpoints"
+      - "Databases: use native health commands"
+      - "Java/Spring: use actuator endpoints"
+      - "gRPC: use native gRPC health check"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Configure TCP Probe"
+    instructions: |
+      **What we're doing:** Add a TCP probe for a non-HTTP service.
+
+      **Why this matters:** Databases and caches need TCP probes.
+
+      Create a pod with TCP liveness probe:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tcp-probe-pod
+spec:
+  containers:
+  - name: redis
+    image: redis
+    livenessProbe:
+      tcpSocket:
+        port: 6379
+      initialDelaySeconds: 10
+      periodSeconds: 5
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod tcp-probe-pod -o jsonpath='{.spec.containers[0].livenessProbe.tcpSocket.port}'"
+      expected_contains: "6379"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Configure Exec Probe"
+    instructions: |
+      **What we're doing:** Add an exec probe that runs a custom command.
+
+      **Why this matters:** Some applications need custom health checks.
+
+      Create a pod with exec probe:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: exec-probe-pod
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ['sh', '-c', 'touch /tmp/healthy && sleep 3600']
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+      initialDelaySeconds: 5
+      periodSeconds: 5
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod exec-probe-pod -o jsonpath='{.spec.containers[0].livenessProbe.exec.command}'"
+      expected_contains: "cat"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Configure All Three Probes"
+    instructions: |
+      **What we're doing:** Configure startup, liveness, and readiness together.
+
+      **Why this matters:** Production apps often need all three.
+
+      Create a pod with all probes:
+    command_hint: "kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: full-probes-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    startupProbe:
+      httpGet:
+        path: /
+        port: 80
+      failureThreshold: 10
+      periodSeconds: 5
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80
+      periodSeconds: 5
+EOF"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod full-probes-pod -o yaml | grep -c 'Probe'"
+      expected_contains: ""
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Probe Times Out"
+    description: |
+      A probe keeps timing out because the health endpoint is slow:
+
+      ```
+      Warning  Unhealthy  Liveness probe failed: Get "http://..":
+      context deadline exceeded (Client.Timeout exceeded)
+      ```
+
+      Your mission: Fix the timeout configuration!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: slow-health
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            timeoutSeconds: 1
+            periodSeconds: 5
+    hints:
+      - "The default timeout is 1 second which may be too short"
+      - "Increase timeoutSeconds to give the health check more time"
+      - "Set timeoutSeconds to 5 or more"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod slow-health -o jsonpath='{.spec.containers[0].livenessProbe.timeoutSeconds}'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Wrong Probe Type"
+    description: |
+      An HTTP probe is configured for a database that doesn't have HTTP:
+
+      ```
+      Liveness probe failed: Get "http://...": connection refused
+      ```
+
+      Your mission: Change to the correct probe type!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: wrong-probe-type
+      spec:
+        containers:
+        - name: postgres
+          image: postgres:13
+          env:
+          - name: POSTGRES_PASSWORD
+            value: secret
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5432
+            initialDelaySeconds: 30
+    hints:
+      - "PostgreSQL doesn't have an HTTP endpoint"
+      - "Use TCP probe for database port checks"
+      - "Change httpGet to tcpSocket with port 5432"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pod wrong-probe-type -o jsonpath='{.spec.containers[0].livenessProbe.tcpSocket.port}'"
+      expected_contains: "5432"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "Which probe type is best for a MySQL database?"
+      options:
+        - "HTTP probe"
+        - "TCP probe or exec probe"
+        - "gRPC probe"
+        - "No probe needed"
+      correct: 1
+      explanation: "TCP checks if port is open, exec can run mysql commands."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the probe to check if port 6379 is open:"
+      yaml_template: |
+        livenessProbe:
+          _________:
+            port: 6379
+      expected: "tcpSocket"
+      explanation: "tcpSocket probe checks if a TCP connection can be made."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does timeoutSeconds control?"
+      options:
+        - "Time between probes"
+        - "Time to wait before first probe"
+        - "Maximum time for probe response"
+        - "Total time before restart"
+      correct: 2
+      explanation: "timeoutSeconds is how long to wait for a probe response."
+      points: 5
+
+    - type: "true_false"
+      question: "An exec probe succeeds if the command exits with code 0."
+      correct: true
+      explanation: "Exit code 0 = success, any other code = failure."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete to run a custom health check command:"
+      yaml_template: |
+        livenessProbe:
+          ____:
+            command:
+            - /bin/check-health.sh
+      expected: "exec"
+      explanation: "exec probe runs a command inside the container."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What HTTP status codes indicate a successful probe?"
+      options:
+        - "Only 200"
+        - "200-299"
+        - "200-399"
+        - "Any status code"
+      correct: 2
+      explanation: "HTTP probes consider 200-399 as success."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write a probe command to check if file /tmp/ready exists"
+      expected_contains: "/tmp/ready"
+      alternatives:
+        - "cat /tmp/ready"
+        - "test -f /tmp/ready"
+        - "ls /tmp/ready"
+      hint: "Use cat or test command"
+      explanation: "cat /tmp/ready or test -f /tmp/ready checks file existence."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What's the default value for failureThreshold?"
+      options:
+        - "1"
+        - "3"
+        - "5"
+        - "10"
+      correct: 1
+      explanation: "Default failureThreshold is 3 consecutive failures."
+      points: 5

@@ -1,0 +1,476 @@
+chapter:
+  number: 31
+  title: "Deployment Strategies"
+  description: "Learn advanced deployment patterns like blue-green and canary"
+
+concepts:
+  - title: "Rolling Update Strategy"
+    content: |
+      The default Kubernetes deployment strategy is **Rolling Update**.
+      It gradually replaces old pods with new ones.
+
+      **Already Covered in Chapter 13, but Let's Go Deeper:**
+
+      ```yaml
+      apiVersion: apps/v1
+      kind: Deployment
+      spec:
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 25%         # Extra pods during update
+            maxUnavailable: 25%   # Pods that can be down
+      ```
+
+      **maxSurge and maxUnavailable:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │              ROLLING UPDATE PARAMETERS                      │
+      │                                                             │
+      │   Deployment with 4 replicas:                               │
+      │                                                             │
+      │   maxSurge: 1 (25%)                                         │
+      │   ┌───────────────────────────────────────────────────┐    │
+      │   │ Can have UP TO 5 pods during update               │    │
+      │   │ (4 replicas + 1 extra)                            │    │
+      │   └───────────────────────────────────────────────────┘    │
+      │                                                             │
+      │   maxUnavailable: 1 (25%)                                   │
+      │   ┌───────────────────────────────────────────────────┐    │
+      │   │ Must have AT LEAST 3 pods available               │    │
+      │   │ (4 replicas - 1 unavailable)                      │    │
+      │   └───────────────────────────────────────────────────┘    │
+      │                                                             │
+      │   Update flow:                                              │
+      │   [v1][v1][v1][v1] → [v1][v1][v1][v2] → [v1][v1][v2][v2]   │
+      │   → [v1][v2][v2][v2] → [v2][v2][v2][v2]                    │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **When to Use Rolling Update:**
+      - Standard deployments
+      - When brief mixed versions are acceptable
+      - When you don't need instant rollback
+
+      **Key insight:** Rolling updates balance speed and availability.
+      Tune maxSurge/maxUnavailable based on your needs.
+    key_points:
+      - "Default strategy for Deployments"
+      - "maxSurge: extra pods allowed during update"
+      - "maxUnavailable: pods that can be down"
+      - "Both can be absolute numbers or percentages"
+
+  - title: "Blue-Green Deployment"
+    content: |
+      **Blue-Green** runs two complete environments, switching traffic instantly.
+
+      **The Stage Performance Analogy**
+
+      - **Blue stage**: Current show playing
+      - **Green stage**: Next show rehearsing
+      - When ready: Open curtain to green, close blue
+
+      **How It Works:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 BLUE-GREEN DEPLOYMENT                       │
+      │                                                             │
+      │   Step 1: Blue is live                                      │
+      │   ┌───────────────┐                                        │
+      │   │    Service    │───────► [Blue v1] [Blue v1] [Blue v1] │
+      │   │ selector:     │                                        │
+      │   │  version: blue│         [Green] (not deployed yet)    │
+      │   └───────────────┘                                        │
+      │                                                             │
+      │   Step 2: Deploy Green                                      │
+      │   ┌───────────────┐                                        │
+      │   │    Service    │───────► [Blue v1] [Blue v1] [Blue v1] │
+      │   │ selector:     │                                        │
+      │   │  version: blue│         [Green v2] [Green v2] [Green v2]│
+      │   └───────────────┘                (running, not receiving traffic)│
+      │                                                             │
+      │   Step 3: Switch traffic                                    │
+      │   ┌───────────────┐                                        │
+      │   │    Service    │         [Blue v1] (still running)     │
+      │   │ selector:     │                                        │
+      │   │  version:green│───────► [Green v2] [Green v2] [Green v2]│
+      │   └───────────────┘                                        │
+      │                                                             │
+      │   Step 4: Remove Blue (optional)                           │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Implementation:**
+
+      ```yaml
+      # Blue Deployment
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app-blue
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: myapp
+            version: blue
+        template:
+          metadata:
+            labels:
+              app: myapp
+              version: blue
+
+      # Service (switch selector to change versions)
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: myapp
+      spec:
+        selector:
+          app: myapp
+          version: blue    # Change to 'green' to switch
+      ```
+
+      **Pros and Cons:**
+
+      | Pros | Cons |
+      |------|------|
+      | Instant rollback | Double resources needed |
+      | Full testing before switch | More complex setup |
+      | No mixed versions | Requires orchestration |
+
+      **Key insight:** Blue-green gives you instant switchover and
+      rollback, but costs twice the resources during deployment.
+    key_points:
+      - "Two identical environments"
+      - "Switch traffic by updating Service selector"
+      - "Instant rollback by switching back"
+      - "Requires 2x resources during deployment"
+
+  - title: "Canary Deployment"
+    content: |
+      **Canary** gradually shifts traffic to the new version.
+
+      **The Coal Mine Canary Analogy**
+
+      Miners used canaries to detect gas - if the bird was fine, safe to proceed.
+      Canary deployments test new versions with a small percentage of traffic.
+
+      **How It Works:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                  CANARY DEPLOYMENT                          │
+      │                                                             │
+      │   Step 1: All traffic to stable                             │
+      │   ┌───────────┐                                            │
+      │   │  Service  │────► [Stable][Stable][Stable][Stable]      │
+      │   │ app=myapp │                        100% traffic        │
+      │   └───────────┘                                            │
+      │                                                             │
+      │   Step 2: Deploy canary (10% traffic)                      │
+      │   ┌───────────┐                                            │
+      │   │  Service  │────► [Stable][Stable][Stable][Stable]      │
+      │   │ app=myapp │                        90% traffic         │
+      │   └───────────┘                                            │
+      │        └──────────► [Canary]                               │
+      │                      10% traffic                           │
+      │                                                             │
+      │   Step 3: If good, increase canary                         │
+      │   ┌───────────┐                                            │
+      │   │  Service  │────► [Stable][Stable]                      │
+      │   │ app=myapp │       50% traffic                          │
+      │   └───────────┘                                            │
+      │        └──────────► [Canary][Canary]                       │
+      │                      50% traffic                           │
+      │                                                             │
+      │   Step 4: Complete rollout                                 │
+      │   ┌───────────┐                                            │
+      │   │  Service  │────► [Canary][Canary][Canary][Canary]      │
+      │   │ app=myapp │                        100% traffic        │
+      │   └───────────┘                                            │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Basic Canary with Replica Counts:**
+
+      ```yaml
+      # Stable deployment (90%)
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app-stable
+      spec:
+        replicas: 9
+        selector:
+          matchLabels:
+            app: myapp
+
+      # Canary deployment (10%)
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app-canary
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: myapp    # Same label! Service hits both
+      ```
+
+      **Traffic Splitting:**
+      - Simple: Adjust replica ratio (9:1 = 90%:10%)
+      - Advanced: Use Ingress controllers or service mesh
+
+      **Key insight:** Canary lets you test in production with real traffic
+      while limiting blast radius if something goes wrong.
+    key_points:
+      - "Gradual traffic shift to new version"
+      - "Start small (1-10%), increase if healthy"
+      - "Both versions share same Service selector"
+      - "Replica ratio controls traffic percentage"
+
+command_practice:
+  - id: "cmd-01"
+    title: "View Deployment Strategy"
+    instructions: |
+      **What we're doing:** Check the current deployment strategy settings.
+
+      **Why this matters:** Understanding your strategy helps plan updates.
+
+      Create a deployment and view its strategy:
+    command_hint: "kubectl create deployment strategy-demo --image=nginx && kubectl get deployment strategy-demo -o yaml | grep -A5 strategy"
+    validation:
+      type: "command_output"
+      command: "kubectl get deployment strategy-demo"
+      expected_contains: "strategy-demo"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Configure Rolling Update"
+    instructions: |
+      **What we're doing:** Customize the rolling update parameters.
+
+      **Why this matters:** Different apps need different update speeds.
+
+      Patch the deployment with custom strategy:
+    command_hint: "kubectl patch deployment strategy-demo -p '{\"spec\":{\"strategy\":{\"type\":\"RollingUpdate\",\"rollingUpdate\":{\"maxSurge\":1,\"maxUnavailable\":0}}}}'"
+    validation:
+      type: "command_output"
+      command: "kubectl get deployment strategy-demo -o jsonpath='{.spec.strategy.rollingUpdate.maxUnavailable}'"
+      expected_contains: "0"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Create Blue-Green Setup"
+    instructions: |
+      **What we're doing:** Create two deployments for blue-green pattern.
+
+      **Why this matters:** This is the foundation for instant cutover.
+
+      Create blue and green deployments:
+    command_hint: "kubectl create deployment app-blue --image=nginx && kubectl label deployment app-blue version=blue && kubectl create deployment app-green --image=nginx && kubectl label deployment app-green version=green"
+    validation:
+      type: "command_output"
+      command: "kubectl get deployments -l version"
+      expected_contains: "blue"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Slow Rolling Update"
+    description: |
+      A deployment update is taking too long because only one pod
+      updates at a time:
+
+      ```
+      $ kubectl rollout status deployment/slow-app
+      Waiting for deployment "slow-app" rollout to finish: 1 out of 10 replicas updated...
+      ```
+
+      Your mission: Speed up the update by allowing more parallelism!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: slow-app
+      spec:
+        replicas: 10
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 1
+            maxUnavailable: 0
+        selector:
+          matchLabels:
+            app: slow
+        template:
+          metadata:
+            labels:
+              app: slow
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+    hints:
+      - "maxSurge: 1 and maxUnavailable: 0 means only 1 pod updates at a time"
+      - "Increase maxSurge or maxUnavailable for faster updates"
+      - "kubectl patch deployment slow-app -p '{\"spec\":{\"strategy\":{\"rollingUpdate\":{\"maxSurge\":3,\"maxUnavailable\":2}}}}'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get deployment slow-app -o jsonpath='{.spec.strategy.rollingUpdate.maxSurge}'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Switch Blue-Green"
+    description: |
+      You have blue and green deployments running. Currently blue is live.
+      You need to switch traffic to green.
+
+      Your mission: Update the service to point to green!
+    manifest: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: bg-blue
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: bgapp
+            version: blue
+        template:
+          metadata:
+            labels:
+              app: bgapp
+              version: blue
+          spec:
+            containers:
+            - name: nginx
+              image: nginx
+      ---
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: bg-green
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: bgapp
+            version: green
+        template:
+          metadata:
+            labels:
+              app: bgapp
+              version: green
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:alpine
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: bgapp-svc
+      spec:
+        selector:
+          app: bgapp
+          version: blue
+        ports:
+        - port: 80
+    hints:
+      - "The service selector currently points to version: blue"
+      - "Change the selector to point to version: green"
+      - "kubectl patch svc bgapp-svc -p '{\"spec\":{\"selector\":{\"version\":\"green\"}}}'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get svc bgapp-svc -o jsonpath='{.spec.selector.version}'"
+      expected_contains: "green"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the default deployment strategy in Kubernetes?"
+      options:
+        - "Blue-Green"
+        - "Canary"
+        - "RollingUpdate"
+        - "Recreate"
+      correct: 2
+      explanation: "RollingUpdate is the default, gradually replacing pods."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the strategy to allow 2 extra pods during update:"
+      yaml_template: |
+        strategy:
+          rollingUpdate:
+            ________: 2
+      expected: "maxSurge"
+      explanation: "maxSurge controls how many extra pods can exist during update."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How do you switch traffic in a blue-green deployment?"
+      options:
+        - "Scale blue to 0"
+        - "Delete blue deployment"
+        - "Change the Service selector"
+        - "Restart the pods"
+      correct: 2
+      explanation: "Update the Service selector to point to green instead of blue."
+      points: 5
+
+    - type: "true_false"
+      question: "Canary deployments require a service mesh."
+      correct: false
+      explanation: "Basic canary works with replica ratios. Service mesh enables precise control."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What does maxUnavailable: 0 mean?"
+      options:
+        - "All pods can be unavailable"
+        - "No pods can be down during update"
+        - "Update is disabled"
+        - "Rollback is disabled"
+      correct: 1
+      explanation: "maxUnavailable: 0 ensures all replicas stay available during update."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the strategy type for instant replacement:"
+      yaml_template: |
+        strategy:
+          type: ________
+      expected: "Recreate"
+      explanation: "Recreate kills all old pods before creating new ones (downtime!)."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "In canary deployment, how is traffic split controlled?"
+      options:
+        - "By pod resource limits"
+        - "By replica ratio between deployments"
+        - "By node affinity"
+        - "By namespace"
+      correct: 1
+      explanation: "With 9 stable and 1 canary pods, ~10% traffic goes to canary."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to pause a deployment rollout"
+      expected_contains: "rollout pause"
+      alternatives:
+        - "kubectl rollout pause deployment/myapp"
+      hint: "Use kubectl rollout pause"
+      explanation: "`kubectl rollout pause` stops the rollout for inspection."
+      points: 10

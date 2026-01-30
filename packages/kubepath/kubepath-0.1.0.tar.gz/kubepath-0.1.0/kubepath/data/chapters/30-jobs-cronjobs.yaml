@@ -1,0 +1,430 @@
+chapter:
+  number: 30
+  title: "Jobs & CronJobs"
+  description: "Run one-time tasks and scheduled batch workloads"
+
+concepts:
+  - title: "Jobs for One-Time Tasks"
+    content: |
+      **Jobs** run a task to completion, then stop. Unlike Deployments,
+      they're designed for batch work, not long-running services.
+
+      **The Task vs Service Analogy**
+
+      - **Deployment** = Receptionist (always there, handles incoming requests)
+      - **Job** = Moving company (comes, does the job, leaves)
+
+      **When to Use Jobs:**
+      - Database migrations
+      - Batch processing
+      - Sending emails
+      - Data export/import
+      - One-time setup tasks
+
+      **Job Flow:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                      JOB LIFECYCLE                          │
+      │                                                             │
+      │   Job Created ──► Pod Started ──► Work Done ──► Completed  │
+      │                        │              │                     │
+      │                        │              ▼                     │
+      │                        │         ┌─────────┐               │
+      │                        │         │ Success │               │
+      │                        │         └─────────┘               │
+      │                        │                                    │
+      │                        └──► Failed ──► Retry?              │
+      │                                          │                  │
+      │                               ┌──────────┴──────────┐      │
+      │                               ▼                     ▼      │
+      │                          Retry (up to           Give up    │
+      │                          backoffLimit)                     │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Job YAML:**
+
+      ```yaml
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: data-export
+      spec:
+        template:
+          spec:
+            containers:
+            - name: export
+              image: busybox
+              command: ["sh", "-c", "echo 'Exporting data...' && sleep 10"]
+            restartPolicy: Never     # Required for Jobs!
+        backoffLimit: 4              # Retry up to 4 times
+      ```
+
+      **Key insight:** Jobs ensure your task runs to completion.
+      If it fails, Kubernetes retries automatically.
+    key_points:
+      - "Jobs run tasks to completion then stop"
+      - "restartPolicy must be Never or OnFailure"
+      - "backoffLimit controls retry attempts"
+      - "Use for batch work, not services"
+
+  - title: "Job Configuration Options"
+    content: |
+      **Parallelism and Completions:**
+
+      ```yaml
+      spec:
+        completions: 5       # Run 5 successful pods total
+        parallelism: 2       # Run 2 pods at a time
+      ```
+
+      **Work Queue Pattern:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                    JOB PATTERNS                             │
+      │                                                             │
+      │   Single Task (default):                                    │
+      │   ┌──────────────────────────────────────────┐             │
+      │   │  completions: 1, parallelism: 1          │             │
+      │   │  One pod runs, job completes             │             │
+      │   └──────────────────────────────────────────┘             │
+      │                                                             │
+      │   Multiple Sequential:                                      │
+      │   ┌──────────────────────────────────────────┐             │
+      │   │  completions: 5, parallelism: 1          │             │
+      │   │  [1]──►[2]──►[3]──►[4]──►[5]──►Done    │             │
+      │   └──────────────────────────────────────────┘             │
+      │                                                             │
+      │   Multiple Parallel:                                        │
+      │   ┌──────────────────────────────────────────┐             │
+      │   │  completions: 6, parallelism: 3          │             │
+      │   │  [1][2][3]──►[4][5][6]──►Done           │             │
+      │   └──────────────────────────────────────────┘             │
+      │                                                             │
+      │   Work Queue:                                               │
+      │   ┌──────────────────────────────────────────┐             │
+      │   │  completions: unset, parallelism: 3     │             │
+      │   │  Pods process until queue is empty       │             │
+      │   └──────────────────────────────────────────┘             │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Timeout and Cleanup:**
+
+      ```yaml
+      spec:
+        activeDeadlineSeconds: 600    # Kill job after 10 minutes
+        ttlSecondsAfterFinished: 300  # Delete job 5 min after completion
+        backoffLimit: 3               # Max 3 retries
+      ```
+
+      **Restart Policies:**
+
+      | Policy | Behavior |
+      |--------|----------|
+      | Never | Create new pod on failure |
+      | OnFailure | Restart container in same pod |
+
+      **Viewing Job Status:**
+
+      ```bash
+      $ kubectl get jobs
+      NAME          COMPLETIONS   DURATION   AGE
+      data-export   1/1           30s        2m
+
+      $ kubectl describe job data-export
+      # Shows events, pod status
+
+      $ kubectl get pods --selector=job-name=data-export
+      # Shows pods created by job
+      ```
+
+      **Key insight:** Use `ttlSecondsAfterFinished` to automatically
+      clean up completed Jobs and their pods.
+    key_points:
+      - "completions: how many successful pods needed"
+      - "parallelism: how many pods run at once"
+      - "activeDeadlineSeconds: job timeout"
+      - "ttlSecondsAfterFinished: auto cleanup"
+
+  - title: "CronJobs for Scheduled Tasks"
+    content: |
+      **CronJobs** run Jobs on a schedule. Think of them as cron for Kubernetes.
+
+      **The Scheduled Maintenance Analogy**
+
+      - **Job** = Calling a plumber when pipe breaks
+      - **CronJob** = Scheduled monthly HVAC maintenance
+
+      **CronJob YAML:**
+
+      ```yaml
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: nightly-backup
+      spec:
+        schedule: "0 2 * * *"        # Every day at 2 AM
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: backup
+                  image: backup-tool
+                  command: ["backup.sh"]
+                restartPolicy: OnFailure
+        successfulJobsHistoryLimit: 3
+        failedJobsHistoryLimit: 1
+      ```
+
+      **Cron Schedule Format:**
+
+      ```
+      ┌───────────── minute (0 - 59)
+      │ ┌───────────── hour (0 - 23)
+      │ │ ┌───────────── day of month (1 - 31)
+      │ │ │ ┌───────────── month (1 - 12)
+      │ │ │ │ ┌───────────── day of week (0 - 6) (Sunday=0)
+      │ │ │ │ │
+      * * * * *
+
+      Examples:
+      "*/5 * * * *"     Every 5 minutes
+      "0 * * * *"       Every hour
+      "0 0 * * *"       Every day at midnight
+      "0 2 * * 0"       Every Sunday at 2 AM
+      "0 0 1 * *"       First day of every month
+      ```
+
+      **CronJob Policies:**
+
+      ```yaml
+      spec:
+        concurrencyPolicy: Forbid    # What if previous run still going?
+        # Allow = start new anyway (default)
+        # Forbid = skip this run
+        # Replace = kill previous, start new
+
+        startingDeadlineSeconds: 200  # How late can it start?
+        suspend: false                # Pause scheduling?
+      ```
+
+      **Key insight:** CronJobs create Jobs on schedule. Each Job
+      creates pods. Use history limits to control cleanup.
+    key_points:
+      - "CronJobs create Jobs on a schedule"
+      - "Uses standard cron syntax"
+      - "concurrencyPolicy controls overlap"
+      - "History limits prevent resource buildup"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a Job"
+    instructions: |
+      **What we're doing:** Create a simple Job that runs to completion.
+
+      **Why this matters:** Jobs are essential for one-time tasks
+      like migrations and data processing.
+
+      Create a Job:
+    command_hint: "kubectl create job hello-job --image=busybox -- sh -c 'echo Hello from the job && sleep 5'"
+    validation:
+      type: "command_output"
+      command: "kubectl get job hello-job"
+      expected_contains: "hello-job"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Watch Job Completion"
+    instructions: |
+      **What we're doing:** Monitor the job until it completes.
+
+      **Why this matters:** You need to verify jobs complete successfully.
+
+      Check job status:
+    command_hint: "kubectl get jobs hello-job -w"
+    validation:
+      type: "command_output"
+      command: "kubectl get job hello-job -o jsonpath='{.status.succeeded}'"
+      expected_contains: "1"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Create a CronJob"
+    instructions: |
+      **What we're doing:** Create a scheduled job that runs periodically.
+
+      **Why this matters:** CronJobs automate recurring tasks.
+
+      Create a CronJob that runs every minute:
+    command_hint: "kubectl create cronjob minute-job --schedule='*/1 * * * *' --image=busybox -- sh -c 'echo Running at $(date)'"
+    validation:
+      type: "command_output"
+      command: "kubectl get cronjob minute-job"
+      expected_contains: "minute-job"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Job Keeps Failing"
+    description: |
+      A Job fails and keeps creating new pods:
+
+      ```
+      $ kubectl get pods
+      NAME              READY   STATUS   RESTARTS
+      failing-job-abc   0/1     Error    0
+      failing-job-def   0/1     Error    0
+      failing-job-ghi   0/1     Error    0
+      ```
+
+      Your mission: Fix the Job so it completes successfully!
+    manifest: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: failing-job
+      spec:
+        backoffLimit: 3
+        template:
+          spec:
+            containers:
+            - name: worker
+              image: busybox
+              command: ["sh", "-c", "exit 1"]
+            restartPolicy: Never
+    hints:
+      - "The command 'exit 1' always fails"
+      - "Check the job's pod logs: kubectl logs job/failing-job"
+      - "Fix the command to exit 0 for success"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get job failing-job -o jsonpath='{.status.succeeded}'"
+      expected_contains: "1"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "CronJob Not Running"
+    description: |
+      A CronJob was created but no Jobs are being created:
+
+      ```
+      $ kubectl get cronjobs
+      NAME           SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE
+      backup-job     * * * * *   True      0        <none>
+      ```
+
+      Your mission: Make the CronJob run!
+    manifest: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: suspended-cron
+      spec:
+        schedule: "*/1 * * * *"
+        suspend: true
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: backup
+                  image: busybox
+                  command: ["echo", "backup complete"]
+                restartPolicy: OnFailure
+    hints:
+      - "Look at the SUSPEND column - it shows True"
+      - "The CronJob is suspended"
+      - "kubectl patch cronjob suspended-cron -p '{\"spec\":{\"suspend\":false}}'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get cronjob suspended-cron -o jsonpath='{.spec.suspend}'"
+      expected_contains: "false"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the difference between a Deployment and a Job?"
+      options:
+        - "Deployments are faster than Jobs"
+        - "Jobs run to completion then stop, Deployments run continuously"
+        - "Jobs can only have one pod"
+        - "There is no difference"
+      correct: 1
+      explanation: "Jobs complete a task and stop. Deployments keep pods running."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the Job spec to allow 3 retries:"
+      yaml_template: |
+        spec:
+          ____________: 3
+          template:
+            spec:
+              restartPolicy: Never
+      expected: "backoffLimit"
+      explanation: "backoffLimit sets the number of retries before the job fails."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What restartPolicy is valid for Jobs?"
+      options:
+        - "Always"
+        - "Never or OnFailure"
+        - "Restart"
+        - "Any policy"
+      correct: 1
+      explanation: "Jobs must use Never or OnFailure. 'Always' would conflict with job completion."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the cron schedule for 'every day at 3 AM'"
+      expected_contains: "0 3"
+      alternatives:
+        - "0 3 * * *"
+      hint: "Format: minute hour day month weekday"
+      explanation: "0 3 * * * = minute 0, hour 3, every day"
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the CronJob to run every 5 minutes:"
+      yaml_template: |
+        spec:
+          schedule: "__________"
+      expected: "*/5 * * * *"
+      explanation: "*/5 * * * * means every 5 minutes."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does 'concurrencyPolicy: Forbid' do?"
+      options:
+        - "Allows multiple jobs to run at once"
+        - "Skips the run if previous job is still running"
+        - "Kills the previous job and starts new one"
+        - "Suspends the CronJob"
+      correct: 1
+      explanation: "Forbid skips new runs if the previous one hasn't finished."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to create a Job named 'test' with busybox image"
+      expected_contains: "create job"
+      alternatives:
+        - "kubectl create job test --image=busybox"
+        - "kubectl create job test --image=busybox -- echo test"
+      hint: "Use kubectl create job"
+      explanation: "`kubectl create job test --image=busybox`"
+      points: 10
+
+    - type: "true_false"
+      question: "CronJobs create new Jobs according to their schedule."
+      correct: true
+      explanation: "Each scheduled run creates a new Job, which creates pod(s)."
+      points: 5

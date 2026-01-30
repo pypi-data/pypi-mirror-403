@@ -1,0 +1,462 @@
+chapter:
+  number: 10
+  title: "Labels, Selectors & Annotations"
+  description: "Organize and query Kubernetes resources effectively"
+
+concepts:
+  - title: "What are Labels?"
+    content: |
+      **Labels** are key-value pairs attached to resources for organization
+      and selection.
+
+      **The Clothing Tags Analogy**
+
+      Think of labels like tags on clothes:
+      - **brand**: nike
+      - **size**: medium
+      - **color**: blue
+
+      You can find all blue items, all Nike items, or all medium blue Nike items!
+
+      ```yaml
+      metadata:
+        name: my-pod
+        labels:              # Labels for this pod
+          app: frontend      # What app is this?
+          env: production    # What environment?
+          version: v1.2      # What version?
+          team: checkout     # What team owns it?
+      ```
+
+      **Visual representation:**
+
+      ```
+      ┌────────────────────────────────────────────────────────┐
+      │                    YOUR CLUSTER                         │
+      │                                                        │
+      │   ┌─────────────────┐    ┌─────────────────┐          │
+      │   │ frontend-1      │    │ frontend-2      │          │
+      │   │ app=frontend    │    │ app=frontend    │          │
+      │   │ env=prod        │    │ env=staging     │          │
+      │   └─────────────────┘    └─────────────────┘          │
+      │                                                        │
+      │   ┌─────────────────┐    ┌─────────────────┐          │
+      │   │ backend-1       │    │ database        │          │
+      │   │ app=backend     │    │ app=database    │          │
+      │   │ env=prod        │    │ env=prod        │          │
+      │   └─────────────────┘    └─────────────────┘          │
+      │                                                        │
+      │  Query: app=frontend           → 2 pods               │
+      │  Query: env=prod               → 3 pods               │
+      │  Query: app=frontend,env=prod  → 1 pod                │
+      └────────────────────────────────────────────────────────┘
+      ```
+
+      **Common Label Patterns:**
+
+      | Label | Purpose | Example |
+      |-------|---------|---------|
+      | app | Application name | app=nginx |
+      | env | Environment | env=production |
+      | version | Version number | version=v1.2.3 |
+      | tier | Application tier | tier=frontend |
+      | team | Owning team | team=platform |
+
+      **Key insight:** Labels are for **selection**. Use them to group and
+      query resources.
+    key_points:
+      - "Labels are key-value pairs for organization"
+      - "Used to select groups of resources"
+      - "Multiple labels can be combined in queries"
+      - "Common labels: app, env, version, tier, team"
+
+  - title: "Using Selectors"
+    content: |
+      **Selectors** find resources based on their labels.
+
+      **Command Line Selectors:**
+
+      ```bash
+      # Equality-based: find exact matches
+      kubectl get pods -l app=frontend
+      kubectl get pods -l env=production
+      kubectl get pods -l app=frontend,env=production  # AND
+
+      # Set-based: more flexible matching
+      kubectl get pods -l 'env in (staging, production)'
+      kubectl get pods -l 'app notin (database)'
+      kubectl get pods -l 'version'  # Has this label
+      kubectl get pods -l '!version' # Doesn't have this label
+      ```
+
+      **Selector Operators:**
+
+      | Operator | Meaning | Example |
+      |----------|---------|---------|
+      | `=` or `==` | Equals | app=frontend |
+      | `!=` | Not equals | env!=test |
+      | `in` | In set | env in (prod, staging) |
+      | `notin` | Not in set | app notin (legacy) |
+      | exists | Has label | version |
+      | does not exist | Missing label | !experimental |
+
+      **In YAML (for Services, Deployments):**
+
+      ```yaml
+      selector:
+        matchLabels:           # Simple equality
+          app: frontend
+          env: production
+
+        matchExpressions:      # Complex expressions
+        - key: version
+          operator: In
+          values: [v1, v2]
+      ```
+
+      **How Services Use Selectors:**
+
+      ```
+      Service (selector: app=frontend)
+                    │
+                    │  Finds all pods with app=frontend
+                    │
+              ┌─────┴─────┐
+              ▼           ▼
+         ┌────────┐  ┌────────┐
+         │ Pod    │  │ Pod    │
+         │app=    │  │app=    │
+         │frontend│  │frontend│
+         └────────┘  └────────┘
+      ```
+
+      **Key insight:** Selectors are how Services find Pods, how Deployments
+      manage Pods, and how you query resources.
+    key_points:
+      - "-l flag for command line label selection"
+      - "Equality: =, !=, Set: in, notin"
+      - "Combine multiple labels with commas (AND)"
+      - "Services use selectors to find their pods"
+
+  - title: "Annotations"
+    content: |
+      **Annotations** are for storing non-identifying information.
+
+      **Labels vs Annotations:**
+
+      | | Labels | Annotations |
+      |---|--------|-------------|
+      | Purpose | Selection & grouping | Metadata storage |
+      | Can select with? | Yes | No |
+      | Size limit | 63 chars | 256KB |
+      | Examples | app=nginx | build.version="abc123" |
+
+      **Common Annotation Uses:**
+
+      ```yaml
+      metadata:
+        name: my-pod
+        annotations:
+          # Build information
+          kubernetes.io/change-cause: "Update to v1.2"
+          build.git.commit: "abc123def456"
+
+          # Documentation
+          description: "Main web frontend server"
+
+          # Tool configuration
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "9090"
+
+          # Contact info
+          owner: "platform-team@example.com"
+      ```
+
+      **When to use which:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                                                         │
+      │  Need to SELECT resources based on it?                  │
+      │         │                                               │
+      │         ├── YES ──► Use LABEL                           │
+      │         │           (app=frontend, env=prod)            │
+      │         │                                               │
+      │         └── NO ──► Use ANNOTATION                       │
+      │                    (description, build info, config)    │
+      │                                                         │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **Viewing Annotations:**
+
+      ```bash
+      kubectl describe pod my-pod  # Shows in output
+
+      kubectl get pod my-pod -o jsonpath='{.metadata.annotations}'
+      ```
+
+      **Key insight:** Labels are for grouping and selection. Annotations
+      are for everything else (documentation, tool config, audit info).
+    key_points:
+      - "Annotations store non-identifying metadata"
+      - "Can't select resources by annotations"
+      - "No size limit restrictions"
+      - "Used for: build info, documentation, tool config"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Add Labels to a Pod"
+    instructions: |
+      **What we're doing:** Create a pod with labels, then add more labels.
+
+      **Why this matters:** Labels are essential for organization. You'll use
+      them constantly in production.
+
+      **Adding labels at creation:**
+      ```
+      kubectl run nginx --image=nginx --labels="app=web,env=dev"
+      ```
+
+      **Adding labels to existing resources:**
+      ```
+      kubectl label pod nginx tier=frontend
+      ```
+
+      Create a labeled pod:
+    command_hint: "kubectl run labeled-pod --image=nginx --labels='app=demo,env=test'"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod labeled-pod --show-labels"
+      expected_contains: "app=demo"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Select Pods by Label"
+    instructions: |
+      **What we're doing:** Find pods using label selectors.
+
+      **Why this matters:** In a cluster with hundreds of pods, selectors
+      let you find exactly what you need.
+
+      **The -l flag:**
+      ```
+      kubectl get pods -l app=demo
+                        ↑
+                        └── "label selector"
+      ```
+
+      Find your labeled pod:
+    command_hint: "kubectl get pods -l app=demo"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods -l app=demo"
+      expected_contains: "labeled-pod"
+    points: 10
+
+  - id: "cmd-03"
+    title: "View All Labels"
+    instructions: |
+      **What we're doing:** See labels on all pods in a tabular format.
+
+      **Why this matters:** Quick way to see how pods are organized.
+
+      **The --show-labels flag:**
+      ```
+      kubectl get pods --show-labels
+      ```
+
+      View labels on all pods:
+    command_hint: "kubectl get pods --show-labels"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods --show-labels"
+      expected_contains: "LABELS"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Service Can't Find Pods"
+    description: |
+      A Service is created but has no endpoints (0 pods connected):
+
+      ```
+      $ kubectl get endpoints my-service
+      NAME         ENDPOINTS   AGE
+      my-service   <none>      5m
+      ```
+
+      The pods exist, but the Service can't find them!
+
+      Your mission: Fix the label mismatch!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: web-pod
+        labels:
+          app: web
+          tier: frontend
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: my-service
+      spec:
+        selector:
+          app: webapp
+        ports:
+        - port: 80
+    hints:
+      - "Check the Service selector: `kubectl describe svc my-service`"
+      - "Compare Service selector with Pod labels: the Service looks for app=webapp but the Pod has app=web"
+      - "Fix by relabeling the pod: `kubectl label pod web-pod app=webapp --overwrite`"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get endpoints my-service"
+      expected_not_contains: "<none>"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Find All Production Pods"
+    description: |
+      Your cluster has pods across multiple environments. You need to find
+      only the production pods.
+
+      Several pods have been created with different environment labels.
+
+      Your mission: List only the production pods!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: prod-web
+        labels:
+          app: web
+          env: production
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: staging-web
+        labels:
+          app: web
+          env: staging
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: prod-api
+        labels:
+          app: api
+          env: production
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+    hints:
+      - "Use the -l flag to filter by label"
+      - "The production pods have env=production label"
+      - "Command: `kubectl get pods -l env=production`"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get pods -l env=production"
+      expected_contains: "prod-"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the difference between labels and annotations?"
+      options:
+        - "Labels are for Pods, annotations for Services"
+        - "Labels allow selection, annotations store metadata"
+        - "There is no difference"
+        - "Annotations are for selection, labels for metadata"
+      correct: 1
+      explanation: "Labels are for grouping/selecting resources. Annotations store non-identifying metadata."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to find all pods with label app=frontend"
+      expected_contains: "-l app=frontend"
+      alternatives:
+        - "kubectl get pods -l app=frontend"
+        - "kubectl get pod -l app=frontend"
+      hint: "Use -l for label selector"
+      explanation: "`kubectl get pods -l app=frontend` finds pods with that label."
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the label in this pod spec:"
+      yaml_template: |
+        metadata:
+          name: web
+          ______:
+            app: frontend
+      expected: "labels"
+      explanation: "Labels go under the 'labels' field in metadata."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How do Services find their target Pods?"
+      options:
+        - "By pod name"
+        - "By pod IP address"
+        - "By label selector"
+        - "By namespace only"
+      correct: 2
+      explanation: "Services use selectors to find pods. Pods must have matching labels."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to add label tier=backend to pod 'api'"
+      expected_contains: "kubectl label"
+      alternatives:
+        - "kubectl label pod api tier=backend"
+        - "kubectl label pods api tier=backend"
+      hint: "Use 'kubectl label' command"
+      explanation: "`kubectl label pod api tier=backend` adds a label to an existing pod."
+      points: 10
+
+    - type: "true_false"
+      question: "You can select resources using annotations."
+      correct: false
+      explanation: "No! Annotations are for metadata storage only. Use labels for selection."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "Which selector finds pods in staging OR production?"
+      options:
+        - "-l env=staging,env=production"
+        - "-l 'env in (staging, production)'"
+        - "-l env!=test"
+        - "-l env"
+      correct: 1
+      explanation: "Use 'in' operator for OR logic: 'env in (staging, production)'"
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to show all pods with their labels"
+      expected_contains: "--show-labels"
+      alternatives:
+        - "kubectl get pods --show-labels"
+        - "kubectl get pod --show-labels"
+      hint: "There's a flag to show labels in the output"
+      explanation: "`--show-labels` adds a LABELS column to the output."
+      points: 10

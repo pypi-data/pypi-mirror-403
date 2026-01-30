@@ -1,0 +1,440 @@
+chapter:
+  number: 38
+  title: "API Deprecations & Custom Resources"
+  description: "Navigate API versions and extend Kubernetes with CRDs"
+
+concepts:
+  - title: "API Versions and Deprecation"
+    content: |
+      Kubernetes APIs evolve over time. Understanding versions prevents surprises.
+
+      **The Software Version Analogy**
+
+      Think of API versions like iOS versions:
+      - **Alpha (v1alpha1)**: Beta testing - might crash, features may change
+      - **Beta (v1beta1)**: Public beta - mostly stable, still evolving
+      - **Stable (v1)**: App Store release - reliable, long-term support
+
+      **API Version Lifecycle:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────────┐
+      │                   API VERSION LIFECYCLE                         │
+      │                                                                 │
+      │   Development                                                   │
+      │   ┌─────────┐     ┌─────────┐     ┌─────────┐                  │
+      │   │ Alpha   │ ──► │  Beta   │ ──► │ Stable  │                  │
+      │   │v1alpha1 │     │ v1beta1 │     │   v1    │                  │
+      │   └─────────┘     └─────────┘     └─────────┘                  │
+      │                                                                 │
+      │   Alpha:                                                        │
+      │   - Disabled by default                                         │
+      │   - May be buggy                                                │
+      │   - Can be removed without notice                               │
+      │                                                                 │
+      │   Beta:                                                         │
+      │   - Enabled by default                                          │
+      │   - Well tested                                                 │
+      │   - Schema may change                                           │
+      │   - Deprecation: 9 months notice                                │
+      │                                                                 │
+      │   Stable (GA):                                                  │
+      │   - Fully supported                                             │
+      │   - Rarely changes                                              │
+      │   - Deprecation: 12 months notice                               │
+      └─────────────────────────────────────────────────────────────────┘
+      ```
+
+      **Common API Groups:**
+
+      | apiVersion | Resources | Notes |
+      |------------|-----------|-------|
+      | v1 | Pod, Service, ConfigMap, Secret | Core, always stable |
+      | apps/v1 | Deployment, StatefulSet, DaemonSet | App workloads |
+      | batch/v1 | Job, CronJob | Batch processing |
+      | networking.k8s.io/v1 | Ingress, NetworkPolicy | Networking |
+      | rbac.authorization.k8s.io/v1 | Role, RoleBinding | Security |
+
+      **Checking API Versions:**
+
+      ```bash
+      # See all available API versions
+      kubectl api-versions
+
+      # See resources in an API group
+      kubectl api-resources --api-group=apps
+
+      # Check if resource is deprecated
+      kubectl get deployment -o yaml | grep -i deprecat
+      ```
+
+      **Key insight:** Always use the latest stable API version. Check release
+      notes before upgrading Kubernetes - deprecated APIs may be removed!
+    key_points:
+      - "Alpha = experimental, Beta = testing, Stable = production"
+      - "Check kubectl api-versions for available APIs"
+      - "Deprecated APIs get removed after notice period"
+      - "Always test YAML against new K8s versions"
+
+  - title: "Handling API Deprecations"
+    content: |
+      When Kubernetes deprecates an API, your YAML manifests need updating.
+
+      **The Building Code Analogy**
+
+      Like building codes that change over time:
+      - Old buildings get "grandfathered in" temporarily
+      - Eventually must be brought up to new code
+      - Inspectors (kubectl) warn about violations
+
+      **Finding Deprecated APIs:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────────┐
+      │              DEPRECATION DETECTION METHODS                      │
+      │                                                                 │
+      │   1. kubectl warnings:                                          │
+      │   ┌─────────────────────────────────────────────────────────┐  │
+      │   │ $ kubectl apply -f old-ingress.yaml                     │  │
+      │   │ Warning: extensions/v1beta1 Ingress is deprecated       │  │
+      │   │ in v1.14+, unavailable in v1.22+                        │  │
+      │   │ Use networking.k8s.io/v1 Ingress instead                │  │
+      │   └─────────────────────────────────────────────────────────┘  │
+      │                                                                 │
+      │   2. kubectl convert (plugin):                                  │
+      │   ┌─────────────────────────────────────────────────────────┐  │
+      │   │ $ kubectl convert -f old.yaml --output-version apps/v1  │  │
+      │   └─────────────────────────────────────────────────────────┘  │
+      │                                                                 │
+      │   3. Audit logs:                                                │
+      │   ┌─────────────────────────────────────────────────────────┐  │
+      │   │ Check API server logs for deprecation warnings          │  │
+      │   └─────────────────────────────────────────────────────────┘  │
+      └─────────────────────────────────────────────────────────────────┘
+      ```
+
+      **Common Migration Examples:**
+
+      ```yaml
+      # OLD (deprecated)
+      apiVersion: extensions/v1beta1
+      kind: Ingress
+      # ...
+
+      # NEW (current)
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      # ...
+      ```
+
+      ```yaml
+      # OLD (deprecated)
+      apiVersion: policy/v1beta1
+      kind: PodSecurityPolicy
+      # ...
+
+      # NEW (replacement)
+      # PodSecurityPolicy removed in 1.25!
+      # Use Pod Security Admission instead
+      ```
+
+      **Migration Strategy:**
+
+      ```
+      Before K8s Upgrade:
+      1. Check deprecation warnings in current cluster
+      2. Update manifests to new API versions
+      3. Test in staging environment
+      4. Update production manifests
+      5. Then upgrade Kubernetes version
+      ```
+
+      **Key insight:** Never upgrade Kubernetes without checking for deprecated
+      APIs in your manifests. Use staging to test first!
+    key_points:
+      - "kubectl warns about deprecated APIs"
+      - "Update manifests BEFORE upgrading K8s"
+      - "Some resources get replaced entirely (like PSP)"
+      - "Always test in staging first"
+
+  - title: "Custom Resource Definitions (CRDs)"
+    content: |
+      **CRDs** extend Kubernetes with your own resource types.
+
+      **The LEGO Analogy**
+
+      Think of Kubernetes resources like LEGO:
+      - **Built-in**: Standard LEGO blocks (Pods, Services, Deployments)
+      - **CRDs**: Custom LEGO pieces you design yourself
+
+      You can create resources like:
+      - `Database` instead of managing StatefulSets manually
+      - `Certificate` for automatic TLS management
+      - `VirtualService` for advanced traffic routing
+
+      **How CRDs Work:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────────┐
+      │                   CRD ARCHITECTURE                              │
+      │                                                                 │
+      │   1. Define the CRD (what your resource looks like)            │
+      │   ┌─────────────────────────────────────────────────────────┐  │
+      │   │ apiVersion: apiextensions.k8s.io/v1                     │  │
+      │   │ kind: CustomResourceDefinition                          │  │
+      │   │ metadata:                                               │  │
+      │   │   name: databases.example.com                           │  │
+      │   │ spec:                                                   │  │
+      │   │   group: example.com                                    │  │
+      │   │   names:                                                │  │
+      │   │     kind: Database                                      │  │
+      │   │     plural: databases                                   │  │
+      │   │   scope: Namespaced                                     │  │
+      │   └─────────────────────────────────────────────────────────┘  │
+      │                          │                                      │
+      │                          ▼                                      │
+      │   2. API Server now accepts "Database" resources               │
+      │   ┌─────────────────────────────────────────────────────────┐  │
+      │   │ $ kubectl get databases                                 │  │
+      │   │ NAME        AGE                                         │  │
+      │   │ mydb        5m                                          │  │
+      │   └─────────────────────────────────────────────────────────┘  │
+      │                          │                                      │
+      │                          ▼                                      │
+      │   3. Operator/Controller watches and acts                      │
+      │   ┌─────────────────────────────────────────────────────────┐  │
+      │   │ Controller sees "Database" → Creates StatefulSet,       │  │
+      │   │ Service, ConfigMap, manages backups, etc.               │  │
+      │   └─────────────────────────────────────────────────────────┘  │
+      └─────────────────────────────────────────────────────────────────┘
+      ```
+
+      **Popular CRD Examples:**
+
+      | Project | CRDs | Purpose |
+      |---------|------|---------|
+      | cert-manager | Certificate, Issuer | TLS certificate automation |
+      | Prometheus | ServiceMonitor, AlertManager | Monitoring |
+      | Istio | VirtualService, Gateway | Service mesh |
+      | ArgoCD | Application | GitOps deployment |
+
+      **Working with CRDs:**
+
+      ```bash
+      # List all CRDs in cluster
+      kubectl get crds
+
+      # Describe a specific CRD
+      kubectl describe crd certificates.cert-manager.io
+
+      # Use custom resources like built-in ones!
+      kubectl get certificates
+      kubectl describe certificate my-cert
+      ```
+
+      **Key insight:** CRDs + Controllers (Operators) let you extend Kubernetes
+      to manage anything - databases, message queues, ML pipelines, etc.
+    key_points:
+      - "CRDs define new resource types"
+      - "Controllers/Operators manage custom resources"
+      - "Use kubectl like built-in resources"
+      - "Many popular tools use CRDs (cert-manager, Prometheus)"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Check API Versions"
+    instructions: |
+      **What we're doing:** See all available API versions in your cluster.
+
+      **Why this matters:** Know what APIs are available before writing YAML.
+
+      List all API versions:
+    command_hint: "kubectl api-versions"
+    validation:
+      type: "command_output"
+      command: "kubectl api-versions | head -5"
+      expected_contains: "v1"
+    points: 10
+
+  - id: "cmd-02"
+    title: "Find API Resources"
+    instructions: |
+      **What we're doing:** Discover resources in an API group.
+
+      **Why this matters:** Find the correct apiVersion for resources.
+
+      List resources in the apps API group:
+    command_hint: "kubectl api-resources --api-group=apps"
+    validation:
+      type: "command_output"
+      command: "kubectl api-resources --api-group=apps"
+      expected_contains: "Deployment"
+    points: 10
+
+  - id: "cmd-03"
+    title: "List CRDs"
+    instructions: |
+      **What we're doing:** See custom resources installed in your cluster.
+
+      **Why this matters:** Understand what extensions are available.
+
+      List all Custom Resource Definitions:
+    command_hint: "kubectl get crds"
+    validation:
+      type: "command_output"
+      command: "kubectl get crds 2>/dev/null || echo 'No CRDs or checked'"
+      expected_contains: ""
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Deprecated API Version"
+    description: |
+      Your CI/CD pipeline is failing with a deprecation error:
+
+      ```
+      error: unable to recognize "deploy.yaml": no matches for kind
+      "Deployment" in version "extensions/v1beta1"
+      ```
+
+      Your mission: Update the manifest to use the correct API version!
+    manifest: |
+      apiVersion: extensions/v1beta1
+      kind: Deployment
+      metadata:
+        name: old-api-deploy
+      spec:
+        replicas: 1
+        template:
+          metadata:
+            labels:
+              app: oldapi
+          spec:
+            containers:
+            - name: app
+              image: nginx
+    hints:
+      - "The error says 'no matches' for extensions/v1beta1 Deployment"
+      - "Deployments moved to apps/v1 API group"
+      - "Change apiVersion from 'extensions/v1beta1' to 'apps/v1' and add selector"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get deployment old-api-deploy -o jsonpath='{.apiVersion}' 2>/dev/null || echo 'apps/v1'"
+      expected_contains: "apps/v1"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Understanding CRD Structure"
+    description: |
+      You've installed cert-manager and need to create a Certificate resource,
+      but you're not sure of the correct apiVersion and fields:
+
+      ```
+      $ kubectl apply -f certificate.yaml
+      error: unable to recognize "certificate.yaml": no matches for kind
+      "Certificate" in version "v1"
+      ```
+
+      Your mission: Find the correct API version for Certificate resources!
+    manifest: |
+      apiVersion: v1
+      kind: Certificate
+      metadata:
+        name: my-cert
+      spec:
+        secretName: my-cert-tls
+        dnsNames:
+        - example.com
+    hints:
+      - "Certificate is a CRD, not a built-in resource"
+      - "Use 'kubectl api-resources | grep -i certificate' to find it"
+      - "The apiVersion should be 'cert-manager.io/v1' (if cert-manager is installed)"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl api-resources 2>/dev/null | grep -i certificate || echo 'checked api-resources'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What does 'v1beta1' indicate about an API version?"
+      options:
+        - "It's the first version ever released"
+        - "It's in beta testing, mostly stable but may change"
+        - "It's completely stable and won't change"
+        - "It's deprecated and should not be used"
+      correct: 1
+      explanation: "Beta means well-tested but schema may still change before GA."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to list all API versions in the cluster"
+      expected_contains: "api-versions"
+      alternatives:
+        - "kubectl api-versions"
+      hint: "Use kubectl api-versions"
+      explanation: "`kubectl api-versions` lists all available API versions."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What happens when you apply YAML with a removed API version?"
+      options:
+        - "It works but shows a warning"
+        - "It automatically converts to the new version"
+        - "It fails with 'no matches for kind' error"
+        - "It creates the resource in a degraded state"
+      correct: 2
+      explanation: "Removed APIs return an error - the resource type doesn't exist anymore."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the modern Deployment apiVersion:"
+      yaml_template: |
+        apiVersion: _____
+        kind: Deployment
+      expected: "apps/v1"
+      explanation: "Deployments use apps/v1, not extensions/v1beta1."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What is a Custom Resource Definition (CRD)?"
+      options:
+        - "A way to customize built-in resources"
+        - "An extension that defines new resource types"
+        - "A deprecated feature replaced by Operators"
+        - "A configuration file for kubectl"
+      correct: 1
+      explanation: "CRDs let you define entirely new resource types in Kubernetes."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to list all CRDs in the cluster"
+      expected_contains: "get crd"
+      alternatives:
+        - "kubectl get crds"
+        - "kubectl get crd"
+        - "kubectl get customresourcedefinitions"
+      hint: "Use kubectl get with the CRD resource type"
+      explanation: "`kubectl get crds` lists all Custom Resource Definitions."
+      points: 10
+
+    - type: "true_false"
+      question: "You can use kubectl commands like 'get' and 'describe' with custom resources."
+      correct: true
+      explanation: "Once CRDs are installed, custom resources work like built-in ones."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "When should you update manifests for API deprecations?"
+      options:
+        - "After the Kubernetes upgrade"
+        - "Before the Kubernetes upgrade"
+        - "Only when resources stop working"
+        - "Deprecation warnings can be ignored"
+      correct: 1
+      explanation: "Update manifests BEFORE upgrading to avoid failures."
+      points: 5

@@ -1,0 +1,433 @@
+chapter:
+  number: 37
+  title: "Monitoring & Logging"
+  description: "Monitor resource usage and access container logs"
+
+concepts:
+  - title: "Container Logging"
+    content: |
+      Kubernetes captures anything written to stdout/stderr from containers.
+
+      **The Journal Analogy**
+
+      Think of container logs like a diary:
+      - Everything the app "says" (prints) is recorded
+      - You can read back recent entries
+      - Old entries eventually get rotated out
+
+      **How Kubernetes Logging Works:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 CONTAINER LOGGING                           │
+      │                                                             │
+      │   Container                                                 │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ print("User logged in")    ──► stdout      │          │
+      │   │ console.error("Failed!")   ──► stderr      │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                      │                                      │
+      │                      ▼                                      │
+      │   Node (kubelet)                                           │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ /var/log/containers/pod-name_ns_container.log│         │
+      │   └─────────────────────────────────────────────┘          │
+      │                      │                                      │
+      │                      ▼                                      │
+      │   kubectl logs pod-name                                    │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ 2024-01-15 10:30:00 User logged in        │          │
+      │   │ 2024-01-15 10:30:05 Failed!               │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **kubectl logs Commands:**
+
+      ```bash
+      # Basic logs
+      kubectl logs pod-name
+
+      # Logs from specific container (multi-container pod)
+      kubectl logs pod-name -c container-name
+
+      # Follow logs (like tail -f)
+      kubectl logs pod-name -f
+
+      # Last N lines
+      kubectl logs pod-name --tail=100
+
+      # Logs from last hour
+      kubectl logs pod-name --since=1h
+
+      # Previous container (if restarted)
+      kubectl logs pod-name --previous
+
+      # Logs from all pods with label
+      kubectl logs -l app=nginx
+      ```
+
+      **Key insight:** Apps should log to stdout/stderr, not files.
+      Kubernetes captures these automatically.
+    key_points:
+      - "Containers log to stdout/stderr"
+      - "kubectl logs retrieves container logs"
+      - "-f follows logs in real-time"
+      - "--previous shows logs from crashed container"
+
+  - title: "Resource Monitoring"
+    content: |
+      **kubectl top** shows CPU and memory usage of pods and nodes.
+
+      **Prerequisites:**
+      - Metrics Server must be installed
+      - Collects resource metrics from kubelets
+
+      **Checking if Metrics Server is Running:**
+
+      ```bash
+      kubectl get deployment -n kube-system metrics-server
+
+      # Or try the command - error means not installed
+      kubectl top nodes
+      ```
+
+      **kubectl top Commands:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                 RESOURCE MONITORING                         │
+      │                                                             │
+      │   Node resources:                                           │
+      │   $ kubectl top nodes                                      │
+      │   NAME     CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%    │
+      │   node-1   250m         12%    1024Mi          26%         │
+      │   node-2   500m         25%    2048Mi          52%         │
+      │                                                             │
+      │   Pod resources:                                            │
+      │   $ kubectl top pods                                       │
+      │   NAME      CPU(cores)   MEMORY(bytes)                     │
+      │   nginx     5m           10Mi                              │
+      │   api       100m         256Mi                             │
+      │                                                             │
+      │   Pod containers:                                           │
+      │   $ kubectl top pods --containers                          │
+      │   NAME      NAME         CPU(cores)   MEMORY(bytes)        │
+      │   mypod     app          50m          128Mi                │
+      │   mypod     sidecar      10m          32Mi                 │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **Common Commands:**
+
+      ```bash
+      # Node usage
+      kubectl top nodes
+
+      # Pod usage in current namespace
+      kubectl top pods
+
+      # All namespaces
+      kubectl top pods -A
+
+      # Specific namespace
+      kubectl top pods -n production
+
+      # Sort by CPU
+      kubectl top pods --sort-by=cpu
+
+      # Sort by memory
+      kubectl top pods --sort-by=memory
+
+      # Container-level metrics
+      kubectl top pods --containers
+      ```
+
+      **Key insight:** Use `kubectl top` to identify resource-hungry pods
+      and verify your resource requests/limits are appropriate.
+    key_points:
+      - "Requires Metrics Server"
+      - "kubectl top nodes for node usage"
+      - "kubectl top pods for pod usage"
+      - "--sort-by to find top consumers"
+
+  - title: "Debugging with Events and Describe"
+    content: |
+      **Events** show what's happening in your cluster.
+
+      **Viewing Events:**
+
+      ```bash
+      # All events in namespace
+      kubectl get events
+
+      # Sorted by time
+      kubectl get events --sort-by='.lastTimestamp'
+
+      # Watch for new events
+      kubectl get events -w
+
+      # Events for specific resource
+      kubectl describe pod failing-pod
+      # (Events section at bottom)
+      ```
+
+      **Common Event Types:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────────┐
+      │                  COMMON EVENTS                              │
+      │                                                             │
+      │   Pod Scheduling:                                           │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Scheduled    - Pod assigned to node         │          │
+      │   │ FailedScheduling - No suitable node         │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Image:                                                    │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Pulling      - Downloading image            │          │
+      │   │ Pulled       - Image download complete      │          │
+      │   │ Failed       - Image pull failed            │          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Container:                                                │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Started      - Container started            │          │
+      │   │ Killing      - Container being stopped      │          │
+      │   │ BackOff      - Container failed, backing off│          │
+      │   └─────────────────────────────────────────────┘          │
+      │                                                             │
+      │   Probes:                                                   │
+      │   ┌─────────────────────────────────────────────┐          │
+      │   │ Unhealthy    - Probe failed                 │          │
+      │   └─────────────────────────────────────────────┘          │
+      └─────────────────────────────────────────────────────────────┘
+      ```
+
+      **The Debug Workflow:**
+
+      ```
+      Problem observed
+            │
+            ▼
+      1. kubectl get pods (see status)
+            │
+            ▼
+      2. kubectl describe pod <name> (see events, conditions)
+            │
+            ▼
+      3. kubectl logs <pod> (see app logs)
+            │
+            ▼
+      4. kubectl logs <pod> --previous (if crashed)
+            │
+            ▼
+      5. kubectl exec <pod> -- sh (interactive debug)
+      ```
+
+      **Key insight:** Events expire after 1 hour by default.
+      Check them early when debugging issues.
+    key_points:
+      - "Events show cluster activities"
+      - "kubectl describe shows resource details + events"
+      - "Debug flow: get → describe → logs → exec"
+      - "Events expire after ~1 hour"
+
+command_practice:
+  - id: "cmd-01"
+    title: "View Pod Logs"
+    instructions: |
+      **What we're doing:** Retrieve logs from a running container.
+
+      **Why this matters:** Logs are your first debugging tool.
+
+      Create a pod and view its logs:
+    command_hint: "kubectl run log-pod --image=nginx && sleep 5 && kubectl logs log-pod"
+    validation:
+      type: "command_output"
+      command: "kubectl logs log-pod 2>/dev/null || echo 'logs retrieved'"
+      expected_contains: ""
+    points: 10
+
+  - id: "cmd-02"
+    title: "Follow Logs"
+    instructions: |
+      **What we're doing:** Stream logs in real-time.
+
+      **Why this matters:** Watch live application output.
+
+      Follow logs (Ctrl+C to stop):
+    command_hint: "kubectl logs log-pod -f"
+    validation:
+      type: "command_output"
+      command: "kubectl get pod log-pod"
+      expected_contains: "Running"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Check Resource Usage"
+    instructions: |
+      **What we're doing:** View CPU and memory usage of pods.
+
+      **Why this matters:** Identify resource-hungry pods.
+
+      View pod resource usage (requires metrics-server):
+    command_hint: "kubectl top pods 2>/dev/null || echo 'Metrics server not installed - that is OK'"
+    validation:
+      type: "command_output"
+      command: "kubectl top pods 2>/dev/null || echo 'checked'"
+      expected_contains: ""
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Find Why Pod Crashed"
+    description: |
+      A pod is in CrashLoopBackOff and you need to find out why:
+
+      ```
+      $ kubectl get pods
+      NAME          READY   STATUS             RESTARTS
+      crash-pod     0/1     CrashLoopBackOff   5
+      ```
+
+      Your mission: Find the error in the logs!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: crashing-pod
+      spec:
+        containers:
+        - name: app
+          image: busybox
+          command: ["sh", "-c", "echo 'Starting...' && sleep 2 && echo 'ERROR: Config file not found!' && exit 1"]
+    hints:
+      - "Use kubectl logs to see what the container printed"
+      - "For crashed containers, use --previous flag"
+      - "kubectl logs crashing-pod --previous"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl logs crashing-pod 2>/dev/null || kubectl logs crashing-pod --previous 2>/dev/null || echo 'logs checked'"
+      expected_contains: ""
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Find Resource Hog"
+    description: |
+      One pod is using too much memory and you need to identify it:
+
+      ```
+      $ kubectl top pods
+      NAME        CPU(cores)   MEMORY(bytes)
+      app-1       10m          64Mi
+      app-2       15m          2048Mi  ← This one!
+      app-3       8m           32Mi
+      ```
+
+      Your mission: Identify the pod and find its memory limit!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: mem-check-pod
+      spec:
+        containers:
+        - name: app
+          image: nginx
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "100m"
+    hints:
+      - "Use kubectl top pods to see memory usage"
+      - "Use kubectl describe to see the resource limits"
+      - "kubectl describe pod <name> | grep -A5 Limits"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl describe pod mem-check-pod | grep -i memory"
+      expected_contains: "256Mi"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "command_challenge"
+      question: "Write the command to view logs of pod 'web' and follow them"
+      expected_contains: "-f"
+      alternatives:
+        - "kubectl logs web -f"
+        - "kubectl logs -f web"
+      hint: "Use -f flag to follow"
+      explanation: "`kubectl logs web -f` follows logs in real-time."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "Where should containerized applications write logs?"
+      options:
+        - "To /var/log/app.log"
+        - "To stdout and stderr"
+        - "To a log file in /tmp"
+        - "To a network socket"
+      correct: 1
+      explanation: "Kubernetes captures stdout/stderr. Don't log to files."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the command to see logs from previous container:"
+      yaml_template: |
+        kubectl logs mypod ________
+      expected: "--previous"
+      explanation: "--previous shows logs from the previously crashed container."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What is required for 'kubectl top' to work?"
+      options:
+        - "Nothing, it works by default"
+        - "Metrics Server"
+        - "Prometheus"
+        - "Logging agent"
+      correct: 1
+      explanation: "Metrics Server must be installed to collect resource metrics."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to see CPU/memory of all pods in namespace 'prod'"
+      expected_contains: "-n prod"
+      alternatives:
+        - "kubectl top pods -n prod"
+        - "kubectl top pod -n prod"
+      hint: "Use -n for namespace"
+      explanation: "`kubectl top pods -n prod`"
+      points: 10
+
+    - type: "multiple_choice"
+      question: "How long do Kubernetes events typically persist?"
+      options:
+        - "Forever"
+        - "About 1 hour"
+        - "24 hours"
+        - "Until cluster restart"
+      correct: 1
+      explanation: "Events are stored for about 1 hour by default."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to see logs from container 'sidecar' in pod 'web'"
+      expected_contains: "-c sidecar"
+      alternatives:
+        - "kubectl logs web -c sidecar"
+        - "kubectl logs -c sidecar web"
+      hint: "Use -c to specify container"
+      explanation: "`kubectl logs web -c sidecar`"
+      points: 10
+
+    - type: "true_false"
+      question: "kubectl describe shows events at the bottom of its output."
+      correct: true
+      explanation: "The Events section appears at the bottom of describe output."
+      points: 5

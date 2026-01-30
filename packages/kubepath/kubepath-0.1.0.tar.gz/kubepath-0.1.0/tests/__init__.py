@@ -1,0 +1,1 @@
+"""kubepath tests."""

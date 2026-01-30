@@ -1,0 +1,368 @@
+chapter:
+  number: 15
+  title: "Service Basics"
+  description: "Learn how Services provide stable networking for pods"
+
+concepts:
+  - title: "The Problem Services Solve"
+    content: |
+      Pods are ephemeral - they come and go. Their IP addresses change.
+      How do other pods find them?
+
+      **The Phone Directory Analogy**
+
+      Imagine a company where employees change desks daily:
+      - You can't call someone's desk directly (IP changes)
+      - You need a central phone number (Service)
+      - The operator routes your call to whoever is at that role
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                  THE PROBLEM                            │
+      │                                                         │
+      │   Pod A (10.1.1.5)  ──────X──────►  Pod B (10.1.1.6)   │
+      │                                     ↓ Pod dies          │
+      │                                     Pod B (10.1.1.9)    │
+      │   Pod A still trying 10.1.1.6... FAILS!                │
+      └─────────────────────────────────────────────────────────┘
+
+      ┌─────────────────────────────────────────────────────────┐
+      │                  THE SOLUTION                           │
+      │                                                         │
+      │   Pod A ──────►  Service  ──────►  Pod B               │
+      │                  (stable IP)       (any pod with       │
+      │                                     matching labels)    │
+      │                                                         │
+      │   Service IP never changes. Pods behind it can.        │
+      └─────────────────────────────────────────────────────────┘
+      ```
+
+      **What a Service Provides:**
+      - Stable IP address (doesn't change when pods restart)
+      - Stable DNS name (service-name.namespace.svc.cluster.local)
+      - Load balancing across multiple pods
+
+      **Key insight:** Services decouple "who provides" from "how to reach them".
+    key_points:
+      - "Pods have changing IPs - can't rely on them"
+      - "Services provide stable IPs and DNS names"
+      - "Services load balance across matching pods"
+      - "Services find pods using label selectors"
+
+  - title: "ClusterIP Service"
+    content: |
+      **ClusterIP** is the default Service type. It's only accessible
+      from inside the cluster.
+
+      **Service YAML:**
+
+      ```yaml
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: my-service
+      spec:
+        type: ClusterIP        # Default, can omit
+        selector:
+          app: web             # Find pods with this label
+        ports:
+        - port: 80             # Service port
+          targetPort: 8080     # Pod port
+      ```
+
+      **How it Works:**
+
+      ```
+      ┌─────────────────────────────────────────────────────────┐
+      │                    CLUSTER                               │
+      │                                                         │
+      │   ┌──────────────────────────────────────────────────┐  │
+      │   │           SERVICE: my-service                    │  │
+      │   │           ClusterIP: 10.96.0.100                 │  │
+      │   │           Port: 80                               │  │
+      │   │                                                  │  │
+      │   │   selector: app=web                              │  │
+      │   └──────────────────────┬───────────────────────────┘  │
+      │                          │                              │
+      │            ┌─────────────┼─────────────┐                │
+      │            ▼             ▼             ▼                │
+      │       ┌─────────┐   ┌─────────┐   ┌─────────┐          │
+      │       │  Pod    │   │  Pod    │   │  Pod    │          │
+      │       │ app=web │   │ app=web │   │ app=web │          │
+      │       │ :8080   │   │ :8080   │   │ :8080   │          │
+      │       └─────────┘   └─────────┘   └─────────┘          │
+      │                                                         │
+      └─────────────────────────────────────────────────────────┘
+                    ↑
+          Only accessible from inside cluster
+      ```
+
+      **Port vs TargetPort:**
+      - `port`: The port the Service listens on (what clients connect to)
+      - `targetPort`: The port on the pods (where traffic is sent)
+
+      **Key insight:** ClusterIP is for internal communication. Pods talk
+      to the Service, not directly to each other.
+    key_points:
+      - "ClusterIP is the default Service type"
+      - "Only accessible from inside the cluster"
+      - "port = Service port, targetPort = Pod port"
+      - "Selector finds which pods to send traffic to"
+
+  - title: "Service DNS"
+    content: |
+      Every Service gets a DNS name automatically.
+
+      **DNS Format:**
+
+      ```
+      <service-name>.<namespace>.svc.cluster.local
+      ```
+
+      **Examples:**
+
+      ```
+      my-service.default.svc.cluster.local      # Full name
+      my-service.default.svc                    # Works too
+      my-service.default                        # Also works
+      my-service                                # If in same namespace
+      ```
+
+      **Using DNS in Pods:**
+
+      ```yaml
+      # In your app configuration:
+      DATABASE_URL: postgres://db-service.production:5432/mydb
+                              ↑                    ↑
+                              │                    └── Port
+                              └── Service name + namespace
+      ```
+
+      **Cross-namespace Communication:**
+
+      ```
+      ┌─────────────────┐                    ┌─────────────────┐
+      │ Namespace: web  │                    │ Namespace: db   │
+      │                 │                    │                 │
+      │  ┌───────────┐  │   db-service.db   │  ┌───────────┐  │
+      │  │  web-pod  │──┼──────────────────►│  │ db-service│  │
+      │  └───────────┘  │                    │  └───────────┘  │
+      │                 │                    │        │        │
+      └─────────────────┘                    │        ▼        │
+                                             │  ┌───────────┐  │
+                                             │  │  db-pod   │  │
+                                             │  └───────────┘  │
+                                             └─────────────────┘
+      ```
+
+      **Key insight:** Use DNS names, not IP addresses. DNS names are stable
+      and human-readable.
+    key_points:
+      - "Every Service gets automatic DNS"
+      - "Format: service.namespace.svc.cluster.local"
+      - "Can use short names within same namespace"
+      - "Cross-namespace: service.other-namespace"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a Service"
+    instructions: |
+      **What we're doing:** Create a Service to expose pods.
+
+      **Why this matters:** Services are essential for pod-to-pod communication.
+
+      First create a deployment, then expose it:
+    command_hint: "kubectl create deployment web --image=nginx --replicas=3 && kubectl expose deployment web --port=80"
+    validation:
+      type: "command_output"
+      command: "kubectl get service web"
+      expected_contains: "ClusterIP"
+    points: 10
+
+  - id: "cmd-02"
+    title: "View Service Endpoints"
+    instructions: |
+      **What we're doing:** See which pod IPs the Service routes to.
+
+      **Why this matters:** Endpoints show you the actual pod IPs behind a Service.
+      Useful for debugging when Services don't work.
+
+      View the endpoints:
+    command_hint: "kubectl get endpoints web"
+    validation:
+      type: "command_output"
+      command: "kubectl get endpoints web"
+      expected_contains: ":"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Test Service DNS"
+    instructions: |
+      **What we're doing:** Verify DNS resolution works for the Service.
+
+      **Why this matters:** If pods can't resolve Service names, they can't communicate.
+
+      Run a DNS lookup from inside a pod:
+    command_hint: "kubectl run dns-test --image=busybox --rm -it --restart=Never -- nslookup web"
+    validation:
+      type: "command_output"
+      command: "kubectl get svc web"
+      expected_contains: "ClusterIP"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Service Has No Endpoints"
+    description: |
+      A Service exists but has no endpoints:
+
+      ```
+      $ kubectl get endpoints my-svc
+      NAME     ENDPOINTS   AGE
+      my-svc   <none>      5m
+      ```
+
+      Your mission: Fix the Service so it finds its pods!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: backend
+        labels:
+          app: backend-app
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: my-svc
+      spec:
+        selector:
+          app: wrong-label
+        ports:
+        - port: 80
+    hints:
+      - "Check the Service selector: kubectl describe svc my-svc"
+      - "The selector is 'app: wrong-label' but the pod has 'app: backend-app'"
+      - "Edit the service: kubectl edit svc my-svc and change selector to 'app: backend-app'"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl get endpoints my-svc"
+      expected_not_contains: "<none>"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Wrong Port Configuration"
+    description: |
+      A Service is routing traffic but the app isn't responding. The Service
+      port doesn't match the container port.
+
+      Your mission: Fix the port configuration!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: port-pod
+        labels:
+          app: port-app
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+          ports:
+          - containerPort: 80
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: port-svc
+      spec:
+        selector:
+          app: port-app
+        ports:
+        - port: 8080
+          targetPort: 8080
+    hints:
+      - "Check what port nginx listens on (it's 80, not 8080)"
+      - "The targetPort should match the container port"
+      - "Edit service to set targetPort: 80"
+    solution_validation:
+      type: "command_output"
+      command: "kubectl describe svc port-svc"
+      expected_contains: "TargetPort:  80"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "Why do we need Services?"
+      options:
+        - "Pods can't run containers without Services"
+        - "Pod IPs change, Services provide stable endpoints"
+        - "Services are required for storage"
+        - "Services replace Deployments"
+      correct: 1
+      explanation: "Pod IPs are ephemeral. Services provide stable IPs and DNS names."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the Service selector to match pods with label app=api:"
+      yaml_template: |
+        spec:
+          ________:
+            app: api
+      expected: "selector"
+      explanation: "The selector field defines which pods the Service routes to."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What is the default Service type?"
+      options:
+        - "NodePort"
+        - "LoadBalancer"
+        - "ClusterIP"
+        - "ExternalName"
+      correct: 2
+      explanation: "ClusterIP is the default. It's only accessible inside the cluster."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to expose deployment 'api' on port 3000"
+      expected_contains: "kubectl expose"
+      alternatives:
+        - "kubectl expose deployment api --port=3000"
+        - "kubectl expose deploy api --port=3000"
+      hint: "Use 'kubectl expose deployment'"
+      explanation: "`kubectl expose deployment api --port=3000` creates a ClusterIP Service."
+      points: 10
+
+    - type: "true_false"
+      question: "ClusterIP Services can be accessed from outside the cluster."
+      correct: false
+      explanation: "No! ClusterIP is internal only. Use NodePort or LoadBalancer for external access."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What shows the pod IPs a Service routes to?"
+      options:
+        - "kubectl get pods"
+        - "kubectl get endpoints"
+        - "kubectl get services"
+        - "kubectl describe deployment"
+      correct: 1
+      explanation: "Endpoints show the actual pod IPs. No endpoints = selector problem."
+      points: 5
+
+    - type: "fill_yaml"
+      question: "Complete the DNS name for service 'db' in namespace 'prod':"
+      yaml_template: |
+        db.______.svc.cluster.local
+      expected: "prod"
+      explanation: "DNS format: service.namespace.svc.cluster.local"
+      points: 10

@@ -1,0 +1,348 @@
+chapter:
+  number: 6
+  title: "Creating Pods"
+  description: "Learn different ways to create and manage pods"
+
+concepts:
+  - title: "Imperative vs Declarative"
+    content: |
+      There are two ways to create resources in Kubernetes:
+      **Imperative** and **Declarative**.
+
+      **The Restaurant Analogy**
+
+      - **Imperative** = Telling the chef step by step:
+        "Boil water, add pasta, cook for 8 minutes, drain..."
+
+      - **Declarative** = Ordering from a menu:
+        "I want spaghetti carbonara"
+
+      ```
+      IMPERATIVE (How to do it)         DECLARATIVE (What you want)
+      ┌─────────────────────────┐       ┌─────────────────────────┐
+      │ kubectl run nginx        │       │ kubectl apply -f pod.yaml│
+      │   --image=nginx         │       │                         │
+      │   --port=80             │       │ # pod.yaml defines the  │
+      │   --restart=Never       │       │ # desired state         │
+      └─────────────────────────┘       └─────────────────────────┘
+               │                                   │
+               ▼                                   ▼
+          "Do this NOW"               "Make it look like THIS"
+      ```
+
+      **When to use which?**
+
+      | Use Case | Approach | Example |
+      |----------|----------|---------|
+      | Quick test | Imperative | `kubectl run nginx --image=nginx` |
+      | Learning | Imperative | Fast feedback loop |
+      | Production | Declarative | YAML in version control |
+      | CI/CD | Declarative | Reproducible deployments |
+
+      **Key insight:** Imperative is faster for one-off tasks. Declarative is
+      the "Kubernetes way" for anything you want to keep.
+    key_points:
+      - "Imperative: Tell K8s HOW to do something (commands)"
+      - "Declarative: Tell K8s WHAT you want (YAML files)"
+      - "Use imperative for quick tests, declarative for production"
+      - "Declarative enables version control and reproducibility"
+
+  - title: "Creating Pods Imperatively"
+    content: |
+      The `kubectl run` command creates a pod quickly.
+
+      **Basic Syntax:**
+
+      ```bash
+      kubectl run <pod-name> --image=<image>
+      ```
+
+      **Common Options:**
+
+      ```bash
+      # Basic pod
+      kubectl run nginx --image=nginx
+
+      # With specific port
+      kubectl run nginx --image=nginx --port=80
+
+      # With environment variable
+      kubectl run nginx --image=nginx --env="ENV=production"
+
+      # Dry run - see what would be created (no actual creation)
+      kubectl run nginx --image=nginx --dry-run=client -o yaml
+      ```
+
+      **The Dry Run Trick:**
+
+      Don't memorize YAML! Generate it:
+
+      ```bash
+      kubectl run nginx --image=nginx --dry-run=client -o yaml > pod.yaml
+                                       ↑               ↑
+                                       │               └── output as YAML
+                                       └── don't actually create
+      ```
+
+      This generates a valid YAML file you can edit and use!
+
+      **Memory trick:** `--dry-run=client` = "Show me what you WOULD create,
+      but don't actually do it"
+
+      **Key insight:** Use `--dry-run=client -o yaml` to generate YAML templates.
+      This is a CKAD exam lifesaver!
+    key_points:
+      - "kubectl run creates pods quickly"
+      - "--dry-run=client -o yaml generates YAML without creating"
+      - "Use dry-run to generate templates, then edit"
+      - "This technique saves time on the CKAD exam"
+
+  - title: "Creating Pods Declaratively"
+    content: |
+      Declarative means using YAML files with `kubectl apply`.
+
+      **The Apply Command:**
+
+      ```bash
+      kubectl apply -f pod.yaml
+                   ↑
+                   └── "file" - apply from this file
+      ```
+
+      **Apply is Idempotent:**
+
+      Running `apply` multiple times is safe:
+      - First time: Creates the resource
+      - Next times: Updates if changed, does nothing if same
+
+      ```
+      $ kubectl apply -f pod.yaml
+      pod/nginx created              ← First time
+
+      $ kubectl apply -f pod.yaml
+      pod/nginx unchanged            ← Already exists, no changes
+
+      $ # Edit pod.yaml, change image version
+      $ kubectl apply -f pod.yaml
+      pod/nginx configured           ← Updated!
+      ```
+
+      **Apply vs Create:**
+
+      | Command | Behavior |
+      |---------|----------|
+      | `kubectl create -f file.yaml` | Creates new. Error if exists. |
+      | `kubectl apply -f file.yaml` | Creates or updates. Safe to repeat. |
+
+      **Always prefer `apply`** - it's the declarative, idempotent approach.
+
+      **Apply from URL:**
+
+      ```bash
+      kubectl apply -f https://example.com/manifest.yaml
+      ```
+
+      **Key insight:** `apply` is declarative and idempotent. Use it for
+      everything except quick one-off tests.
+    key_points:
+      - "kubectl apply -f creates or updates from YAML"
+      - "Apply is idempotent - safe to run multiple times"
+      - "Prefer apply over create for real work"
+      - "Apply works with URLs too"
+
+command_practice:
+  - id: "cmd-01"
+    title: "Create a Pod Imperatively"
+    instructions: |
+      **What we're doing:** Create a quick test pod using a command.
+
+      **Why this matters:** Fast way to test if an image works or to
+      debug networking issues.
+
+      **The command:**
+      ```
+      kubectl run <name> --image=<image>
+      ```
+
+      Create a pod named 'webserver' using nginx:
+    command_hint: "kubectl run webserver --image=nginx"
+    validation:
+      type: "resource_state"
+      resource: "pod/webserver"
+      state: "Running"
+      timeout: 60
+    points: 10
+
+  - id: "cmd-02"
+    title: "Generate YAML with Dry Run"
+    instructions: |
+      **What we're doing:** Generate a pod YAML file without creating the pod.
+
+      **Why this matters:** This is the fastest way to create YAML templates.
+      Essential for the CKAD exam!
+
+      **The command:**
+      ```
+      kubectl run <name> --image=<image> --dry-run=client -o yaml
+      ```
+
+      Generate YAML for an nginx pod:
+    command_hint: "kubectl run test-pod --image=nginx --dry-run=client -o yaml"
+    validation:
+      type: "command_output"
+      command: "kubectl run test-pod --image=nginx --dry-run=client -o yaml"
+      expected_contains: "apiVersion"
+    points: 10
+
+  - id: "cmd-03"
+    title: "Clean Up Resources"
+    instructions: |
+      **What we're doing:** Delete the pod we created.
+
+      **Why this matters:** Always clean up test resources to keep your
+      cluster tidy and free up resources.
+
+      **The command:**
+      ```
+      kubectl delete pod <name>
+      ```
+
+      Delete the webserver pod:
+    command_hint: "kubectl delete pod webserver"
+    validation:
+      type: "command_output"
+      command: "kubectl get pods"
+      expected_not_contains: "webserver"
+    points: 10
+
+scenarios:
+  - id: "scenario-01"
+    title: "Pod Already Exists"
+    description: |
+      You try to create a pod but get an error:
+
+      ```
+      Error from server (AlreadyExists): pods "nginx" already exists
+      ```
+
+      Your mission: Figure out how to handle this situation!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: nginx
+        namespace: default
+      spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+    hints:
+      - "The error says the pod already exists. You can either delete it first or use a different command"
+      - "Try using `kubectl apply -f` instead of `kubectl create -f` - apply handles existing resources"
+      - "Delete the existing pod first: `kubectl delete pod nginx`, then create the new one"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/nginx"
+      state: "Running"
+    points: 25
+    hint_penalty: 5
+
+  - id: "scenario-02"
+    title: "Invalid YAML Syntax"
+    description: |
+      You try to apply a YAML file but get a syntax error:
+
+      ```
+      error: error parsing pod.yaml: error converting YAML to JSON
+      ```
+
+      The YAML has an indentation problem!
+    manifest: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: bad-yaml
+      spec:
+        containers:
+        - name: app
+        image: nginx
+    hints:
+      - "YAML is indentation-sensitive. Check that everything is aligned correctly"
+      - "The 'image' field should be indented under the container, not at the same level as 'name'"
+      - "Fix the YAML so 'image: nginx' is indented under the container (same level as 'name: app')"
+    solution_validation:
+      type: "resource_state"
+      resource: "pod/bad-yaml"
+      state: "Running"
+    points: 25
+    hint_penalty: 5
+
+quiz:
+  passing_score: 70
+  questions:
+    - type: "multiple_choice"
+      question: "What is the difference between imperative and declarative?"
+      options:
+        - "Imperative uses YAML, declarative uses commands"
+        - "Imperative tells HOW, declarative tells WHAT"
+        - "There is no difference"
+        - "Declarative is faster"
+      correct: 1
+      explanation: "Imperative = step-by-step commands (HOW). Declarative = desired state in YAML (WHAT)."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to create a pod named 'test' with image 'busybox'"
+      expected_contains: "kubectl run"
+      alternatives:
+        - "kubectl run test --image=busybox"
+        - "kubectl run test --image busybox"
+      hint: "Use 'kubectl run' with --image flag"
+      explanation: "`kubectl run test --image=busybox` creates a pod imperatively."
+      points: 10
+
+    - type: "multiple_choice"
+      question: "What does --dry-run=client do?"
+      options:
+        - "Creates the resource without saving"
+        - "Shows what would be created without actually creating it"
+        - "Runs the command on a test cluster"
+        - "Validates the YAML syntax only"
+      correct: 1
+      explanation: "Dry run simulates the command and shows output without creating anything. Great for generating YAML!"
+      points: 5
+
+    - type: "true_false"
+      question: "kubectl apply can both create AND update resources."
+      correct: true
+      explanation: "Apply is idempotent: creates if new, updates if changed, does nothing if unchanged."
+      points: 5
+
+    - type: "multiple_choice"
+      question: "What happens if you run 'kubectl create' on an existing resource?"
+      options:
+        - "It updates the resource"
+        - "It does nothing"
+        - "It throws an AlreadyExists error"
+        - "It deletes and recreates"
+      correct: 2
+      explanation: "Create fails if the resource exists. Use apply instead - it handles existing resources."
+      points: 5
+
+    - type: "command_challenge"
+      question: "Write the command to generate YAML for a pod without creating it"
+      expected_contains: "--dry-run"
+      alternatives:
+        - "kubectl run nginx --image=nginx --dry-run=client -o yaml"
+        - "kubectl run test --image=nginx --dry-run=client -o yaml"
+      hint: "Combine --dry-run=client with -o yaml"
+      explanation: "Use `--dry-run=client -o yaml` to generate templates. This is essential for CKAD!"
+      points: 10
+
+    - type: "fill_yaml"
+      question: "Complete the command to apply this manifest file:"
+      yaml_template: |
+        kubectl ____ -f pod.yaml
+      expected: "apply"
+      explanation: "kubectl apply -f applies a YAML manifest declaratively."
+      points: 10
