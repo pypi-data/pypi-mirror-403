@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for tags
+      
+      - name: Get current version
+        id: check
+        run: |
+          # Extract version from __init__.py
+          VERSION=$(python3 << 'EOF'
+          import re
+          with open('src/webcam_mcp/__init__.py') as f:
+              match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', f.read())
+              print(match.group(1))
+          EOF
+          )
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Get latest tag (or 0.0.0 if none)
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+          
+          echo "Current version: $VERSION"
+          echo "Latest tag: $LATEST_VERSION"
+          
+          if [ "$VERSION" != "$LATEST_VERSION" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+  
+  release:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # For creating releases
+      id-token: write  # For PyPI trusted publishing (optional)
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+      
+      - name: Build package
+        run: python -m build
+      
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git ls-remote --tags origin | grep -q "refs/tags/v${{ needs.check-version.outputs.version }}$"; then
+            git tag -a "v${{ needs.check-version.outputs.version }}" -m "Release v${{ needs.check-version.outputs.version }}"
+            git push origin "v${{ needs.check-version.outputs.version }}"
+          else
+            echo "Tag v${{ needs.check-version.outputs.version }} already exists, skipping tag creation"
+          fi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: v${{ needs.check-version.outputs.version }}
+          files: dist/*
+          generate_release_notes: true
+      
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/*
