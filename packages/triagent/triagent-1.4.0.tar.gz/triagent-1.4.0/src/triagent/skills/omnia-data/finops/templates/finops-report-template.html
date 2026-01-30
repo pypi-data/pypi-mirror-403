@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deloitte Omnia - Azure Databricks Cost Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Deloitte Omnia White Theme */
+        :root {
+            --primary: #007CB0;
+            --primary-dark: #005A87;
+            --accent: #86BC25;
+            --dataeng: #007CB0;
+            --dataspec: #8661c5;
+            --ame: #107c10;
+            --ema: #ff8c00;
+            --bg-light: #F8F8F8;
+            --white: #ffffff;
+            --border: #E0E0E0;
+            --border-dark: #D0D0CE;
+            --text: #000000;
+            --text-light: #53565A;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--white);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.5;
+        }
+
+        .container { max-width: 1600px; margin: 0 auto; }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 24px 20px;
+            background: var(--white);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        header h1 { font-size: 2.2em; margin-bottom: 10px; font-weight: 600; }
+        header h1 .brand { color: var(--text); font-weight: 700; }
+        header h1 .brand-accent { color: var(--primary); font-weight: 400; }
+        .subtitle { color: var(--text-light); font-size: 1.1em; margin: 4px 0; }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: var(--white);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .metric-card.dataeng { border-left: 4px solid var(--dataeng); }
+        .metric-card.dataspec { border-left: 4px solid var(--dataspec); }
+        .metric-card.ame { border-left: 4px solid var(--ame); }
+        .metric-card.ema { border-left: 4px solid var(--ema); }
+        .metric-card.total { border-left: 4px solid var(--primary); }
+
+        .metric-value { font-size: 1.8em; font-weight: 700; margin: 10px 0; color: var(--text); }
+        .metric-label { color: var(--text-light); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 1200px) { .charts-grid { grid-template-columns: 1fr; } }
+
+        .chart-card {
+            background: var(--white);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .chart-card.full-width { grid-column: 1 / -1; }
+
+        .chart-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .chart-container { position: relative; height: 350px; }
+        .chart-container.tall { height: 450px; }
+
+        .data-table-container {
+            background: var(--white);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+        th, td { padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--border); }
+        th {
+            background: var(--white);
+            color: var(--text);
+            text-transform: uppercase;
+            font-weight: 600;
+            font-size: 0.8em;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border-dark);
+        }
+        th:first-child, td:first-child { text-align: left; }
+        tr:hover { background: #f8fbff; }
+        tfoot tr { background: var(--bg-light) !important; font-weight: 600; }
+        tfoot td { border-top: 2px solid var(--border-dark); }
+
+        .filter-controls { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+
+        .filter-btn {
+            padding: 10px 20px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            background: var(--white);
+            color: var(--text-light);
+        }
+
+        .filter-btn:hover { background: var(--bg-light); border-color: var(--border-dark); }
+        .filter-btn.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-light);
+            font-size: 0.85em;
+            border-top: 1px solid var(--border);
+            margin-top: 20px;
+        }
+        footer p { margin: 4px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="brand">Deloitte.</span> <span class="brand-accent">Omnia</span></h1>
+            <p class="subtitle">Azure Databricks Cost Report | AME PROD & EMA PROD</p>
+            <p class="subtitle">December 21, 2025 - January 21, 2026 (32 Days)</p>
+        </header>
+
+        <div class="metrics-grid" id="metricsGrid"></div>
+
+        <div class="filter-controls">
+            <button class="filter-btn active" data-filter="all">All Regions</button>
+            <button class="filter-btn" data-filter="ame">AME Only</button>
+            <button class="filter-btn" data-filter="ema">EMA Only</button>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card full-width">
+                <h3 class="chart-title">Daily Cost Trend</h3>
+                <div class="chart-container tall"><canvas id="dailyTrendChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Domain Distribution</h3>
+                <div class="chart-container"><canvas id="domainChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Region Distribution</h3>
+                <div class="chart-container"><canvas id="regionChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Region Comparison by Domain</h3>
+                <div class="chart-container"><canvas id="regionCompareChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Stacked Domain by Region</h3>
+                <div class="chart-container"><canvas id="stackedChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="data-table-container">
+            <h3 class="chart-title">Daily Cost Breakdown</h3>
+            <table id="dailyTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>AME Data Eng</th>
+                        <th>AME Specialist</th>
+                        <th>EMA Data Eng</th>
+                        <th>EMA Specialist</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot></tfoot>
+            </table>
+        </div>
+
+        <footer>
+            <p>Generated on: January 21, 2026 at 21:53:09</p>
+            <p>Data Source: Azure Cost Management API</p>
+            <p>Subscriptions: AME PROD (39d5984b-c003-4b98-9e3a-434538adb961) | EMA PROD (e4eefd26-facd-439a-b5a2-adf03917b068)</p>
+        </footer>
+    </div>
+
+    <script>
+        // Raw data from Azure Cost Management API
+        const ameRawData = [
+    [0.0462330666666667, 20251221, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.208594513714286, 20251221, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [217.885815573333, 20251221, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [134.57599994, 20251221, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.00520832, 20251221, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.717210331428572, 20251221, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [23.7819271822222, 20251221, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [66.8783337363318, 20251221, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0881333333333333, 20251222, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.206016084761905, 20251222, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [292.05698528, 20251222, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [276.254839316221, 20251222, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.02235349333334, 20251222, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.724524104380952, 20251222, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [322.701971413333, 20251222, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [733.231933536369, 20251222, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0451496533333333, 20251223, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.219127151047619, 20251223, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [323.807905315556, 20251223, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [264.259337391162, 20251223, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.02601088, 20251223, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.704690193904762, 20251223, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [281.768790826667, 20251223, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [555.029983082867, 20251223, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0421709866666667, 20251224, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.205690307619048, 20251224, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [306.242577564444, 20251224, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [295.475744778452, 20251224, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.05316906666667, 20251224, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.714891261904762, 20251224, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [215.347824924444, 20251224, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [361.317154118726, 20251224, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0452045866666667, 20251225, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.21411385352381, 20251225, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [71.0239685688889, 20251225, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [29.8504773266667, 20251225, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.06129152, 20251225, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.709503710095238, 20251225, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [10.0782378666667, 20251225, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [38.607133331746, 20251225, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0414538666666667, 20251226, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.20007551752381, 20251226, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [156.854809244444, 20251226, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [81.7649078452627, 20251226, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.07459882666667, 20251226, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.706871754857143, 20251226, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1449745066667, 20251226, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [38.5980267047619, 20251226, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.04556992, 20251227, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.193054335238095, 20251227, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [34.7592951822222, 20251227, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [35.4299366180952, 20251227, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.06207786666666, 20251227, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.689066937333333, 20251227, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [15.8428169955556, 20251227, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [41.2113818301508, 20251227, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.04579776, 20251228, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.192377033904762, 20251228, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [67.1894980266667, 20251228, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [19.8793959971429, 20251228, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.03046357333334, 20251228, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.710723122857143, 20251228, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1130112, 20251228, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [37.1602947171429, 20251228, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.09025984, 20251229, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.188115396190476, 20251229, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [152.228089173333, 20251229, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [111.375394159375, 20251229, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.09054464, 20251229, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.714789321142857, 20251229, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [16.8188711111111, 20251229, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [45.0890362403233, 20251229, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.04437152, 20251230, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.22209314647619, 20251230, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [165.180939662222, 20251230, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [111.541462588571, 20251230, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.07477717333333, 20251230, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.737189172, 20251230, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [19.1971400533333, 20251230, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [60.0179684908449, 20251230, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.04599488, 20251231, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.205172081142857, 20251231, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [171.545920177778, 20251231, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [76.0881034780952, 20251231, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.07225045333334, 20251231, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.688339368380952, 20251231, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1600388266667, 20251231, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [36.6352253615873, 20251231, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0479057066666667, 20260101, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.173180174857143, 20260101, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [46.2509906844444, 20260101, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [41.5770016133333, 20260101, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.11650944, 20260101, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.691588626095238, 20260101, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1571460266667, 20260101, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [37.1644328657143, 20260101, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0456868266666667, 20260102, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.213131079047619, 20260102, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [198.089253582222, 20260102, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [160.560740337178, 20260102, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.08728533333334, 20260102, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.701117370285714, 20260102, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [21.5807822933333, 20260102, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [101.750528801667, 20260102, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0427710933333333, 20260103, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.18913673752381, 20260103, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [217.107892266667, 20260103, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [88.4358086257143, 20260103, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.09525973333334, 20260103, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.687567332952381, 20260103, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [35.5765181866667, 20260103, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [42.4974090803088, 20260103, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0460299733333333, 20260104, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.190783769714286, 20260104, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [199.333952746667, 20260104, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [87.901845427619, 20260104, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.06309888, 20260104, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.687603724380952, 20260104, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [38.5529519644444, 20260104, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [71.0373067034898, 20260104, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0892625066666666, 20260105, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.208285558095238, 20260105, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [497.119173866667, 20260105, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [302.176745674699, 20260105, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.17668821333334, 20260105, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.708674540571429, 20260105, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [218.863182222222, 20260105, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [718.263841593014, 20260105, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [0.0426210133333333, 20260106, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [0.199261379047619, 20260106, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [490.860824533333, 20260106, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [359.649757589545, 20260106, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.14360917333333, 20260106, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.722823581714286, 20260106, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [357.013678435556, 20260106, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [1031.27168212236, 20260106, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [3.34111370666667, 20260107, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [5.05197599752381, 20260107, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [719.293982631111, 20260107, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [540.824800861344, 20260107, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.18464, 20260107, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.727581754285714, 20260107, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [737.407878826667, 20260107, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [1325.43186587599, 20260107, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [3.29792778666667, 20260108, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [3.9735827407619, 20260108, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [620.908012906667, 20260108, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [331.230591840764, 20260108, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.29102592, 20260108, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.717774591047619, 20260108, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [828.768851768889, 20260108, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [1593.92435528595, 20260108, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [3.35608949333333, 20260109, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.4142809967619, 20260109, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [737.336314488889, 20260109, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [407.62051433067, 20260109, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.11156394666667, 20260109, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.742833809333334, 20260109, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [804.35518336, 20260109, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [2201.2014266891, 20260109, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [2.65569728, 20260110, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.07326204533333, 20260110, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [537.156936284444, 20260110, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [284.622199602032, 20260110, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.12965077333333, 20260110, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.729058709142857, 20260110, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [416.358200462222, 20260110, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [1005.44601015772, 20260110, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [2.59703424, 20260111, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [3.88870858171429, 20260111, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [601.030484071111, 20260111, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [394.362185431246, 20260111, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.12107008, 20260111, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.744866921904762, 20260111, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [198.074243768889, 20260111, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [668.95566657984, 20260111, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [2.67853237333333, 20260112, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [3.90276418952381, 20260112, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [937.289190844444, 20260112, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [628.364120348056, 20260112, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.36642688, 20260112, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.75817674, 20260112, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [921.162774044444, 20260112, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [2611.73314944314, 20260112, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [2.53289248, 20260113, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.15645025257143, 20260113, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [955.222701137778, 20260113, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [663.783353723407, 20260113, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [10.5602628266667, 20260113, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.730812516380952, 20260113, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1250.94601948444, 20260113, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [3097.32333361899, 20260113, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [3.29607061333333, 20260114, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.21536995314286, 20260114, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [1006.69498947556, 20260114, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [476.70111184151, 20260114, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [10.30603904, 20260114, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.754231184, 20260114, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1303.16931825778, 20260114, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [3456.49738911969, 20260114, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [3.27365130666667, 20260115, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.18992675447619, 20260115, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [1122.54802168889, 20260115, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [721.868357187483, 20260115, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.22690432, 20260115, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.746312838857143, 20260115, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1158.09899157333, 20260115, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [3760.46507124282, 20260115, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [3.39072341333333, 20260116, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.56678868190476, 20260116, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [1231.28395847111, 20260116, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [1067.75378383645, 20260116, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [10.54563712, 20260116, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.750327193904762, 20260116, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1062.92929671111, 20260116, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [3481.95689432542, 20260116, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [4.97023573333333, 20260117, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.54751064933333, 20260117, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [958.214258168889, 20260117, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [541.343636210308, 20260117, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [10.7050606933333, 20260117, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.752062004190476, 20260117, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [751.517660586667, 20260117, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [1866.87094304583, 20260117, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [4.92399861333333, 20260118, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.1730770807619, 20260118, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [783.545309333333, 20260118, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [351.65799618655, 20260118, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [10.5034747733333, 20260118, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.750965176380952, 20260118, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [660.89919296, 20260118, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [937.391677111407, 20260118, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [5.01433557333333, 20260119, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [3.96438798057143, 20260119, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [1738.39932288, 20260119, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [862.21962811995, 20260119, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.68062208, 20260119, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.761965960571429, 20260119, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1207.39904775111, 20260119, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [3191.71020877613, 20260119, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [5.01123722666667, 20260120, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.65274753580952, 20260120, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [1337.95476766222, 20260120, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [584.941813713759, 20260120, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [9.03921621333333, 20260120, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.749286399047619, 20260120, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1137.57800163556, 20260120, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [3614.74449957901, 20260120, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [5.24938058666667, 20260121, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "", "USD"],
+    [4.9741230887619, 20260121, "azrg-use2-aud-prdcortexamedataengbcp1-prd-001", "Azure Databricks Regional", "USD"],
+    [1252.13628759111, 20260121, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "", "USD"],
+    [711.132788490608, 20260121, "azrg-use2-aud-prdcortexamedataengprod1-prd-001", "Azure Databricks Regional", "USD"],
+    [8.22659669333333, 20260121, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "", "USD"],
+    [0.751774659619048, 20260121, "azrg-use2-aud-prdcortexamedataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [799.085968071111, 20260121, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "", "USD"],
+    [3766.63650361058, 20260121, "azrg-use2-aud-prdcortexamedataspecprod1-prd-001", "Azure Databricks Regional", "USD"],
+];
+
+
+        const emaRawData = [
+    [1.58689002666667, 20251221, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.217019232380952, 20251221, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [554.491477333333, 20251221, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [443.671424563433, 20251221, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1504110933333, 20251221, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.771350857904762, 20251221, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [85.4443862755556, 20251221, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [79.353554751939, 20251221, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [2.18379552, 20251222, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.220794030666667, 20251222, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [763.789899697778, 20251222, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [2405.31456829872, 20251222, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.16947328, 20251222, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.734155210095238, 20251222, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [450.694414008889, 20251222, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [927.959710277255, 20251222, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.63446698666667, 20251223, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.212790566285714, 20251223, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [653.724504142222, 20251223, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1533.17466332843, 20251223, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1711944533333, 20251223, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.730002621333334, 20251223, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [528.674821262222, 20251223, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1035.64501917719, 20251223, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.66007744, 20251224, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.219454029333333, 20251224, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [569.682041742222, 20251224, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [2767.52870276681, 20251224, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.18006528, 20251224, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.742645809333333, 20251224, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [283.545032035556, 20251224, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [505.992139443159, 20251224, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.5703552, 20251225, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.213547499047619, 20251225, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [391.159620942222, 20251225, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [549.101374245092, 20251225, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1837073066667, 20251225, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.727700552380952, 20251225, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [41.39191296, 20251225, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [47.4552192576932, 20251225, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.56543669333333, 20251226, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.238126081904762, 20251226, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [784.176402204444, 20251226, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [5654.60063643655, 20251226, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1899656533333, 20251226, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.735286253904762, 20251226, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [355.9918592, 20251226, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [808.015859829716, 20251226, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.56172533333333, 20251227, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.22923469352381, 20251227, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [400.979633528889, 20251227, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1112.61697136385, 20251227, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.21053952, 20251227, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.718845644952381, 20251227, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [44.6542469688889, 20251227, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [168.467652121154, 20251227, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.62772533333333, 20251228, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.223034292380952, 20251228, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [350.772586986667, 20251228, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [713.628228749406, 20251228, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2084206933333, 20251228, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.716735085333333, 20251228, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [150.83204672, 20251228, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [49.5943173059101, 20251228, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [2.55482485333333, 20251229, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.228050409904762, 20251229, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [614.259659324444, 20251229, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1154.72292718893, 20251229, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2210052266667, 20251229, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.734953869904762, 20251229, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [343.710222364444, 20251229, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [266.81420898679, 20251229, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.59184864, 20251230, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.225285046285714, 20251230, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [534.277500995556, 20251230, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [776.23144807012, 20251230, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.23071104, 20251230, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.733369047809524, 20251230, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [319.02574528, 20251230, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [316.015974896306, 20251230, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.59690794666667, 20251231, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.209395160952381, 20251231, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [403.091120533333, 20251231, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1874.61780926988, 20251231, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2251153066667, 20251231, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.712191492380952, 20251231, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [190.498509653333, 20251231, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [154.524124629165, 20251231, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.59930986666667, 20260101, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.211138637142857, 20260101, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [263.788202524444, 20260101, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [207.417514248819, 20260101, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2059434666667, 20260101, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.706605394666666, 20260101, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [66.0246468266667, 20260101, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [98.932661071563, 20260101, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.59669461333333, 20260102, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.215546664190476, 20260102, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [468.915739946667, 20260102, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1558.95518426235, 20260102, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2213418666667, 20260102, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.730506201714286, 20260102, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [145.744598471111, 20260102, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [243.694140960695, 20260102, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.69681418666667, 20260103, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.206523792190476, 20260103, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [262.518368177778, 20260103, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [219.531651012602, 20260103, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2169732266667, 20260103, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.729270826857143, 20260103, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [23.8424023466667, 20260103, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [16.0534846857153, 20260103, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.60929632, 20260104, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.213350045333333, 20260104, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [310.193415324444, 20260104, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [286.414842084018, 20260104, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2382173866667, 20260104, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.717178666857143, 20260104, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [75.3465532444444, 20260104, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [59.0816132974103, 20260104, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [2.5611744, 20260105, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.198104355428571, 20260105, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [738.54302688, 20260105, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [741.609259884176, 20260105, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.2025719466667, 20260105, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.750602784, 20260105, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [801.166175644444, 20260105, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1058.07106996999, 20260105, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.66188842666667, 20260106, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.213885308190476, 20260106, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1044.04749656889, 20260106, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1818.68627276579, 20260106, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1994884266667, 20260106, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.75267952152381, 20260106, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [570.256776462222, 20260106, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1045.22180511473, 20260106, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.67407893333333, 20260107, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.22837346552381, 20260107, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [910.980120053334, 20260107, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1528.17522309605, 20260107, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.9799552, 20260107, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.741838546285714, 20260107, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [570.894180124444, 20260107, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [965.715808317617, 20260107, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.66659637333333, 20260108, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.216589428571429, 20260108, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [956.587591822222, 20260108, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [2388.65501866121, 20260108, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.43148202666666, 20260108, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.745323439619048, 20260108, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [734.490024817778, 20260108, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1414.74207185236, 20260108, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.66413248, 20260109, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.22520209352381, 20260109, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [896.859815875556, 20260109, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1230.42849597765, 20260109, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.29532970666667, 20260109, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.753511922857143, 20260109, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [464.94898432, 20260109, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1218.66763317413, 20260109, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.65462688, 20260110, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.214693797714286, 20260110, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [769.438738826666, 20260110, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [443.165930870032, 20260110, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.31977344, 20260110, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.756631424761905, 20260110, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [115.392415715556, 20260110, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [389.704885808484, 20260110, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.62584170666667, 20260111, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.211258545333333, 20260111, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [695.522820391111, 20260111, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [359.635196291206, 20260111, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.29298432, 20260111, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.792762544952381, 20260111, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [172.167231146667, 20260111, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [138.464019156935, 20260111, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [2.5182544, 20260112, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.230905870285714, 20260112, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1213.24329489778, 20260112, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [4269.70340483738, 20260112, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.48246442666667, 20260112, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.823225769523809, 20260112, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [586.797311644444, 20260112, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1753.13137425946, 20260112, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.49129472, 20260113, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.219289412952381, 20260113, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1241.41432279111, 20260113, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1056.78575060356, 20260113, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [10.1136315733333, 20260113, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.816757701142857, 20260113, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [961.575551146666, 20260113, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1741.15773322434, 20260113, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.71733546666667, 20260114, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.224781832952381, 20260114, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1376.31886904889, 20260114, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1201.84724106461, 20260114, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.90894890666666, 20260114, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.810145141333334, 20260114, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [805.365951502222, 20260114, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [2065.89765713109, 20260114, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.68367989333333, 20260115, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.224544559047619, 20260115, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1216.78325056, 20260115, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1236.29451006605, 20260115, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.24944213333334, 20260115, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.828961228761905, 20260115, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [989.153343786667, 20260115, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [2062.36279955819, 20260115, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.81097461333333, 20260116, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.213469353714286, 20260116, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1521.11173877333, 20260116, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [2021.63241801048, 20260116, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.46141226666667, 20260116, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.820430934666666, 20260116, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [452.222403342222, 20260116, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [2198.83043140902, 20260116, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.64879157333333, 20260117, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.223230976190476, 20260117, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [877.237156622222, 20260117, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [845.520050186448, 20260117, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.57044010666666, 20260117, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.80131286552381, 20260117, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [147.146459448889, 20260117, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [367.418473925798, 20260117, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.61817909333333, 20260118, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.214379801904762, 20260118, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [949.410543893333, 20260118, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [522.734947108999, 20260118, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.39856554666667, 20260118, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.820594396190476, 20260118, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [196.034229262222, 20260118, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [220.585715779316, 20260118, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [2.64158581333333, 20260119, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.215881608571429, 20260119, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1237.2053, 20260119, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1314.88702451674, 20260119, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.88368426666666, 20260119, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.841960775238095, 20260119, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [567.000274133333, 20260119, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [1909.06793985187, 20260119, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.49024064, 20260120, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.216302916571429, 20260120, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1297.35713575111, 20260120, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [1960.74442603691, 20260120, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [9.65758122666666, 20260120, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [0.850807276380952, 20260120, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [732.223620124444, 20260120, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [2203.32153555283, 20260120, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+    [1.44351957333333, 20260121, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "", "USD"],
+    [0.223916486857143, 20260121, "azrg-euw-aud-prdcortexemadataengbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [1455.51213354667, 20260121, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "", "USD"],
+    [2815.55498075604, 20260121, "azrg-euw-aud-prdcortexemadataengprod-prd-001", "Azure Databricks Regional", "USD"],
+    [8.99452970666667, 20260121, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "", "USD"],
+    [1.47658851009524, 20260121, "azrg-euw-aud-prdcortexemadataspecbcp-prd-001", "Azure Databricks Regional", "USD"],
+    [871.654849066667, 20260121, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "", "USD"],
+    [2326.61695654639, 20260121, "azrg-euw-aud-prdcortexemadataspecprod-prd-001", "Azure Databricks Regional", "USD"],
+];
+
+
+        // Process data
+        function processData(rawData, region) {
+            const daily = {};
+            rawData.forEach(row => {
+                const [cost, dateInt, rg, meter, currency] = row;
+                const dateStr = String(dateInt);
+                const date = dateStr.slice(0, 4) + '-' + dateStr.slice(4, 6) + '-' + dateStr.slice(6, 8);
+                const domain = rg.includes('dataeng') ? 'dataeng' : 'dataspec';
+
+                if (!daily[date]) daily[date] = { dataeng: 0, dataspec: 0 };
+                daily[date][domain] += cost;
+            });
+            return daily;
+        }
+
+        const ameDaily = processData(ameRawData, 'ame');
+        const emaDaily = processData(emaRawData, 'ema');
+
+        // Combine into chart data
+        const allDates = [...new Set([...Object.keys(ameDaily), ...Object.keys(emaDaily)])].sort();
+        const labels = allDates.map(d => {
+            const dt = new Date(d);
+            return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        });
+
+        let ameDataEng = allDates.map(d => ameDaily[d]?.dataeng || 0);
+        let ameDataSpec = allDates.map(d => ameDaily[d]?.dataspec || 0);
+        let emaDataEng = allDates.map(d => emaDaily[d]?.dataeng || 0);
+        let emaDataSpec = allDates.map(d => emaDaily[d]?.dataspec || 0);
+
+        // Totals
+        const totalAmeDataEng = ameDataEng.reduce((a, b) => a + b, 0);
+        const totalAmeDataSpec = ameDataSpec.reduce((a, b) => a + b, 0);
+        const totalEmaDataEng = emaDataEng.reduce((a, b) => a + b, 0);
+        const totalEmaDataSpec = emaDataSpec.reduce((a, b) => a + b, 0);
+        const totalAme = totalAmeDataEng + totalAmeDataSpec;
+        const totalEma = totalEmaDataEng + totalEmaDataSpec;
+        const grandTotal = totalAme + totalEma;
+
+        // Populate metrics
+        const fmt = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('metricsGrid').innerHTML = `
+            <div class="metric-card total">
+                <div class="metric-label">Total Spend (32 Days)</div>
+                <div class="metric-value">${fmt(grandTotal)}</div>
+            </div>
+            <div class="metric-card dataeng">
+                <div class="metric-label">Data Engineering</div>
+                <div class="metric-value">${fmt(totalAmeDataEng + totalEmaDataEng)}</div>
+            </div>
+            <div class="metric-card dataspec">
+                <div class="metric-label">Specialist Tools</div>
+                <div class="metric-value">${fmt(totalAmeDataSpec + totalEmaDataSpec)}</div>
+            </div>
+            <div class="metric-card ame">
+                <div class="metric-label">AME Region</div>
+                <div class="metric-value">${fmt(totalAme)}</div>
+            </div>
+            <div class="metric-card ema">
+                <div class="metric-label">EMA Region</div>
+                <div class="metric-value">${fmt(totalEma)}</div>
+            </div>
+        `;
+
+        // Chart options for white theme
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#000000' } }
+            },
+            scales: {
+                x: { grid: { color: 'rgba(0,0,0,0.08)' }, ticks: { color: '#53565A' } },
+                y: { grid: { color: 'rgba(0,0,0,0.08)' }, ticks: { color: '#53565A' } }
+            }
+        };
+
+        // Daily trend chart
+        const dailyTrendChart = new Chart(document.getElementById('dailyTrendChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'AME Data Eng', data: ameDataEng, borderColor: '#00bcf2', backgroundColor: 'rgba(0,188,242,0.1)', fill: true },
+                    { label: 'AME Specialist', data: ameDataSpec, borderColor: '#8661c5', backgroundColor: 'rgba(134,97,197,0.1)', fill: true },
+                    { label: 'EMA Data Eng', data: emaDataEng, borderColor: '#00a86b', backgroundColor: 'rgba(0,168,107,0.1)', fill: true },
+                    { label: 'EMA Specialist', data: emaDataSpec, borderColor: '#ff6b6b', backgroundColor: 'rgba(255,107,107,0.1)', fill: true }
+                ]
+            },
+            options: chartOptions
+        });
+
+        // Domain doughnut
+        new Chart(document.getElementById('domainChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Data Engineering', 'Specialist Tools'],
+                datasets: [{
+                    data: [totalAmeDataEng + totalEmaDataEng, totalAmeDataSpec + totalEmaDataSpec],
+                    backgroundColor: ['#007CB0', '#8661c5']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#000000' } } } }
+        });
+
+        // Region doughnut
+        new Chart(document.getElementById('regionChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['AME', 'EMA'],
+                datasets: [{
+                    data: [totalAme, totalEma],
+                    backgroundColor: ['#107c10', '#ff8c00']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#000000' } } } }
+        });
+
+        // Region comparison bar
+        new Chart(document.getElementById('regionCompareChart'), {
+            type: 'bar',
+            data: {
+                labels: ['Data Engineering', 'Specialist Tools'],
+                datasets: [
+                    { label: 'AME', data: [totalAmeDataEng, totalAmeDataSpec], backgroundColor: '#107c10' },
+                    { label: 'EMA', data: [totalEmaDataEng, totalEmaDataSpec], backgroundColor: '#ff8c00' }
+                ]
+            },
+            options: chartOptions
+        });
+
+        // Stacked bar
+        new Chart(document.getElementById('stackedChart'), {
+            type: 'bar',
+            data: {
+                labels: ['AME', 'EMA'],
+                datasets: [
+                    { label: 'Data Engineering', data: [totalAmeDataEng, totalEmaDataEng], backgroundColor: '#007CB0' },
+                    { label: 'Specialist Tools', data: [totalAmeDataSpec, totalEmaDataSpec], backgroundColor: '#8661c5' }
+                ]
+            },
+            options: { ...chartOptions, scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, stacked: true }, y: { ...chartOptions.scales.y, stacked: true } } }
+        });
+
+        // Store table data for filtering
+        const tableData = allDates.map(date => ({
+            date,
+            ameDE: ameDaily[date]?.dataeng || 0,
+            ameDS: ameDaily[date]?.dataspec || 0,
+            emaDE: emaDaily[date]?.dataeng || 0,
+            emaDS: emaDaily[date]?.dataspec || 0
+        }));
+
+        // Function to render table based on filter
+        function renderTable(filter) {
+            const tbody = document.querySelector('#dailyTable tbody');
+            const tfoot = document.querySelector('#dailyTable tfoot');
+            const thead = document.querySelector('#dailyTable thead tr');
+
+            // Update header based on filter
+            if (filter === 'ame') {
+                thead.innerHTML = `<th>Date</th><th>AME Data Eng</th><th>AME Specialist</th><th>Total</th>`;
+            } else if (filter === 'ema') {
+                thead.innerHTML = `<th>Date</th><th>EMA Data Eng</th><th>EMA Specialist</th><th>Total</th>`;
+            } else {
+                thead.innerHTML = `<th>Date</th><th>AME Data Eng</th><th>AME Specialist</th><th>EMA Data Eng</th><th>EMA Specialist</th><th>Total</th>`;
+            }
+
+            let totals = { ameDE: 0, ameDS: 0, emaDE: 0, emaDS: 0, total: 0 };
+            tbody.innerHTML = '';
+
+            tableData.forEach(row => {
+                let rowTotal;
+                let rowHtml;
+
+                if (filter === 'ame') {
+                    rowTotal = row.ameDE + row.ameDS;
+                    rowHtml = `<tr>
+                        <td>${row.date}</td>
+                        <td>${fmt(row.ameDE)}</td>
+                        <td>${fmt(row.ameDS)}</td>
+                        <td>${fmt(rowTotal)}</td>
+                    </tr>`;
+                    totals.ameDE += row.ameDE;
+                    totals.ameDS += row.ameDS;
+                } else if (filter === 'ema') {
+                    rowTotal = row.emaDE + row.emaDS;
+                    rowHtml = `<tr>
+                        <td>${row.date}</td>
+                        <td>${fmt(row.emaDE)}</td>
+                        <td>${fmt(row.emaDS)}</td>
+                        <td>${fmt(rowTotal)}</td>
+                    </tr>`;
+                    totals.emaDE += row.emaDE;
+                    totals.emaDS += row.emaDS;
+                } else {
+                    rowTotal = row.ameDE + row.ameDS + row.emaDE + row.emaDS;
+                    rowHtml = `<tr>
+                        <td>${row.date}</td>
+                        <td>${fmt(row.ameDE)}</td>
+                        <td>${fmt(row.ameDS)}</td>
+                        <td>${fmt(row.emaDE)}</td>
+                        <td>${fmt(row.emaDS)}</td>
+                        <td>${fmt(rowTotal)}</td>
+                    </tr>`;
+                    totals.ameDE += row.ameDE;
+                    totals.ameDS += row.ameDS;
+                    totals.emaDE += row.emaDE;
+                    totals.emaDS += row.emaDS;
+                }
+                totals.total += rowTotal;
+                tbody.innerHTML += rowHtml;
+            });
+
+            // Update footer
+            if (filter === 'ame') {
+                tfoot.innerHTML = `<tr>
+                    <td>TOTAL</td>
+                    <td>${fmt(totals.ameDE)}</td>
+                    <td>${fmt(totals.ameDS)}</td>
+                    <td>${fmt(totals.total)}</td>
+                </tr>`;
+            } else if (filter === 'ema') {
+                tfoot.innerHTML = `<tr>
+                    <td>TOTAL</td>
+                    <td>${fmt(totals.emaDE)}</td>
+                    <td>${fmt(totals.emaDS)}</td>
+                    <td>${fmt(totals.total)}</td>
+                </tr>`;
+            } else {
+                tfoot.innerHTML = `<tr>
+                    <td>TOTAL</td>
+                    <td>${fmt(totals.ameDE)}</td>
+                    <td>${fmt(totals.ameDS)}</td>
+                    <td>${fmt(totals.emaDE)}</td>
+                    <td>${fmt(totals.emaDS)}</td>
+                    <td>${fmt(totals.total)}</td>
+                </tr>`;
+            }
+        }
+
+        // Initial table render
+        renderTable('all');
+
+        // Filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                const filter = this.dataset.filter;
+
+                // Update charts
+                dailyTrendChart.data.datasets[0].hidden = filter === 'ema';
+                dailyTrendChart.data.datasets[1].hidden = filter === 'ema';
+                dailyTrendChart.data.datasets[2].hidden = filter === 'ame';
+                dailyTrendChart.data.datasets[3].hidden = filter === 'ame';
+                dailyTrendChart.update();
+
+                // Update table
+                renderTable(filter);
+            });
+        });
+    </script>
+</body>
+</html>

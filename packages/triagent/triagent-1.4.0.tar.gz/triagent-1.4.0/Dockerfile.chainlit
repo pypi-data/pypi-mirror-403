@@ -1,0 +1,60 @@
+# Dockerfile for Chainlit UI - Web chat interface for Triagent
+#
+# This container runs the Chainlit web UI which connects to Dynamic Sessions
+# (or local mock) via the SessionProxy.
+#
+# Usage:
+#   docker build -f Dockerfile.chainlit -t triagent-chainlit:local .
+#   docker run -p 8080:8080 -e TRIAGENT_LOCAL_MODE=true triagent-chainlit:local
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    gnupg \
+    lsb-release && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Azure CLI for DefaultAzureCredential to use mounted ~/.azure credentials
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
+# Install uv for faster package installation
+RUN pip install --no-cache-dir --upgrade pip uv
+
+# Copy project files
+COPY pyproject.toml .
+COPY README.md .
+COPY hatch_build.py .
+COPY src/ ./src/
+
+# Set version for setuptools-scm (Docker build context doesn't include .git)
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=1.4.0
+
+# Install triagent with web dependencies
+RUN TRIAGENT_SKIP_ENCRYPT=1 uv pip install --system -e ".[web]"
+
+# Copy Chainlit configuration
+COPY .chainlit/ /app/.chainlit/
+COPY chainlit.md /app/chainlit.md
+
+# Create config directory for triagent
+RUN mkdir -p /root/.triagent
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/src
+
+# Model selection (default: claude-opus-4-5, can be overridden at runtime)
+ENV TRIAGENT_MODEL=claude-opus-4-5
+
+# Expose Chainlit port
+EXPOSE 8080
+
+# Run Chainlit
+CMD ["python", "-m", "chainlit", "run", "src/triagent/web/container/chainlit_app.py", "--host", "0.0.0.0", "--port", "8080"]

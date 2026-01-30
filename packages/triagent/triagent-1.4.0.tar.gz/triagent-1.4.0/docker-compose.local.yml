@@ -1,0 +1,93 @@
+# docker-compose.local.yml - Local E2E testing for Triagent Web UI
+#
+# Flow: Chainlit (8080) → Sessions (8082) → Claude SDK → Azure Foundry
+#
+# This runs the complete local stack:
+#   - Chainlit UI (port 8080) - handles OAuth and web interface
+#   - Sessions API (port 8082) - executes code via local_sessions_api.py
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml build
+#   docker compose -f docker-compose.local.yml up -d
+#   devtunnel host triagent-team
+#   open https://4m2mfr3p-8080.use2.devtunnels.ms
+
+services:
+  # Sessions container - Mock /code/execute for local testing
+  # In production, this is Azure Dynamic Sessions
+  sessions:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.sessions
+    ports:
+      - "8082:8082"
+    volumes:
+      # Persist config between container restarts (triagent user home)
+      - triagent-config:/home/triagent/.triagent
+      # Mount host credentials for Azure Foundry configuration (SDK needs this)
+      - ~/.triagent/credentials.json:/home/triagent/.triagent/credentials.json
+      # Mount Azure credentials for authentication persistence
+      # NOTE: Must be read-write (not :ro) - Azure CLI writes to ~/.azure/commands/ during login
+      - ~/.azure:/home/triagent/.azure
+    environment:
+      - PYTHONPATH=/app/src
+      - CI=true
+      - ANTHROPIC_HEADLESS=1
+      - CLAUDE_CODE_SKIP_ONBOARDING=1
+      - PYTHONUNBUFFERED=1
+      # SDK timeout: 5 minutes (default is 60s which is too short)
+      - CLAUDE_CODE_STREAM_CLOSE_TIMEOUT=300000
+      # Force device flow even if Azure credentials exist (optional)
+      # Set to true if you mount ~/.azure but still want device flow:
+      # - TRIAGENT_FORCE_AUTH=true
+    # Run local sessions API mock
+    command: ["python", "-m", "uvicorn", "triagent.web.local_sessions_api:app", "--host", "0.0.0.0", "--port", "8082"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Chainlit UI - connects to LOCAL sessions container
+  chainlit:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.chainlit
+    ports:
+      - "8080:8080"
+    depends_on:
+      sessions:
+        condition: service_healthy
+    environment:
+      # === LOCAL MODE ===
+      - TRIAGENT_LOCAL_MODE=true
+      - TRIAGENT_LOCAL_SESSIONS_URL=http://sessions:8082
+      # ==================
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+      # Model selection via environment variable (default: claude-opus-4-5)
+      # Valid values: claude-opus-4-5, claude-sonnet-4
+      - TRIAGENT_MODEL=${TRIAGENT_MODEL:-claude-opus-4-5}
+      # OAuth Configuration (Azure AD)
+      - OAUTH_AZURE_AD_CLIENT_ID=57b5437c-ad58-4520-8b1b-a102ad2d9049
+      - OAUTH_AZURE_AD_CLIENT_SECRET=sTa8Q~tNWBJUfO6FaxlF7cFfXb4xRjC2VnTOba4p
+      - OAUTH_AZURE_AD_TENANT_ID=36da45f1-dd2c-4d1f-af13-5abe46b99921
+      - OAUTH_AZURE_AD_ENABLE_SINGLE_TENANT=true
+      - CHAINLIT_AUTH_SECRET=26441d0718d4c951afb07c9ce581f636377253edcb79840cb06c2d35a2d5ebb7
+      # CHAINLIT_URL for OAuth callback (uses shell env or defaults to registered devtunnel)
+      - CHAINLIT_URL=${CHAINLIT_URL:-https://4m2mfr3p-8080.use2.devtunnels.ms}
+      # Azure tenant for MSAL OAuth callback
+      - AZURE_TENANT_ID=36da45f1-dd2c-4d1f-af13-5abe46b99921
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  triagent-config:
+    name: triagent-local-config
