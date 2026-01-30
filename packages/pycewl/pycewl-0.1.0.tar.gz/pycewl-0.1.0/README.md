@@ -1,0 +1,230 @@
+# pycewl
+
+Python async re-implementation of CeWL (Custom Word List Generator)
+
+[![CI](https://github.com/digininja/CeWL/actions/workflows/ci.yml/badge.svg)](https://github.com/digininja/CeWL/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A modern, high-performance Python implementation of [CeWL](https://github.com/digininja/CeWL) with:
+
+- Async spider using `asyncio` + `httpx`
+- HTML parsing with `beautifulsoup4`
+- Google Search discovery for seed URLs
+- Smart Word Relevance Scoring using Google Natural Language API
+- Production-grade packaging for PyPI
+
+## Installation
+
+```bash
+pip install pycewl
+```
+
+For development:
+
+```bash
+pip install pycewl[dev]
+```
+
+For PDF metadata extraction:
+
+```bash
+pip install pycewl[pdf]
+```
+
+## Quick Start
+
+### Basic Usage
+
+Spider a website and generate a wordlist:
+
+```bash
+pycewl https://example.com -w words.txt
+```
+
+### With Options
+
+```bash
+# Set spider depth and show word counts
+pycewl https://example.com -d 3 -c -w words.txt
+
+# Extract emails too
+pycewl https://example.com -e --email-file emails.txt -w words.txt
+
+# Lowercase words, minimum 5 characters
+pycewl https://example.com --lowercase -m 5 -w words.txt
+```
+
+### Google Search Integration
+
+Find seed URLs using Google Custom Search:
+
+```bash
+# Set environment variables
+export GOOGLE_API_KEY="your-api-key"
+export GOOGLE_SEARCH_ENGINE_ID="your-search-engine-id"
+
+# Search and spider
+pycewl --google-keyword "star trek fan site" -w words.txt
+```
+
+### Smart Relevance Scoring
+
+Group words by relevance to your search query using Google NLP:
+
+```bash
+# Set Google Cloud credentials
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+
+# Spider with relevance scoring
+pycewl --google-keyword "star trek" --relevance-scoring \
+    --related-file related.txt \
+    --unrelated-file general.txt
+```
+
+Output structure:
+```
+=== Words Related to "star trek" ===
+enterprise, 42
+spock, 38
+federation, 25
+...
+
+=== General Words (Not Query-Specific) ===
+welcome, 15
+contact, 12
+page, 8
+...
+```
+
+## CLI Reference
+
+| Option | Description |
+|--------|-------------|
+| `-d, --depth INT` | Spider depth (default: 2) |
+| `-m, --min-word-length INT` | Minimum word length (default: 3) |
+| `-x, --max-word-length INT` | Maximum word length |
+| `-w, --write PATH` | Output file for words |
+| `-n, --no-words` | Don't output wordlist |
+| `-c, --count` | Show word counts |
+| `-g, --groups INT` | Group words by count ranges |
+| `-o, --offsite` | Allow spidering offsite URLs |
+| `-e, --email` | Extract email addresses |
+| `--email-file PATH` | Output file for emails |
+| `-a, --meta` | Extract metadata from documents |
+| `--meta-file PATH` | Output file for metadata |
+| `-k, --keep` | Keep downloaded files |
+| `--lowercase` | Convert words to lowercase |
+| `--with-numbers` | Include words containing numbers |
+| `--convert-umlauts` | Convert German umlauts to ASCII |
+| `-u, --user-agent TEXT` | Custom user agent |
+| `--concurrency INT` | Concurrent requests (default: 10) |
+| `--auth-type TEXT` | Authentication type (basic/digest/bearer) |
+| `--auth-user TEXT` | Authentication username |
+| `--auth-pass TEXT` | Authentication password |
+| `--auth-token TEXT` | Bearer/JWT token for authentication |
+| `--proxy-host TEXT` | Proxy hostname |
+| `--proxy-port INT` | Proxy port |
+| `-H, --header TEXT` | HTTP header (Name: Value) |
+| `-v, --verbose` | Verbose output |
+| `--google-keyword TEXT` | Search Google for seed URLs |
+| `--google-max-results INT` | Max Google results (default: 10) |
+| `--relevance-scoring` | Enable word relevance scoring |
+| `--relevance-threshold FLOAT` | Relevance threshold (default: 0.5) |
+| `--related-file PATH` | Output for query-related words |
+| `--unrelated-file PATH` | Output for general words |
+| `--version` | Show version |
+
+### Bearer Token Authentication
+
+Authenticate with a bearer or JWT token:
+
+```bash
+# Using --auth-token (auto-detects bearer type)
+pycewl https://api.example.com --auth-token "your-access-token" -w words.txt
+
+# Explicit auth type
+pycewl https://api.example.com --auth-type bearer --auth-token "eyJhbG..." -w words.txt
+```
+
+## Python API
+
+```python
+import asyncio
+from pycewl import Crawler, CeWLConfig, SpiderConfig, WordConfig, WordExtractor
+
+async def main():
+    config = CeWLConfig(
+        url="https://example.com",
+        spider=SpiderConfig(depth=2, concurrency=5),
+        word=WordConfig(min_length=4, lowercase=True),
+    )
+
+    crawler = Crawler(config)
+    extractor = WordExtractor(config.word)
+
+    async for result in crawler.crawl(["https://example.com"]):
+        if result.html:
+            extractor.process_html(result.html)
+
+    for word, count in extractor.get_sorted_words()[:20]:
+        print(f"{word}: {count}")
+
+asyncio.run(main())
+```
+
+## Google Cloud Setup
+
+### For Google Search
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a project and enable the Custom Search API
+3. Create an API key
+4. Set up a [Programmable Search Engine](https://programmablesearchengine.google.com/)
+5. Set environment variables:
+   ```bash
+   export GOOGLE_API_KEY="your-api-key"
+   export GOOGLE_SEARCH_ENGINE_ID="your-cx-id"
+   ```
+
+### For Relevance Scoring (NLP)
+
+1. Enable the Natural Language API in Google Cloud Console
+2. Create a service account with Natural Language API access
+3. Download the JSON key file
+4. Set environment variable:
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
+   ```
+
+## Development
+
+```bash
+# Clone repository
+git clone https://github.com/digininja/CeWL.git
+cd CeWL/pycewl
+
+# Install dev dependencies
+make install-dev
+
+# Run tests
+make test
+
+# Run linting
+make lint
+
+# Format code
+make format
+
+# Build package
+make build
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Credits
+
+- Original CeWL by [Robin Wood (digininja)](https://github.com/digininja)
+- Python implementation maintains feature parity with Ruby original
