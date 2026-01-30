@@ -1,0 +1,226 @@
+# Makefile.dev - Development and Code Quality Targets
+#
+# Provides: setup, install, fmt, lint, type, cq, check, release targets
+# Requires: PYTHON (from Makefile.env), areyousure (from Makefile.utils)
+#
+# Configuration variables (set in Makefile before include, or in Makefile.local):
+#   INFRA_DEV_PKG_NAME      - Package name (default: appinfra)
+#   INFRA_DEV_CQ_STRICT     - Code quality strictness (default: false)
+#   INFRA_DEV_CQ_EXCLUDE    - Patterns to exclude from cq checks (e.g., "examples/*")
+#                             Note: patterns cannot contain spaces (Make limitation)
+#   INFRA_DEV_PROJECT_ROOT  - Project root path (default: $(CURDIR))
+#   INFRA_DEV_CHECK_SCRIPT  - Path to check.sh (default: auto-derived)
+#   INFRA_DEV_INSTALL_EXTRAS - Optional extras for install (e.g., "ui,fastapi")
+#   INFRA_DEV_MYPY_FLAGS    - Extra flags for mypy (e.g., "--follow-imports=skip" for large deps)
+#   INFRA_DEV_SKIP_TARGETS  - Space-separated list of targets to skip (project provides own)
+#                             Supported: fmt lint type cq
+
+# Path to this Makefile's directory (for deriving paths)
+_MAKEFILE_DEV_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+
+# Derive check script path
+INFRA_DEV_CHECK_SCRIPT ?= $(_MAKEFILE_DEV_DIR)../check.sh
+
+# Default for optional install extras (empty = base package only)
+INFRA_DEV_INSTALL_EXTRAS ?=
+
+# Default extras for setup (all dev-related extras)
+INFRA_DEV_SETUP_EXTRAS ?= dev,ui,fastapi,validation,hotreload,docs
+
+# Default PYTHON_ENVS to PYTHON if not set (backward compatibility)
+PYTHON_ENVS ?= $(PYTHON)
+
+# Export for subprocesses
+export INFRA_DEV_PKG_NAME
+export INFRA_DEV_CQ_STRICT
+export INFRA_DEV_CQ_EXCLUDE
+export INFRA_DEV_PROJECT_ROOT
+export INFRA_DEV_INSTALL_EXTRAS
+export INFRA_DEV_MYPY_FLAGS
+export INFRA_DEFAULT_CONFIG_FILE
+export INFRA_PYTEST_COVERAGE_MARKERS
+export INFRA_PYTEST_COVERAGE_THRESHOLD
+
+# Expand CQ_EXCLUDE patterns to --exclude flags (empty if no exclusions)
+_CQ_EXCLUDE_FLAGS := $(if $(INFRA_DEV_CQ_EXCLUDE),$(foreach pat,$(INFRA_DEV_CQ_EXCLUDE),--exclude "$(pat)"))
+
+# Python test wrapper with warning suppression
+PYTHON_TEST = PYTHONWARNINGS="ignore::ResourceWarning,ignore::RuntimeWarning" ${PYTHON}
+
+##@ Health Check
+
+doctor:: ## Run project health checks
+	@$(PYTHON) -m appinfra.cli.cli doctor --pkg-name=$(INFRA_DEV_PKG_NAME)
+.PHONY: doctor
+
+##@ Development
+
+setup:: ## sets up dev environment with all dependencies for all PYTHON_ENVS
+	@echo "* setting up dev environment..."
+	@for pyenv in $(PYTHON_ENVS); do \
+		if [ -x "$$pyenv" ]; then \
+			echo "  → $$pyenv"; \
+			if command -v appinfra >/dev/null 2>&1 && [ -f "$$(appinfra scripts-path)/install_deps.py" ]; then \
+				$$pyenv "$$(appinfra scripts-path)/install_deps.py"; \
+			else \
+				$$pyenv -m pip install -q -e ".[$(INFRA_DEV_SETUP_EXTRAS)]"; \
+			fi; \
+		else \
+			echo "  → $$pyenv (skipped, not found)"; \
+		fi; \
+	done
+	@echo "* setup done"
+.PHONY: setup
+
+##@ Code Quality
+
+ifeq ($(filter fmt,$(INFRA_DEV_SKIP_TARGETS)),)
+fmt:: ## Format code with ruff
+ifeq ($(INFRA_DRY_RUN),1)
+	@echo "[DRY RUN] Would run: ruff format ."
+else
+	@echo "* running formatter..."
+	@${PYTHON} -m ruff format .
+	@echo "* formatter done"
+endif
+endif # skip fmt
+.PHONY: fmt
+
+ifeq ($(filter fmt,$(INFRA_DEV_SKIP_TARGETS)),)
+fmt.check:: ## Check if code is formatted (CI)
+	@echo "* checking formatting..."
+	@${PYTHON} -m ruff format --check . || (echo "ERROR: Code needs formatting. Run 'make fmt' first." && exit 1)
+	@echo "* formatting check passed"
+endif # skip fmt.check
+.PHONY: fmt.check
+
+ifeq ($(filter lint,$(INFRA_DEV_SKIP_TARGETS)),)
+lint:: ## Lint code with ruff
+ifeq ($(INFRA_DRY_RUN),1)
+	@echo "[DRY RUN] Would run: ruff check ."
+else
+	@echo "* running linter..."
+	@${PYTHON} -m ruff check .
+	@echo "* linter done"
+endif
+endif # skip lint
+.PHONY: lint
+
+ifeq ($(filter lint,$(INFRA_DEV_SKIP_TARGETS)),)
+lint.fix:: ## Auto-fix linting issues
+	@echo "* running linter with auto-fix..."
+	@${PYTHON} -m ruff check . --fix
+	@echo "* linter auto-fix done"
+
+lint.unsafe:: ## Auto-fix linting issues (including unsafe fixes)
+	@echo "* running linter with unsafe fixes..."
+	@${PYTHON} -m ruff check . --fix --unsafe-fixes
+	@echo "* linter unsafe fixes done"
+endif # skip lint.fix, lint.unsafe
+.PHONY: lint.fix
+.PHONY: lint.unsafe
+
+ifeq ($(filter type,$(INFRA_DEV_SKIP_TARGETS)),)
+type:: ## Run type checking with mypy
+	@if [ ! -d "$(INFRA_DEV_PKG_NAME)" ]; then \
+		echo ""; \
+		echo "ERROR: Package directory '$(INFRA_DEV_PKG_NAME)/' not found"; \
+		echo ""; \
+		echo "Check INFRA_DEV_PKG_NAME in your Makefile"; \
+		echo "Run 'make doctor' for diagnostics"; \
+		echo ""; \
+		exit 1; \
+	fi
+ifeq ($(INFRA_DRY_RUN),1)
+	@echo "[DRY RUN] Would run: mypy $(INFRA_DEV_PKG_NAME)/"
+else
+	@echo "* running type checker..."
+	@${PYTHON} -m mypy $(INFRA_DEV_PKG_NAME)/ --exclude 'examples/' $(INFRA_DEV_MYPY_FLAGS)
+	@if [ -d "examples" ]; then ${PYTHON} -m mypy examples/ --disable-error-code=no-untyped-def --disable-error-code=import-untyped --ignore-missing-imports $(INFRA_DEV_MYPY_FLAGS); \
+	elif [ -d "$(INFRA_DEV_PKG_NAME)/examples" ]; then ${PYTHON} -m mypy $(INFRA_DEV_PKG_NAME)/examples/ --disable-error-code=no-untyped-def --disable-error-code=import-untyped --ignore-missing-imports $(INFRA_DEV_MYPY_FLAGS); fi
+	@echo "* type checking done"
+endif
+endif # skip type
+.PHONY: type
+
+ifeq ($(filter cq,$(INFRA_DEV_SKIP_TARGETS)),)
+cq:: ## Check function sizes (reports violations, does not fail)
+	@echo "* checking function sizes..."
+	@$(PYTHON) -m appinfra.cli.cli -l error cq cf $(_CQ_EXCLUDE_FLAGS)
+	@echo "* function size check done"
+endif # skip cq
+.PHONY: cq
+
+ifeq ($(filter cq,$(INFRA_DEV_SKIP_TARGETS)),)
+cq.strict:: ## Check function sizes (fails on violations)
+	@echo "* checking function sizes (strict mode)..."
+	@$(PYTHON) -m appinfra.cli.cli -l error cq cf --strict $(_CQ_EXCLUDE_FLAGS)
+	@echo "* function size check passed"
+endif # skip cq.strict
+.PHONY: cq.strict
+
+export PYTHON
+
+check:: ## Full checks with progress indicators (fail-fast, parallel)
+	@bash $(INFRA_DEV_CHECK_SCRIPT) --fail-fast
+.PHONY: check
+
+check.seq:: ## Full checks (sequential mode, fail-fast)
+	@bash $(INFRA_DEV_CHECK_SCRIPT) --sequential --fail-fast
+.PHONY: check.seq
+
+check.all:: ## Full checks (run all checks even if some fail)
+	@bash $(INFRA_DEV_CHECK_SCRIPT)
+.PHONY: check.all
+
+check.raw:: ## Full checks with raw output (no cursor positioning, fail-fast, for logs/CI)
+	@bash $(INFRA_DEV_CHECK_SCRIPT) --raw
+.PHONY: check.raw
+
+check.summary:: ## Full checks with summary output (no cursor, summaries + failures only)
+	@bash $(INFRA_DEV_CHECK_SCRIPT) --raw --summary
+.PHONY: check.summary
+
+count:: ## counts number of lines
+	@echo "* running count..."
+	@find . -name \*.py | xargs wc -l
+	@echo "* count done"
+.PHONY: count
+
+##@ Release (push to main)
+
+release:: ## creates a release (runs tests, merges to master)
+	@echo "* checking for uncommitted changes..."
+	@if ! git diff-index --quiet HEAD; then \
+		echo "ERROR: Uncommitted changes detected. Commit or stash them first."; \
+		exit 1; \
+	fi
+	@echo "* checking if code needs formatting..."
+	@${PYTHON} -m ruff format --check . || (echo "ERROR: Code needs formatting. Run 'make fmt' first." && exit 1)
+	@echo "* checking linting..."
+	@${PYTHON} -m ruff check . || (echo "ERROR: Linting issues found. Run 'make lint.fix' first." && exit 1)
+	$(call areyousure)
+	@echo "* running release..."
+	@$(MAKE) test.all
+	@echo "  - fetching latest changes..."
+	@git fetch origin
+	@echo "  - switching to master branch..."
+	@git checkout master
+	@echo "  - ensuring master is up to date..."
+	@git merge --ff-only origin/master || (echo "ERROR: master has diverged from origin. Pull changes first." && git checkout develop && exit 1)
+	@echo "  - merging develop into master..."
+	@git merge --no-ff develop -m "Release: merge develop into master"
+	@echo "  - pushing to origin/master..."
+	@git push origin master
+	@echo "  - switching back to develop..."
+	@git checkout develop
+	@echo "  - syncing develop with master..."
+	@git merge master
+	@echo "* release done"
+.PHONY: release
+
+release.check:: ## checks if working directory is clean
+	@echo "* checking working directory..."
+	@git diff-index --quiet HEAD || (echo "ERROR: Uncommitted changes detected" && exit 1)
+	@echo "* working directory is clean"
+.PHONY: release.check

@@ -1,0 +1,137 @@
+"""
+Tests for app/core/shutdown.py.
+
+Tests shutdown manager functionality including:
+- Signal handler registration
+- Signal handling (SIGTERM, SIGINT)
+- Duplicate signal handling
+- Return code mapping
+"""
+
+import signal
+from unittest.mock import Mock, patch
+
+import pytest
+
+from appinfra.app.core.shutdown import ShutdownManager
+
+
+@pytest.mark.unit
+class TestShutdownManagerInit:
+    """Test ShutdownManager initialization."""
+
+    def test_basic_initialization(self):
+        """Test basic initialization."""
+        manager = ShutdownManager()
+
+        assert manager._shutting_down is False
+        assert manager._signal_return_code == 130  # Default
+        assert manager._original_handlers == {}
+
+
+@pytest.mark.unit
+class TestSignalRegistration:
+    """Test signal handler registration."""
+
+    def test_register_signal_handlers(self):
+        """Test register_signal_handlers registers SIGTERM and SIGINT."""
+        manager = ShutdownManager()
+
+        with patch("signal.signal") as mock_signal:
+            mock_signal.return_value = Mock()  # Original handler
+            manager.register_signal_handlers()
+
+            # Should register both SIGTERM and SIGINT
+            assert mock_signal.call_count == 2
+            calls = mock_signal.call_args_list
+            signals_registered = [call[0][0] for call in calls]
+            assert signal.SIGTERM in signals_registered
+            assert signal.SIGINT in signals_registered
+
+    def test_original_handlers_preserved(self):
+        """Test that original signal handlers are preserved."""
+        manager = ShutdownManager()
+
+        mock_term_handler = Mock()
+        mock_int_handler = Mock()
+
+        with patch("signal.signal") as mock_signal:
+
+            def signal_side_effect(signum, handler):
+                if signum == signal.SIGTERM:
+                    return mock_term_handler
+                elif signum == signal.SIGINT:
+                    return mock_int_handler
+
+            mock_signal.side_effect = signal_side_effect
+            manager.register_signal_handlers()
+
+            assert manager._original_handlers[signal.SIGTERM] is mock_term_handler
+            assert manager._original_handlers[signal.SIGINT] is mock_int_handler
+
+
+@pytest.mark.unit
+class TestSignalHandling:
+    """Test signal handling logic."""
+
+    def test_handle_sigint_stores_return_code_130(self):
+        """Test SIGINT handler stores return code 130 and raises KeyboardInterrupt."""
+        manager = ShutdownManager()
+
+        with pytest.raises(KeyboardInterrupt):
+            manager._handle_signal(signal.SIGINT, None)
+
+        assert manager.get_signal_return_code() == 130
+
+    def test_handle_sigterm_stores_return_code_143(self):
+        """Test SIGTERM handler stores return code 143 and raises KeyboardInterrupt."""
+        manager = ShutdownManager()
+
+        with pytest.raises(KeyboardInterrupt):
+            manager._handle_signal(signal.SIGTERM, None)
+
+        assert manager.get_signal_return_code() == 143
+
+    def test_handle_signal_sets_shutting_down_flag(self):
+        """Test signal handler sets shutting_down flag before raising."""
+        manager = ShutdownManager()
+
+        assert manager._shutting_down is False
+        with pytest.raises(KeyboardInterrupt):
+            manager._handle_signal(signal.SIGINT, None)
+        assert manager._shutting_down is True
+
+    def test_duplicate_signal_ignored(self):
+        """Test duplicate signal is ignored when already shutting down."""
+        manager = ShutdownManager()
+        manager._shutting_down = True  # Already shutting down
+
+        # Should not raise - just returns silently
+        manager._handle_signal(signal.SIGINT, None)
+
+    def test_get_signal_return_code_default(self):
+        """Test get_signal_return_code returns 130 as default."""
+        manager = ShutdownManager()
+
+        # Before any signal, should return default 130
+        assert manager.get_signal_return_code() == 130
+
+
+@pytest.mark.unit
+class TestIsShuttingDown:
+    """Test is_shutting_down method."""
+
+    def test_is_shutting_down_false_initially(self):
+        """Test is_shutting_down returns False initially."""
+        manager = ShutdownManager()
+
+        assert manager.is_shutting_down() is False
+
+    def test_is_shutting_down_true_after_signal(self):
+        """Test is_shutting_down returns True after signal handled."""
+        manager = ShutdownManager()
+
+        with pytest.raises(KeyboardInterrupt):
+            manager._handle_signal(signal.SIGINT, None)
+
+        assert manager.is_shutting_down() is True
