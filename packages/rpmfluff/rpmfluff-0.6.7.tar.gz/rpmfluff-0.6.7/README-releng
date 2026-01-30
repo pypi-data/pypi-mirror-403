@@ -1,0 +1,58 @@
+To release new version:
+
+    git pull --rebase
+
+Do the changes, commit. Test with:
+
+    python -m unittest rpmfluff.test
+    python3 -m unittest rpmfluff.test
+    git push
+
+Change version in python-rpmfluff.spec:
+
+    version="<version>"
+    git commit -am "chore: New version $version"
+    git tag "$version"
+    git push && git push --tags
+    mkdir "rpmfluff-$version"
+    cp -a LICENSE python-rpmfluff.spec README.md README-releng rpmfluff setup.py "rpmfluff-$version/"
+    tar -cJf "rpmfluff-$version.tar.xz" "rpmfluff-$version/"
+
+Upload release to https://pagure.io/rpmfluff/upload, edit README.md to announce new version, commit, push:
+
+    git commit -am "chore: Announce new release $version"
+    git push
+
+Push to PyPI (first to test env and test it, then to prod):
+
+    python3 setup.py sdist
+    twine upload -u __token__ -p ... -r testpypi "dist/rpmfluff-$version.tar.gz"
+    rm -rf venv
+    virtualenv --system-site-packages venv   # needed to get access to system's rpm module
+    source venv/bin/activate
+    pip install --ignore-installed --index-url https://test.pypi.org/simple/ --no-cache-dir rpmfluff
+    python -c "import rpmfluff"
+    deactivate
+    rm -rf venv/
+    twine upload -u __token__ -p ... "dist/rpmfluff-$version.tar.gz"
+
+Now Fedora process:
+
+    kinit <FAS_username>@FEDORAPROJECT.ORG
+
+Build rawhide package:
+
+    cd ../python-rpmfluff   # Fedora build
+    fedpkg switch-branch rawhide
+    fedpkg pull --rebase
+    fedpkg new-sources "../rpmfluff/rpmfluff-<version>.tar.xz"
+    meld ../rpmfluff/python-rpmfluff.spec python-rpmfluff.spec
+    fedpkg commit -m "chore: New version"
+    fedpkg push
+    fedpkg build
+
+    fedpkg switch-branch f25
+    git merge rawhide
+    fedpkg push
+    fedpkg build
+    fedpkg update
