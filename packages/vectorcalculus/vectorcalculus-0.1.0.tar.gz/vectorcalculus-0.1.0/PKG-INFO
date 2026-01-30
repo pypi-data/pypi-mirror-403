@@ -1,0 +1,96 @@
+Metadata-Version: 2.4
+Name: vectorcalculus
+Version: 0.1.0
+Summary: Small pure-Python vector calculus utilities
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.21
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+
+# vectorcalculus
+
+Small pure-Python vector calculus utilities.
+
+Usage example:
+
+```py
+from vectorcalculus import Vector, gradient, divergence, curl
+
+v = Vector(1,2,3)
+print(v.norm())
+
+def f(p):
+    x,y,z = p
+    return x*y + z*z
+
+print(gradient(f, (1.0,2.0,3.0)))
+```
+
+More examples
+-------------
+
+Pointwise (pure-Python) usage
+```py
+from vectorcalculus import Vector, gradient, divergence
+
+v = Vector(2, -1, 0.5)
+print("norm:", v.norm())
+
+def scalar_field(p):
+    x, y, z = p
+    return x * y + z**2
+
+g = gradient(scalar_field, (1.0, 2.0, -0.3))
+print("gradient:", g)
+
+def vec_field(p):
+    x, y, z = p
+    return (x**2, y**2, z**2)
+
+print("divergence:", divergence(vec_field, (0.5, 0.2, -0.1)))
+```
+
+NumPy-vectorized usage (grids)
+```py
+import numpy as np
+from vectorcalculus import mesh, gradient_on_grid, divergence_on_grid, curl_on_grid
+
+# 2D grid
+x = np.linspace(0, 1, 101)
+y = np.linspace(-1, 1, 201)
+X, Y = mesh(x, y)
+
+def f(X, Y):
+    return X * Y + 2 * Y**2
+
+gx, gy = gradient_on_grid(f, x, y)
+
+# 3D curl on grid
+z = np.linspace(0, 0.5, 51)
+def G(X, Y, Z):
+    return (-Y, X, np.zeros_like(X))
+
+curl = curl_on_grid(G, x, y, z)
+print("curl shape:", curl.shape)  # spatial shape + last dim = 3
+```
+
+Running tests
+--------------
+Install dev deps and run:
+
+```bash
+python -m pip install -r requirements.txt    # if you add one
+./.venv/Scripts/python.exe -m pytest -q
+```
+
+Additional examples
+-------------------
+See `examples/vectorcalculus_examples.ipynb` for more demonstrations:
+
+- `Vector` utilities: `angle_with`, `proj_onto`, `cross`
+- NumPy-accelerated operators: `gradient_np`, `divergence_np`, `curl_np`
+- Grid helpers: `mesh`, `points_array`, `gradient_on_grid`, `curl_on_grid`
+
+
