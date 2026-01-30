@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "bdms.fullname" . }}-ingestion-daemon
+  labels:
+    app: ingestion-daemon
+spec:
+  replicas: {{ .Values.acada_ingest.daemon.replicas }}
+  selector:
+    matchLabels:
+      app: ingestion-daemon
+  template:
+    metadata:
+      labels:
+        app: ingestion-daemon
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-ingestion-daemon.yaml") . | sha256sum }}
+      {{ if not .Values.acada_ingest.daemon.config.disable_metrics }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.acada_ingest.daemon.config.metrics_port }}"
+        prometheus.io/path: "/metrics"
+      {{ end }}
+    spec:
+      securityContext: {{ .Values.acada_ingest.securityContext | toYaml | nindent 8 }}
+      containers:
+      - name: ingestion-daemon
+        image: "{{ .Values.acada_ingest.image.repository }}:{{ .Values.acada_ingest.image.tag | default .Chart.AppVersion }}"
+        command:
+        - bash
+        - -c
+        - |
+          set -ex
+
+          {{ if .Values.dev.mount_repo }}
+          python3 -m pip install --no-cache-dir -e /home/user/bdms
+          {{ end }}
+
+          acada-ingest --config /opt/ingestion-daemon/etc/config.yaml
+
+        volumeMounts:
+        - name: rucio-config
+          mountPath: /opt/rucio/etc/rucio.cfg
+          subPath: rucio.cfg
+
+        - name: scripts
+          mountPath: /scripts
+
+        - name: ingestion-daemon-config
+          mountPath: /opt/ingestion-daemon/etc/
+
+        {{- if .Values.acada_ingest.volumeMounts }}
+        {{- toYaml .Values.acada_ingest.volumeMounts | nindent 8 }}
+        {{- end }}
+
+        {{- if .Values.dev.mount_repo }}
+        - name: repo
+          mountPath: /home/user/bdms/
+        {{- end }}
+
+        envFrom:
+        - configMapRef:
+            name: {{ template "bdms.fullname" . }}-celery-config
+
+        env:
+        - name: RUCIO_CLIENT_MODE
+          value: user
+
+        {{ if not .Values.acada_ingest.daemon.config.disable_metrics }}
+        ports:
+        - containerPort: {{ .Values.acada_ingest.daemon.config.metrics_port }}
+          name: http
+          protocol: TCP
+        {{ end }}
+
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - {{ .Values.acada_ingest.daemon.config.lock_file }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+        {{- if not .Values.acada_ingest.daemon.config.disable_metrics }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: {{ .Values.acada_ingest.daemon.config.metrics_port }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        {{- end }}
+
+
+      volumes:
+      - name: rucio-config
+        configMap:
+          name: {{ template "bdms.rucioConfigMapName" . }}
+      - name: scripts
+        configMap:
+          name: {{ template "bdms.fullname" . }}-scripts
+      - name: ingestion-daemon-config
+        configMap:
+          name: {{ template "bdms.fullname" . }}-ingestion-daemon-config
+      {{- if .Values.acada_ingest.volumes }}
+      {{- toYaml .Values.acada_ingest.volumes | nindent 6 }}
+      {{- end  }}
+      {{ if .Values.dev.mount_repo }}
+      - name: repo
+        hostPath:
+          path: /repo
+          type: Directory
+      {{ end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "bdms.fullname" . }}-ingestion-daemon
+  labels:
+    app: ingestion-daemon
+spec:
+  ports:
+  - name: http
+    port: {{ .Values.acada_ingest.daemon.config.metrics_port }}
+    targetPort: {{ .Values.acada_ingest.daemon.config.metrics_port }}
+  selector:
+    app: ingestion-daemon
+  type: {{ .Values.acada_ingest.daemon.service.type | default "ClusterIP" }}
+  {{ if .Values.acada_ingest.daemon.service.annotations }}
+  annotations:
+    {{- toYaml .Values.acada_ingest.daemon.service.annotations | nindent 4 }}
+  {{ end }}

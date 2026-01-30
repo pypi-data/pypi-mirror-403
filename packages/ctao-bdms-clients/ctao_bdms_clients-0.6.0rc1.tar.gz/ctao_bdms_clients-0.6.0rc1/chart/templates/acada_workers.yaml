@@ -1,0 +1,126 @@
+{{ if .Values.acada_ingest.workers.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "bdms.fullname" . }}-celery-config
+data:
+  CELERY_BROKER_URL: "{{ .Values.acada_ingest.daemon.config.celery_broker_url }}"
+  CELERY_RESULT_BACKEND: "{{ .Values.acada_ingest.daemon.config.celery_result_backend }}"
+  CELERY_TASK_MAX_RETRIES: "{{ .Values.acada_ingest.daemon.config.task_max_retries }}"
+  CELERY_TASK_RETRY_BACKOFF: "{{ .Values.acada_ingest.daemon.config.task_retry_backoff }}"
+  CELERY_TASK_RETRY_BACKOFF_MAX: "{{ .Values.acada_ingest.daemon.config.task_retry_backoff_max }}"
+  CELERY_TASK_RETRY_JITTER: "{{ .Values.acada_ingest.daemon.config.task_retry_jitter }}"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "bdms.fullname" . }}-acada-workers
+  labels:
+    app: acada-workers
+spec:
+  replicas: {{ .Values.acada_ingest.workers.replicas }}
+  selector:
+    matchLabels:
+      app: acada-workers
+  template:
+    metadata:
+      labels:
+        app: acada-workers
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {{ .Values.acada_ingest.securityContext | toYaml | nindent 8 }}
+      containers:
+      - name: celery-worker
+        image: "{{ .Values.acada_ingest.image.repository }}:{{ .Values.acada_ingest.image.tag | default .Chart.AppVersion }}"
+        command:
+        - bash
+        - -c
+        - |
+          set -ex
+
+          {{ if .Values.dev.mount_repo }}
+          python3 -m pip install --no-cache-dir -e /home/user/bdms
+          {{ end }}
+
+          celery -A bdms.ingest_tasks worker \
+            --loglevel=info \
+            --concurrency={{ .Values.acada_ingest.workers.concurrency }} \
+            --max-tasks-per-child={{ .Values.acada_ingest.workers.max_tasks_per_child }}
+
+
+        volumeMounts:
+        - name: rucio-config
+          mountPath: /opt/rucio/etc/rucio.cfg
+          subPath: rucio.cfg
+
+        {{- if .Values.acada_ingest.volumeMounts }}
+        {{- toYaml .Values.acada_ingest.volumeMounts | nindent 8 }}
+        {{- end }}
+
+        {{- if .Values.dev.mount_repo }}
+        - name: repo
+          mountPath: /home/user/bdms/
+        {{- end }}
+
+        envFrom:
+        - configMapRef:
+            name: {{ template "bdms.fullname" . }}-celery-config
+
+        env:
+        - name: RUCIO_CLIENT_MODE
+          value: user
+
+        resources:
+          requests:
+            memory: "{{ .Values.acada_ingest.workers.resources.requests.memory }}"
+            cpu: "{{ .Values.acada_ingest.workers.resources.requests.cpu }}"
+            ephemeral-storage: "{{ .Values.acada_ingest.workers.resources.requests.storage | default "1Gi" }}"
+          limits:
+            memory: "{{ .Values.acada_ingest.workers.resources.limits.memory }}"
+            cpu: "{{ .Values.acada_ingest.workers.resources.limits.cpu }}"
+            ephemeral-storage: "{{ .Values.acada_ingest.workers.resources.limits.storage | default "3Gi" }}"
+
+        livenessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - bdms.ingest_tasks
+            - inspect
+            - ping
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 3
+
+        readinessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - bdms.ingest_tasks
+            - inspect
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 15
+          failureThreshold: 3
+
+      volumes:
+      - name: rucio-config
+        configMap:
+          name: {{ template "bdms.rucioConfigMapName" . }}
+      {{- if .Values.acada_ingest.volumes }}
+      {{- toYaml .Values.acada_ingest.volumes | nindent 6 }}
+      {{- end }}
+      {{ if .Values.dev.mount_repo }}
+      - name: repo
+        hostPath:
+          path: /repo
+          type: Directory
+      {{ end }}
+
+{{ end }}
+---

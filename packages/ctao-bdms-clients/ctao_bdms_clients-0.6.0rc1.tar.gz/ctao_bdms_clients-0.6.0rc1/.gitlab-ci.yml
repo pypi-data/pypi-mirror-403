@@ -1,0 +1,83 @@
+include:
+  - project: 'cta-computing/dpps/aiv/dpps-aiv-toolkit'
+    ref: f8d98a00389051108027c81b47c8b72b8efb5eca
+    file: 'ci-functions.yml'
+  - "aiv-config.yml"
+
+
+variables:
+  CHART_LOCATION: chart
+  CHART_NAME: bdms
+  DOCKER_IMAGE_CONTEXT: '${CI_PROJECT_DIR}'
+
+stages:
+  - prepare
+  - lint
+  - build
+  - sign
+  - tests
+  - sonarqube
+  - publish
+  - report
+  - changelog
+
+k8s-integration-tests:
+  variables:
+    KUBERNETES_CPU_REQUEST: "5"
+    KUBERNETES_CPU_LIMIT: "5"
+    KUBERNETES_MEMORY_REQUEST: "24Gi"
+    KUBERNETES_MEMORY_LIMIT: "63Gi"
+  # override from toolkit to add .env file with CI secrets
+  script:
+    - echo -e "MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY\nMINIO_SECRET_KEY=$MINIO_SECRET_KEY\n" > .env
+    - ${MAKE} test-chart 2>&1 | tee test-output.log
+
+k8s-integration-tests-with-upgrade:
+  extends: k8s-integration-tests
+  variables:
+    KUBERNETES_CPU_REQUEST: "5"
+    KUBERNETES_CPU_LIMIT: "5"
+    KUBERNETES_MEMORY_REQUEST: "32Gi"
+    KUBERNETES_MEMORY_LIMIT: "63Gi"
+    UPGRADE_BASE_REF: v0.4.1
+    GIT_DEPTH: 0
+  script:
+    - echo -e "MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY\nMINIO_SECRET_KEY=$MINIO_SECRET_KEY\n" > .env
+    # new toolkit is better to bootstrap
+    - make setup-k8s-cluster
+    # checkout $UPGRADE_BASE_REF, setup the system.
+    - echo "Checking out ${UPGRADE_BASE_REF} and performing initial setup" | tee test-output.log
+    - git checkout ${UPGRADE_BASE_REF}
+    # cherry-pick minio fix, needed also in base tests
+    - git -c user.name="CI" -c user.email="ci@localhost" cherry-pick 9e302f3948145ed69d9c14fc5fdcd4ec2e62343b
+    # need to override image versions
+    - find -name Chart.lock -delete
+    - ${MAKE} CHART_VERSION="$UPGRADE_BASE_REF" CHART_APP_VERSION="$UPGRADE_BASE_REF" test-chart 2>&1 | tee test-output.log
+    # Upgrade to current version, run tests.
+    - echo "Checking out CI commit and running upgrade tests" | tee test-output.log
+    - find -name Chart.lock -delete
+    - git reset --hard ${CI_COMMIT_SHA}
+    - ${MAKE} test-chart 2>&1 | tee test-output.log
+
+
+sonarqube:
+  variables:
+    # TODO: remove when toolkit is updated to no longer set this variable
+    # should just be taken from sonar-project.properties
+    SONAR_HOST_URL: "https://sonar-ctao.zeuthen.desy.de"
+
+  # two tokens only needed while sonar pr is not merged, can also be removed after
+  script:
+    - sonar-scanner --debug -Dsonar.token="$SONAR_TOKEN_CTAO"
+
+build:
+  variables:
+    CI_HARBOR_REGISTRY_IMAGE: '${HARBOR_HOST}/dpps/bdms-client:${DOCKER_TAG}'
+
+hadolint:
+  rules:
+    - when: never
+
+sign:
+  rules:
+    - when: never

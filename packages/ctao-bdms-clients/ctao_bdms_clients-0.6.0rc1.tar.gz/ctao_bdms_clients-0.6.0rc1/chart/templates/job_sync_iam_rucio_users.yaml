@@ -1,0 +1,155 @@
+## purpose of this job is to execute once the sync of IAM users to Rucio, just after the installation/upgrade of the chart
+{{- define "volume_sync_config" }}
+- name: sync-config
+  secret:
+    secretName: {{ .Values.rucio_iam_sync_user.secret.name }}
+{{- end}}
+{{- define "volume_mount_sync_config" }}
+- name: sync-config
+  subPath: sync-iam-rucio.cfg
+  mountPath: /home/user/bdms/sync-iam-rucio.cfg
+{{- end}}
+{{- define "env_sync_config" }}
+- name: BDMS_SYNC_CONFIG
+  value: /home/user/bdms/sync-iam-rucio.cfg
+{{- end}}
+
+
+# if IAM deployed together with BDMS, we can use the bootstrap client credentials for Rucio IAM sync user
+{{- $iam_client_id := .Values.rucio_iam_sync_user.secret.client_id }}
+{{- $iam_client_secret := .Values.rucio_iam_sync_user.secret.client_secret }}
+{{- if .Values.iam.enabled }}
+{{- $test_iam_client := index .Values.iam.bootstrap.config.clients 0 }}
+{{- $iam_client_id = $test_iam_client.client_id }}
+{{- $iam_client_secret = $test_iam_client.client_secret }}
+{{- end }}
+
+{{- if .Values.rucio_iam_sync_user.enabled }}
+
+# if client_id or client_secret are not provided, raise an error
+{{- if or (eq $iam_client_id "") (eq $iam_client_secret "") }}
+{{- fail "rucio_iam_sync_user.secret.client_id and rucio_iam_sync_user.secret.client_secret must be provided if IAM is not deployed together with BDMS" }}
+{{- end }}
+
+{{- if .Values.rucio_iam_sync_user.secret.create }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.rucio_iam_sync_user.secret.name}}
+type: Opaque
+stringData:
+  sync-iam-rucio.cfg: |
+    [IAM]
+    iam-server = {{ tpl .Values.rucio_iam_sync_user.iam_server . }}
+    client-id = {{ $iam_client_id }}
+    client-secret = {{ $iam_client_secret }}
+    max-retries = 30
+    delay = 30
+    allowed-groups = alt_ctao.dpps.test , ctao.dpps.test
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bdms.fullname" . }}-sync-iam-rucio-users-once
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "20"
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: {{ template "bdms.fullname" . }}-sync-iam-rucio-users
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: bdms-rucio-iam-sync
+          image: {{ .Values.rucio_iam_sync_user.image.repository }}:{{ .Values.rucio_iam_sync_user.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              memory: 512Mi
+              ephemeral-storage: "2Gi"
+              cpu: 1
+            limits:
+              memory: 1Gi
+              ephemeral-storage: "4Gi"
+              cpu: 2
+          env:
+            {{ include "env_sync_config" . | nindent 12 }}
+            {{ include "env_helm_release" . | nindent 12 }}
+          command:
+
+            - "/bin/sh"
+            - "-c"
+            - |
+              set -euo pipefail
+              # wait IAM (login-service) UP
+              until curl -sf {{ tpl .Values.rucio_iam_sync_user.iam_server .}}/actuator/health | grep -q '"status":"UP"'; do
+                echo "Waiting for IAM login service..."
+                sleep 5
+              done
+              # wait Rucio (port 443 + ping/whoami)
+              WAIT_RUCIO_PING=1
+              {{ .Files.Get "scripts/bootstrap_rucio/wait_for_rucio.sh" | indent 14 }}
+              # execute sync
+              python3 -m bdms.sync_iam_rucio
+          volumeMounts:
+            {{ include "volume_mount_sync_config" . | indent 12 }}
+            {{ include "volume_mounts_rucio_config" . | indent 12 }}
+            {{ include "volume_mounts_cert" . | indent 12 }}
+      volumes:
+      {{ include "volume_sync_config" . | indent 6 }}
+      {{ include "volumes_cert" . | indent 6 }}
+      {{ include "volumes_rucio_config" . | indent 6 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ template "bdms.fullname" . }}-sync-iam-rucio-users-cron
+spec:
+  schedule: {{ default "0 * * * *" .Values.rucio_iam_sync_user.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: {{ template "bdms.fullname" . }}-sync-iam-rucio-users
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: bdms-rucio-iam-sync
+              image: {{ .Values.rucio_iam_sync_user.image.repository }}:{{ .Values.rucio_iam_sync_user.image.tag | default .Chart.AppVersion }}
+              imagePullPolicy: IfNotPresent
+              resources:
+                requests:
+                  memory: 512Mi
+                  ephemeral-storage: "2Gi"
+                  cpu: 1
+                limits:
+                  memory: 1Gi
+                  ephemeral-storage: "4Gi"
+                  cpu: 2
+              env:
+              {{ include "env_sync_config" . | nindent 14 }}
+              command: ["/bin/sh","-c"]
+              args:
+                - python3 -m bdms.sync_iam_rucio
+              volumeMounts:
+              {{ include "volume_mount_sync_config" . | indent 14 }}
+              {{ include "volume_mounts_rucio_config" . | indent 14 }}
+              {{ include "volume_mounts_cert" . | indent 14 }}
+          volumes:
+          {{ include "volume_sync_config" . | indent 12 }}
+          {{ include "volumes_cert" . | indent 12 }}
+          {{ include "volumes_rucio_config" . | indent 12 }}
+{{- end }}

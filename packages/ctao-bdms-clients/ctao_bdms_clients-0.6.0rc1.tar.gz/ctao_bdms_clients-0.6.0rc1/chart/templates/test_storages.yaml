@@ -1,0 +1,128 @@
+{{ if .Values.test_storages.enabled }}
+{{- $suffix_namespace := .Values.suffix_namespace -}}
+{{ $values := .Values -}}
+{{- range $name := .Values.test_storages.xrootd.instances }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-test-storages.yaml") . | sha256sum }}
+    spec:
+      hostname: {{ $name }}
+      volumes:
+      {{- if eq $name "rucio-storage-1" }}
+      - name: bdms-storage-1-data
+        persistentVolumeClaim:
+          claimName: storage-1-pvc # This is the PVC name
+      {{- end }}
+      - name: bdms-{{ $name }}-hostkey
+        secret:
+          defaultMode: 420
+          secretName: {{ template "certprefix" $ }}-{{ $name }}-hostkey
+      - name: cafile
+        secret:
+          defaultMode: 420
+          secretName: {{ template "certprefix" $ }}-server-cafile
+      - name: xrdconfig
+        configMap:
+          name: xrdconfig
+          defaultMode: 0444
+      - name: xrd-entrypoint
+        configMap:
+          name: xrd-entrypoint
+          defaultMode: 0555
+      {{- if eq $name "rucio-storage-1" }}
+      # Reset ownership in the PersistentVolumeClaim volume
+      # uid/gid of xrootd changed between tag 37.3 and 37.4 of the image, which is
+      # affects upgrade tests of BDMS from 0.3.1 to later
+      initContainers:
+        - name: bdms-storage-1-init
+          image: harbor.cta-observatory.org/proxy_cache/busybox:latest
+          command: ["/bin/sh", "-c", "chown -R 194:194 /rucio/"]
+          volumeMounts:
+            - name: bdms-storage-1-data
+              mountPath: /rucio
+      {{- end }}
+      containers:
+      - name: {{ $name }}
+        image: "{{ $values.test_storages.xrootd.image.repository }}:{{ $values.test_storages.xrootd.image.tag }}"
+        volumeMounts:
+        {{- if eq $name "rucio-storage-1" }}
+        - name: bdms-storage-1-data
+          mountPath: /rucio #Modify mount path to point to the volume, check if the volume its the data created on the previous init command
+        {{- end }}
+        - name: bdms-{{ $name }}-hostkey
+          mountPath: /tmp/xrdcert.pem
+          subPath: hostcert.pem
+        - name: bdms-{{ $name }}-hostkey
+          mountPath: /tmp/xrdkey.pem
+          subPath: hostkey.pem
+        - name: cafile
+          subPath: ca.pem
+          mountPath: /etc/grid-security/certificates/74df993b.0
+        - name: xrdconfig
+          mountPath: /etc/xrootd/xrdrucio.cfg
+          subPath: xrdrucio.cfg
+        - name: xrd-entrypoint
+          mountPath: /docker-entrypoint.sh
+          subPath: docker-entrypoint.sh
+        ports:
+        - containerPort: 1094
+        env:
+        - name: "XRDPORT"
+          value: "1094"
+        - name: "HOSTNAME"
+          value: "{{ $name }}"
+        - name: "XrdSecGSISRVNAMES"
+          value: "{{ $name }},{{ $name }}.{{ $suffix_namespace }}.svc.cluster.local"
+
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          # uses ~4GB of memory when idle, or more when under load (TODO: measure memory usage profile)
+          limits:
+            memory: "4Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+spec:
+  selector:
+    app: {{ $name }}
+  ports:
+  - protocol: TCP
+    port: 1094
+    targetPort: 1094
+  type: ClusterIP
+{{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-1-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce  # Or ReadWriteMany if supported by your storage class
+  resources:
+    requests:
+      storage: 2Gi  # Adjust size as needed
+  storageClassName: {{ .Values.test_storages.xrootd.rucio_storage_1_storage_class }}
+{{ end }}

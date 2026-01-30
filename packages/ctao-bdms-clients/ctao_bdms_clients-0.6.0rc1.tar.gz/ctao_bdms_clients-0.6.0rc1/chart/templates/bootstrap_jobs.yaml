@@ -1,0 +1,172 @@
+{{ if .Values.configure_rucio | default false }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bdms.fullname" . }}-configure-rucio-{{ .Release.Revision  }}
+  {{- if .Values.configure.as_hook }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+  {{- end }}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      volumes:
+      {{ include "volumes_cert" . | indent 8 }}
+      {{ include "volumes_rucio_config" . | indent 8 }}
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "500m"
+        limits:
+          memory: "8Gi"
+          cpu: "2000m"
+      initContainers:
+      - name: test-connection
+        image: {{ .Values.bootstrap.pg_image.repository }}:{{ .Values.bootstrap.pg_image.tag }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -x
+
+          while true; do
+            pg_isready --dbname=rucio --host={{ .Release.Name }}-postgresql --port=5432 --username=rucio && break
+            sleep 3
+          done
+
+        volumeMounts:
+        {{ include "volume_mounts_rucio_config" . | indent 8 }}
+        {{ include "volume_mounts_cert" . | indent 8 }}
+        env:
+        {{ include "env_helm_release" . | indent 8 }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-postgresql
+              key: postgres-password
+      containers:
+      - name: configure-rucio
+        image: {{ .Values.bootstrap.image.repository }}:{{ .Values.bootstrap.image.tag }}
+        securityContext:
+          runAsUser: 0
+        env:
+        {{- include "env_helm_release" . | indent 8 }}
+        - name: ALEMBIC_CONFIG
+          value: /opt/rucio/etc/alembic.ini
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -eux -o pipefail
+
+          {{ .Files.Get "scripts/certificates/install_ca.sh" | indent 10 }}
+
+          {{- if .Values.configure.run_database_migrations }}
+          # migrations do not work from empty state, so only apply them if there is already a current revision
+          current_db_ref=$(alembic current)
+          if [ ! -z "$current_db_ref" ]; then
+            echo "Performing database migrations from $current_db_ref to head."
+            alembic upgrade head
+          else
+            echo "Skipping migrations due to uninitialized database."
+          fi
+          {{- end }}
+
+          WAIT_RUCIO_PING=
+          {{ .Files.Get "scripts/bootstrap_rucio/wait_for_rucio.sh" | indent 10 }}
+
+          {{ if or (.Values.safe_to_bootstrap_rucio | default false) (and (.Values.safe_to_bootstrap_rucio_on_install | default false) .Release.IsInstall) }}
+          echo "Running reset database script..."
+
+          python3 /usr/local/rucio/tools/reset_database.py
+
+          {{ if .Release.IsUpgrade }}
+          # bootstrapping the DB while the rucio server is running causes temporarily inconsistent state of the server
+          # so we need to restart the server after the bootstrap
+          curl -LO https://dl.k8s.io/release/v1.33.0/bin/linux/amd64/kubectl -o ./kubectl
+          chmod +x ./kubectl
+
+          # could be also in post-upgrade hook but only if bootstrap was performed
+          ./kubectl rollout restart deployment {{ .Release.Name }}-rucio-server
+          {{ end }}
+
+          {{ end }}
+
+          # TODO: make or find an image?
+          dnf install -y voms-clients
+
+          voms-proxy-init -valid 9999:00 -cert /opt/rucio/etc/usercert.pem -key /opt/rucio/etc/userkey.pem -out /tmp/x509up
+          cp -fv /tmp/x509up /tmp/x509up_u$(id -u)
+
+          WAIT_RUCIO_PING=1
+          {{ .Files.Get "scripts/bootstrap_rucio/wait_for_rucio.sh" | indent 10 }}
+
+          echo "Configuring test rucio setup ..."
+
+          echo "Configuring identities ..."
+          {{ range .Values.configure.identities -}}
+          {{- $account := index . "account" }}
+          {{- $options := omit . "account" }}
+          rucio -v account identity add {{ $account }}
+                {{- range $k, $v := $options }} --{{ $k }}="{{ $v }}"{{ end }} || echo "Identity already exists"
+          {{- end }}
+
+          {{- range $rse_name, $rse_spec := .Values.configure.rses }}
+
+          echo "Configuring RSE {{ $rse_name }} ..."
+
+          if rucio -v rse add "{{ $rse_name }}"; then
+            echo "RSE {{ $rse_name }} created"
+
+            {{- range $rse_spec.protocols }}
+            rucio -v rse protocol add \
+                --host-name "{{ .hostname }}" \
+                --scheme {{ .scheme }} \
+                --prefix {{ .prefix }} \
+                --port {{ .port }} \
+                --impl {{ .impl | default "rucio.rse.protocols.gfal.Default" }} \
+                --domain-json '{{ .domains | toJson }}' \
+                "{{ $rse_name }}"
+            {{- end }}
+
+            {{- range $k, $v := $rse_spec.attributes }}
+            rucio rse attribute add "{{ $rse_name }}" --key "{{ $k }}" --value "{{ $v }}"
+            {{- end }}
+
+
+            {{ range $account, $limit := $rse_spec.limits_by_account }}
+            rucio account limit add {{ $account }} --rse "{{ $rse_name }}" --bytes {{ $limit }}
+            {{ end }}
+
+            echo "Configuring RSE {{ $rse_name }} done"
+            rucio rse show "{{ $rse_name }}"
+
+          else
+            echo "RSE {{ $rse_name }} already exists, skipping creation and protocols configuration"
+          fi
+          {{- end }}
+
+          {{- range $distance_tuple := .Values.configure.rse_distances }}
+          echo "Configuring RSE distance {{ $distance_tuple }} ..."
+          rucio rse distance add \
+            "{{ index $distance_tuple 0 }}" \
+            "{{ index $distance_tuple 1 }}" \
+            --distance {{ index $distance_tuple 2 }}
+          {{- end }}
+
+          {{- .Values.configure.extra_script | nindent 10 }}
+
+
+        volumeMounts:
+        {{ include "volume_mounts_rucio_config" . | indent 8 }}
+        {{ include "volume_mounts_cert" . | indent 8 }}
+
+
+      # rucio server might restart during initialization for various reasons
+      restartPolicy: Never
+
+{{ end }}
