@@ -1,0 +1,155 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dittomation"
+version = "1.0.0"
+description = "Android automation made simple - record, replay, and control Android devices"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "DittoMation Team"}
+]
+keywords = ["android", "automation", "adb", "testing", "mobile"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+    "bandit>=1.7.0",
+]
+cloud = [
+    "boto3>=1.26.0",              # AWS Device Farm
+    "google-cloud-storage>=2.0.0", # Firebase Test Lab artifacts
+    "requests>=2.28.0",           # HTTP requests for artifact download
+]
+aws = [
+    "boto3>=1.26.0",
+    "requests>=2.28.0",
+]
+firebase = [
+    "google-cloud-storage>=2.0.0",
+]
+all = [
+    "boto3>=1.26.0",
+    "google-cloud-storage>=2.0.0",
+    "requests>=2.28.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.scripts]
+ditto = "core.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/OmPrakashSingh1704/DittoMation"
+Repository = "https://github.com/OmPrakashSingh1704/DittoMation"
+Documentation = "https://github.com/OmPrakashSingh1704/DittoMation#readme"
+Changelog = "https://github.com/OmPrakashSingh1704/DittoMation/blob/main/CHANGELOG.md"
+Issues = "https://github.com/OmPrakashSingh1704/DittoMation/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "recorder*", "replayer*", "config*", "android*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+target-version = "py38"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",   # Line length handled by formatter
+    "SIM102", # Nested if statements (readability preference)
+    "SIM103", # Return negated condition directly (readability)
+    "SIM105", # contextlib.suppress (explicit try-except preferred)
+    "SIM108", # Ternary operator (readability - if/else often clearer)
+    "SIM109", # Multiple equality comparisons (readability)
+    "SIM110", # for-loop vs any/all (readability)
+    "B027",   # Empty method in ABC without abstract decorator (intentional)
+    "B904",   # raise-without-from (many false positives in exception handlers)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "recorder", "replayer"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+disable_error_code = [
+    "no-redef",       # Allow try/except import patterns
+    "union-attr",     # Allow attribute access on Optional without explicit checks
+    "index",          # Allow flexible indexing
+    "arg-type",       # Allow flexible argument types
+    "return-value",   # Allow flexible return types
+    "assignment",     # Allow flexible assignments
+    "attr-defined",   # Allow dynamic attributes
+    "operator",       # Allow operator overloading
+    "override",       # Allow method signature changes
+    "misc",           # Allow misc issues
+    "var-annotated",  # Don't require type annotations for locals
+    "list-item",      # Allow flexible list items
+    "import-untyped", # Allow imports without type stubs
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["core", "recorder", "replayer"]
+branch = true
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+fail_under = 30
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]
+skips = [
+    "B101",  # assert statements (acceptable in non-test code)
+    "B110",  # try_except_pass (used for cleanup/shutdown)
+    "B314",  # xml.etree.ElementTree.fromstring (parsing device UI XML)
+    "B404",  # import subprocess (required for ADB commands)
+    "B405",  # xml.etree.ElementTree (used for UI hierarchy parsing)
+    "B603",  # subprocess calls (required for ADB execution)
+]
