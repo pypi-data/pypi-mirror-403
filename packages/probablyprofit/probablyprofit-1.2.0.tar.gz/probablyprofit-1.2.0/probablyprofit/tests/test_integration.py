@@ -1,0 +1,695 @@
+"""
+Integration Tests for Production Hardening
+
+Tests end-to-end flows with mock exchange:
+- Full trade flow
+- Partial fill handling
+- Kill switch
+- Risk management
+- Crash recovery
+"""
+
+import asyncio
+import os
+import tempfile
+from pathlib import Path
+
+import pytest
+
+# Set test environment
+os.environ["TESTING"] = "true"
+
+
+class TestKillSwitch:
+    """Tests for the kill switch system."""
+
+    def test_kill_switch_activation(self):
+        """Test that kill switch can be activated."""
+        from probablyprofit.utils.killswitch import (
+            KillSwitch,
+            KillSwitchError,
+        )
+
+        # Use temp file for testing
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            kill_file = Path(f.name)
+        kill_file.unlink()  # Remove it first
+
+        reason_file = Path(str(kill_file) + ".reason")
+
+        try:
+            ks = KillSwitch(kill_file=kill_file, reason_file=reason_file)
+
+            # Initially not active
+            assert not ks.is_active()
+
+            # Activate
+            ks.activate("Test activation")
+            assert ks.is_active()
+            assert "Test activation" in ks.get_reason()
+
+            # Check raises
+            with pytest.raises(KillSwitchError):
+                ks.check_and_raise()
+
+            # Deactivate
+            ks.deactivate()
+            assert not ks.is_active()
+
+        finally:
+            # Cleanup
+            if kill_file.exists():
+                kill_file.unlink()
+            if reason_file.exists():
+                reason_file.unlink()
+
+    def test_kill_switch_file_persistence(self):
+        """Test that kill switch persists via file."""
+        from probablyprofit.utils.killswitch import KillSwitch
+
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            kill_file = Path(f.name)
+        kill_file.unlink()
+        reason_file = Path(str(kill_file) + ".reason")
+
+        try:
+            # Create and activate first instance
+            ks1 = KillSwitch(kill_file=kill_file, reason_file=reason_file)
+            ks1.activate("Persistent test")
+
+            # Create second instance - should see kill switch
+            ks2 = KillSwitch(kill_file=kill_file, reason_file=reason_file)
+            assert ks2.is_active()
+
+            # Deactivate via second instance
+            ks2.deactivate()
+
+            # First instance should see deactivation
+            assert not ks1.is_active()
+
+        finally:
+            if kill_file.exists():
+                kill_file.unlink()
+            if reason_file.exists():
+                reason_file.unlink()
+
+
+class TestRiskManagerDrawdown:
+    """Tests for risk manager drawdown tracking."""
+
+    def test_drawdown_calculation(self):
+        """Test drawdown is calculated correctly."""
+        from probablyprofit.risk.manager import RiskLimits, RiskManager
+
+        rm = RiskManager(initial_capital=1000.0)
+
+        # Initial drawdown is 0
+        assert rm.get_current_drawdown() == 0.0
+
+        # Simulate loss
+        rm.current_capital = 800.0
+        assert rm.get_current_drawdown() == pytest.approx(0.2, rel=0.01)
+
+        # Update peak (should not change since capital decreased)
+        rm.update_peak_capital()
+        assert rm.peak_capital == 1000.0
+
+        # Recover
+        rm.current_capital = 900.0
+        assert rm.get_current_drawdown() == pytest.approx(0.1, rel=0.01)
+
+        # New high
+        rm.current_capital = 1200.0
+        rm.update_peak_capital()
+        assert rm.peak_capital == 1200.0
+
+    def test_drawdown_halt(self):
+        """Test trading halts when max drawdown exceeded."""
+        from probablyprofit.risk.manager import RiskManager
+
+        rm = RiskManager(initial_capital=1000.0)
+        rm.max_drawdown_pct = 0.25  # 25% max drawdown
+
+        # Under limit - can trade
+        rm.current_capital = 800.0  # 20% down
+        assert not rm.check_drawdown_limit()
+        assert rm.can_open_position(10, 0.5)
+
+        # Over limit - cannot trade
+        rm.current_capital = 700.0  # 30% down
+        assert rm.check_drawdown_limit()
+        assert not rm.can_open_position(10, 0.5)
+
+    def test_exposure_recalculation(self):
+        """Test that exposure is correctly recalculated from positions."""
+        from probablyprofit.risk.manager import RiskManager
+
+        rm = RiskManager(initial_capital=1000.0)
+
+        # Add positions
+        rm.update_position("market1", 100, price=0.5)  # $50 exposure
+        rm.update_position("market2", 200, price=0.3)  # $60 exposure
+
+        # Recalculate
+        exposure = rm.recalculate_exposure()
+        assert exposure == pytest.approx(110, rel=0.01)
+
+        # Close one position
+        rm.update_position("market1", 0)
+        exposure = rm.recalculate_exposure()
+        assert exposure == pytest.approx(60, rel=0.01)
+
+
+class TestOrderManagerPartialFills:
+    """Tests for order manager partial fill handling."""
+
+    @pytest.mark.asyncio
+    async def test_partial_fill_timeout(self):
+        """Test that partial fills timeout and cancel."""
+        from datetime import datetime, timedelta
+
+        from probablyprofit.api.order_manager import (
+            Fill,
+            ManagedOrder,
+            OrderBook,
+            OrderManager,
+            OrderSide,
+            OrderStatus,
+            OrderType,
+        )
+
+        om = OrderManager(client=None, partial_fill_timeout=1.0)  # 1 second timeout
+
+        # Create partially filled order
+        order = ManagedOrder(
+            order_id="test_order_1",
+            market_id="test_market",
+            outcome="YES",
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            size=100,
+            price=0.5,
+        )
+
+        # Add a fill from 2 seconds ago
+        old_fill = Fill(
+            fill_id="fill_1",
+            order_id="test_order_1",
+            size=50,
+            price=0.5,
+            timestamp=datetime.now() - timedelta(seconds=2),
+        )
+        order.add_fill(old_fill)
+
+        assert order.status == OrderStatus.PARTIALLY_FILLED
+
+        # Add to order book
+        await om.order_book.add(order)
+
+        # Check for timeouts - should flag this order
+        timed_out = await om.check_partial_fill_timeouts()
+
+        # Order should be cancelled (in dry run mode without client)
+        assert len(timed_out) == 1
+        assert timed_out[0].order_id == "test_order_1"
+
+
+class TestMockExchange:
+    """Tests using the mock exchange."""
+
+    @pytest.mark.asyncio
+    async def test_instant_fill(self):
+        """Test instant order fills."""
+        from probablyprofit.tests.mock_exchange import (
+            FillBehavior,
+            MockExchangeClient,
+        )
+
+        client = MockExchangeClient(default_fill_behavior=FillBehavior.INSTANT)
+
+        order = await client.place_order(
+            market_id="test_market",
+            outcome="YES",
+            side="BUY",
+            size=100,
+            price=0.5,
+        )
+
+        assert order.status == "filled"
+        assert order.filled_size == 100
+
+    @pytest.mark.asyncio
+    async def test_partial_fill(self):
+        """Test partial order fills."""
+        from probablyprofit.tests.mock_exchange import (
+            FillBehavior,
+            MockExchangeClient,
+        )
+
+        client = MockExchangeClient(
+            default_fill_behavior=FillBehavior.PARTIAL,
+            partial_fill_pct=0.5,
+        )
+
+        order = await client.place_order(
+            market_id="test_market",
+            outcome="YES",
+            side="BUY",
+            size=100,
+            price=0.5,
+        )
+
+        assert order.status == "partial"
+        assert order.filled_size == pytest.approx(50, rel=0.01)
+
+    @pytest.mark.asyncio
+    async def test_order_rejection(self):
+        """Test order rejection handling."""
+        from probablyprofit.tests.mock_exchange import (
+            FillBehavior,
+            MockExchangeClient,
+        )
+
+        client = MockExchangeClient(default_fill_behavior=FillBehavior.REJECT)
+
+        with pytest.raises(Exception, match="rejected"):
+            await client.place_order(
+                market_id="test_market",
+                outcome="YES",
+                side="BUY",
+                size=100,
+                price=0.5,
+            )
+
+    @pytest.mark.asyncio
+    async def test_position_tracking(self):
+        """Test position tracking after fills."""
+        from probablyprofit.tests.mock_exchange import (
+            FillBehavior,
+            MockExchangeClient,
+        )
+
+        client = MockExchangeClient(default_fill_behavior=FillBehavior.INSTANT)
+
+        # Buy
+        await client.place_order(
+            market_id="test_market",
+            outcome="YES",
+            side="BUY",
+            size=100,
+            price=0.5,
+        )
+
+        positions = await client.get_positions()
+        assert len(positions) == 1
+        assert positions[0].size == 100
+        assert positions[0].avg_price == 0.5
+
+        # Buy more at different price
+        await client.place_order(
+            market_id="test_market",
+            outcome="YES",
+            side="BUY",
+            size=100,
+            price=0.6,
+        )
+
+        positions = await client.get_positions()
+        assert positions[0].size == 200
+        assert positions[0].avg_price == pytest.approx(0.55, rel=0.01)
+
+
+class TestCredentialValidation:
+    """Tests for credential validation."""
+
+    def test_placeholder_detection(self):
+        """Test detection of placeholder values."""
+        from probablyprofit.config import is_placeholder_value
+
+        # Placeholders
+        assert is_placeholder_value("your_api_key")
+        assert is_placeholder_value("sk-your_openai_key")
+        assert is_placeholder_value("your_private_key_here")
+        assert is_placeholder_value("example_key")
+        assert is_placeholder_value("test_api_key")
+
+        # Real values (should not be detected)
+        assert not is_placeholder_value("sk-1234567890abcdef")
+        assert not is_placeholder_value("sk-ant-api03-something")
+
+    def test_test_private_key_detection(self):
+        """Test detection of the test private key."""
+        from probablyprofit.config import is_test_private_key
+
+        test_key = "0x1111111111111111111111111111111111111111111111111111111111111111"
+
+        assert is_test_private_key(test_key)
+        assert is_test_private_key(test_key.lower())
+        assert is_test_private_key(test_key[2:])  # Without 0x prefix
+
+        # Real key should not match
+        assert not is_test_private_key(
+            "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        )
+
+
+class TestTelegramAlerter:
+    """Tests for Telegram alerting."""
+
+    def test_rate_limiting(self):
+        """Test rate limiting logic."""
+        import time
+
+        from probablyprofit.alerts.telegram import TelegramAlerter
+
+        alerter = TelegramAlerter(rate_limit_per_minute=5)
+
+        # Should be able to send initially
+        assert alerter._can_send()
+
+        # Simulate sending 5 messages
+        for _ in range(5):
+            alerter._record_send()
+
+        # Should be rate limited now
+        assert not alerter._can_send()
+
+        # Wait for rate limit window to pass (simulate)
+        alerter._message_times.clear()
+        assert alerter._can_send()
+
+    def test_message_formatting(self):
+        """Test alert message formatting."""
+        from datetime import datetime
+
+        from probablyprofit.alerts.telegram import Alert, AlertLevel, TelegramAlerter
+
+        alerter = TelegramAlerter()
+
+        alert = Alert(
+            level=AlertLevel.WARNING,
+            title="Test Alert",
+            message="This is a test",
+            timestamp=datetime.now(),
+            metadata={"key": "value", "number": 123.456},
+        )
+
+        formatted = alerter._format_message(alert)
+
+        assert "WARNING" in formatted
+        assert "Test Alert" in formatted
+        assert "This is a test" in formatted
+        assert "key" in formatted
+        assert "123.4" in formatted  # Formatted number
+
+
+class TestFullTradeFlow:
+    """Tests for complete trading flow."""
+
+    @pytest.mark.asyncio
+    async def test_observe_decide_act_cycle(self):
+        """Test full observe -> decide -> act cycle with mock."""
+        from datetime import datetime
+        from unittest.mock import AsyncMock, MagicMock
+
+        from probablyprofit.agent.base import Decision, Observation
+        from probablyprofit.api.client import Market
+        from probablyprofit.risk.manager import RiskManager
+
+        # Create mock client with all required methods
+        mock_client = MagicMock()
+        mock_client.get_markets = AsyncMock(
+            return_value=[
+                Market(
+                    condition_id="test_market_123",
+                    question="Will it rain tomorrow?",
+                    description="Test market",
+                    end_date=datetime.now(),
+                    outcomes=["Yes", "No"],
+                    outcome_prices=[0.5, 0.5],
+                    volume=10000,
+                    liquidity=5000,
+                    active=True,
+                )
+            ]
+        )
+        mock_client.get_positions = AsyncMock(return_value=[])
+        mock_client.get_balance = AsyncMock(return_value=1000.0)
+        mock_client.place_order = AsyncMock(return_value=None)
+
+        risk_manager = RiskManager(initial_capital=1000.0)
+
+        # Import agent base
+        from probablyprofit.agent.base import BaseAgent
+
+        class TestAgent(BaseAgent):
+            async def decide(self, observation: Observation) -> Decision:
+                return Decision(action="hold", reasoning="Test hold")
+
+        agent = TestAgent(
+            client=mock_client,
+            risk_manager=risk_manager,
+            name="TestAgent",
+            dry_run=True,
+            enable_persistence=False,
+        )
+
+        # Test observe
+        observation = await agent.observe()
+        assert len(observation.markets) == 1
+        assert observation.balance == 1000.0
+
+        # Test decide
+        decision = await agent.decide(observation)
+        assert decision.action == "hold"
+
+        # Test act
+        success = await agent.act(decision)
+        assert success is True
+
+    @pytest.mark.asyncio
+    async def test_buy_order_execution(self):
+        """Test buy order execution through agent."""
+        from datetime import datetime
+        from unittest.mock import AsyncMock, MagicMock
+
+        from probablyprofit.agent.base import BaseAgent, Decision, Observation
+        from probablyprofit.api.client import Market, Order
+        from probablyprofit.risk.manager import RiskManager
+
+        mock_market = Market(
+            condition_id="buy_test_market",
+            question="Test buy market",
+            description="",
+            end_date=datetime.now(),
+            outcomes=["Yes", "No"],
+            outcome_prices=[0.5, 0.5],
+            volume=10000,
+            liquidity=5000,
+            active=True,
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_markets = AsyncMock(return_value=[mock_market])
+        mock_client.get_positions = AsyncMock(return_value=[])
+        mock_client.get_balance = AsyncMock(return_value=1000.0)
+        mock_client.place_order = AsyncMock(return_value=None)
+
+        risk_manager = RiskManager(initial_capital=1000.0)
+
+        class BuyAgent(BaseAgent):
+            async def decide(self, observation: Observation) -> Decision:
+                if observation.markets:
+                    return Decision(
+                        action="buy",
+                        market_id=observation.markets[0].condition_id,
+                        outcome="Yes",
+                        size=10.0,
+                        price=0.5,
+                        confidence=0.7,
+                        reasoning="Test buy",
+                    )
+                return Decision(action="hold", reasoning="No markets")
+
+        agent = BuyAgent(
+            client=mock_client,
+            risk_manager=risk_manager,
+            name="BuyAgent",
+            dry_run=True,
+            enable_persistence=False,
+        )
+
+        observation = await agent.observe()
+        decision = await agent.decide(observation)
+
+        assert decision.action == "buy"
+        assert decision.size == 10.0
+
+        # Execute (in dry run mode, should succeed without placing real order)
+        success = await agent.act(decision)
+        assert success is True
+
+
+class TestCrashRecovery:
+    """Tests for crash recovery functionality."""
+
+    @pytest.mark.asyncio
+    async def test_risk_state_persistence(self):
+        """Test that risk state can be saved and loaded."""
+        import os
+        import tempfile
+
+        from probablyprofit.risk.manager import RiskManager
+
+        rm1 = RiskManager(initial_capital=1000.0)
+
+        # Simulate some trading
+        rm1.current_capital = 1200.0
+        rm1.daily_pnl = 200.0
+        rm1.update_position("market1", 50, price=0.6)
+        rm1.update_peak_capital()
+
+        # Verify state
+        assert rm1.current_capital == 1200.0
+        assert rm1.peak_capital == 1200.0
+        assert "market1" in rm1.open_positions
+
+        # Export state
+        state_dict = rm1.to_dict()
+
+        # Create new manager from state
+        rm2 = RiskManager.from_dict(state_dict)
+
+        assert rm2.current_capital == 1200.0
+        assert rm2.peak_capital == 1200.0
+        assert rm2.daily_pnl == 200.0
+        assert "market1" in rm2.open_positions
+
+    def test_drawdown_persistence(self):
+        """Test that drawdown state persists correctly."""
+        from probablyprofit.risk.manager import RiskManager
+
+        rm = RiskManager(initial_capital=1000.0)
+        rm.max_drawdown_pct = 0.25
+
+        # Simulate loss
+        rm.current_capital = 700.0  # 30% drawdown
+        rm.check_drawdown_limit()
+
+        assert rm._drawdown_halt is True
+
+        # Export and restore
+        state = rm.to_dict()
+        rm2 = RiskManager.from_dict(state)
+
+        assert rm2._drawdown_halt is True
+        assert rm2.max_drawdown_pct == 0.25
+
+
+class TestKillSwitchIntegration:
+    """Tests for kill switch integration with agent."""
+
+    def test_kill_switch_check_in_agent(self):
+        """Test that kill switch check is properly imported in agent."""
+        from probablyprofit.agent.base import get_kill_switch, is_kill_switch_active
+        from probablyprofit.utils.killswitch import KillSwitch
+
+        # Verify the imports exist and work
+        assert callable(is_kill_switch_active)
+        assert callable(get_kill_switch)
+
+        # Test the kill switch itself
+        ks = get_kill_switch()
+        assert isinstance(ks, KillSwitch)
+
+    def test_kill_switch_stops_agent_flag(self):
+        """Test that agent running flag can be set to False."""
+        from unittest.mock import MagicMock
+
+        from probablyprofit.agent.base import BaseAgent, Decision, Observation
+        from probablyprofit.risk.manager import RiskManager
+
+        mock_client = MagicMock()
+        risk_manager = RiskManager(initial_capital=1000.0)
+
+        class TestAgent(BaseAgent):
+            async def decide(self, observation: Observation) -> Decision:
+                return Decision(action="hold", reasoning="Test")
+
+        agent = TestAgent(
+            client=mock_client,
+            risk_manager=risk_manager,
+            name="TestAgent",
+            enable_persistence=False,
+        )
+
+        # Agent starts not running
+        assert not agent.running
+
+        # Set running and then stop
+        agent.running = True
+        assert agent.running
+
+        agent.running = False
+        assert not agent.running
+
+
+class TestAlertingIntegration:
+    """Tests for alerting integration."""
+
+    @pytest.mark.asyncio
+    async def test_alerter_send_without_credentials(self):
+        """Test that alerter gracefully handles missing credentials."""
+        import os
+
+        from probablyprofit.alerts.telegram import AlertLevel, TelegramAlerter
+
+        # Clear any existing env vars
+        old_token = os.environ.pop("TELEGRAM_BOT_TOKEN", None)
+        old_chat = os.environ.pop("TELEGRAM_CHAT_ID", None)
+
+        try:
+            # Create alerter without credentials
+            alerter = TelegramAlerter(bot_token="", chat_id="")
+
+            # Should return False but not raise (unconfigured)
+            result = await alerter.send_alert(AlertLevel.INFO, "Test", "Test message")
+            assert result is False
+        finally:
+            # Restore env vars
+            if old_token:
+                os.environ["TELEGRAM_BOT_TOKEN"] = old_token
+            if old_chat:
+                os.environ["TELEGRAM_CHAT_ID"] = old_chat
+
+    @pytest.mark.asyncio
+    async def test_trade_alert_formatting(self):
+        """Test trade alert message formatting."""
+        from datetime import datetime
+
+        from probablyprofit.alerts.telegram import Alert, AlertLevel, TelegramAlerter
+
+        alerter = TelegramAlerter()
+
+        alert = Alert(
+            level=AlertLevel.INFO,
+            title="Trade Executed",
+            message="BUY 100 shares @ $0.50",
+            timestamp=datetime.now(),
+            metadata={
+                "market": "Will Bitcoin hit $100k?",
+                "side": "BUY",
+                "size": 100.0,
+                "price": 0.5,
+            },
+        )
+
+        formatted = alerter._format_message(alert)
+
+        assert "Trade Executed" in formatted
+        assert "BUY 100 shares" in formatted
+        assert "market" in formatted
+        assert "0.5" in formatted
+
+
+# Run tests with: pytest probablyprofit/tests/test_integration.py -v
