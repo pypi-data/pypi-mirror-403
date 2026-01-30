@@ -1,0 +1,205 @@
+# ws-data-extractor (Python)
+
+Public Python client for the Web Scraper Data Extractor API. The interface stays minimal while documentation stays explicit.
+
+## Install
+
+```bash
+pip install ws-data-extractor
+```
+
+## Quickstart (sync)
+
+```python
+from ws_data_extractor import Client
+
+client = Client(api_key="YOUR_KEY")
+result = client.extract(
+    url="https://example.com/product",
+    prompt="Extract title and price."
+)
+print(result.data)
+```
+
+## Quickstart (async)
+
+```python
+import asyncio
+from ws_data_extractor import AsyncClient
+
+async def main():
+    client = AsyncClient(api_key="YOUR_KEY")
+    result = await client.extract(
+        url="https://example.com/product",
+        prompt="Extract title and price."
+    )
+    print(result.data)
+
+asyncio.run(main())
+```
+
+## Configuration
+
+Required:
+- `api_key: str`
+
+Optional:
+- `base_url` (defaults to production API URL)
+- `timeout_ms` (default 30000)
+- `retries` (default 2)
+- `user_agent`
+- `headers` (merged into all requests)
+
+Environment variables:
+- `WS_API_KEY`
+- `WS_API_BASE_URL`
+- `WS_TIMEOUT_MS`
+
+## Core API
+
+Sync client:
+- `extract(url, prompt, schema=None, schema_id=None, options=None)`
+
+Async client:
+- `extract_async(...)` -> returns `run_id`
+- `get_run(run_id)`
+- `wait_run(run_id, timeout_ms=..., poll_interval_ms=...)`
+- `await AsyncClient.extract(...)` waits for the async run to finish
+
+## Response shape (common fields)
+
+Both sync and async `extract(...)` return an `ExtractResponse` with the fields that are available in both flows:
+- `data` (can be any JSON type: dict, list, string, number, boolean, null)
+- `schema_id`
+- `schema_hash`
+- `schema_version`
+- `validation_errors`
+- `raw` (the full response payload; sync-only fields live here)
+
+Sync-only fields such as `schema_used`, `duration_ms`, `detected_language`, and `screenshot_url` are available in `result.raw` when present.
+
+## Options (pass-through to API)
+
+`options` is forwarded as-is:
+- `wait_ms`
+- `wait_until` (`load`, `domcontentloaded`, `networkidle`)
+- `wait_for_selector`
+- `screenshot`
+- `headers`
+- `cookies`
+- `timeout_ms`
+
+Example:
+
+```python
+from ws_data_extractor import Client, ExtractOptions
+
+client = Client(api_key="YOUR_KEY")
+result = client.extract(
+    url="https://example.com",
+    prompt="Extract title",
+    options=ExtractOptions(wait_ms=1500, wait_until="domcontentloaded")
+)
+```
+
+## Schema usage
+
+Provide either `schema` or `schema_id`:
+
+```python
+schema = {
+    "type": "object",
+    "properties": {"price": {"type": "number"}},
+    "required": ["price"]
+}
+
+result = client.extract(
+    url="https://example.com",
+    prompt="Extract price",
+    schema=schema
+)
+```
+
+## Error handling
+
+```python
+from ws_data_extractor import Client, ApiError
+
+client = Client(api_key="YOUR_KEY")
+try:
+    client.extract(url="https://example.com", prompt="Extract")
+except ApiError as exc:
+    print(exc.status_code, exc.error, exc.message, exc.step)
+    print(exc.request_id)
+    print(exc.payload)
+```
+
+## Manual multi-page flow (example)
+
+```python
+from ws_data_extractor import Client
+from ws_data_extractor import dedupe_urls
+
+client = Client(api_key="YOUR_KEY")
+
+search_url = "https://www.amazon.es/s?k=dell+portatil"
+search_prompt = (
+    "Return JSON with key \"items\" as a list of the first 5 products. "
+    "Each item should include: title, product_url (canonical)."
+)
+
+detail_prompt = (
+    "Extract product title, price (with currency), rating, review_count, "
+    "canonical product_url, and technical specifications as key/value pairs in \"specs\"."
+)
+
+search = client.extract(url=search_url, prompt=search_prompt)
+product_urls = client.resolve_urls(search_url, search.data, field="product_url")
+product_urls = dedupe_urls(product_urls)
+
+results = [
+    client.extract(url=url, prompt=detail_prompt).data
+    for url in product_urls[:5]
+]
+
+print(results)
+```
+
+Notes:
+- Keep the search prompt to fields that exist on the listing page (e.g., `title`, `product_url`).
+- Ask for full details only on product pages.
+- If the search step returns duplicates, call `dedupe_urls(...)` before fetching details.
+- If the search step returns `no_match`, consider following `_next_page_url` or using `_follow_urls` manually.
+
+## Follow-up helpers (no auto-follow)
+
+```python
+from ws_data_extractor import resolve_follow_urls
+
+urls = resolve_follow_urls(base_url, result.data)
+```
+
+## Retries and idempotency (advanced)
+
+Retries are enabled for transient failures (timeouts, connection errors, 429, 502, 503).
+For POST requests, the client generates an idempotency key by default to make retries safe.
+You can override this with `idempotency_key=...` when calling `extract` or `extract_async`.
+
+## Logging
+
+The client uses a `ws_data_extractor` logger with structured extras:
+- `request_id`
+- `duration_ms`
+- `endpoint`
+
+Verbose logging is off by default.
+
+## FAQ
+
+- **Rate limits**: 429 responses are retried when possible and honor `Retry-After`.
+- **Billing**: the client does not change server-side billing behavior.
+- **Compatibility**: API v1.0
+
+## Maintainers
+
+Release instructions live in `RELEASE.md`.
