@@ -1,0 +1,77 @@
+# Let all hooks run so you see the full set of issues in one pass.
+fail_fast: false
+
+repos:
+  # 1. Basic file cleanup and checks (Standard hooks)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace # Removes trailing whitespace
+      - id: check-added-large-files # Prevents committing giant files
+      - id: check-case-conflict # Checks for case conflicts (important for Windows/Mac)
+      - id: end-of-file-fixer # Ensures files end with a newline
+      - id: fix-byte-order-marker # Removes UTF-8 BOM
+      - id: check-json # Validates JSON syntax
+      - id: check-toml # Validates TOML syntax
+      - id: check-yaml # Validates YAML syntax (checks only, no formatting)
+      - id: check-xml # Validates XML syntax
+      - id: mixed-line-ending # Enforces consistent line endings (LF/CRLF)
+      - id: check-symlinks # Checks for broken symlinks
+      - id: check-merge-conflict # Checks for leftover merge conflict markers
+      - id: detect-private-key # Checks for private keys
+      # - id: no-commit-to-branch      # (Commented out) Prevents committing to main branch
+      - id: check-executables-have-shebangs # Ensures executables have a valid shebang
+      - id: pretty-format-json # Formats JSON files
+        args: [--autofix, --no-sort-keys] # Autofix enabled, preserves key order
+
+  # 2. Spell checker (Catches typos in variable names)
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.42.1
+    hooks:
+      - id: typos
+        # Fast dictionary-based spell check; configurable via `typos.toml`.
+
+  # 3. Python linting and formatting (Ruff - Extremely fast)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+      - id: ruff-format # Formats Python code (like Black)
+      - id: ruff # Lints and fixes Python logic (like Flake8/Isort)
+        args: [--fix] # Auto-fix lint; CI remains green after fixes
+
+  # 4. Security scan (Secrets detection)
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+        # Scans for hard-coded secrets; honors `.gitleaks.toml` if present.
+
+  # 5. Markdown formatting
+  - repo: https://github.com/hukkin/mdformat
+    rev: 1.0.0
+    hooks:
+      - id: mdformat
+        language: python
+        additional_dependencies:
+          - mdformat-gfm # GitHub Flavored Markdown support (tables, etc.)
+          - mdformat-black # Formats Python code blocks inside Markdown
+          - mdformat-mkdocs
+          - mdformat-footnote
+        # Keep Markdown consistent across docs and READMEs.
+
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.24.1
+    hooks:
+      - id: validate-pyproject # Validate pyproject.toml against PEP 621/517
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.47.0
+    hooks:
+      - id: markdownlint # Auto-fix Markdown style issues where possible
+        args: [--fix, --disable=MD013, --disable=MD041]
+
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.8.1
+    hooks:
+      - id: prettier
+        types_or: [yaml, toml]
