@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Video Sync</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #8b8b9e;
+            text-align: center;
+            margin-bottom: 32px;
+            font-size: 0.9rem;
+        }
+
+        .upload-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .upload-box {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 16px;
+        }
+
+        .upload-box:hover {
+            border-color: #6c63ff;
+            background: rgba(108, 99, 255, 0.1);
+        }
+
+        .upload-box.has-file {
+            border-color: #4ade80;
+            background: rgba(74, 222, 128, 0.1);
+        }
+
+        .upload-box input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .upload-label {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .upload-hint {
+            font-size: 0.8rem;
+            color: #8b8b9e;
+        }
+
+        .file-name {
+            font-size: 0.85rem;
+            color: #4ade80;
+            margin-top: 8px;
+            word-break: break-all;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6c63ff 0%, #5a52d5 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(108, 99, 255, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            color: #000;
+        }
+
+        .progress-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .progress-section.visible {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6c63ff, #4ade80);
+            border-radius: 4px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        .progress-fill.pulse {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .progress-text {
+            font-size: 0.9rem;
+            color: #8b8b9e;
+        }
+
+        .result-section {
+            background: rgba(74, 222, 128, 0.1);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            display: none;
+        }
+
+        .result-section.visible {
+            display: block;
+        }
+
+        .result-icon {
+            font-size: 3rem;
+            margin-bottom: 12px;
+        }
+
+        .result-info {
+            margin: 16px 0;
+            font-size: 0.9rem;
+            color: #8b8b9e;
+        }
+
+        .error-section {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            display: none;
+            color: #ef4444;
+        }
+
+        .error-section.visible {
+            display: block;
+        }
+
+        .loading-section {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #6c63ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .info-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            margin-top: 20px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 32px;
+            color: #8b8b9e;
+            font-size: 0.8rem;
+        }
+
+        .footer a {
+            color: #6c63ff;
+            text-decoration: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Audio Video Sync</h1>
+        <p class="subtitle">Auto-sync video with separately recorded audio</p>
+
+        <div id="loading-section" class="loading-section">
+            <p style="margin-bottom: 16px;">Loading FFmpeg (~31 MB)...</p>
+            <div class="progress-bar" style="margin-bottom: 12px;">
+                <div class="progress-fill" id="loading-progress"></div>
+            </div>
+            <p class="upload-hint" id="loading-status">Initializing...</p>
+        </div>
+
+        <div id="main-section" style="display: none;">
+            <div class="upload-section">
+                <div class="upload-box" id="video-box" onclick="document.getElementById('video-input').click()">
+                    <input type="file" id="video-input" accept="video/*">
+                    <div class="upload-icon">🎬</div>
+                    <div class="upload-label">Select Video</div>
+                    <div class="upload-hint">The video with original audio</div>
+                    <div class="file-name" id="video-name"></div>
+                </div>
+
+                <div class="upload-box" id="audio-box" onclick="document.getElementById('audio-input').click()">
+                    <input type="file" id="audio-input" accept="audio/*,.mp3,.wav,.aac,.m4a,.flac,.ogg">
+                    <div class="upload-icon">🎵</div>
+                    <div class="upload-label">Select Audio</div>
+                    <div class="upload-hint">The polished audio to sync</div>
+                    <div class="file-name" id="audio-name"></div>
+                </div>
+
+                <button class="btn btn-primary" id="sync-btn" disabled onclick="startSync()">
+                    Sync Audio to Video
+                </button>
+            </div>
+
+            <div class="progress-section" id="progress-section">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <p class="progress-text" id="progress-text">Preparing...</p>
+            </div>
+
+            <div class="result-section" id="result-section">
+                <div class="result-icon">✅</div>
+                <h2>Sync Complete!</h2>
+                <p class="result-info" id="result-info"></p>
+                <button class="btn btn-success" id="download-btn">Download Video</button>
+            </div>
+
+            <div class="error-section" id="error-section">
+                <h3>Error</h3>
+                <p id="error-text"></p>
+            </div>
+
+            <div class="info-badge" id="mode-badge"></div>
+        </div>
+
+        <div class="footer">
+            <p>Runs entirely in your browser. No uploads.</p>
+            <p><a href="https://github.com/sanjeed5/audio-video-sync" target="_blank">GitHub</a></p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+        import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
+
+        // State
+        let ffmpeg = null;
+        let videoFile = null;
+        let audioFile = null;
+        let outputBlob = null;
+
+        // DOM elements
+        const loadingSection = document.getElementById('loading-section');
+        const loadingStatus = document.getElementById('loading-status');
+        const loadingProgress = document.getElementById('loading-progress');
+        const mainSection = document.getElementById('main-section');
+        const videoInput = document.getElementById('video-input');
+        const audioInput = document.getElementById('audio-input');
+        const videoBox = document.getElementById('video-box');
+        const audioBox = document.getElementById('audio-box');
+        const videoName = document.getElementById('video-name');
+        const audioName = document.getElementById('audio-name');
+        const syncBtn = document.getElementById('sync-btn');
+        const progressSection = document.getElementById('progress-section');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const resultSection = document.getElementById('result-section');
+        const resultInfo = document.getElementById('result-info');
+        const downloadBtn = document.getElementById('download-btn');
+        const errorSection = document.getElementById('error-section');
+        const errorText = document.getElementById('error-text');
+        const modeBadge = document.getElementById('mode-badge');
+
+
+        // Initialize FFmpeg
+        async function initFFmpeg() {
+            ffmpeg = new FFmpeg();
+
+            ffmpeg.on('log', ({ message }) => {
+                console.log('[FFmpeg]', message);
+            });
+
+            ffmpeg.on('progress', ({ progress }) => {
+                const pct = Math.round(progress * 100);
+                progressFill.style.width = `${pct}%`;
+            });
+
+            try {
+                // Single-thread mode only (more reliable across all browsers)
+                const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+                
+                loadingStatus.textContent = 'Step 1/3: Downloading core.js...';
+                let coreURL;
+                try {
+                    coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
+                    loadingProgress.style.width = '33%';
+                } catch (e) {
+                    throw new Error(`Failed to load core.js: ${e.message}`);
+                }
+                
+                loadingStatus.textContent = 'Step 2/3: Downloading core.wasm (~31 MB)...';
+                let wasmURL;
+                try {
+                    wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+                    loadingProgress.style.width = '66%';
+                } catch (e) {
+                    throw new Error(`Failed to load core.wasm: ${e.message}`);
+                }
+
+                loadingStatus.textContent = 'Step 3/3: Initializing FFmpeg...';
+                loadingProgress.style.width = '100%';
+                loadingProgress.classList.add('pulse');
+                
+                // Add timeout for load
+                const loadPromise = ffmpeg.load({ coreURL, wasmURL });
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('FFmpeg init timed out after 60s')), 60000)
+                );
+                
+                await Promise.race([loadPromise, timeoutPromise]);
+                modeBadge.textContent = 'Ready';
+
+                loadingSection.style.display = 'none';
+                mainSection.style.display = 'block';
+            } catch (err) {
+                loadingStatus.textContent = `ERROR: ${err.message}`;
+                loadingStatus.style.color = '#ef4444';
+                loadingProgress.style.background = '#ef4444';
+                console.error('FFmpeg load error:', err);
+            }
+        }
+
+        // File input handlers
+        videoInput.addEventListener('change', (e) => {
+            videoFile = e.target.files[0];
+            if (videoFile) {
+                videoName.textContent = videoFile.name;
+                videoBox.classList.add('has-file');
+            }
+            updateSyncButton();
+        });
+
+        audioInput.addEventListener('change', (e) => {
+            audioFile = e.target.files[0];
+            if (audioFile) {
+                audioName.textContent = audioFile.name;
+                audioBox.classList.add('has-file');
+            }
+            updateSyncButton();
+        });
+
+        function updateSyncButton() {
+            syncBtn.disabled = !(videoFile && audioFile);
+        }
+
+        // Cross-correlation to find offset
+        async function findOffset(videoAudioBuffer, replacementBuffer) {
+            const sampleRate = 22050;
+            const analyzeDuration = 30; // seconds
+            const maxSamples = sampleRate * analyzeDuration;
+
+            // Get mono channel data, limited to analyze duration
+            const audio1 = videoAudioBuffer.getChannelData(0).slice(0, maxSamples);
+            const audio2 = replacementBuffer.getChannelData(0).slice(0, maxSamples);
+
+            // Downsample if needed (simple averaging)
+            const downsampleFactor = Math.max(1, Math.floor(videoAudioBuffer.sampleRate / sampleRate));
+            const ds1 = downsample(audio1, downsampleFactor);
+            const ds2 = downsample(audio2, downsampleFactor);
+
+            // Cross-correlate
+            const correlation = crossCorrelate(ds1, ds2);
+            
+            // Find peak
+            let maxVal = -Infinity;
+            let maxIdx = 0;
+            for (let i = 0; i < correlation.length; i++) {
+                if (Math.abs(correlation[i]) > maxVal) {
+                    maxVal = Math.abs(correlation[i]);
+                    maxIdx = i;
+                }
+            }
+
+            // Calculate offset
+            const zeroLagIdx = ds2.length - 1;
+            const lagSamples = maxIdx - zeroLagIdx;
+            const offset = lagSamples / (sampleRate / downsampleFactor);
+
+            // Calculate confidence
+            let sum = 0;
+            for (let i = 0; i < correlation.length; i++) {
+                sum += Math.abs(correlation[i]);
+            }
+            const mean = sum / correlation.length;
+            const confidence = maxVal / mean;
+
+            return { offset, confidence };
+        }
+
+        function downsample(data, factor) {
+            if (factor <= 1) return data;
+            const result = new Float32Array(Math.floor(data.length / factor));
+            for (let i = 0; i < result.length; i++) {
+                let sum = 0;
+                for (let j = 0; j < factor; j++) {
+                    sum += data[i * factor + j];
+                }
+                result[i] = sum / factor;
+            }
+            return result;
+        }
+
+        function crossCorrelate(a, b) {
+            // Simple direct correlation (not FFT-based for simplicity)
+            // For performance, we use a sliding window approach
+            const resultLen = a.length + b.length - 1;
+            const result = new Float32Array(resultLen);
+
+            // Use Web Worker-friendly chunked approach for UI responsiveness
+            for (let lag = 0; lag < resultLen; lag++) {
+                let sum = 0;
+                const startA = Math.max(0, lag - b.length + 1);
+                const endA = Math.min(a.length, lag + 1);
+                
+                for (let i = startA; i < endA; i++) {
+                    const j = lag - i;
+                    if (j >= 0 && j < b.length) {
+                        sum += a[i] * b[j];
+                    }
+                }
+                result[lag] = sum;
+            }
+
+            return result;
+        }
+
+        // Main sync function
+        window.startSync = async function() {
+            try {
+                // Reset UI
+                progressSection.classList.add('visible');
+                resultSection.classList.remove('visible');
+                errorSection.classList.remove('visible');
+                syncBtn.disabled = true;
+                progressFill.style.width = '0%';
+
+                // Step 1: Write files to FFmpeg FS
+                progressText.textContent = 'Loading files...';
+                const videoData = await fetchFile(videoFile);
+                const audioData = await fetchFile(audioFile);
+                
+                await ffmpeg.writeFile('input_video', videoData);
+                await ffmpeg.writeFile('input_audio', audioData);
+
+                // Step 2: Extract audio from video for analysis
+                progressText.textContent = 'Extracting audio from video...';
+                progressFill.style.width = '10%';
+                
+                await ffmpeg.exec([
+                    '-i', 'input_video',
+                    '-vn',
+                    '-acodec', 'pcm_s16le',
+                    '-ar', '22050',
+                    '-ac', '1',
+                    '-t', '30',
+                    'video_audio.wav'
+                ]);
+
+                // Step 3: Convert replacement audio for analysis
+                progressText.textContent = 'Preparing audio for analysis...';
+                progressFill.style.width = '20%';
+                
+                await ffmpeg.exec([
+                    '-i', 'input_audio',
+                    '-acodec', 'pcm_s16le',
+                    '-ar', '22050',
+                    '-ac', '1',
+                    '-t', '30',
+                    'replacement_audio.wav'
+                ]);
+
+                // Step 4: Read and decode both audio files
+                progressText.textContent = 'Analyzing audio...';
+                progressFill.style.width = '30%';
+
+                const videoAudioData = await ffmpeg.readFile('video_audio.wav');
+                const replacementAudioData = await ffmpeg.readFile('replacement_audio.wav');
+
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 22050 });
+                
+                const videoAudioBuffer = await audioContext.decodeAudioData(videoAudioData.buffer);
+                const replacementBuffer = await audioContext.decodeAudioData(replacementAudioData.buffer);
+
+                // Step 5: Find offset using cross-correlation
+                progressText.textContent = 'Finding sync offset...';
+                progressFill.style.width = '50%';
+
+                const { offset, confidence } = await findOffset(videoAudioBuffer, replacementBuffer);
+                console.log(`Offset: ${offset.toFixed(3)}s, Confidence: ${confidence.toFixed(1)}x`);
+
+                // Step 6: Merge video with synced audio
+                progressText.textContent = `Merging (offset: ${offset.toFixed(2)}s)...`;
+                progressFill.style.width = '60%';
+
+                let mergeCmd;
+                if (offset >= 0) {
+                    // Audio starts later - delay it
+                    mergeCmd = [
+                        '-i', 'input_video',
+                        '-itsoffset', offset.toString(),
+                        '-i', 'input_audio',
+                        '-map', '0:v:0',
+                        '-map', '1:a:0',
+                        '-c:v', 'copy',
+                        '-c:a', 'aac',
+                        '-b:a', '192k',
+                        '-shortest',
+                        'output.mp4'
+                    ];
+                } else {
+                    // Audio starts earlier - trim from start
+                    mergeCmd = [
+                        '-i', 'input_video',
+                        '-ss', Math.abs(offset).toString(),
+                        '-i', 'input_audio',
+                        '-map', '0:v:0',
+                        '-map', '1:a:0',
+                        '-c:v', 'copy',
+                        '-c:a', 'aac',
+                        '-b:a', '192k',
+                        '-shortest',
+                        'output.mp4'
+                    ];
+                }
+
+                await ffmpeg.exec(mergeCmd);
+
+                // Step 7: Read output
+                progressText.textContent = 'Preparing download...';
+                progressFill.style.width = '90%';
+
+                const outputData = await ffmpeg.readFile('output.mp4');
+                outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
+
+                // Done!
+                progressFill.style.width = '100%';
+                progressSection.classList.remove('visible');
+                resultSection.classList.add('visible');
+
+                const sizeMB = (outputBlob.size / 1024 / 1024).toFixed(1);
+                resultInfo.textContent = `Offset: ${offset.toFixed(3)}s | Confidence: ${confidence.toFixed(1)}x | Size: ${sizeMB} MB`;
+
+                // Cleanup
+                await ffmpeg.deleteFile('input_video');
+                await ffmpeg.deleteFile('input_audio');
+                await ffmpeg.deleteFile('video_audio.wav');
+                await ffmpeg.deleteFile('replacement_audio.wav');
+                await ffmpeg.deleteFile('output.mp4');
+
+                audioContext.close();
+
+            } catch (err) {
+                console.error('Sync error:', err);
+                progressSection.classList.remove('visible');
+                errorSection.classList.add('visible');
+                errorText.textContent = err.message;
+            } finally {
+                syncBtn.disabled = false;
+            }
+        };
+
+        // Download handler
+        downloadBtn.addEventListener('click', () => {
+            if (!outputBlob) return;
+            
+            const url = URL.createObjectURL(outputBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'synced_video.mp4';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Start loading FFmpeg
+        initFFmpeg();
+    </script>
+</body>
+</html>
