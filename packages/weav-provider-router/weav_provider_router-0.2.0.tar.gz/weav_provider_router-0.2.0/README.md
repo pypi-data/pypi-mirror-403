@@ -1,0 +1,646 @@
+# Weav Provider Router
+
+[![PyPI version](https://badge.fury.io/py/weav-provider-router.svg)](https://badge.fury.io/py/weav-provider-router)
+[![Tests](https://github.com/HungryZhao/weav-provider-router-repo/actions/workflows/test.yml/badge.svg)](https://github.com/HungryZhao/weav-provider-router-repo/actions/workflows/test.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A unified **multi-modal AI provider router** supporting LLM chat, image generation, and embeddings. Seamlessly integrate with 16+ LLM providers including OpenAI, Anthropic, Google, and Chinese providers like Moonshot, Baidu, MiniMax, and ByteDance.
+
+## Features
+
+- 🤖 **LLM Chat**: 16 providers for text generation
+- 🎨 **Image Generation**: DALL-E support with more coming
+- 🔢 **Vector Embeddings**: OpenAI embeddings
+- 🚀 **Unified API**: Single interface across all providers
+- 🔄 **Async Support**: Full async/await for all operations
+- 🌊 **Streaming**: Real-time streaming responses
+- 🔌 **Extensible**: Easy to add new providers
+- 🎯 **Type-Safe**: Complete type hints
+- 🧪 **Well-Tested**: Comprehensive test coverage
+- 🌍 **Global Coverage**: International and Chinese providers
+
+## Supported Providers
+
+### 🤖 LLM Chat Providers (16)
+
+| Provider | Chat | Streaming | List Models | Notes |
+|----------|------|-----------|-------------|-------|
+| OpenAI | ✅ | ✅ | ✅ | GPT-4, GPT-3.5, O1 |
+| Anthropic | ✅ | ✅ | ✅ | Claude 3/4 |
+| Google | ✅ | ✅ | ✅ | Gemini |
+| Moonshot | ✅ | ✅ | ✅ | Kimi 128K context |
+| **MiniMax** 🆕 | ✅ | ✅ | ✅ | 海螺AI abab models |
+| **ByteDance** 🆕 | ✅ | ✅ | ✅ | Doubao (豆包/云雀) |
+| **NVIDIA** 🆕 | ✅ | ✅ | ✅ | NIM enterprise API |
+| Baidu | ✅ | ✅ | ✅ | ERNIE (文心一言) |
+| Mistral | ✅ | ✅ | ✅ | Mistral AI |
+| Groq | ✅ | ✅ | ✅ | Ultra-fast (750 tok/s) |
+| Together AI | ✅ | ✅ | ✅ | Multi-model |
+| Cohere | ✅ | ✅ | ✅ | Command R/R+ |
+| DeepSeek | ✅ | ✅ | ✅ | Code + chat |
+| Qwen | ✅ | ✅ | ✅ | 通义千问 |
+| Zhipu | ✅ | ✅ | ✅ | 智谱 GLM |
+| Ollama | ✅ | ✅ | ✅ | Local models |
+
+### 🎨 Image Generation (1)
+
+| Provider | Generate | Edit | Variations |
+|----------|----------|------|------------|
+| OpenAI DALL-E 🆕 | ✅ | ✅ | ✅ |
+
+### 🔢 Vector Embeddings (1)
+
+| Provider | Batch Embed | Single Query |
+|----------|-------------|--------------|
+| OpenAI 🆕 | ✅ | ✅ |
+
+## Installation
+
+```bash
+pip install weav-provider-router
+```
+
+Or install with extras for specific providers:
+
+```bash
+# For OpenAI/DeepSeek
+pip install weav-provider-router[openai]
+
+# For Anthropic
+pip install weav-provider-router[anthropic]
+
+# For Google
+pip install weav-provider-router[google]
+
+# For all providers
+pip install weav-provider-router[all]
+```
+
+## Quick Start
+
+### Synchronous Chat
+
+```python
+from weav_provider_router import chat
+
+# OpenAI
+response = chat(
+    provider="openai",
+    api_key="your-api-key",
+    question="What is the capital of France?",
+    model="gpt-4",
+    temperature=0.7
+)
+print(response)
+
+# Anthropic
+response = chat(
+    provider="anthropic",
+    api_key="your-api-key",
+    question="Explain quantum computing in simple terms",
+    model="claude-3-5-sonnet-20241022"
+)
+print(response)
+
+# Ollama (local)
+response = chat(
+    provider="ollama",
+    api_key=None,
+    question="Tell me a joke",
+    model="llama3.2",
+    base_url="http://localhost:11434"
+)
+print(response)
+```
+
+### Asynchronous Chat
+
+```python
+import asyncio
+from weav_provider_router import chat_async
+
+async def main():
+    response = await chat_async(
+        provider="openai",
+        api_key="your-api-key",
+        question="What is machine learning?",
+        model="gpt-4o",
+        temperature=0.5,
+        max_tokens=500
+    )
+    print(response)
+
+asyncio.run(main())
+```
+
+### Streaming Responses
+
+```python
+import asyncio
+from weav_provider_router.providers import build_provider
+from weav_provider_router.base import CompletionConfig
+
+async def stream_example():
+    llm = build_provider("openai", api_key="your-api-key")
+    config = CompletionConfig(
+        model="gpt-4o",
+        temperature=0.7
+    )
+    
+    messages = [{"role": "user", "content": "Write a short story"}]
+    
+    async for chunk in llm.stream(messages, config):
+        print(chunk, end="", flush=True)
+
+asyncio.run(stream_example())
+```
+
+### Text Completion
+
+```python
+from weav_provider_router import complete
+
+response = complete(
+    provider="openai",
+    api_key="your-api-key",
+    prompt="Once upon a time",
+    model="gpt-4",
+    max_tokens=100
+)
+print(response)
+```
+
+### List Available Models
+
+```python
+from weav_provider_router import list_models
+
+# List OpenAI models
+models = list_models("openai", api_key="your-api-key")
+print(models)
+
+# List Ollama local models
+models = list_models("ollama", base_url="http://localhost:11434")
+print(models)
+```
+
+### 🎨 Image Generation (NEW!)
+
+```python
+from weav_provider_router import build_image_provider, ImageConfig
+
+# Create image provider
+image_provider = build_image_provider("openai", api_key="your-api-key")
+
+# Generate image
+config = ImageConfig(
+    model="dall-e-3",
+    size="1024x1024",
+    quality="hd",
+    style="vivid"
+)
+
+response = await image_provider.generate(
+    "A serene landscape with mountains and a lake at sunset",
+    config
+)
+print(f"Image URL: {response.url}")
+print(f"Revised prompt: {response.revised_prompt}")
+
+# Edit existing image
+with open("original.png", "rb") as f:
+    image_bytes = f.read()
+
+edited = await image_provider.edit(
+    image=image_bytes,
+    prompt="Add a rainbow in the sky",
+    config=config
+)
+print(f"Edited image: {edited.url}")
+```
+
+### 🔢 Vector Embeddings (NEW!)
+
+```python
+from weav_provider_router import build_embedding_provider, EmbeddingConfig
+
+# Create embedding provider
+embedding_provider = build_embedding_provider("openai", api_key="your-api-key")
+
+# Generate embeddings
+config = EmbeddingConfig(
+    model="text-embedding-3-large",
+    dimensions=1536
+)
+
+texts = [
+    "The quick brown fox jumps over the lazy dog",
+    "Machine learning is a subset of artificial intelligence",
+    "Python is a popular programming language"
+]
+
+embeddings = await embedding_provider.embed(texts, config)
+print(f"Generated {len(embeddings)} embeddings")
+print(f"Embedding dimension: {len(embeddings[0])}")
+
+# Single query embedding
+query_embedding = await embedding_provider.embed_query(
+    "What is AI?",
+    config
+)
+print(f"Query embedding: {len(query_embedding)} dimensions")
+```
+print(models)
+
+# List Ollama local models
+models = list_models("ollama", base_url="http://localhost:11434")
+print(models)
+```
+
+## Advanced Usage
+
+### Building Provider Directly
+
+```python
+from weav_provider_router.providers import build_provider
+from weav_provider_router.base import CompletionConfig
+
+# Create provider instance
+llm = build_provider(
+    provider="anthropic",
+    api_key="your-api-key"
+)
+
+# Configure completion
+config = CompletionConfig(
+    model="claude-3-5-sonnet-20241022",
+    temperature=0.7,
+    max_tokens=1000,
+    top_p=0.9,
+    stop=["END"],
+    extra={"thinking": {"enabled": True}}
+)
+
+# Use the provider
+messages = [
+    {"role": "user", "content": "Explain the theory of relativity"}
+]
+response = await llm.chat(messages, config)
+print(response)
+```
+
+### Custom Base URL
+
+```python
+from weav_provider_router import chat
+
+# Use custom OpenAI-compatible endpoint
+response = chat(
+    provider="openai",
+    api_key="your-api-key",
+    question="Hello, world!",
+    model="custom-model",
+    base_url="https://your-custom-endpoint.com/v1"
+)
+```
+
+### Error Handling
+
+```python
+from weav_provider_router import chat
+
+try:
+    response = chat(
+        provider="unsupported_provider",
+        api_key="key",
+        question="test"
+    )
+except ValueError as e:
+    print(f"Provider error: {e}")
+
+try:
+    response = chat(
+        provider="openai",
+        api_key="invalid-key",
+        question="test",
+        model="gpt-4"
+    )
+except Exception as e:
+    print(f"API error: {e}")
+```
+
+## Configuration Options
+
+### CompletionConfig
+
+All completion and chat operations accept these configuration parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model` | `str` | Required | Model identifier (e.g., "gpt-4", "claude-3-5-sonnet-20241022") |
+| `temperature` | `float` | `0.7` | Sampling temperature (0.0 to 2.0) |
+| `max_tokens` | `int` | `None` | Maximum tokens to generate |
+| `top_p` | `float` | `1.0` | Nucleus sampling parameter |
+| `stop` | `list[str]` | `None` | Stop sequences |
+| `extra` | `dict` | `{}` | Provider-specific extra parameters |
+
+### Provider-Specific Notes
+
+#### OpenAI
+- Supports all GPT models including GPT-4, GPT-4o, GPT-3.5-turbo
+- Special handling for O1/O2 models (different parameter requirements)
+- Custom `base_url` support for OpenAI-compatible endpoints
+
+#### Anthropic
+- Supports Claude 3 family (Opus, Sonnet, Haiku)
+- Extended thinking mode via `extra` parameter
+- Streaming support with delta chunks
+
+#### Google
+- Supports Gemini models (gemini-pro, gemini-1.5-pro, etc.)
+- Integrates with Google AI Studio
+
+#### Ollama
+- Local model serving
+- Default endpoint: `http://localhost:11434`
+- Supports all locally available models
+
+#### DeepSeek, Qwen, Zhipu
+- Chinese LLM providers
+- OpenAI-compatible API format
+- Require API keys from respective platforms
+
+#### Moonshot (Kimi)
+- Long-context specialist (8K/32K/128K)
+- API endpoint: `https://api.moonshot.cn/v1`
+- OpenAI-compatible format
+
+#### Baidu ERNIE (文心一言)
+- Requires both `api_key` and `secret_key`
+- OAuth-based authentication
+- Use `secret_key` parameter when building provider
+
+```python
+from weav_provider_router import chat
+
+response = chat(
+    provider="baidu",
+    api_key="your-api-key",
+    secret_key="your-secret-key",  # Required for Baidu
+    question="你好",
+    model="ernie-4.0-8k"
+)
+```
+
+#### Mistral AI
+- European AI provider
+- Supports Mistral Large, Medium, Small
+- Open-source model options
+
+#### Groq
+- Ultra-fast LLM inference (up to 750 tokens/sec)
+- Supports Llama, Mixtral, Gemma models
+- Best for low-latency applications
+
+#### Together AI
+- Multi-model aggregation platform
+- Access to Llama, Mistral, Qwen, DeepSeek models
+- Competitive pricing
+
+#### Cohere
+- Enterprise-focused LLM provider
+- Command R/R+ models
+- Specialized for business applications
+
+#### MiniMax (海螺AI) 🆕
+- Chinese LLM provider
+- Requires both `api_key` and `group_id`
+- abab series models
+
+```python
+from weav_provider_router.providers import build_provider
+
+llm = build_provider(
+    provider="minimax",
+    api_key="your-api-key",
+    group_id="your-group-id"  # Required!
+)
+```
+
+#### ByteDance Doubao (豆包) 🆕
+- ByteDance's LLM service
+- Doubao-pro and Doubao-lite models
+- OpenAI-compatible API
+
+```python
+response = chat(
+    provider="bytedance",
+    api_key="your-api-key",
+    question="写一首诗",
+    model="doubao-pro-32k"
+)
+```
+
+#### NVIDIA NIM 🆕
+- Enterprise GPU-accelerated inference
+- Access to Llama, Mistral, Nemotron models
+- High-performance API
+
+```python
+response = chat(
+    provider="nvidia",
+    api_key="your-nvidia-api-key",
+    question="Explain neural networks",
+    model="nvidia/llama-3.1-nemotron-70b-instruct"
+)
+```
+
+## API Reference
+
+### High-Level Functions
+
+#### `chat(provider, api_key, question, **kwargs) -> str`
+
+Synchronous chat completion.
+
+**Parameters:**
+- `provider` (str): Provider name ("openai", "anthropic", etc.)
+- `api_key` (str | None): API key for the provider
+- `question` (str): User question/prompt
+- `model` (str, optional): Model identifier
+- `base_url` (str, optional): Custom API endpoint
+- `temperature` (float, optional): Sampling temperature
+- `max_tokens` (int, optional): Maximum tokens
+- `top_p` (float, optional): Nucleus sampling
+- `stop` (list[str], optional): Stop sequences
+- `extra` (dict, optional): Provider-specific parameters
+
+**Returns:** Generated response as string
+
+#### `chat_async(provider, api_key, question, **kwargs) -> str`
+
+Asynchronous chat completion. Same parameters as `chat()`.
+
+#### `complete(provider, api_key, prompt, **kwargs) -> str`
+
+Synchronous text completion.
+
+#### `complete_async(provider, api_key, prompt, **kwargs) -> str`
+
+Asynchronous text completion.
+
+#### `list_models(provider, api_key, *, base_url) -> list[str]`
+
+List available models for a provider.
+
+### Provider Builder
+
+#### `build_provider(provider, api_key, base_url) -> LLMBase`
+
+Create a provider adapter instance.
+
+**Parameters:**
+- `provider` (str): Provider name
+- `api_key` (str | None): API key
+- `base_url` (str | None): Custom endpoint
+
+**Returns:** Provider adapter instance
+
+## Development
+
+### Setting Up Development Environment
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd weav-provider-router
+
+# Install in development mode
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=weav_provider_router --cov-report=html
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_providers.py
+
+# Run with verbose output
+pytest -v
+
+# Run integration tests (requires API keys)
+pytest -m integration
+```
+
+### Project Structure
+
+```
+weav_provider_router/
+├── __init__.py           # Public API exports
+├── api.py                # High-level API functions
+├── providers.py          # Provider builder and registry
+├── base.py               # Base classes and interfaces
+└── adapters/             # Provider adapters
+    ├── __init__.py
+    ├── openai.py
+    ├── anthropic.py
+    ├── google.py
+    ├── ollama.py
+    ├── deepseek.py
+    ├── qwen.py
+    └── zhipu.py
+```
+
+## Testing
+
+The package includes comprehensive tests:
+
+- **Unit Tests**: Test individual adapters and functions
+- **Integration Tests**: Test real API calls (require API keys)
+- **Mock Tests**: Test without external dependencies
+
+Set environment variables for integration tests:
+
+```bash
+export OPENAI_API_KEY="your-key"
+export ANTHROPIC_API_KEY="your-key"
+export GOOGLE_API_KEY="your-key"
+export DEEPSEEK_API_KEY="your-key"
+export QWEN_API_KEY="your-key"
+export ZHIPU_API_KEY="your-key"
+```
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Adding a New Provider
+
+1. Create a new adapter in `adapters/your_provider.py`
+2. Implement the `LLMBase` interface
+3. Register the provider in `providers.py`
+4. Add tests in `tests/test_your_provider.py`
+5. Update documentation
+
+Example adapter template:
+
+```python
+from __future__ import annotations
+from typing import AsyncIterator
+from ..base import CompletionConfig, LLMBase
+
+class YourProviderChat(LLMBase):
+    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+        # Initialize your provider client
+        pass
+    
+    async def chat(self, messages: list[dict[str, str]], config: CompletionConfig) -> str:
+        # Implement chat completion
+        pass
+    
+    async def complete(self, prompt: str, config: CompletionConfig) -> str:
+        # Implement text completion
+        pass
+    
+    async def stream(self, messages: list[dict[str, str]], config: CompletionConfig) -> AsyncIterator[str]:
+        # Implement streaming
+        pass
+    
+    def list_models(self) -> list[str]:
+        # List available models
+        pass
+```
+
+## License
+
+MIT License - See LICENSE file for details
+
+## Support
+
+For issues and questions:
+- GitHub Issues: [Report a bug or request a feature]
+- Documentation: [Link to full documentation]
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
+
+## Acknowledgments
+
+Built with ❤️ for the Weav ecosystem.
