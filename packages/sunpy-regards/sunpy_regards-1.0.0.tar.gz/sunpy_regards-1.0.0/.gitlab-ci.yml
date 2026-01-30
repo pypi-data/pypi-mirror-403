@@ -1,0 +1,142 @@
+stages: [lint, test, release, build, publish]
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  GIT_DEPTH: "0"
+
+default:
+  image: python:3.12
+  before_script:
+    - python --version
+    - pip install -U pip
+    - pip install -e ".[dev]"
+
+lint:
+  stage: lint
+  script:
+    - ruff check .
+    - black --check .
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+test:
+  stage: test
+  script:
+    - pytest -q --cov=sunpy_regards --cov-report=term-missing --cov-fail-under=80
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+release:
+  stage: release
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+  before_script:
+    - pip install -U pip
+    - pip install -e ".[dev]"
+    - git config user.email "ci@gitlab"
+    - git config user.name "release-bot"
+    - export GITLAB_TOKEN="${RELEASE_TOKEN}"
+    - export GL_TOKEN="${RELEASE_TOKEN}"
+    - git remote set-url origin "https://oauth2:${RELEASE_TOKEN}@git.ias.u-psud.fr/medoc/sunpy-regards.git"
+    - git fetch --tags
+    - git checkout -B "$CI_COMMIT_BRANCH" "$CI_COMMIT_SHA"
+
+  script:
+    - |
+      set -e
+      BEFORE="${CI_COMMIT_BEFORE_SHA}"
+      AFTER="${CI_COMMIT_SHA}"
+
+      if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+        LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+        if [ -n "$LAST_TAG" ]; then
+          RANGE="${LAST_TAG}..${AFTER}"
+        else
+          RANGE="${AFTER}"
+        fi
+      else
+        RANGE="${BEFORE}..${AFTER}"
+      fi
+
+      echo "Checking commits in range: $RANGE"
+      git log --oneline "$RANGE" || true
+
+      if git log --format=%B "$RANGE" | grep -Eq '(^feat(\(.+\))?!?:|^fix(\(.+\))?!?:|^perf(\(.+\))?:|BREAKING CHANGE)'; then
+        echo "Release-worthy commits found -> running semantic-release"
+      else
+        echo "No feat/fix/perf/BREAKING commits -> skipping release"
+        exit 0
+      fi
+
+    - semantic-release version
+    - git push origin "HEAD:$CI_COMMIT_BRANCH"
+    - git push origin --tags
+
+
+
+build:
+  stage: build
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+  script:
+    - python -m build
+  artifacts:
+    paths:
+      - dist/
+
+
+publish_registry:
+  stage: publish
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs: ["build"]
+  variables:
+    TWINE_USERNAME: gitlab-ci-token
+    TWINE_PASSWORD: $CI_JOB_TOKEN
+  script:
+    - pip install -U pip
+    - pip install twine
+    - python -m twine upload --repository-url "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi" dist/*
+
+  
+publish_testpypi:
+  stage: publish
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs: ["build"]
+  script:
+    - pip install -U pip
+    - pip install twine
+    - python -m twine check dist/*
+    - python -m twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+  variables:
+    TWINE_USERNAME: "__token__"
+    TWINE_PASSWORD: "$PYPI_TEST_API_TOKEN"
+
+
+publish_pypi:
+  stage: publish
+  rules:
+    - if: '$CI_COMMIT_TAG && $CI_DEFAULT_BRANCH == "main"'
+      when: on_success
+    - when: never
+  needs: ["build"]
+  script:
+    - pip install -U pip
+    - pip install twine
+    - python -m twine check dist/*
+    - python -m twine upload dist/*
+  variables:
+    TWINE_USERNAME: "__token__"
+    TWINE_PASSWORD: "$PYPI_API_TOKEN"
+
+
