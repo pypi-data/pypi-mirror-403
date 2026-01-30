@@ -1,0 +1,1022 @@
+# ./pyproject.toml
+
+[project]
+name = "sgffp"
+version = "0.5.16"
+description = "SnapGene File Format Parser"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+dependencies = [
+    "biopython>=1.86",
+    "html2text>=2025.4.15",
+    "matplotlib>=3.10.7",
+    "numpy>=2.3.4",
+    "pandas>=2.3.3",
+    "xmltodict>=1.0.2",
+]
+
+[project.scripts]
+sff = "sgffp.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ===========================================
+
+# ./README.md
+
+# SnapGene File Format Parser
+
+SnapGene File Format Parser (SGFFP for short) is a reverse-engineered parser for SnapGene DNA, RNA, and protein file formats.
+
+> [!Important]
+> Hey! I have tried to decode as many different SnapGene blocks as I can, but surely something must be missing. This is why I ask you to check your SnapGene file(s) with `uv run sff check <your_snapgene_file>` to see which blocks your file has. If you have a new, unknown block type it will notify you with `[NEW] flag` Please open an issue and, if possible, either attach your file or dump the output of the block with the `--examine/-e` flag, i.e. `uv run sff check <your_snapgene_file> -e 1> block.dump`. Let's make parsing SnapGene files better together!
+
+Currently the parser partially does its job, producing a JSON dictionary as the result, as well as a minimalistic writer.
+
+The project aims to be a minimalistic, fast, and useful tool for molecular biologists who happen to get stuck with a large library of SnapGene files that need to be parsed, or for developers who want to create a smooth user experience with SnapGene.
+
+Currently the following scheme is implemented, which is planned to be changed, in a better way:
+
+```mermaid
+graph TB
+    subgraph Input
+        File[SnapGene File .dna]
+        Stream[Binary Stream]
+    end
+
+    subgraph Core
+        Reader[SgffReader - Parse binary format]
+        Internal[SgffObject - In-memory representation]
+        Writer[SgffWriter - Serialize to binary]
+        Parsers[Block Parsers - Type-specific parsing]
+    end
+
+    subgraph Output
+        JSON[JSON Export]
+        OutFile[SnapGene File .dna]
+    end
+
+    subgraph Interface
+        CLI[Command Line - parse/info/filter]
+        API[Python API - from_file/to_file]
+    end
+
+    File --> Reader
+    Stream --> Reader
+    Reader --> Parsers
+    Parsers --> Internal
+    Internal --> Writer
+    Writer --> OutFile
+    Internal --> JSON
+
+    CLI --> Reader
+    CLI --> Writer
+    API --> Reader
+    API --> Writer
+```
+
+## Install
+
+Currently this project requires cloning the repository first and do the install.
+
+The project use `uv`, which automatically handles `venv` and packages.
+
+```bash
+# to sync project:
+uv sync
+
+# to run cli tool:
+uv run sff
+
+```
+
+
+## File Format Overview
+
+SnapGene files use a **Type-Length-Value (TLV)** binary format. Each block consists of:
+- 1 byte: block type ID
+- 4 bytes: block length (big-endian)
+- N bytes: block data
+
+Some blocks contain LZMA-compressed data (types 7, 29, 30) which may themselves contain nested TLV structures. History nodes (type 11) use a complex nested format with compressed DNA sequences encoded at 2 bits per base in `GATC` format.
+
+For detailed file format specifications, see the acknowledgments section.
+
+## Complete Block Type Reference
+
+| ID | Block Type                   | Format           | Decoded |
+|----|------------------------------|------------------|---------|
+| 0  | DNA Sequence                 | UFT-8            | Yes     |
+| 1  | Compressed DNA               | 2-bit encoding   | Yes     |
+| 2  | Unknown                      | Unknown          | No      |
+| 3  | Enzyme Cutters               | Mixed            | No*      |
+| 4  | Unknown                      | Unknown          | No      |
+| 5  | Primers                      | XML              | Yes     |
+| 6  | Notes                        | XML              | Yes     |
+| 7  | History Tree                 | LZMA + XML       | Yes     |
+| 8  | Sequence Properties          | XML              | Yes     |
+| 9  | File Description (Legacy)    | Unknown          | No      |
+| 10 | Features                     | XML              | Yes     |
+| 11 | History Nodes                | Nested TLV       | Yes     |
+| 12 | Unknown                      | Unknown          | No      |
+| 13 | Enzyme Info                  | Binary           | No*      |
+| 14 | Custom Enzymes               | XML              | Yes*     |
+| 15 | Unknown                      | Unknown          | No      |
+| 16 | Sequence Trace (Legacy)      | 4 empty bytes    | No*      |
+| 17 | Alignable Sequences          | XML              | Yes     |
+| 18 | Sequence Trace               | ZTR format       | Yes     |
+| 19 | Uracil Positions             | Unknown          | No      |
+| 20 | Custom Colors                | XML              | No      |
+| 21 | Protein Sequence             | UTF-8            | Yes     |
+| 22 | Unknown                      | Unknown          | No      |
+| 23 | Unknown                      | Unknown          | No      |
+| 24 | Unknown                      | Unknown          | No      |
+| 25 | Unknown                      | Unknown          | No      |
+| 26 | Unknown                      | Unknown          | No      |
+| 27 | Unknown                      | Unknown          | No      |
+| 28 | Enzyme Visualization         | XML              | Yes*     |
+| 29 | History Modifier             | LZMA + XML       | Yes     |
+| 30 | History Content              | LZMA + Nested    | Yes     |
+| 31 | Unknown                      | Unknown          | No      |
+| 32 | RNA Sequence                 | UFT-8            | Yes     |
+
+
+*Marked block types are not decoded, but most likely won't be in the future, as they are internal SnapGene data and should not affect your important data. These block won't be read or written by the parser.
+
+## Supported Block Types
+
+| ID | Block Type                    | Read* | Write* |
+|----|-------------------------------|------|-------|
+| 0  | DNA Sequence                  | Yes  | Yes    |
+| 1  | Compressed DNA                | Yes  | No    |
+| 5  | Primers (XML)                 | Yes  | Yes    |
+| 6  | Notes (XML)                   | Yes  | Yes    |
+| 7  | History Tree (XML)            | Yes  | No    |
+| 8  | Sequence Properties (XML)     | Yes  | Yes    |
+| 10 | Features (XML)                | Yes  | Yes    |
+| 11 | History Nodes                 | Yes  | No    |
+| 14 | Custom Enzymes (XML)          | Yes  | Yes    |
+| 17 | Alignable Sequences (XML)     | Yes  | Yes    |
+| 21 | Protein Sequence              | Yes  | Yes    |
+| 28 | Enzyme Visualization (XML)    | Yes  | Yes    |
+| 29 | History Modifier (XML)        | Yes  | No    |
+| 30 | History Content (Nested)      | Yes  | No    |
+| 32 | RNA Sequence                  | Yes  | Yes    |
+
+
+*Please note current parser does not properly implemented, in it's current form it is useless for end-user, consider waiting for stable 1.0.0 release.
+
+
+## Roadmap
+
+- [X] Improve SGFF parsing, unify TLV strategy
+- [X] Understand whole file structure
+- [X] Correctly parse into readable from *almost* every block
+- [ ] Parse XML into pure JSON format
+- [X] Parse and decode missing blocks and pieces (skipped - YAGNI)
+- [X] Create writer
+- [ ] Implement minimal working condition for reader and writer
+- [ ] Refine, refactor reader/writer
+- [ ] Proper documentation and README cleanup
+
+## Acknowledgments
+
+This project would not have been possible without previous work done by
+- **Damien Goutte-Gattat**, see his PDF on SGFF structure: https://incenp.org/dvlpt/docs/binary-sequence-formats/binary-sequence-formats.pdf
+- **Isaac Luo**, for his version of SnapGene reader: https://github.com/IsaacLuo/SnapGeneFileReader
+
+## License
+
+Distributed under MIT licence, see `LICENSE` for more.
+
+# ===========================================
+
+# ./src/sgffp/internal.py
+
+"""
+Internal data structures for SGFF representation
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, Any, Optional
+
+
+@dataclass
+class Cookie:
+    """File header metadata"""
+
+    type_of_sequence: int
+    export_version: int
+    import_version: int
+
+
+@dataclass
+class SgffObject:
+    """
+    Container for SnapGene file data
+
+    Attributes:
+        cookie: File metadata
+        blocks: Dict mapping block type to parsed data
+                For repeated blocks, keys are "11", "11.1", "11.2" etc
+    """
+
+    # TODO: block all blocks are collected as list, and
+    # block type must be only used once, e.g. 7: [hist_tree], 11: [node_1, node_2, ...]
+
+    cookie: Cookie
+    blocks: Dict[str, Any] = field(default_factory=dict)
+
+    # TODO: implement smart setter and getters:
+    # using type getter on SgffObject must give a list of types,
+    # using a type on single block should also give its type, as a single number
+    # using get(n) method should return a single element with id n, passing no n
+    # will return first object, work on list from type() method as well as on general lists
+    # first and last getters must give first or latest object from the block synthetic sugar got get(0) and get(-1),
+    # type(id) method should select block by type id and return a dict, id is required:
+    # block_id: [block_values].
+    # the following statement must work:
+    # ```py
+    # sgff = SgffRead(filepath)
+    # features = sgff.type(10).get() # without get it will return a list
+    # nodes = [sgff.type(10).get(i) if sgff.type(10).get(i).type == 18 else pass for i in range(len(sgff.type(10))] # should iterate thought all history nodes and select the ones which have sequence trace.
+    # ```
+    # setters must work the following way:
+    # elementwise: (for a specific block type element)
+    # set(id, value) will create key if not already present, if already created
+    # then append to existing list, order does not matter
+    # remove(id, idx=0) - this method removes block
+    # blockwise: (whole block with its content)
+    # bset(id, value) will add a whole new block, or replace the block if it exists,
+    # if value is not a list will try to make it a list, otherwise give error
+    # bremove(id) - will completely remove the block with all its content
+    # propose other getter/setters if something is missing, they must be minimal, clear
+    # and have specific scope.
+
+    def get_block(self, block_type: int, index: int = 0) -> Optional[Any]:
+        """Get block by type and optional index for repeated blocks"""
+        if index == 0:
+            return self.blocks.get(str(block_type))
+        return self.blocks.get(f"{block_type}.{index}")
+
+    def get_all_blocks(self, block_type: int) -> Dict[str, Any]:
+        """Get all blocks of a specific type"""
+        result = {}
+        prefix = str(block_type)
+        for key, value in self.blocks.items():
+            if key == prefix or key.startswith(f"{prefix}."):
+                result[key] = value
+        return result
+
+    def add_block(self, block_type: int, data: Any) -> str:
+        """Add a block, handles automatic numbering for duplicates"""
+        key = str(block_type)
+        if key not in self.blocks:
+            self.blocks[key] = data
+            return key
+
+        # Find next available index
+        index = 1
+        while f"{key}.{index}" in self.blocks:
+            index += 1
+
+        new_key = f"{key}.{index}"
+        self.blocks[new_key] = data
+        return new_key
+
+# ===========================================
+
+# ./src/sgffp/__init__.py
+
+"""
+SnapGene File Format (SGFF) parser and writer
+"""
+
+from .reader import SgffReader
+from .writer import SgffWriter
+from .internal import SgffObject
+
+__all__ = ["SgffReader", "SgffWriter", "SgffObject"]
+__version__ = "0.1.0"
+
+# ===========================================
+
+# ./src/sgffp/parsers.py
+
+# src/parsers.py
+"""
+Block type parsers and parsing scheme
+"""
+
+import struct
+import lzma
+from io import BytesIO
+from typing import Dict, Tuple, Optional, Callable, Any
+
+
+# Forward declaration for recursive parsing
+def parse_blocks(stream) -> Dict[str, Any]:
+    """Parse multiple TLV blocks from stream"""
+    result = {}
+    block_counters = {}
+
+    while True:
+        block_type, block_length = read_header(stream)
+        if block_type is None:
+            break
+
+        length_override, parser = SCHEME.get(block_type, (None, None))
+
+        if length_override is not None:
+            block_length = length_override
+
+        data = stream.read(block_length)
+
+        if parser is not None:
+            parsed_data = parser(data)
+            if parsed_data is not None:
+                block_key = str(block_type)
+
+                if block_key in result:
+                    if block_key not in block_counters:
+                        block_counters[block_key] = 1
+                    else:
+                        block_counters[block_key] += 1
+                    block_key = f"{block_key}.{block_counters[block_key]}"
+
+                result[block_key] = parsed_data
+
+    return result
+
+
+def read_header(stream):
+    """Read TLV header: 1 byte type + 4 bytes length"""
+    type_byte = stream.read(1)
+    if not type_byte:
+        return None, None
+    return type_byte[0], struct.unpack(">I", stream.read(4))[0]
+
+
+def octet_to_dna(raw_data: bytes, base_count: int) -> bytes:
+    """Convert 2-bit GATC encoding to ASCII"""
+    bases = b"GATC"
+    result = bytearray()
+    for byte in raw_data:
+        for shift in [6, 4, 2, 0]:
+            if len(result) < base_count:
+                result.append(bases[(byte >> shift) & 3])
+    return bytes(result[:base_count])
+
+
+# TODO: move here parse_xml, parse_lzma_xml and parse_lzma_nested
+# parsing xml should give a proper dictionary, not just xml string
+
+# Block parsers (simplified implementations)
+
+# TODO: I want these parsers:
+# parse_sequence - this should extract sequence from
+# the block and get the first byte, which is important identificator
+# it should return sequence_type, value, sequence.
+
+# use this for dna if ord(next_byte) == 0:
+#            # READ THE SEQUENCE AND ITS PROPERTIES
+#            props = unpack(1, 'b')
+#            data["dna"] = dict(
+#                topology="circular" if props & 0x01 else "linear",
+#                strandedness="double" if props & 0x02 > 0 else "single",
+#                damMethylated=props & 0x04 > 0,
+#                dcmMethylated=props & 0x08 > 0,
+#                ecoKIMethylated=props & 0x10 > 0,
+#                length=block_size - 1
+#            )
+
+# parse_compressed_dna use the parser we have developed
+# parse_primers - for now just use parse_xml
+# parse_features: use this
+#        elif ord(next_byte) == 10:
+#            # READ THE FEATURES
+#            strand_dict = {"0": ".", "1": "+", "2": "-", "3": "="}
+#            format_dict = {'@text': parse, '@int': int}
+#            features_data = xmltodict.parse(fileobject.read(block_size))
+#            features = features_data["Features"]["Feature"]
+#            if not isinstance(features, list):
+#                features = [features]
+#            for feature in features:
+#                segments = feature["Segment"]
+#                if not isinstance(segments, list):
+#                    segments = [segments]
+#                segments_ranges = [
+#                    sorted([int(e) for e in segment['@range'].split('-')])
+#                    for segment in segments
+#                ]
+#                qualifiers = feature.get('Q', [])
+#                if not isinstance(qualifiers, list):
+#                    qualifiers = [qualifiers]
+#                parsed_qualifiers = {}
+#                for qualifier in qualifiers:
+#                    if qualifier['V'] is None:
+#                        pass
+#                    elif isinstance(qualifier['V'], list):
+#                        if len(qualifier['V'][0].items()) == 1:
+#                            parsed_qualifiers[qualifier['@name']] = l_v = []
+#                            for e_v in qualifier['V']:
+#                                fmt, value = e_v.popitem()
+#                                fmt = format_dict.get(fmt, parse)
+#                                l_v.append(fmt(value))
+#                        else:
+#                            parsed_qualifiers[qualifier['@name']] = d_v = {}
+#                            for e_v in qualifier['V']:
+#                                (fmt1, value1), (_, value2) = e_v.items()
+#                                fmt = format_dict.get(fmt1, parse)
+#                                d_v[value2] = fmt(value1)
+#                    else:
+#                        fmt, value = qualifier['V'].popitem()
+#                        fmt = format_dict.get(fmt, parse)
+#                        parsed_qualifiers[qualifier['@name']] = fmt(value)
+#
+#                if 'label' not in parsed_qualifiers:
+#                    parsed_qualifiers['label'] = feature['@name']
+#                if 'note' not in parsed_qualifiers:
+#                    parsed_qualifiers['note'] = []
+#                if not isinstance(parsed_qualifiers['note'], list):
+#                    parsed_qualifiers['note'] = [parsed_qualifiers['note']]
+#                color = segments[0]['@color']
+#                parsed_qualifiers['note'].append("color: " + color)
+#
+#                data["features"].append(dict(
+#                    start=min([start - 1 for (start, end) in segments_ranges]),
+#                    end=max([end for (start, end) in segments_ranges]),
+#                    strand=strand_dict[feature.get('@directionality', "0")],
+#                    type=feature['@type'],
+#                    name=feature['@name'],
+#                    color=segments[0]['@color'],
+#                    textColor='black',
+#                    segments=segments,
+#                    row=0,
+#                    isOrf=False,
+#                    qualifiers=parsed_qualifiers
+#                ))
+# parse_notes - no special parser - just use parse_xml
+# parse ztr - add parser for atr files: def parse_block_18(data):
+#    """Type 18: Sequence trace (ZTR format)"""
+#    if len(data) < 10 or data[:8] != b"\xaeZTR\r\n\x1a\n":
+#        return f"Invalid ZTR ({len(data)} bytes)"
+#
+#    result = {}
+#    offset = 10
+#
+#    while offset + 12 <= len(data):
+#        chunk_type = data[offset : offset + 4].decode("ascii", errors="ignore").strip()
+#        meta_len = struct.unpack(">I", data[offset + 4 : offset + 8])[0]
+#        offset += 8 + meta_len
+#
+#        if offset + 4 > len(data):
+#            break
+#
+#        data_len = struct.unpack(">I", data[offset : offset + 4])[0]
+#        offset += 4
+#
+#        if offset + data_len > len(data):
+#            break
+#
+#        chunk_data = data[offset : offset + data_len]
+#
+#        # Decompress if zlib compressed
+#        if chunk_data and chunk_data[0] == 2:
+#            try:
+#                chunk_data = b"\x00" + zlib.decompress(chunk_data[5:])
+#            except:
+#                pass
+#
+#        # Parse specific chunk types
+#        if chunk_type == "BASE" and chunk_data[0] == 0:
+#            result["BASE"] = chunk_data[2:].decode("ascii", errors="ignore")
+#        elif chunk_type == "TEXT" and chunk_data[0] == 0:
+#            items = chunk_data[2:-2].split(b"\x00")
+#            text = {}
+#            for i in range(0, len(items) - 1, 2):
+#                key = items[i].decode("ascii", errors="ignore")
+#                val = items[i + 1].decode("ascii", errors="ignore")
+#                text[key] = val
+#            result["TEXT"] = text
+#        elif chunk_type == "SMP4":
+#            trace_len = len(chunk_data) // 8
+#            samples = {}
+#            for i, base in enumerate(["A", "C", "G", "T"]):
+#                start = i * trace_len * 2
+#                trace = [
+#                    struct.unpack(">H", chunk_data[start + j : start + j + 2])[0]
+#                    for j in range(0, trace_len * 2, 2)
+#                ]
+#                samples[base] = trace
+#            result["SMP4"] = samples
+#        elif chunk_type == "CLIP" and len(chunk_data) >= 9:
+#            result["CLIP"] = {
+#                "left": struct.unpack(">I", chunk_data[1:5])[0],
+#                "right": struct.unpack(">I", chunk_data[5:9])[0],
+#            }
+#
+#        offset += data_len
+#
+#    return result
+# parse_node_modifier - just parse_xml for now
+# parse_tree - for now do not parse, use NOTIMP value!
+# parse_alignable_seq - for now jsut parse as parse_xml
+# parse_add_info - just parse as parse_xml
+
+
+def parse_dna_sequence(data):
+    """Type 0, 21, 32: Uncompressed sequence"""
+    return data[1:].decode("utf-8", errors="ignore")
+
+
+def parse_compressed_dna(data):
+    """Type 1: Compressed DNA sequence"""
+    offset = 0
+    compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+    offset += 4
+    uncompressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+    offset += 4 + 4 + 10  # Skip mystery fields # TODO: keep these fields for writing
+    # compatibility, in total 2 fileds must be added: sequence and mystery, length
+    # id deduced from sequence!
+
+    total_bytes = (uncompressed_length * 2 + 7) // 8
+    seq_data = data[offset : offset + total_bytes]
+
+    return {
+        "sequence": octet_to_dna(seq_data, uncompressed_length).decode("ascii"),
+        "length": uncompressed_length,
+    }
+
+
+def parse_xml(data):
+    """Parse XML blocks"""
+    return data.decode("utf-8", errors="ignore")
+
+
+def parse_lzma_xml(data):
+    """Parse LZMA-compressed XML"""
+    try:
+        return lzma.decompress(data).decode("utf-8", errors="ignore")
+    except:
+        return None
+
+
+def parse_lzma_nested(data):
+    """Type 30: LZMA with nested TLV blocks"""
+    try:
+        decompressed = lzma.decompress(data)
+        return parse_blocks(BytesIO(decompressed))
+    except:
+        return None
+
+
+def parse_history_node(data):
+    """Type 11: History node - delegates to other parsers"""
+    node = {}
+    offset = 0
+
+    node["node_index"] = struct.unpack(">I", data[offset : offset + 4])[0]
+    offset += 4
+
+    seq_type = data[offset]
+    node["sequence_type"] = seq_type
+    offset += 1
+
+    # Type 29: modifier only
+    if seq_type == 29:
+        if offset < len(data):
+            nested = parse_blocks(BytesIO(data[offset:]))
+            if nested:
+                node["node_info"] = nested
+        return node
+
+    # Type 1: compressed DNA
+    if seq_type == 1:
+        compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        compressed_start = offset + 4
+
+        block_data = data[offset : compressed_start + compressed_length]
+        result = parse_compressed_dna(block_data)
+        if result:
+            node.update(result)
+
+        offset = compressed_start + compressed_length
+
+    # Types 0, 21, 32: uncompressed
+    elif seq_type in [0, 21, 32]:
+        seq_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        offset += 4
+        node["sequence"] = data[offset : offset + seq_length].decode(
+            "ascii", errors="ignore"
+        )
+        node["length"] = seq_length
+        offset += seq_length
+
+    # Parse remaining nested blocks
+    if offset < len(data):
+        nested = parse_blocks(BytesIO(data[offset:]))
+        if nested:
+            node["node_info"] = nested
+
+    return node
+
+
+# Global parsing scheme: (length_override, parser_function)
+# TODO: update scheme, but do not add/modify blocks I have specifically commented
+# TODO: if block id not in the scheme, reader should omit it!
+SCHEME: Dict[int, Tuple[Optional[int], Optional[Callable]]] = {
+    0: (None, parse_dna_sequence),
+    1: (None, parse_compressed_dna),
+    5: (None, parse_xml),
+    6: (None, parse_xml),
+    7: (None, parse_lzma_xml),
+    8: (None, parse_xml),
+    10: (None, parse_xml),
+    11: (None, parse_history_node),
+    # 14: (None, parse_xml),
+    16: (4, None),  # Legacy trace - skip
+    17: (None, parse_xml),
+    21: (None, parse_dna_sequence),
+    # 28: (None, parse_xml),
+    29: (None, parse_lzma_xml),
+    30: (None, parse_lzma_nested),
+    32: (None, parse_dna_sequence),
+}
+
+# ===========================================
+
+# ./src/sgffp/reader.py
+
+"""
+SnapGene file reader
+"""
+
+import struct
+from io import BytesIO
+from typing import Union, BinaryIO
+from pathlib import Path
+
+from .internal import SgffObject, Cookie
+from .parsers import SCHEME, parse_blocks
+
+
+class SgffReader:
+    """
+    Read and parse SnapGene files into SgffObject
+
+    Can accept filepath or file-like object (stream)
+    """
+
+    def __init__(self, source: Union[str, Path, BinaryIO]):
+        """
+        Initialize reader with file path or stream
+
+        Args:
+            source: File path (str/Path) or file-like object with read()
+        """
+        if isinstance(source, (str, Path)):
+            self.stream = open(source, "rb")
+            self.should_close = True
+        else:
+            self.stream = source
+            self.should_close = False
+
+    def read(self) -> SgffObject:
+        """Parse file and return SgffObject"""
+        try:
+            return self._parse()
+        finally:
+            if self.should_close:
+                self.stream.close()
+
+    def _parse(self) -> SgffObject:
+        """Internal parsing logic"""
+        # Validate magic header
+        if self.stream.read(1) != b"\t":
+            raise ValueError("Invalid SnapGene file: wrong magic byte")
+
+        length = struct.unpack(">I", self.stream.read(4))[0]
+        title = self.stream.read(8)
+
+        if length != 14 or title != b"SnapGene":
+            raise ValueError("Invalid SnapGene file: wrong header")
+
+        # Parse cookie
+        cookie = Cookie(
+            type_of_sequence=struct.unpack(">H", self.stream.read(2))[0],
+            export_version=struct.unpack(">H", self.stream.read(2))[0],
+            import_version=struct.unpack(">H", self.stream.read(2))[0],
+        )
+
+        # Parse all blocks
+        blocks = parse_blocks(self.stream)
+
+        return SgffObject(cookie=cookie, blocks=blocks)
+
+    @classmethod
+    def from_file(cls, filepath: Union[str, Path]) -> SgffObject:
+        """Convenience method to read from file path"""
+        return cls(filepath).read()
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> SgffObject:
+        """Convenience method to read from bytes"""
+        return cls(BytesIO(data)).read()
+
+# ===========================================
+
+# ./src/sgffp/cli.py
+
+#!/usr/bin/env python3
+"""
+Command-line interface for SGFF tools
+"""
+
+import sys
+import json
+import argparse
+import struct
+
+from .reader import SgffReader
+from .writer import SgffWriter
+from .internal import SgffObject
+
+
+# Blocks that are unknown or not yet decoded
+NEW_BLOCKS = [2, 3, 4, 9, 12, 15, 19, 20, 22, 23, 24, 25, 26, 27, 31]
+
+
+def cmd_parse(args):
+    """Parse SGFF file to JSON"""
+    sgff = SgffReader.from_file(args.input)
+
+    output = {
+        "cookie": {
+            "type_of_sequence": sgff.cookie.type_of_sequence,
+            "export_version": sgff.cookie.export_version,
+            "import_version": sgff.cookie.import_version,
+        },
+        "blocks": sgff.blocks,
+    }
+
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(output, f, indent=2)
+    else:
+        print(json.dumps(output, indent=2))
+
+
+def cmd_info(args):
+    """Show file information"""
+    sgff = SgffReader.from_file(args.input)
+
+    print(f"SnapGene File: {args.input}")
+    print(f"Export version: {sgff.cookie.export_version}")
+    print(f"Import version: {sgff.cookie.import_version}")
+    print(f"\nBlocks:")
+
+    block_types = {}
+    for key in sgff.blocks.keys():
+        block_type = key.split(".")[0]
+        block_types[block_type] = block_types.get(block_type, 0) + 1
+
+    for block_type in sorted(block_types.keys(), key=int):
+        count = block_types[block_type]
+        print(f"  Type {block_type:>2}: {count} block(s)")
+
+
+def cmd_filter(args):
+    """Filter blocks and write new file"""
+    sgff = SgffReader.from_file(args.input)
+
+    # Parse keep list
+    keep_types = [int(t.strip()) for t in args.keep.split(",")]
+
+    # Filter blocks
+    filtered = SgffObject(cookie=sgff.cookie)
+    for key, value in sgff.blocks.items():
+        block_type = int(key.split(".")[0])
+        if block_type in keep_types:
+            filtered.blocks[key] = value
+
+    # Write output
+    SgffWriter.to_file(filtered, args.output)
+    print(f"Filtered file written to {args.output}")
+
+
+def cmd_check(args):
+    """Check for unknown/new block types"""
+
+    # Read file and scan for blocks
+    found_blocks = {}
+    new_found = []
+
+    with open(args.input, "rb") as f:
+        # Skip header
+        f.read(1 + 4 + 8)  # magic + length + title
+        f.read(2 + 2 + 2)  # cookie
+
+        # Read all blocks
+        while True:
+            type_byte = f.read(1)
+            if not type_byte:
+                break
+
+            block_type = type_byte[0]
+            block_length = struct.unpack(">I", f.read(4))[0]
+            block_data = f.read(block_length)
+
+            # Track all found blocks
+            if block_type not in found_blocks:
+                found_blocks[block_type] = []
+            found_blocks[block_type].append(block_data)
+
+            # Check if this is a new/unknown block
+            if block_type in NEW_BLOCKS:
+                if block_type not in new_found:
+                    new_found.append(block_type)
+
+    # Report findings
+    for block_type in sorted(found_blocks.keys()):
+        count = len(found_blocks[block_type])
+        marker = "[NEW]" if block_type in NEW_BLOCKS else ""
+        print(f"{block_type:>2}: {count:>2} {marker}")
+
+    # Alert if new blocks found
+    if new_found:
+        print()
+        if args.examine:
+            for block_type in sorted(new_found):
+                for block_data in found_blocks[block_type]:
+                    print("NEW BLOCK!")
+                    print(f"Type: {block_type}, Length: {len(block_data)}")
+                    print(block_data.hex())
+                    print()
+        else:
+            print("NEW BLOCK!")
+            print(f"Types: {sorted(new_found)}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SnapGene File Format tools")
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+
+    # Parse command
+    parse_parser = subparsers.add_parser("parse", help="Parse SGFF to JSON")
+    parse_parser.add_argument("input", help="Input SGFF file")
+    parse_parser.add_argument(
+        "-o", "--output", help="Output JSON file (default: stdout)"
+    )
+
+    # Info command
+    info_parser = subparsers.add_parser("info", help="Show file information")
+    info_parser.add_argument("input", help="Input SGFF file")
+
+    # Check command
+    check_parser = subparsers.add_parser("check", help="Check for unknown block types")
+    check_parser.add_argument("input", help="Input SGFF file")
+    check_parser.add_argument(
+        "-e",
+        "--examine",
+        action="store_true",
+        help="Dump raw content of new/unknown blocks",
+    )
+
+    # Filter command
+    filter_parser = subparsers.add_parser("filter", help="Filter blocks")
+    filter_parser.add_argument("input", help="Input SGFF file")
+    filter_parser.add_argument(
+        "-k", "--keep", required=True, help="Block types to keep (comma-separated)"
+    )
+    filter_parser.add_argument("-o", "--output", required=True, help="Output SGFF file")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    if args.command == "parse":
+        cmd_parse(args)
+    elif args.command == "info":
+        cmd_info(args)
+    elif args.command == "check":
+        cmd_check(args)
+    elif args.command == "filter":
+        cmd_filter(args)
+
+
+if __name__ == "__main__":
+    main()
+
+# ===========================================
+
+# ./src/sgffp/writer.py
+
+"""
+SnapGene file writer
+"""
+
+import struct
+from typing import Union, BinaryIO
+from pathlib import Path
+
+from .internal import SgffObject
+
+
+class SgffWriter:
+    """
+    Write SgffObject to SnapGene file format
+
+    Can write to filepath or file-like object (stream)
+    """
+
+    def __init__(self, target: Union[str, Path, BinaryIO]):
+        """
+        Initialize writer with file path or stream
+
+        Args:
+            target: File path (str/Path) or file-like object with write()
+        """
+        if isinstance(target, (str, Path)):
+            self.stream = open(target, "wb")
+            self.should_close = True
+        else:
+            self.stream = target
+            self.should_close = False
+
+    def write(self, sgff: SgffObject) -> None:
+        """Write SgffObject to file"""
+        try:
+            self._write_file(sgff)
+        finally:
+            if self.should_close:
+                self.stream.close()
+
+    def _write_file(self, sgff: SgffObject) -> None:
+        """Internal writing logic"""
+        # Write header
+        self.stream.write(b"\t")
+        self.stream.write(struct.pack(">I", 14))
+        self.stream.write(b"SnapGene")
+
+        # Write cookie
+        self.stream.write(struct.pack(">H", sgff.cookie.type_of_sequence))
+        self.stream.write(struct.pack(">H", sgff.cookie.export_version))
+        self.stream.write(struct.pack(">H", sgff.cookie.import_version))
+
+        # Write blocks in order
+        for block_key in sorted(sgff.blocks.keys(), key=self._sort_key):
+            block_type = int(block_key.split(".")[0])
+            block_data = self._serialize_block(block_type, sgff.blocks[block_key])
+
+            self.stream.write(bytes([block_type]))
+            self.stream.write(struct.pack(">I", len(block_data)))
+            self.stream.write(block_data)
+
+    def _sort_key(self, key: str) -> tuple:
+        """Sort blocks by type then index"""
+        parts = key.split(".")
+        block_type = int(parts[0])
+        index = int(parts[1]) if len(parts) > 1 else 0
+        return (block_type, index)
+
+    def _serialize_block(self, block_type: int, data) -> bytes:
+        """
+        Convert parsed data back to binary format
+
+        TODO: Implement full serialization for all block types
+        Currently supports simple string/bytes blocks
+        """
+        if isinstance(data, str):
+            return data.encode("utf-8")
+        elif isinstance(data, bytes):
+            return data
+        elif isinstance(data, dict):
+            # For complex blocks, would need type-specific serialization
+            raise NotImplementedError(
+                f"Serialization for block type {block_type} not yet implemented"
+            )
+        else:
+            raise ValueError(f"Unknown data type for block {block_type}")
+
+    @classmethod
+    def to_file(cls, sgff: SgffObject, filepath: Union[str, Path]) -> None:
+        """Convenience method to write to file path"""
+        cls(filepath).write(sgff)
+
+    @classmethod
+    def to_bytes(cls, sgff: SgffObject) -> bytes:
+        """Convenience method to write to bytes"""
+        from io import BytesIO
+
+        stream = BytesIO()
+        cls(stream).write(sgff)
+        return stream.getvalue()
+
+# ===========================================
+
