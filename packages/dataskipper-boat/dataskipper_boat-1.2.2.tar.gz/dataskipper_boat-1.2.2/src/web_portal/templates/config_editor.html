@@ -1,0 +1,1215 @@
+{% extends "base.html" %}
+
+{% block title %}Config Editor - RTU Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Visual Configuration Editor</h1>
+    <div class="header-actions">
+        <a href="/config" class="btn btn-sm btn-secondary">Raw Editor</a>
+    </div>
+</div>
+
+<!-- Config File Selector -->
+<div class="card">
+    <div class="card-header">
+        <h3>Select Configuration</h3>
+    </div>
+    <div class="card-body">
+        <div class="config-selector">
+            <select id="config-select" class="select-lg" onchange="loadConfig()">
+                <option value="">-- Select a configuration file --</option>
+                {% for file in config_files %}
+                <option value="{{ file.config_dir }}|{{ file.name }}" data-type="{{ file.type }}">
+                    [{{ file.service }}] {{ file.name }} ({{ file.type }})
+                </option>
+                {% endfor %}
+            </select>
+            <span id="config-status" class="status-badge"></span>
+        </div>
+    </div>
+</div>
+
+<!-- Editor Container -->
+<div id="editor-container" style="display: none;">
+
+    <!-- Communication Config Editor -->
+    <div id="comm-editor" class="config-editor-panel" style="display: none;">
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>API Endpoints</h3>
+            </div>
+            <div class="card-body">
+                <div id="api-endpoints-list"></div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>MQTT Configuration</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="mqtt-host" class="form-input" placeholder="mqtt.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="mqtt-port" class="form-input" placeholder="1883">
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="mqtt-username" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="mqtt-password" class="form-input">
+                    </div>
+                </div>
+                <div class="form-group mt-3">
+                    <label>MQTT Topics</label>
+                    <div id="mqtt-topics-list" class="nested-config"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Weather Configuration</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="weather-enabled"> Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Provider</label>
+                        <select id="weather-provider" class="form-input">
+                            <option value="openweathermap">OpenWeatherMap</option>
+                            <option value="weatherapi">WeatherAPI</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="text" id="weather-api-key" class="form-input" placeholder="Your API key">
+                    </div>
+                    <div class="form-group">
+                        <label>Location</label>
+                        <input type="text" id="weather-location" class="form-input" placeholder="City,Country">
+                    </div>
+                    <div class="form-group">
+                        <label>Update Interval (s)</label>
+                        <input type="number" id="weather-interval" class="form-input" value="600">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>NTP Configuration</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="ntp-enabled"> Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>NTP Servers (comma-separated)</label>
+                        <input type="text" id="ntp-servers" class="form-input form-input-wide" placeholder="pool.ntp.org, time.google.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Sync Interval (s)</label>
+                        <input type="number" id="ntp-sync-interval" class="form-input" value="3600">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Drift (s)</label>
+                        <input type="number" id="ntp-max-drift" class="form-input" step="0.1" value="5.0">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Performance Monitoring</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="perf-enabled"> Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Monitor Interval (s)</label>
+                        <input type="number" id="perf-interval" class="form-input" value="60">
+                    </div>
+                    <div class="form-group">
+                        <label>CPU Threshold (%)</label>
+                        <input type="number" id="perf-cpu" class="form-input" step="0.1" value="80.0">
+                    </div>
+                    <div class="form-group">
+                        <label>Memory Threshold (%)</label>
+                        <input type="number" id="perf-memory" class="form-input" step="0.1" value="80.0">
+                    </div>
+                    <div class="form-group">
+                        <label>Disk Threshold (%)</label>
+                        <input type="number" id="perf-disk" class="form-input" step="0.1" value="90.0">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Watchdog Configuration</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="watchdog-enabled"> Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Health Check Interval (s)</label>
+                        <input type="number" id="watchdog-interval" class="form-input" value="30">
+                    </div>
+                    <div class="form-group">
+                        <label>Unhealthy Threshold</label>
+                        <input type="number" id="watchdog-threshold" class="form-input" value="3">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Modbus TCP Gateway</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="gateway-enabled"> Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="gateway-host" class="form-input" value="0.0.0.0">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="gateway-port" class="form-input" value="4196">
+                    </div>
+                    <div class="form-group">
+                        <label>Cache TTL (s)</label>
+                        <input type="number" id="gateway-cache-ttl" class="form-input" value="180">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Retry Configuration</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Interval (seconds)</label>
+                        <input type="number" id="retry-interval" class="form-input" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Retries</label>
+                        <input type="number" id="retry-max" class="form-input" value="3">
+                    </div>
+                    <div class="form-group">
+                        <label>Register Cache TTL (s)</label>
+                        <input type="number" id="cache-ttl" class="form-input" value="120">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Discord Webhook</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label>Webhook URL</label>
+                    <input type="text" id="discord-webhook" class="form-input form-input-wide" placeholder="https://discord.com/api/webhooks/...">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slave Config Editor -->
+    <div id="slave-editor" class="config-editor-panel" style="display: none;">
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Connections</h3>
+                <button class="btn btn-sm btn-success" onclick="addConnection()">+ Add Connection</button>
+            </div>
+            <div class="card-body">
+                <div id="connections-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="editor-actions-footer mt-4">
+        <button class="btn btn-primary btn-lg" onclick="saveConfig()">Save Configuration</button>
+        <button class="btn btn-secondary" onclick="loadConfig()">Reload</button>
+        <span id="save-status"></span>
+    </div>
+</div>
+
+<!-- Connection Template (hidden) -->
+<template id="connection-template">
+    <div class="connection-card" data-connection-index="">
+        <div class="connection-header">
+            <div class="connection-title">
+                <span class="connection-icon">🔌</span>
+                <input type="text" class="conn-label form-input-inline" placeholder="Connection Label">
+                <span class="conn-type-badge"></span>
+            </div>
+            <div class="connection-actions">
+                <button class="btn btn-xs btn-secondary" onclick="toggleConnection(this)">▼</button>
+                <button class="btn btn-xs btn-danger" onclick="removeConnection(this)">✕</button>
+            </div>
+        </div>
+        <div class="connection-body">
+            <div class="connection-settings">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Connection ID</label>
+                        <input type="text" class="conn-id form-input" placeholder="unique_id">
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select class="conn-type form-input" onchange="updateConnectionType(this)">
+                            <option value="tcp">TCP</option>
+                            <option value="serial">Serial</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Framer</label>
+                        <select class="conn-framer form-input">
+                            <option value="socket">Socket (TCP)</option>
+                            <option value="rtu">RTU (Serial)</option>
+                            <option value="ascii">ASCII</option>
+                            <option value="tls">TLS</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Timeout (s)</label>
+                        <input type="number" class="conn-timeout form-input" value="2">
+                    </div>
+                    <div class="form-group">
+                        <label>Retries</label>
+                        <input type="number" class="conn-retries form-input" value="1">
+                    </div>
+                </div>
+
+                <!-- TCP Settings -->
+                <div class="tcp-settings">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Host/IP</label>
+                            <input type="text" class="conn-host form-input" placeholder="192.168.1.100">
+                        </div>
+                        <div class="form-group">
+                            <label>Port</label>
+                            <input type="number" class="conn-port form-input" value="502">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Serial Settings -->
+                <div class="serial-settings" style="display: none;">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Serial Port</label>
+                            <input type="text" class="conn-serial-port form-input" placeholder="/dev/ttyS0">
+                        </div>
+                        <div class="form-group">
+                            <label>Baud Rate</label>
+                            <select class="conn-baud form-input">
+                                <option value="9600">9600</option>
+                                <option value="19200">19200</option>
+                                <option value="38400">38400</option>
+                                <option value="57600">57600</option>
+                                <option value="115200">115200</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Parity</label>
+                            <select class="conn-parity form-input">
+                                <option value="N">None</option>
+                                <option value="E">Even</option>
+                                <option value="O">Odd</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Stop Bits</label>
+                            <select class="conn-stopbits form-input">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clients/Devices Section -->
+            <div class="clients-section">
+                <div class="section-header">
+                    <h4>Devices/Clients</h4>
+                    <button class="btn btn-xs btn-success" onclick="addClient(this)">+ Add Device</button>
+                </div>
+                <div class="clients-list"></div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Client Template (hidden) -->
+<template id="client-template">
+    <div class="client-card" data-client-index="">
+        <div class="client-header">
+            <div class="client-title">
+                <span class="client-icon">📟</span>
+                <input type="text" class="client-id form-input-inline" placeholder="Device ID">
+                <span class="unit-id-badge">Unit: <input type="number" class="client-unit-id form-input-xs" value="1"></span>
+            </div>
+            <div class="client-actions">
+                <button class="btn btn-xs btn-secondary" onclick="toggleClient(this)">▼</button>
+                <button class="btn btn-xs btn-danger" onclick="removeClient(this)">✕</button>
+            </div>
+        </div>
+        <div class="client-body">
+            <!-- Basic Settings -->
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Type</label>
+                    <select class="client-type form-input">
+                        <option value="electrical">Electrical</option>
+                        <option value="water">Water</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Polling Interval (s)</label>
+                    <input type="number" class="client-polling form-input" value="60">
+                    <span class="hint">Modbus read interval</span>
+                </div>
+                <div class="form-group">
+                    <label>Endianness</label>
+                    <select class="client-endian form-input">
+                        <option value="little">Little Endian</option>
+                        <option value="big">Big Endian</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Meter Registry Settings -->
+            <div class="subsection">
+                <h5>Meter Registry (Auto-generate registers)</h5>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Meter Model</label>
+                        <select class="client-meter-model form-input" onchange="updateMeterProfile(this)">
+                            <option value="">-- Manual registers --</option>
+                            <option value="lt_wl4400">L&T WL4400</option>
+                            <option value="secure_elite_500">Secure Elite 500</option>
+                            <option value="schneider_em6400ng">Schneider EM6400NG+</option>
+                            <option value="krohne_marshal">Krohne Marshal (Water)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Profile</label>
+                        <select class="client-profile form-input">
+                            <option value="">-- Select profile --</option>
+                            <option value="distribution_basic">Distribution Basic</option>
+                            <option value="distribution_lt_wl4400">Distribution L&T WL4400</option>
+                            <option value="distribution_full_lt_wl4400">Distribution Full L&T WL4400</option>
+                            <option value="distribution_full">Distribution Full</option>
+                            <option value="substation_basic">Substation Basic</option>
+                            <option value="substation_full">Substation Full</option>
+                            <option value="water_basic">Water Basic</option>
+                            <option value="water_full">Water Full</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Table</label>
+                        <select class="client-target-table form-input">
+                            <option value="">-- Auto from profile --</option>
+                            <option value="distribution">distribution</option>
+                            <option value="substation">substation</option>
+                            <option value="water">water</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Transmission Settings -->
+            <div class="subsection">
+                <h5>Data Transmission</h5>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" class="client-mqtt-enabled" checked> MQTT Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" class="client-http-enabled" checked> HTTP Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>MQTT Interval (s)</label>
+                        <input type="number" class="client-mqtt-interval form-input" placeholder="Same as polling">
+                        <span class="hint">Leave empty to use polling interval</span>
+                    </div>
+                    <div class="form-group">
+                        <label>MQTT Topic</label>
+                        <input type="text" class="client-mqtt-topic form-input form-input-wide" placeholder="datasailors/site/panel/device">
+                        <span class="hint">Custom topic or leave empty for default</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Registers Section -->
+            <div class="registers-section">
+                <div class="section-header">
+                    <h5>Registers <span class="hint">(auto-generated if meter model selected)</span></h5>
+                    <button class="btn btn-xs btn-success" onclick="addRegister(this)">+ Add Register</button>
+                </div>
+                <div class="registers-list">
+                    <table class="table table-compact">
+                        <thead>
+                            <tr>
+                                <th>Address</th>
+                                <th>Field Name</th>
+                                <th>Label</th>
+                                <th>Type</th>
+                                <th>Unit</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody class="registers-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Register Row Template -->
+<template id="register-template">
+    <tr class="register-row">
+        <td><input type="number" class="reg-address form-input-xs" value="0"></td>
+        <td><input type="text" class="reg-field form-input-sm" placeholder="field_name"></td>
+        <td><input type="text" class="reg-label form-input-sm" placeholder="Display Label"></td>
+        <td>
+            <select class="reg-type form-input-xs">
+                <option value="float">float</option>
+                <option value="int16">int16</option>
+                <option value="int32">int32</option>
+                <option value="uint16">uint16</option>
+                <option value="uint32">uint32</option>
+            </select>
+        </td>
+        <td><input type="text" class="reg-unit form-input-xs" placeholder="V"></td>
+        <td><button class="btn btn-xs btn-danger" onclick="removeRegister(this)">✕</button></td>
+    </tr>
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentConfig = null;
+let currentConfigDir = null;
+let currentFilename = null;
+let currentType = null;
+
+// Check URL params for pre-selected file
+document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const file = params.get('file');
+    const dir = params.get('dir');
+
+    if (file && dir) {
+        const select = document.getElementById('config-select');
+        const value = `${dir}|${file}`;
+        for (let option of select.options) {
+            if (option.value === value) {
+                select.value = value;
+                loadConfig();
+                break;
+            }
+        }
+    }
+});
+
+async function loadConfig() {
+    const select = document.getElementById('config-select');
+    const value = select.value;
+
+    if (!value) {
+        document.getElementById('editor-container').style.display = 'none';
+        return;
+    }
+
+    const [configDir, filename] = value.split('|');
+    const configType = select.options[select.selectedIndex].dataset.type;
+
+    currentConfigDir = configDir;
+    currentFilename = filename;
+    currentType = configType;
+
+    try {
+        const response = await fetch(`/api/config/${encodeURIComponent(configDir.substring(1))}/${filename}?parsed=true`);
+        const data = await response.json();
+
+        currentConfig = data;
+
+        document.getElementById('editor-container').style.display = 'block';
+        document.getElementById('config-status').textContent = 'Loaded';
+        document.getElementById('config-status').className = 'status-badge status-ok';
+
+        if (configType === 'communication') {
+            showCommEditor(data.parsed);
+        } else {
+            showSlaveEditor(data.parsed);
+        }
+
+    } catch (error) {
+        showNotification(`Error loading config: ${error.message}`, 'error');
+    }
+}
+
+function showCommEditor(config) {
+    document.getElementById('comm-editor').style.display = 'block';
+    document.getElementById('slave-editor').style.display = 'none';
+
+    // Populate MQTT fields
+    const mqtt = config.mqtt_config || {};
+    document.getElementById('mqtt-host').value = mqtt.host || '';
+    document.getElementById('mqtt-port').value = mqtt.port || '';
+    document.getElementById('mqtt-username').value = mqtt.username || '';
+    document.getElementById('mqtt-password').value = mqtt.password || '';
+
+    // Render MQTT topics
+    renderMqttTopics(mqtt.topics || {});
+
+    // Weather config
+    const weather = config.weather_config || {};
+    document.getElementById('weather-enabled').checked = weather.enabled || false;
+    document.getElementById('weather-provider').value = weather.provider || 'openweathermap';
+    document.getElementById('weather-api-key').value = weather.api_key || '';
+    document.getElementById('weather-location').value = weather.location || '';
+    document.getElementById('weather-interval').value = weather.update_interval || 600;
+
+    // NTP config
+    const ntp = config.ntp_config || {};
+    document.getElementById('ntp-enabled').checked = ntp.enabled || false;
+    document.getElementById('ntp-servers').value = (ntp.servers || []).join(', ');
+    document.getElementById('ntp-sync-interval').value = ntp.sync_interval || 3600;
+    document.getElementById('ntp-max-drift').value = ntp.max_drift_seconds || 5.0;
+
+    // Performance config
+    const perf = config.performance_config || {};
+    document.getElementById('perf-enabled').checked = perf.enabled || false;
+    document.getElementById('perf-interval').value = perf.monitor_interval || 60;
+    document.getElementById('perf-cpu').value = perf.cpu_threshold || 80.0;
+    document.getElementById('perf-memory').value = perf.memory_threshold || 80.0;
+    document.getElementById('perf-disk').value = perf.disk_threshold || 90.0;
+
+    // Watchdog config
+    const watchdog = config.watchdog_config || {};
+    document.getElementById('watchdog-enabled').checked = watchdog.enabled || false;
+    document.getElementById('watchdog-interval').value = watchdog.health_check_interval || 30;
+    document.getElementById('watchdog-threshold').value = watchdog.unhealthy_threshold || 3;
+
+    // Modbus TCP Gateway config
+    const gateway = config.modbus_tcp_gateway || {};
+    document.getElementById('gateway-enabled').checked = gateway.enabled || false;
+    document.getElementById('gateway-host').value = gateway.host || '0.0.0.0';
+    document.getElementById('gateway-port').value = gateway.port || 4196;
+    document.getElementById('gateway-cache-ttl').value = gateway.cache_ttl || 180;
+
+    // Retry config
+    const retry = config.retry_config || {};
+    document.getElementById('retry-interval').value = retry.interval || 5;
+    document.getElementById('retry-max').value = retry.max_retries || 3;
+    document.getElementById('cache-ttl').value = config.cache_ttl || 120;
+
+    // Discord webhook
+    document.getElementById('discord-webhook').value = config.discord_webhook_url || '';
+
+    // API Endpoints
+    renderApiEndpoints(config.api_endpoints || {});
+}
+
+function renderMqttTopics(topics) {
+    const container = document.getElementById('mqtt-topics-list');
+    let html = '<div class="form-grid">';
+
+    for (const [category, catTopics] of Object.entries(topics)) {
+        html += `<div class="topic-category"><strong>${category}:</strong>`;
+        for (const [type, topic] of Object.entries(catTopics)) {
+            html += `<div class="form-group">
+                <label>${type}</label>
+                <input type="text" class="form-input" data-topic-cat="${category}" data-topic-type="${type}" value="${topic}">
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderApiEndpoints(endpoints) {
+    const container = document.getElementById('api-endpoints-list');
+    let html = '';
+
+    for (const [type, urls] of Object.entries(endpoints)) {
+        html += `
+            <div class="endpoint-group">
+                <h4>${type}</h4>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Measurements URL</label>
+                        <input type="text" class="form-input form-input-wide"
+                               data-endpoint="${type}" data-url-type="measurements"
+                               value="${urls.measurements?.url || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Alerts URL</label>
+                        <input type="text" class="form-input form-input-wide"
+                               data-endpoint="${type}" data-url-type="alerts"
+                               value="${urls.alerts?.url || ''}">
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function showSlaveEditor(config) {
+    document.getElementById('comm-editor').style.display = 'none';
+    document.getElementById('slave-editor').style.display = 'block';
+
+    const container = document.getElementById('connections-list');
+    container.innerHTML = '';
+
+    const connections = config.connections || [];
+    connections.forEach((conn, idx) => {
+        addConnectionFromData(conn, idx);
+    });
+}
+
+function addConnection() {
+    const container = document.getElementById('connections-list');
+    const idx = container.children.length;
+    addConnectionFromData({
+        id: `connection_${idx + 1}`,
+        label: 'New Connection',
+        connection_type: 'tcp',
+        framer: 'socket',
+        host: '',
+        port: 502,
+        timeout: 2,
+        retries: 1,
+        clients: []
+    }, idx);
+}
+
+function addConnectionFromData(conn, idx) {
+    const template = document.getElementById('connection-template');
+    const clone = template.content.cloneNode(true);
+
+    const card = clone.querySelector('.connection-card');
+    card.dataset.connectionIndex = idx;
+
+    // Populate fields
+    clone.querySelector('.conn-label').value = conn.label || '';
+    clone.querySelector('.conn-id').value = conn.id || '';
+    clone.querySelector('.conn-type').value = conn.connection_type || 'tcp';
+    clone.querySelector('.conn-timeout').value = conn.timeout || 2;
+    clone.querySelector('.conn-retries').value = conn.retries || 1;
+
+    // Set framer - default based on connection type if not specified
+    const framer = conn.framer || (conn.connection_type === 'tcp' ? 'socket' : 'rtu');
+    clone.querySelector('.conn-framer').value = framer;
+
+    // Type badge
+    const typeBadge = clone.querySelector('.conn-type-badge');
+    typeBadge.textContent = conn.connection_type === 'tcp' ? 'TCP' : 'Serial';
+    typeBadge.className = 'conn-type-badge badge ' + (conn.connection_type === 'tcp' ? 'badge-info' : 'badge-warning');
+
+    // TCP settings
+    if (conn.connection_type === 'tcp') {
+        clone.querySelector('.conn-host').value = conn.host || '';
+        clone.querySelector('.conn-port').value = conn.port || 502;
+        clone.querySelector('.tcp-settings').style.display = 'block';
+        clone.querySelector('.serial-settings').style.display = 'none';
+    } else {
+        clone.querySelector('.conn-serial-port').value = conn.serial_port || conn.port || '';
+        clone.querySelector('.conn-baud').value = conn.baud_rate || 9600;
+        clone.querySelector('.conn-parity').value = conn.parity || 'N';
+        clone.querySelector('.conn-stopbits').value = conn.stop_bits || 1;
+        clone.querySelector('.tcp-settings').style.display = 'none';
+        clone.querySelector('.serial-settings').style.display = 'block';
+    }
+
+    const container = document.getElementById('connections-list');
+    container.appendChild(clone);
+
+    // Get the actual DOM element after appending (last child of container)
+    const appendedCard = container.lastElementChild;
+
+    // Add clients to the appended card
+    const clientsList = appendedCard.querySelector('.clients-list');
+    (conn.clients || []).forEach((client, cidx) => {
+        addClientFromData(clientsList, client, cidx);
+    });
+}
+
+function updateConnectionType(select) {
+    const card = select.closest('.connection-card');
+    const isTcp = select.value === 'tcp';
+
+    card.querySelector('.tcp-settings').style.display = isTcp ? 'block' : 'none';
+    card.querySelector('.serial-settings').style.display = isTcp ? 'none' : 'block';
+
+    // Auto-set appropriate framer
+    card.querySelector('.conn-framer').value = isTcp ? 'socket' : 'rtu';
+
+    const typeBadge = card.querySelector('.conn-type-badge');
+    typeBadge.textContent = isTcp ? 'TCP' : 'Serial';
+    typeBadge.className = 'conn-type-badge badge ' + (isTcp ? 'badge-info' : 'badge-warning');
+}
+
+function addClient(btn) {
+    const card = btn.closest('.connection-card');
+    const clientsList = card.querySelector('.clients-list');
+    const idx = clientsList.children.length;
+
+    addClientFromData(clientsList, {
+        id: `device_${idx + 1}`,
+        type: 'electrical',
+        polling_interval: 60,
+        unit_id: 1,
+        endianness: 'little',
+        mqtt_enabled: true,
+        http_enabled: true,
+        mqtt_interval: null,
+        mqtt_topic: '',
+        meter_model: '',
+        profile: '',
+        target_table: '',
+        registers: []
+    }, idx);
+}
+
+function updateMeterProfile(select) {
+    // Helper to suggest appropriate profile based on meter model
+    const card = select.closest('.client-card');
+    const profileSelect = card.querySelector('.client-profile');
+    const meterModel = select.value;
+
+    if (meterModel === 'lt_wl4400') {
+        // Default to full profile for L&T WL4400 to get all available registers
+        profileSelect.value = 'distribution_full_lt_wl4400';
+    } else if (meterModel === 'secure_elite_500') {
+        profileSelect.value = 'distribution_basic';
+    } else if (meterModel === 'schneider_em6400ng') {
+        profileSelect.value = 'substation_basic';
+    } else if (meterModel === 'krohne_marshal') {
+        profileSelect.value = 'water_basic';
+    }
+}
+
+function addClientFromData(container, client, idx) {
+    const template = document.getElementById('client-template');
+    const clone = template.content.cloneNode(true);
+
+    const card = clone.querySelector('.client-card');
+    card.dataset.clientIndex = idx;
+
+    // Basic fields
+    clone.querySelector('.client-id').value = client.id || '';
+    clone.querySelector('.client-unit-id').value = client.unit_id || 1;
+    clone.querySelector('.client-type').value = client.type || 'electrical';
+    clone.querySelector('.client-polling').value = client.polling_interval || 60;
+    clone.querySelector('.client-endian').value = client.endianness || 'little';
+
+    // Meter registry fields
+    clone.querySelector('.client-meter-model').value = client.meter_model || '';
+    clone.querySelector('.client-profile').value = client.profile || '';
+    clone.querySelector('.client-target-table').value = client.target_table || '';
+
+    // New unified MQTT/HTTP fields
+    clone.querySelector('.client-mqtt-enabled').checked = client.mqtt_enabled !== false;
+    clone.querySelector('.client-http-enabled').checked = client.http_enabled !== false;
+    clone.querySelector('.client-mqtt-interval').value = client.mqtt_interval || '';
+    clone.querySelector('.client-mqtt-topic').value = client.mqtt_topic || client.mqtt_preferred_topic || '';
+
+    // Append to container first
+    container.appendChild(clone);
+
+    // Now get the actual DOM element (last child of container)
+    const appendedCard = container.lastElementChild;
+
+    // Add registers to the appended card
+    const tbody = appendedCard.querySelector('.registers-tbody');
+    (client.registers || []).forEach(reg => {
+        addRegisterFromData(tbody, reg);
+    });
+}
+
+function addRegister(btn) {
+    const card = btn.closest('.client-card');
+    const tbody = card.querySelector('.registers-tbody');
+    addRegisterFromData(tbody, {
+        address: 0,
+        field_name: '',
+        label: '',
+        data_type: 'float',
+        unit: ''
+    });
+}
+
+function addRegisterFromData(tbody, reg) {
+    const template = document.getElementById('register-template');
+    const clone = template.content.cloneNode(true);
+
+    clone.querySelector('.reg-address').value = reg.address || 0;
+    clone.querySelector('.reg-field').value = reg.field_name || '';
+    clone.querySelector('.reg-label').value = reg.label || '';
+    clone.querySelector('.reg-type').value = reg.data_type || 'float';
+    clone.querySelector('.reg-unit').value = reg.unit || '';
+
+    tbody.appendChild(clone);
+}
+
+function removeConnection(btn) {
+    if (confirm('Remove this connection and all its devices?')) {
+        btn.closest('.connection-card').remove();
+    }
+}
+
+function removeClient(btn) {
+    if (confirm('Remove this device?')) {
+        btn.closest('.client-card').remove();
+    }
+}
+
+function removeRegister(btn) {
+    btn.closest('.register-row').remove();
+}
+
+function toggleConnection(btn) {
+    const body = btn.closest('.connection-card').querySelector('.connection-body');
+    body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    btn.textContent = body.style.display === 'none' ? '▶' : '▼';
+}
+
+function toggleClient(btn) {
+    const body = btn.closest('.client-card').querySelector('.client-body');
+    body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    btn.textContent = body.style.display === 'none' ? '▶' : '▼';
+}
+
+async function saveConfig() {
+    if (!currentConfigDir || !currentFilename) {
+        showNotification('No config selected', 'error');
+        return;
+    }
+
+    let yamlContent;
+
+    if (currentType === 'communication') {
+        yamlContent = buildCommYaml();
+    } else {
+        yamlContent = buildSlaveYaml();
+    }
+
+    try {
+        const response = await fetch(`/api/config/${encodeURIComponent(currentConfigDir.substring(1))}/${currentFilename}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: currentFilename, content: yamlContent })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification('Configuration saved successfully!', 'success');
+            document.getElementById('save-status').textContent = 'Saved!';
+
+            if (confirm('Restart service to apply changes?')) {
+                // Get the service name for this config dir
+                const metricsResponse = await fetch('/api/metrics');
+                const metrics = await metricsResponse.json();
+                const service = metrics.services?.find(s => s.config_dir === currentConfigDir);
+
+                if (service) {
+                    await fetch(`/api/service/${service.name}/restart`, { method: 'POST' });
+                    showNotification(`Service ${service.name} restarted`, 'success');
+                }
+            }
+        } else {
+            showNotification(`Save failed: ${data.detail || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        showNotification(`Error: ${error.message}`, 'error');
+    }
+}
+
+function buildCommYaml() {
+    // Build communication config YAML
+    let yaml = 'communication:\n';
+
+    // API Endpoints
+    yaml += '  api_endpoints:\n';
+    const endpoints = {};
+    document.querySelectorAll('[data-endpoint]').forEach(input => {
+        const endpoint = input.dataset.endpoint;
+        const urlType = input.dataset.urlType;
+        if (!endpoints[endpoint]) endpoints[endpoint] = {};
+        endpoints[endpoint][urlType] = input.value;
+    });
+    for (const [type, urls] of Object.entries(endpoints)) {
+        yaml += `    ${type}:\n`;
+        if (urls.measurements) {
+            yaml += `      measurements:\n`;
+            yaml += `        url: "${urls.measurements}"\n`;
+            yaml += `        headers:\n`;
+            yaml += `          Content-Type: "application/json"\n`;
+        }
+        if (urls.alerts) {
+            yaml += `      alerts:\n`;
+            yaml += `        url: "${urls.alerts}"\n`;
+            yaml += `        headers:\n`;
+            yaml += `          Content-Type: "application/json"\n`;
+        }
+    }
+
+    // MQTT Config
+    yaml += '\n  mqtt_config:\n';
+    yaml += `    host: "${document.getElementById('mqtt-host').value}"\n`;
+    yaml += `    port: ${document.getElementById('mqtt-port').value || 1883}\n`;
+    yaml += `    username: "${document.getElementById('mqtt-username').value}"\n`;
+    yaml += `    password: "${document.getElementById('mqtt-password').value}"\n`;
+
+    // MQTT Topics
+    const topics = {};
+    document.querySelectorAll('[data-topic-cat]').forEach(input => {
+        const cat = input.dataset.topicCat;
+        const type = input.dataset.topicType;
+        if (!topics[cat]) topics[cat] = {};
+        topics[cat][type] = input.value;
+    });
+    if (Object.keys(topics).length > 0) {
+        yaml += '    topics:\n';
+        for (const [cat, catTopics] of Object.entries(topics)) {
+            yaml += `      ${cat}:\n`;
+            for (const [type, topic] of Object.entries(catTopics)) {
+                yaml += `        ${type}: "${topic}"\n`;
+            }
+        }
+    }
+
+    // Weather Config
+    yaml += '\n  weather_config:\n';
+    yaml += `    enabled: ${document.getElementById('weather-enabled').checked}\n`;
+    yaml += `    provider: "${document.getElementById('weather-provider').value}"\n`;
+    yaml += `    api_key: "${document.getElementById('weather-api-key').value}"\n`;
+    yaml += `    location: "${document.getElementById('weather-location').value}"\n`;
+    yaml += `    update_interval: ${document.getElementById('weather-interval').value}\n`;
+
+    // NTP Config
+    yaml += '\n  ntp_config:\n';
+    yaml += `    enabled: ${document.getElementById('ntp-enabled').checked}\n`;
+    const servers = document.getElementById('ntp-servers').value.split(',').map(s => s.trim()).filter(s => s);
+    yaml += '    servers:\n';
+    servers.forEach(s => yaml += `      - "${s}"\n`);
+    yaml += `    sync_interval: ${document.getElementById('ntp-sync-interval').value}\n`;
+    yaml += `    max_drift_seconds: ${document.getElementById('ntp-max-drift').value}\n`;
+
+    // Performance Config
+    yaml += '\n  performance_config:\n';
+    yaml += `    enabled: ${document.getElementById('perf-enabled').checked}\n`;
+    yaml += `    monitor_interval: ${document.getElementById('perf-interval').value}\n`;
+    yaml += `    cpu_threshold: ${document.getElementById('perf-cpu').value}\n`;
+    yaml += `    memory_threshold: ${document.getElementById('perf-memory').value}\n`;
+    yaml += `    disk_threshold: ${document.getElementById('perf-disk').value}\n`;
+
+    // Watchdog Config
+    yaml += '\n  watchdog_config:\n';
+    yaml += `    enabled: ${document.getElementById('watchdog-enabled').checked}\n`;
+    yaml += `    health_check_interval: ${document.getElementById('watchdog-interval').value}\n`;
+    yaml += `    unhealthy_threshold: ${document.getElementById('watchdog-threshold').value}\n`;
+
+    // Modbus TCP Gateway
+    yaml += '\n  modbus_tcp_gateway:\n';
+    yaml += `    enabled: ${document.getElementById('gateway-enabled').checked}\n`;
+    yaml += `    host: "${document.getElementById('gateway-host').value}"\n`;
+    yaml += `    port: ${document.getElementById('gateway-port').value}\n`;
+    yaml += `    cache_ttl: ${document.getElementById('gateway-cache-ttl').value}\n`;
+    yaml += '    max_batch_size: 125\n';
+    yaml += '    max_gap_size: 10\n';
+
+    // Cache TTL
+    yaml += `\n  cache_ttl: ${document.getElementById('cache-ttl').value}\n`;
+
+    // Retry Config
+    yaml += '\n  retry_config:\n';
+    yaml += `    interval: ${document.getElementById('retry-interval').value}\n`;
+    yaml += `    max_retries: ${document.getElementById('retry-max').value}\n`;
+
+    // Discord Webhook
+    const webhook = document.getElementById('discord-webhook').value;
+    if (webhook) {
+        yaml += `\ndiscord_webhook_url: "${webhook}"\n`;
+    }
+
+    return yaml;
+}
+
+function buildSlaveYaml() {
+    const connections = [];
+
+    document.querySelectorAll('.connection-card').forEach(connCard => {
+        const connType = connCard.querySelector('.conn-type').value;
+        const framer = connCard.querySelector('.conn-framer').value;
+
+        const conn = {
+            id: connCard.querySelector('.conn-id').value,
+            label: connCard.querySelector('.conn-label').value,
+            connection_type: connType,
+            framer: framer,
+            timeout: parseInt(connCard.querySelector('.conn-timeout').value),
+            retries: parseInt(connCard.querySelector('.conn-retries').value),
+            reconnect_delay: 1,
+            clients: []
+        };
+
+        if (connType === 'tcp') {
+            conn.host = connCard.querySelector('.conn-host').value;
+            conn.port = parseInt(connCard.querySelector('.conn-port').value);
+        } else {
+            conn.port = connCard.querySelector('.conn-serial-port').value;
+            conn.baud_rate = parseInt(connCard.querySelector('.conn-baud').value);
+            conn.parity = connCard.querySelector('.conn-parity').value;
+            conn.stop_bits = parseInt(connCard.querySelector('.conn-stopbits').value);
+            conn.bytesize = 8;
+        }
+
+        // Get clients
+        connCard.querySelectorAll('.client-card').forEach(clientCard => {
+            const mqttEnabled = clientCard.querySelector('.client-mqtt-enabled').checked;
+            const httpEnabled = clientCard.querySelector('.client-http-enabled').checked;
+            const mqttTopic = clientCard.querySelector('.client-mqtt-topic').value;
+            const mqttInterval = clientCard.querySelector('.client-mqtt-interval').value;
+            const meterModel = clientCard.querySelector('.client-meter-model').value;
+            const profile = clientCard.querySelector('.client-profile').value;
+            const targetTable = clientCard.querySelector('.client-target-table').value;
+
+            const client = {
+                id: clientCard.querySelector('.client-id').value,
+                type: clientCard.querySelector('.client-type').value,
+                polling_interval: parseInt(clientCard.querySelector('.client-polling').value),
+                unit_id: parseInt(clientCard.querySelector('.client-unit-id').value),
+                endianness: clientCard.querySelector('.client-endian').value,
+                mqtt_enabled: mqttEnabled,
+                http_enabled: httpEnabled
+            };
+
+            // Add meter registry fields if set
+            if (meterModel) {
+                client.meter_model = meterModel;
+            }
+            if (profile) {
+                client.profile = profile;
+            }
+            if (targetTable) {
+                client.target_table = targetTable;
+            }
+
+            // Add MQTT fields if set
+            if (mqttTopic) {
+                client.mqtt_topic = mqttTopic;
+            }
+            if (mqttInterval) {
+                client.mqtt_interval = parseInt(mqttInterval);
+            }
+
+            // Only add registers if meter_model is not set (manual mode)
+            if (!meterModel) {
+                client.registers = [];
+                clientCard.querySelectorAll('.register-row').forEach(row => {
+                    client.registers.push({
+                        address: parseInt(row.querySelector('.reg-address').value),
+                        count: 2,
+                        data_type: row.querySelector('.reg-type').value,
+                        field_name: row.querySelector('.reg-field').value,
+                        label: row.querySelector('.reg-label').value,
+                        unit: row.querySelector('.reg-unit').value,
+                        register_type: 'holding'
+                    });
+                });
+            }
+
+            conn.clients.push(client);
+        });
+
+        connections.push(conn);
+    });
+
+    // Convert to YAML
+    return jsYamlDump({ connections });
+}
+
+// Simple YAML generator (for basic cases)
+function jsYamlDump(obj, indent = 0) {
+    const spaces = '  '.repeat(indent);
+    let yaml = '';
+
+    if (Array.isArray(obj)) {
+        obj.forEach(item => {
+            yaml += `${spaces}-\n`;
+            yaml += jsYamlDump(item, indent + 1).split('\n').map((line, i) => i === 0 ? spaces + '  ' + line.trim() : line).join('\n');
+        });
+    } else if (typeof obj === 'object' && obj !== null) {
+        for (const [key, value] of Object.entries(obj)) {
+            if (value === null || value === undefined || value === '') continue;
+
+            if (typeof value === 'object') {
+                yaml += `${spaces}${key}:\n`;
+                yaml += jsYamlDump(value, indent + 1);
+            } else if (typeof value === 'string') {
+                yaml += `${spaces}${key}: "${value}"\n`;
+            } else {
+                yaml += `${spaces}${key}: ${value}\n`;
+            }
+        }
+    }
+
+    return yaml;
+}
+</script>
+{% endblock %}

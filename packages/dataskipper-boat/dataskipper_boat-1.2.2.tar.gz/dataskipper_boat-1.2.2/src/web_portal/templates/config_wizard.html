@@ -1,0 +1,1179 @@
+{% extends "base.html" %}
+
+{% block title %}Config Wizard - RTU Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+    .wizard-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .wizard-header {
+        text-align: center;
+        margin-bottom: 32px;
+    }
+
+    .wizard-header h1 {
+        font-size: 28px;
+        margin-bottom: 8px;
+    }
+
+    .wizard-header p {
+        color: var(--text-muted);
+    }
+
+    /* Progress Steps */
+    .wizard-steps {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 40px;
+        position: relative;
+    }
+
+    .wizard-steps::before {
+        content: '';
+        position: absolute;
+        top: 20px;
+        left: 50px;
+        right: 50px;
+        height: 2px;
+        background: var(--border-color);
+        z-index: 0;
+    }
+
+    .step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        z-index: 1;
+        flex: 1;
+    }
+
+    .step-number {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        margin-bottom: 8px;
+        transition: all 0.3s;
+    }
+
+    .step.active .step-number {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+    }
+
+    .step.completed .step-number {
+        background: var(--success);
+        border-color: var(--success);
+        color: white;
+    }
+
+    .step-label {
+        font-size: 13px;
+        color: var(--text-muted);
+        text-align: center;
+    }
+
+    .step.active .step-label {
+        color: var(--text-primary);
+        font-weight: 500;
+    }
+
+    /* Wizard Content */
+    .wizard-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 32px;
+        min-height: 400px;
+    }
+
+    .wizard-step-content {
+        display: none;
+    }
+
+    .wizard-step-content.active {
+        display: block;
+        animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .step-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .step-description {
+        color: var(--text-muted);
+        margin-bottom: 24px;
+    }
+
+    /* Form Styles */
+    .form-section {
+        margin-bottom: 24px;
+    }
+
+    .form-section-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .form-row.single {
+        grid-template-columns: 1fr;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .form-group label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+
+    .form-group input,
+    .form-group select {
+        padding: 10px 14px;
+        font-size: 14px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-primary);
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+
+    .form-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    /* Card Selection */
+    .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+    }
+
+    .selection-card {
+        padding: 20px;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .selection-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+    }
+
+    .selection-card.selected {
+        border-color: var(--accent);
+        background: rgba(29, 155, 240, 0.1);
+    }
+
+    .selection-card h4 {
+        font-size: 15px;
+        margin-bottom: 4px;
+    }
+
+    .selection-card p {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+    }
+
+    .selection-card .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        font-size: 11px;
+        background: var(--bg-card);
+        border-radius: 4px;
+        color: var(--text-secondary);
+    }
+
+    .selection-card .badge-success {
+        background: rgba(0, 186, 124, 0.2);
+        color: var(--success);
+    }
+
+    .selection-card .badge-warning {
+        background: rgba(255, 173, 31, 0.2);
+        color: var(--warning);
+    }
+
+    .selection-card.incompatible {
+        opacity: 0.6;
+        border-style: dashed;
+    }
+
+    .selection-card.incompatible:hover {
+        opacity: 0.8;
+    }
+
+    /* Connection Options */
+    .connection-options {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .connection-option {
+        flex: 1;
+        padding: 20px;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 12px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s;
+    }
+
+    .connection-option:hover {
+        border-color: var(--accent);
+    }
+
+    .connection-option.selected {
+        border-color: var(--accent);
+        background: rgba(29, 155, 240, 0.1);
+    }
+
+    .connection-option .icon {
+        font-size: 32px;
+        margin-bottom: 8px;
+    }
+
+    .connection-option h4 {
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+
+    .connection-option p {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    /* Review Section */
+    .review-section {
+        background: var(--bg-secondary);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .review-section h4 {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 12px;
+        color: var(--text-secondary);
+    }
+
+    .review-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .review-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .review-label {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .review-value {
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    /* YAML Preview */
+    .yaml-preview {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 16px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 12px;
+        overflow-x: auto;
+        white-space: pre;
+        color: var(--text-secondary);
+    }
+
+    /* Wizard Footer */
+    .wizard-footer {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 32px;
+        padding-top: 24px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .wizard-footer .btn {
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 500;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-secondary {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+        background: var(--bg-card);
+    }
+
+    .btn-primary {
+        background: var(--accent);
+        border: 1px solid var(--accent);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #1a8cd8;
+    }
+
+    .btn-success {
+        background: var(--success);
+        border: 1px solid var(--success);
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #00a870;
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Success Message */
+    .success-message {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .success-icon {
+        font-size: 64px;
+        color: var(--success);
+        margin-bottom: 16px;
+    }
+
+    .success-message h3 {
+        font-size: 24px;
+        margin-bottom: 8px;
+    }
+
+    .success-message p {
+        color: var(--text-muted);
+        margin-bottom: 24px;
+    }
+
+    /* Loading */
+    .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .loading-overlay.active {
+        display: flex;
+    }
+
+    .loading-content {
+        text-align: center;
+        color: white;
+    }
+
+    @media (max-width: 768px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+
+        .connection-options {
+            flex-direction: column;
+        }
+
+        .wizard-steps {
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .wizard-steps::before {
+            display: none;
+        }
+
+        .review-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wizard-container">
+    <div class="wizard-header">
+        <h1>Add New Device</h1>
+        <p>Follow the steps to configure a new meter or sensor</p>
+    </div>
+
+    <!-- Progress Steps -->
+    <div class="wizard-steps">
+        <div class="step active" data-step="1">
+            <div class="step-number">1</div>
+            <div class="step-label">Select Meter</div>
+        </div>
+        <div class="step" data-step="2">
+            <div class="step-number">2</div>
+            <div class="step-label">Connection</div>
+        </div>
+        <div class="step" data-step="3">
+            <div class="step-number">3</div>
+            <div class="step-label">Device Settings</div>
+        </div>
+        <div class="step" data-step="4">
+            <div class="step-number">4</div>
+            <div class="step-label">Protocol</div>
+        </div>
+        <div class="step" data-step="5">
+            <div class="step-number">5</div>
+            <div class="step-label">Review</div>
+        </div>
+    </div>
+
+    <!-- Wizard Content -->
+    <div class="wizard-content">
+        <!-- Step 1: Select Meter -->
+        <div class="wizard-step-content active" data-step="1">
+            <h2 class="step-title">Select Meter Type</h2>
+            <p class="step-description">Choose the meter model you want to configure</p>
+
+            <div class="form-section">
+                <div class="form-section-title">Available Meters</div>
+                <div id="meter-list" class="card-grid">
+                    <div class="loading-state">
+                        <div class="loading-spinner-lg"></div>
+                        <p>Loading meters...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Connection -->
+        <div class="wizard-step-content" data-step="2">
+            <h2 class="step-title">Connection Settings</h2>
+            <p class="step-description">Configure how to connect to the meter</p>
+
+            <div class="connection-options">
+                <div class="connection-option selected" data-type="existing" onclick="selectConnectionType('existing')">
+                    <div class="icon">🔗</div>
+                    <h4>Use Existing Connection</h4>
+                    <p>Add to an existing RS485 bus or TCP connection</p>
+                </div>
+                <div class="connection-option" data-type="new" onclick="selectConnectionType('new')">
+                    <div class="icon">➕</div>
+                    <h4>Create New Connection</h4>
+                    <p>Set up a new serial or TCP connection</p>
+                </div>
+            </div>
+
+            <!-- Existing Connection Selection -->
+            <div id="existing-connection-section" class="form-section">
+                <div class="form-section-title">Select Connection</div>
+                <div id="connection-list" class="card-grid">
+                    <div class="loading-state">
+                        <div class="loading-spinner-lg"></div>
+                        <p>Loading connections...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- New Connection Form -->
+            <div id="new-connection-section" class="form-section" style="display: none;">
+                <div class="form-section-title">Connection Type</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Connection Type</label>
+                        <select id="connection_type" onchange="toggleConnectionFields()">
+                            <option value="serial">Serial (RS485/RTU)</option>
+                            <option value="tcp">TCP/IP (Modbus TCP)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Serial Fields -->
+                <div id="serial-fields">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Serial Port</label>
+                            <select id="serial_port">
+                                <option value="/dev/ttyS0">/dev/ttyS0 (Built-in UART)</option>
+                                <option value="/dev/ttyUSB0">/dev/ttyUSB0 (USB Adapter)</option>
+                                <option value="/dev/ttyUSB1">/dev/ttyUSB1 (USB Adapter 2)</option>
+                                <option value="/dev/ttyAMA0">/dev/ttyAMA0 (Raspberry Pi)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Baud Rate</label>
+                            <select id="baud_rate">
+                                <option value="9600" selected>9600</option>
+                                <option value="19200">19200</option>
+                                <option value="38400">38400</option>
+                                <option value="57600">57600</option>
+                                <option value="115200">115200</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Parity</label>
+                            <select id="parity">
+                                <option value="N" selected>None (N)</option>
+                                <option value="E">Even (E)</option>
+                                <option value="O">Odd (O)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TCP Fields -->
+                <div id="tcp-fields" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>IP Address / Hostname</label>
+                            <input type="text" id="tcp_host" placeholder="192.168.1.100">
+                        </div>
+                        <div class="form-group">
+                            <label>Port</label>
+                            <input type="number" id="tcp_port" value="502" min="1" max="65535">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Device Settings -->
+        <div class="wizard-step-content" data-step="3">
+            <h2 class="step-title">Device Settings</h2>
+            <p class="step-description">Configure the device identity and address</p>
+
+            <div class="form-section">
+                <div class="form-section-title">Device Identity</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Device ID *</label>
+                        <input type="text" id="device_id" placeholder="e.g., site-panel-1">
+                        <span class="form-hint">Unique identifier (no spaces, use hyphens)</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Device Label</label>
+                        <input type="text" id="device_label" placeholder="e.g., Main Distribution Panel">
+                        <span class="form-hint">Human-readable name for display</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Modbus Address</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Unit ID (Slave Address) *</label>
+                        <input type="number" id="unit_id" value="1" min="1" max="247">
+                        <span class="form-hint">Modbus slave address (1-247)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Monitoring Profile</div>
+                <div id="profile-list" class="card-grid">
+                    <div class="loading-state">
+                        <div class="loading-spinner-lg"></div>
+                        <p>Loading profiles...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Protocol Settings -->
+        <div class="wizard-step-content" data-step="4">
+            <h2 class="step-title">Protocol Settings</h2>
+            <p class="step-description">Configure how data is published</p>
+
+            <div class="form-section">
+                <div class="form-section-title">MQTT Settings</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="mqtt_enabled" checked> Enable MQTT
+                        </label>
+                        <span class="form-hint">Send data to MQTT broker in real-time</span>
+                    </div>
+                    <div class="form-group">
+                        <label>MQTT Interval (seconds)</label>
+                        <input type="number" id="mqtt_interval" value="10" min="1" max="3600">
+                        <span class="form-hint">How often to publish to MQTT</span>
+                    </div>
+                </div>
+                <div class="form-row single">
+                    <div class="form-group">
+                        <label>MQTT Topic (optional)</label>
+                        <input type="text" id="mqtt_topic" placeholder="e.g., iot/electrical/site/panel-1">
+                        <span class="form-hint">Custom topic, leave blank for default</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">HTTP API Settings</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="http_enabled" checked> Enable HTTP
+                        </label>
+                        <span class="form-hint">Send data to HTTP API endpoint</span>
+                    </div>
+                    <div class="form-group">
+                        <label>HTTP Interval (seconds)</label>
+                        <input type="number" id="http_interval" value="60" min="1" max="3600">
+                        <span class="form-hint">How often to push to HTTP API</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Config File</div>
+                <div class="form-row single">
+                    <div class="form-group">
+                        <label>Save to Config File</label>
+                        <select id="config_file">
+                            {% for config_dir in config_dirs %}
+                            {% if config_dir.exists %}
+                            <option value="{{ config_dir.path }}">{{ config_dir.service }} - slave_config.yaml</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5: Review -->
+        <div class="wizard-step-content" data-step="5">
+            <h2 class="step-title">Review Configuration</h2>
+            <p class="step-description">Verify settings before adding the device</p>
+
+            <div class="review-section">
+                <h4>Meter Information</h4>
+                <div class="review-grid">
+                    <div class="review-item">
+                        <span class="review-label">Meter Model</span>
+                        <span class="review-value" id="review-meter"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Profile</span>
+                        <span class="review-value" id="review-profile"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="review-section">
+                <h4>Device Settings</h4>
+                <div class="review-grid">
+                    <div class="review-item">
+                        <span class="review-label">Device ID</span>
+                        <span class="review-value" id="review-device-id"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Unit ID</span>
+                        <span class="review-value" id="review-unit-id"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">Connection</span>
+                        <span class="review-value" id="review-connection"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="review-section">
+                <h4>Protocol Settings</h4>
+                <div class="review-grid">
+                    <div class="review-item">
+                        <span class="review-label">MQTT</span>
+                        <span class="review-value" id="review-mqtt"></span>
+                    </div>
+                    <div class="review-item">
+                        <span class="review-label">HTTP</span>
+                        <span class="review-value" id="review-http"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Generated Configuration</div>
+                <pre class="yaml-preview" id="yaml-preview">Loading...</pre>
+            </div>
+        </div>
+
+        <!-- Success Step -->
+        <div class="wizard-step-content" data-step="success">
+            <div class="success-message">
+                <div class="success-icon">✓</div>
+                <h3>Device Added Successfully!</h3>
+                <p id="success-message">The device has been added to the configuration.</p>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button class="btn btn-secondary" onclick="window.location.href='/devices'">View Devices</button>
+                    <button class="btn btn-primary" onclick="resetWizard()">Add Another Device</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wizard Footer -->
+    <div class="wizard-footer">
+        <button class="btn btn-secondary" id="btn-back" onclick="previousStep()" style="visibility: hidden;">
+            ← Back
+        </button>
+        <button class="btn btn-primary" id="btn-next" onclick="nextStep()">
+            Next →
+        </button>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loading-overlay">
+    <div class="loading-content">
+        <div class="loading-spinner-lg"></div>
+        <p style="margin-top: 16px;">Saving configuration...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Wizard State
+    let currentStep = 1;
+    const totalSteps = 5;
+
+    // Selected values
+    let selectedMeter = null;
+    let selectedProfile = null;
+    let selectedConnection = null;
+    let useExistingConnection = true;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        loadMeters();
+        loadConnections();
+        loadProfiles();
+    });
+
+    // Load available meters
+    async function loadMeters() {
+        try {
+            const response = await fetch('/api/wizard/meters');
+            const data = await response.json();
+
+            const container = document.getElementById('meter-list');
+            if (data.meters.length === 0) {
+                container.innerHTML = '<p class="empty-state">No meters found in registry</p>';
+                return;
+            }
+
+            container.innerHTML = data.meters.map(meter => `
+                <div class="selection-card" data-meter-id="${meter.id}" onclick="selectMeter('${meter.id}', this)">
+                    <h4>${meter.manufacturer} ${meter.model}</h4>
+                    <p>${meter.description}</p>
+                    <span class="badge">${meter.category.replace('_', ' ')}</span>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading meters:', error);
+            document.getElementById('meter-list').innerHTML = '<p class="empty-state">Error loading meters</p>';
+        }
+    }
+
+    // Load existing connections
+    async function loadConnections() {
+        try {
+            const response = await fetch('/api/wizard/connections');
+            const data = await response.json();
+
+            const container = document.getElementById('connection-list');
+            if (data.connections.length === 0) {
+                container.innerHTML = '<p class="empty-state">No existing connections. Create a new one.</p>';
+                selectConnectionType('new');
+                return;
+            }
+
+            container.innerHTML = data.connections.map(conn => `
+                <div class="selection-card" data-conn-id="${conn.id}" onclick="selectConnection('${conn.id}', this)">
+                    <h4>${conn.label || conn.id}</h4>
+                    <p>${conn.connection_type === 'serial' ? conn.serial_port || conn.port : conn.host + ':' + conn.port}</p>
+                    <span class="badge">${conn.client_count} device(s)</span>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading connections:', error);
+        }
+    }
+
+    // Load profiles (optionally filtered by meter)
+    async function loadProfiles(meterId = null) {
+        try {
+            const url = meterId ? `/api/wizard/profiles?meter_id=${meterId}` : '/api/wizard/profiles';
+            const response = await fetch(url);
+            const data = await response.json();
+
+            const container = document.getElementById('profile-list');
+
+            if (data.profiles.length === 0) {
+                container.innerHTML = '<p class="empty-state">No profiles available</p>';
+                return;
+            }
+
+            container.innerHTML = data.profiles.map(profile => {
+                const compatClass = profile.compatible ? '' : 'incompatible';
+                const compatBadge = meterId ? (profile.compatible ?
+                    '<span class="badge badge-success">Compatible</span>' :
+                    `<span class="badge badge-warning" title="${profile.compatibility_reason}">Not recommended</span>`) : '';
+
+                return `
+                <div class="selection-card ${compatClass}" data-profile-id="${profile.id}"
+                     data-compatible="${profile.compatible}"
+                     onclick="selectProfile('${profile.id}', this, ${profile.compatible})">
+                    <h4>${profile.id.replace(/_/g, ' ')}</h4>
+                    <p>${profile.description}</p>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <span class="badge">${profile.register_count} registers</span>
+                        ${compatBadge}
+                    </div>
+                </div>
+            `}).join('');
+
+            // Auto-select first compatible profile
+            if (meterId) {
+                const firstCompatible = data.profiles.find(p => p.compatible);
+                if (firstCompatible) {
+                    const card = container.querySelector(`[data-profile-id="${firstCompatible.id}"]`);
+                    if (card) selectProfile(firstCompatible.id, card, true);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading profiles:', error);
+        }
+    }
+
+    // Selection handlers
+    function selectMeter(meterId, element) {
+        document.querySelectorAll('#meter-list .selection-card').forEach(c => c.classList.remove('selected'));
+        element.classList.add('selected');
+        selectedMeter = meterId;
+
+        // Reload profiles filtered by selected meter
+        selectedProfile = null; // Reset profile selection
+        loadProfiles(meterId);
+    }
+
+    function selectProfile(profileId, element, isCompatible = true) {
+        if (!isCompatible) {
+            if (!confirm('This profile may not be fully compatible with the selected meter. Some registers might be missing. Continue anyway?')) {
+                return;
+            }
+        }
+        document.querySelectorAll('#profile-list .selection-card').forEach(c => c.classList.remove('selected'));
+        element.classList.add('selected');
+        selectedProfile = profileId;
+    }
+
+    function selectConnection(connId, element) {
+        document.querySelectorAll('#connection-list .selection-card').forEach(c => c.classList.remove('selected'));
+        element.classList.add('selected');
+        selectedConnection = connId;
+    }
+
+    function selectConnectionType(type) {
+        document.querySelectorAll('.connection-option').forEach(c => c.classList.remove('selected'));
+        document.querySelector(`.connection-option[data-type="${type}"]`).classList.add('selected');
+        useExistingConnection = (type === 'existing');
+
+        document.getElementById('existing-connection-section').style.display = useExistingConnection ? 'block' : 'none';
+        document.getElementById('new-connection-section').style.display = useExistingConnection ? 'none' : 'block';
+    }
+
+    function toggleConnectionFields() {
+        const type = document.getElementById('connection_type').value;
+        document.getElementById('serial-fields').style.display = type === 'serial' ? 'block' : 'none';
+        document.getElementById('tcp-fields').style.display = type === 'tcp' ? 'block' : 'none';
+    }
+
+    // Navigation
+    function nextStep() {
+        if (!validateStep(currentStep)) return;
+
+        if (currentStep === totalSteps) {
+            submitConfiguration();
+            return;
+        }
+
+        currentStep++;
+        updateWizard();
+
+        if (currentStep === totalSteps) {
+            updateReview();
+            generateYamlPreview();
+        }
+    }
+
+    function previousStep() {
+        if (currentStep > 1) {
+            currentStep--;
+            updateWizard();
+        }
+    }
+
+    function validateStep(step) {
+        switch(step) {
+            case 1:
+                if (!selectedMeter) {
+                    RTUPortal.showNotification('Please select a meter type', 'error');
+                    return false;
+                }
+                break;
+            case 2:
+                if (useExistingConnection && !selectedConnection) {
+                    RTUPortal.showNotification('Please select a connection', 'error');
+                    return false;
+                }
+                if (!useExistingConnection) {
+                    const connType = document.getElementById('connection_type').value;
+                    if (connType === 'tcp') {
+                        const host = document.getElementById('tcp_host').value;
+                        if (!host) {
+                            RTUPortal.showNotification('Please enter IP address', 'error');
+                            return false;
+                        }
+                    }
+                }
+                break;
+            case 3:
+                const deviceId = document.getElementById('device_id').value;
+                if (!deviceId) {
+                    RTUPortal.showNotification('Please enter a device ID', 'error');
+                    return false;
+                }
+                if (!selectedProfile) {
+                    RTUPortal.showNotification('Please select a monitoring profile', 'error');
+                    return false;
+                }
+                break;
+        }
+        return true;
+    }
+
+    function updateWizard() {
+        // Update steps
+        document.querySelectorAll('.step').forEach((step, index) => {
+            const stepNum = index + 1;
+            step.classList.remove('active', 'completed');
+            if (stepNum === currentStep) {
+                step.classList.add('active');
+            } else if (stepNum < currentStep) {
+                step.classList.add('completed');
+            }
+        });
+
+        // Update content
+        document.querySelectorAll('.wizard-step-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.querySelector(`.wizard-step-content[data-step="${currentStep}"]`).classList.add('active');
+
+        // Update buttons
+        document.getElementById('btn-back').style.visibility = currentStep > 1 ? 'visible' : 'hidden';
+        const nextBtn = document.getElementById('btn-next');
+        if (currentStep === totalSteps) {
+            nextBtn.textContent = 'Add Device';
+            nextBtn.classList.remove('btn-primary');
+            nextBtn.classList.add('btn-success');
+        } else {
+            nextBtn.textContent = 'Next →';
+            nextBtn.classList.remove('btn-success');
+            nextBtn.classList.add('btn-primary');
+        }
+    }
+
+    function updateReview() {
+        document.getElementById('review-meter').textContent = selectedMeter;
+        document.getElementById('review-profile').textContent = selectedProfile;
+        document.getElementById('review-device-id').textContent = document.getElementById('device_id').value;
+        document.getElementById('review-unit-id').textContent = document.getElementById('unit_id').value;
+
+        const mqttEnabled = document.getElementById('mqtt_enabled').checked;
+        const httpEnabled = document.getElementById('http_enabled').checked;
+
+        document.getElementById('review-mqtt').textContent = mqttEnabled ?
+            `Enabled (every ${document.getElementById('mqtt_interval').value}s)` : 'Disabled';
+        document.getElementById('review-http').textContent = httpEnabled ?
+            `Enabled (every ${document.getElementById('http_interval').value}s)` : 'Disabled';
+
+        if (useExistingConnection) {
+            document.getElementById('review-connection').textContent = `Existing: ${selectedConnection}`;
+        } else {
+            const connType = document.getElementById('connection_type').value;
+            if (connType === 'serial') {
+                document.getElementById('review-connection').textContent =
+                    `New Serial: ${document.getElementById('serial_port').value}`;
+            } else {
+                document.getElementById('review-connection').textContent =
+                    `New TCP: ${document.getElementById('tcp_host').value}:${document.getElementById('tcp_port').value}`;
+            }
+        }
+    }
+
+    async function generateYamlPreview() {
+        const config = buildConfiguration();
+        try {
+            const response = await fetch('/api/wizard/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+            const data = await response.json();
+            document.getElementById('yaml-preview').textContent = data.yaml_snippet;
+        } catch (error) {
+            document.getElementById('yaml-preview').textContent = '# Error generating preview';
+        }
+    }
+
+    function buildConfiguration() {
+        const configDir = document.getElementById('config_file').value;
+        return {
+            use_existing_connection: useExistingConnection,
+            existing_connection_id: selectedConnection,
+            connection_type: document.getElementById('connection_type').value,
+            serial_port: document.getElementById('serial_port').value,
+            baud_rate: parseInt(document.getElementById('baud_rate').value),
+            parity: document.getElementById('parity').value,
+            host: document.getElementById('tcp_host').value,
+            port: parseInt(document.getElementById('tcp_port').value) || 502,
+            device_id: document.getElementById('device_id').value,
+            device_label: document.getElementById('device_label').value || document.getElementById('device_id').value,
+            unit_id: parseInt(document.getElementById('unit_id').value),
+            meter_model: selectedMeter,
+            profile: selectedProfile,
+            mqtt_enabled: document.getElementById('mqtt_enabled').checked,
+            mqtt_interval: parseInt(document.getElementById('mqtt_interval').value),
+            mqtt_topic: document.getElementById('mqtt_topic').value || null,
+            http_enabled: document.getElementById('http_enabled').checked,
+            http_interval: parseInt(document.getElementById('http_interval').value),
+            config_file: 'slave_config.yaml',
+            config_dir: configDir
+        };
+    }
+
+    async function submitConfiguration() {
+        const config = buildConfiguration();
+
+        document.getElementById('loading-overlay').classList.add('active');
+
+        try {
+            const response = await fetch('/api/wizard/add-device', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+
+            const data = await response.json();
+
+            document.getElementById('loading-overlay').classList.remove('active');
+
+            if (data.success) {
+                document.getElementById('success-message').textContent =
+                    `${data.message}. A backup was created. Restart the service to apply changes.`;
+
+                // Show success step
+                document.querySelectorAll('.wizard-step-content').forEach(c => c.classList.remove('active'));
+                document.querySelector('.wizard-step-content[data-step="success"]').classList.add('active');
+                document.querySelector('.wizard-footer').style.display = 'none';
+            } else {
+                RTUPortal.showNotification(data.detail || 'Failed to add device', 'error');
+            }
+        } catch (error) {
+            document.getElementById('loading-overlay').classList.remove('active');
+            RTUPortal.showNotification('Error: ' + error.message, 'error');
+        }
+    }
+
+    function resetWizard() {
+        currentStep = 1;
+        selectedMeter = null;
+        selectedProfile = null;
+        selectedConnection = null;
+        useExistingConnection = true;
+
+        // Reset form fields
+        document.getElementById('device_id').value = '';
+        document.getElementById('device_label').value = '';
+        document.getElementById('unit_id').value = '1';
+        document.getElementById('mqtt_topic').value = '';
+
+        // Reset selections
+        document.querySelectorAll('.selection-card').forEach(c => c.classList.remove('selected'));
+
+        // Show wizard footer again
+        document.querySelector('.wizard-footer').style.display = 'flex';
+
+        updateWizard();
+    }
+</script>
+{% endblock %}

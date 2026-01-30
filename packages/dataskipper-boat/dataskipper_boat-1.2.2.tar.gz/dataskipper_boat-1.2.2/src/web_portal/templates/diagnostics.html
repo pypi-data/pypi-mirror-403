@@ -1,0 +1,1093 @@
+{% extends "base.html" %}
+
+{% block title %}System Diagnostics - RTU Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Diagnostics Page Styles */
+    .diagnostics-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .diagnostics-header h1 {
+        margin: 0;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .run-status {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+
+    /* Summary Bar */
+    .diagnostics-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .summary-item {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+        border: 1px solid var(--border-color);
+    }
+
+    .summary-item.pass {
+        border-color: var(--success-color);
+        background: rgba(34, 197, 94, 0.1);
+    }
+
+    .summary-item.warn {
+        border-color: var(--warning-color);
+        background: rgba(234, 179, 8, 0.1);
+    }
+
+    .summary-item.fail {
+        border-color: var(--danger-color);
+        background: rgba(239, 68, 68, 0.1);
+    }
+
+    .summary-count {
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .summary-count.pass { color: var(--success-color); }
+    .summary-count.warn { color: var(--warning-color); }
+    .summary-count.fail { color: var(--danger-color); }
+
+    .summary-label {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+    }
+
+    /* Check Category */
+    .check-category {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+    }
+
+    .category-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        background: var(--bg-primary);
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .category-header:hover {
+        background: var(--bg-hover);
+    }
+
+    .category-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .category-icon {
+        font-size: 1.25rem;
+    }
+
+    .category-badge {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .status-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .status-badge.pass { background: rgba(34, 197, 94, 0.2); color: var(--success-color); }
+    .status-badge.warn { background: rgba(234, 179, 8, 0.2); color: var(--warning-color); }
+    .status-badge.fail { background: rgba(239, 68, 68, 0.2); color: var(--danger-color); }
+
+    .category-body {
+        padding: 0;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+    }
+
+    .category-body.expanded {
+        max-height: 2000px;
+    }
+
+    /* Check Items */
+    .check-list {
+        padding: 0.5rem 0;
+    }
+
+    .check-item {
+        display: flex;
+        align-items: flex-start;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .check-item:last-child {
+        border-bottom: none;
+    }
+
+    .check-status-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        margin-right: 1rem;
+        flex-shrink: 0;
+    }
+
+    .check-status-icon.pass { background: rgba(34, 197, 94, 0.2); color: var(--success-color); }
+    .check-status-icon.warn { background: rgba(234, 179, 8, 0.2); color: var(--warning-color); }
+    .check-status-icon.fail { background: rgba(239, 68, 68, 0.2); color: var(--danger-color); }
+    .check-status-icon.skipped { background: var(--bg-tertiary); color: var(--text-muted); }
+    .check-status-icon.running { background: var(--bg-tertiary); color: var(--primary-color); }
+
+    .check-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .check-name {
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+    }
+
+    .check-message {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .check-message.fail { color: var(--danger-color); }
+    .check-message.warn { color: var(--warning-color); }
+
+    .check-actions {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+
+    .check-actions-title {
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+        color: var(--text-primary);
+    }
+
+    .check-actions ul {
+        margin: 0;
+        padding-left: 1.25rem;
+        color: var(--text-secondary);
+    }
+
+    .check-actions li {
+        margin-bottom: 0.25rem;
+    }
+
+    .check-meta {
+        display: flex;
+        gap: 1rem;
+        margin-left: auto;
+        flex-shrink: 0;
+        align-items: center;
+    }
+
+    .check-duration {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+    }
+
+    .troubleshoot-btn {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .troubleshoot-btn:hover {
+        background: var(--primary-hover);
+    }
+
+    /* Loading State */
+    .check-item.loading .check-status-icon {
+        animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--primary-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Troubleshooting Modal */
+    .troubleshoot-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+
+    .troubleshoot-content {
+        background: var(--bg-primary);
+        border-radius: 12px;
+        max-width: 600px;
+        width: 100%;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .troubleshoot-header {
+        padding: 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .troubleshoot-header h3 {
+        margin: 0;
+    }
+
+    .troubleshoot-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--text-muted);
+        line-height: 1;
+    }
+
+    .troubleshoot-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+    }
+
+    .troubleshoot-step {
+        margin-bottom: 1.5rem;
+    }
+
+    .step-number {
+        display: inline-block;
+        width: 28px;
+        height: 28px;
+        background: var(--primary-color);
+        color: white;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 28px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-right: 0.75rem;
+    }
+
+    .step-question {
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }
+
+    .step-help {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 1rem;
+        padding-left: 2.5rem;
+    }
+
+    .step-options {
+        display: flex;
+        gap: 1rem;
+        padding-left: 2.5rem;
+    }
+
+    .step-option {
+        flex: 1;
+        padding: 1rem;
+        background: var(--bg-secondary);
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s;
+    }
+
+    .step-option:hover {
+        border-color: var(--primary-color);
+        background: var(--bg-hover);
+    }
+
+    .step-option.selected {
+        border-color: var(--primary-color);
+        background: rgba(59, 130, 246, 0.1);
+    }
+
+    .diagnosis-result {
+        padding: 1.5rem;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        border-left: 4px solid var(--danger-color);
+    }
+
+    .diagnosis-title {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+        color: var(--danger-color);
+    }
+
+    .diagnosis-actions {
+        margin-top: 1rem;
+    }
+
+    .diagnosis-actions h4 {
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .diagnosis-actions ol {
+        margin: 0;
+        padding-left: 1.5rem;
+    }
+
+    .diagnosis-actions li {
+        margin-bottom: 0.5rem;
+        line-height: 1.5;
+    }
+
+    .troubleshoot-footer {
+        padding: 1rem 1.25rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+    }
+
+    /* Quick Actions */
+    .quick-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+    }
+
+    .quick-action {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+
+    .quick-action:hover {
+        background: var(--bg-hover);
+        border-color: var(--primary-color);
+    }
+
+    .quick-action:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Export Button */
+    .export-section {
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="diagnostics-header">
+    <div>
+        <h1>System Diagnostics</h1>
+        <p class="page-subtitle">Automated health checks and troubleshooting</p>
+    </div>
+    <div class="header-actions">
+        <span class="run-status" id="run-status"></span>
+        <button class="btn btn-primary" id="run-all-btn" onclick="runAllDiagnostics()">
+            <span class="btn-icon">&#9654;</span> Run All Checks
+        </button>
+    </div>
+</div>
+
+<!-- Summary -->
+<div class="diagnostics-summary" id="summary-bar">
+    <div class="summary-item">
+        <div class="summary-count" id="total-count">--</div>
+        <div class="summary-label">Total Checks</div>
+    </div>
+    <div class="summary-item pass">
+        <div class="summary-count pass" id="pass-count">--</div>
+        <div class="summary-label">Passed</div>
+    </div>
+    <div class="summary-item warn">
+        <div class="summary-count warn" id="warn-count">--</div>
+        <div class="summary-label">Warnings</div>
+    </div>
+    <div class="summary-item fail">
+        <div class="summary-count fail" id="fail-count">--</div>
+        <div class="summary-label">Failed</div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="quick-actions">
+    <button class="quick-action" onclick="runCategoryCheck('connectivity')">
+        <span>&#128268;</span> Test Connectivity
+    </button>
+    <button class="quick-action" onclick="runCategoryCheck('system')">
+        <span>&#128187;</span> Check System
+    </button>
+    <button class="quick-action" onclick="runCategoryCheck('devices')">
+        <span>&#128225;</span> Check Devices
+    </button>
+    <button class="quick-action" onclick="showTroubleshootingList()">
+        <span>&#128736;</span> Troubleshooting Guides
+    </button>
+</div>
+
+<!-- Connectivity Checks -->
+<div class="check-category" id="category-connectivity">
+    <div class="category-header" onclick="toggleCategory('connectivity')">
+        <div class="category-title">
+            <span class="category-icon">&#128268;</span>
+            Connectivity Checks
+        </div>
+        <div class="category-badge">
+            <span class="status-badge" id="connectivity-badge">--</span>
+            <span class="expand-icon" id="connectivity-expand">&#9662;</span>
+        </div>
+    </div>
+    <div class="category-body" id="connectivity-body">
+        <div class="check-list" id="connectivity-checks">
+            <div class="check-item">
+                <div class="check-status-icon skipped">?</div>
+                <div class="check-content">
+                    <div class="check-name">Click "Run All Checks" to start diagnostics</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Health Checks -->
+<div class="check-category" id="category-system">
+    <div class="category-header" onclick="toggleCategory('system')">
+        <div class="category-title">
+            <span class="category-icon">&#128187;</span>
+            System Health
+        </div>
+        <div class="category-badge">
+            <span class="status-badge" id="system-badge">--</span>
+            <span class="expand-icon" id="system-expand">&#9662;</span>
+        </div>
+    </div>
+    <div class="category-body" id="system-body">
+        <div class="check-list" id="system-checks">
+            <div class="check-item">
+                <div class="check-status-icon skipped">?</div>
+                <div class="check-content">
+                    <div class="check-name">Click "Run All Checks" to start diagnostics</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Device Checks -->
+<div class="check-category" id="category-devices">
+    <div class="category-header" onclick="toggleCategory('devices')">
+        <div class="category-title">
+            <span class="category-icon">&#128225;</span>
+            Device Status
+        </div>
+        <div class="category-badge">
+            <span class="status-badge" id="devices-badge">--</span>
+            <span class="expand-icon" id="devices-expand">&#9662;</span>
+        </div>
+    </div>
+    <div class="category-body" id="devices-body">
+        <div class="check-list" id="devices-checks">
+            <div class="check-item">
+                <div class="check-status-icon skipped">?</div>
+                <div class="check-content">
+                    <div class="check-name">Click "Run All Checks" to start diagnostics</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Section -->
+<div class="export-section">
+    <button class="btn btn-secondary" onclick="exportReport()">
+        <span>&#128196;</span> Export Report
+    </button>
+    <button class="btn btn-secondary" onclick="refreshDiagnostics()">
+        <span>&#8635;</span> Refresh
+    </button>
+</div>
+
+<!-- Troubleshooting Modal -->
+<div class="troubleshoot-modal" id="troubleshoot-modal" style="display: none;">
+    <div class="troubleshoot-content">
+        <div class="troubleshoot-header">
+            <h3 id="troubleshoot-title">Troubleshooting Wizard</h3>
+            <button class="troubleshoot-close" onclick="closeTroubleshootModal()">&times;</button>
+        </div>
+        <div class="troubleshoot-body" id="troubleshoot-body">
+            <!-- Content loaded dynamically -->
+        </div>
+        <div class="troubleshoot-footer">
+            <button class="btn btn-secondary" id="troubleshoot-back" onclick="troubleshootBack()" style="display: none;">
+                &larr; Back
+            </button>
+            <button class="btn btn-secondary" onclick="closeTroubleshootModal()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let diagnosticResults = [];
+let currentTroubleshootTree = null;
+let troubleshootHistory = [];
+let isRunning = false;
+
+// Status icons
+const STATUS_ICONS = {
+    pass: '&#10003;',
+    warn: '&#9888;',
+    fail: '&#10007;',
+    skipped: '&#8212;',
+    running: '<span class="spinner"></span>'
+};
+
+// Run all diagnostics
+async function runAllDiagnostics() {
+    if (isRunning) return;
+
+    isRunning = true;
+    const btn = document.getElementById('run-all-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Running...';
+    document.getElementById('run-status').textContent = 'Running diagnostics...';
+
+    // Show loading state in all categories
+    ['connectivity', 'system', 'devices'].forEach(cat => {
+        document.getElementById(`${cat}-checks`).innerHTML = renderLoadingState();
+        document.getElementById(`${cat}-badge`).textContent = '...';
+        document.getElementById(`${cat}-badge`).className = 'status-badge';
+    });
+
+    // Expand all categories
+    ['connectivity', 'system', 'devices'].forEach(cat => {
+        document.getElementById(`${cat}-body`).classList.add('expanded');
+    });
+
+    try {
+        const response = await fetch('/api/diagnostics/run');
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        diagnosticResults = data.results;
+        renderResults(data);
+
+        const timestamp = new Date().toLocaleTimeString();
+        document.getElementById('run-status').textContent = `Last run: ${timestamp}`;
+
+    } catch (error) {
+        console.error('Error running diagnostics:', error);
+        document.getElementById('run-status').textContent = `Error: ${error.message}`;
+        RTUPortal.showNotification('Error running diagnostics: ' + error.message, 'error');
+    } finally {
+        isRunning = false;
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">&#9654;</span> Run All Checks';
+    }
+}
+
+// Run single category check
+async function runCategoryCheck(category) {
+    if (isRunning) return;
+
+    isRunning = true;
+    document.getElementById(`${category}-checks`).innerHTML = renderLoadingState();
+    document.getElementById(`${category}-badge`).textContent = '...';
+    document.getElementById(`${category}-body`).classList.add('expanded');
+
+    try {
+        const response = await fetch(`/api/diagnostics/run?category=${category}`);
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        // Update just this category
+        renderCategoryResults(category, data.results);
+        updateCategoryBadge(category, data.results);
+
+    } catch (error) {
+        console.error(`Error running ${category} checks:`, error);
+        RTUPortal.showNotification(`Error: ${error.message}`, 'error');
+    } finally {
+        isRunning = false;
+    }
+}
+
+// Render loading state
+function renderLoadingState() {
+    return `
+        <div class="check-item loading">
+            <div class="check-status-icon running">${STATUS_ICONS.running}</div>
+            <div class="check-content">
+                <div class="check-name">Running checks...</div>
+            </div>
+        </div>
+    `;
+}
+
+// Render all results
+function renderResults(data) {
+    const { results, summary } = data;
+
+    // Update summary
+    const total = (summary.pass || 0) + (summary.warn || 0) + (summary.fail || 0);
+    document.getElementById('total-count').textContent = total;
+    document.getElementById('pass-count').textContent = summary.pass || 0;
+    document.getElementById('warn-count').textContent = summary.warn || 0;
+    document.getElementById('fail-count').textContent = summary.fail || 0;
+
+    // Group results by category
+    const categories = {
+        connectivity: results.filter(r => r.category === 'connectivity'),
+        system: results.filter(r => r.category === 'system'),
+        devices: results.filter(r => r.category === 'devices')
+    };
+
+    // Render each category
+    for (const [cat, catResults] of Object.entries(categories)) {
+        renderCategoryResults(cat, catResults);
+        updateCategoryBadge(cat, catResults);
+    }
+}
+
+// Render category results
+function renderCategoryResults(category, results) {
+    const container = document.getElementById(`${category}-checks`);
+
+    if (!results || results.length === 0) {
+        container.innerHTML = `
+            <div class="check-item">
+                <div class="check-status-icon skipped">${STATUS_ICONS.skipped}</div>
+                <div class="check-content">
+                    <div class="check-name">No checks in this category</div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = results.map(result => renderCheckItem(result)).join('');
+}
+
+// Render single check item
+function renderCheckItem(result) {
+    const statusClass = result.status;
+    const icon = STATUS_ICONS[result.status] || '?';
+
+    let actionsHtml = '';
+    if (result.actions && result.actions.length > 0) {
+        actionsHtml = `
+            <div class="check-actions">
+                <div class="check-actions-title">Recommended Actions:</div>
+                <ul>
+                    ${result.actions.map(a => `<li>${escapeHtml(a)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    let troubleshootBtn = '';
+    if (result.troubleshooting_tree) {
+        troubleshootBtn = `
+            <button class="troubleshoot-btn" onclick="openTroubleshootWizard('${result.troubleshooting_tree}')">
+                Troubleshoot
+            </button>
+        `;
+    }
+
+    return `
+        <div class="check-item">
+            <div class="check-status-icon ${statusClass}">${icon}</div>
+            <div class="check-content">
+                <div class="check-name">${escapeHtml(result.name)}</div>
+                <div class="check-message ${statusClass}">${escapeHtml(result.message)}</div>
+                ${actionsHtml}
+            </div>
+            <div class="check-meta">
+                ${result.duration_ms ? `<span class="check-duration">${Math.round(result.duration_ms)}ms</span>` : ''}
+                ${troubleshootBtn}
+            </div>
+        </div>
+    `;
+}
+
+// Update category badge
+function updateCategoryBadge(category, results) {
+    const badge = document.getElementById(`${category}-badge`);
+
+    const counts = { pass: 0, warn: 0, fail: 0, skipped: 0 };
+    results.forEach(r => {
+        if (counts[r.status] !== undefined) counts[r.status]++;
+    });
+
+    if (counts.fail > 0) {
+        badge.textContent = `${counts.fail} Failed`;
+        badge.className = 'status-badge fail';
+    } else if (counts.warn > 0) {
+        badge.textContent = `${counts.warn} Warnings`;
+        badge.className = 'status-badge warn';
+    } else if (counts.pass > 0) {
+        badge.textContent = `${counts.pass} Passed`;
+        badge.className = 'status-badge pass';
+    } else {
+        badge.textContent = 'Skipped';
+        badge.className = 'status-badge';
+    }
+}
+
+// Toggle category expansion
+function toggleCategory(category) {
+    const body = document.getElementById(`${category}-body`);
+    const expand = document.getElementById(`${category}-expand`);
+
+    body.classList.toggle('expanded');
+    expand.innerHTML = body.classList.contains('expanded') ? '&#9652;' : '&#9662;';
+}
+
+// Open troubleshooting wizard
+async function openTroubleshootWizard(treeId) {
+    try {
+        const response = await fetch(`/api/diagnostics/troubleshoot/${treeId}`);
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        currentTroubleshootTree = data.tree;
+        troubleshootHistory = [];
+
+        document.getElementById('troubleshoot-title').textContent = data.tree.title;
+        renderTroubleshootStep(0);
+        document.getElementById('troubleshoot-modal').style.display = 'flex';
+
+    } catch (error) {
+        console.error('Error loading troubleshooting tree:', error);
+        RTUPortal.showNotification('Error loading troubleshooting guide', 'error');
+    }
+}
+
+// Render troubleshooting step
+function renderTroubleshootStep(stepIndex) {
+    const body = document.getElementById('troubleshoot-body');
+    const backBtn = document.getElementById('troubleshoot-back');
+
+    if (!currentTroubleshootTree || !currentTroubleshootTree.steps) {
+        body.innerHTML = '<p>No troubleshooting steps available.</p>';
+        return;
+    }
+
+    const step = currentTroubleshootTree.steps[stepIndex];
+    if (!step) {
+        body.innerHTML = '<p>Step not found.</p>';
+        return;
+    }
+
+    // Show/hide back button
+    backBtn.style.display = troubleshootHistory.length > 0 ? 'inline-flex' : 'none';
+
+    // Build options HTML
+    let optionsHtml = '';
+    for (const [optionKey, optionValue] of Object.entries(step.options)) {
+        optionsHtml += `
+            <div class="step-option" onclick="selectTroubleshootOption(${stepIndex}, '${optionKey}')">
+                <strong>${optionKey.toUpperCase()}</strong>
+            </div>
+        `;
+    }
+
+    body.innerHTML = `
+        <div class="troubleshoot-step">
+            <div class="step-question">
+                <span class="step-number">${step.id}</span>
+                ${escapeHtml(step.question)}
+            </div>
+            ${step.help ? `<div class="step-help">${escapeHtml(step.help)}</div>` : ''}
+            <div class="step-options">
+                ${optionsHtml}
+            </div>
+        </div>
+    `;
+}
+
+// Select troubleshooting option
+function selectTroubleshootOption(stepIndex, optionKey) {
+    const step = currentTroubleshootTree.steps[stepIndex];
+    const option = step.options[optionKey];
+
+    troubleshootHistory.push(stepIndex);
+
+    if (option.next !== undefined) {
+        // Go to next step
+        const nextStepIndex = currentTroubleshootTree.steps.findIndex(s => s.id === option.next);
+        if (nextStepIndex !== -1) {
+            renderTroubleshootStep(nextStepIndex);
+        } else {
+            // Find by index if id doesn't match
+            renderTroubleshootStep(option.next - 1);
+        }
+    } else if (option.diagnosis) {
+        // Show diagnosis
+        renderDiagnosis(option);
+    }
+}
+
+// Render diagnosis result
+function renderDiagnosis(option) {
+    const body = document.getElementById('troubleshoot-body');
+    const backBtn = document.getElementById('troubleshoot-back');
+    backBtn.style.display = troubleshootHistory.length > 0 ? 'inline-flex' : 'none';
+
+    let actionsHtml = '';
+    if (option.actions && option.actions.length > 0) {
+        actionsHtml = `
+            <div class="diagnosis-actions">
+                <h4>Recommended Actions:</h4>
+                <ol>
+                    ${option.actions.map(a => `<li>${escapeHtml(a)}</li>`).join('')}
+                </ol>
+            </div>
+        `;
+    }
+
+    body.innerHTML = `
+        <div class="diagnosis-result">
+            <div class="diagnosis-title">&#128308; ${escapeHtml(option.diagnosis)}</div>
+            ${actionsHtml}
+        </div>
+    `;
+}
+
+// Go back in troubleshooting
+function troubleshootBack() {
+    if (troubleshootHistory.length > 0) {
+        troubleshootHistory.pop();
+        const prevStep = troubleshootHistory.length > 0
+            ? troubleshootHistory[troubleshootHistory.length - 1]
+            : 0;
+
+        // Find step by index
+        if (troubleshootHistory.length === 0) {
+            renderTroubleshootStep(0);
+        } else {
+            renderTroubleshootStep(prevStep);
+        }
+    }
+}
+
+// Close troubleshooting modal
+function closeTroubleshootModal() {
+    document.getElementById('troubleshoot-modal').style.display = 'none';
+    currentTroubleshootTree = null;
+    troubleshootHistory = [];
+}
+
+// Show list of troubleshooting guides
+async function showTroubleshootingList() {
+    try {
+        const response = await fetch('/api/diagnostics/troubleshoot');
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        const body = document.getElementById('troubleshoot-body');
+        document.getElementById('troubleshoot-title').textContent = 'Troubleshooting Guides';
+        document.getElementById('troubleshoot-back').style.display = 'none';
+
+        body.innerHTML = `
+            <p style="margin-bottom: 1rem;">Select a guide to help diagnose common issues:</p>
+            ${data.trees.map(tree => `
+                <div class="step-option" style="margin-bottom: 0.75rem; text-align: left;"
+                     onclick="openTroubleshootWizard('${tree.id}')">
+                    <strong>${escapeHtml(tree.title)}</strong>
+                    <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        ${escapeHtml(tree.description)}
+                    </div>
+                </div>
+            `).join('')}
+        `;
+
+        document.getElementById('troubleshoot-modal').style.display = 'flex';
+
+    } catch (error) {
+        console.error('Error loading troubleshooting list:', error);
+        RTUPortal.showNotification('Error loading troubleshooting guides', 'error');
+    }
+}
+
+// Export diagnostic report
+function exportReport() {
+    if (diagnosticResults.length === 0) {
+        RTUPortal.showNotification('No diagnostic results to export. Run checks first.', 'warning');
+        return;
+    }
+
+    let report = `DIAGNOSTIC REPORT\n`;
+    report += `Generated: ${new Date().toISOString()}\n`;
+    report += `${'='.repeat(60)}\n\n`;
+
+    // Summary
+    const summary = { pass: 0, warn: 0, fail: 0, skipped: 0 };
+    diagnosticResults.forEach(r => {
+        if (summary[r.status] !== undefined) summary[r.status]++;
+    });
+
+    report += `SUMMARY\n`;
+    report += `-`.repeat(40) + `\n`;
+    report += `Passed:   ${summary.pass}\n`;
+    report += `Warnings: ${summary.warn}\n`;
+    report += `Failed:   ${summary.fail}\n`;
+    report += `Skipped:  ${summary.skipped}\n\n`;
+
+    // Group by category
+    const categories = ['connectivity', 'system', 'devices'];
+    for (const cat of categories) {
+        const catResults = diagnosticResults.filter(r => r.category === cat);
+        if (catResults.length === 0) continue;
+
+        report += `${cat.toUpperCase()}\n`;
+        report += `-`.repeat(40) + `\n`;
+
+        for (const result of catResults) {
+            const status = result.status.toUpperCase().padEnd(8);
+            report += `[${status}] ${result.name}\n`;
+            report += `           ${result.message}\n`;
+
+            if (result.actions && result.actions.length > 0) {
+                report += `           Actions:\n`;
+                result.actions.forEach(a => {
+                    report += `             - ${a}\n`;
+                });
+            }
+            report += `\n`;
+        }
+    }
+
+    // Download
+    const blob = new Blob([report], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `diagnostic_report_${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    RTUPortal.showNotification('Report exported successfully', 'success');
+}
+
+// Refresh diagnostics
+function refreshDiagnostics() {
+    runAllDiagnostics();
+}
+
+// Escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Close modal on outside click
+document.getElementById('troubleshoot-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeTroubleshootModal();
+    }
+});
+
+// Auto-run diagnostics on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Run diagnostics automatically on page load
+    runAllDiagnostics();
+});
+</script>
+{% endblock %}

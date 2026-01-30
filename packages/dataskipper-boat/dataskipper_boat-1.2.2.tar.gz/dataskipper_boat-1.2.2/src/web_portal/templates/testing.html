@@ -1,0 +1,1176 @@
+{% extends "base.html" %}
+
+{% block title %}Testing Tools - RTU Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .status-badge {
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .status-badge.normal {
+        background: #4caf50;
+        color: white;
+    }
+
+    .status-badge.test-mode {
+        background: #ff9800;
+        color: white;
+    }
+
+    /* Tabbed Interface */
+    .tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid var(--border-color);
+        margin-bottom: 20px;
+    }
+
+    .tab-btn {
+        padding: 12px 24px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+        color: var(--text-primary);
+        background: var(--secondary-bg);
+    }
+
+    .tab-btn.active {
+        color: var(--accent-color);
+        border-bottom-color: var(--accent-color);
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    /* Test Mode Section */
+    .test-mode-section {
+        background: var(--card-bg);
+        border-radius: 8px;
+        padding: 20px;
+        border: 1px solid var(--border-color);
+        margin-bottom: 20px;
+    }
+
+    .test-mode-section.active-mode {
+        border-color: #ff9800;
+        background: linear-gradient(to right, rgba(255, 152, 0, 0.05), var(--card-bg));
+    }
+
+    .test-mode-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .test-mode-header h3 {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .test-mode-controls {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .timeout-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .timeout-control input {
+        width: 60px;
+        padding: 8px;
+        text-align: center;
+    }
+
+    /* Tool Cards */
+    .tool-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 20px;
+    }
+
+    .tool-card {
+        background: var(--card-bg);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+    }
+
+    .tool-card-header {
+        background: var(--secondary-bg);
+        padding: 15px 20px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .tool-card-header h3 {
+        margin: 0;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .tool-card-header p {
+        margin: 5px 0 0 0;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .tool-card-body {
+        padding: 20px;
+    }
+
+    /* Form Styles */
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 15px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .form-group.span-2 {
+        grid-column: span 2;
+    }
+
+    .form-group label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    input, select {
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--input-bg);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    input:focus, select:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+
+    /* Buttons */
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .btn-primary {
+        background: var(--accent-color);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        opacity: 0.9;
+    }
+
+    .btn-warning {
+        background: #ff9800;
+        color: white;
+    }
+
+    .btn-danger {
+        background: #f44336;
+        color: white;
+    }
+
+    .btn-secondary {
+        background: var(--secondary-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-group {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    /* Results Display */
+    .results-panel {
+        margin-top: 15px;
+        border-radius: 6px;
+        overflow: hidden;
+        display: none;
+    }
+
+    .results-panel.visible {
+        display: block;
+    }
+
+    .results-header {
+        padding: 10px 15px;
+        font-weight: 500;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .results-header.success {
+        background: #4caf50;
+        color: white;
+    }
+
+    .results-header.error {
+        background: #f44336;
+        color: white;
+    }
+
+    .results-header.warning {
+        background: #ff9800;
+        color: white;
+    }
+
+    .results-header.info {
+        background: var(--secondary-bg);
+        color: var(--text-primary);
+    }
+
+    .results-body {
+        padding: 15px;
+        background: var(--code-bg);
+        font-family: monospace;
+        font-size: 13px;
+        max-height: 350px;
+        overflow-y: auto;
+    }
+
+    /* Register Value Grid */
+    .register-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .register-cell {
+        background: var(--secondary-bg);
+        padding: 12px;
+        border-radius: 6px;
+        text-align: center;
+    }
+
+    .register-cell.group-start {
+        border-left: 3px solid var(--accent-color);
+    }
+
+    .register-cell .addr {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+    }
+
+    .register-cell .raw {
+        font-size: 16px;
+        font-weight: bold;
+        color: var(--text-primary);
+    }
+
+    .register-cell .hex {
+        font-size: 11px;
+        color: var(--accent-color);
+        margin-top: 2px;
+    }
+
+    .register-cell .converted {
+        font-size: 14px;
+        color: #4caf50;
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px dashed var(--border-color);
+    }
+
+    /* Converted-only display (for typed data) */
+    .register-grid.converted-only {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+
+    .register-cell.converted-cell {
+        background: linear-gradient(135deg, var(--secondary-bg), rgba(76, 175, 80, 0.1));
+        border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+
+    .register-cell .converted-value {
+        font-size: 20px;
+        font-weight: bold;
+        color: #4caf50;
+        margin-top: 4px;
+    }
+
+    /* Unit ID Scan Results */
+    .scan-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+    }
+
+    .unit-chip {
+        padding: 6px 14px;
+        border-radius: 16px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .unit-chip.found {
+        background: #4caf50;
+        color: white;
+    }
+
+    .unit-chip.not-found {
+        background: var(--secondary-bg);
+        color: var(--text-secondary);
+    }
+
+    /* Connection Type Toggle */
+    .connection-type-toggle {
+        display: flex;
+        gap: 0;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 15px;
+    }
+
+    .connection-type-toggle button {
+        flex: 1;
+        padding: 10px 20px;
+        border: none;
+        background: var(--secondary-bg);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .connection-type-toggle button.active {
+        background: var(--accent-color);
+        color: white;
+    }
+
+    .connection-params {
+        display: none;
+    }
+
+    .connection-params.active {
+        display: block;
+    }
+
+    /* Loading Spinner */
+    .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Troubleshooting Tips */
+    .troubleshooting-tips {
+        margin-top: 10px;
+        padding: 10px;
+        background: rgba(255, 152, 0, 0.1);
+        border-radius: 4px;
+    }
+
+    .troubleshooting-tips h4 {
+        margin: 0 0 8px 0;
+        font-size: 13px;
+        color: #ff9800;
+    }
+
+    .troubleshooting-tips ul {
+        margin: 0;
+        padding-left: 20px;
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+
+    /* Conversion Options */
+    .conversion-options {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .conversion-options .form-group {
+        margin: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Testing & Troubleshooting</h1>
+    <span id="mode-badge" class="status-badge normal">Normal Mode</span>
+</div>
+
+<!-- Test Mode Control Section -->
+<div id="test-mode-section" class="test-mode-section">
+    <div class="test-mode-header">
+        <h3>
+            <span>&#9889;</span>
+            Test Mode
+        </h3>
+        <div class="test-mode-controls">
+            <div class="timeout-control">
+                <label>Timeout:</label>
+                <input type="number" id="test-timeout" value="10" min="1" max="30">
+                <span>min</span>
+            </div>
+            <button id="enter-test-btn" class="btn btn-warning" onclick="enterTestMode()">
+                Enter Test Mode
+            </button>
+            <button id="exit-test-btn" class="btn btn-danger" onclick="exitTestMode()" style="display:none;">
+                Exit Test Mode
+            </button>
+        </div>
+    </div>
+    <p style="margin:0; color: var(--text-secondary); font-size: 14px;">
+        Test mode allows reading Modbus data without publishing to HTTP/MQTT. Safe for testing configurations.
+    </p>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+    <button class="tab-btn active" data-tab="device-discovery">Device Discovery</button>
+    <button class="tab-btn" data-tab="register-inspector">Register Inspector</button>
+    <button class="tab-btn" data-tab="connection-tester">Connection Tester</button>
+</div>
+
+<!-- Tab: Device Discovery -->
+<div id="device-discovery" class="tab-content active">
+    <div class="tool-grid">
+        <!-- Device Probe -->
+        <div class="tool-card">
+            <div class="tool-card-header">
+                <h3><span>&#128225;</span> Device Probe</h3>
+                <p>Check if a specific device responds at a unit ID</p>
+            </div>
+            <div class="tool-card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Connection</label>
+                        <select id="probe-connection" class="connection-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Unit ID</label>
+                        <input type="number" id="probe-unit-id" value="1" min="1" max="247">
+                    </div>
+                    <div class="form-group">
+                        <label>Test Address</label>
+                        <input type="number" id="probe-address" value="0" min="0" max="65535">
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="probeDevice()">
+                        <span>&#128269;</span> Probe Device
+                    </button>
+                </div>
+                <div id="probe-results" class="results-panel"></div>
+            </div>
+        </div>
+
+        <!-- Unit ID Scanner -->
+        <div class="tool-card">
+            <div class="tool-card-header">
+                <h3><span>&#128270;</span> Unit ID Scanner</h3>
+                <p>Scan a range of unit IDs to discover devices</p>
+            </div>
+            <div class="tool-card-body">
+                <div class="form-grid">
+                    <div class="form-group span-2">
+                        <label>Connection</label>
+                        <select id="scan-connection" class="connection-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Start ID</label>
+                        <input type="number" id="scan-start" value="1" min="1" max="247">
+                    </div>
+                    <div class="form-group">
+                        <label>End ID</label>
+                        <input type="number" id="scan-end" value="10" min="1" max="247">
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="scanUnitIds()">
+                        <span>&#128269;</span> Scan Range
+                    </button>
+                </div>
+                <div id="scan-results" class="results-panel"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab: Register Inspector -->
+<div id="register-inspector" class="tab-content">
+    <div class="tool-card" style="max-width: 800px;">
+        <div class="tool-card-header">
+            <h3><span>&#128203;</span> Live Register Inspector</h3>
+            <p>Read and interpret Modbus registers with data type conversion</p>
+        </div>
+        <div class="tool-card-body">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Connection</label>
+                    <select id="reg-connection" class="connection-select">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Unit ID</label>
+                    <input type="number" id="reg-unit-id" value="1" min="1" max="247">
+                </div>
+                <div class="form-group">
+                    <label>Start Address</label>
+                    <input type="number" id="reg-address" value="0" min="0" max="65535">
+                </div>
+                <div class="form-group">
+                    <label>Count</label>
+                    <input type="number" id="reg-count" value="10" min="1" max="125">
+                </div>
+                <div class="form-group">
+                    <label>Register Type</label>
+                    <select id="reg-function">
+                        <option value="3">Holding (FC 3)</option>
+                        <option value="4">Input (FC 4)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="conversion-options">
+                <div class="form-group">
+                    <label>Data Type</label>
+                    <select id="reg-datatype">
+                        <option value="raw">RAW (show raw registers)</option>
+                        <option value="uint16">UINT16 (1 reg)</option>
+                        <option value="int16">INT16 (1 reg)</option>
+                        <option value="uint32">UINT32 (2 regs)</option>
+                        <option value="int32">INT32 (2 regs)</option>
+                        <option value="float32">FLOAT32 (2 regs)</option>
+                        <option value="uint64">UINT64 (4 regs)</option>
+                        <option value="int64">INT64 (4 regs)</option>
+                        <option value="float64">FLOAT64 (4 regs)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Byte Order</label>
+                    <select id="reg-byteorder">
+                        <option value="big">Big Endian (AB CD)</option>
+                        <option value="little">Little Endian (CD AB)</option>
+                        <option value="big_swap">Big Swap (BA DC)</option>
+                        <option value="little_swap">Little Swap (DC BA)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Scale</label>
+                    <input type="number" id="reg-scale" value="1" step="0.001">
+                </div>
+                <div class="form-group">
+                    <label>Offset</label>
+                    <input type="number" id="reg-offset" value="0" step="0.001">
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="readRegisters()">
+                    <span>&#128203;</span> Read Registers
+                </button>
+                <button class="btn btn-secondary" onclick="clearRegisterResults()">
+                    Clear
+                </button>
+            </div>
+
+            <div id="register-results" class="results-panel"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab: Connection Tester -->
+<div id="connection-tester" class="tab-content">
+    <div class="tool-card" style="max-width: 600px;">
+        <div class="tool-card-header">
+            <h3><span>&#128268;</span> Temporary Connection Tester</h3>
+            <p>Test a new Modbus connection without modifying your configuration</p>
+        </div>
+        <div class="tool-card-body">
+            <div class="connection-type-toggle">
+                <button class="active" data-type="tcp" onclick="selectConnectionType('tcp')">TCP/IP</button>
+                <button data-type="serial" onclick="selectConnectionType('serial')">Serial (RS485)</button>
+            </div>
+
+            <!-- TCP Parameters -->
+            <div id="tcp-params" class="connection-params active">
+                <div class="form-grid">
+                    <div class="form-group span-2">
+                        <label>Host Address</label>
+                        <input type="text" id="tcp-host" placeholder="192.168.1.100">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="tcp-port" value="502">
+                    </div>
+                    <div class="form-group">
+                        <label>Timeout (s)</label>
+                        <input type="number" id="tcp-timeout" value="3" min="1" max="30">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Serial Parameters -->
+            <div id="serial-params" class="connection-params">
+                <div class="form-grid">
+                    <div class="form-group span-2">
+                        <label>Serial Port</label>
+                        <select id="serial-port">
+                            <option value="">Scanning ports...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Baud Rate</label>
+                        <select id="serial-baudrate">
+                            <option value="9600">9600</option>
+                            <option value="19200">19200</option>
+                            <option value="38400">38400</option>
+                            <option value="57600">57600</option>
+                            <option value="115200">115200</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Parity</label>
+                        <select id="serial-parity">
+                            <option value="N">None</option>
+                            <option value="E">Even</option>
+                            <option value="O">Odd</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Data Bits</label>
+                        <select id="serial-bytesize">
+                            <option value="8">8</option>
+                            <option value="7">7</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Stop Bits</label>
+                        <select id="serial-stopbits">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Test Unit ID</label>
+                        <input type="number" id="temp-unit-id" value="1" min="1" max="247">
+                    </div>
+                    <div class="form-group">
+                        <label>Test Address</label>
+                        <input type="number" id="temp-address" value="0" min="0" max="65535">
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="testTemporaryConnection()">
+                    <span>&#128268;</span> Test Connection
+                </button>
+            </div>
+
+            <div id="connection-results" class="results-panel"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let selectedConnectionType = 'tcp';
+
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            this.classList.add('active');
+            document.getElementById(this.dataset.tab).classList.add('active');
+        });
+    });
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        loadConnections();
+        loadSerialPorts();
+        checkTestModeStatus();
+        setInterval(checkTestModeStatus, 5000);
+    });
+
+    // Listen for global test mode changes
+    window.addEventListener('testModeChanged', function(e) {
+        updateTestModeUI(e.detail);
+    });
+
+    async function loadConnections() {
+        try {
+            const response = await fetch('/api/test-mode/connections');
+            const data = await response.json();
+            const connections = data.connections || [];
+
+            document.querySelectorAll('.connection-select').forEach(select => {
+                select.innerHTML = connections.length > 0
+                    ? connections.map(c => {
+                        const info = c.type === 'tcp' ? `${c.host}:${c.port}` : c.port;
+                        return `<option value="${c.id}">${c.id} (${c.type} - ${info})</option>`;
+                    }).join('')
+                    : '<option value="">No connections available</option>';
+            });
+        } catch (error) {
+            console.error('Error loading connections:', error);
+        }
+    }
+
+    async function loadSerialPorts() {
+        try {
+            const response = await fetch('/api/test-mode/serial-ports');
+            const data = await response.json();
+            const ports = data.ports || [];
+
+            const select = document.getElementById('serial-port');
+            if (ports.length > 0) {
+                select.innerHTML = ports.map(p =>
+                    `<option value="${p.device}">${p.device} - ${p.description || 'Unknown'}</option>`
+                ).join('');
+            } else {
+                select.innerHTML = '<option value="">No serial ports found</option>';
+            }
+        } catch (error) {
+            console.error('Error loading serial ports:', error);
+        }
+    }
+
+    async function checkTestModeStatus() {
+        try {
+            const response = await fetch('/api/test-mode/status');
+            const data = await response.json();
+            updateTestModeUI(data);
+        } catch (error) {
+            console.error('Error checking test mode status:', error);
+        }
+    }
+
+    function updateTestModeUI(data) {
+        const section = document.getElementById('test-mode-section');
+        const badge = document.getElementById('mode-badge');
+        const enterBtn = document.getElementById('enter-test-btn');
+        const exitBtn = document.getElementById('exit-test-btn');
+
+        if (data.status === 'active' || data.status === 'expiring') {
+            section.classList.add('active-mode');
+            badge.textContent = 'Test Mode';
+            badge.className = 'status-badge test-mode';
+            enterBtn.style.display = 'none';
+            exitBtn.style.display = 'inline-flex';
+        } else {
+            section.classList.remove('active-mode');
+            badge.textContent = 'Normal Mode';
+            badge.className = 'status-badge normal';
+            enterBtn.style.display = 'inline-flex';
+            exitBtn.style.display = 'none';
+        }
+    }
+
+    async function enterTestMode() {
+        const timeout = document.getElementById('test-timeout').value;
+        try {
+            const response = await fetch(`/api/test-mode/enter?timeout_minutes=${timeout}&disable_http=true&disable_mqtt=true&disable_alerts=true`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (!data.success) {
+                alert('Failed to enter test mode: ' + data.error);
+            }
+            checkTestModeStatus();
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function exitTestMode() {
+        try {
+            const response = await fetch('/api/test-mode/exit', { method: 'POST' });
+            const data = await response.json();
+            checkTestModeStatus();
+            if (data.message) {
+                showNotification(data.message, 'info');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    function selectConnectionType(type) {
+        selectedConnectionType = type;
+        document.querySelectorAll('.connection-type-toggle button').forEach(b => {
+            b.classList.toggle('active', b.dataset.type === type);
+        });
+        document.querySelectorAll('.connection-params').forEach(p => p.classList.remove('active'));
+        document.getElementById(type + '-params').classList.add('active');
+    }
+
+    function showResults(elementId, status, title, content, duration) {
+        const panel = document.getElementById(elementId);
+        panel.classList.add('visible');
+
+        let html = `<div class="results-header ${status}">`;
+        html += `<span>${title}</span>`;
+        if (duration) {
+            html += `<span>${duration.toFixed(1)} ms</span>`;
+        }
+        html += '</div>';
+        html += `<div class="results-body">${content}</div>`;
+
+        panel.innerHTML = html;
+    }
+
+    function showLoading(elementId, message) {
+        const panel = document.getElementById(elementId);
+        panel.classList.add('visible');
+        panel.innerHTML = `
+            <div class="results-header info">
+                <span><span class="spinner"></span> ${message}</span>
+            </div>
+        `;
+    }
+
+    function requireTestMode(toolName) {
+        if (!window.testModeActive) {
+            alert(`${toolName} requires Test Mode to be active.\n\nPlease enter Test Mode first to use this tool safely.`);
+            return false;
+        }
+        return true;
+    }
+
+    async function probeDevice() {
+        if (!requireTestMode('Device Probe')) return;
+
+        const connection = document.getElementById('probe-connection').value;
+        const unitId = document.getElementById('probe-unit-id').value;
+        const address = document.getElementById('probe-address').value;
+
+        showLoading('probe-results', 'Probing device...');
+
+        try {
+            const response = await fetch(`/api/test-mode/probe-device?connection_id=${connection}&unit_id=${unitId}&test_address=${address}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                let content = `<strong>Device Found!</strong>\n\n`;
+                content += `Unit ID: ${data.unit_id}\n`;
+                content += `Connection: ${data.connection_id}\n`;
+                content += `Register Type: ${data.register_type}\n`;
+                content += `Values: ${JSON.stringify(data.values)}`;
+                showResults('probe-results', 'success', 'Device Responds', content, data.duration_ms);
+            } else {
+                let content = `<strong>No Response</strong>\n\n`;
+                content += `Unit ID: ${data.unit_id}\n`;
+                content += `Holding Error: ${data.holding_error || 'N/A'}\n`;
+                content += `Input Error: ${data.input_error || 'N/A'}`;
+
+                if (data.troubleshooting) {
+                    content += `\n\n<div class="troubleshooting-tips">`;
+                    content += `<h4>Troubleshooting Tips</h4><ul>`;
+                    data.troubleshooting.forEach(tip => {
+                        content += `<li>${tip}</li>`;
+                    });
+                    content += `</ul></div>`;
+                }
+
+                showResults('probe-results', 'error', 'Device Not Found', content, data.duration_ms);
+            }
+        } catch (error) {
+            showResults('probe-results', 'error', 'Error', error.message);
+        }
+    }
+
+    async function scanUnitIds() {
+        if (!requireTestMode('Unit ID Scanner')) return;
+
+        const connection = document.getElementById('scan-connection').value;
+        const startId = document.getElementById('scan-start').value;
+        const endId = document.getElementById('scan-end').value;
+
+        showLoading('scan-results', `Scanning unit IDs ${startId}-${endId}...`);
+
+        try {
+            const response = await fetch(`/api/test-mode/scan-unit-ids?connection_id=${connection}&start_id=${startId}&end_id=${endId}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                showResults('scan-results', 'error', 'Scan Failed', data.error);
+                return;
+            }
+
+            let content = `<strong>Scan Complete</strong>\n\n`;
+            content += `Range: ${data.scan_range}\n`;
+            content += `Found: ${data.total_found} device(s)\n`;
+
+            if (data.responding_units.length > 0) {
+                content += `\nResponding Unit IDs: ${data.responding_units.join(', ')}\n`;
+            }
+
+            content += '\n<div class="scan-grid">';
+            data.results.forEach(r => {
+                const chipClass = r.success ? 'found' : 'not-found';
+                content += `<span class="unit-chip ${chipClass}">${r.unit_id}</span>`;
+            });
+            content += '</div>';
+
+            const status = data.total_found > 0 ? 'success' : 'warning';
+            showResults('scan-results', status, `Found ${data.total_found} Device(s)`, content);
+        } catch (error) {
+            showResults('scan-results', 'error', 'Error', error.message);
+        }
+    }
+
+    async function readRegisters() {
+        if (!requireTestMode('Register Inspector')) return;
+
+        const connection = document.getElementById('reg-connection').value;
+        const unitId = document.getElementById('reg-unit-id').value;
+        const address = document.getElementById('reg-address').value;
+        const count = document.getElementById('reg-count').value;
+        const functionCode = document.getElementById('reg-function').value;
+        const dataType = document.getElementById('reg-datatype').value;
+        const byteOrder = document.getElementById('reg-byteorder').value;
+        const scale = document.getElementById('reg-scale').value;
+        const offset = document.getElementById('reg-offset').value;
+
+        showLoading('register-results', 'Reading registers...');
+
+        try {
+            const params = new URLSearchParams({
+                connection_id: connection,
+                unit_id: unitId,
+                start_address: address,
+                count: count,
+                function_code: functionCode,
+                data_type: dataType,
+                byte_order: byteOrder,
+                scale: scale,
+                offset: offset
+            });
+
+            const response = await fetch(`/api/test-mode/read-registers?${params}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const isRawMode = dataType === 'raw';
+                let content = `<strong>Read Successful</strong>\n`;
+                content += `Unit ${data.unit_id}, Address ${data.register_address}, Count ${data.register_count}\n`;
+
+                if (isRawMode) {
+                    // RAW mode: show all register details
+                    content += `Mode: RAW (showing raw register values)\n\n`;
+                    content += '<div class="register-grid">';
+                    data.values.forEach((val, i) => {
+                        content += `<div class="register-cell">`;
+                        content += `<div class="addr">${parseInt(address) + i}</div>`;
+                        content += `<div class="raw">${val}</div>`;
+                        content += `<div class="hex">0x${val.toString(16).toUpperCase().padStart(4, '0')}</div>`;
+                        content += '</div>';
+                    });
+                    content += '</div>';
+                } else {
+                    // Typed mode: show only the converted value(s)
+                    content += `Data Type: ${data.data_type.toUpperCase()}, Byte Order: ${data.byte_order}\n\n`;
+
+                    if (data.converted_values) {
+                        // Extract just the converted values (at group starts)
+                        const convertedValues = data.converted_values
+                            .filter(reg => reg.is_group_start && reg.converted !== undefined)
+                            .map(reg => {
+                                const displayVal = typeof reg.converted === 'number' && !Number.isInteger(reg.converted)
+                                    ? reg.converted.toFixed(6)
+                                    : reg.converted;
+                                return { address: reg.address, value: displayVal };
+                            });
+
+                        content += '<div class="register-grid converted-only">';
+                        convertedValues.forEach(item => {
+                            content += `<div class="register-cell converted-cell">`;
+                            content += `<div class="addr">${item.address}</div>`;
+                            content += `<div class="converted-value">${item.value}</div>`;
+                            content += '</div>';
+                        });
+                        content += '</div>';
+                    }
+                }
+
+                showResults('register-results', 'success', 'Read Complete', content, data.duration_ms);
+            } else {
+                showResults('register-results', 'error', 'Read Failed', data.error, data.duration_ms);
+            }
+        } catch (error) {
+            showResults('register-results', 'error', 'Error', error.message);
+        }
+    }
+
+    function clearRegisterResults() {
+        const panel = document.getElementById('register-results');
+        panel.classList.remove('visible');
+        panel.innerHTML = '';
+    }
+
+    async function testTemporaryConnection() {
+        if (!requireTestMode('Connection Tester')) return;
+
+        const params = {
+            connection_type: selectedConnectionType,
+            unit_id: document.getElementById('temp-unit-id').value,
+            test_address: document.getElementById('temp-address').value
+        };
+
+        if (selectedConnectionType === 'tcp') {
+            params.host = document.getElementById('tcp-host').value;
+            params.port = document.getElementById('tcp-port').value;
+            params.timeout = document.getElementById('tcp-timeout').value;
+        } else {
+            params.serial_port = document.getElementById('serial-port').value;
+            params.baudrate = document.getElementById('serial-baudrate').value;
+            params.parity = document.getElementById('serial-parity').value;
+            params.bytesize = document.getElementById('serial-bytesize').value;
+            params.stopbits = document.getElementById('serial-stopbits').value;
+        }
+
+        showLoading('connection-results', 'Testing connection...');
+
+        try {
+            const queryParams = new URLSearchParams(params);
+            const response = await fetch(`/api/test-mode/test-connection?${queryParams}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                let content = `<strong>${data.message}</strong>\n\n`;
+                content += `Connection Type: ${data.connection_type.toUpperCase()}\n`;
+                if (data.host) content += `Host: ${data.host}:${data.port}\n`;
+                if (data.serial_port) {
+                    content += `Port: ${data.serial_port}\n`;
+                    content += `Settings: ${data.baudrate} ${data.parity}\n`;
+                }
+                content += `Unit ID: ${data.unit_id}\n`;
+                content += `Test Address: ${data.test_address}\n`;
+                content += `Test Value: ${data.test_value}\n`;
+                content += `\nConnect Time: ${data.connect_ms?.toFixed(1) || 'N/A'} ms\n`;
+                content += `Read Time: ${data.read_ms?.toFixed(1) || 'N/A'} ms`;
+
+                showResults('connection-results', 'success', 'Connection Successful', content, data.duration_ms);
+            } else {
+                let content = `<strong>Connection Failed</strong>\n\n`;
+                content += `Error: ${data.error}\n`;
+                if (data.connected) {
+                    content += `\nNote: TCP/Serial connection was established but device did not respond.`;
+                }
+
+                if (data.troubleshooting) {
+                    content += `\n\n<div class="troubleshooting-tips">`;
+                    content += `<h4>Troubleshooting Tips</h4><ul>`;
+                    data.troubleshooting.forEach(tip => {
+                        content += `<li>${tip}</li>`;
+                    });
+                    content += `</ul></div>`;
+                }
+
+                showResults('connection-results', 'error', 'Connection Failed', content, data.duration_ms);
+            }
+        } catch (error) {
+            showResults('connection-results', 'error', 'Error', error.message);
+        }
+    }
+
+    function showNotification(message, type) {
+        // Simple notification - could be enhanced with toast UI
+        console.log(`[${type}] ${message}`);
+    }
+</script>
+{% endblock %}

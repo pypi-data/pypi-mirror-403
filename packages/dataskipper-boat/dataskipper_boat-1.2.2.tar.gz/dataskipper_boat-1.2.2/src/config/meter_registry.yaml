@@ -1,0 +1,1200 @@
+# Meter Registry Configuration
+# This file contains register mappings for all supported meter types.
+# When adding a new meter to slave_config, simply specify the meter_model
+# and the system will automatically use the correct register mappings.
+#
+# Supported meter categories:
+#   - electrical_distribution: For distribution panel meters (simpler schema)
+#   - electrical_substation: For substation meters (includes harmonics, THD, etc.)
+#   - water: For water flow meters
+#
+# To add a new meter type:
+#   1. Add a new entry under the appropriate category
+#   2. Specify manufacturer, model, and default settings
+#   3. Define all available registers with their addresses and metadata
+#   4. If a register is not available for a meter, simply omit it
+
+version: "1.0"
+
+# =============================================================================
+# ELECTRICAL METERS - DISTRIBUTION
+# =============================================================================
+# These meters are used in distribution panels and map to the distribution
+# database schema (simpler, fewer metrics)
+
+electrical_distribution:
+
+  # -------------------------------------------------------------------------
+  # L&T WL4400 Series
+  # -------------------------------------------------------------------------
+  lt_wl4400:
+    manufacturer: "L&T"
+    model: "WL4400"
+    description: "L&T Multifunction Meter WL4400 Series"
+    defaults:
+      endianness: "little"
+      data_type: "float"
+      register_type: "holding"
+      register_count: 2
+    # Power values are in W/VA/VAR, need multiplication factor 0.001 for kW
+    power_multiplication_factor: 0.001
+    # Energy values are in Wh/VAh, need multiplication factor 0.001 for kWh
+    energy_multiplication_factor: 0.001
+
+    registers:
+      # Line-to-Line Voltages
+      voltage_ry:
+        address: 134
+        unit: "V"
+        label: "Voltage R-Y (L1-L2)"
+      voltage_yb:
+        address: 136
+        unit: "V"
+        label: "Voltage Y-B (L2-L3)"
+      voltage_br:
+        address: 138
+        unit: "V"
+        label: "Voltage B-R (L3-L1)"
+      avg_voltage_ll:
+        address: 132
+        unit: "V"
+        label: "Average Line-to-Line Voltage"
+
+      # Line-to-Neutral Voltages (if needed)
+      voltage_rn:
+        address: 142
+        unit: "V"
+        label: "Voltage R-N (L1-N)"
+      voltage_yn:
+        address: 144
+        unit: "V"
+        label: "Voltage Y-N (L2-N)"
+      voltage_bn:
+        address: 146
+        unit: "V"
+        label: "Voltage B-N (L3-N)"
+      avg_voltage_ln:
+        address: 140
+        unit: "V"
+        label: "Average Line-to-Neutral Voltage"
+
+      # Currents
+      current_r:
+        address: 150
+        unit: "A"
+        label: "Current Phase R (L1)"
+      current_y:
+        address: 152
+        unit: "A"
+        label: "Current Phase Y (L2)"
+      current_b:
+        address: 154
+        unit: "A"
+        label: "Current Phase B (L3)"
+      current_n:
+        address: 148
+        unit: "A"
+        label: "Neutral Current"
+      # Note: avg_current not available on L&T WL4400
+
+      # Active Power (in Watts, multiply by 0.001 for kW)
+      active_power_r:
+        address: 102
+        unit: "W"
+        label: "Active Power Phase R"
+        multiplication_factor: 0.001
+      active_power_y:
+        address: 104
+        unit: "W"
+        label: "Active Power Phase Y"
+        multiplication_factor: 0.001
+      active_power_b:
+        address: 106
+        unit: "W"
+        label: "Active Power Phase B"
+        multiplication_factor: 0.001
+      total_active_power:
+        address: 100
+        unit: "W"
+        label: "Total Active Power"
+        multiplication_factor: 0.001
+
+      # Apparent Power (in VA, multiply by 0.001 for kVA)
+      apparent_power_r:
+        address: 126
+        unit: "VA"
+        label: "Apparent Power Phase R"
+        multiplication_factor: 0.001
+      apparent_power_y:
+        address: 128
+        unit: "VA"
+        label: "Apparent Power Phase Y"
+        multiplication_factor: 0.001
+      apparent_power_b:
+        address: 130
+        unit: "VA"
+        label: "Apparent Power Phase B"
+        multiplication_factor: 0.001
+      total_apparent_power:
+        address: 124
+        unit: "VA"
+        label: "Total Apparent Power"
+        multiplication_factor: 0.001
+
+      # Power Factor
+      power_factor_r:
+        address: 118
+        unit: "-"
+        label: "Power Factor Phase R"
+      power_factor_y:
+        address: 120
+        unit: "-"
+        label: "Power Factor Phase Y"
+      power_factor_b:
+        address: 122
+        unit: "-"
+        label: "Power Factor Phase B"
+      avg_power_factor:
+        address: 116
+        unit: "-"
+        label: "Average Power Factor"
+
+      # Frequency
+      frequency:
+        address: 156
+        unit: "Hz"
+        label: "Frequency"
+
+      # Energy (in Wh/VAh, multiply by 0.001 for kWh/kVAh)
+      total_active_energy:
+        address: 158
+        unit: "Wh"
+        label: "Total Active Energy Import"
+        multiplication_factor: 0.001
+      apparent_energy_import:
+        address: 160
+        unit: "VAh"
+        label: "Apparent Energy Import"
+        multiplication_factor: 0.001
+
+  # -------------------------------------------------------------------------
+  # L&T Single Phase Meter (Faculty Housing)
+  # -------------------------------------------------------------------------
+  lt_single_phase:
+    manufacturer: "L&T"
+    model: "Single Phase Meter"
+    description: "L&T Single Phase Energy Meter (used in Faculty Housing)"
+    defaults:
+      endianness: "big"
+      data_type: "int32"
+      register_type: "input"
+      register_count: 2
+
+    registers:
+      # Voltage (Phase R only - single phase)
+      voltage_rn:
+        address: 0
+        unit: "V"
+        label: "Voltage Phase R"
+        multiplication_factor: 0.01
+
+      # Current
+      current_r:
+        address: 6
+        unit: "A"
+        label: "Current Phase R"
+        multiplication_factor: 0.001
+
+      # Power
+      total_active_power:
+        address: 16
+        unit: "kW"
+        label: "Active Power"
+        multiplication_factor: 0.0001
+
+      # Power Factor
+      avg_power_factor:
+        address: 22
+        unit: "-"
+        label: "Power Factor"
+        multiplication_factor: 0.001
+
+      # Frequency
+      frequency:
+        address: 24
+        unit: "Hz"
+        label: "Frequency"
+        multiplication_factor: 0.01
+
+      # Energy
+      total_active_energy:
+        address: 26
+        unit: "kWh"
+        label: "Active Energy"
+        multiplication_factor: 0.01
+
+  # -------------------------------------------------------------------------
+  # Secure Elite 500 Series
+  # -------------------------------------------------------------------------
+  secure_elite_500:
+    manufacturer: "Secure"
+    model: "Elite 500"
+    description: "Secure Elite 500 Multifunction Meter"
+    defaults:
+      endianness: "little"
+      data_type: "float"
+      register_type: "holding"
+      register_count: 2
+
+    registers:
+      # Line-to-Line Voltages
+      voltage_ry:
+        address: 107
+        unit: "V"
+        label: "Voltage R-Y (L1-L2)"
+      voltage_yb:
+        address: 109
+        unit: "V"
+        label: "Voltage Y-B (L2-L3)"
+      voltage_br:
+        address: 111
+        unit: "V"
+        label: "Voltage B-R (L3-L1)"
+      avg_voltage_ll:
+        address: 195
+        unit: "V"
+        label: "Average Line-to-Line Voltage"
+
+      # Line-to-Neutral Voltages
+      voltage_rn:
+        address: 99
+        unit: "V"
+        label: "Voltage R-N (L1-N)"
+      voltage_yn:
+        address: 101
+        unit: "V"
+        label: "Voltage Y-N (L2-N)"
+      voltage_bn:
+        address: 103
+        unit: "V"
+        label: "Voltage B-N (L3-N)"
+      avg_voltage_ln:
+        address: 105
+        unit: "V"
+        label: "Average Line-to-Neutral Voltage"
+
+      # Currents
+      current_r:
+        address: 113
+        unit: "A"
+        label: "Current Phase R (L1)"
+      current_y:
+        address: 115
+        unit: "A"
+        label: "Current Phase Y (L2)"
+      current_b:
+        address: 117
+        unit: "A"
+        label: "Current Phase B (L3)"
+      current_n:
+        address: 119
+        unit: "A"
+        label: "Neutral Current"
+      avg_current:
+        address: 197
+        unit: "A"
+        label: "Average Current"
+
+      # Active Power (already in kW)
+      active_power_r:
+        address: 141
+        unit: "kW"
+        label: "Active Power Phase R"
+      active_power_y:
+        address: 143
+        unit: "kW"
+        label: "Active Power Phase Y"
+      active_power_b:
+        address: 145
+        unit: "kW"
+        label: "Active Power Phase B"
+      total_active_power:
+        address: 147
+        unit: "kW"
+        label: "Total Active Power"
+
+      # Reactive Power
+      total_reactive_power:
+        address: 155
+        unit: "kVAR"
+        label: "Total Reactive Power"
+
+      # Apparent Power
+      apparent_power_r:
+        address: 157
+        unit: "kVA"
+        label: "Apparent Power Phase R"
+      apparent_power_y:
+        address: 159
+        unit: "kVA"
+        label: "Apparent Power Phase Y"
+      apparent_power_b:
+        address: 161
+        unit: "kVA"
+        label: "Apparent Power Phase B"
+      total_apparent_power:
+        address: 163
+        unit: "kVA"
+        label: "Total Apparent Power"
+
+      # Power Factor
+      power_factor_r:
+        address: 133
+        unit: "-"
+        label: "Power Factor Phase R"
+      power_factor_y:
+        address: 135
+        unit: "-"
+        label: "Power Factor Phase Y"
+      power_factor_b:
+        address: 137
+        unit: "-"
+        label: "Power Factor Phase B"
+      avg_power_factor:
+        address: 139
+        unit: "-"
+        label: "Average Power Factor"
+
+      # Frequency
+      frequency:
+        address: 171
+        unit: "Hz"
+        label: "Frequency"
+
+      # Energy
+      total_active_energy:
+        address: 199
+        unit: "kWh"
+        label: "Active Energy Import"
+      active_energy_export:
+        address: 201
+        unit: "kWh"
+        label: "Active Energy Export"
+      apparent_energy_import:
+        address: 215
+        unit: "kVAh"
+        label: "Apparent Energy Import"
+      apparent_energy_export:
+        address: 217
+        unit: "kVAh"
+        label: "Apparent Energy Export"
+      reactive_energy_import:
+        address: 219
+        unit: "kVARh"
+        label: "Reactive Energy Import"
+      reactive_energy_export:
+        address: 221
+        unit: "kVARh"
+        label: "Reactive Energy Export"
+
+      # THD (Total Harmonic Distortion)
+      thd_voltage_r:
+        address: 177
+        unit: "%"
+        label: "THD Voltage Phase R"
+      thd_voltage_y:
+        address: 179
+        unit: "%"
+        label: "THD Voltage Phase Y"
+      thd_voltage_b:
+        address: 181
+        unit: "%"
+        label: "THD Voltage Phase B"
+      thd_current_r:
+        address: 183
+        unit: "%"
+        label: "THD Current Phase R"
+      thd_current_y:
+        address: 185
+        unit: "%"
+        label: "THD Current Phase Y"
+      thd_current_b:
+        address: 187
+        unit: "%"
+        label: "THD Current Phase B"
+
+
+# =============================================================================
+# ELECTRICAL METERS - SUBSTATION
+# =============================================================================
+# These meters are used in substations and map to the substation database
+# schema (includes harmonics, THD, and advanced metrics)
+
+electrical_substation:
+
+  # -------------------------------------------------------------------------
+  # Schneider EM6400NG+
+  # -------------------------------------------------------------------------
+  schneider_em6400ng:
+    manufacturer: "Schneider Electric"
+    model: "EM6400NG+"
+    description: "Schneider Electric PowerLogic EM6400NG+ Multifunction Meter"
+    defaults:
+      endianness: "big"
+      data_type: "float"
+      register_type: "holding"
+      register_count: 2
+
+    registers:
+      # Line-to-Line Voltages
+      voltage_ry:
+        address: 3019
+        unit: "V"
+        label: "Voltage R-Y (L1-L2)"
+      voltage_yb:
+        address: 3021
+        unit: "V"
+        label: "Voltage Y-B (L2-L3)"
+      voltage_br:
+        address: 3023
+        unit: "V"
+        label: "Voltage B-R (L3-L1)"
+      avg_voltage_ll:
+        address: 3025
+        unit: "V"
+        label: "Average Line-to-Line Voltage"
+
+      # Line-to-Neutral Voltages
+      voltage_rn:
+        address: 3027
+        unit: "V"
+        label: "Voltage R-N (L1-N)"
+      voltage_yn:
+        address: 3029
+        unit: "V"
+        label: "Voltage Y-N (L2-N)"
+      voltage_bn:
+        address: 3031
+        unit: "V"
+        label: "Voltage B-N (L3-N)"
+      avg_voltage_ln:
+        address: 3035
+        unit: "V"
+        label: "Average Line-to-Neutral Voltage"
+
+      # Currents
+      current_r:
+        address: 2999
+        unit: "A"
+        label: "Current Phase R (L1)"
+      current_y:
+        address: 3001
+        unit: "A"
+        label: "Current Phase Y (L2)"
+      current_b:
+        address: 3003
+        unit: "A"
+        label: "Current Phase B (L3)"
+      current_n:
+        address: 3005
+        unit: "A"
+        label: "Neutral Current"
+      avg_current:
+        address: 3009
+        unit: "A"
+        label: "Average Current"
+
+      # Active Power (in kW)
+      active_power_r:
+        address: 3053
+        unit: "kW"
+        label: "Active Power Phase R"
+      active_power_y:
+        address: 3055
+        unit: "kW"
+        label: "Active Power Phase Y"
+      active_power_b:
+        address: 3057
+        unit: "kW"
+        label: "Active Power Phase B"
+      total_active_power:
+        address: 3059
+        unit: "kW"
+        label: "Total Active Power"
+
+      # Reactive Power
+      total_reactive_power:
+        address: 3067
+        unit: "kVAR"
+        label: "Total Reactive Power"
+
+      # Apparent Power
+      apparent_power_r:
+        address: 3069
+        unit: "kVA"
+        label: "Apparent Power Phase R"
+      apparent_power_y:
+        address: 3071
+        unit: "kVA"
+        label: "Apparent Power Phase Y"
+      apparent_power_b:
+        address: 3073
+        unit: "kVA"
+        label: "Apparent Power Phase B"
+      total_apparent_power:
+        address: 3075
+        unit: "kVA"
+        label: "Total Apparent Power"
+
+      # Power Factor (4-Quadrant)
+      power_factor_r:
+        address: 3077
+        unit: "-"
+        label: "Power Factor Phase R"
+        data_type: "4q_fp_pf"
+      power_factor_y:
+        address: 3079
+        unit: "-"
+        label: "Power Factor Phase Y"
+        data_type: "4q_fp_pf"
+      power_factor_b:
+        address: 3081
+        unit: "-"
+        label: "Power Factor Phase B"
+        data_type: "4q_fp_pf"
+      avg_power_factor:
+        address: 3083
+        unit: "-"
+        label: "Average Power Factor"
+        data_type: "4q_fp_pf"
+
+      # Frequency
+      frequency:
+        address: 3109
+        unit: "Hz"
+        label: "Frequency"
+      frequency_hs:
+        address: 21015
+        unit: "Hz"
+        label: "Frequency (High Speed)"
+
+      # Energy
+      total_active_energy:
+        address: 2699
+        unit: "kWh"
+        label: "Active Energy Import"
+      active_energy_export:
+        address: 2701
+        unit: "kWh"
+        label: "Active Energy Export"
+      reactive_energy_import:
+        address: 2707
+        unit: "kVARh"
+        label: "Reactive Energy Import"
+      reactive_energy_export:
+        address: 2709
+        unit: "kVARh"
+        label: "Reactive Energy Export"
+      apparent_energy_import:
+        address: 2715
+        unit: "kVAh"
+        label: "Apparent Energy Import"
+      apparent_energy_export:
+        address: 2717
+        unit: "kVAh"
+        label: "Apparent Energy Export"
+
+      # Per-phase Energy
+      active_energy_import_l1:
+        address: 2811
+        unit: "kWh"
+        label: "Active Energy Import L1"
+      active_energy_import_l2:
+        address: 2813
+        unit: "kWh"
+        label: "Active Energy Import L2"
+      active_energy_import_l3:
+        address: 2815
+        unit: "kWh"
+        label: "Active Energy Import L3"
+
+      # Quadrant Energy
+      reactive_energy_q1:
+        address: 2731
+        unit: "kVARh"
+        label: "Reactive Energy Q1"
+      reactive_energy_q2:
+        address: 2733
+        unit: "kVARh"
+        label: "Reactive Energy Q2"
+      reactive_energy_q3:
+        address: 2737
+        unit: "kVARh"
+        label: "Reactive Energy Q3"
+      reactive_energy_q4:
+        address: 2739
+        unit: "kVARh"
+        label: "Reactive Energy Q4"
+
+      # High-precision Energy (INT64)
+      active_energy_import_int64:
+        address: 3203
+        unit: "Wh"
+        label: "Active Energy Import (High Precision)"
+        data_type: "int64"
+        register_count: 4
+      active_energy_export_int64:
+        address: 3207
+        unit: "Wh"
+        label: "Active Energy Export (High Precision)"
+        data_type: "int64"
+        register_count: 4
+      reactive_energy_import_int64:
+        address: 3219
+        unit: "VARh"
+        label: "Reactive Energy Import (High Precision)"
+        data_type: "int64"
+        register_count: 4
+
+      # Current Unbalance
+      current_unbalance_a:
+        address: 3011
+        unit: "%"
+        label: "Current Unbalance Phase A"
+      current_unbalance_b:
+        address: 3013
+        unit: "%"
+        label: "Current Unbalance Phase B"
+      current_unbalance_c:
+        address: 3015
+        unit: "%"
+        label: "Current Unbalance Phase C"
+      current_unbalance_worst:
+        address: 3017
+        unit: "%"
+        label: "Current Unbalance Worst"
+
+      # Voltage Unbalance (Line-to-Line)
+      voltage_unbalance_ab:
+        address: 3037
+        unit: "%"
+        label: "Voltage Unbalance A-B"
+      voltage_unbalance_bc:
+        address: 3039
+        unit: "%"
+        label: "Voltage Unbalance B-C"
+      voltage_unbalance_ca:
+        address: 3041
+        unit: "%"
+        label: "Voltage Unbalance C-A"
+      voltage_unbalance_ll_worst:
+        address: 3043
+        unit: "%"
+        label: "Voltage Unbalance LL Worst"
+
+      # Voltage Unbalance (Line-to-Neutral)
+      voltage_unbalance_an:
+        address: 3045
+        unit: "%"
+        label: "Voltage Unbalance A-N"
+      voltage_unbalance_bn:
+        address: 3047
+        unit: "%"
+        label: "Voltage Unbalance B-N"
+      voltage_unbalance_cn:
+        address: 3049
+        unit: "%"
+        label: "Voltage Unbalance C-N"
+      voltage_unbalance_ln_worst:
+        address: 3051
+        unit: "%"
+        label: "Voltage Unbalance LN Worst"
+
+      # THD - Voltage (Line-to-Line)
+      thd_voltage_ab:
+        address: 21321
+        unit: "%"
+        label: "THD Voltage A-B"
+      thd_voltage_bc:
+        address: 21323
+        unit: "%"
+        label: "THD Voltage B-C"
+      thd_voltage_ca:
+        address: 21325
+        unit: "%"
+        label: "THD Voltage C-A"
+      thd_voltage_ll_avg:
+        address: 21327
+        unit: "%"
+        label: "THD Voltage LL Average"
+
+      # THD - Voltage (Line-to-Neutral)
+      thd_voltage_r:
+        address: 21329
+        unit: "%"
+        label: "THD Voltage Phase R (A-N)"
+      thd_voltage_y:
+        address: 21331
+        unit: "%"
+        label: "THD Voltage Phase Y (B-N)"
+      thd_voltage_b:
+        address: 21333
+        unit: "%"
+        label: "THD Voltage Phase B (C-N)"
+      thd_voltage_ln_avg:
+        address: 21337
+        unit: "%"
+        label: "THD Voltage LN Average"
+
+      # THD - Current
+      thd_current_r:
+        address: 21299
+        unit: "%"
+        label: "THD Current Phase R"
+      thd_current_y:
+        address: 21301
+        unit: "%"
+        label: "THD Current Phase Y"
+      thd_current_b:
+        address: 21303
+        unit: "%"
+        label: "THD Current Phase B"
+      thd_current_n:
+        address: 21305
+        unit: "%"
+        label: "THD Current Neutral"
+
+  # -------------------------------------------------------------------------
+  # Secure Elite 500 (for substation use - includes THD)
+  # -------------------------------------------------------------------------
+  secure_elite_500_substation:
+    manufacturer: "Secure"
+    model: "Elite 500"
+    description: "Secure Elite 500 for Substation (includes THD)"
+    defaults:
+      endianness: "little"
+      data_type: "float"
+      register_type: "holding"
+      register_count: 2
+    # Inherits all registers from secure_elite_500 in electrical_distribution
+    # plus additional THD and advanced metrics
+    extends: "electrical_distribution.secure_elite_500"
+
+    # Additional registers for substation use
+    additional_registers:
+      # THD Power (unique to Secure)
+      thd_power_l1:
+        address: 189
+        unit: "%"
+        label: "THD Power L1"
+      thd_power_l2:
+        address: 191
+        unit: "%"
+        label: "THD Power L2"
+      thd_power_l3:
+        address: 193
+        unit: "%"
+        label: "THD Power L3"
+
+      # Additional Energy registers
+      active_energy_fwd_abs:
+        address: 223
+        unit: "kWh"
+        label: "Active Energy Forward (Absolute)"
+      apparent_energy_fwd_abs:
+        address: 225
+        unit: "kVAh"
+        label: "Apparent Energy Forward (Absolute)"
+      reactive_energy_lag:
+        address: 227
+        unit: "kVARh"
+        label: "Reactive Energy Lag (Q1+Q3)"
+      reactive_energy_lead:
+        address: 229
+        unit: "kVARh"
+        label: "Reactive Energy Lead (Q2+Q4)"
+      net_active_energy_total:
+        address: 231
+        unit: "kWh"
+        label: "Net Active Energy Total"
+
+      # Per-phase Energy (Import)
+      active_energy_import_l1:
+        address: 233
+        unit: "kWh"
+        label: "Active Energy Import L1"
+      active_energy_import_l2:
+        address: 235
+        unit: "kWh"
+        label: "Active Energy Import L2"
+      active_energy_import_l3:
+        address: 237
+        unit: "kWh"
+        label: "Active Energy Import L3"
+
+      # Per-phase Energy (Export)
+      active_energy_export_l1:
+        address: 239
+        unit: "kWh"
+        label: "Active Energy Export L1"
+      active_energy_export_l2:
+        address: 241
+        unit: "kWh"
+        label: "Active Energy Export L2"
+      active_energy_export_l3:
+        address: 243
+        unit: "kWh"
+        label: "Active Energy Export L3"
+
+      # High-precision Energy (64-bit)
+      active_energy_import_int64:
+        address: 51149
+        unit: "kWh"
+        label: "Active Energy Import (64-bit)"
+        data_type: "float64"
+        register_count: 4
+      active_energy_export_int64:
+        address: 51153
+        unit: "kWh"
+        label: "Active Energy Export (64-bit)"
+        data_type: "float64"
+        register_count: 4
+      reactive_energy_import_int64:
+        address: 51189
+        unit: "kVARh"
+        label: "Reactive Energy Import (64-bit)"
+        data_type: "float64"
+        register_count: 4
+
+
+# =============================================================================
+# WATER METERS
+# =============================================================================
+
+water:
+
+  # -------------------------------------------------------------------------
+  # Krohne Marshal Electromagnetic Flow Meter
+  # -------------------------------------------------------------------------
+  krohne_marshal:
+    manufacturer: "Krohne"
+    model: "Marshal"
+    description: "Krohne Marshal Electromagnetic Flow Meter"
+    defaults:
+      endianness: "big"
+      data_type: "float"
+      register_type: "input"
+      register_count: 2
+
+    registers:
+      # Flow measurements
+      flow_speed:
+        address: 0
+        unit: "m/s"
+        label: "Flow Speed"
+      volume_flow_rate:
+        address: 2
+        unit: "m³/s"
+        label: "Volume Flow Rate"
+      mass_flow_rate:
+        address: 4
+        unit: "kg/s"
+        label: "Mass Flow Rate"
+
+      # Operational data
+      operating_time:
+        address: 6
+        unit: "s"
+        label: "Operating Time"
+
+      # Counters (64-bit floats)
+      counter1:
+        address: 8
+        unit: "m³"
+        label: "Counter 1 (Total Volume)"
+        data_type: "float64"
+        register_count: 4
+      counter2:
+        address: 12
+        unit: "m³"
+        label: "Counter 2 (Reverse Volume)"
+        data_type: "float64"
+        register_count: 4
+
+
+# =============================================================================
+# DB FIELD MAPPINGS
+# =============================================================================
+# These mappings define how meter register names map to database column names.
+# This allows the same register data to be stored in different DB schemas.
+
+db_field_mappings:
+
+  # Distribution table mapping
+  distribution:
+    voltage_ry: "voltage_ry"
+    voltage_yb: "voltage_yb"
+    voltage_br: "voltage_br"
+    avg_voltage_ll: "avg_voltage_ll"
+    current_r: "current_r"
+    current_y: "current_y"
+    current_b: "current_b"
+    current_n: "current_n"
+    avg_current: "avg_current"
+    active_power_r: "active_power_r"
+    active_power_y: "active_power_y"
+    active_power_b: "active_power_b"
+    total_active_power: "total_active_power"
+    power_factor_r: "power_factor_r"
+    power_factor_y: "power_factor_y"
+    power_factor_b: "power_factor_b"
+    avg_power_factor: "avg_power_factor"
+    total_active_energy: "total_active_energy"
+    frequency: "frequency"
+
+  # Substation table mapping
+  substation:
+    voltage_ry: "voltage_ry"
+    voltage_yb: "voltage_yb"
+    voltage_br: "voltage_br"
+    avg_voltage_ll: "avg_voltage_ll"
+    current_r: "current_r"
+    current_y: "current_y"
+    current_b: "current_b"
+    current_n: "current_n"
+    avg_current: "avg_current"
+    active_power_r: "active_power_r"
+    active_power_y: "active_power_y"
+    active_power_b: "active_power_b"
+    total_active_power: "total_active_power"
+    total_apparent_power: "total_apparent_power"
+    power_factor_r: "power_factor_r"
+    power_factor_y: "power_factor_y"
+    power_factor_b: "power_factor_b"
+    avg_power_factor: "avg_power_factor"
+    total_active_energy: "total_active_energy"
+    total_reactive_energy: "reactive_energy_import"
+    total_apparent_energy: "apparent_energy_import"
+    frequency: "frequency"
+    thd_voltage_r: "thd_voltage_r"
+    thd_voltage_y: "thd_voltage_y"
+    thd_voltage_b: "thd_voltage_b"
+    thd_current_r: "thd_current_r"
+    thd_current_y: "thd_current_y"
+    thd_current_b: "thd_current_b"
+    voltage_imbalance: "voltage_unbalance_ll_worst"
+    current_imbalance: "current_unbalance_worst"
+
+  # Water table mapping
+  water:
+    flow_speed: "flow_speed"
+    volume_flow_rate: "volume_flow_rate"
+    mass_flow_rate: "mass_flow_rate"
+    operating_time: "operating_time"
+    counter1: "counter1"
+    counter2: "counter2"
+
+
+# =============================================================================
+# CLIENT PROFILES
+# =============================================================================
+# Pre-defined client profiles for common use cases.
+# When creating a new client, you can reference a profile to get a standard
+# set of registers for that use case.
+
+client_profiles:
+
+  # Distribution panel - basic monitoring
+  distribution_basic:
+    description: "Basic distribution panel monitoring"
+    target_table: "distribution"
+    registers:
+      - voltage_ry
+      - voltage_yb
+      - voltage_br
+      - avg_voltage_ll
+      - current_r
+      - current_y
+      - current_b
+      - avg_current
+      - total_active_power
+      - avg_power_factor
+      - total_active_energy
+      - frequency
+
+  # Distribution panel - L&T WL4400 specific (no avg_current)
+  distribution_lt_wl4400:
+    description: "Distribution monitoring for L&T WL4400 (no avg_current)"
+    target_table: "distribution"
+    registers:
+      - voltage_ry
+      - voltage_yb
+      - voltage_br
+      - avg_voltage_ll
+      - current_r
+      - current_y
+      - current_b
+      - current_n
+      - total_active_power
+      - total_apparent_power
+      - avg_power_factor
+      - total_active_energy
+      - apparent_energy_import
+      - frequency
+
+  # Distribution panel - L&T WL4400 full (all available registers)
+  distribution_full_lt_wl4400:
+    description: "Full distribution monitoring for L&T WL4400 (includes per-phase power/PF)"
+    target_table: "distribution"
+    registers:
+      - voltage_ry
+      - voltage_yb
+      - voltage_br
+      - avg_voltage_ll
+      - current_r
+      - current_y
+      - current_b
+      - current_n
+      - active_power_r
+      - active_power_y
+      - active_power_b
+      - total_active_power
+      - apparent_power_r
+      - apparent_power_y
+      - apparent_power_b
+      - total_apparent_power
+      - power_factor_r
+      - power_factor_y
+      - power_factor_b
+      - avg_power_factor
+      - total_active_energy
+      - apparent_energy_import
+      - frequency
+
+  # Distribution panel - L&T Single Phase
+  distribution_single_phase:
+    description: "Single phase meter monitoring for Faculty Housing"
+    target_table: "distribution"
+    registers:
+      - voltage_ry
+      - current_r
+      - total_active_power
+      - avg_power_factor
+      - total_active_energy
+      - frequency
+
+  # Distribution panel - full monitoring
+  distribution_full:
+    description: "Full distribution panel monitoring (all phases)"
+    target_table: "distribution"
+    registers:
+      - voltage_ry
+      - voltage_yb
+      - voltage_br
+      - avg_voltage_ll
+      - current_r
+      - current_y
+      - current_b
+      - current_n
+      - avg_current
+      - active_power_r
+      - active_power_y
+      - active_power_b
+      - total_active_power
+      - total_apparent_power
+      - power_factor_r
+      - power_factor_y
+      - power_factor_b
+      - avg_power_factor
+      - total_active_energy
+      - apparent_energy_import
+      - frequency
+
+  # Substation - basic monitoring
+  substation_basic:
+    description: "Basic substation monitoring"
+    target_table: "substation"
+    registers:
+      - voltage_ry
+      - voltage_yb
+      - voltage_br
+      - avg_voltage_ll
+      - current_r
+      - current_y
+      - current_b
+      - current_n
+      - avg_current
+      - active_power_r
+      - active_power_y
+      - active_power_b
+      - total_active_power
+      - total_apparent_power
+      - power_factor_r
+      - power_factor_y
+      - power_factor_b
+      - avg_power_factor
+      - total_active_energy
+      - reactive_energy_import
+      - apparent_energy_import
+      - frequency
+
+  # Substation - full monitoring with THD
+  substation_full:
+    description: "Full substation monitoring including THD"
+    target_table: "substation"
+    registers:
+      - voltage_ry
+      - voltage_yb
+      - voltage_br
+      - avg_voltage_ll
+      - current_r
+      - current_y
+      - current_b
+      - current_n
+      - avg_current
+      - active_power_r
+      - active_power_y
+      - active_power_b
+      - total_active_power
+      - total_apparent_power
+      - total_reactive_power
+      - power_factor_r
+      - power_factor_y
+      - power_factor_b
+      - avg_power_factor
+      - total_active_energy
+      - active_energy_export
+      - reactive_energy_import
+      - reactive_energy_export
+      - apparent_energy_import
+      - apparent_energy_export
+      - frequency
+      - thd_voltage_r
+      - thd_voltage_y
+      - thd_voltage_b
+      - thd_current_r
+      - thd_current_y
+      - thd_current_b
+      - current_unbalance_worst
+      - voltage_unbalance_ll_worst
+
+  # Water meter - basic
+  water_basic:
+    description: "Basic water meter monitoring"
+    target_table: "water"
+    registers:
+      - flow_speed
+      - volume_flow_rate
+      - counter1
+
+  # Water meter - full
+  water_full:
+    description: "Full water meter monitoring"
+    target_table: "water"
+    registers:
+      - flow_speed
+      - volume_flow_rate
+      - mass_flow_rate
+      - operating_time
+      - counter1
+      - counter2

@@ -1,0 +1,1277 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - RTU Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Config Hub Layout */
+    .config-hub {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 24px;
+        min-height: calc(100vh - 180px);
+    }
+
+    /* Sidebar Navigation */
+    .config-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .sidebar-section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .sidebar-header {
+        padding: 16px 20px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-secondary);
+    }
+
+    .sidebar-content {
+        padding: 8px;
+    }
+
+    /* Quick Actions */
+    .quick-action {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+        color: var(--text-primary);
+    }
+
+    .quick-action:hover {
+        background: var(--bg-secondary);
+    }
+
+    .quick-action-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        background: var(--bg-secondary);
+        border-radius: 10px;
+    }
+
+    .quick-action-content h4 {
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 2px;
+    }
+
+    .quick-action-content p {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .quick-action.primary {
+        background: var(--accent);
+        color: white;
+    }
+
+    .quick-action.primary:hover {
+        background: #1a8cd8;
+    }
+
+    .quick-action.primary .quick-action-icon {
+        background: rgba(255,255,255,0.2);
+    }
+
+    .quick-action.primary p {
+        color: rgba(255,255,255,0.8);
+    }
+
+    /* File List */
+    .file-nav {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .file-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: all 0.2s;
+    }
+
+    .file-nav-item:hover {
+        background: var(--bg-secondary);
+    }
+
+    .file-nav-item.active {
+        background: rgba(29, 155, 240, 0.15);
+        border-left: 3px solid var(--accent);
+    }
+
+    .file-nav-item .file-icon {
+        font-size: 18px;
+        opacity: 0.7;
+    }
+
+    .file-nav-item .file-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .file-nav-item .file-name {
+        font-size: 13px;
+        font-weight: 500;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .file-nav-item .file-meta {
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
+    /* Main Content Area */
+    .config-main {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    /* Editor Card */
+    .editor-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 500px;
+    }
+
+    .editor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+        border-radius: 12px 12px 0 0;
+    }
+
+    .editor-title-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .editor-icon {
+        font-size: 20px;
+    }
+
+    .editor-title {
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .editor-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .editor-status.saved {
+        background: rgba(0, 186, 124, 0.15);
+        color: var(--success);
+    }
+
+    .editor-status.modified {
+        background: rgba(255, 173, 31, 0.15);
+        color: var(--warning);
+    }
+
+    .editor-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .editor-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .editor-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .editor-btn-secondary {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+    }
+
+    .editor-btn-secondary:hover {
+        background: var(--bg-secondary);
+    }
+
+    .editor-btn-primary {
+        background: var(--accent);
+        border: 1px solid var(--accent);
+        color: white;
+    }
+
+    .editor-btn-primary:hover {
+        background: #1a8cd8;
+    }
+
+    .editor-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Editor Body */
+    .editor-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .editor-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 40px;
+        color: var(--text-muted);
+    }
+
+    .editor-placeholder .placeholder-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .editor-placeholder h3 {
+        font-size: 18px;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+    }
+
+    .config-editor {
+        flex: 1;
+        width: 100%;
+        padding: 20px;
+        font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        background: var(--bg-primary);
+        border: none;
+        color: var(--text-primary);
+        resize: none;
+        outline: none;
+    }
+
+    /* Info Cards */
+    .info-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+    }
+
+    .info-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 20px;
+    }
+
+    .info-card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .info-card-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        background: var(--bg-secondary);
+        border-radius: 10px;
+    }
+
+    .info-card h4 {
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .info-card p {
+        font-size: 13px;
+        color: var(--text-muted);
+        line-height: 1.5;
+    }
+
+    .info-card code {
+        display: block;
+        margin-top: 12px;
+        padding: 12px;
+        background: var(--bg-primary);
+        border-radius: 6px;
+        font-size: 11px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        overflow-x: auto;
+        white-space: pre;
+        color: var(--text-secondary);
+    }
+
+    /* Service Status */
+    .service-status {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 20px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+    }
+
+    .service-status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--success);
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .service-status-info {
+        flex: 1;
+    }
+
+    .service-status-info h4 {
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .service-status-info p {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .service-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: var(--text-primary);
+    }
+
+    .service-btn:hover {
+        background: var(--bg-card);
+        border-color: var(--accent);
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+        .config-hub {
+            grid-template-columns: 1fr;
+        }
+
+        .config-sidebar {
+            order: 2;
+        }
+
+        .config-main {
+            order: 1;
+        }
+    }
+
+    /* Read-only mode styles */
+    .readonly-banner {
+        background: linear-gradient(135deg, #2196F3, #1976D2);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .readonly-banner.hidden {
+        display: none;
+    }
+
+    .readonly-banner .banner-content {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .readonly-banner .banner-icon {
+        font-size: 24px;
+    }
+
+    .readonly-banner .banner-text h4 {
+        margin: 0 0 4px 0;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .readonly-banner .banner-text p {
+        margin: 0;
+        font-size: 13px;
+        opacity: 0.9;
+    }
+
+    .readonly-banner .banner-btn {
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.4);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+        text-decoration: none;
+    }
+
+    .readonly-banner .banner-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+
+    /* Test mode active banner */
+    .testmode-banner {
+        background: linear-gradient(135deg, #ff9800, #f57c00);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: none;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .testmode-banner.active {
+        display: flex;
+    }
+
+    .testmode-banner .banner-content {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .testmode-banner .banner-icon {
+        font-size: 24px;
+    }
+
+    .testmode-banner .banner-text h4 {
+        margin: 0 0 4px 0;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .testmode-banner .banner-text p {
+        margin: 0;
+        font-size: 13px;
+        opacity: 0.9;
+    }
+
+    .testmode-banner .banner-timer {
+        font-family: monospace;
+        font-size: 1.2em;
+        background: rgba(255,255,255,0.2);
+        padding: 5px 12px;
+        border-radius: 4px;
+        margin-left: 15px;
+    }
+
+    /* Editor readonly state */
+    .config-editor.readonly {
+        background: var(--bg-secondary);
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    .editor-btn.disabled-readonly {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    /* Mode indicator */
+    .mode-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .mode-indicator.readonly-mode {
+        background: rgba(33, 150, 243, 0.15);
+        color: #2196F3;
+    }
+
+    .mode-indicator.edit-mode {
+        background: rgba(255, 152, 0, 0.15);
+        color: #ff9800;
+    }
+
+    .mode-indicator .mode-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    /* Test config items */
+    .test-config-item {
+        border-left: 3px solid transparent;
+    }
+
+    .test-config-item.active {
+        background: rgba(255, 152, 0, 0.1);
+        border-left-color: #ff9800;
+    }
+
+    .test-config-item .file-icon {
+        color: #ff9800;
+    }
+
+    #test-config-section .sidebar-header {
+        color: #ff9800;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title-group">
+        <h1>Configuration</h1>
+        <p class="page-subtitle">Manage device configurations and system settings</p>
+    </div>
+    <div id="mode-indicator" class="mode-indicator readonly-mode">
+        <span class="mode-dot"></span>
+        <span id="mode-text">Read-Only Mode</span>
+    </div>
+</div>
+
+<!-- Read-only Mode Banner -->
+<div id="readonly-banner" class="readonly-banner">
+    <div class="banner-content">
+        <span class="banner-icon">&#128274;</span>
+        <div class="banner-text">
+            <h4>Configuration is Read-Only</h4>
+            <p>To edit configurations, enter Test Mode first. This prevents accidental changes to production settings.</p>
+        </div>
+    </div>
+    <a href="/testing" class="banner-btn">Go to Testing Page</a>
+</div>
+
+<!-- Test Mode Active Banner -->
+<div id="testmode-banner" class="testmode-banner">
+    <div class="banner-content">
+        <span class="banner-icon">&#9998;</span>
+        <div class="banner-text">
+            <h4>Edit Mode Enabled</h4>
+            <p>You can now edit configurations. Changes will be saved to test_config for validation.</p>
+        </div>
+        <span class="banner-timer" id="config-timer">--:--</span>
+    </div>
+</div>
+
+<div class="config-hub">
+    <!-- Sidebar -->
+    <div class="config-sidebar">
+        <!-- Quick Actions -->
+        <div class="sidebar-section">
+            <div class="sidebar-header">Quick Actions</div>
+            <div class="sidebar-content">
+                <a href="/config/wizard" class="quick-action primary">
+                    <div class="quick-action-icon">➕</div>
+                    <div class="quick-action-content">
+                        <h4>Add New Device</h4>
+                        <p>Guided setup wizard</p>
+                    </div>
+                </a>
+                <div class="quick-action" onclick="createBackup()">
+                    <div class="quick-action-icon">💾</div>
+                    <div class="quick-action-content">
+                        <h4>Backup Configs</h4>
+                        <p>Download all configs</p>
+                    </div>
+                </div>
+                <div class="quick-action" onclick="validateAllConfigs()">
+                    <div class="quick-action-icon">✓</div>
+                    <div class="quick-action-content">
+                        <h4>Validate All</h4>
+                        <p>Check for errors</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Files -->
+        <div class="sidebar-section">
+            <div class="sidebar-header">Configuration Files</div>
+            <div class="sidebar-content">
+                <ul class="file-nav" id="file-list">
+                    {% for file in config_files %}
+                    <li class="file-nav-item" data-filename="{{ file.name }}" data-dir="{{ file.config_dir }}" data-service="{{ file.service }}" onclick="loadConfig('{{ file.name }}', '{{ file.config_dir }}')">
+                        <span class="file-icon">📄</span>
+                        <div class="file-info">
+                            <span class="file-name">{{ file.name }}</span>
+                            <span class="file-meta">{{ file.service }} • {{ file.size_kb }} KB</span>
+                        </div>
+                    </li>
+                    {% endfor %}
+                    {% if not config_files %}
+                    <li class="file-nav-item" style="opacity: 0.5; cursor: default;">
+                        <span class="file-icon">📁</span>
+                        <div class="file-info">
+                            <span class="file-name">No config files found</span>
+                        </div>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Test Config Section -->
+        <div class="sidebar-section" id="test-config-section">
+            <div class="sidebar-header">Test Configurations</div>
+            <div class="sidebar-content">
+                <ul class="file-nav" id="test-config-list">
+                    <li class="file-nav-item" style="opacity: 0.5; cursor: default;">
+                        <span class="file-icon">📁</span>
+                        <div class="file-info">
+                            <span class="file-name">Loading...</span>
+                        </div>
+                    </li>
+                </ul>
+                <div id="test-config-actions" style="padding: 8px; display: none;">
+                    <button class="quick-action-btn" onclick="applySelectedTestConfig()" style="width: 100%; padding: 8px; font-size: 12px; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 4px;">
+                        Apply to Production
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Service Status -->
+        <div class="sidebar-section">
+            <div class="sidebar-header">Service</div>
+            <div class="sidebar-content" style="padding: 12px;">
+                <div class="service-status">
+                    <div class="service-status-indicator" id="service-indicator"></div>
+                    <div class="service-status-info">
+                        <h4 id="service-name">DataSkipper Service</h4>
+                        <p id="service-status-text">Running</p>
+                    </div>
+                    <button class="service-btn" onclick="restartService()">Restart</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="config-main">
+        <!-- Editor Card -->
+        <div class="editor-card">
+            <div class="editor-header">
+                <div class="editor-title-group">
+                    <span class="editor-icon" id="editor-icon">📝</span>
+                    <span class="editor-title" id="editor-title">Select a file to edit</span>
+                </div>
+                <div id="editor-status-container" style="display: none;">
+                    <div class="editor-status saved" id="editor-status">
+                        <span class="editor-status-dot"></span>
+                        <span id="editor-status-text">Saved</span>
+                    </div>
+                </div>
+                <div class="editor-actions">
+                    <button class="editor-btn editor-btn-secondary" id="btn-visual" onclick="openVisualEditor()" style="display: none;">
+                        <span>🎨</span> Visual Editor
+                    </button>
+                    <button class="editor-btn editor-btn-secondary" id="btn-reload" onclick="reloadConfig()" disabled>
+                        <span>↻</span> Reload
+                    </button>
+                    <button class="editor-btn editor-btn-primary" id="btn-save" onclick="saveConfig()" disabled>
+                        <span>💾</span> Save
+                    </button>
+                </div>
+            </div>
+            <div class="editor-body">
+                <div id="editor-placeholder" class="editor-placeholder">
+                    <div class="placeholder-icon">📂</div>
+                    <h3>No File Selected</h3>
+                    <p>Select a configuration file from the sidebar to view and edit</p>
+                    <p style="margin-top: 16px;">
+                        <a href="/config/wizard" style="color: var(--accent);">Or use the wizard to add a new device →</a>
+                    </p>
+                </div>
+                <textarea id="config-editor" class="config-editor" style="display: none;"></textarea>
+            </div>
+        </div>
+
+        <!-- Help Cards -->
+        <div class="info-cards">
+            <div class="info-card">
+                <div class="info-card-header">
+                    <div class="info-card-icon">📡</div>
+                    <h4>Slave Config</h4>
+                </div>
+                <p>Define Modbus devices and their registers</p>
+                <code>connections:
+  - id: "rs485"
+    clients:
+      - id: "meter-1"
+        unit_id: 1
+        meter_model: "lt_wl4400"</code>
+            </div>
+            <div class="info-card">
+                <div class="info-card-header">
+                    <div class="info-card-icon">🌐</div>
+                    <h4>Communication</h4>
+                </div>
+                <p>API endpoints and MQTT settings</p>
+                <code>api:
+  base_url: "https://..."
+mqtt:
+  broker: "mqtt.example.com"
+  port: 8883</code>
+            </div>
+            <div class="info-card">
+                <div class="info-card-header">
+                    <div class="info-card-icon">⚡</div>
+                    <h4>Keyboard Shortcuts</h4>
+                </div>
+                <p>
+                    <strong>Ctrl+S</strong> - Save file<br>
+                    <strong>Ctrl+K</strong> - Quick search<br>
+                    <strong>Escape</strong> - Cancel
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let currentFile = null;
+    let currentDir = null;
+    let originalContent = '';
+    let hasChanges = false;
+    let isTestMode = false;
+
+    let selectedTestConfig = null;
+
+    // Check for file parameter in URL and test mode status
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const fileParam = urlParams.get('file');
+        const dirParam = urlParams.get('dir');
+
+        // Check test mode status
+        checkTestModeStatus();
+        setInterval(checkTestModeStatus, 5000);
+
+        // Load test configs
+        loadTestConfigs();
+
+        if (fileParam) {
+            loadConfig(fileParam, dirParam || '');
+        }
+    });
+
+    async function loadTestConfigs() {
+        try {
+            const response = await fetch('/api/test-mode/configs');
+            const data = await response.json();
+
+            const list = document.getElementById('test-config-list');
+            const actions = document.getElementById('test-config-actions');
+
+            if (data.files && data.files.length > 0) {
+                list.innerHTML = data.files.map(file => `
+                    <li class="file-nav-item test-config-item" data-path="${file.path}" onclick="selectTestConfig('${file.path}', '${file.name}')">
+                        <span class="file-icon">📋</span>
+                        <div class="file-info">
+                            <span class="file-name">${file.name}</span>
+                            <span class="file-meta">${file.path} • ${file.size_kb} KB</span>
+                        </div>
+                    </li>
+                `).join('');
+                actions.style.display = 'block';
+            } else {
+                list.innerHTML = `
+                    <li class="file-nav-item" style="opacity: 0.5; cursor: default;">
+                        <span class="file-icon">📁</span>
+                        <div class="file-info">
+                            <span class="file-name">No test configs</span>
+                            <span class="file-meta">Save changes in Test Mode</span>
+                        </div>
+                    </li>
+                `;
+                actions.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error loading test configs:', error);
+        }
+    }
+
+    function selectTestConfig(path, name) {
+        // Deselect all
+        document.querySelectorAll('.test-config-item').forEach(el => el.classList.remove('active'));
+        // Select clicked
+        event.currentTarget.classList.add('active');
+        selectedTestConfig = { path, name };
+
+        // Load the test config content for preview
+        loadTestConfigContent(path);
+    }
+
+    async function loadTestConfigContent(path) {
+        try {
+            const response = await fetch(`/api/test-mode/config/${encodeURIComponent(path)}`);
+            const data = await response.json();
+
+            if (data.success) {
+                // Show in editor for preview
+                document.getElementById('config-editor').value = data.content;
+                document.getElementById('editor-title').textContent = `[TEST] ${data.filename}`;
+                document.getElementById('editor-icon').textContent = '🧪';
+                document.getElementById('editor-status-container').style.display = 'flex';
+                document.getElementById('editor-status-text').textContent = 'Test Config (Read Only)';
+                document.getElementById('editor-status').className = 'editor-status';
+
+                // Disable save for test config preview (user should apply to production)
+                document.getElementById('btn-save').disabled = true;
+            }
+        } catch (error) {
+            RTUPortal.showNotification('Error loading test config: ' + error.message, 'error');
+        }
+    }
+
+    async function applySelectedTestConfig() {
+        if (!selectedTestConfig) {
+            RTUPortal.showNotification('Please select a test config first', 'error');
+            return;
+        }
+
+        // Check if test mode is active
+        if (!window.testModeActive) {
+            RTUPortal.showNotification('Test Mode must be active to apply configs', 'error');
+            return;
+        }
+
+        // First, verify the config before applying
+        RTUPortal.showNotification('Verifying config before applying...', 'info');
+
+        try {
+            // Get the config content
+            const contentResponse = await fetch(`/api/test-mode/config/${encodeURIComponent(selectedTestConfig.path)}`);
+            const contentData = await contentResponse.json();
+
+            if (!contentData.success) {
+                RTUPortal.showNotification('Error loading config: ' + contentData.error, 'error');
+                return;
+            }
+
+            // Verify the config
+            const verifyResponse = await fetch('/api/test-mode/verify-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: contentData.content })
+            });
+
+            const verifyData = await verifyResponse.json();
+
+            // Build verification summary
+            let summaryMsg = '';
+            if (verifyData.summary) {
+                const s = verifyData.summary;
+                summaryMsg = `Verification Results:\n` +
+                    `- Connections: ${s.successful_connections}/${s.total_connections} OK\n` +
+                    `- Devices: ${s.successful_devices}/${s.total_devices} OK`;
+
+                if (s.failed_connections > 0 || s.failed_devices > 0) {
+                    summaryMsg += `\n\nWARNING: Some checks failed!`;
+                    for (const conn of (verifyData.connections || [])) {
+                        if (!conn.connection_ok) {
+                            summaryMsg += `\n- ${conn.id}: ${conn.error || 'Connection failed'}`;
+                        }
+                        for (const dev of (conn.devices || [])) {
+                            if (!dev.success) {
+                                const regInfo = dev.registers_total
+                                    ? ` (${dev.registers_failed}/${dev.registers_total} registers failed)`
+                                    : '';
+                                summaryMsg += `\n- ${dev.id} (Unit ${dev.unit_id})${regInfo}: ${dev.error || 'Read failed'}`;
+                                // Show first few failed registers
+                                if (dev.failed_registers && dev.failed_registers.length > 0) {
+                                    for (const freg of dev.failed_registers.slice(0, 3)) {
+                                        summaryMsg += `\n    • ${freg.name} (addr ${freg.address})`;
+                                    }
+                                    if (dev.failed_registers.length > 3) {
+                                        summaryMsg += `\n    ... and ${dev.failed_registers.length - 3} more`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!verifyData.success) {
+                // Verification failed - ask if they still want to proceed
+                const proceed = confirm(
+                    `${summaryMsg}\n\n` +
+                    `Config verification FAILED!\n\n` +
+                    `Do you still want to apply this config to production?\n` +
+                    `(Not recommended - may cause devices to go offline)`
+                );
+                if (!proceed) {
+                    RTUPortal.showNotification('Apply cancelled - fix verification issues first', 'info');
+                    return;
+                }
+            } else {
+                // Verification passed - confirm apply
+                const proceed = confirm(
+                    `${summaryMsg}\n\n` +
+                    `All checks passed!\n\n` +
+                    `Apply "${selectedTestConfig.name}" to production?\n\n` +
+                    `This will:\n` +
+                    `1. Backup the current production config\n` +
+                    `2. Copy the test config to production\n` +
+                    `3. You'll need to restart the service to apply changes`
+                );
+                if (!proceed) return;
+            }
+
+            // Parse path to get subdirectory and filename
+            const parts = selectedTestConfig.path.split('/');
+            const filename = parts.pop();
+            const subdirectory = parts.join('/') || null;
+
+            const response = await fetch('/api/test-mode/apply-to-production', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename, subdirectory })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                RTUPortal.showNotification(data.message, 'success');
+                if (confirm('Config applied to production. Restart service now to load changes?')) {
+                    restartService();
+                }
+            } else {
+                RTUPortal.showNotification('Error: ' + data.error, 'error');
+            }
+        } catch (error) {
+            RTUPortal.showNotification('Error applying config: ' + error.message, 'error');
+        }
+    }
+
+    // Listen for global test mode changes from base.html
+    window.addEventListener('testModeChanged', function(e) {
+        updateTestModeUI(e.detail);
+    });
+
+    async function checkTestModeStatus() {
+        try {
+            const response = await fetch('/api/test-mode/status');
+            const data = await response.json();
+            updateTestModeUI(data);
+        } catch (error) {
+            console.error('Error checking test mode status:', error);
+        }
+    }
+
+    function updateTestModeUI(data) {
+        const readonlyBanner = document.getElementById('readonly-banner');
+        const testmodeBanner = document.getElementById('testmode-banner');
+        const modeIndicator = document.getElementById('mode-indicator');
+        const modeText = document.getElementById('mode-text');
+        const configTimer = document.getElementById('config-timer');
+        const editor = document.getElementById('config-editor');
+        const saveBtn = document.getElementById('btn-save');
+
+        if (data.status === 'active' || data.status === 'expiring') {
+            isTestMode = true;
+
+            // Show test mode banner, hide readonly banner
+            readonlyBanner.classList.add('hidden');
+            testmodeBanner.classList.add('active');
+
+            // Update mode indicator
+            modeIndicator.className = 'mode-indicator edit-mode';
+            modeText.textContent = 'Edit Mode';
+
+            // Update timer
+            const mins = Math.floor(data.remaining_seconds / 60);
+            const secs = data.remaining_seconds % 60;
+            configTimer.textContent = mins + ':' + secs.toString().padStart(2, '0');
+
+            // Enable editing
+            editor.classList.remove('readonly');
+            editor.readOnly = false;
+            saveBtn.classList.remove('disabled-readonly');
+
+        } else {
+            isTestMode = false;
+
+            // Show readonly banner, hide test mode banner
+            readonlyBanner.classList.remove('hidden');
+            testmodeBanner.classList.remove('active');
+
+            // Update mode indicator
+            modeIndicator.className = 'mode-indicator readonly-mode';
+            modeText.textContent = 'Read-Only Mode';
+
+            // Disable editing
+            editor.classList.add('readonly');
+            editor.readOnly = true;
+            saveBtn.classList.add('disabled-readonly');
+        }
+    }
+
+    // Track changes
+    document.getElementById('config-editor').addEventListener('input', () => {
+        hasChanges = document.getElementById('config-editor').value !== originalContent;
+        updateEditorStatus();
+    });
+
+    async function loadConfig(filename, configDir) {
+        // Warn about unsaved changes
+        if (hasChanges && !confirm('You have unsaved changes. Continue?')) {
+            return;
+        }
+
+        try {
+            // API endpoint is /api/config/{config_dir}/{filename}
+            // Don't encode the directory path - FastAPI expects actual path with slashes
+            const url = `/api/config${configDir}/${encodeURIComponent(filename)}`;
+
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Failed to load file');
+
+            const data = await response.json();
+
+            // Update state
+            currentFile = filename;
+            currentDir = configDir;
+            originalContent = data.content;
+            hasChanges = false;
+
+            // Update UI
+            document.getElementById('editor-title').textContent = filename;
+            document.getElementById('editor-icon').textContent = filename.includes('slave') ? '📡' : '🌐';
+            document.getElementById('editor-placeholder').style.display = 'none';
+            document.getElementById('editor-status-container').style.display = 'block';
+
+            const editor = document.getElementById('config-editor');
+            editor.style.display = 'block';
+            editor.value = data.content;
+
+            document.getElementById('btn-save').disabled = false;
+            document.getElementById('btn-reload').disabled = false;
+
+            // Show visual editor button for supported files
+            const visualBtn = document.getElementById('btn-visual');
+            if (filename.includes('slave') || filename.includes('communication')) {
+                visualBtn.style.display = 'inline-flex';
+            } else {
+                visualBtn.style.display = 'none';
+            }
+
+            // Update sidebar selection - must match both filename AND directory
+            document.querySelectorAll('.file-nav-item').forEach(item => {
+                const isMatch = item.dataset.filename === filename && item.dataset.dir === configDir;
+                item.classList.toggle('active', isMatch);
+            });
+
+            updateEditorStatus();
+        } catch (error) {
+            RTUPortal.showNotification(`Error loading ${filename}: ${error.message}`, 'error');
+        }
+    }
+
+    async function saveConfig() {
+        if (!currentFile) return;
+
+        // Check if in test mode
+        if (!isTestMode) {
+            RTUPortal.showNotification('Cannot save in read-only mode. Enter Test Mode first.', 'error');
+            return;
+        }
+
+        const content = document.getElementById('config-editor').value;
+
+        try {
+            // In test mode, save to test_config directory via test mode API
+            const response = await fetch('/api/test-mode/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filename: currentFile,
+                    content: content
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                originalContent = content;
+                hasChanges = false;
+                updateEditorStatus();
+                RTUPortal.showNotification('Configuration saved to test_config. Validate before applying to production.', 'success');
+            } else {
+                throw new Error(data.error || data.detail || 'Save failed');
+            }
+        } catch (error) {
+            RTUPortal.showNotification(`Error saving: ${error.message}`, 'error');
+        }
+    }
+
+    async function reloadConfig() {
+        if (!currentFile) return;
+
+        if (hasChanges && !confirm('Discard changes and reload?')) {
+            return;
+        }
+
+        await loadConfig(currentFile, currentDir);
+        RTUPortal.showNotification('Configuration reloaded', 'success');
+    }
+
+    function updateEditorStatus() {
+        const status = document.getElementById('editor-status');
+        const statusText = document.getElementById('editor-status-text');
+
+        if (hasChanges) {
+            status.className = 'editor-status modified';
+            statusText.textContent = 'Modified';
+        } else {
+            status.className = 'editor-status saved';
+            statusText.textContent = 'Saved';
+        }
+    }
+
+    async function restartService() {
+        try {
+            RTUPortal.showNotification('Restarting service...', 'info');
+            const response = await fetch('/api/service/restart', { method: 'POST' });
+            const data = await response.json();
+
+            if (response.ok) {
+                RTUPortal.showNotification('Service restart initiated', 'success');
+            } else {
+                throw new Error(data.detail || 'Restart failed');
+            }
+        } catch (error) {
+            RTUPortal.showNotification(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    function createBackup() {
+        RTUPortal.showNotification('Creating backup...', 'info');
+        window.location.href = '/api/config/backup';
+    }
+
+    async function validateAllConfigs() {
+        try {
+            RTUPortal.showNotification('Validating configurations...', 'info');
+            const response = await fetch('/api/config/validate');
+            const data = await response.json();
+
+            if (data.valid) {
+                RTUPortal.showNotification('All configurations are valid!', 'success');
+            } else {
+                RTUPortal.showNotification(`Validation errors found: ${data.errors.length}`, 'error');
+            }
+        } catch (error) {
+            RTUPortal.showNotification(`Validation error: ${error.message}`, 'error');
+        }
+    }
+
+    // Open visual editor for current file
+    function openVisualEditor() {
+        if (!currentFile) return;
+
+        if (hasChanges && !confirm('You have unsaved changes. Continue to visual editor?')) {
+            return;
+        }
+
+        // Determine which editor to use
+        if (currentFile.includes('slave')) {
+            window.location.href = `/config/edit/slave?file=${encodeURIComponent(currentFile)}&dir=${encodeURIComponent(currentDir)}`;
+        } else if (currentFile.includes('communication')) {
+            window.location.href = `/config/edit/comm?file=${encodeURIComponent(currentFile)}&dir=${encodeURIComponent(currentDir)}`;
+        }
+    }
+
+    // Warn before leaving with unsaved changes
+    window.addEventListener('beforeunload', (e) => {
+        if (hasChanges) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            if (currentFile) saveConfig();
+        }
+    });
+</script>
+{% endblock %}
