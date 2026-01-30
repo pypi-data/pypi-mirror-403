@@ -1,0 +1,279 @@
+Metadata-Version: 2.4
+Name: vallignus
+Version: 0.4.1
+Summary: Local runtime for AI agents: sessions, replay, and hard caps
+Author-email: Jacob Gadek <your.email@example.com>
+License: MIT
+Project-URL: Repository, https://github.com/jacobgadek/vallignus
+Keywords: ai,agent,runtime,sessions,replay,limits,llm
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: browser-cookie3
+Requires-Dist: click
+Requires-Dist: mitmproxy<10.0.0,>=9.0.0
+Requires-Dist: rich
+Requires-Dist: cryptography>=38.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/jacobgadek/vallignus/main/docs/vallignuslogo.svg" alt="Vallignus" width="200">
+</div>
+
+# Vallignus
+
+**Deterministic Execution Environment for Autonomous Agents**
+
+A zero-trust runtime wrapper enforcing resource containment, execution boundaries, and immutable session logs for local agent deployments.
+
+[![PyPI version](https://badge.fury.io/py/vallignus.svg)](https://badge.fury.io/py/vallignus)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+## Problem
+
+Autonomous agents are non-deterministic by nature. In production or sensitive environments (CI/CD, legacy patching, financial operations), unconstrained agents pose a stability and security risk.
+
+Current mitigations are insufficient:
+- Process monitors react after damage occurs
+- Logging is often unstructured or incomplete
+- Resource limits are advisory, not enforced
+
+## Solution
+
+Vallignus acts as a hypervisor for agent processes. It wraps execution to ensure:
+
+1. **Bounded Execution**: Processes are forcibly terminated upon violating time, output, or request policies.
+2. **Auditability**: Every execution step is serialized to an immutable event stream for post-mortem analysis.
+3. **Isolation**: Agents run in a controlled environment with optional network policy enforcement.
+
+```bash
+vallignus run --max-runtime 60 --max-output-lines 10000 -- python agent.py
+```
+
+---
+
+## Architecture
+
+```
+┌─────────┐      ┌───────────┐      ┌─────────────────┐
+│  Agent  │ ───▶ │ Vallignus │ ───▶ │ LLM / APIs / Net│
+└─────────┘      └───────────┘      └─────────────────┘
+                       │
+              session capture
+              resource policies
+              (optional: network
+               policy enforcement)
+```
+
+---
+
+## Core Capabilities
+
+| Capability | Description |
+|------------|-------------|
+| **Resource Containment** | Enforce hard limits on runtime, output volume, and request count |
+| **Forensic Audit Trail** | Immutable JSONL event stream with millisecond timestamps |
+| **Session Recording** | Full stdout/stderr capture with structured metadata |
+| **Execution Replay** | Reconstruct any historical run from the event log |
+| **Network Policy Enforcement** | Optional domain allowlisting and request blocking |
+| **Computational Governance** | Budget limits and spend tracking (firewall mode) |
+
+---
+
+## Installation
+
+```bash
+pip install vallignus
+```
+
+---
+
+## Usage
+
+### Basic Execution with Resource Policies
+
+```bash
+# Terminate after 60 seconds
+vallignus run --max-runtime 60 -- python agent.py
+
+# Terminate after 10000 output lines
+vallignus run --max-output-lines 10000 -- python agent.py
+
+# Combine policies
+vallignus run --max-runtime 300 --max-output-lines 50000 -- python agent.py
+```
+
+### Session Management
+
+```bash
+# List recent sessions
+vallignus sessions list
+
+# Inspect session metadata and events
+vallignus sessions show <session-id>
+
+# Replay session output with timestamps
+vallignus replay <session-id>
+```
+
+### Session Artifacts
+
+Each execution creates an immutable session record:
+
+```
+~/.vallignus/sessions/<session-id>/
+  ├── session.json    # Execution metadata, exit code, resource usage
+  ├── events.jsonl    # Timestamped event stream (append-only)
+  ├── stdout.log      # Raw stdout capture
+  └── stderr.log      # Raw stderr capture
+```
+
+---
+
+## Demo: Resource Containment and Replay
+
+![Runtime Demo](https://raw.githubusercontent.com/jacobgadek/vallignus/main/docs/demo_runtime.png)
+
+## Demo: Network Policy Enforcement
+
+When network controls are required, Vallignus enforces identity-aware policies at the request level.
+
+![Firewall Demo](https://raw.githubusercontent.com/jacobgadek/vallignus/main/docs/demo.png)
+
+---
+
+## Optional: Network Policy Mode
+
+For environments requiring network-level controls:
+
+### Initialize Policy Infrastructure
+
+```bash
+vallignus auth init
+```
+
+### Define Agent Identity
+
+```bash
+vallignus auth create-agent \
+  --agent-id deployment-agent \
+  --owner "infrastructure@company.com"
+```
+
+### Create Network Policy
+
+```bash
+vallignus auth create-policy \
+  --policy-id production \
+  --max-spend-usd 100 \
+  --allowed-domains "api.openai.com,internal.company.com"
+```
+
+### Execute with Policy Enforcement
+
+```bash
+export VALLIGNUS_TOKEN=$(vallignus auth issue-token \
+  --agent-id deployment-agent \
+  --policy-id production)
+
+vallignus run --max-runtime 300 -- python agent.py
+```
+
+Policy enforcement provides:
+- Domain allowlist enforcement
+- Request-level audit logging
+- Budget tracking and limits
+- Token revocation capability
+
+---
+
+## Event Schema
+
+All events conform to a structured schema for downstream processing:
+
+```json
+{
+  "ts_ms": 1706108400000,
+  "session_id": "20260124-120000-abc123",
+  "type": "stdout_line",
+  "line": "Processing batch 42..."
+}
+```
+
+Event types: `run_started`, `process_started`, `stdout_line`, `stderr_line`, `run_terminated`, `process_exited`, `run_finished`
+
+---
+
+## Termination Behavior
+
+When a resource policy is violated:
+
+1. `run_terminated` event logged with violation details
+2. SIGTERM sent to process
+3. 2-second grace period for cleanup
+4. SIGKILL if process does not exit
+5. Session finalized with termination metadata
+
+Termination metadata is preserved for incident analysis:
+
+```json
+{
+  "termination_reason": "max_runtime",
+  "termination_limit_value": 60,
+  "termination_observed_value": 60
+}
+```
+
+---
+
+## CLI Reference
+
+```bash
+# Execution
+vallignus run [OPTIONS] -- <command>
+  --max-runtime <seconds>      Resource containment: time limit
+  --max-output-lines <n>       Resource containment: output limit
+  --max-requests <n>           Resource containment: request limit (policy mode)
+  --token <token>              Enable network policy enforcement
+  --no-session                 Disable session recording
+
+# Session Management
+vallignus sessions list        List recent sessions
+vallignus sessions show <id>   Display session details
+vallignus replay <id>          Replay session output
+
+# Policy Infrastructure (optional)
+vallignus auth init            Initialize policy storage
+vallignus auth create-agent    Register agent identity
+vallignus auth create-policy   Define permission policy
+vallignus auth issue-token     Generate execution token
+vallignus auth revoke-token    Revoke active token
+vallignus auth rotate-key      Rotate signing keys
+```
+
+---
+
+## Requirements
+
+- Python 3.8+
+- Local execution only (no cloud dependencies)
+
+---
+
+## Project Status
+
+Vallignus is infrastructure-grade software under active development.
+
+Current guarantees:
+- Immutable session logs
+- Deterministic termination behavior
+- Backwards-compatible session format
+- Local-only execution (no telemetry)
+
+---
+
+## License
+
+MIT
