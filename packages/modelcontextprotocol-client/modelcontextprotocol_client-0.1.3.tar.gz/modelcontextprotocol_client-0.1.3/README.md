@@ -1,0 +1,125 @@
+# Model Context Protocol Client
+
+A Python client implementation for the Model Context Protocol (MCP). This library allows you to connect to MCP servers, list tools, resources, and prompts, and execute tool calls.
+
+## Installation
+
+```bash
+pip install modelcontextprotocol-client
+```
+
+Or from source:
+
+```bash
+pip install .
+```
+
+## Features
+
+- Support for Stdio, SSE, HTTP, and WebSocket transports
+- Full MCP protocol implementation (Client capabilities)
+- Type-safe interactions with Pydantic models
+- Async/Await support
+
+## Hello World Example
+
+Here is a simple example of how to use the client to connect to a local MCP server (using stdio transport) and list available tools.
+
+This example assumes you have an MCP server running or available to run (e.g., a simple python script or a CLI tool).
+
+### 1. Basic Usage
+
+```python
+import asyncio
+from mcp.client import Client
+
+async def main():
+    # Define server configuration
+    # This example connects to a local git MCP server (requires 'uv' and 'mcp-server-git')
+    config = {
+        "mcpServers": {
+            "git-server": {
+                "transport": "stdio",
+                "command": "uvx",
+                "args": ["mcp-server-git", "--repository", "."]
+            }
+        }
+    }
+
+    # Initialize the client
+    client = Client.from_config(config)
+
+    try:
+        # Create a session with the 'git-server'
+        print("Connecting to server...")
+        session = await client.create_session("git-server")
+        print("Connected!")
+
+        # Initialize the connection (handshake)
+        # Note: create_session already handles connect() and initialize()
+
+        # List available tools
+        print("\nFetching tools...")
+        tools = await session.list_tools()
+        
+        print(f"Found {len(tools.tools)} tools:")
+        for tool in tools.tools:
+            print(f"- {tool.name}: {tool.description}")
+
+        # Example: Call a tool (if applicable)
+        # await session.call_tool(...)
+
+    finally:
+        # Close all sessions
+        await client.close_all_sessions()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### 2. Using an SSE Server
+
+```python
+import asyncio
+from mcp.client import Client
+
+async def main():
+    config = {
+        "mcpServers": {
+            "remote-server": {
+                "transport": "sse",
+                "url": "http://localhost:8000/sse"
+            }
+        }
+    }
+    
+    client = Client(config)
+    
+    # ... rest of the logic is the same
+```
+
+## Configuration
+
+The client accepts a configuration dictionary or path to a JSON config file.
+
+```python
+# Load from file
+client = Client.from_config_file("mcp_config.json")
+```
+
+The config file structure:
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "python",
+      "args": ["server.py"],
+      "env": { "MY_VAR": "value" }
+    }
+  }
+}
+```
+
+## License
+
+[Add License Here]
