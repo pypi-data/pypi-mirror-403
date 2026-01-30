@@ -1,0 +1,256 @@
+Metadata-Version: 2.4
+Name: cortexhub
+Version: 0.1.1
+Summary: CortexHub Python SDK - Policy-as-Code for AI Agents
+Project-URL: Homepage, https://cortexhub.ai
+Project-URL: Documentation, https://docs.cortexhub.ai
+Project-URL: Repository, https://github.com/cortexhub/sdks
+Project-URL: Issues, https://github.com/cortexhub/sdks/issues
+Author-email: CortexHub <hello@cortexhub.ai>
+License: MIT
+Keywords: agents,ai,authorization,cedar,governance,policy
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: <3.14,>=3.10
+Requires-Dist: cedarpy>=4.0.0
+Requires-Dist: detect-secrets>=1.5.0
+Requires-Dist: httpx>=0.28.0
+Requires-Dist: opentelemetry-api>=1.20.0
+Requires-Dist: opentelemetry-exporter-otlp-proto-http>=1.20.0
+Requires-Dist: opentelemetry-sdk>=1.20.0
+Requires-Dist: pip>=23.0
+Requires-Dist: presidio-analyzer>=2.2.360
+Requires-Dist: presidio-anonymizer>=2.2.360
+Requires-Dist: pydantic>=2.9.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: structlog>=24.4.0
+Provides-Extra: all
+Requires-Dist: anthropic>=0.40.0; extra == 'all'
+Requires-Dist: claude-agent-sdk>=0.0.1; extra == 'all'
+Requires-Dist: crewai>=0.50.0; extra == 'all'
+Requires-Dist: langchain-core>=0.2.0; extra == 'all'
+Requires-Dist: langchain-openai>=0.1.0; extra == 'all'
+Requires-Dist: langgraph>=0.2.0; extra == 'all'
+Requires-Dist: openai-agents>=0.0.3; extra == 'all'
+Provides-Extra: claude-agents
+Requires-Dist: anthropic>=0.40.0; extra == 'claude-agents'
+Requires-Dist: claude-agent-sdk>=0.0.1; extra == 'claude-agents'
+Provides-Extra: crewai
+Requires-Dist: crewai>=0.50.0; extra == 'crewai'
+Provides-Extra: dev
+Requires-Dist: mypy>=1.10.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.24.0; extra == 'dev'
+Requires-Dist: pytest-cov>=5.0.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.4.0; extra == 'dev'
+Provides-Extra: langgraph
+Requires-Dist: langchain-core>=0.2.0; extra == 'langgraph'
+Requires-Dist: langchain-openai>=0.1.0; extra == 'langgraph'
+Requires-Dist: langgraph>=0.2.0; extra == 'langgraph'
+Provides-Extra: openai-agents
+Requires-Dist: openai-agents>=0.0.3; extra == 'openai-agents'
+Description-Content-Type: text/markdown
+
+# CortexHub Python SDK
+
+**Runtime Governance for AI Agents** - Policy enforcement, PII/secrets detection, complete audit trails with OpenTelemetry.
+
+## Installation
+
+```bash
+# Core SDK
+pip install cortexhub
+
+# With framework support (choose one or more)
+pip install cortexhub[langgraph]      # LangGraph
+pip install cortexhub[crewai]         # CrewAI
+pip install cortexhub[openai-agents]  # OpenAI Agents SDK
+pip install cortexhub[claude-agents]  # Claude Agent SDK
+
+# All frameworks (for development)
+pip install cortexhub[all]
+```
+
+## Quick Start
+
+```python
+from cortexhub import init, Framework
+
+# Initialize CortexHub FIRST, before importing your framework
+cortex = init(
+    agent_id="customer_support_agent",
+    framework=Framework.LANGGRAPH,  # or CREWAI, OPENAI_AGENTS, CLAUDE_AGENTS
+)
+
+# Now import and use your framework
+from langgraph.prebuilt import create_react_agent
+
+# Continue with your LangGraph setup...
+```
+
+## Supported Frameworks
+
+| Framework | Enum Value | Install |
+|-----------|------------|---------|
+| LangGraph | `Framework.LANGGRAPH` | `pip install cortexhub[langgraph]` |
+| CrewAI | `Framework.CREWAI` | `pip install cortexhub[crewai]` |
+| OpenAI Agents | `Framework.OPENAI_AGENTS` | `pip install cortexhub[openai-agents]` |
+| Claude Agents | `Framework.CLAUDE_AGENTS` | `pip install cortexhub[claude-agents]` |
+
+## Configuration
+
+```bash
+# Required: API key for telemetry
+export CORTEXHUB_API_KEY=ch_live_...
+
+# Optional: Backend URL (defaults to production)
+export CORTEXHUB_API_URL=https://api.cortexhub.ai
+
+# Optional: provider keys for your framework or examples
+export OPENAI_API_KEY=sk-...
+```
+
+## Features
+
+- **Policy Enforcement** - Cedar-based policies, local evaluation
+- **PII Detection** - Presidio-powered, 50+ entity types, configurable
+- **Secrets Detection** - detect-secrets integration, 30+ secret types
+- **Configurable Guardrails** - Select specific PII/secret types to redact
+- **Custom Patterns** - Add company-specific regex patterns
+- **OpenTelemetry** - Industry-standard observability
+- **Framework Adapters** - Automatic interception for all major frameworks
+- **Privacy Mode** - Metadata-only by default, safe for production
+
+## Privacy Modes
+
+```python
+# Production (default) - only metadata sent
+cortex = init(agent_id="...", framework=..., privacy=True)
+# Sends: tool names, arg schemas, PII types detected
+# Never: raw values, prompts, responses
+
+# Development - full data for testing policies  
+cortex = init(agent_id="...", framework=..., privacy=False)
+# Also sends: raw args, results, prompts (for policy testing)
+```
+
+## Policy Enforcement
+
+Policies are created in the CortexHub dashboard from detected risks. The SDK automatically fetches and enforces them:
+
+```python
+from cortexhub.errors import PolicyViolationError, ApprovalRequiredError
+
+# Policies are fetched automatically during init()
+# If policies exist, enforcement mode is enabled
+
+try:
+    agent.run("Process a $10,000 refund")
+except PolicyViolationError as e:
+    print(f"Blocked by policy: {e.policy_name}")
+    print(f"Reason: {e.reasoning}")
+except ApprovalRequiredError as e:
+    print(f"\n⏸️  APPROVAL REQUIRED")
+    print(f"   Approval ID: {e.approval_id}")
+    print(f"   Tool: {e.tool_name}")
+    print(f"   Reason: {e.reason}")
+    print(f"   Expires: {e.expires_at}")
+    print(f"\n   Decision endpoint: {e.decision_endpoint}")
+    print(f"   Configure a webhook to receive approval.decisioned event")
+```
+
+## Guardrail Configuration
+
+Guardrails detect PII and secrets in LLM prompts. Configure in the dashboard:
+
+1. **Select types to redact**: Choose specific PII types (email, phone, etc.)
+2. **Add custom patterns**: Regex for company-specific data (employee IDs, etc.)
+3. **Choose action**: Redact, block, or monitor only
+
+The SDK applies your configuration automatically:
+
+```python
+# With guardrail policy active:
+# Input prompt: "Contact john@email.com about employee EMP-123456"
+# After redaction: "Contact [REDACTED-EMAIL_ADDRESS] about employee [REDACTED-CUSTOM_EMPLOYEE_ID]"
+# Only configured types are redacted
+```
+
+## Examples
+
+Examples live in the separate `cortexhub-examples` repository (the SDK package
+itself does not ship example scripts).
+
+```bash
+git clone git@github.com:cortexhub/cortexhub-examples.git
+cd cortexhub-examples/langgraph  # or crewai, openai-agents, claude-agents
+```
+
+## Important: Initialization Order
+
+**Always initialize CortexHub FIRST**, before importing your framework:
+
+```python
+# ✅ CORRECT
+from cortexhub import init, Framework
+cortex = init(agent_id="my_agent", framework=Framework.LANGGRAPH)
+
+from langgraph.prebuilt import create_react_agent  # Import AFTER init
+
+# ❌ WRONG
+from langgraph.prebuilt import create_react_agent  # Framework imported first
+from cortexhub import init, Framework
+cortex = init(...)  # Too late!
+```
+
+This ensures:
+1. CortexHub sets up OpenTelemetry before frameworks that also use it
+2. Framework decorators/classes are properly wrapped
+
+## Architecture
+
+```
+Agent Decides → [CortexHub] → Agent Executes
+                    │
+              ┌─────┴─────┐
+              │           │
+         Policy      Guardrails
+         Engine      (PII/Secrets)
+              │           │
+              └─────┬─────┘
+                    │
+              OpenTelemetry
+               (to backend)
+```
+
+## Development
+
+```bash
+cd python
+
+# Install with all frameworks
+uv sync --all-extras
+
+# Run tests
+uv run pytest
+
+# Lint
+uv run ruff check .
+```
+
+## Links
+
+- [Documentation](https://docs.cortexhub.ai)
+- [Dashboard](https://app.cortexhub.ai)
+- [Issues](https://github.com/cortexhub/sdks/issues)
+
+## License
+
+MIT
