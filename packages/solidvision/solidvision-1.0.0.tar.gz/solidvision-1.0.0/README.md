@@ -1,0 +1,328 @@
+# Supervision - 图像识别与文字识别模块
+
+[![PyPI version](https://badge.fury.io/py/solidvision.svg)](https://badge.fury.io/py/solidvision)
+
+一个轻量级、高效的图像识别与文字识别模块。完全独立，无需任何设备连接，可轻松集成到任何项目中（桌面端、Web、移动端等）。
+
+## 核心模块
+
+- **options** - 全局配置管理
+- **aircv** - 图像识别（模板匹配、特征点匹配）
+- **orc** - 文字识别（OCR）
+
+## 特性
+
+- ✅ **多种匹配算法** - 支持模板匹配、多尺度模板匹配、KAZE、BRISK、AKAZE、ORB、SIFT、SURF、BRIEF等
+- ✅ **完全独立** - 无需设备连接，纯图像/文字识别
+- ✅ **易于集成** - 简洁的API接口，支持多种应用场景
+- ✅ **高性能** - 优化的匹配策略和算法选择
+- ✅ **灵活配置** - 可配置的阈值、超时、算法等参数
+- ✅ **支持OCR** - 集成PaddleOCR实现中文/英文文字识别
+
+## 安装
+
+### 从 PyPI 安装（推荐）
+
+```bash
+pip install solidvision
+```
+
+### 从源码安装（开发模式）
+
+```bash
+# 克隆仓库
+git clone https://github.com/SolidQA/solidvision.git
+cd solidvision
+
+# 使用 uv 安装（推荐）
+uv sync --dev
+
+# 或使用 pip
+pip install -e .
+```
+
+## 快速开始
+
+### 图像识别
+
+```python
+from solidvision import find_location, Template
+import cv2
+
+# 读取截图
+screenshot = cv2.imread('screenshot.png')
+
+# 方式1: 快速查找
+position = find_location(screenshot, 'button.png', threshold=0.8)
+print(position)  # (100, 200)
+
+# 方式2: 使用Template
+from solidvision.aircv.cv import match_loop
+template = Template('button.png')
+position = match_loop(lambda: screenshot, template.filepath, threshold=0.8)
+```
+
+### 文字识别
+
+```python
+from solidvision import recognize_text, find_text_position
+import cv2
+
+# 读取图像
+image = cv2.imread('image.png')
+
+# 识别所有文字
+texts = recognize_text(image)
+for item in texts:
+    print(f"文字: {item['text']}, 位置: {item['position']}")
+
+# 查找特定文字位置
+position = find_text_position(image, '确定')
+print(position)  # (150, 250)
+```
+
+## 模块说明
+
+### options 模块
+
+全局配置管理：
+
+```python
+from solidvision.options import Options, Config
+
+# 设置识别阈值
+Options.CV_THRESHOLD = 0.85
+
+# 设置超时时间
+Options.FIND_TIMEOUT = 15
+
+# 配置OCR语言
+Options.OCR_LANGUAGE = 'ch'  # 中文
+
+# 获取当前配置
+config_dict = Options.get_config_dict()
+```
+
+### aircv 模块
+
+图像识别功能：
+
+```python
+from solidvision.aircv.cv import Template, match_loop, multi_find_location
+from solidvision.aircv.settings import Settings
+
+# 配置匹配策略
+Settings.CVSTRATEGY = ('tpl', 'kaze', 'brisk')
+
+# 创建模板
+template = Template('button.png', threshold=0.8)
+
+# 单次匹配
+position = match_loop(screenshot_func, template.filepath, timeout=10, threshold=0.8)
+
+# 查找所有匹配
+positions = multi_find_location(screenshot_func, 'button.png', threshold=0.8)
+```
+
+### orc 模块
+
+文字识别功能：
+
+```python
+from solidvision.orc import TextRecognizer, recognize_text
+import cv2
+
+# 创建识别器
+recognizer = TextRecognizer(lang='ch')
+
+# 识别图像中的文字
+image = cv2.imread('image.png')
+results = recognizer.recognize_image(image)
+
+# 查找特定文字
+position = recognizer.find_text_position(image, '确定')
+
+# 获取所有文字
+text = recognizer.get_page_text(image)
+```
+
+## 集成示例
+
+### 集成到桌面应用
+
+```python
+import cv2
+from solidvision import find_location
+
+def find_button_on_desktop(button_template):
+    import pyautogui
+    import numpy as np
+
+    # 获取桌面截图
+    screenshot = pyautogui.screenshot()
+    frame = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+
+    # 识别按钮
+    position = find_location(frame, button_template, threshold=0.8)
+
+    if position:
+        # 点击按钮
+        pyautogui.click(position)
+        return True
+
+    return False
+
+# 使用
+find_button_on_desktop('button.png')
+```
+
+### 集成到Web应用 (Flask)
+
+```python
+from flask import Flask, request, jsonify
+from solidvision import find_location
+import cv2
+import numpy as np
+
+app = Flask(__name__)
+
+@app.route('/recognize', methods=['POST'])
+def recognize():
+    file = request.files['image']
+    template_path = request.form.get('template')
+
+    # 读取图像
+    image_bytes = np.frombuffer(file.read(), np.uint8)
+    image = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
+
+    # 识别
+    position = find_location(image, template_path)
+
+    return jsonify({
+        'success': position is not None,
+        'position': position
+    })
+```
+
+### 集成到移动应用自动化
+
+```python
+from solidvision import find_location, find_text_position
+import cv2
+
+class MobileAutomation:
+    @staticmethod
+    def click(screenshot, template_path):
+        """点击UI元素"""
+        position = find_location(screenshot, template_path)
+        return position
+
+    @staticmethod
+    def click_text(screenshot, text):
+        """点击文字"""
+        position = find_text_position(screenshot, text)
+        return position
+```
+
+## 性能优化
+
+### 1. 选择合适的算法
+
+```python
+from solidvision.aircv.settings import Settings
+
+# 快速匹配（简单场景）
+Settings.CVSTRATEGY = ('tpl',)
+
+# 高精度匹配（复杂场景）
+Settings.CVSTRATEGY = ('gmstpl', 'sift')
+
+# 平衡方案
+Settings.CVSTRATEGY = ('tpl', 'kaze', 'brisk')
+```
+
+### 2. 调整阈值
+
+```python
+# 高阈值：减少误识别，但可能漏检
+position = find_location(screenshot, 'template.png', threshold=0.95)
+
+# 低阈值：容易匹配，但可能误识别
+position = find_location(screenshot, 'template.png', threshold=0.6)
+
+# 推荐值
+position = find_location(screenshot, 'template.png', threshold=0.8)
+```
+
+## 常见问题
+
+### Q: 如何提高识别准确率？
+
+A:
+1. 调整 `threshold` 参数
+2. 尝试不同的匹配算法
+3. 确保模板清晰，与实际场景相符
+4. 使用高质量的截图
+
+### Q: 识别速度太慢？
+
+A:
+1. 使用更快的算法 (`tpl` 而不是 `sift`)
+2. 缩小搜索区域
+3. 提高阈值
+4. 使用更小的模板图像
+
+### Q: 如何处理旋转或缩放的图像？
+
+A:
+```python
+from solidvision.aircv.settings import Settings
+
+# 使用多尺度模板匹配
+Settings.CVSTRATEGY = ('gmstpl', 'sift')
+```
+
+### Q: OCR 识别不准怎么办？
+
+A:
+1. 确保图像质量良好
+2. 调整语言设置 (`Options.OCR_LANGUAGE`)
+3. 使用高分辨率的图像
+4. 尝试图像预处理（对比度调整等）
+
+## 项目结构
+
+```
+solidvision/
+├── options/              # 配置管理模块
+│   └── __init__.py
+├── aircv/               # 图像识别模块
+│   ├── cv.py           # 核心匹配接口
+│   ├── template_matching.py
+│   ├── keypoint_matching.py
+│   └── ...
+├── orc/                # 文字识别模块
+│   └── __init__.py
+└── utils/              # 工具函数
+```
+
+## 许可证
+
+Apache License 2.0
+
+## 反馈
+
+- 问题反馈：提交 Issue
+- 建议反馈：提交 Discussion
+- Email: caishilong@exuils.com
+
+## 致谢
+
+本项目基于以下开源项目：
+- [airtest](https://github.com/NetEase/airtest)
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [OpenCV](https://opencv.org/)
+
+---
+
+**立即开始使用 Supervision！** 🚀
