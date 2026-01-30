@@ -1,0 +1,261 @@
+Metadata-Version: 2.4
+Name: imagekit2
+Version: 0.1.5
+Classifier: Programming Language :: Rust
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Summary: A high-performance, Rust-powered image watermarking library. Supports text and logo watermarks, smart contrast, tiling, rotation, and precise positioning.
+License: MIT
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+
+# ImageKit2
+
+[![PyPI version](https://img.shields.io/pypi/v/imagekit2.svg)](https://pypi.org/project/imagekit2/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+[**ImageKit2**](https://github.com/hzbd/imagekit2) is a high-performance image watermarking engine built with **Rust**. It is designed for speed, memory safety, and professional typography rendering.
+
+> [!IMPORTANT]
+> **Migration Notice:**
+> This is the successor to the original [`imagekit`](https://github.com/hzbd/imagekit), featuring a completely rewritten core for superior performance and modern text styling (shadows, alignment, smart contrast).
+
+[中文文档](./README.zh.md)
+
+## ✨ Why ImageKit2?
+
+ImageKit2 is not just a wrapper around an image library; it is a purpose-built engine designed for high-quality watermarking tasks.
+
+*   **🚀 Blazing Fast & Memory Safe**
+    Built completely in **Rust**, ImageKit2 offers superior performance and memory safety compared to pure Python solutions (like Pillow), especially when processing large batches or high-resolution images.
+
+*   **🧠 Smart Contrast (Auto Color)**
+    Stop worrying about watermarks being invisible on dark or bright backgrounds. Use `color="auto"`, and the engine will calculate the background luminance to automatically switch between black and white text.
+
+*   **🎨 Professional Typography**
+    Go beyond simple text drawing. ImageKit2 supports:
+    *   **Drop Shadows** for better readability.
+    *   **Faux Bold (Stroke)** to make thin fonts stand out.
+    *   **Multi-line Alignment** (Left/Center/Right).
+    *   **Smart Padding** to prevent text clipping.
+
+*   **🛡️ Production Ready**
+    *   **EXIF Correction:** Automatically rotates images based on orientation tags.
+    *   **Thread-Safe:** Font loaders and processing pipelines are designed for concurrent environments (e.g., multi-threaded Python web servers).
+    *   **Modern Formats:** Full support for **WebP**, **AVIF**, JPEG, and PNG.
+
+*   **🧩 One Core, Three Interfaces**
+    Whether you need a **Python SDK** for your app, a **CLI** for your scripts, or a **REST API Server** for your microservices, ImageKit2 has you covered with a unified feature set.
+
+![Demo Watermark](./assets/samples/markus-winkler_processed.webp)
+
+---
+
+## Choose Your Usage Scenario
+
+ImageKit2 adapts to your workflow. Whether you are building a Python app, running batch scripts, or deploying a microservice, pick the method that fits your needs.
+
+### Scenario 1: Python Application Integration
+*Best for: Data science pipelines, Django/FastAPI apps, in-memory processing.*
+
+**Installation:**
+```bash
+pip install imagekit2
+```
+
+**Usage Example:**
+```python
+import imagekit2
+
+# 1. Initialize (Point to your font files for best results)
+# The library will search these paths/files for fonts.
+wk = imagekit2.Watermarker(["/Library/Fonts/Arial.ttf", "./assets/fonts"])
+
+# 2. Process
+with open("input.jpg", "rb") as f:
+    img_bytes = f.read()
+
+processed_bytes = wk.process(
+    img_bytes,
+    text="Clean Watermark",
+    position="br",
+    padding=20,
+    size=32.0,
+    color="#FFFFFF",
+    opacity=0.9,
+    # Tip: Set stroke to 0 for crisp, modern text.
+    stroke_width=0,
+    # Add depth with shadows
+    shadow_x=2,
+    shadow_y=2,
+    shadow_color="#00000080"
+)
+
+# 3. Save
+with open("output.png", "wb") as f:
+    f.write(processed_bytes)
+```
+
+### Scenario 2: Local Batch Processing (CLI)
+*Best for: DevOps tasks, shell scripts, processing folders of images.*
+
+**Installation:**
+1.  Download the **`imagekit2`** binary for your OS (Windows/Linux/macOS) from the **[GitHub Releases Page](https://github.com/hzbd/imagekit2/releases)**.
+2.  (Optional) Add it to your system `PATH` for global access.
+
+**Usage Example:**
+```bash
+# Assuming the binary is in your current folder
+./imagekit2 \
+  --input "./input.jpg" \
+  --output "./output.jpg" \
+  --text "Copyright 2024" \
+  --position "center" \
+  --size 40 \
+  --font "/Library/Fonts/Arial.ttf" \
+  --color "#FFFFFF" \
+  --shadow-x 2 \
+  --shadow-y 2
+```
+
+### Scenario 3: HTTP Microservice
+*Best for: Cloud deployment, decoupling image processing from main logic.*
+
+**Installation & Start:**
+1.  Download the **`imagekit2-server`** binary from the **[GitHub Releases Page](https://github.com/hzbd/imagekit2/releases)**.
+2.  Grant execution permissions (Linux/macOS): `chmod +x imagekit2-server`
+
+**Running the Server:**
+```bash
+# Set font directory (Optional, defaults to ./assets/fonts)
+export FONT_DIR="./assets/fonts"
+
+# Start server (Listens on port 3000)
+./imagekit2-server
+```
+
+**API Contract:**
+*   **Endpoint:** `POST /process`
+*   **Content-Type:** `multipart/form-data`
+*   **Payload:**
+    *   `file`: The image file.
+    *   `params`: JSON string (e.g., `{"mode": "text", "text": "Hello", "size": 30}`).
+
+**Example (cURL):**
+```bash
+curl -X POST http://localhost:3000/process \
+  -F "file=@input.jpg" \
+  -F "params={\"mode\":\"text\",\"text\":\"API Test\",\"position\":\"br\",\"shadow_x\":2}" \
+  --output result.jpg
+```
+
+---
+
+## Font Configuration (Recommended)
+
+### 1. Default (Latin/English Support)
+
+If your watermark text consists **only of Latin characters** (English, Numbers, Punctuation), you do **not** need to configure a font.
+
+ImageKit2 embeds **Inter Regular** (`Inter_24pt-Regular.ttf`) by default—a high-quality, modern sans-serif font that looks professional out of the box.
+
+### 2. Custom Fonts (Required for CJK / Styling)
+You **MUST** provide a custom font file (`.ttf` / `.otf`) in the following cases:
+*   **Non-Latin Characters:** If your text contains Chinese, Japanese, Korean (CJK), or other non-Latin characters (the default Inter font does not contain these glyphs).
+*   **Specific Styles:** If you need a **Bold**, *Italic*, or Serif look (e.g., `Roboto-Bold.ttf`).
+
+**Where to get fonts?**
+*   **[Google Fonts](https://fonts.google.com/)**: A massive collection of free fonts.
+    *   *Recommendations:* **Roboto**, **Open Sans**, **Montserrat**, or **Lato**.
+    *   *Tip:* Download the `Medium` or `Bold` weights for better visibility on images.
+
+**How to load a custom font:**
+*   **Python:** `Watermarker(["/path/to/YourFont-Bold.ttf"])`
+*   **CLI:** `--font "/path/to/YourFont-Bold.ttf"`
+*   **Server:** Place the file in the `FONT_DIR` folder.
+
+---
+
+## Appendix: Parameter Reference
+
+### 1. Common Parameters (Text & Logo)
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `position` | `br` | `tl`, `tr`, `bl`, `br`, `center`, `tile`, or manual coords. |
+| `padding` | `20` | Distance from the edge (pixels). |
+| `opacity` | `0.8` | 0.0 to 1.0. |
+| `angle` | `0.0` | Rotation angle in degrees. |
+| `resize_width` | `None` | Resize input width before processing. |
+| `output_format` | `png` | `jpg`, `png`, `webp`, etc. |
+| `quality` | `80` | Compression quality (1-100). |
+
+### 2. Text Parameters
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `text` | - | The watermark content. |
+| `size` | `24.0` | Font size in pixels. |
+| `color` | `#FFFFFF` | Hex color. Use `"auto"` for smart contrast. |
+| `align` | `left` | `left`, `center`, `right`. |
+| `stroke_width` | `0` | Outline width. **Keep 0 for clean modern style.** |
+| `stroke_color` | `#000000` | Outline color. |
+| `shadow_x` | `0` | Horizontal shadow offset. |
+| `shadow_y` | `0` | Vertical shadow offset. |
+| `shadow_color` | `#000000` | Shadow color (supports alpha). |
+
+### 3. Logo Parameters
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `logo` | - | The source image path/bytes. |
+| `scale` | `None` | Scale relative to background width (e.g., `0.1` = 10%). |
+
+---
+
+## Development & Contribution
+
+We welcome contributions! Whether it's fixing bugs, adding features, or improving documentation, here's how to set up your environment.
+
+### 1. Prerequisites
+*   **Rust**: Install via [rustup.rs](https://rustup.rs/) (Stable channel).
+*   **Python**: Version 3.8+ (Required for building bindings).
+*   **Maturin**: Required for compiling the Python extension (`pip install maturin`).
+
+### 2. Build the Workspace
+This project is organized as a Cargo workspace containing `core`, `cli`, `server`, and `bindings/python`.
+
+```bash
+# Clone the repository
+git clone https://github.com/hzbd/imagekit2.git
+cd imagekit2
+
+# Build Core, CLI, and Server
+cargo build --workspace
+
+# Run tests (Core logic)
+cargo test --workspace
+```
+
+### 3. Developing Python Bindings
+To test changes in the Python SDK, you need to build the wheel locally using `maturin`.
+
+```bash
+# Navigate to the bindings directory (Optional, or run from root with -m)
+# Recommended: Create a virtual environment first
+python -m venv .venv
+source .venv/bin/activate
+
+# Build and install into the current environment
+maturin develop -m bindings/python/Cargo.toml --release
+```
+
+### 4. Contribution Workflow
+1.  **Fork** the repository on GitHub.
+2.  Create a new **Feature Branch** (`git checkout -b feature/amazing-feature`).
+3.  Commit your changes.
+4.  **Push** to the branch and open a **Pull Request**.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
