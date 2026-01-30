@@ -1,0 +1,73 @@
+# veracityLabAuthZ
+
+Shared Cedar authorization helpers for Veracity services.
+
+## Local development
+
+```bash
+pip install -e packages/veracityLabAuthZ
+```
+
+## Cedar evaluation (cedarpy)
+
+```bash
+pip install -e "packages/veracityLabAuthZ[cedarpy]"
+```
+
+```python
+from veracity_authz import CedarClient, CedarPyConfig, CedarPyEngine
+from veracity_authz.context_builder import build_request
+
+policies = """permit(principal, action, resource);"""
+entities = []
+
+engine = CedarPyEngine(CedarPyConfig(policies=policies, entities=entities))
+client = CedarClient(engine)
+
+request = build_request(
+  principal={"type": "User", "id": "user-1"},
+  action={"type": "Action", "id": "workspace:read"},
+  resource={"type": "Workspace", "id": "ws-1"},
+)
+
+decision = client.evaluate(request)
+print(decision.allowed)
+```
+
+## Tests
+
+```bash
+python -m unittest discover -s packages/veracityLabAuthZ/tests
+```
+
+## Publishing (PyPI)
+
+GitHub Actions is configured to publish to PyPI using trusted publishing.
+PyPI project page (used for the GitHub Actions environment URL): https://pypi.org/p/veracitylabauthz
+
+Manual publish from the repo root (user API token):
+
+```bash
+# optional: clean old artifacts
+rm -rf packages/veracityLabAuthZ/dist
+
+# build tooling
+python -m pip install --upgrade pip build twine
+
+# optional: run tests
+python -m unittest discover -s packages/veracityLabAuthZ/tests
+
+# build
+python -m build packages/veracityLabAuthZ
+
+# publish (PyPI)
+export TWINE_USERNAME="__token__"
+export TWINE_PASSWORD="<pypi-api-token>"
+
+python -m twine upload --repository pypi packages/veracityLabAuthZ/dist/*
+```
+
+Notes:
+- Create a PyPI API token in your PyPI account settings and use it for `TWINE_PASSWORD`.
+- Each publish must use a new version; bump `version` in `packages/veracityLabAuthZ/pyproject.toml` before rebuilding.
+- For CI, configure a trusted publisher in PyPI for this repo and workflow.
