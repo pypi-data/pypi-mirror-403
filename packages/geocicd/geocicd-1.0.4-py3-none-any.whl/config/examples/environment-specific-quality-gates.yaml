@@ -1,0 +1,328 @@
+# Example: Environment-Specific Quality Gates Configuration
+# This example demonstrates how to configure different quality gate thresholds
+# and acceptable failures for each environment (dev, stg, ese)
+
+project:
+  name: "example-app"
+  organization: "geosystems"
+  version: "1.0.0"
+
+environments:
+  dev:
+    branches:
+      - "develop"
+      - "feature/*"
+    autoSync: true
+    deployMethod: "kubernetes"
+    destination:
+      - type: "kubernetes"
+        cluster: "https://k8s-dev.geosystems.it"
+        namespace: "geosystems-example-app-dev"
+        context: "dev-cluster"
+    argocd:
+      enabled: true
+      server: "https://argocd-dev.geosystems.it"
+      project: "default"
+      chartsRepo:
+        url: "https://gitlab.geosystems.it/k8s/charts.git"
+        branch: "main"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+  
+  stg:
+    branches:
+      - "staging"
+      - "release/*"
+    autoSync: true
+    deployMethod: "kubernetes"
+    destination:
+      - type: "kubernetes"
+        cluster: "https://k8s-stg.geosystems.it"
+        namespace: "geosystems-example-app-stg"
+        context: "stg-cluster"
+    argocd:
+      enabled: true
+      server: "https://argocd-stg.geosystems.it"
+      project: "default"
+      chartsRepo:
+        url: "https://gitlab.geosystems.it/k8s/charts.git"
+        branch: "main"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+  
+  ese:
+    branches:
+      - "main"
+      - "master"
+    autoSync: false
+    deployMethod: "kubernetes"
+    destination:
+      - type: "kubernetes"
+        cluster: "https://k8s-prod.geosystems.it"
+        namespace: "geosystems-example-app-prod"
+        context: "prod-cluster"
+    argocd:
+      enabled: true
+      server: "https://argocd-prod.geosystems.it"
+      project: "default"
+      chartsRepo:
+        url: "https://gitlab.geosystems.it/k8s/charts.git"
+        branch: "main"
+      application:
+        autoSync: false
+        selfHeal: false
+        prune: false
+
+components:
+  - name: "frontend"
+    type: "vue"
+    path: "./frontend"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "frontend/**"
+      excludePaths:
+        - "frontend/tests/**"
+        - "frontend/docs/**"
+    
+    build:
+      commands:
+        - "npm install"
+        - "npm run build"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "Dockerfile"
+          context: "."
+          buildArgs:
+            - "NODE_ENV=production"
+    
+    kubernetes:
+      values:
+        replicaCount: 2
+        image:
+          repository: "nexus.geosystems.it:8082/geosystems/example-app-frontend"
+          pullPolicy: "Always"
+        service:
+          type: "ClusterIP"
+          port: 80
+        ingress:
+          enabled: true
+          hosts:
+            - host: "example-app.geosystems.it"
+              paths:
+                - path: "/"
+                  pathType: "Prefix"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        autoscaling:
+          enabled: true
+          minReplicas: 2
+          maxReplicas: 10
+          targetCPUUtilizationPercentage: 80
+
+# SonarQube Configuration with Environment-Specific Quality Gates
+sonarqube:
+  enabled: true
+  server: "https://sonarqube.geosystems.it"
+  projectKey: "geosystems-example-app"
+  token: "SONARQUBE_TOKEN"
+  
+  # Global quality gates (used as fallback if environment-specific not defined)
+  qualityGates:
+    coverage:
+      enabled: true
+      threshold: 70
+      operator: "GTE"
+    bugs:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    vulnerabilities:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    codeSmells:
+      enabled: true
+      threshold: 100
+      operator: "LTE"
+    duplicatedLinesDensity:
+      enabled: true
+      threshold: 5
+      operator: "LTE"
+    securityHotspots:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+  
+  # Environment-specific quality gates (override global for specific environments)
+  qualityGatesByEnvironment:
+    # Development: More lenient thresholds
+    dev:
+      coverage:
+        enabled: true
+        threshold: 50  # Lower coverage requirement for dev
+        operator: "GTE"
+      bugs:
+        enabled: true
+        threshold: 5  # Allow some bugs in dev
+        operator: "LTE"
+      vulnerabilities:
+        enabled: true
+        threshold: 2  # Allow minor vulnerabilities in dev
+        operator: "LTE"
+      codeSmells:
+        enabled: true
+        threshold: 200  # More code smells allowed in dev
+        operator: "LTE"
+      duplicatedLinesDensity:
+        enabled: true
+        threshold: 10  # Higher duplication allowed in dev
+        operator: "LTE"
+      securityHotspots:
+        enabled: true
+        threshold: 5  # Allow some security hotspots in dev
+        operator: "LTE"
+    
+    # Staging: Moderate thresholds
+    stg:
+      coverage:
+        enabled: true
+        threshold: 70  # Standard coverage for staging
+        operator: "GTE"
+      bugs:
+        enabled: true
+        threshold: 2  # Few bugs allowed in staging
+        operator: "LTE"
+      vulnerabilities:
+        enabled: true
+        threshold: 0  # No vulnerabilities in staging
+        operator: "EQ"
+      codeSmells:
+        enabled: true
+        threshold: 100  # Moderate code smells in staging
+        operator: "LTE"
+      duplicatedLinesDensity:
+        enabled: true
+        threshold: 5  # Standard duplication in staging
+        operator: "LTE"
+      securityHotspots:
+        enabled: true
+        threshold: 2  # Few security hotspots in staging
+        operator: "LTE"
+    
+    # Production: Strict thresholds
+    ese:
+      coverage:
+        enabled: true
+        threshold: 80  # High coverage requirement for production
+        operator: "GTE"
+      bugs:
+        enabled: true
+        threshold: 0  # Zero bugs in production
+        operator: "EQ"
+      vulnerabilities:
+        enabled: true
+        threshold: 0  # Zero vulnerabilities in production
+        operator: "EQ"
+      codeSmells:
+        enabled: true
+        threshold: 50  # Low code smells in production
+        operator: "LTE"
+      duplicatedLinesDensity:
+        enabled: true
+        threshold: 3  # Low duplication in production
+        operator: "LTE"
+      securityHotspots:
+        enabled: true
+        threshold: 0  # Zero security hotspots in production
+        operator: "EQ"
+  
+  # Global acceptable failures (used as fallback)
+  acceptableFailures:
+    - "codeSmells"
+    - "duplicatedLinesDensity"
+  
+  # Environment-specific acceptable failures (override global for specific environments)
+  acceptableFailuresByEnvironment:
+    # Development: Many failures are acceptable
+    dev:
+      - "coverage"
+      - "bugs"
+      - "vulnerabilities"
+      - "codeSmells"
+      - "duplicatedLinesDensity"
+      - "securityHotspots"
+    
+    # Staging: Some failures are acceptable
+    stg:
+      - "bugs"
+      - "codeSmells"
+      - "duplicatedLinesDensity"
+      - "securityHotspots"
+    
+    # Production: Only minor issues are acceptable
+    ese:
+      - "codeSmells"
+      - "duplicatedLinesDensity"
+  
+  # Failure behavior per environment
+  onFailure:
+    dev:
+      allowFailure: true
+      blockDeploy: false
+    stg:
+      allowFailure: true
+      blockDeploy: true
+    ese:
+      allowFailure: false
+      blockDeploy: true
+  
+  # Analysis strategy per environment
+  strategy:
+    dev:
+      enabled: true
+      skipIfNoChanges: false
+      compareWith: null
+    stg:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "develop"
+    ese:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "staging"
+
+# Change detection configuration
+changeDetection:
+  enabled: true
+  
+  strategy:
+    dev:
+      enabled: false
+      compareWith: null
+      useLastSuccessful: false
+    stg:
+      enabled: true
+      compareWith: "develop"
+      useLastSuccessful: true
+    ese:
+      enabled: true
+      compareWith: "staging"
+      useLastSuccessful: true
+

@@ -1,0 +1,291 @@
+# GeoSystems Default Configuration
+# This file contains default values for GeoSystems projects
+# Import this file in your ci-config.yaml to inherit these defaults
+
+# Registry configuration per service and environment
+# Uses server references from config/servers.yaml
+registry:
+  npmServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  mavenServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  gradleServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  pypiServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  dockerServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "aws-ecr-geosystems"
+    ese:
+      server: "aws-ecr-geosystems"
+  
+  rawServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+
+# Default Node.js version for all projects
+defaults:
+  nodeVersion: "18"
+  javaVersion: "17"
+  
+  # Default build commands per technology
+  build:
+    npm:
+      nodeVersion: "18"
+      commands:
+        - "npm install"
+        - "npm run build"
+      cache:
+        paths:
+          - "node_modules/"
+          - ".npm/"
+    
+    maven:
+      javaVersion: "17"
+      commands:
+        - "mvn clean package -DskipTests"
+      cache:
+        paths:
+          - ".m2/repository"
+    
+    gradle:
+      javaVersion: "17"
+      commands:
+        - "./gradlew build -x test"
+      cache:
+        paths:
+          - ".gradle"
+  
+  # Default Kubernetes resources configuration
+  kubernetes:
+    resources:
+      - type: deployment
+        replicas: 2
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      
+      - type: service
+        serviceType: ClusterIP
+        port: 80
+        targetPort: 8080
+      
+      - type: ingress
+        className: "nginx"
+        pathType: "Prefix"
+        path: "/"
+        tls:
+          enabled: true
+
+# Environment-specific configurations
+environments:
+  dev:
+    branches:
+      - "development"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://10.199.22.81:16443"
+        namespace: "{{ project.organization }}-{{ project.name }}-dev"
+        credentials: "K8S_DEV_CREDENTIALS"
+    argocd:
+      server: "https://argocd.geosystems.local"
+      project: "local"
+      chartsRepo:
+        url: "git@geogitlab1.intersistemi.it:devops/k8s-charts.git"
+        branch: "development"
+        credentials: "GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+  
+  stg:
+    branches:
+      - "stage"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "arn:aws:eks:eu-west-1:905418401279:cluster/Geosystems"
+        namespace: "{{ project.organization }}-{{ project.name }}-stg"
+        credentials: "K8S_STG_CREDENTIALS"
+    argocd:
+      server: "https://argocd.geosystems.local"
+      project: "aws-stg"
+      chartsRepo:
+        url: "git@geogitlab1.intersistemi.it:devops/k8s-charts.git"
+        branch: "development"
+        credentials: "GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+  
+  ese:
+    branches:
+      - "main"
+      - "master"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "arn:aws:eks:eu-west-1:905418401279:cluster/Geosystems"
+        namespace: "{{ project.organization }}-{{ project.name }}-prod"
+        credentials: "K8S_PROD_CREDENTIALS"
+    argocd:
+      server: "https://argocd.geosystems.local"
+      project: "aws-ese"
+      chartsRepo:
+        url: "git@geogitlab1.intersistemi.it:devops/k8s-charts.git"
+        branch: "development"
+        credentials: "GITLAB_TOKEN"
+      application:
+        autoSync: false
+        selfHeal: false
+        prune: false
+
+# Change detection configuration
+changeDetection:
+  enabled: true
+  strategy:
+    dev:
+      enabled: false
+      compareWith: null
+      useLastSuccessful: false
+    stg:
+      enabled: true
+      compareWith: "development"
+      useLastSuccessful: true
+    ese:
+      enabled: true
+      compareWith: "stage"
+      useLastSuccessful: true
+
+# SonarQube configuration
+sonarqube:
+  enabled: true
+  server: "http://sonarqube.geosystems.local"
+  token: "SONARQUBE_TOKEN"
+  
+  # Quality gate thresholds
+  qualityGates:
+    coverage:
+      enabled: true
+      threshold: 80
+      operator: "GTE"
+    bugs:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    vulnerabilities:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    codeSmells:
+      enabled: true
+      threshold: 50
+      operator: "LTE"
+    duplicatedLinesDensity:
+      enabled: true
+      threshold: 3
+      operator: "LTE"
+    securityHotspots:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+  
+  # Acceptable failures (warnings only)
+  acceptableFailures:
+    - "codeSmells"
+    - "duplicatedLinesDensity"
+  
+  # Failure behavior per environment
+  onFailure:
+    dev:
+      allowFailure: true
+      blockDeploy: false
+    stg:
+      allowFailure: true
+      blockDeploy: true
+    ese:
+      allowFailure: false
+      blockDeploy: true
+  
+  # Analysis strategy per environment
+  strategy:
+    dev:
+      enabled: true
+      skipIfNoChanges: false
+      compareWith: null
+    stg:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "development"
+    ese:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "stage"
+
+# Notification configuration
+notifications:
+  slack:
+    enabled: false
+    webhook: "SLACK_WEBHOOK_URL"
+    channel: "#ci-cd-notifications"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+      - "quality_gate_failed"
+  
+  teams:
+    enabled: false
+    webhook: "TEAMS_WEBHOOK_URL"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+  
+  email:
+    enabled: false
+    recipients:
+      - "devops@geosystems.it"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+
+# Organization defaults
+organization:
+  name: "geosystems"
+  gitlabUrl: "https://geogitlab1.intersistemi.it"

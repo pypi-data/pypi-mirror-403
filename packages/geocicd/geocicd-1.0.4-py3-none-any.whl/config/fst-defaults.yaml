@@ -1,0 +1,361 @@
+# FST (Fondazione Sistema Toscana) Default Configuration
+# This file contains FST-specific organization settings
+# Import this file in your ci-config.yaml for FST projects
+
+# Registry configuration per service and environment
+# Uses server references from config/servers.yaml
+registry:
+  npmServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  mavenServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  gradleServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  pypiServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+  
+  dockerServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "aws-ecr-geosystems"
+    ese:
+      server: "aws-ecr-geosystems"
+  
+  rawServer:
+    dev:
+      server: "nexus-geosystems"
+    stg:
+      server: "nexus-geosystems"
+    ese:
+      server: "nexus-geosystems"
+
+# Default Node.js version for FST projects
+defaults:
+  nodeVersion: "18"
+  javaVersion: "17"
+  
+  # Default build commands per technology
+  build:
+    npm:
+      nodeVersion: "18"
+      commands:
+        - "npm install"
+        - "npm run build"
+      cache:
+        paths:
+          - "node_modules/"
+          - ".npm/"
+    
+    maven:
+      javaVersion: "17"
+      commands:
+        - "mvn clean package -DskipTests"
+      cache:
+        paths:
+          - ".m2/repository"
+    
+    gradle:
+      javaVersion: "17"
+      commands:
+        - "./gradlew build -x test"
+      cache:
+        paths:
+          - ".gradle"
+  
+  # Default Kubernetes resources for FST
+  kubernetes:
+    resources:
+      - type: deployment
+        replicas: 3
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+      
+      - type: service
+        serviceType: ClusterIP
+        port: 80
+        targetPort: 8080
+      
+      - type: ingress
+        className: "nginx"
+        pathType: "Prefix"
+        path: "/"
+        tls:
+          enabled: true
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+# FST-specific environment configurations
+environments:
+  dev:
+    branches:
+      - "development"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://10.199.22.81:16443"
+        namespace: "vt"
+        credentials: "FST_K8S_DEV_CREDENTIALS"
+    argocd:
+      server: "https://argocd.geosystems.local"
+      project: "vt-local"
+      chartsRepo:
+        url: "git@geogitlab1.intersistemi.it:devops/k8s-charts.git"
+        branch: "development"
+        credentials: "FST_GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - "CreateNamespace=true"
+  
+  stg:
+    branches:
+      - "vtstg"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://192.168.48.121:6443"
+        namespace: "vt-stg"
+        credentials: "FST_K8S_STG_CREDENTIALS"
+    argocd:
+      server: "https://argocd.geosystems.local"
+      project: "vt-fst-stg"
+      chartsRepo:
+        url: "git@geogitlab1.intersistemi.it:devops/k8s-charts.git"
+        branch: "development"
+        credentials: "FST_GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - "CreateNamespace=true"
+      retry:
+        limit: 5
+        backoff:
+          duration: "5s"
+          factor: 2
+          maxDuration: "3m"
+  
+  ese:
+    branches:
+      - "vtese"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://vtkube1:6443"
+        namespace: "vt-ese"
+        credentials: "FST_K8S_PROD_CREDENTIALS"
+    argocd:
+      server: "https://argocd.geosystems.local"
+      project: "vt-ese-fst"
+      chartsRepo:
+        url: "git@geogitlab1.intersistemi.it:devops/k8s-charts.git"
+        branch: "development"
+        credentials: "FST_GITLAB_TOKEN"
+      application:
+        autoSync: false
+        selfHeal: false
+        prune: false
+      syncPolicy:
+        automated: null
+        syncOptions:
+          - "CreateNamespace=true"
+      retry:
+        limit: 3
+        backoff:
+          duration: "10s"
+          factor: 2
+          maxDuration: "5m"
+
+# FST Change detection configuration
+changeDetection:
+  enabled: true
+  strategy:
+    dev:
+      enabled: false
+      compareWith: null
+      useLastSuccessful: false
+    stg:
+      enabled: true
+      compareWith: "development"
+      useLastSuccessful: true
+    ese:
+      enabled: true
+      compareWith: "vtstg"
+      useLastSuccessful: true
+
+# FST SonarQube configuration
+sonarqube:
+  enabled: true
+  server: "https://sonarqube.geosystems.local"
+  token: "FST_SONARQUBE_TOKEN"
+  
+  # FST Quality gate thresholds (stricter for production)
+  qualityGates:
+    coverage:
+      enabled: true
+      threshold: 85
+      operator: "GTE"
+    bugs:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    vulnerabilities:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    codeSmells:
+      enabled: true
+      threshold: 30
+      operator: "LTE"
+    duplicatedLinesDensity:
+      enabled: true
+      threshold: 2
+      operator: "LTE"
+    securityHotspots:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+  
+  # FST acceptable failures
+  acceptableFailures:
+    - "duplicatedLinesDensity"
+  
+  # FST failure behavior per environment
+  onFailure:
+    dev:
+      allowFailure: true
+      blockDeploy: false
+    stg:
+      allowFailure: false
+      blockDeploy: true
+    ese:
+      allowFailure: false
+      blockDeploy: true
+  
+  # FST analysis strategy per environment
+  strategy:
+    dev:
+      enabled: true
+      skipIfNoChanges: false
+      compareWith: null
+    stg:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "development"
+    ese:
+      enabled: true
+      skipIfNoChanges: false
+      compareWith: "vtstg"
+
+# FST Notification configuration
+notifications:
+  slack:
+    enabled: true
+    webhook: "FST_SLACK_WEBHOOK_URL"
+    channel: "#fst-deployments"
+    events:
+      - "pipeline_failure"
+      - "deploy_success"
+      - "deploy_failure"
+      - "quality_gate_failed"
+  
+  teams:
+    enabled: true
+    webhook: "FST_TEAMS_WEBHOOK_URL"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+      - "quality_gate_failed"
+  
+  email:
+    enabled: true
+    recipients:
+      - "devops@fst.toscana.it"
+      - "infrastruttura@fst.toscana.it"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+      - "quality_gate_failed"
+
+# FST Auto-dependencies configuration
+defaults:
+  autoDependencies:
+    enabled: true
+    rules:
+      - package: "@fst/phoenix-js"
+        version: "^2.0.0"
+        installAs: "devDependency"
+        installWhen:
+          componentType:
+            - "vue"
+            - "angular"
+            - "react"
+          projectNameNot:
+            - "phoenix-js"
+      
+      - package: "@fst/ramani-js"
+        version: "^1.5.0"
+        installAs: "devDependency"
+        installWhen:
+          componentType:
+            - "vue"
+            - "angular"
+            - "react"
+          projectNameNot:
+            - "ramani-js"
+      
+      - package: "@fst/common-utils"
+        version: "^3.0.0"
+        installAs: "dependency"
+        installWhen:
+          componentType:
+            - "vue"
+            - "angular"
+            - "react"
+            - "npm"
+
+# Organization defaults
+organization:
+  name: "fst"
+  gitlabUrl: "https://geogitlab1.intersistemi.it"

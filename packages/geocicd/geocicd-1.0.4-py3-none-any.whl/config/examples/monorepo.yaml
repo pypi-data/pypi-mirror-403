@@ -1,0 +1,690 @@
+# Example: Monorepo with Multiple Technologies
+# This example shows a monorepo with Vue frontend, Java backend, and Python data service
+
+# Import GeoSystems defaults
+imports:
+  - path: "../geosystems-defaults.yaml"
+    as: "geosystems"
+
+# Project information
+project:
+  name: "smart-city-platform"
+  description: "Smart city IoT platform with multiple services"
+  version: "3.1.0"
+  organization: "geosystems"
+
+# Multiple components in monorepo
+components:
+  # Vue.js Frontend
+  - name: "dashboard-frontend"
+    type: "vue"
+    path: "apps/dashboard"
+    nodeVersion: "18"
+    
+    # Auto-install dependencies
+    autoDependencies:
+      enabled: true
+      packages:
+        - name: "@geosystems/phoenix-js"
+          version: "^2.0.0"
+          installAs: "devDependency"
+        - name: "@geosystems/ramani-js"
+          version: "^1.5.0"
+          installAs: "devDependency"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "apps/dashboard/**"
+        - "shared/ui-components/**"
+        - "shared/utils/**"
+      excludePaths:
+        - "**/node_modules/**"
+        - "**/dist/**"
+        - "**/*.test.js"
+    
+    build:
+      enabled: true
+      commands:
+        - "npm ci"
+        - "npm run build"
+      cache:
+        paths:
+          - "node_modules/"
+          - "apps/dashboard/node_modules/"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "apps/dashboard/Dockerfile"
+          context: "."
+          baseImage: "nginx:alpine"
+          nginxTemplate: "nginx_conf_ssl"
+          buildArgs:
+            NODE_ENV: "production"
+            VUE_APP_API_URL: "https://api.smartcity.geosystems.it"
+      
+      documentation:
+        enabled: true
+        type: "documentation-js"
+        command: "npm run docs"
+        outputDir: "apps/dashboard/docs"
+        deploy:
+          enabled: true
+          method: "static"
+          asComponent: "dashboard-docs"
+    
+    deploy:
+      enabled: true
+      replicas: 3
+      
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+      
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 70
+      
+      probes:
+        liveness:
+          enabled: true
+          type: "http"
+          path: "/health"
+          port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readiness:
+          enabled: true
+          type: "http"
+          path: "/ready"
+          port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      
+      service:
+        enabled: true
+        type: "ClusterIP"
+        port: 80
+        targetPort: 80
+      
+      ingress:
+        enabled: true
+        className: "nginx"
+        hosts:
+          - "dashboard.smartcity.geosystems.it"
+          - "smartcity.geosystems.it"
+        path: "/"
+        pathType: "Prefix"
+        tls:
+          enabled: true
+          secretName: "dashboard-tls"
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/enable-cors: "true"
+      
+      env:
+        - name: "VUE_APP_API_URL"
+          value: "https://api.smartcity.geosystems.it"
+        - name: "VUE_APP_WS_URL"
+          value: "wss://ws.smartcity.geosystems.it"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "dashboard-frontend"
+        chartVersion: "3.1.0"
+      
+      resources:
+        - type: "configmap"
+          name: "nginx-config"
+          fromFile: "apps/dashboard/conf/nginx.conf"
+          mountPath: "/etc/nginx/nginx.conf"
+          subPath: "nginx.conf"
+        
+        - type: "secret"
+          name: "dashboard-tls"
+          secretType: "tls"
+          fromDirectory: "apps/dashboard/ssl/"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:smartcity:dashboard"
+      sources: "apps/dashboard/src"
+      exclusions:
+        - "apps/dashboard/src/**/*.test.js"
+        - "apps/dashboard/node_modules/**"
+
+  # Java Backend API
+  - name: "api-backend"
+    type: "maven"
+    path: "services/api"
+    
+    # Dependencies on shared libraries
+    dependencies:
+      - component: "shared-models"
+        copyFrom: "shared/models/target/shared-models-3.1.0.jar"
+        copyTo: "services/api/lib/"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "services/api/**"
+        - "shared/models/**"
+      excludePaths:
+        - "**/target/**"
+        - "**/*.md"
+    
+    build:
+      enabled: true
+      commands:
+        - "mvn clean package -DskipTests=false -Dmaven.test.failure.ignore=false"
+      
+      # Outputs
+      outputs:
+        - docker
+        - artifact
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "services/api/Dockerfile"
+          context: "services/api"
+          baseImage: "eclipse-temurin:17-jre"
+          buildArgs:
+            JAR_FILE: "target/api-backend-3.1.0.jar"
+            JAVA_OPTS: "-Xmx1g -Xms512m"
+      
+      documentation:
+        enabled: true
+        type: "javadoc"
+        command: "mvn javadoc:javadoc"
+        outputDir: "services/api/target/site/apidocs"
+        deploy:
+          enabled: true
+          method: "nexus"
+          destination:
+            - type: "nexus"
+              url: "https://nexus.geosystems.it/repository/documentation/"  # Nexus Artifacts URL per documentazione
+              credentials: "NEXUS_CREDENTIALS"
+              repositoryType: "raw"
+              path: "smartcity/api/{{ project.version }}"
+    
+    deploy:
+      enabled: true
+      replicas: 3
+      
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2000m"
+          memory: "2Gi"
+      
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 15
+        targetCPUUtilizationPercentage: 75
+        targetMemoryUtilizationPercentage: 80
+      
+      probes:
+        liveness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/liveness"
+          port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readiness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/readiness"
+          port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startup:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/startup"
+          port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 30
+      
+      service:
+        enabled: true
+        type: "ClusterIP"
+        port: 80
+        targetPort: 8080
+        extraPorts:
+          - name: "management"
+            port: 9090
+            targetPort: 9090
+      
+      ingress:
+        enabled: true
+        className: "nginx"
+        host: "api.smartcity.geosystems.it"
+        path: "/"
+        pathType: "Prefix"
+        tls:
+          enabled: true
+          secretName: "api-tls"
+        annotations:
+          nginx.ingress.kubernetes.io/rate-limit: "200"
+          nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+          nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      
+      env:
+        - name: "SPRING_PROFILES_ACTIVE"
+          value: "production"
+        - name: "JAVA_OPTS"
+          value: "-Xmx1g -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+        - name: "DATABASE_URL"
+          valueFrom:
+            secretKeyRef:
+              name: "database-credentials"
+              key: "url"
+        - name: "DATABASE_USERNAME"
+          valueFrom:
+            secretKeyRef:
+              name: "database-credentials"
+              key: "username"
+        - name: "DATABASE_PASSWORD"
+          valueFrom:
+            secretKeyRef:
+              name: "database-credentials"
+              key: "password"
+        - name: "REDIS_HOST"
+          value: "redis.infrastructure.svc.cluster.local"
+        - name: "KAFKA_BOOTSTRAP_SERVERS"
+          value: "kafka.infrastructure.svc.cluster.local:9092"
+      
+      volumes:
+        - name: "logs"
+          mountPath: "/app/logs"
+          size: "10Gi"
+          storageClassName: "standard"
+          accessMode: "ReadWriteOnce"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "api-backend"
+        chartVersion: "3.1.0"
+      
+      resources:
+        - type: "configmap"
+          name: "api-config"
+          fromDirectory: "services/api/conf/"
+          filePattern: "*.properties,*.yml,*.xml"
+          mountPath: "/app/config"
+        
+        - type: "persistentvolumeclaim"
+          name: "api-logs-pvc"
+          size: "10Gi"
+          storageClassName: "standard"
+          accessMode: "ReadWriteOnce"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:smartcity:api"
+      sources: "services/api/src/main/java"
+      exclusions:
+        - "services/api/src/test/**"
+        - "services/api/target/**"
+
+  # Python Data Processing Service
+  - name: "data-processor"
+    type: "python"
+    path: "services/data-processor"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "services/data-processor/**"
+      excludePaths:
+        - "**/__pycache__/**"
+        - "**/*.pyc"
+        - "**/venv/**"
+    
+    build:
+      enabled: true
+      commands:
+        - "pip install -r requirements.txt"
+        - "python -m pytest tests/"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "services/data-processor/Dockerfile"
+          context: "services/data-processor"
+          baseImage: "python:3.11-slim"
+          buildArgs:
+            PYTHON_ENV: "production"
+      
+      documentation:
+        enabled: true
+        type: "sphinx"
+        installCommand: "pip install sphinx sphinx-rtd-theme"
+        command: "sphinx-build -b html docs/ docs/_build/html"
+        outputDir: "services/data-processor/docs/_build/html"
+        deploy:
+          enabled: true
+          method: "static"
+          asComponent: "data-processor-docs"
+    
+    deploy:
+      enabled: true
+      deploymentTypes:
+        - "deployment"
+      replicas: 2
+      
+      resources:
+        requests:
+          cpu: "1000m"
+          memory: "2Gi"
+        limits:
+          cpu: "4000m"
+          memory: "4Gi"
+      
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 8
+        targetCPUUtilizationPercentage: 80
+        targetMemoryUtilizationPercentage: 85
+      
+      probes:
+        liveness:
+          enabled: true
+          type: "http"
+          path: "/health"
+          port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 15
+        readiness:
+          enabled: true
+          type: "http"
+          path: "/ready"
+          port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      
+      service:
+        enabled: true
+        type: "ClusterIP"
+        port: 80
+        targetPort: 8000
+      
+      env:
+        - name: "PYTHON_ENV"
+          value: "production"
+        - name: "LOG_LEVEL"
+          value: "INFO"
+        - name: "KAFKA_BOOTSTRAP_SERVERS"
+          value: "kafka.infrastructure.svc.cluster.local:9092"
+        - name: "POSTGRES_HOST"
+          valueFrom:
+            secretKeyRef:
+              name: "postgres-credentials"
+              key: "host"
+        - name: "POSTGRES_PASSWORD"
+          valueFrom:
+            secretKeyRef:
+              name: "postgres-credentials"
+              key: "password"
+      
+      volumes:
+        - name: "data-cache"
+          mountPath: "/app/cache"
+          size: "50Gi"
+          storageClassName: "fast-ssd"
+          accessMode: "ReadWriteOnce"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "data-processor"
+        chartVersion: "3.1.0"
+      
+      resources:
+        - type: "configmap"
+          name: "processor-config"
+          fromFile: "services/data-processor/config.yaml"
+          mountPath: "/app/config/config.yaml"
+          subPath: "config.yaml"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:smartcity:data-processor"
+      sources: "services/data-processor/src"
+      exclusions:
+        - "services/data-processor/tests/**"
+        - "services/data-processor/venv/**"
+
+  # IoT Data Collector (CronJob)
+  - name: "iot-collector"
+    type: "python"
+    path: "services/iot-collector"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "services/iot-collector/**"
+      excludePaths:
+        - "**/__pycache__/**"
+    
+    build:
+      enabled: true
+      commands:
+        - "pip install -r requirements.txt"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "services/iot-collector/Dockerfile"
+          context: "services/iot-collector"
+          baseImage: "python:3.11-slim"
+    
+    deploy:
+      enabled: true
+      deploymentTypes:
+        - "cronjob"
+      
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "2000m"
+          memory: "2Gi"
+      
+      cronjob:
+        schedule: "*/15 * * * *"
+        timezone: "Europe/Rome"
+        suspend: false
+        concurrencyPolicy: "Forbid"
+        successfulJobsHistoryLimit: 5
+        failedJobsHistoryLimit: 10
+        startingDeadlineSeconds: 600
+        jobTemplate:
+          backoffLimit: 2
+          activeDeadlineSeconds: 600
+          ttlSecondsAfterFinished: 3600
+          restartPolicy: "OnFailure"
+          parallelism: 1
+          completions: 1
+      
+      env:
+        - name: "PYTHON_ENV"
+          value: "production"
+        - name: "IOT_API_URL"
+          valueFrom:
+            configMapKeyRef:
+              name: "iot-config"
+              key: "api-url"
+        - name: "IOT_API_KEY"
+          valueFrom:
+            secretKeyRef:
+              name: "iot-credentials"
+              key: "api-key"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "iot-collector"
+        chartVersion: "3.1.0"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:smartcity:iot-collector"
+      sources: "services/iot-collector/src"
+
+# Environment-specific configurations
+environments:
+  dev:
+    argocd:
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+  
+  stg:
+    argocd:
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+  
+  ese:
+    argocd:
+      application:
+        autoSync: false
+        selfHeal: false
+        prune: false
+
+# Change detection strategy
+changeDetection:
+  enabled: true
+  strategy:
+    dev:
+      enabled: false
+      compareWith: null
+      useLastSuccessful: false
+    stg:
+      enabled: true
+      compareWith: "develop"
+      useLastSuccessful: true
+    ese:
+      enabled: true
+      compareWith: "staging"
+      useLastSuccessful: true
+
+# SonarQube configuration
+sonarqube:
+  enabled: true
+  server: "https://sonarqube.geosystems.it"
+  token: "SONARQUBE_TOKEN"
+  
+  qualityGates:
+    coverage:
+      enabled: true
+      threshold: 80
+      operator: "GTE"
+    bugs:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    vulnerabilities:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    codeSmells:
+      enabled: true
+      threshold: 50
+      operator: "LTE"
+    duplicatedLinesDensity:
+      enabled: true
+      threshold: 3
+      operator: "LTE"
+    securityHotspots:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+  
+  acceptableFailures:
+    - "codeSmells"
+    - "duplicatedLinesDensity"
+  
+  onFailure:
+    dev:
+      allowFailure: true
+      blockDeploy: false
+    stg:
+      allowFailure: false
+      blockDeploy: true
+    ese:
+      allowFailure: false
+      blockDeploy: true
+  
+  strategy:
+    dev:
+      enabled: true
+      skipIfNoChanges: false
+    stg:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "develop"
+    ese:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "staging"
+
+# Notifications
+notifications:
+  slack:
+    enabled: true
+    webhook: "SLACK_WEBHOOK_URL"
+    channel: "#smartcity-deployments"
+    events:
+      - "pipeline_failure"
+      - "deploy_success"
+      - "deploy_failure"
+      - "quality_gate_failed"
+  
+  email:
+    enabled: true
+    recipients:
+      - "devops@geosystems.it"
+      - "smartcity-team@geosystems.it"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+      - "quality_gate_failed"

@@ -1,0 +1,1841 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://geosystems.it/schemas/ci-config.schema.json",
+  "title": "GitLab CI/CD Configuration",
+  "description": "Schema completo per ci-config.yaml - GitLab CI/CD Templates v2.0",
+  "type": "object",
+  "required": ["project", "components"],
+  "additionalProperties": false,
+  
+  "properties": {
+    "imports": {
+      "type": "array",
+      "description": "Import configurazioni esterne",
+      "items": {
+        "type": "object",
+        "required": ["path", "as"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relativo al file da importare"
+          },
+          "as": {
+            "type": "string",
+            "description": "Alias per referenziare l'import"
+          }
+        }
+      }
+    },
+    
+    "project": {
+      "type": "object",
+      "description": "Informazioni generali del progetto",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Nome progetto in kebab-case",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Descrizione del progetto"
+        },
+        "version": {
+          "type": "string",
+          "description": "Versione semantic (es. 1.0.0)",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "organization": {
+          "type": "string",
+          "description": "Organizzazione proprietaria"
+        }
+      }
+    },
+    
+    "defaults": {
+      "type": "object",
+      "description": "Configurazioni di default ereditate da tutti i componenti",
+      "properties": {
+        "nodeVersion": {
+          "type": "string",
+          "description": "Versione default Node.js"
+        },
+        "build": {
+          "$ref": "#/definitions/buildDefaults"
+        },
+        "kubernetes": {
+          "$ref": "#/definitions/kubernetesDefaults"
+        },
+        "autoDependencies": {
+          "$ref": "#/definitions/autoDependenciesDefaults"
+        }
+      }
+    },
+    
+    "environments": {
+      "type": "object",
+      "description": "Configurazioni per ambiente",
+      "properties": {
+        "dev": { "$ref": "#/definitions/environment" },
+        "stg": { "$ref": "#/definitions/environment" },
+        "ese": { "$ref": "#/definitions/environment" }
+      }
+    },
+    
+    "registry": {
+      "$ref": "#/definitions/registry"
+    },
+    
+    "components": {
+      "type": "array",
+      "description": "Lista componenti deployabili",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/component"
+      }
+    },
+    
+    "changeDetection": {
+      "$ref": "#/definitions/changeDetection"
+    },
+    
+    "sonarqube": {
+      "$ref": "#/definitions/sonarqube"
+    },
+    
+    "notifications": {
+      "$ref": "#/definitions/notifications"
+    }
+  },
+  
+  "definitions": {
+    "component": {
+      "type": "object",
+      "description": "Componente deployabile",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Nome componente"
+        },
+        "type": {
+          "type": "string",
+          "description": "Tipo tecnologia componente",
+          "enum": [
+            "vue", "angular", "react", "npm", "nginx",
+            "maven", "gradle", "python", "php", "docker",
+            "cordova", "phoenix", "ramani",
+            "fastapi", "django", "flask",
+            "go", "rust", "dotnet"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "description": "Path relativo del componente"
+        },
+        "nodeVersion": {
+          "type": "string",
+          "description": "Versione Node.js specifica"
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "Dipendenze da altri componenti o repository",
+          "items": {
+            "type": "object",
+            "properties": {
+              "component": {
+                "type": "string",
+                "description": "Nome componente dipendenza"
+              },
+              "repository": {
+                "type": "string",
+                "description": "URL repository Git"
+              },
+              "branch": {
+                "type": "string",
+                "description": "Branch da clonare"
+              },
+              "cloneTo": {
+                "type": "string",
+                "description": "Path dove clonare il repository (relativo a workspace root)"
+              },
+              "copyFrom": {
+                "type": "string",
+                "description": "Path sorgente da copiare"
+              },
+              "copyTo": {
+                "type": "string",
+                "description": "Path destinazione copia"
+              }
+            }
+          }
+        },
+        "cloneFrom": {
+          "type": "object",
+          "description": "Clona configurazione da altro progetto",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "URL repository da clonare"
+            },
+            "branch": {
+              "type": "string",
+              "description": "Branch da clonare"
+            },
+            "copyPaths": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": { "type": "string" },
+                  "to": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "autoDependencies": {
+          "$ref": "#/definitions/autoDependencies"
+        },
+        "changeDetection": {
+          "$ref": "#/definitions/componentChangeDetection"
+        },
+        "build": {
+          "$ref": "#/definitions/build"
+        },
+        "deploy": {
+          "$ref": "#/definitions/deploy"
+        },
+        "kubernetes": {
+          "$ref": "#/definitions/kubernetes"
+        },
+        "dockerCompose": {
+          "$ref": "#/definitions/dockerCompose"
+        },
+        "sonarqube": {
+          "$ref": "#/definitions/componentSonarqube"
+        }
+      }
+    },
+    
+    "environment": {
+      "type": "object",
+      "description": "Configurazione ambiente",
+      "properties": {
+        "branches": {
+          "type": "array",
+          "description": "Branch patterns that trigger this environment (supports exact match, wildcards, and path patterns)",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9/_*-]+$",
+            "examples": ["develop", "develop-*", "release/*", "main"]
+          }
+        },
+        "deployMethod": {
+          "type": "string",
+          "description": "Metodo di deployment",
+          "enum": ["kubernetes", "docker-compose", "manual"]
+        },
+        "cluster": {
+          "type": "string",
+          "description": "URL cluster Kubernetes"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace Kubernetes"
+        },
+        "destination": {
+          "type": "array",
+          "description": "Destinazioni deploy per questo environment",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/definitions/kubernetesDestination" },
+              { "$ref": "#/definitions/dockerComposeDestination" }
+            ]
+          }
+        },
+        "build": {
+          "type": "object",
+          "description": "Override build config per environment",
+          "properties": {
+            "outputs": {
+              "type": "array",
+              "description": "Tipi di output da generare (docker, artifact, helm)",
+              "items": {
+                "type": "string",
+                "enum": ["docker", "artifact", "helm"]
+              }
+            }
+          }
+        },
+        "argocd": {
+          "type": "object",
+          "description": "Configurazione ArgoCD",
+          "properties": {
+            "server": { 
+              "type": "string",
+              "description": "URL server ArgoCD"
+            },
+            "project": { 
+              "type": "string",
+              "description": "Progetto ArgoCD"
+            },
+            "chartsRepo": {
+              "type": "object",
+              "description": "Repository Git per Helm charts",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "URL del repository k8s-charts"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "Branch del repository",
+                  "default": "main"
+                },
+                "credentials": {
+                  "type": "object",
+                  "description": "Credenziali per accesso al repository",
+                  "properties": {
+                    "username": { "type": "string" },
+                    "password": { "type": "string" },
+                    "token": { "type": "string" }
+                  }
+                }
+              },
+              "required": ["url"]
+            },
+            "application": {
+              "type": "object",
+              "description": "Configurazione ArgoCD Application",
+              "properties": {
+                "autoSync": {
+                  "type": "boolean",
+                  "description": "Abilita sincronizzazione automatica",
+                  "default": true
+                },
+                "selfHeal": {
+                  "type": "boolean",
+                  "description": "Auto-ripristina modifiche manuali",
+                  "default": true
+                },
+                "prune": {
+                  "type": "boolean",
+                  "description": "Elimina risorse non più presenti",
+                  "default": true
+                }
+              }
+            },
+            "autoSync": {
+              "type": "boolean",
+              "description": "Sync automatico ArgoCD (deprecated, use application.autoSync)",
+              "default": true
+            },
+            "syncPolicy": {
+              "type": "object",
+              "description": "Policy di sincronizzazione",
+              "properties": {
+                "automated": {
+                  "type": "object",
+                  "properties": {
+                    "prune": { 
+                      "type": "boolean",
+                      "description": "Elimina risorse non più presenti"
+                    },
+                    "selfHeal": { 
+                      "type": "boolean",
+                      "description": "Auto-ripristina modifiche manuali"
+                    }
+                  }
+                },
+                "syncOptions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            },
+            "retry": {
+              "type": "object",
+              "description": "Policy di retry",
+              "properties": {
+                "limit": { "type": "integer" },
+                "backoff": {
+                  "type": "object",
+                  "properties": {
+                    "duration": { "type": "string" },
+                    "factor": { "type": "integer" },
+                    "maxDuration": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "build": {
+      "type": "object",
+      "description": "Configurazione build",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Abilita build",
+          "default": true
+        },
+        "commands": {
+          "type": "array",
+          "description": "Comandi di build",
+          "items": { "type": "string" }
+        },
+        "skipTests": {
+          "type": "boolean",
+          "description": "Salta test durante build"
+        },
+        "cache": {
+          "type": "object",
+          "properties": {
+            "paths": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "artifacts": {
+          "$ref": "#/definitions/artifacts"
+        },
+        "outputs": {
+          "type": "array",
+          "description": "Tipi di output da generare (docker, artifact, helm)",
+          "items": {
+            "type": "string",
+            "enum": ["docker", "artifact", "helm"]
+          }
+        },
+        "documentation": {
+          "$ref": "#/definitions/documentation"
+        },
+        "cordova": {
+          "$ref": "#/definitions/cordova"
+        }
+      }
+    },
+    
+    "artifacts": {
+      "type": "object",
+      "description": "Artifacts prodotti dalla build",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["docker", "jar", "war", "npm-package", "binary", "static-files", "helm", "cordova"]
+        },
+        "docker": {
+          "type": "object",
+          "properties": {
+            "dockerfile": { "type": "string" },
+            "context": { "type": "string" },
+            "buildArgs": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "noCache": { "type": "boolean" },
+            "baseImage": {
+              "type": "string",
+              "description": "Immagine Docker base (es. nginx:alpine, tomcat:10-jdk17)"
+            },
+            "nginxTemplate": {
+              "type": "string",
+              "description": "Template Nginx da usare (es. nginx_conf_base, nginx_conf_ssl)",
+              "enum": ["nginx_conf_base", "nginx_conf_ssl", "nginx_conf_custom"]
+            }
+          }
+        },
+        "jar": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" },
+            "mainClass": { "type": "string" }
+          }
+        },
+        "war": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" },
+            "contextPath": { "type": "string" }
+          }
+        },
+        "helm": {
+          "type": "object",
+          "properties": {
+            "chartPath": { "type": "string" },
+            "chartName": { "type": "string" },
+            "chartVersion": { "type": "string" }
+          }
+        },
+        "cordova": {
+          "type": "object",
+          "properties": {
+            "android": {
+              "type": "object",
+              "properties": {
+                "apk": { "type": "string" },
+                "aab": { "type": "string" }
+              }
+            },
+            "ios": {
+              "type": "object",
+              "properties": {
+                "ipa": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "lifecyclePolicy": {
+      "type": "object",
+      "description": "Policy lifecycle per AWS ECR",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "keepLastImages": {
+          "type": "integer",
+          "description": "Mantieni ultime N immagini",
+          "minimum": 1
+        },
+        "expireAfterDays": {
+          "type": "integer",
+          "description": "Elimina immagini dopo N giorni",
+          "minimum": 1
+        },
+        "expireUntaggedAfterDays": {
+          "type": "integer",
+          "description": "Elimina immagini untagged dopo N giorni",
+          "minimum": 1
+        },
+        "rules": {
+          "type": "array",
+          "description": "Regole custom avanzate",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rulePriority": { "type": "integer" },
+              "description": { "type": "string" },
+              "selection": {
+                "type": "object",
+                "properties": {
+                  "tagStatus": {
+                    "type": "string",
+                    "enum": ["tagged", "untagged", "any"]
+                  },
+                  "tagPrefixList": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "countType": {
+                    "type": "string",
+                    "enum": ["imageCountMoreThan", "sinceImagePushed"]
+                  },
+                  "countNumber": { "type": "integer" },
+                  "countUnit": {
+                    "type": "string",
+                    "enum": ["days"]
+                  }
+                }
+              },
+              "action": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["expire"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "cordova": {
+      "type": "object",
+      "description": "Configurazione build Cordova",
+      "properties": {
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["android", "ios"]
+          }
+        },
+        "buildType": {
+          "type": "string",
+          "enum": ["release", "debug"],
+          "default": "release"
+        },
+        "android": {
+          "type": "object",
+          "properties": {
+            "keystore": { "type": "string" },
+            "keystorePassword": { "type": "string" },
+            "alias": { "type": "string" },
+            "aliasPassword": { "type": "string" }
+          }
+        },
+        "ios": {
+          "type": "object",
+          "properties": {
+            "provisioningProfile": { "type": "string" },
+            "certificate": { "type": "string" },
+            "certificatePassword": { "type": "string" },
+            "teamId": { "type": "string" }
+          }
+        }
+      }
+    },
+    
+    "autoDependencies": {
+      "type": "object",
+      "description": "Auto-install dipendenze (phoenix-js, ramani-js)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "version"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "installAs": {
+                "type": "string",
+                "enum": ["dependency", "devDependency"],
+                "default": "devDependency"
+              }
+            }
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "Lista pacchetti da NON installare",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    
+    "autoDependenciesDefaults": {
+      "type": "object",
+      "description": "Configurazione globale auto-dipendenze",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "package": { "type": "string" },
+              "version": { "type": "string" },
+              "installAs": {
+                "type": "string",
+                "enum": ["dependency", "devDependency"]
+              },
+              "installWhen": {
+                "type": "object",
+                "properties": {
+                  "componentType": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "projectNameNot": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "documentation": {
+      "type": "object",
+      "description": "Generazione documentazione",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "type": {
+          "type": "string",
+          "enum": ["javadoc", "jsdoc", "documentation-js", "sphinx", "doxygen", "godoc", "rdoc", "phpdoc"]
+        },
+        "installCommand": {
+          "type": "string",
+          "description": "Comando per installare tool documentazione"
+        },
+        "command": {
+          "type": "string",
+          "description": "Comando per generare documentazione"
+        },
+        "outputDir": {
+          "type": "string",
+          "description": "Directory output documentazione"
+        },
+        "deploy": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "method": {
+              "type": "string",
+              "enum": ["static", "kubernetes", "artifact", "gitlab-pages"]
+            },
+            "asComponent": {
+              "type": "string",
+              "description": "Nome componente per deploy Kubernetes"
+            }
+          }
+        }
+      }
+    },
+    
+    "deploy": {
+      "type": "object",
+      "description": "Configurazione deployment",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "deploymentTypes": {
+          "type": "array",
+          "description": "Tipi di deployment",
+          "items": {
+            "type": "string",
+            "enum": ["deployment", "cronjob", "docker-compose"]
+          }
+        },
+        "environmentDeploymentTypes": {
+          "type": "object",
+          "description": "Deployment types specifici per environment",
+          "properties": {
+            "dev": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "stg": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "ese": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "autoscaling": {
+          "$ref": "#/definitions/autoscaling"
+        },
+        "probes": {
+          "type": "object",
+          "properties": {
+            "liveness": { "$ref": "#/definitions/probe" },
+            "readiness": { "$ref": "#/definitions/probe" },
+            "startup": { "$ref": "#/definitions/probe" }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+            },
+            "port": { "type": "integer" },
+            "targetPort": { "type": "integer" },
+            "extraPorts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "port": { "type": "integer" },
+                  "targetPort": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "ingress": {
+          "$ref": "#/definitions/ingress"
+        },
+        "env": {
+          "type": "array",
+          "description": "Variabili d'ambiente",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" },
+              "valueFrom": {
+                "type": "object",
+                "properties": {
+                  "secretKeyRef": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string" },
+                      "key": { "type": "string" }
+                    }
+                  },
+                  "configMapKeyRef": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string" },
+                      "key": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "secrets": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "volumes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/volume" }
+        },
+        "cronjob": {
+          "$ref": "#/definitions/cronjob"
+        }
+      }
+    },
+    
+    "kubernetes": {
+      "type": "object",
+      "description": "Configurazione Kubernetes avanzata",
+      "properties": {
+        "resources": {
+          "type": "array",
+          "description": "Risorse Kubernetes da creare",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/definitions/k8sDeployment" },
+              { "$ref": "#/definitions/k8sStatefulSet" },
+              { "$ref": "#/definitions/k8sCronJob" },
+              { "$ref": "#/definitions/k8sService" },
+              { "$ref": "#/definitions/k8sIngress" },
+              { "$ref": "#/definitions/k8sConfigMap" },
+              { "$ref": "#/definitions/k8sSecret" },
+              { "$ref": "#/definitions/k8sPVC" }
+            ]
+          }
+        },
+        "helm": {
+          "type": "object",
+          "properties": {
+            "generate": {
+              "type": "boolean",
+              "description": "Genera Helm chart automaticamente"
+            },
+            "chartName": { "type": "string" },
+            "chartVersion": { "type": "string" },
+            "valuesOverride": {
+              "type": "string",
+              "description": "YAML values override"
+            }
+          }
+        }
+      }
+    },
+    
+    "k8sDeployment": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "deployment"
+        },
+        "name": { "type": "string" },
+        "replicas": { "type": "integer" },
+        "strategy": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["RollingUpdate", "Recreate"]
+            },
+            "rollingUpdate": {
+              "type": "object",
+              "properties": {
+                "maxSurge": { "type": ["integer", "string"] },
+                "maxUnavailable": { "type": ["integer", "string"] }
+              }
+            }
+          }
+        },
+        "resources": { "$ref": "#/definitions/resources" },
+        "probes": {
+          "type": "object",
+          "properties": {
+            "liveness": { "$ref": "#/definitions/probe" },
+            "readiness": { "$ref": "#/definitions/probe" }
+          }
+        },
+        "env": { "type": "array" },
+        "volumes": { "type": "array" },
+        "volumeMounts": { "type": "array" }
+      }
+    },
+    
+    "k8sStatefulSet": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "statefulset"
+        },
+        "name": { "type": "string" },
+        "replicas": { "type": "integer" },
+        "serviceName": { "type": "string" },
+        "podManagementPolicy": {
+          "type": "string",
+          "enum": ["OrderedReady", "Parallel"]
+        },
+        "volumeClaimTemplates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "size": { "type": "string" },
+              "storageClassName": { "type": "string" },
+              "accessMode": {
+                "type": "string",
+                "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"]
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "k8sCronJob": {
+      "type": "object",
+      "required": ["type", "schedule"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "cronjob"
+        },
+        "name": { "type": "string" },
+        "schedule": {
+          "type": "string",
+          "description": "Cron expression"
+        },
+        "timezone": { "type": "string" },
+        "suspend": { "type": "boolean" },
+        "concurrencyPolicy": {
+          "type": "string",
+          "enum": ["Allow", "Forbid", "Replace"]
+        },
+        "successfulJobsHistoryLimit": { "type": "integer" },
+        "failedJobsHistoryLimit": { "type": "integer" },
+        "jobTemplate": {
+          "type": "object",
+          "properties": {
+            "backoffLimit": { "type": "integer" },
+            "activeDeadlineSeconds": { "type": "integer" },
+            "ttlSecondsAfterFinished": { "type": "integer" },
+            "restartPolicy": {
+              "type": "string",
+              "enum": ["OnFailure", "Never"]
+            }
+          }
+        }
+      }
+    },
+    
+    "k8sService": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "service"
+        },
+        "name": { "type": "string" },
+        "serviceType": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+        },
+        "port": { "type": "integer" },
+        "targetPort": { "type": "integer" },
+        "protocol": {
+          "type": "string",
+          "enum": ["TCP", "UDP"]
+        }
+      }
+    },
+    
+    "k8sIngress": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "ingress"
+        },
+        "name": { "type": "string" },
+        "className": { "type": "string" },
+        "host": { "type": "string" },
+        "path": { "type": "string" },
+        "pathType": {
+          "type": "string",
+          "enum": ["Prefix", "Exact", "ImplementationSpecific"]
+        },
+        "tls": {
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "secretName": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    
+    "k8sConfigMap": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "configmap"
+        },
+        "name": { "type": "string" },
+        "data": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "fromFile": {
+          "type": "string",
+          "description": "Crea ConfigMap da file singolo"
+        },
+        "fromDirectory": {
+          "type": "string",
+          "description": "Crea ConfigMap da directory"
+        },
+        "filePattern": {
+          "type": "string",
+          "description": "Pattern per filtrare file (es. *.conf,*.properties)"
+        },
+        "mountPath": {
+          "type": "string",
+          "description": "Path di mount nel container"
+        },
+        "subPath": {
+          "type": "string",
+          "description": "SubPath per mount file singolo"
+        }
+      }
+    },
+    
+    "k8sSecret": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "secret"
+        },
+        "name": { "type": "string" },
+        "secretType": {
+          "type": "string",
+          "enum": ["Opaque", "tls", "dockerconfigjson"]
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "fromDirectory": {
+          "type": "string",
+          "description": "Auto-discover SSL certificates"
+        },
+        "certPattern": {
+          "type": "string",
+          "description": "Pattern per certificati (*.crt,*.pem)"
+        },
+        "keyPattern": {
+          "type": "string",
+          "description": "Pattern per chiavi (*.key)"
+        }
+      }
+    },
+    
+    "k8sPVC": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "persistentvolumeclaim"
+        },
+        "name": { "type": "string" },
+        "size": { "type": "string" },
+        "storageClassName": { "type": "string" },
+        "accessMode": {
+          "type": "string",
+          "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"]
+        }
+      }
+    },
+    
+    "resources": {
+      "type": "object",
+      "description": "Risorse CPU e memoria",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        }
+      }
+    },
+    
+    "autoscaling": {
+      "type": "object",
+      "description": "Horizontal Pod Autoscaler",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minReplicas": { "type": "integer" },
+        "maxReplicas": { "type": "integer" },
+        "targetCPUUtilizationPercentage": { "type": "integer" },
+        "targetMemoryUtilizationPercentage": { "type": "integer" }
+      }
+    },
+    
+    "probe": {
+      "type": "object",
+      "description": "Health check probe",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "type": {
+          "type": "string",
+          "enum": ["http", "tcp", "exec"]
+        },
+        "path": { "type": "string" },
+        "port": { "type": "integer" },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "initialDelaySeconds": { "type": "integer" },
+        "periodSeconds": { "type": "integer" },
+        "timeoutSeconds": { "type": "integer" },
+        "successThreshold": { "type": "integer" },
+        "failureThreshold": { "type": "integer" }
+      }
+    },
+    
+    "ingress": {
+      "type": "object",
+      "description": "Ingress configuration",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string" },
+        "hosts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "path": { "type": "string" },
+        "pathType": {
+          "type": "string",
+          "enum": ["Prefix", "Exact"]
+        },
+        "tls": {
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "secretName": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    
+    "volume": {
+      "type": "object",
+      "description": "Volume persistente",
+      "required": ["name", "mountPath"],
+      "properties": {
+        "name": { "type": "string" },
+        "mountPath": { "type": "string" },
+        "size": { "type": "string" },
+        "storageClassName": { "type": "string" },
+        "accessMode": {
+          "type": "string",
+          "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"]
+        },
+        "persistentVolumeClaim": {
+          "type": "object",
+          "properties": {
+            "claimName": { "type": "string" }
+          }
+        },
+        "configMap": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" }
+          }
+        },
+        "secret": {
+          "type": "object",
+          "properties": {
+            "secretName": { "type": "string" }
+          }
+        },
+        "emptyDir": {
+          "type": "object"
+        }
+      }
+    },
+    
+    "cronjob": {
+      "type": "object",
+      "description": "CronJob configuration",
+      "required": ["schedule"],
+      "properties": {
+        "schedule": { "type": "string" },
+        "timezone": { "type": "string" },
+        "suspend": { "type": "boolean" },
+        "concurrencyPolicy": {
+          "type": "string",
+          "enum": ["Allow", "Forbid", "Replace"]
+        },
+        "successfulJobsHistoryLimit": { "type": "integer" },
+        "failedJobsHistoryLimit": { "type": "integer" },
+        "startingDeadlineSeconds": { "type": "integer" },
+        "jobTemplate": {
+          "type": "object",
+          "properties": {
+            "backoffLimit": { "type": "integer" },
+            "activeDeadlineSeconds": { "type": "integer" },
+            "ttlSecondsAfterFinished": { "type": "integer" },
+            "restartPolicy": {
+              "type": "string",
+              "enum": ["OnFailure", "Never"]
+            },
+            "parallelism": { "type": "integer" },
+            "completions": { "type": "integer" }
+          }
+        }
+      }
+    },
+    
+    "dockerCompose": {
+      "type": "object",
+      "description": "Docker Compose configuration",
+      "properties": {
+        "service": { "type": "string" },
+        "ports": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "volumes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "networks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    
+    "kubernetesDestination": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "kubernetes"
+        },
+        "cluster": { "type": "string" },
+        "namespace": { "type": "string" },
+        "credentials": { "type": "string" }
+      }
+    },
+    
+    "dockerComposeDestination": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "dockerCompose"
+        },
+        "host": { "type": "string" },
+        "user": { "type": "string" },
+        "composePath": { "type": "string" },
+        "composeFile": { "type": "string" },
+        "projectName": { "type": "string" },
+        "services": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "envFile": { "type": "string" }
+      }
+    },
+    
+    "registry": {
+      "type": "object",
+      "description": "Registry configuration per service and environment",
+      "properties": {
+        "npmServer": {
+          "type": "object",
+          "properties": {
+            "dev": { "$ref": "#/definitions/npmRegistryConfig" },
+            "stg": { "$ref": "#/definitions/npmRegistryConfig" },
+            "ese": { "$ref": "#/definitions/npmRegistryConfig" }
+          }
+        },
+        "mavenServer": {
+          "type": "object",
+          "properties": {
+            "dev": { "$ref": "#/definitions/mavenRegistryConfig" },
+            "stg": { "$ref": "#/definitions/mavenRegistryConfig" },
+            "ese": { "$ref": "#/definitions/mavenRegistryConfig" }
+          }
+        },
+        "gradleServer": {
+          "type": "object",
+          "properties": {
+            "dev": { "$ref": "#/definitions/mavenRegistryConfig" },
+            "stg": { "$ref": "#/definitions/mavenRegistryConfig" },
+            "ese": { "$ref": "#/definitions/mavenRegistryConfig" }
+          }
+        },
+        "pypiServer": {
+          "type": "object",
+          "properties": {
+            "dev": { "$ref": "#/definitions/pypiRegistryConfig" },
+            "stg": { "$ref": "#/definitions/pypiRegistryConfig" },
+            "ese": { "$ref": "#/definitions/pypiRegistryConfig" }
+          }
+        },
+        "dockerServer": {
+          "type": "object",
+          "properties": {
+            "dev": { "$ref": "#/definitions/dockerRegistryConfig" },
+            "stg": { "$ref": "#/definitions/dockerRegistryConfig" },
+            "ese": { "$ref": "#/definitions/dockerRegistryConfig" }
+          }
+        },
+        "rawServer": {
+          "type": "object",
+          "properties": {
+            "dev": { "$ref": "#/definitions/pypiRegistryConfig" },
+            "stg": { "$ref": "#/definitions/pypiRegistryConfig" },
+            "ese": { "$ref": "#/definitions/pypiRegistryConfig" }
+          }
+        }
+      }
+    },
+    
+    "npmRegistryConfig": {
+      "type": "object",
+      "description": "NPM registry configuration",
+      "oneOf": [
+        {
+          "description": "Server reference",
+          "required": ["server"],
+          "properties": {
+            "server": {
+              "type": "string",
+              "description": "Reference to server name in config/servers.yaml"
+            }
+          }
+        },
+        {
+          "description": "Direct configuration",
+          "required": ["registryUrl"],
+          "properties": {
+            "registryUrl": {
+              "type": "string",
+              "description": "Registry URL for npm install (e.g., npm-group repository)"
+            },
+            "publishUrl": {
+              "type": "string",
+              "description": "Publish URL for npm publish (e.g., npm-hosted repository)"
+            },
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        }
+      ]
+    },
+    
+    "pypiRegistryConfig": {
+      "type": "object",
+      "description": "PyPI/Raw registry configuration",
+      "oneOf": [
+        {
+          "description": "Server reference",
+          "required": ["server"],
+          "properties": {
+            "server": {
+              "type": "string",
+              "description": "Reference to server name in config/servers.yaml"
+            }
+          }
+        },
+        {
+          "description": "Direct configuration",
+          "required": ["url"],
+          "properties": {
+            "url": { "type": "string" },
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        }
+      ]
+    },
+    
+    "mavenRegistryConfig": {
+      "type": "object",
+      "description": "Maven/Gradle repository configuration",
+      "oneOf": [
+        {
+          "description": "Server reference",
+          "required": ["server"],
+          "properties": {
+            "server": {
+              "type": "string",
+              "description": "Reference to server name in config/servers.yaml"
+            }
+          }
+        },
+        {
+          "description": "Direct configuration",
+          "required": ["publishUrl"],
+          "properties": {
+            "repositoryUrl": {
+              "type": "string",
+              "description": "Repository URL for downloading dependencies (e.g., maven-public group)"
+            },
+            "publishUrl": {
+              "type": "string",
+              "description": "Repository URL for publishing releases (maven deploy / gradle publish)"
+            },
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        }
+      ]
+    },
+    
+    "dockerRegistryConfig": {
+      "type": "object",
+      "description": "Docker registry configuration",
+      "oneOf": [
+        {
+          "description": "Server reference",
+          "required": ["server"],
+          "properties": {
+            "server": {
+              "type": "string",
+              "description": "Reference to server name in config/servers.yaml"
+            }
+          }
+        },
+        {
+          "description": "Direct configuration",
+          "required": ["pushUrl", "pullUrl"],
+          "properties": {
+            "pushUrl": { "type": "string" },
+            "pullUrl": { "type": "string" },
+            "username": { "type": "string" },
+            "password": { "type": "string" },
+            "region": { "type": "string" },
+            "accessKeyId": { "type": "string" },
+            "secretAccessKey": { "type": "string" }
+          }
+        }
+      ]
+    },
+    
+    "changeDetection": {
+      "type": "object",
+      "description": "Change detection globale",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "strategy": {
+          "type": "object",
+          "properties": {
+            "dev": { "$ref": "#/definitions/changeDetectionStrategy" },
+            "stg": { "$ref": "#/definitions/changeDetectionStrategy" },
+            "ese": { "$ref": "#/definitions/changeDetectionStrategy" }
+          }
+        }
+      }
+    },
+    
+    "changeDetectionStrategy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "compareWith": {
+          "type": ["string", "null"],
+          "description": "Branch da confrontare (null = builda sempre)"
+        },
+        "useLastSuccessful": {
+          "type": "boolean",
+          "description": "Usa ultimo artifact riuscito se non modificato"
+        }
+      }
+    },
+    
+    "componentChangeDetection": {
+      "type": "object",
+      "description": "Change detection per componente",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "paths": {
+          "type": "array",
+          "description": "Path da monitorare per modifiche",
+          "items": { "type": "string" }
+        },
+        "excludePaths": {
+          "type": "array",
+          "description": "Path da escludere",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    
+    "sonarqube": {
+      "type": "object",
+      "description": "SonarQube configuration globale",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "server": { "type": "string" },
+        "projectKey": { "type": "string" },
+        "token": { "type": "string" },
+        "qualityGates": {
+          "type": "object",
+          "description": "Quality gate thresholds per metric",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "threshold": { "type": "number" },
+              "operator": {
+                "type": "string",
+                "enum": ["GT", "LT", "EQ", "GTE", "LTE"]
+              }
+            }
+          },
+          "properties": {
+            "coverage": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "threshold": { "type": "number" },
+                "operator": {
+                  "type": "string",
+                  "enum": ["GT", "LT", "EQ", "GTE", "LTE"]
+                }
+              }
+            },
+            "bugs": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "threshold": { "type": "integer" },
+                "operator": {
+                  "type": "string",
+                  "enum": ["GT", "LT", "EQ", "GTE", "LTE"]
+                }
+              }
+            },
+            "vulnerabilities": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "threshold": { "type": "integer" },
+                "operator": {
+                  "type": "string",
+                  "enum": ["GT", "LT", "EQ", "GTE", "LTE"]
+                }
+              }
+            },
+            "codeSmells": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "threshold": { "type": "integer" },
+                "operator": {
+                  "type": "string",
+                  "enum": ["GT", "LT", "EQ", "GTE", "LTE"]
+                }
+              }
+            },
+            "duplicatedLinesDensity": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "threshold": { "type": "number" },
+                "operator": {
+                  "type": "string",
+                  "enum": ["GT", "LT", "EQ", "GTE", "LTE"]
+                }
+              }
+            },
+            "securityHotspots": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "threshold": { "type": "integer" },
+                "operator": {
+                  "type": "string",
+                  "enum": ["GT", "LT", "EQ", "GTE", "LTE"]
+                }
+              }
+            }
+          }
+        },
+        "acceptableFailures": {
+          "type": "array",
+          "description": "List of quality gate metrics that are acceptable to fail",
+          "items": {
+            "type": "string"
+          }
+        },
+        "onFailure": {
+          "type": "object",
+          "description": "Behavior on quality gate failure per environment",
+          "properties": {
+            "dev": {
+              "type": "object",
+              "properties": {
+                "allowFailure": {
+                  "type": "boolean",
+                  "description": "Allow pipeline to continue on failure"
+                },
+                "blockDeploy": {
+                  "type": "boolean",
+                  "description": "Block deployment on failure"
+                }
+              }
+            },
+            "stg": {
+              "type": "object",
+              "properties": {
+                "allowFailure": { "type": "boolean" },
+                "blockDeploy": { "type": "boolean" }
+              }
+            },
+            "ese": {
+              "type": "object",
+              "properties": {
+                "allowFailure": { "type": "boolean" },
+                "blockDeploy": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "strategy": {
+          "type": "object",
+          "description": "Analysis strategy per environment",
+          "properties": {
+            "dev": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable SonarQube analysis for this environment"
+                },
+                "skipIfNoChanges": {
+                  "type": "boolean",
+                  "description": "Skip analysis if no code changes detected"
+                },
+                "compareWith": {
+                  "type": "string",
+                  "description": "Branch to compare for change detection"
+                }
+              }
+            },
+            "stg": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "skipIfNoChanges": { "type": "boolean" },
+                "compareWith": { "type": "string" }
+              }
+            },
+            "ese": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "skipIfNoChanges": { "type": "boolean" },
+                "compareWith": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "componentSonarqube": {
+      "type": "object",
+      "description": "SonarQube per componente",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "projectKey": { "type": "string" },
+        "sources": { "type": "string" },
+        "exclusions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    
+    "notifications": {
+      "type": "object",
+      "description": "Sistema notifiche",
+      "properties": {
+        "slack": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "webhook": { "type": "string" },
+            "channel": { "type": "string" },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "pipeline_success",
+                  "pipeline_failure",
+                  "build_success",
+                  "build_failure",
+                  "deploy_success",
+                  "deploy_failure",
+                  "quality_gate_failed"
+                ]
+              }
+            }
+          }
+        },
+        "teams": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "webhook": { "type": "string" },
+            "events": { "type": "array" }
+          }
+        },
+        "email": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "recipients": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "events": { "type": "array" }
+          }
+        }
+      }
+    },
+    
+    "buildDefaults": {
+      "type": "object",
+      "description": "Build defaults globali",
+      "properties": {
+        "outputs": {
+          "type": "array",
+          "description": "Tipi di output da generare di default (docker, artifact, helm)",
+          "items": {
+            "type": "string",
+            "enum": ["docker", "artifact", "helm"]
+          }
+        }
+      }
+    },
+    
+    "kubernetesDefaults": {
+      "type": "object",
+      "description": "Kubernetes defaults globali",
+      "properties": {
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "replicas": { "type": "integer" },
+              "resources": { "$ref": "#/definitions/resources" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
