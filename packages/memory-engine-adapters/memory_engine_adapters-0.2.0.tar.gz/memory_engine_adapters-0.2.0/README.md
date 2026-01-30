@@ -1,0 +1,64 @@
+# Memory Engine Service (MVP)
+
+An internal-facing Memory Engine skeleton aligned with `docs/design.md`: unified ingest/search API, pluggable provider adapter, basic governance (auth, rate limit, audit, multi-tenant scope).
+
+## Features
+- `/v1/memories:ingest` and `/v1/memories:search` (FastAPI) using canonical `Scope`, `MemoryItem` schemas.
+- Bearer-token auth with tenant/app binding; scope enforcement per request.
+- Per-tenant/app process-local rate limiting (configurable) and ingest 幂等（`Idempotency-Key`）。
+- Audit middleware logging trace id, tenant/app/user/agent, latency, status（幂等重放标记）。
+- Provider 插槽：默认 in-memory；配置 `provider.kind=mem0` 可启用 Mem0Adapter（需安装 `mem0` 包并提供 API Key）。
+
+## Getting started
+1) Python env
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+2) Config  
+Use `config.example.yaml` as a template; set `MEMORY_ENGINE_CONFIG` to your config path. 默认 token: `demo-token` 绑定 `tenant_id=demo-tenant`, `app_id=demo-app`。  
+也可通过环境变量覆盖：`PROVIDER_KIND`、`MEM0_API_KEY`、`MEM0_BASE_URL`（自建 Mem0 时指向你的服务地址）、`MEM0_TIMEOUT_SECONDS`、`RATE_LIMIT_DEFAULT_PER_MINUTE`、`IDEMPOTENCY_TTL_SECONDS`。
+3) Run
+```bash
+uvicorn memory_engine.main:app --reload
+```
+4) Smoke test
+```bash
+curl -X POST http://127.0.0.1:8000/v1/memories:ingest \
+  -H "Authorization: Bearer demo-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scope": {"tenant_id":"demo-tenant","app_id":"demo-app","user_id":"u-1"},
+    "mode": "raw",
+    "memories": [
+      {
+        "type": "fact",
+        "content": {"text": "Paris is the capital of France."},
+        "metadata": {"lang": "en"}
+      }
+    ]
+  }'
+
+curl -X POST http://127.0.0.1:8000/v1/memories:search \
+  -H "Authorization: Bearer demo-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scope": {"tenant_id":"demo-tenant","app_id":"demo-app","user_id":"u-1"},
+    "query": "capital of France",
+    "top_k": 3
+  }'
+```
+
+## Provider 切换
+- 默认：`provider.kind=in_memory`
+- Mem0（包含自建）：设置 `provider.kind=mem0` 并提供 `mem0_api_key`；自建部署请配置 `mem0_base_url` 指向你的 Mem0 服务地址，并安装 `mem0` 包。并发/持久化由 Mem0 后端负责，请不要使用单文件存储。可调 `mem0_timeout_seconds`、`mem0_max_retries`、`mem0_backoff_seconds`。
+
+## API 契约与错误码
+- 详见 `docs/api_contract.md`、`docs/error_codes.md`；OpenAPI 可通过运行后访问 `/docs`。
+
+## Notes for next iterations
+- Swap `InMemoryProvider` with Mem0 adapter; support dual-write/fallback hooks.
+- Move rate limiting to shared store (Redis) for multi-instance deployment.
+- Extend audit with export to centralized logging and payload sampling.
+- Harden auth (IAM integration, scoped signing) and finer-grained visibility rules.
