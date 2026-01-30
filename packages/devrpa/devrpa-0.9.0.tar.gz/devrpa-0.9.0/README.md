@@ -1,0 +1,229 @@
+# devrpa
+
+<p align="center">
+  <img src="logo.jpeg" alt="devrpa logo" width="200"/>
+</p>
+
+**The Developer-First Automation Framework for Python.**
+
+> [!WARNING]
+> **🚧 Project Status: Under Development (Beta)**
+> `devrpa` is currently in active development (v0.9.0). APIs and features may change. We welcome feedback and contributions!
+
+`devrpa` makes building, running, and monitoring automation workflows as simple as writing Python code. It combines the reliability of enterprise RPA with the joy of modern developer tools.
+
+## Key Features (v0.9 - TUI Update)
+
+-   **Visual Workflow Builder (New!)**: Interactively build workflows using a powerful Terminal User Interface (TUI).
+-   **Fluent Chain API**: Build complex code-first workflows with regular Python method chaining.
+-   **Type-Safe Context**: Use **Pydantic** models for strict validation and IDE autocomplete.
+-   **Built-in Integrations**: GitHub, Slack, Web Scraping, File I/O, Database, and more.
+-   **Production Resilience**: Automatic retries, circuit breakers, backoff strategies, and resources pooling.
+
+---
+
+## Installation
+
+```bash
+pip install -e .
+playwright install
+```
+
+*(Note: Requires Python 3.10+)*
+
+---
+
+## 🚦 Basic Usage: 3 Steps to Automation
+
+### 1. Install
+Install the package and browser drivers.
+```bash
+pip install -e .
+playwright install
+```
+
+### 2. Build (The Visual Way)
+Use the new interactive builder to design your workflow without writing code.
+```bash
+devrpa create --interactive
+```
+*   **Add Steps**: Choose from API, Database, or Transform steps.
+*   **Configure**: Set URLs, queries, and retries in the right panel.
+*   **Save**: Click "Save JSON" to keep your work (`workflow.json`).
+
+### 3. Run
+You can run your workflow directly from the builder (Click "Run") or export it to Python code (`my_workflow.py`) to run in production:
+```bash
+python my_workflow.py
+```
+
+---
+
+## Visual Workflow Builder
+
+**New in v0.9**: Build workflows without writing code first!
+
+Run the interactive builder:
+```bash
+devrpa create --interactive
+```
+
+<p align="center">
+  <img src="ss.png" alt="Visual Builder UI" width="800"/>
+</p>
+
+### Key Capabilities
+
+#### 1. Interactive Design
+-   **Rich UI**: Use the TUI to add, reorder (`Up`/`Down`), and delete steps easily.
+-   **Instant Feedback**: See steps visualized with type icons (`[API]`, `[DB]`, `[TF]`) and status indicators.
+
+#### 2. Advanced Configuration
+Configure every aspect of your steps directly in the panel:
+-   **API**: Set Method, Headers, Timeout, and **Validation** rules.
+-   **Resilience**: Enable **Retries** and **Response Caching** with a single click.
+-   **Variables**: specificy `Output Variables` to pass data between steps.
+
+#### 3. Real-Time Testing & Execution
+Don't wait until the end to find bugs.
+-   **Test Step**: Click to **actually execute** the step in real-time.
+    -   *API*: Sends real HTTP requests (via `httpx`).
+    -   *DB*: Runs real SQL queries (via `sqlalchemy`).
+    -   *Transform*: Executes Python code snippets instantly.
+-   **Live Logs**: View execution status, duration, and errors immediately.
+
+#### 4. Smart Validation
+The builder validates your workflow before you run it:
+-   Checks for missing required fields (URLs, Queries).
+-   **Static Analysis**: Detects references to undefined variables (e.g., using `{user_id}` before it's assigned).
+
+#### 5. Project Management
+-   **Persistence**: Save your workflow to JSON (`workflow.json`) and load it back later to continue working.
+-   **Code Export**: Automatically generates python code (`my_workflow.py`) that you can run in production.
+
+---
+
+## Use Cases
+
+### 1. API Integration & ETL
+Fetch data from multiple sources, transform it, and load it into your database.
+
+```python
+workflow = (
+    flow("user_sync")
+    .from_api("https://api.example.com/users", output="users")
+    .transform(lambda users: [u for u in users if u['active']], output="active_users")
+    .from_db("INSERT INTO users (id, email) VALUES ...")
+)
+```
+
+### 2. Intelligent Automation
+Combine web scraping with AI processing.
+
+```python
+workflow = (
+    flow("market_research")
+    .browser_goto("https://competitor.com/pricing")
+    .browser_scrape_text("#price-table", output="pricing_data")
+    .llm_analyze("Extract price points", input="pricing_data", output="report")
+    .slack_notify("#strategy", "{report}")
+)
+```
+
+### 3. DevOps & Monitoring
+Monitor systems and auto-remediate issues.
+
+```python
+workflow = (
+    flow("system_health")
+    .github_list_issues("owner", "repo", output="issues")
+    .where("label == 'critical'", input="issues", output="critical_issues")
+    .if_condition("len(critical_issues) > 0")
+        .pagerduty_trigger("High load detected")
+    .end_if()
+)
+```
+
+---
+
+## Quick Start (Code-First)
+
+### The Fluent Way
+
+The fluent API helps you write readable, chainable workflows.
+
+```python
+from devrpa import flow
+
+workflow = (
+    flow("github_tracker")
+    # Fetch issues from GitHub (GitHub Integration)
+    .github_list_issues("owner", "repo", output="issues")
+    
+    # Filter for bugs (Selector Syntax)
+    .where("title.startswith('[Bug]')", input="issues_response", output="bugs")
+    
+    # Notify team (Slack Integration)
+    .slack_notify("#alerts", "Found {bugs.count} bugs!")
+)
+
+# Run it
+import asyncio
+asyncio.run(workflow.run())
+```
+
+### The Type-Safe Way
+
+Leverage Pydantic to ensure your workflow data is always correct.
+
+```python
+from pydantic import BaseModel
+from devrpa import flow
+
+# Define your context model
+class UserContext(BaseModel):
+    user_id: int
+    email: str
+    active: bool = False
+
+# Build workflow
+wf = (
+    flow("user_sync", context_model=UserContext)
+    .from_api("https://api.com/users/{user_id}", output="api_user")
+    .transform(lambda d: d['is_active'], input="api_user", output="active")
+)
+
+# Run with validation
+wf.run(initial_data=UserContext(user_id=123, email="test@example.com"))
+```
+
+---
+
+## Core Concepts
+
+### Workflow & Steps
+A **Workflow** is a sequence of **Steps**. Steps are atomic units of work (API calls, browser actions, data transformations).
+
+### Execution Context
+Data is shared between steps via the **ExecutionContext**. You can access it using `{variable_name}` templates in step parameters or pass it safely via Pydantic models.
+
+### Integrations
+`devrpa` comes with built-in integrations for popular services:
+-   **Web**: `WebStep` (Playwright)
+-   **API**: `ApiStep` (HTTPX)
+-   **GitHub**: `GitHub.get_repo`, `GitHub.list_issues`
+-   **Slack**: `Slack.post_message`
+-   **Files**: `ParseCSVStep`, `GenerateCSVStep`
+-   **Database**: `DatabaseStep` (SQLAlchemy async)
+
+---
+
+## Contributing
+
+We welcome contributions! Please see `examples/` for more usage patterns.
+
+1.  Fork the repository
+2.  Create your feature branch (`git checkout -b feature/amazing-feature`)
+3.  Commit your changes (`git commit -m 'Add amazing feature'`)
+4.  Push to the branch (`git push origin feature/amazing-feature`)
+5.  Open a Pull Request
