@@ -1,0 +1,25 @@
+---
+services:
+  ethoscope-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        JUPYTER_HUB_TAG: ${JUPYTER_HUB_TAG:-5.3.0}
+    image: ggilestro/ethoscope-lab:${ETHOSCOPE_LAB_TAG:-1.0}
+    container_name: ethoscope-lab
+    ports:
+      - 8082:8000
+    volumes:
+      - /mnt/ethoscope_data/results:/mnt/ethoscope_results:ro
+      - /mnt/ethoscope_data/ethoscope_metadata:/opt/ethoscope_metadata
+      - /mnt/ethoscopy/homes:/home
+      - /mnt/ethoscopy/cache:/home/cache
+      - ./jupyterhub_data:/srv/jupyterhub/
+    user: "${UID:-1000}:${GID:-1000}" # Adjust to your own user. Make sure this matches the permissions of your /mnt/{homes,cache} folder
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
