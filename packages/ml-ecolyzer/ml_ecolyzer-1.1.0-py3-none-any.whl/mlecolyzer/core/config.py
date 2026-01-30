@@ -1,0 +1,831 @@
+"""
+Configuration Classes Module
+
+This module provides structured configuration classes for ML-EcoLyzer
+supporting HuggingFace, scikit-learn, and PyTorch frameworks.
+"""
+
+from dataclasses import dataclass, field, asdict
+from typing import Dict, Any, List, Optional, Union
+from pathlib import Path
+
+@dataclass
+class ModelConfig:
+    """
+    Enhanced configuration for a single model with parameter counting support
+    
+    New attributes for parameter counting and ESS:
+        parameter_count: Explicit parameter count (overrides auto-detection)
+        auto_detect_parameters: Enable automatic parameter detection
+        parameter_estimation_method: Preferred method for parameter estimation
+        enable_ess_calculation: Calculate Environmental Sustainability Score
+        ess_target: Target ESS score for optimization recommendations
+    """
+    name: str
+    task: str
+    framework: str = "huggingface"
+    model_type: Optional[str] = None
+    max_length: int = 1024
+    batch_size: int = 1  # Processing batch size
+    auto_batch_size: bool = True  # Automatically adjust batch size based on memory
+    quantization: Optional[Dict[str, Any]] = None
+    model_params: Dict[str, Any] = field(default_factory=dict)
+    model_class: Optional[Any] = None
+    pretrained: bool = True
+    custom_args: Dict[str, Any] = field(default_factory=dict)
+    
+    parameter_count: Optional[int] = None
+    auto_detect_parameters: bool = True
+    parameter_estimation_method: str = "auto"  # auto, pytorch, huggingface, config, fallback
+    enable_ess_calculation: bool = True
+    ess_target: Optional[float] = None  # Target ESS for optimization recommendations
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        valid_frameworks = ["huggingface", "sklearn", "pytorch"]
+        if self.framework not in valid_frameworks:
+            raise ValueError(f"Invalid framework '{self.framework}'. Must be one of: {valid_frameworks}")
+        
+        valid_tasks = ["text", "image", "image_generation", "audio", "classification", "regression"]
+        if self.task not in valid_tasks:
+            raise ValueError(f"Invalid task '{self.task}'. Must be one of: {valid_tasks}")
+        
+        if self.max_length <= 0:
+            raise ValueError("max_length must be positive")
+        
+        if self.batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        
+        # Validate parameter counting configuration
+        valid_estimation_methods = ["auto", "pytorch", "huggingface", "config", "fallback"]
+        if self.parameter_estimation_method not in valid_estimation_methods:
+            raise ValueError(f"Invalid parameter_estimation_method '{self.parameter_estimation_method}'. Must be one of: {valid_estimation_methods}")
+        
+        if self.parameter_count is not None and self.parameter_count <= 0:
+            raise ValueError("parameter_count must be positive if specified")
+        
+        if self.ess_target is not None and self.ess_target <= 0:
+            raise ValueError("ess_target must be positive if specified")
+        
+        # Framework-specific validation
+        if self.framework == "sklearn":
+            sklearn_tasks = ["classification", "regression"]
+            if self.task not in sklearn_tasks:
+                raise ValueError(f"sklearn framework only supports tasks: {sklearn_tasks}")
+        
+        elif self.framework == "pytorch":
+            if self.task in ["text", "image_generation"] and not self.model_class:
+                # For complex tasks, might need custom model class
+                pass
+
+    def get_parameter_config(self) -> Dict[str, Any]:
+        """Get parameter-related configuration"""
+        return {
+            "parameter_count": self.parameter_count,
+            "auto_detect_parameters": self.auto_detect_parameters,
+            "parameter_estimation_method": self.parameter_estimation_method,
+            "enable_ess_calculation": self.enable_ess_calculation,
+            "ess_target": self.ess_target
+        }
+
+    def has_explicit_parameters(self) -> bool:
+        """Check if explicit parameter count is provided"""
+        return self.parameter_count is not None
+
+    def should_auto_detect_parameters(self) -> bool:
+        """Check if auto parameter detection should be performed"""
+        return self.auto_detect_parameters and not self.has_explicit_parameters()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format"""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ModelConfig':
+        """Create from dictionary"""
+        return cls(**data)
+
+
+# Example configurations with parameter support
+def create_example_configs():
+    """Create example configurations showcasing parameter support"""
+    
+    examples = {
+        # Explicit parameter count
+        "gpt2_explicit": ModelConfig(
+            name="gpt2",
+            task="text",
+            framework="huggingface",
+            parameter_count=124_000_000,  # Explicit count
+            auto_detect_parameters=False,
+            ess_target=0.5
+        ),
+        
+        # Auto-detection with preferred method
+        "opt_auto_pytorch": ModelConfig(
+            name="facebook/opt-350m",
+            task="text", 
+            framework="huggingface",
+            parameter_estimation_method="pytorch",  # Prefer PyTorch introspection
+            enable_ess_calculation=True
+        ),
+        
+        # sklearn with realistic parameter count
+        "sklearn_explicit": ModelConfig(
+            name="RandomForestClassifier",
+            task="classification",
+            framework="sklearn",
+            parameter_count=500_000,  # Explicit for complex Random Forest
+            model_params={"n_estimators": 100, "max_depth": 10}
+        ),
+        
+        # Large model with ESS target
+        "llama_with_target": ModelConfig(
+            name="meta-llama/Llama-2-7b-hf",
+            task="text",
+            framework="huggingface", 
+            ess_target=0.1,  # Target ESS for optimization
+            enable_ess_calculation=True
+        )
+    }
+    
+    return examples
+
+
+def get_parameter_estimation_examples():
+    """Get examples of different parameter estimation scenarios"""
+    return {
+        "tier_1_config": {
+            "description": "User provides explicit parameter count",
+            "config": ModelConfig(
+                name="custom-model",
+                task="text",
+                parameter_count=1_500_000_000
+            ),
+            "expected_source": "config"
+        },
+        
+        "tier_2_pytorch": {
+            "description": "PyTorch model introspection",
+            "config": ModelConfig(
+                name="gpt2",
+                task="text",
+                framework="huggingface",
+                parameter_estimation_method="pytorch"
+            ),
+            "expected_source": "pytorch"
+        },
+        
+        "tier_3_huggingface": {
+            "description": "HuggingFace config introspection",
+            "config": ModelConfig(
+                name="gpt2",
+                task="text",
+                framework="huggingface",
+                parameter_estimation_method="huggingface"
+            ),
+            "expected_source": "huggingface"
+        },
+        
+        "tier_4_fallback": {
+            "description": "Name-based pattern matching",
+            "config": ModelConfig(
+                name="unknown-7b-model",
+                task="text",
+                framework="huggingface",
+                parameter_estimation_method="fallback"
+            ),
+            "expected_source": "fallback"
+        }
+    }
+
+
+@dataclass
+class DatasetConfig:
+    """
+    Configuration for a single dataset across multiple frameworks
+    
+    Attributes:
+        name: Dataset name (HuggingFace identifier, sklearn dataset name, or file path)
+        task: Task type (text, image, image_generation, audio, classification, regression)
+        framework: Framework type (huggingface, sklearn, pytorch)
+        subset: Dataset subset/configuration name
+        split: Primary split to load
+        fallback_splits: Alternative splits if primary fails
+        strict_split: Only use specified split, no fallbacks
+        limit: Maximum number of samples to load
+        label_key: Key for extracting labels/text from samples
+        target_column: Target column name for file-based datasets
+        feature_columns: Feature column names for file-based datasets
+        file_path: Path to dataset file (for file-based datasets)
+        data_params: Framework-specific dataset parameters
+        transforms: Data transformations (mainly for PyTorch)
+        download: Whether to download dataset if not available
+        custom_args: Additional dataset-specific arguments
+    """
+    name: str
+    task: str
+    framework: str = "huggingface"
+    subset: Optional[str] = None
+    split: str = "test"
+    fallback_splits: List[str] = field(default_factory=lambda: ["train", "validation", "dev"])
+    strict_split: bool = False
+    limit: Optional[int] = None
+    label_key: str = "text"
+    target_column: Optional[str] = None
+    feature_columns: Optional[List[str]] = None
+    file_path: Optional[str] = None
+    data_params: Dict[str, Any] = field(default_factory=dict)
+    transforms: Optional[Dict[str, Any]] = None
+    download: bool = True
+    custom_args: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        valid_frameworks = ["huggingface", "sklearn", "pytorch"]
+        if self.framework not in valid_frameworks:
+            raise ValueError(f"Invalid framework '{self.framework}'. Must be one of: {valid_frameworks}")
+        
+        valid_tasks = ["text", "image", "image_generation", "audio", "classification", "regression"]
+        if self.task not in valid_tasks:
+            raise ValueError(f"Invalid task '{self.task}'. Must be one of: {valid_tasks}")
+        
+        if self.limit is not None and self.limit <= 0:
+            raise ValueError("limit must be positive")
+        
+        # Framework-specific validation
+        if self.framework == "sklearn":
+            sklearn_tasks = ["classification", "regression"]
+            if self.task not in sklearn_tasks:
+                raise ValueError(f"sklearn framework only supports tasks: {sklearn_tasks}")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format"""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DatasetConfig':
+        """Create from dictionary"""
+        return cls(**data)
+
+
+@dataclass
+class MonitoringConfig:
+    """
+    Configuration for environmental monitoring
+    
+    Attributes:
+        duration_seconds: Monitoring duration
+        frequency_hz: Sampling frequency
+        enable_quantization_analysis: Include quantization analysis
+        enable_frequency_analysis: Include frequency analysis
+        enable_wandb: Enable wandb tracking
+        wandb_project: Wandb project name
+        custom_device_profiles: Custom device power profiles
+    """
+    duration_seconds: float = 300
+    frequency_hz: float = 1.0
+    enable_quantization_analysis: bool = True
+    enable_frequency_analysis: bool = True
+    enable_wandb: Union[bool, str] = "auto"
+    wandb_project: Optional[str] = None
+    custom_device_profiles: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        if self.duration_seconds <= 0:
+            raise ValueError("duration_seconds must be positive")
+        
+        if self.frequency_hz <= 0:
+            raise ValueError("frequency_hz must be positive")
+        
+        if self.duration_seconds > 3600:
+            raise ValueError("duration_seconds too long (max 3600 seconds)")
+
+
+@dataclass
+class HardwareConfig:
+    """
+    Configuration for hardware settings
+    
+    Attributes:
+        device_profile: Device profile to use
+        deployment_environment: Environment type (local, aws, gcp, azure, auto)
+        cloud_region: Cloud region for carbon intensity (e.g., 'us-east-1', 'eu-west-1')
+        country: Country for local carbon intensity (e.g., 'Germany', 'France')
+        force_cpu: Force CPU-only execution
+        force_gpu: Force GPU execution
+        gpu_devices: Specific GPU devices to use
+        precision: Model precision (float32, float16, bfloat16)
+        memory_optimization: Enable memory optimizations
+    """
+    device_profile: str = "auto"
+    deployment_environment: str = "auto"  # local, aws, gcp, azure, auto
+    cloud_region: Optional[str] = None  # Cloud region for carbon intensity
+    country: Optional[str] = None  # Country for local carbon intensity
+    force_cpu: bool = False
+    force_gpu: bool = False
+    gpu_devices: Optional[List[int]] = None
+    precision: str = "auto"
+    memory_optimization: bool = True
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        valid_profiles = ["auto", "datacenter", "desktop_gpu", "desktop_cpu", "mobile", "edge"]
+        if self.device_profile not in valid_profiles:
+            raise ValueError(f"Invalid device_profile '{self.device_profile}'. Must be one of: {valid_profiles}")
+        
+        valid_environments = ["auto", "local", "aws", "gcp", "azure"]
+        if self.deployment_environment not in valid_environments:
+            raise ValueError(f"Invalid deployment_environment '{self.deployment_environment}'. Must be one of: {valid_environments}")
+        
+        # Validate cloud configuration
+        if self.deployment_environment in ["aws", "gcp", "azure"] and not self.cloud_region:
+            raise ValueError(f"cloud_region must be specified when using deployment_environment '{self.deployment_environment}'")
+        
+        valid_precisions = ["auto", "float32", "float16", "bfloat16"]
+        if self.precision not in valid_precisions:
+            raise ValueError(f"Invalid precision '{self.precision}'. Must be one of: {valid_precisions}")
+
+
+@dataclass
+class OutputConfig:
+    """
+    Configuration for output and logging
+    
+    Attributes:
+        output_dir: Output directory for results
+        cache_dir: Cache directory for datasets and models
+        emissions_file: Emissions tracking file name
+        save_intermediate: Save intermediate results
+        export_formats: Export formats for results
+        log_level: Logging level
+        enable_progress_bars: Show progress bars
+    """
+    output_dir: str = "./mlecolyzer_results"
+    cache_dir: Optional[str] = None
+    emissions_file: str = "emissions.csv"
+    save_intermediate: bool = True
+    export_formats: List[str] = field(default_factory=lambda: ["json", "csv"])
+    log_level: str = "INFO"
+    enable_progress_bars: bool = True
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        if self.log_level.upper() not in valid_levels:
+            raise ValueError(f"Invalid log_level '{self.log_level}'. Must be one of: {valid_levels}")
+        
+        valid_formats = ["json", "csv", "html", "wandb"]
+        for fmt in self.export_formats:
+            if fmt not in valid_formats:
+                raise ValueError(f"Invalid export format '{fmt}'. Must be one of: {valid_formats}")
+
+
+@dataclass
+class AnalysisConfig:
+    """
+    Complete analysis configuration for ML-EcoLyzer
+    
+    Attributes:
+        project: Project name
+        models: List of model configurations
+        datasets: List of dataset configurations
+        monitoring: Monitoring configuration
+        hardware: Hardware configuration
+        output: Output configuration
+        metadata: Additional metadata
+    """
+    project: str
+    models: List[ModelConfig] = field(default_factory=list)
+    datasets: List[DatasetConfig] = field(default_factory=list)
+    monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
+    hardware: HardwareConfig = field(default_factory=HardwareConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        if not self.project or not self.project.strip():
+            raise ValueError("project name cannot be empty")
+        
+        if not self.models:
+            raise ValueError("at least one model must be specified")
+        
+        if not self.datasets:
+            raise ValueError("at least one dataset must be specified")
+        
+        # Convert dict configs to dataclasses if needed
+        self.models = [
+            ModelConfig.from_dict(model) if isinstance(model, dict) else model
+            for model in self.models
+        ]
+        
+        self.datasets = [
+            DatasetConfig.from_dict(dataset) if isinstance(dataset, dict) else dataset
+            for dataset in self.datasets
+        ]
+        
+        if isinstance(self.monitoring, dict):
+            self.monitoring = MonitoringConfig(**self.monitoring)
+        
+        if isinstance(self.hardware, dict):
+            self.hardware = HardwareConfig(**self.hardware)
+        
+        if isinstance(self.output, dict):
+            self.output = OutputConfig(**self.output)
+        
+        # Validate framework consistency
+        self._validate_framework_consistency()
+    
+    def _validate_framework_consistency(self):
+        """Validate that model and dataset frameworks are compatible"""
+        for model in self.models:
+            for dataset in self.datasets:
+                if model.task != dataset.task:
+                    continue  # Different tasks, will be skipped
+                
+                # Check framework compatibility
+                if model.framework != dataset.framework:
+                    print(f"⚠️ Warning: Framework mismatch between model '{model.name}' ({model.framework}) "
+                          f"and dataset '{dataset.name}' ({dataset.framework})")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format"""
+        return {
+            "project": self.project,
+            "models": [model.to_dict() for model in self.models],
+            "datasets": [dataset.to_dict() for dataset in self.datasets],
+            "monitoring": asdict(self.monitoring),
+            "hardware": asdict(self.hardware),
+            "output": asdict(self.output),
+            "metadata": self.metadata
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'AnalysisConfig':
+        """Create from dictionary"""
+        # Handle nested configurations
+        config_data = data.copy()
+        
+        # Convert models
+        if "models" in config_data:
+            config_data["models"] = [
+                ModelConfig.from_dict(model) if isinstance(model, dict) else model
+                for model in config_data["models"]
+            ]
+        
+        # Convert datasets
+        if "datasets" in config_data:
+            config_data["datasets"] = [
+                DatasetConfig.from_dict(dataset) if isinstance(dataset, dict) else dataset
+                for dataset in config_data["datasets"]
+            ]
+        
+        # Convert monitoring config
+        if "monitoring" in config_data and isinstance(config_data["monitoring"], dict):
+            config_data["monitoring"] = MonitoringConfig(**config_data["monitoring"])
+        
+        # Convert hardware config
+        if "hardware" in config_data and isinstance(config_data["hardware"], dict):
+            config_data["hardware"] = HardwareConfig(**config_data["hardware"])
+        
+        # Convert output config
+        if "output" in config_data and isinstance(config_data["output"], dict):
+            config_data["output"] = OutputConfig(**config_data["output"])
+        
+        return cls(**config_data)
+    
+    @classmethod
+    def from_file(cls, config_path: Union[str, Path]) -> 'AnalysisConfig':
+        """Load configuration from file"""
+        from ..utils.helpers import load_config_from_file
+        config_dict = load_config_from_file(config_path)
+        return cls.from_dict(config_dict)
+    
+    def save_to_file(self, config_path: Union[str, Path], format: str = "yaml") -> None:
+        """Save configuration to file"""
+        from ..utils.helpers import save_config_to_file
+        save_config_to_file(self.to_dict(), config_path, format)
+    
+    def add_model(self, name: str, task: str, framework: str = "huggingface", **kwargs) -> ModelConfig:
+        """Add a model configuration"""
+        model_config = ModelConfig(name=name, task=task, framework=framework, **kwargs)
+        self.models.append(model_config)
+        return model_config
+    
+    def add_dataset(self, name: str, task: str, framework: str = "huggingface", **kwargs) -> DatasetConfig:
+        """Add a dataset configuration"""
+        dataset_config = DatasetConfig(name=name, task=task, framework=framework, **kwargs)
+        self.datasets.append(dataset_config)
+        return dataset_config
+    
+    def get_total_combinations(self) -> int:
+        """Get total number of compatible model-dataset combinations"""
+        compatible_combinations = 0
+        for model in self.models:
+            for dataset in self.datasets:
+                if model.task == dataset.task and model.framework == dataset.framework:
+                    compatible_combinations += 1
+        return compatible_combinations
+    
+    def estimate_runtime(self, avg_time_per_combination: float = 300) -> Dict[str, float]:
+        """Estimate total runtime"""
+        from ..utils.helpers import estimate_runtime
+        return estimate_runtime(self.get_total_combinations(), avg_time_per_combination)
+    
+    def validate(self) -> None:
+        """Validate the entire configuration"""
+        from ..utils.validation import validate_config
+        validate_config(self.to_dict())
+    
+    def get_summary(self) -> Dict[str, Any]:
+        """Get configuration summary"""
+        return {
+            "project": self.project,
+            "total_models": len(self.models),
+            "total_datasets": len(self.datasets),
+            "total_combinations": self.get_total_combinations(),
+            "model_names": [model.name for model in self.models],
+            "dataset_names": [dataset.name for dataset in self.datasets],
+            "frameworks_used": list(set([model.framework for model in self.models] + 
+                                      [dataset.framework for dataset in self.datasets])),
+            "monitoring_duration": self.monitoring.duration_seconds,
+            "output_directory": self.output.output_dir,
+            "wandb_enabled": self.monitoring.enable_wandb
+        }
+
+
+def get_preset_config(preset: str) -> Dict[str, Any]:
+    """
+    Get preset configuration based on use case and memory constraints
+    
+    Args:
+        preset: Configuration preset name
+        
+    Returns:
+        Dict with preset configuration values
+    """
+    presets = {
+        "quick": {
+            "sample_limit": 1,
+            "batch_size": 1,
+            "auto_batch_size": True,
+            "monitoring_duration": 60,
+            "description": "Fastest testing with minimal samples"
+        },
+        "test": {
+            "sample_limit": 10,
+            "batch_size": 2,
+            "auto_batch_size": True,
+            "monitoring_duration": 120,
+            "description": "Quick testing with small batch processing"
+        },
+        "standard": {
+            "sample_limit": 100,
+            "batch_size": 4,
+            "auto_batch_size": True,
+            "monitoring_duration": 300,
+            "description": "Standard evaluation with efficient batching"
+        },
+        "comprehensive": {
+            "sample_limit": 1000,
+            "batch_size": 8,
+            "auto_batch_size": True,
+            "monitoring_duration": 600,
+            "description": "Comprehensive analysis with large batches"
+        },
+        "memory_efficient": {
+            "sample_limit": 50,
+            "batch_size": 1,
+            "auto_batch_size": False,  # Force single-sample processing
+            "monitoring_duration": 180,
+            "description": "Memory-constrained systems"
+        }
+    }
+    
+    if preset not in presets:
+        raise ValueError(f"Unknown preset '{preset}'. Available: {list(presets.keys())}")
+    
+    return presets[preset]
+
+
+def create_quick_config(model_name: str, dataset_name: str, task: str = "text",
+                       framework: str = "huggingface", project: Optional[str] = None,
+                       preset: str = "quick", **kwargs) -> AnalysisConfig:
+    """
+    Create a quick analysis configuration for single model-dataset pair
+
+    Args:
+        model_name: Model name
+        dataset_name: Dataset name
+        task: Task type
+        framework: Framework type
+        project: Project name (auto-generated if None)
+        preset: Configuration preset ('quick', 'test', 'standard', 'comprehensive', 'memory_efficient')
+        **kwargs: Additional configuration options
+
+    Returns:
+        AnalysisConfig: Complete configuration
+    """
+    if project is None:
+        project = f"{preset}_{framework}_{model_name.replace('/', '_')}_{dataset_name.replace('/', '_')}"
+
+    # Get preset configurations
+    preset_config = get_preset_config(preset)
+
+    # Filter kwargs for model config (exclude monitoring/hardware/output keys)
+    model_kwargs = {k: v for k, v in kwargs.items()
+                    if k not in ['limit', 'duration_seconds', 'frequency_hz',
+                                 'enable_quantization_analysis', 'enable_frequency_analysis',
+                                 'enable_wandb', 'wandb_project', 'device_profile',
+                                 'deployment_environment', 'force_cpu', 'force_gpu',
+                                 'output_dir', 'log_level', 'export_formats']}
+
+    # Create model config with preset and kwargs
+    model_config = ModelConfig(
+        name=model_name,
+        task=task,
+        framework=framework,
+        batch_size=preset_config["batch_size"],
+        auto_batch_size=preset_config["auto_batch_size"],
+        **model_kwargs
+    )
+
+    # Create dataset config
+    dataset_config = DatasetConfig(
+        name=dataset_name,
+        task=task,
+        framework=framework,
+        limit=preset_config["sample_limit"]
+    )
+
+    # Create monitoring config with preset duration
+    monitoring_config = MonitoringConfig(
+        duration_seconds=preset_config["monitoring_duration"]
+    )
+
+    # Apply monitoring kwargs
+    for key in ['frequency_hz', 'enable_quantization_analysis', 'enable_frequency_analysis',
+                'enable_wandb', 'wandb_project']:
+        if key in kwargs:
+            setattr(monitoring_config, key, kwargs[key])
+
+    # Create hardware config
+    hardware_config = HardwareConfig()
+    for key in ['device_profile', 'deployment_environment', 'cloud_region',
+                'country', 'force_cpu', 'force_gpu']:
+        if key in kwargs:
+            setattr(hardware_config, key, kwargs[key])
+
+    # Create output config
+    output_config = OutputConfig()
+    for key in ['output_dir', 'log_level', 'export_formats', 'save_intermediate']:
+        if key in kwargs:
+            setattr(output_config, key, kwargs[key])
+
+    # Create the complete config with all components
+    config = AnalysisConfig(
+        project=project,
+        models=[model_config],
+        datasets=[dataset_config],
+        monitoring=monitoring_config,
+        hardware=hardware_config,
+        output=output_config
+    )
+
+    return config
+
+
+def create_research_config(models: List[Dict[str, Any]], datasets: List[Dict[str, Any]],
+                          project: str, **kwargs) -> AnalysisConfig:
+    """
+    Create a research configuration for comprehensive studies
+
+    Args:
+        models: List of model configurations (dicts with name, task, framework, etc.)
+        datasets: List of dataset configurations (dicts with name, task, framework, etc.)
+        project: Project name
+        **kwargs: Additional configuration options
+
+    Returns:
+        AnalysisConfig: Complete research configuration
+    """
+    # Convert model dicts to ModelConfig objects
+    model_configs = [
+        ModelConfig(**model_data) if isinstance(model_data, dict) else model_data
+        for model_data in models
+    ]
+
+    # Convert dataset dicts to DatasetConfig objects
+    dataset_configs = [
+        DatasetConfig(**dataset_data) if isinstance(dataset_data, dict) else dataset_data
+        for dataset_data in datasets
+    ]
+
+    # Create monitoring config with research defaults
+    monitoring_config = MonitoringConfig(
+        duration_seconds=kwargs.get("monitoring_duration", 600),
+        enable_quantization_analysis=True,
+        enable_frequency_analysis=True
+    )
+
+    # Apply monitoring kwargs
+    for key in ['frequency_hz', 'enable_wandb', 'wandb_project']:
+        if key in kwargs:
+            setattr(monitoring_config, key, kwargs[key])
+
+    # Create hardware config
+    hardware_config = HardwareConfig()
+    for key in ['device_profile', 'deployment_environment', 'cloud_region',
+                'country', 'force_cpu', 'force_gpu']:
+        if key in kwargs:
+            setattr(hardware_config, key, kwargs[key])
+
+    # Create output config with research defaults
+    output_config = OutputConfig(save_intermediate=True)
+    for key in ['output_dir', 'log_level', 'export_formats']:
+        if key in kwargs:
+            setattr(output_config, key, kwargs[key])
+
+    # Create the complete config with all components
+    config = AnalysisConfig(
+        project=project,
+        models=model_configs,
+        datasets=dataset_configs,
+        monitoring=monitoring_config,
+        hardware=hardware_config,
+        output=output_config
+    )
+
+    return config
+
+
+def load_example_configs() -> Dict[str, AnalysisConfig]:
+    """
+    Load example configurations for different frameworks and use cases
+    
+    Returns:
+        Dictionary of example configurations
+    """
+    examples = {}
+    
+    # Basic HuggingFace text generation
+    examples["huggingface_text"] = create_quick_config(
+        "gpt2", "wikitext", "text", "huggingface",
+        project="huggingface_text_analysis",
+        limit=1
+    )
+    
+    # sklearn classification
+    examples["sklearn_classification"] = create_quick_config(
+        "RandomForestClassifier", "iris", "classification", "sklearn",
+        project="sklearn_classification_analysis",
+        limit=1
+    )
+    
+    # PyTorch image classification
+    examples["pytorch_image"] = create_quick_config(
+        "resnet18", "CIFAR10", "image", "pytorch",
+        project="pytorch_image_analysis",
+        limit=1
+    )
+    
+    # Multi-framework comparison
+    models = [
+        {"name": "RandomForestClassifier", "task": "classification", "framework": "sklearn"},
+        {"name": "MLPClassifier", "task": "classification", "framework": "sklearn"},
+        {"name": "SVC", "task": "classification", "framework": "sklearn"}
+    ]
+    datasets = [
+        {"name": "iris", "task": "classification", "framework": "sklearn", "limit": 1},
+        {"name": "wine", "task": "classification", "framework": "sklearn", "limit": 1}
+    ]
+    examples["sklearn_comparison"] = create_research_config(
+        models, datasets, "sklearn_model_comparison_study"
+    )
+    
+    # Comprehensive multi-framework research
+    research_models = [
+        {"name": "gpt2", "task": "text", "framework": "huggingface"},
+        {"name": "RandomForestClassifier", "task": "classification", "framework": "sklearn"},
+        {"name": "resnet18", "task": "image", "framework": "pytorch", "pretrained": True}
+    ]
+    research_datasets = [
+        {"name": "wikitext", "task": "text", "framework": "huggingface", "limit": 500},
+        {"name": "iris", "task": "classification", "framework": "sklearn", "limit": 100},
+        {"name": "CIFAR10", "task": "image", "framework": "pytorch", "limit": 200}
+    ]
+    examples["multi_framework_research"] = create_research_config(
+        research_models, research_datasets, "comprehensive_multi_framework_study",
+        monitoring_duration=900,
+        enable_wandb=True
+    )
+    
+    return examples
+
+
+# Backward compatibility aliases
+BenchmarkConfig = AnalysisConfig
+ModelConfig = ModelConfig
+DatasetConfig = DatasetConfig
