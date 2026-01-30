@@ -1,0 +1,747 @@
+# Corp Extractor
+
+Extract structured subject-predicate-object statements from unstructured text using the T5-Gemma 2 model.
+
+[![PyPI version](https://img.shields.io/pypi/v/corp-extractor.svg)](https://pypi.org/project/corp-extractor/)
+[![Python 3.10+](https://img.shields.io/pypi/pyversions/corp-extractor.svg)](https://pypi.org/project/corp-extractor/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Features
+
+- **Person Database** *(v0.9.2)*: Qualify notable people (executives, politicians, athletes, etc.) against Wikidata with canonical IDs
+- **Organization Canonicalization** *(v0.9.2)*: Link equivalent records across sources (LEI, ticker, CIK, name matching)
+- **5-Stage Pipeline** *(v0.8.0)*: Modular plugin-based architecture for full entity resolution
+- **Document Processing** *(v0.7.0)*: Process documents, URLs, and PDFs with chunking and deduplication
+- **Entity Embedding Database** *(v0.6.0)*: Fast entity qualification using vector similarity (~100K+ SEC, ~3M GLEIF, ~5M UK organizations)
+- **Structured Extraction**: Converts unstructured text into subject-predicate-object triples
+- **Entity Type Recognition**: Identifies 12 entity types (ORG, PERSON, GPE, LOC, PRODUCT, EVENT, etc.)
+- **Entity Qualification** *(v0.8.0)*: Adds identifiers (LEI, ticker, company numbers), canonical names, and FQN via embedding database
+- **Statement Labeling** *(v0.5.0)*: Sentiment analysis, relation type classification, confidence scoring
+- **GLiNER2 Integration** *(v0.4.0)*: Uses GLiNER2 (205M params) for entity recognition and relation extraction
+- **Predefined Predicates**: Optional `--predicates` list for GLiNER2 relation extraction mode
+- **Beam Merging**: Combines top beams for better coverage instead of picking one
+- **Embedding-based Dedup**: Uses semantic similarity to detect near-duplicate predicates
+- **Predicate Taxonomies**: Normalize predicates to canonical forms via embeddings
+- **Command Line Interface**: Full-featured CLI with `split`, `pipeline`, `document`, and `db` commands
+- **Multiple Output Formats**: Get results as Pydantic models, JSON, XML, or dictionaries
+
+## Installation
+
+```bash
+pip install corp-extractor
+```
+
+The GLiNER2 model (205M params) is downloaded automatically on first use.
+
+**Note**: This package requires `transformers>=5.0.0` for T5-Gemma2 model support.
+
+**For GPU support**, install PyTorch with CUDA first:
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install corp-extractor
+```
+
+**For Apple Silicon (M1/M2/M3)**, MPS acceleration is automatically detected:
+```bash
+pip install corp-extractor  # MPS used automatically
+```
+
+## Quick Start
+
+```python
+from statement_extractor import extract_statements
+
+result = extract_statements("""
+    Apple Inc. announced the iPhone 15 at their September event.
+    Tim Cook presented the new features to customers worldwide.
+""")
+
+for stmt in result:
+    print(f"{stmt.subject.text} ({stmt.subject.type})")
+    print(f"  --[{stmt.predicate}]--> {stmt.object.text}")
+    print(f"  Confidence: {stmt.confidence_score:.2f}")  # NEW in v0.2.0
+```
+
+## Command Line Interface
+
+The library includes a CLI for quick extraction from the terminal.
+
+### Install Globally (Recommended)
+
+For best results, install globally first:
+
+```bash
+# Using uv (recommended)
+uv tool install "corp-extractor[embeddings]"
+
+# Using pipx
+pipx install "corp-extractor[embeddings]"
+
+# Using pip
+pip install "corp-extractor[embeddings]"
+
+# Then use anywhere
+corp-extractor "Your text here"
+```
+
+### Quick Run with uvx
+
+Run directly without installing using [uv](https://docs.astral.sh/uv/):
+
+```bash
+uvx corp-extractor "Apple announced a new iPhone."
+```
+
+**Note**: First run downloads the model (~1.5GB) which may take a few minutes.
+
+### Usage Examples
+
+The CLI provides three main commands: `split`, `pipeline`, and `plugins`.
+
+```bash
+# Simple extraction (Stage 1 only, fast)
+corp-extractor split "Apple Inc. announced the iPhone 15."
+corp-extractor split -f article.txt --json
+
+# Full 5-stage pipeline (entity resolution, labeling, taxonomy)
+corp-extractor pipeline "Amazon CEO Andy Jassy announced plans to hire workers."
+corp-extractor pipeline -f article.txt --stages 1-3
+corp-extractor pipeline "..." --disable-plugins sec_edgar
+
+# Plugin management
+corp-extractor plugins list
+corp-extractor plugins list --stage 3
+corp-extractor plugins info gleif_qualifier
+```
+
+### Split Command (Simple Extraction)
+
+```bash
+corp-extractor split "Tim Cook is CEO of Apple." --json
+corp-extractor split -f article.txt --beams 8 --verbose
+cat article.txt | corp-extractor split -
+```
+
+### Pipeline Command (Full Entity Resolution)
+
+```bash
+# Run all 5 stages
+corp-extractor pipeline "Apple CEO Tim Cook announced..."
+
+# Run specific stages
+corp-extractor pipeline "..." --stages 1-3         # Stages 1, 2, 3
+corp-extractor pipeline "..." --stages 1,2,5       # Stages 1, 2, 5
+corp-extractor pipeline "..." --skip-stages 4,5    # Skip stages 4 and 5
+
+# Plugin selection
+corp-extractor pipeline "..." --plugins gleif,companies_house
+corp-extractor pipeline "..." --disable-plugins sec_edgar
+```
+
+### CLI Reference
+
+```
+Usage: corp-extractor [COMMAND] [OPTIONS]
+
+Commands:
+  split      Simple extraction (T5-Gemma only)
+  pipeline   Full 5-stage pipeline with entity resolution
+  plugins    List or inspect available plugins
+
+Split Options:
+  -f, --file PATH              Read input from file
+  -o, --output [table|json|xml] Output format (default: table)
+  --json / --xml               Output format shortcuts
+  -b, --beams INTEGER          Number of beams (default: 4)
+  --no-gliner                  Disable GLiNER2 extraction
+  --predicates TEXT            Comma-separated predicates for relation extraction
+  --device [auto|cuda|mps|cpu] Device to use (default: auto)
+  -v, --verbose                Show confidence scores and metadata
+
+Pipeline Options:
+  --stages TEXT                Stages to run (e.g., '1-3' or '1,2,5')
+  --skip-stages TEXT           Stages to skip (e.g., '4,5')
+  --plugins TEXT               Enable only these plugins (comma-separated)
+  --disable-plugins TEXT       Disable these plugins (comma-separated)
+  -o, --output [table|json|yaml|triples]  Output format
+```
+
+## Quality Scoring & Beam Merging
+
+By default, the library:
+- **Scores each triple** using semantic similarity (50%) + GLiNER2 entity recognition (50%)
+- **Merges top beams** instead of selecting one, improving coverage
+- **Uses embeddings** to detect semantically similar predicates ("bought" ≈ "acquired")
+
+```python
+from statement_extractor import ExtractionOptions, ScoringConfig
+
+# Precision mode - filter low-confidence triples
+scoring = ScoringConfig(min_confidence=0.7)
+options = ExtractionOptions(scoring_config=scoring)
+result = extract_statements(text, options)
+
+# Access confidence scores
+for stmt in result:
+    print(f"{stmt} (confidence: {stmt.confidence_score:.2f})")
+```
+
+## New in v0.2.0: Predicate Taxonomies
+
+Normalize predicates to canonical forms using embedding similarity:
+
+```python
+from statement_extractor import PredicateTaxonomy, ExtractionOptions
+
+taxonomy = PredicateTaxonomy(predicates=[
+    "acquired", "founded", "works_for", "announced",
+    "invested_in", "partnered_with"
+])
+
+options = ExtractionOptions(predicate_taxonomy=taxonomy)
+result = extract_statements(text, options)
+
+# "bought" -> "acquired" via embedding similarity
+for stmt in result:
+    if stmt.canonical_predicate:
+        print(f"{stmt.predicate} -> {stmt.canonical_predicate}")
+```
+
+## New in v0.2.2: Contextualized Matching
+
+Predicate canonicalization and deduplication now use **contextualized matching**:
+- Compares full "Subject Predicate Object" strings against source text
+- Better accuracy because predicates are evaluated in context
+- When duplicates are found, keeps the statement with the best match to source text
+
+This means "Apple bought Beats" vs "Apple acquired Beats" are compared holistically, not just "bought" vs "acquired".
+
+## New in v0.2.3: Entity Type Merging & Reversal Detection
+
+### Entity Type Merging
+
+When deduplicating statements, entity types are now automatically merged. If one statement has `UNKNOWN` type and a duplicate has a specific type (like `ORG` or `PERSON`), the specific type is preserved:
+
+```python
+# Before deduplication:
+# Statement 1: AtlasBio Labs (UNKNOWN) --sued by--> CuraPharm (ORG)
+# Statement 2: AtlasBio Labs (ORG) --sued by--> CuraPharm (ORG)
+
+# After deduplication:
+# Single statement: AtlasBio Labs (ORG) --sued by--> CuraPharm (ORG)
+```
+
+### Subject-Object Reversal Detection
+
+The library now detects when subject and object may have been extracted in the wrong order by comparing embeddings against source text:
+
+```python
+from statement_extractor import PredicateComparer
+
+comparer = PredicateComparer()
+
+# Automatically detect and fix reversals
+fixed_statements = comparer.detect_and_fix_reversals(statements)
+
+for stmt in fixed_statements:
+    if stmt.was_reversed:
+        print(f"Fixed reversal: {stmt}")
+```
+
+**How it works:**
+1. For each statement with source text, compares:
+   - "Subject Predicate Object" embedding vs source text
+   - "Object Predicate Subject" embedding vs source text
+2. If the reversed form has higher similarity, swaps subject and object
+3. Sets `was_reversed=True` to indicate the correction
+
+During deduplication, reversed duplicates (e.g., "A -> P -> B" and "B -> P -> A") are now detected and merged, with the correct orientation determined by source text similarity.
+
+## Pipeline Architecture
+
+The library uses a **5-stage plugin-based pipeline** for comprehensive entity resolution, statement enrichment, and taxonomy classification.
+
+### Pipeline Stages
+
+| Stage | Name | Input | Output | Key Tech |
+|-------|------|-------|--------|----------|
+| 1 | Splitting | Text | `RawTriple[]` | T5-Gemma2 |
+| 2 | Extraction | `RawTriple[]` | `PipelineStatement[]` | GLiNER2 |
+| 3 | Qualification | Entities | `CanonicalEntity[]` | Embedding DB |
+| 4 | Labeling | Statements | `LabeledStatement[]` | Sentiment, etc. |
+| 5 | Taxonomy | Statements | `TaxonomyResult[]` | MNLI, Embeddings |
+
+### Pipeline Python API
+
+```python
+from statement_extractor.pipeline import ExtractionPipeline, PipelineConfig
+
+# Run full pipeline
+pipeline = ExtractionPipeline()
+ctx = pipeline.process("Amazon CEO Andy Jassy announced plans to hire workers.")
+
+# Access results at each stage
+print(f"Raw triples: {len(ctx.raw_triples)}")
+print(f"Statements: {len(ctx.statements)}")
+print(f"Labeled: {len(ctx.labeled_statements)}")
+
+# Output with fully qualified names
+for stmt in ctx.labeled_statements:
+    print(f"{stmt.subject_fqn} --[{stmt.statement.predicate}]--> {stmt.object_fqn}")
+    # e.g., "Andy Jassy (CEO, Amazon) --[announced]--> plans to hire workers"
+```
+
+### Pipeline Configuration
+
+```python
+from statement_extractor.pipeline import PipelineConfig, ExtractionPipeline
+
+# Run only specific stages
+config = PipelineConfig(
+    enabled_stages={1, 2, 3},  # Skip labeling and taxonomy
+    disabled_plugins={"person_qualifier"},  # Disable specific plugins
+)
+pipeline = ExtractionPipeline(config)
+ctx = pipeline.process(text)
+
+# Alternative: create config from stage string
+config = PipelineConfig.from_stage_string("1-3")  # Stages 1, 2, 3
+```
+
+### Built-in Plugins
+
+**Splitters (Stage 1):**
+- `t5_gemma_splitter` - T5-Gemma2 statement extraction
+
+**Extractors (Stage 2):**
+- `gliner2_extractor` - GLiNER2 entity recognition and relation extraction
+
+**Qualifiers (Stage 3):**
+- `person_qualifier` - PERSON → role, org, canonical ID via Wikidata person database *(enhanced in v0.9.0)*
+- `embedding_company_qualifier` - ORG → canonical name, identifiers (LEI, CIK, company number), and FQN via embedding database
+
+**Labelers (Stage 4):**
+- `sentiment_labeler` - Statement sentiment analysis
+- `confidence_labeler` - Confidence scoring
+- `relation_type_labeler` - Relation type classification
+
+**Taxonomy Classifiers (Stage 5):**
+- `mnli_taxonomy_classifier` - MNLI zero-shot classification against ESG taxonomy
+- `embedding_taxonomy_classifier` - Embedding similarity-based taxonomy classification
+
+Taxonomy classifiers return **multiple labels** per statement above the confidence threshold.
+
+## Entity Database
+
+The library includes an **entity embedding database** for fast entity qualification using vector similarity search. It stores records from authoritative sources (GLEIF, SEC, Companies House, Wikidata) with 768-dimensional embeddings for semantic matching.
+
+**Quick start:**
+```bash
+corp-extractor db download              # Download pre-built database
+corp-extractor db search "Microsoft"    # Search organizations
+corp-extractor db search-people "Tim Cook"  # Search people
+```
+
+For comprehensive documentation including schema, CLI reference, Python API, and build instructions, see **[ENTITY_DATABASE.md](./ENTITY_DATABASE.md)**.
+
+## New in v0.6.0: Entity Embedding Database
+
+v0.6.0 introduces an **entity embedding database** for fast entity qualification using vector similarity search.
+
+### Data Sources
+
+**Organizations:**
+
+| Source | Records | Identifier | EntityType Mapping |
+|--------|---------|------------|-------------------|
+| GLEIF | ~3.2M | LEI (Legal Entity Identifier) | GENERAL→business, FUND→fund, BRANCH→branch, INTERNATIONAL_ORGANIZATION→international_org |
+| SEC Edgar | ~100K+ | CIK (Central Index Key) | business (or fund via SIC codes) |
+| Companies House | ~5M | UK Company Number | Maps company_type to business/nonprofit |
+| Wikidata | Variable | Wikidata QID | 35+ query types mapped to EntityType |
+
+**People** *(v0.9.0)*:
+
+| Source | Records | Identifier | PersonType Classification |
+|--------|---------|------------|--------------------------|
+| Wikidata (SPARQL) | Variable | Wikidata QID | executive, politician, athlete, artist, academic, scientist, journalist, entrepreneur, activist |
+| Wikidata (Dump) | All humans with enwiki | Wikidata QID | Classified from positions (P39) and occupations (P106) |
+
+**Date Fields**: All importers now include `from_date` and `to_date` where available:
+- **GLEIF**: LEI registration date
+- **SEC Edgar**: First SEC filing date
+- **Companies House**: Incorporation and dissolution dates
+- **Wikidata Orgs**: Inception (P571) and dissolution (P576) dates
+- **Wikidata People**: Position start (P580) and end (P582) dates
+
+**Note**: The same person can have multiple records with different role/org combinations (unique on `source_id + role + org`). Organizations discovered during people import are automatically inserted into the organizations table with `known_for_org_id` foreign key linking people to their organizations.
+
+### EntityType Classification
+
+Each organization record is classified with an `entity_type` field:
+
+| Category | Types |
+|----------|-------|
+| Business | `business`, `fund`, `branch` |
+| Non-profit | `nonprofit`, `ngo`, `foundation`, `trade_union` |
+| Government | `government`, `international_org`, `political_party` |
+| Other | `educational`, `research`, `healthcare`, `media`, `sports`, `religious`, `unknown` |
+
+### Building the Database
+
+```bash
+# Import organizations from authoritative sources
+corp-extractor db import-gleif --download
+corp-extractor db import-sec --download      # Bulk submissions.zip (~100K+ filers)
+corp-extractor db import-companies-house --download
+corp-extractor db import-wikidata --limit 50000
+
+# Import notable people (v0.9.0)
+corp-extractor db import-people --type executive --limit 5000
+corp-extractor db import-people --all --limit 10000  # All person types
+corp-extractor db import-people --type executive --skip-existing  # Skip existing records
+corp-extractor db import-people --type executive --enrich-dates   # Fetch role start/end dates
+
+# Import from Wikidata dump (v0.9.1) - avoids SPARQL timeouts
+corp-extractor db import-wikidata-dump --download --limit 50000   # Downloads ~100GB dump
+corp-extractor db import-wikidata-dump --dump /path/to/dump.bz2 --people --no-orgs  # Local dump
+
+# Check status
+corp-extractor db status
+
+# Search for an organization
+corp-extractor db search "Microsoft"
+
+# Search for a person (v0.9.0)
+corp-extractor db search-people "Tim Cook"
+```
+
+### Using in Pipeline
+
+The database is automatically used by the `embedding_company_qualifier` plugin for Stage 3 (Qualification):
+
+```python
+from statement_extractor.pipeline import ExtractionPipeline
+
+pipeline = ExtractionPipeline()
+ctx = pipeline.process("Microsoft acquired Activision Blizzard.")
+
+for stmt in ctx.labeled_statements:
+    print(f"{stmt.subject_fqn}")  # e.g., "Microsoft (sec_edgar:0000789019)"
+```
+
+### Publishing to HuggingFace
+
+```bash
+# Upload database with all variants (full, lite, compressed)
+export HF_TOKEN="hf_..."
+corp-extractor db upload                     # Uses default cache location
+corp-extractor db upload entities.db         # Or specify path
+corp-extractor db upload --no-lite           # Skip lite version
+corp-extractor db upload --no-compress       # Skip compressed versions
+
+# Download pre-built database (lite version by default)
+corp-extractor db download                   # Lite version (smaller, faster)
+corp-extractor db download --full            # Full version with all metadata
+
+# Local database management
+corp-extractor db create-lite entities.db    # Create lite version
+corp-extractor db compress entities.db       # Compress with gzip
+```
+
+See [COMPANY_DB.md](../COMPANY_DB.md) for complete build and publish instructions.
+
+## New in v0.7.0: Document Processing
+
+v0.7.0 introduces **document-level processing** for handling files, URLs, and PDFs with automatic chunking, deduplication, and citation tracking.
+
+### Document CLI
+
+```bash
+# Process local files
+corp-extractor document process article.txt
+corp-extractor document process report.txt --title "Annual Report" --year 2024
+
+# Process URLs (web pages and PDFs)
+corp-extractor document process https://example.com/article
+corp-extractor document process https://example.com/report.pdf --use-ocr
+
+# Configure chunking
+corp-extractor document process article.txt --max-tokens 500 --overlap 50
+
+# Preview chunking without extraction
+corp-extractor document chunk article.txt --max-tokens 500
+```
+
+### Document Python API
+
+```python
+from statement_extractor.document import DocumentPipeline, DocumentPipelineConfig, Document
+from statement_extractor.models.document import ChunkingConfig
+
+# Configure document processing
+config = DocumentPipelineConfig(
+    chunking=ChunkingConfig(target_tokens=1000, overlap_tokens=100),
+    generate_summary=True,
+    deduplicate_across_chunks=True,
+)
+
+pipeline = DocumentPipeline(config)
+
+# Process text
+document = Document.from_text("Your long document text...", title="My Document")
+ctx = pipeline.process(document)
+
+# Process URL (async)
+ctx = await pipeline.process_url("https://example.com/article")
+
+# Access results
+print(f"Chunks: {ctx.chunk_count}")
+print(f"Statements: {ctx.statement_count}")
+print(f"Duplicates removed: {ctx.duplicates_removed}")
+
+for stmt in ctx.labeled_statements:
+    print(f"{stmt.subject_fqn} --[{stmt.statement.predicate}]--> {stmt.object_fqn}")
+    if stmt.citation:
+        print(f"  Citation: {stmt.citation}")
+```
+
+### PDF Processing
+
+PDFs are automatically parsed using PyMuPDF. For scanned PDFs, use OCR:
+
+```bash
+# Install OCR dependencies
+pip install "corp-extractor[ocr]"
+
+# Process with OCR
+corp-extractor document process scanned.pdf --use-ocr
+```
+
+## New in v0.4.0: GLiNER2 Integration
+
+v0.4.0 replaces spaCy with **GLiNER2** (205M params) for entity recognition and relation extraction. GLiNER2 is a unified model that handles NER, text classification, structured data extraction, and relation extraction with CPU-optimized inference.
+
+### Why GLiNER2?
+
+The T5-Gemma model excels at:
+- **Triple isolation** - identifying that a relationship exists
+- **Coreference resolution** - resolving pronouns to named entities
+
+GLiNER2 now handles:
+- **Entity recognition** - refining subject/object boundaries
+- **Relation extraction** - using 324 default predicates across 21 categories
+- **Entity scoring** - scoring how "entity-like" subjects/objects are
+- **Confidence scoring** - real confidence values via `include_confidence=True`
+
+### Default Predicates
+
+GLiNER2 uses **324 predicates** organized into 21 categories (ownership, employment, funding, etc.). These are loaded from `default_predicates.json` and include descriptions and confidence thresholds.
+
+**Key features:**
+- **All matches returned** - Every matching relation is returned, not just the best one
+- **Category-based extraction** - Iterates through categories to stay under GLiNER2's ~25 label limit
+- **Custom predicate files** - Provide your own JSON file with custom predicates
+
+### Extraction Modes
+
+**Mode 1: Default Predicates** (recommended)
+```python
+from statement_extractor import extract_statements
+
+# Uses 324 built-in predicates automatically
+result = extract_statements("John works for Apple Inc. in Cupertino.")
+# Returns ALL matching relations
+```
+
+**Mode 2: Custom Predicate List**
+```python
+from statement_extractor import extract_statements, ExtractionOptions
+
+options = ExtractionOptions(predicates=["works_for", "founded", "acquired", "headquartered_in"])
+result = extract_statements("John works for Apple Inc. in Cupertino.", options)
+```
+
+Or via CLI:
+```bash
+corp-extractor "John works for Apple Inc." --predicates "works_for,founded,acquired"
+```
+
+**Mode 3: Custom Predicate File**
+```python
+from statement_extractor.pipeline import ExtractionPipeline, PipelineConfig
+
+config = PipelineConfig(
+    extractor_options={"predicates_file": "/path/to/custom_predicates.json"}
+)
+pipeline = ExtractionPipeline(config)
+ctx = pipeline.process("John works for Apple Inc.")
+```
+
+Or via CLI:
+```bash
+corp-extractor pipeline "John works for Apple Inc." --predicates-file custom_predicates.json
+```
+
+### Two Candidate Extraction Methods
+
+For each statement, two candidates are generated and the best is selected:
+
+| Method | Description |
+|--------|-------------|
+| `hybrid` | Model subject/object + GLiNER2/extracted predicate |
+| `gliner` | All components refined by GLiNER2 entity recognition |
+
+```python
+for stmt in result:
+    print(f"{stmt.subject.text} --[{stmt.predicate}]--> {stmt.object.text}")
+    print(f"  Method: {stmt.extraction_method}")  # hybrid, gliner, or model
+    print(f"  Confidence: {stmt.confidence_score:.2f}")
+```
+
+### Combined Quality Scoring
+
+Confidence scores combine **semantic similarity** and **entity recognition**:
+
+| Component | Weight | Description |
+|-----------|--------|-------------|
+| Semantic similarity | 50% | Cosine similarity between source text and reassembled triple |
+| Subject entity score | 25% | How entity-like the subject is (via GLiNER2) |
+| Object entity score | 25% | How entity-like the object is (via GLiNER2) |
+
+**Entity scoring (via GLiNER2):**
+- Recognized entity with high confidence: 1.0
+- Recognized entity with moderate confidence: 0.8
+- Partially recognized: 0.6
+- Not recognized: 0.2
+
+### Extraction Method Tracking
+
+Each statement includes an `extraction_method` field:
+- `hybrid` - Model subject/object + GLiNER2 predicate
+- `gliner` - All components refined by GLiNER2 entity recognition
+- `model` - All components from T5-Gemma model (only when `--no-gliner`)
+
+### Best Triple Selection
+
+By default, only the **highest-scoring triple** is kept for each source sentence.
+
+To keep all candidate triples:
+```python
+options = ExtractionOptions(all_triples=True)
+result = extract_statements(text, options)
+```
+
+Or via CLI:
+```bash
+corp-extractor "Your text" --all-triples --verbose
+```
+
+**Disable GLiNER2 extraction** to use only model output:
+```python
+options = ExtractionOptions(use_gliner_extraction=False)
+result = extract_statements(text, options)
+```
+
+Or via CLI:
+```bash
+corp-extractor "Your text" --no-gliner
+```
+
+## Disable Embeddings
+
+```python
+options = ExtractionOptions(
+    embedding_dedup=False,  # Use exact text matching
+    merge_beams=False,      # Select single best beam
+)
+result = extract_statements(text, options)
+```
+
+## Output Formats
+
+```python
+from statement_extractor import (
+    extract_statements,
+    extract_statements_as_json,
+    extract_statements_as_xml,
+    extract_statements_as_dict,
+)
+
+# Pydantic models (default)
+result = extract_statements(text)
+
+# JSON string
+json_output = extract_statements_as_json(text)
+
+# Raw XML (model's native format)
+xml_output = extract_statements_as_xml(text)
+
+# Python dictionary
+dict_output = extract_statements_as_dict(text)
+```
+
+## Batch Processing
+
+```python
+from statement_extractor import StatementExtractor
+
+extractor = StatementExtractor(device="cuda")  # or "mps" (Apple Silicon) or "cpu"
+
+texts = ["Text 1...", "Text 2...", "Text 3..."]
+for text in texts:
+    result = extractor.extract(text)
+    print(f"Found {len(result)} statements")
+```
+
+## Entity Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `ORG` | Organizations | Apple Inc., United Nations |
+| `PERSON` | People | Tim Cook, Elon Musk |
+| `GPE` | Geopolitical entities | USA, California, Paris |
+| `LOC` | Non-GPE locations | Mount Everest, Pacific Ocean |
+| `PRODUCT` | Products | iPhone, Model S |
+| `EVENT` | Events | World Cup, CES 2024 |
+| `WORK_OF_ART` | Creative works | Mona Lisa, Game of Thrones |
+| `LAW` | Legal documents | GDPR, Clean Air Act |
+| `DATE` | Dates | 2024, January 15 |
+| `MONEY` | Monetary values | $50 million, €100 |
+| `PERCENT` | Percentages | 25%, 0.5% |
+| `QUANTITY` | Quantities | 500 employees, 1.5 tons |
+| `UNKNOWN` | Unrecognized | (fallback) |
+
+## How It Works
+
+This library uses the T5-Gemma 2 statement extraction model with **Diverse Beam Search** ([Vijayakumar et al., 2016](https://arxiv.org/abs/1610.02424)):
+
+1. **Diverse Beam Search**: Generates 4+ candidate outputs using beam groups with diversity penalty
+2. **Quality Scoring**: Each triple scored via semantic similarity + GLiNER2 entity recognition
+3. **Beam Merging**: Top beams combined for better coverage
+4. **Embedding Dedup**: Semantic similarity removes near-duplicate predicates
+5. **Predicate Normalization**: Optional taxonomy matching via embeddings
+6. **Contextualized Matching**: Full statement context used for canonicalization and dedup
+7. **Entity Type Merging**: UNKNOWN types merged with specific types during dedup
+8. **Reversal Detection**: Subject-object reversals detected and corrected via embedding comparison
+9. **GLiNER2 Extraction** *(v0.4.0)*: Entity recognition and relation extraction for improved accuracy
+
+## Requirements
+
+- Python 3.10+
+- PyTorch 2.0+
+- Transformers 5.0+
+- Pydantic 2.0+
+- sentence-transformers 2.2+
+- GLiNER2 (model downloaded automatically on first use)
+- ~2GB VRAM (GPU) or ~4GB RAM (CPU)
+
+## Links
+
+- [Model on HuggingFace](https://huggingface.co/Corp-o-Rate-Community/statement-extractor)
+- [Web Demo](https://statement-extractor.corp-o-rate.com)
+- [Diverse Beam Search Paper](https://arxiv.org/abs/1610.02424)
+- [Corp-o-Rate](https://corp-o-rate.com)
+
+## License
+
+MIT License - see LICENSE file for details.
