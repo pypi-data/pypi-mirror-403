@@ -1,0 +1,43 @@
+<script type="text/javascript" src="{{ '/jslib/modernizr.custom.js'|media }}"></script>
+<script type="text/javascript">
+    var askbot = {};
+    askbot['data'] = {};
+    askbot['data']['userIsAuthenticated'] = {{ request.user.is_authenticated|as_js_bool }};
+    askbot['data']['userIsWatched'] = {{ (request.user.is_authenticated and request.user.status == 'w')|as_js_bool }};
+    askbot['data']['languageCode'] = '{{ current_language_code|escapejs }}';
+    askbot['data']['adminTagsEnabled'] = {{ settings.ADMIN_TAGS_ENABLED|as_js_bool }};
+    {% if settings.ADMIN_TAGS_ENABLED %}
+        askbot['data']['adminTagsLowerCased'] = {{ settings.ADMIN_TAGS|lower|split(" ")|as_json }};
+        {% if request.user.is_authenticated %}
+            askbot['data']['userCanManageAdminTags'] = {{ request.user.can_manage_admin_tags()|as_js_bool }};
+        {% else %}
+            askbot['data']['userCanManageAdminTags'] = false;
+        {% endif %}
+    {% else %}
+        askbot['data']['adminTagsLowerCased'] = [];
+        askbot['data']['userCanManageAdminTags'] = false;
+    {% endif %}
+    {% if request.user.is_authenticated %}
+        askbot['data']['userId'] = {{ request.user.id }};
+        askbot['data']['userName'] = '{{ request.user.username|escapejs }}';
+        askbot['data']['userEmail'] = '{{ request.user.email|escapejs }}';
+        askbot['data']['userProfileUrl'] = '{{ request.user.get_profile_url()|escapejs }}';
+        askbot['data']['userIsAdminOrMod'] = {{ request.user.is_administrator_or_moderator()|as_js_bool }};
+        askbot['data']['userIsAdmin'] = {{ request.user.is_administrator()|as_js_bool }};
+        askbot['data']['userReputation'] = {{ request.user.reputation }};
+        askbot['data']['userIsReadOnly'] = {{ request.user.is_read_only()|as_js_bool }};
+        askbot['data']['userCanUploadAttachment'] = {{ request.user.can_upload_attachment()|as_js_bool }};
+        askbot['data']['userCanUploadImage'] = {{ request.user.can_upload_image()|as_js_bool }};
+    {% else %}
+        askbot['data']['userReputation'] = 0;
+        askbot['data']['userEmail'] = null;
+        askbot['data']['userIsReadOnly'] = false;//in principle we allow anon users to start posting
+        askbot['data']['userCanUploadAttachment'] = false;
+        askbot['data']['userCanUploadImage'] = false;
+    {% endif %}
+    askbot['urls'] = {};
+    askbot['settings'] = {'adminTagsCategoryRoot': '{{ ADMIN_TAGS_CATEGORY_ROOT }}'};
+    askbot['messages'] = {};
+</script>
+<script type="text/javascript" src="{{ url('askbot_jsi18n') }}"></script>
+{# avoid adding javascript here so that pages load faster #}
