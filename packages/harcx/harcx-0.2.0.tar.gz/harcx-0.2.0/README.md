@@ -1,0 +1,166 @@
+# HaRC - Hallucinated Reference Checker
+
+[![PyPI version](https://badge.fury.io/py/harcx.svg)](https://badge.fury.io/py/harcx)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Verify BibTeX citations against academic databases.** Catches fake, misspelled, or incorrect references in your `.bib` files before submission.
+
+## Features
+
+| Source | Lookup Methods | Entry Types |
+|--------|---------------|-------------|
+| **Semantic Scholar** | DOI, arXiv ID, title search | Papers |
+| **DBLP** | Title search | Papers |
+| **Google Scholar** | Title search | Papers |
+| **Open Library** | ISBN, title search | Books |
+
+Additional capabilities:
+- **Fuzzy author matching** - Handles name variations, initials, and spelling differences
+- **URL verification** - Checks reachability and title matching for web citations
+- **Smart fallback** - Tries multiple databases until a valid match is found
+
+## Installation
+
+```bash
+# Using uv (recommended)
+uv add harcx
+
+# Using pip
+pip install harcx
+```
+
+## Quick Start
+
+```bash
+# Basic usage
+harcx references.bib
+
+# Also verify URL citations
+harcx references.bib --check-urls
+
+# Quiet mode (errors only)
+harcx references.bib -q
+```
+
+## CLI Reference
+
+```
+harcx [OPTIONS] BIB_FILE
+
+Options:
+  -q, --quiet              Suppress progress output
+  --threshold FLOAT        Author match threshold (0.0-1.0, default: 0.6)
+  --api-key KEY            Semantic Scholar API key for higher rate limits
+  --check-urls             Verify URL citations for reachability
+  --title-threshold FLOAT  URL title match threshold (0.0-1.0, default: 0.6)
+  -h, --help               Show help message
+```
+
+## Example Output
+
+```
+Parsed 50 entries from references.bib
+[1/50] Checking (article): smith2023
+    Trying arXiv ID: 2301.12345
+  Found (author match: 1.00)
+[2/50] Checking (book): goodfellow2016deep
+    Trying Open Library title search
+  Found (author match: 0.75)
+[3/50] Checking (article): suspicious2023
+    Trying Semantic Scholar title search
+    Trying DBLP title search
+    Trying Google Scholar title search
+  ISSUE: Not found in Semantic Scholar, DBLP, or Google Scholar
+
+============================================================
+Found 1 entries requiring attention:
+============================================================
+
+[suspicious2023]
+  Title: This Paper Does Not Exist
+  Bib Authors: Suspicious Author
+  Year: 2023
+  Issue: Not found in Semantic Scholar, DBLP, or Google Scholar
+```
+
+## Python API
+
+```python
+from reference_checker import check_citations, check_web_citations
+
+# Check citations - returns entries that weren't verified
+issues = check_citations("references.bib")
+
+for result in issues:
+    print(f"{result.entry.key}: {result.message}")
+
+# Check URL citations
+url_issues = check_web_citations("references.bib")
+
+for result in url_issues:
+    print(f"{result.entry.key}: {result.url} - {result.message}")
+```
+
+### Function Signatures
+
+```python
+def check_citations(
+    bib_file: str,
+    author_threshold: float = 0.6,  # Minimum author match score
+    year_tolerance: int = 1,         # Allowed year difference (±)
+    api_key: str | None = None,      # Semantic Scholar API key
+    verbose: bool = False,           # Print progress
+) -> list[CheckResult]
+
+def check_web_citations(
+    bib_file: str,
+    title_threshold: float = 0.6,    # Minimum title match score
+    verbose: bool = False,           # Print progress
+) -> list[WebCheckResult]
+```
+
+## How It Works
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────┐
+│  Parse .bib │ ──▶ │    Lookup    │ ──▶ │ Fuzzy Match │ ──▶ │  Report  │
+│    file     │     │  (DOI/title) │     │   Authors   │     │  Issues  │
+└─────────────┘     └──────────────┘     └─────────────┘     └──────────┘
+```
+
+**Lookup Order (Papers):**
+1. DOI lookup (Semantic Scholar)
+2. arXiv ID lookup (Semantic Scholar)
+3. Title search (Semantic Scholar → DBLP → Google Scholar)
+
+**Lookup Order (Books):**
+1. ISBN lookup (Open Library)
+2. Title search (Open Library → Semantic Scholar → DBLP → Google Scholar)
+
+A citation is **verified** when:
+- Found in at least one database
+- Author match score ≥ threshold (default: 60%)
+- Year matches within tolerance (default: ±1 year)
+
+## Rate Limits
+
+- **Semantic Scholar**: ~3 req/sec (faster with API key)
+- **DBLP**: ~1 req/sec
+- **Google Scholar**: ~0.5 req/sec (may block excessive requests)
+- **Open Library**: ~1 req/sec
+
+Get a free Semantic Scholar API key at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api)
+
+## Development
+
+```bash
+git clone https://github.com/gurusha01/HaRC.git
+cd HaRC
+uv sync --all-extras
+uv run pytest tests/ -v
+```
+
+## License
+
+MIT
