@@ -1,0 +1,262 @@
+Metadata-Version: 2.4
+Name: openwebui-bootstrap
+Version: 0.3.9
+Summary: Open WebUI Bootstrap - A tool to bootstrap Open WebUI deployments by writing configuration directly to the database
+Project-URL: Homepage, https://gitlab.com/grenzfall/openwebui-bootstrap
+Project-URL: Repository, https://gitlab.com/grenzfall/openwebui-bootstrap
+Author-email: GreenQuark <greenquark@gmx.de>
+License: MIT
+Requires-Python: >=3.12
+Requires-Dist: colorlog>=6.0.0
+Requires-Dist: hatchling>=1.28.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pyyaml>=6.0.0
+Description-Content-Type: text/markdown
+
+# Open WebUI Bootstrap
+
+A Python library and command-line tool to bootstrap Open WebUI deployments by writing configuration directly to the Open WebUI database.
+
+## Status
+
+**This is early-stage software and not intended for production use.** The API and functionality are subject to change without notice. Use at your own risk for development and testing purposes only.
+
+## Features
+
+- **Database Configuration**: Write users, groups, models, and connections directly to the Open WebUI SQLite database
+- **Upsert Functionality**: Update existing records or add new ones
+- **Reset Capability**: Clear managed tables before applying new configuration
+- **Dry Run Mode**: Test configuration without making database changes
+- **Comprehensive Logging**: Color-formatted logging with configurable verbosity
+- **Extensible Design**: Abstract database interface for future database support
+
+## Installation
+
+```bash
+uv add openwebui-bootstrap
+```
+
+## Usage
+
+### Command Line Interface
+
+#### Basic Usage
+
+```bash
+openwebui-bootstrap --config config.yaml
+```
+
+#### Reset Database Before Applying Configuration
+
+```bash
+openwebui-bootstrap --config config.yaml --reset
+```
+
+#### Dry Run (Test Without Changes)
+
+```bash
+openwebui-bootstrap --config config.yaml --dry-run
+```
+
+#### Set Log Level
+
+```bash
+openwebui-bootstrap --config config.yaml --log-level debug
+```
+
+### Python Library Usage
+
+The package can also be used as a Python library in third-party applications. The public API provides the same functionality as the CLI tool.
+
+#### Basic Bootstrap
+
+```python
+from openwebui_bootstrap import bootstrap_openwebui
+
+# Bootstrap Open WebUI with configuration
+bootstrap_openwebui(
+    config_path="config.yaml",
+    database_path="/path/to/webui.db",  # Optional, defaults to config
+    reset=True,                         # Reset database before applying
+    dry_run=False,                      # Make actual changes
+    log_level="info"                    # Log level
+)
+```
+
+#### Load and Apply Configuration Separately
+
+```python
+from openwebui_bootstrap import load_config, apply_config
+
+# Load configuration
+config = load_config("config.yaml")
+
+# Apply configuration to database
+apply_config(
+    config=config,
+    database_path="/path/to/webui.db",
+    dry_run=False
+)
+```
+
+#### Reset Database Only
+
+```python
+from openwebui_bootstrap import reset_database
+
+# Reset database (clear managed tables)
+reset_database(
+    database_path="/path/to/webui.db",
+    dry_run=False
+)
+```
+
+#### Advanced Usage with ConfigManager
+
+```python
+from openwebui_bootstrap import ConfigManager, SQLiteDatabase
+
+# Create database interface
+database = SQLiteDatabase("/path/to/webui.db")
+
+# Create configuration manager
+config_manager = ConfigManager(database)
+config_manager.set_dry_run(False)
+
+# Load and apply configuration
+config = config_manager.load_config("config.yaml")
+config_manager.apply_config(config)
+```
+
+## Public API Reference
+
+### Functions
+
+- **`bootstrap_openwebui(config_path, database_path=None, reset=False, dry_run=False, log_level="info")`**
+  - Complete bootstrap operation (load config + apply config + optional reset)
+  - Equivalent to CLI command with all options
+
+- **`load_config(config_path)`**
+  - Load and validate configuration from YAML file
+  - Returns `OpenWebUIConfig` object
+  - Raises `ConfigurationFileError` or `ConfigurationValidationError`
+
+- **`apply_config(config, database_path, dry_run=False)`**
+  - Apply configuration to database
+  - Raises `DatabaseError` or `DryRunError`
+
+- **`reset_database(database_path, dry_run=False)`**
+  - Clear all managed tables in database
+  - Raises `DatabaseError` or `DryRunError`
+
+### Classes
+
+- **`ConfigManager(database)`** - Main configuration manager
+- **`SQLiteDatabase(database_path)`** - SQLite database interface
+- **`OpenWebUIConfig`** - Main configuration model
+- **`UserConfig`, `GroupConfig`, `ModelConfig`, etc.** - Configuration sub-models
+
+### Exceptions
+
+- **`OpenWebUIBootstrapError`** - Base exception
+- **`ConfigurationError`** - Configuration-related errors
+- **`DatabaseError`** - Database-related errors
+- **`DryRunError`** - Dry run mode errors
+
+## Public API Design Philosophy
+
+The public API is designed to:
+
+1. **Mirror CLI functionality** - All CLI operations are available as Python functions
+2. **Provide flexibility** - Functions can be used individually or combined
+3. **Maintain simplicity** - Simple, intuitive function signatures
+4. **Ensure type safety** - Full type hints for IDE support
+5. **Offer comprehensive error handling** - Clear exception hierarchy
+
+The API reuses existing components (`ConfigManager`, `SQLiteDatabase`) to ensure consistency and reduce code duplication.
+
+## Configuration File
+
+Create a YAML configuration file (see `example-config.yaml` for reference):
+
+```yaml
+database:
+  type: sqlite
+  database_location: /path/to/webui.db
+
+users:
+  - name: Admin User
+    email: admin@example.com
+    role: Admin
+
+groups:
+  - name: developers
+    description: Development team
+    permissions:
+      - import_models
+      - export_models
+    members:
+      - admin@example.com
+
+connections:
+  type: openai
+  url: https://api.example.com/v1
+  bearer: your-api-key
+  model_ids:
+    - gpt-4
+    - gpt-3.5-turbo
+
+models:
+  prompt_path: /path/to/prompts
+  icon_path: /path/to/icons
+```
+
+## Project Structure
+
+```
+openwebui_bootstrap/
+├── cli.py                  # Command-line interface
+├── config_manager.py       # Configuration management
+├── database/
+│   ├── base.py             # Abstract database interface
+│   └── sqlite.py           # SQLite implementation
+├── exceptions.py           # Custom exceptions
+├── logging_config.py       # Logging configuration
+├── models.py               # Data models
+└── __init__.py
+```
+
+## Development
+
+### Setup
+
+```bash
+uv sync --dev
+```
+
+### Running Tests
+
+```bash
+uv run pytest
+```
+
+### Running Tests with Coverage
+
+```bash
+uv run pytest --cov=openwebui_bootstrap --cov-report=term-missing
+```
+
+### Code Formatting
+
+```bash
+uv run ruff format
+uv run ruff check
+```
+
+## License
+
+MIT
+
+## Disclaimer
+
+**This code is provided "as is" without warranty of any kind, express or implied.** The authors shall not be held liable for any damages arising from the use of this software. Use at your own risk.
