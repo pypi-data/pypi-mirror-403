@@ -1,0 +1,107 @@
+- project:
+    templates:
+      - check-requirements
+      - openstack-cover-jobs-neutron
+      - openstack-python3-jobs-neutron
+      - periodic-stable-jobs-neutron
+      - publish-openstack-docs-pti
+      - release-notes-jobs-python3
+    check:
+      jobs:
+        - openstack-tox-py39:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-py310:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-py311:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-py312:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-docs:
+            required-projects:
+              - openstack/neutron
+        - neutron-vpnaas-functional-sswan
+        - neutron-tempest-plugin-vpnaas-2024-2
+        - neutron-tempest-plugin-vpnaas-ovn
+    gate:
+      jobs:
+        - openstack-tox-py39:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-py310:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-py311:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-docs:
+            required-projects:
+              - openstack/neutron
+        - neutron-vpnaas-functional-sswan
+        - neutron-tempest-plugin-vpnaas-2024-2
+        - neutron-tempest-plugin-vpnaas-ovn
+    experimental:
+      jobs:
+        - neutron-vpnaas-rally
+        - openstack-tox-py310-with-oslo-master:
+            required-projects:
+              - openstack/neutron
+        - neutron-vpnaas-openstack-tox-py310-with-sqlalchemy-main
+    periodic-weekly:
+      jobs:
+        - openstack-tox-py312:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-py311:
+            required-projects:
+              - openstack/neutron
+        - openstack-tox-py310-with-oslo-master:
+            required-projects:
+              - openstack/neutron
+        - neutron-vpnaas-openstack-tox-py310-with-sqlalchemy-main
+        - neutron-tempest-plugin-vpnaas-2024-2
+        - neutron-tempest-plugin-vpnaas-ovn
+        - neutron-vpnaas-functional-sswan
+
+- job:
+    name: neutron-vpnaas-functional-sswan
+    parent: neutron-functional
+    pre-run: playbooks/configure_functional_job.yaml
+    vars:
+      project_name: neutron-vpnaas
+      tox_envlist: dsvm-functional-sswan
+
+- job:
+    name: neutron-vpnaas-rally
+    parent: rally-task-neutron
+    timeout: 7800
+    vars:
+      devstack_plugins:
+        rally-openstack: https://opendev.org/openstack/rally-openstack
+        neutron-vpnaas: https://opendev.org/openstack/neutron-vpnaas
+      rally_task: rally-jobs/rally-configs/rally_config_dvr.yaml
+    required-projects:
+      - openstack/neutron
+      - openstack/neutron-vpnaas
+      - openstack/rally
+      - openstack/rally-openstack
+    irrelevant-files:
+      - ^.*\.rst$
+      - ^doc/.*$
+      - ^neutron_vpnaas/tests/unit/.*$
+      - ^releasenotes/.*$
+
+- job:
+    name: neutron-vpnaas-openstack-tox-py310-with-sqlalchemy-main
+    required-projects:
+      - name: github.com/sqlalchemy/sqlalchemy
+        override-checkout: main
+      - name: github.com/sqlalchemy/alembic
+        override-checkout: main
+      - openstack/oslo.db
+      - openstack/neutron
+      - openstack/neutron-lib
+    parent: openstack-tox-py310-with-oslo-master
