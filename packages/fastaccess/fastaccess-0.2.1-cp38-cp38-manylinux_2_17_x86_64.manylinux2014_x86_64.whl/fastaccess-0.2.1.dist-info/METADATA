@@ -1,0 +1,157 @@
+Metadata-Version: 2.2
+Name: fastaccess
+Version: 0.2.1
+Summary: Efficient random access to subsequences in large FASTA files
+Keywords: bioinformatics,fasta,genomics,sequence-analysis,random-access
+Author: Asaf Zorea
+License: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: OS Independent
+Classifier: Typing :: Typed
+Project-URL: Homepage, https://github.com/nuniz/FASTAccess
+Requires-Python: <3.13,>=3.8
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Description-Content-Type: text/markdown
+
+# fastaccess
+
+Efficient random access to subsequences in FASTA files using byte-level seeking.
+
+## Installation
+
+```bash
+pip install fastaccess
+```
+
+From source (includes C++ backend for better performance):
+
+```bash
+pip install -e .
+```
+
+The C++ backend requires a C++17 compiler and CMake 3.15+. If unavailable, falls back to pure Python.
+
+## Quick Start
+
+```python
+from fastaccess import FastaStore
+
+fa = FastaStore("genome.fa")  # Builds index, caches for next time
+seq = fa.fetch("chr1", 1000, 2000)  # 1-based inclusive coordinates
+```
+
+## API
+
+### `FastaStore(path, use_cache=True, cache_dir=None)`
+
+- `path`: Path to FASTA file (plain or gzip-compressed `.fa.gz`)
+- `use_cache`: Save/load index from `.fidx` cache file
+- `cache_dir`: Custom directory for cache file (useful for read-only FASTA directories)
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `fetch(name, start, stop, reverse_complement=False)` | Fetch subsequence (1-based inclusive) |
+| `fetch_many(queries)` | Batch fetch list of `(name, start, stop)` tuples |
+| `list_sequences()` | Get all sequence names |
+| `get_length(name)` | Get sequence length |
+| `get_description(name)` | Get FASTA header description |
+| `get_info(name)` | Get dict with `name`, `description`, `length` |
+| `rebuild_index()` | Force rebuild index and update cache |
+| `is_cached()` | Check if loaded from cache |
+| `cache_exists()` | Check if cache file exists |
+| `get_cache_path()` | Get cache file path |
+| `delete_cache()` | Delete cache file |
+
+### Errors
+
+- `KeyError`: Sequence name not found
+- `ValueError`: Invalid coordinates (start < 1, stop < start, stop > length)
+
+## Features
+
+- **Random access**: Uses `seek()` to fetch only required bytes
+- **Index caching**: 7-40x faster reloading via `.fidx` cache files
+- **Gzip support**: Reads `.fa.gz` files directly
+- **1-based inclusive coordinates**: Standard bioinformatics convention
+- **Format support**: Wrapped/unwrapped sequences, Unix/Windows line endings
+- **Uppercase output**: All sequences returned uppercase
+
+## Performance
+
+### C++ Backend
+
+| Operation | Python | C++ | Speedup |
+|-----------|--------|-----|---------|
+| Index build (10MB) | 70 ms | 5 ms | **13x** |
+| Reverse complement (8 KB) | 0.21 ms | 0.015 ms | **14x** |
+| Small fetch (100 bp) | 0.017 ms | 0.017 ms | 1x |
+| Large fetch (100 KB) | 0.36 ms | 0.35 ms | 1x |
+
+Check if C++ backend is active:
+
+```python
+from fastaccess import using_cpp_backend
+print(using_cpp_backend())  # True if available
+```
+
+### Index Caching
+
+```
+Human genome (3 GB):
+  First load:  ~2 seconds (builds index)
+  With cache:  0.05 seconds (40x faster)
+```
+
+Cache is automatically invalidated when the FASTA file changes.
+
+## Example
+
+```python
+from fastaccess import FastaStore
+
+fa = FastaStore("hg38.fa")
+
+# Get sequence info
+print(fa.list_sequences())  # ["chr1", "chr2", ...]
+print(fa.get_length("chr1"))  # 248956422
+
+# Fetch regions
+seq = fa.fetch("chr1", 1000, 2000)
+rc = fa.fetch("chr1", 1000, 2000, reverse_complement=True)
+
+# Batch fetch
+regions = [("chr1", 1, 100), ("chr2", 500, 600)]
+sequences = fa.fetch_many(regions)
+```
+
+## Requirements
+
+- Python 3.8+
+- No runtime dependencies (pure Python fallback always works)
+
+C++ backend (optional):
+- C++17 compiler
+- CMake 3.15+
+
+## Limitations
+
+- ASCII sequences only (DNA/RNA)
+- Gzip files require full decompression (no random access within compressed data)
+
+## License
+
+MIT
