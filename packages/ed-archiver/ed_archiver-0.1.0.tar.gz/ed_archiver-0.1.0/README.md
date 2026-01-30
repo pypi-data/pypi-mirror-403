@@ -1,0 +1,125 @@
+# Ed Archiver
+
+Archive [Ed Discussion](https://edstem.org) courses into RAG-ready JSON files.
+
+## Features
+
+- **RAG-optimized output** - Clean JSON with text, metadata, and quality signals
+- **Multi-region support** - Works with US, EU, AU Ed instances
+- **Preserves media** - Extracts image and link URLs from posts
+- **Rate-limit handling** - Automatic retry with exponential backoff
+
+## Installation
+
+```bash
+git clone https://github.com/eliemada/edstem-archiver.git
+cd ed-archiver
+uv sync
+```
+
+## Setup
+
+1. Generate an API token at https://edstem.org/us/settings/api-tokens (or your region)
+2. Create a `.env` file:
+   ```
+   ED_API_TOKEN=your_token_here
+   ```
+
+## Usage
+
+```bash
+# Interactive mode
+uv run ed-archiver
+
+# Direct course ID (defaults to US region)
+uv run ed-archiver 23247
+
+# Full URL (auto-detects region)
+uv run ed-archiver https://edstem.org/eu/courses/1124/discussion/
+
+# Custom output directory
+uv run ed-archiver 1124 -o ./data
+```
+
+## Output Structure
+
+```
+out/{course_id}/
+├── metadata.json
+└── threads/
+    └── {thread_id}.json
+```
+
+### Thread Schema
+
+```json
+{
+  "id": 124296,
+  "type": "question",
+  "title": "How to implement X?",
+  "category": "Homework 3",
+  "subcategory": "",
+  "created_at": "2024-03-27T20:33:03Z",
+  "is_answered": true,
+  "is_pinned": false,
+  "is_endorsed": false,
+  "vote_count": 5,
+  "view_count": 219,
+  "reply_count": 3,
+  "content": "Plain text content...",
+  "images": ["https://static.eu.edusercontent.com/files/..."],
+  "links": ["https://example.com/reference"],
+  "answers": [
+    {
+      "id": 185874,
+      "content": "Answer text...",
+      "images": [],
+      "links": [],
+      "vote_count": 2,
+      "is_endorsed": true,
+      "is_accepted": true,
+      "created_at": "2024-03-27T21:19:56Z",
+      "comments": [...]
+    }
+  ],
+  "full_text": "Concatenated text for embedding..."
+}
+```
+
+### Metadata Schema
+
+```json
+{
+  "course_id": "1124",
+  "region": "eu",
+  "archived_at": "2026-01-25T18:30:00Z",
+  "thread_count": 2000,
+  "base_url": "https://edstem.org/eu/courses/1124"
+}
+```
+
+## RAG Integration
+
+The output is designed for RAG pipelines:
+
+| Field | RAG Use |
+|-------|---------|
+| `full_text` | Direct embedding input |
+| `vote_count`, `is_endorsed` | Quality ranking signals |
+| `category`, `type` | Metadata filtering |
+| `images` | Vision-language captioning |
+| `base_url` + `id` | Source citation URLs |
+
+Reconstruct source URLs:
+```python
+source_url = f"{metadata['base_url']}/discussion/{thread['id']}"
+# → "https://edstem.org/eu/courses/1124/discussion/124296"
+```
+
+## Acknowledgments
+
+Built on top of [edapi](https://github.com/smartspot2/edapi) by [@smartspot2](https://github.com/smartspot2). Thank you for creating and maintaining the unofficial Ed API client.
+
+## License
+
+MIT
