@@ -1,0 +1,83 @@
+Metadata-Version: 2.3
+Name: hexa-sdk
+Version: 0.1.1
+Summary: A short description of your project
+Author: Felix
+Author-email: lampkole@gmail.com
+Requires-Python: >=3.9
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Dist: requests (>=2.31.0,<3.0.0)
+Description-Content-Type: text/markdown
+
+# Hexa SDK
+
+A small SDK that exposes the `hexapackage` entry point and provides a `ContextVar`-backed global context store for AI endpoints.
+
+## Requirements
+
+The incoming request JSON must include the following keys so the SDK can seed the global context:
+
+- `prompt`: the instruction template for your LLM.
+- `context`: the data or background you want to feed into the prompt.
+- `schema`: the JSON schema describing how to interpret the model output.
+
+## 🚀 Usage
+
+`hexa-sdk` lets you standardize how inputs are received and outputs are reported by relying on a global context instead of threading variables through every helper.
+
+### 1. Basic setup
+
+Install the package:
+
+```bash
+pip install hexa-sdk
+```
+
+### 2. Integration in your endpoint
+
+Load the incoming request into the context store and then treat `prompt`, `context`, and `schema` as globally accessible values.
+
+```python
+from hexa import hexapackage
+from hexa.main import set_value, get_value
+
+
+def my_ai_endpoint(request):
+    payload = request.json()
+
+    # 1. Push the incoming data into the global context.
+    set_value("prompt", payload["prompt"])
+    set_value("context", payload["context"])
+    set_value("schema", payload["schema"])
+
+    # 2. Consume the values anywhere in your flow without passing them through every call.
+    final_input = f"Instructions: {get_value('prompt')}\n\nData: {get_value('context')}"
+
+    # 3. Call your LLM (OpenAI, Anthropic, etc.)
+    ai_output = "The result from your model"
+
+    # 4. Pack and return — you can reuse the store to compile whatever payload the Hexa dashboard expects.
+    set_value("result", ai_output)
+    return {
+        "prompt": get_value("prompt"),
+        "context": get_value("context"),
+        "schema": get_value("schema"),
+        "output": get_value("result"),
+    }
+```
+
+### 3. Key properties
+
+Once the values are stored, they are available everywhere in the current execution context:
+
+* `hexapackage()` returns the full store so the SDK can inspect or serialize every tracked value.
+* `get_value("prompt")`, `get_value("context")`, and `get_value("schema")` read the global context without threading arguments through helpers.
+* `set_value` is the simplest way to seed or update any piece of shared data.
+
+This usage flow emphasizes how `hexa-sdk` removes the boilerplate of passing `prompt`/`context`/`schema` through many helper layers and keeps your AI wiring clean and focused on the model call.
+
