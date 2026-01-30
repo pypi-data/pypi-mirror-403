@@ -1,0 +1,233 @@
+Metadata-Version: 2.4
+Name: oracle-db-mcp
+Version: 0.0.1
+Summary: Model Context Protocol server to access oracle database
+Author-email: Kua <kua@kua.kr>
+License-File: LICENSE
+Requires-Python: >=3.12
+Requires-Dist: mcp[cli]>=1.5.0
+Requires-Dist: oracledb>=3.0.0
+Requires-Dist: python-dotenv>=1.0.1
+Description-Content-Type: text/markdown
+
+# oracle-db-mcp
+Model Context Protocol server to access oracle
+
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> **Note**: This repository is based on [hdcola/mcp-server-oracle](https://github.com/hdcola/mcp-server-oracle). Original work by hdcola.
+
+## Quickstart
+
+### Prerequisites
+
+- Python 3.12+ or Docker
+- Claude Desktop or other MCP client
+- Oracle Database connection credentials
+
+### Installation
+
+Choose one of the following methods:
+
+#### Option 1: Using uvx (Recommended)
+
+```bash
+uvx oracle-db-mcp
+```
+
+#### Option 2: Using pipx
+
+```bash
+pipx install oracle-db-mcp
+```
+
+#### Option 3: Using Docker
+
+```bash
+docker pull ghcr.io/kuass/oracle-db-mcp
+```
+
+### Configuration
+
+Add the server configuration to your Claude Desktop config file:
+
+**MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
+
+#### Using uvx
+
+```json
+{
+  "mcpServers": {
+    "oracle-db-mcp": {
+      "command": "uvx",
+      "args": [
+        "oracle-db-mcp"
+      ],
+      "env": {
+        "ORACLE_CONNECTION_STRING": "username/password@hostname:port/service_name"
+      }
+    }
+  }
+}
+```
+
+#### Using pipx
+
+```json
+{
+  "mcpServers": {
+    "oracle-db-mcp": {
+      "command": "oracle-db-mcp",
+      "args": [],
+      "env": {
+        "ORACLE_CONNECTION_STRING": "username/password@hostname:port/service_name"
+      }
+    }
+  }
+}
+```
+
+#### Using Docker
+
+```json
+{
+  "mcpServers": {
+    "oracle-db-mcp": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "ORACLE_CONNECTION_STRING",
+        "ghcr.io/kuass/oracle-db-mcp"
+      ],
+      "env": {
+        "ORACLE_CONNECTION_STRING": "username/password@hostname:port/service_name"
+      }
+    }
+  }
+}
+```
+
+The Docker image automatically remaps `localhost` to work from inside the container:
+- **MacOS/Windows**: Uses `host.docker.internal`
+- **Linux**: Uses the host IP address
+
+#### Using uv (Development)
+
+```json
+{
+  "mcpServers": {
+    "oracle-db-mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/oracle-db-mcp",
+        "oracle-db-mcp"
+      ],
+      "env": {
+        "ORACLE_CONNECTION_STRING": "username/password@hostname:port/service_name"
+      }
+    }
+  }
+}
+```
+
+### Thick Mode (Optional)
+
+By default, the server uses Thin mode which doesn't require Oracle Client installation. To use Thick mode:
+
+```json
+{
+  "mcpServers": {
+    "oracle-db-mcp": {
+      "command": "uvx",
+      "args": [
+        "oracle-db-mcp"
+      ],
+      "env": {
+        "ORACLE_CONNECTION_STRING": "username/password@hostname:port/service_name",
+        "ORACLE_THICK_MODE": "true",
+        "ORACLE_CLIENT_LIB_DIR": "/path/to/oracle/instantclient"
+      }
+    }
+  }
+}
+```
+
+## SSE Transport
+
+Oracle MCP supports Server-Sent Events (SSE) transport, allowing multiple MCP clients to share one server.
+
+### Start SSE Server
+
+#### Using Docker
+
+```bash
+docker run -p 8000:8000 \
+  -e ORACLE_CONNECTION_STRING="username/password@hostname:port/service_name" \
+  ghcr.io/kuass/oracle-db-mcp --transport=sse
+```
+
+#### Using uvx
+
+```bash
+ORACLE_CONNECTION_STRING="username/password@hostname:port/service_name" \
+  uvx oracle-db-mcp --transport=sse
+```
+
+### Configure MCP Client
+
+For Cursor or Cline (`mcp.json` or `cline_mcp_settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "oracle-db-mcp": {
+      "type": "sse",
+      "url": "http://localhost:8000/sse"
+    }
+  }
+}
+```
+
+For Windsurf (`mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "oracle-db-mcp": {
+      "type": "sse",
+      "serverUrl": "http://localhost:8000/sse"
+    }
+  }
+}
+```
+
+## Available Tools
+
+### Schema Exploration
+- `list_tables`: Get a list of all tables in the database
+- `list_schemas`: Get a list of all schemas in the database
+- `list_objects`: List database objects (tables, views, sequences, packages) in a schema
+- `get_object_details`: Get detailed information about a database object (columns, constraints, indexes)
+- `describe_table`: Get detailed information about a table
+
+### Query Execution
+- `read_query`: Execute SELECT queries
+- `exec_dml_sql`: Execute INSERT/UPDATE/DELETE/TRUNCATE statements
+- `exec_ddl_sql`: Execute CREATE/DROP/ALTER statements
+- `exec_pro_sql`: Execute PL/SQL code blocks
+
+### Performance Analysis
+- `get_top_queries`: Get the slowest queries based on elapsed time
+- `explain_query`: Get the execution plan for a SQL query
+- `analyze_db_health`: Perform comprehensive database health checks (tablespace usage, session status, wait events, invalid objects)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
