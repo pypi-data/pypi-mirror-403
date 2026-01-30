@@ -1,0 +1,190 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpustack-system
+  labels:
+    "app.kubernetes.io/part-of": "gpustack"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: gpustack-system
+  name: gpustack-runtime-deployer
+  labels:
+    "app.kubernetes.io/part-of": "gpustack"
+    "app.kubernetes.io/component": "gpustack-runtime"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "pods"
+      - "configmaps"
+      - "services"
+      - "pods/log"
+      - "pods/exec"
+    verbs:
+      - "*"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: gpustack-system
+  name: gpustack-runtime-deployer
+  labels:
+    "app.kubernetes.io/part-of": "gpustack"
+    "app.kubernetes.io/component": "gpustack-runtime"
+subjects:
+  - kind: ServiceAccount
+    name: gpustack-runtime
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gpustack-runtime-deployer
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: gpustack-system
+  name: gpustack-runtime
+  labels:
+    "app.kubernetes.io/part-of": "gpustack"
+    "app.kubernetes.io/component": "gpustack-runtime"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  namespace: gpustack-system
+  name: gpustack-runtime
+  labels:
+    "app.kubernetes.io/part-of": "gpustack"
+    "app.kubernetes.io/component": "gpustack-runtime"
+    "app.kubernetes.io/name": "gpustack-runtime"
+spec:
+  selector:
+    matchLabels:
+      "app.kubernetes.io/part-of": "gpustack"
+      "app.kubernetes.io/component": "gpustack-runtime"
+      "app.kubernetes.io/name": "gpustack-runtime"
+  updateStrategy:
+    type: OnDelete
+  template:
+    metadata:
+      labels:
+        "app.kubernetes.io/part-of": "gpustack"
+        "app.kubernetes.io/component": "gpustack-runtime"
+        "app.kubernetes.io/name": "gpustack-runtime"
+    spec:
+    # Provide GPU resource request for gpustack-runtime if not using default runtime.
+    #
+    # runtimeClassName: nvidia
+
+      restartPolicy: Always
+      containers:
+        - name: default
+          image: gpustack/runtime:main
+          imagePullPolicy: Always
+          tty: true
+          command:
+            - gpustack-runtime
+            - --profile
+            - --watch=60
+
+    # Provide privileged is used for detect devices.
+    #
+          securityContext:
+            privileged: true
+
+    # Specify environment for deployment.
+    #
+    # - GPUSTACK_RUNTIME_DEPLOY:
+    #     Indicate the deployment environment is Kubernetes.
+    # - GPUSTACK_RUNTIME_DEPLOY_MIRRORED_DEPLOYMENT:
+    #     Enable mirrored deployment mode,
+    #     see https://github.com/gpustack/runtime/blob/016531084000df8075d53772a3c33f41d829ba37/gpustack_runtime/envs.py#L48-L55 for details.
+    # - GPUSTACK_RUNTIME_DEPLOY_MIRRORED_NAME:
+    #     Specify the name of this Pod for gpustack-runtime identify itself.
+    # - GPUSTACK_RUNTIME_KUBERNETES_NAMESPACE:
+    #     Deploy workloads into this namespace.
+    #     Change this if you want to deploy workloads into another namespace.
+    # - GPUSTACK_RUNTIME_KUBERNETES_NODE_NAME:
+    #     Make sure that deploy workloads on the same node.
+    # - GPUSTACK_RUNTIME_DEPLOY_CDI_SPECS_DIRECTORY:
+    #     Specify the directory of CDI device interface specs.
+    # - GPUSTACK_RUNTIME_KUBERNETES_RESOURCE_INJECTION_POLICY:
+    #     Specify the resource injection policy, "KDP" is recommended.
+    #     Change to "Env" if you want to use environment variable injection policy.
+    # - GPUSTACK_RUNTIME_KUBERNETES_KDP_PER_DEVICE_MAX_ALLOCATIONS:
+    #     Specify the maximum allocations for one device in "KDP" policy.
+    #
+          env:
+            - name: GPUSTACK_RUNTIME_DEPLOY
+              value: "Kubernetes"
+            - name: GPUSTACK_RUNTIME_DEPLOY_MIRRORED_DEPLOYMENT
+              value: "true"
+            - name: GPUSTACK_RUNTIME_DEPLOY_MIRRORED_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GPUSTACK_RUNTIME_KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GPUSTACK_RUNTIME_KUBERNETES_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: GPUSTACK_RUNTIME_DEPLOY_CDI_SPECS_DIRECTORY
+              value: "/var/run/cdi"
+            - name: GPUSTACK_RUNTIME_KUBERNETES_RESOURCE_INJECTION_POLICY
+              value: "KDP"
+            - name: GPUSTACK_RUNTIME_KUBERNETES_KDP_PER_DEVICE_MAX_ALLOCATIONS
+              value: "10"
+
+    # Mount necessary volume for gpustack-runtime to work properly.
+    # - Mount gpustack data volume for persistent data storage.
+    # - Mount other source if needed, please refer to pack/Dockerfile.
+    #
+          volumeMounts:
+            - name: gpustack-runtime-data
+              mountPath: /var/lib/gpustack
+            - name: cdi
+              mountPath: /var/run/cdi
+            - name: kubelet-device-plugins
+              mountPath: /var/lib/kubelet/device-plugins
+    #       - name: toolkit
+    #         mountPath: /opt/...
+      volumes:
+        - name: gpustack-runtime-data
+          emptyDir: { }
+        - name: cdi
+          hostPath:
+            path: /var/run/cdi
+            type: DirectoryOrCreate
+        - name: kubelet-device-plugins
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: DirectoryOrCreate
+    #   - name: toolkit
+    #     hostPath:
+    #       path: /opt/...
+
+    # Inject service account to the Pod for accessing Kubernetes API.
+    #
+      serviceAccountName: gpustack-runtime
+
+    # It may be desirable to set a high priority class to ensure that a DaemonSet Pod
+    # preempts running Pods.
+    #
+    # priorityClassName: important
+
+    # These tolerations are to have the DaemonSet runnable on control plane nodes
+    # remove them if your control plane nodes should not run Pods.
+    #
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
