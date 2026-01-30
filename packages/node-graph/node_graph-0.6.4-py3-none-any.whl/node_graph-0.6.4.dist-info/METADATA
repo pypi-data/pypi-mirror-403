@@ -1,0 +1,105 @@
+Metadata-Version: 2.4
+Name: node_graph
+Version: 0.6.4
+Summary: Create node-based workflow
+Keywords: graph,workflows
+Author-email: Xing Wang <xingwang1991@gmail.com>
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Classifier: Development Status :: 1 - Planning
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering
+License-File: LICENSE
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: cloudpickle
+Requires-Dist: node-graph-widget
+Requires-Dist: wrapt
+Requires-Dist: pydantic~=2.6
+Requires-Dist: typing_extensions
+Requires-Dist: pyyaml
+Requires-Dist: rdflib>=6.0
+Requires-Dist: graphviz>=0.20
+Requires-Dist: click>=8.1
+Requires-Dist: sphinx_rtd_theme ; extra == "docs"
+Requires-Dist: sphinx~=7.2 ; extra == "docs"
+Requires-Dist: nbsphinx ; extra == "docs"
+Requires-Dist: pre-commit~=2.2 ; extra == "pre-commit"
+Requires-Dist: pylint~=2.17.4 ; extra == "pre-commit"
+Requires-Dist: pytest~=7.0 ; extra == "tests"
+Requires-Dist: pytest-cov~=2.7,<2.11 ; extra == "tests"
+Requires-Dist: pytest-asyncio ; extra == "tests"
+Project-URL: Documentation, https://node-graph.readthedocs.io
+Project-URL: Source, https://github.com/scinode/node-graph
+Provides-Extra: docs
+Provides-Extra: pre-commit
+Provides-Extra: tests
+
+<div align="center">
+  <img src="docs/source/_static/images/node-graph-logo.png" alt="ndoe-graph logo" width="220" />
+
+  <p><strong>Build data-driven workflows with clean provenance and a friendly syntax.</strong></p>
+
+  <p>
+    <a href="https://badge.fury.io/py/node-graph"><img src="https://badge.fury.io/py/node-graph.svg" alt="PyPI version"></a>
+    <a href="https://github.com/scinode/node-graph/actions/workflows/ci.yaml"><img src="https://github.com/scinode/node-graph/actions/workflows/ci.yaml/badge.svg" alt="CI status"></a>
+    <a href="https://codecov.io/gh/scinode/node-graph"><img src="https://codecov.io/gh/scinode/node-graph/branch/main/graph/badge.svg" alt="codecov"></a>
+    <a href="https://node-graph.readthedocs.io/"><img src="https://readthedocs.org/projects/node-graph/badge" alt="Docs status"></a>
+  </p>
+</div>
+
+
+## Documentation
+Please refer to [online docs](https://node-graph.readthedocs.io/en/latest/).
+
+## Examples
+**A simple math calculation**
+
+```python
+from node_graph import task
+
+@task()
+def add(x, y):
+    return x + y
+
+@task()
+def multiply(x, y):
+    return x * y
+
+@task.graph()
+def AddMultiply(x, y, z):
+    the_sum = add(x=x, y=y).result
+    return multiply(x=the_sum, y=z).result
+
+```
+
+## Engines and provenance
+Explore different execution engines in [node-graph-engine](https://github.com/scinode/node-graph-engine).
+
+Run the above graph locally with the `LocalEngine` and export the provenance graph:
+
+```python
+from node_graph.engine.local import LocalEngine
+
+graph = AddMultiply.build(x=1, y=2, z=3)
+
+engine = LocalEngine()
+results = engine.run(graph)
+# export provenance for visualization
+engine.recorder.save_graphviz_svg("add_multiply.svg")
+```
+
+
+<p align="center">
+<img src="docs/source/_static/images/add_multiply.svg" height="600" alt="Provenance graph example"/>
+</p>
+
+## License
+[MIT](http://opensource.org/licenses/MIT)
+
