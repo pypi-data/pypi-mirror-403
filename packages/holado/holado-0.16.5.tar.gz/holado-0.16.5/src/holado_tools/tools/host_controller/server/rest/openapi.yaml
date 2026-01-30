@@ -1,0 +1,561 @@
+openapi: "3.0.0"
+info:
+  version: "1"
+  title: "Host Controller API"
+  description: |
+    API to process some host actions from anywhere on the network.
+    In a microservice architecture, the host-controller can be run in a docker with special privileges,
+    whereas all other microservices have user privileges.
+    For example, it is usefull for a testing solution needing to restart a microservice of the SUT (System Under Test),
+    but the testing solution docker image has not the privileges to do it.
+paths:
+  /health:
+    get:
+      description: "Healthcheck"
+      responses:
+        200:
+          description: "Healthy"
+          content:
+            application/json:
+              schema:
+                type: "string"
+  
+  /os/env:
+    get:
+      description: "Get environment variable values"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "array"
+              items:
+                type: "string"
+      responses:
+        200:
+          description: "Environment variable values"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "object"
+
+  /os/ls:
+    get:
+      description: "List directory filenames"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                path:
+                  type: string
+                extension:
+                  type: string
+                  nullable: true
+      responses:
+        200:
+          description: "Directory filenames"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "string"
+
+  /docker/container:
+    get:
+      description: "List containers and their status"
+      parameters:
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', list all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "List of container names with their status"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "string"
+  
+  /docker/container/{name}:
+    get:
+      description: "Display all information of a container"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', search container in all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "Container information"
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/status:
+    get:
+      description: "Get container status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', search container in all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "Container status"
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/health_status:
+    get:
+      description: "Get container health status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', search container in all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "Container health status"
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/restart:
+    put:
+      description: "Restart a container"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "wait_started"
+          description: "if set to 'true', await container is started (health status 'healthy' if healthcheck exists, else status 'running')"
+          schema:
+            type: "boolean"
+            default: true
+        - in: "query"
+          name: "timeout"
+          description: "Timeout in seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/start:
+    put:
+      description: "Start a container"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "wait_started"
+          description: "if set to 'true', await container is started (health status 'healthy' if healthcheck exists, else status 'running')"
+          schema:
+            type: "boolean"
+            default: true
+        - in: "query"
+          name: "timeout"
+          description: "Timeout in seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/stop:
+    put:
+      description: "Stop a container"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "wait_stopped"
+          description: "if set to 'true', await container is stopped"
+          schema:
+            type: "boolean"
+            default: true
+        - in: "query"
+          name: "timeout"
+          description: "Timeout in seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/wait:
+    put:
+      description: "Wait until a container is stopped"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "timeout"
+          description: "Timeout in seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/await_started:
+    put:
+      description: "Wait until a container is started ('healthy' if container has healthcheck else 'running')"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "timeout"
+          description: "Timeout in seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/await_status:
+    put:
+      description: "Wait until a container has given status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "status"
+          description: "Status to wait (possible status: created, restarting, running, removing, paused, exited, dead, removed)"
+          schema:
+            type: "string"
+            default: "running"
+        - in: "query"
+          name: "timeout"
+          description: "Timeout in seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/await_health_status:
+    put:
+      description: "Wait until a container has given health status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "status"
+          description: "Health status to wait (possible status: starting, healthy, unhealthy, removed)"
+          schema:
+            type: "string"
+            default: "healthy"
+        - in: "query"
+          name: "timeout"
+          description: "Timeout in seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/logs/{name}:
+    get:
+      description: "get logs of a container"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                with_timestamps:
+                  description: "If log timestamps are added"
+                  type: "boolean"
+                  default: true
+                since:
+                  description: "Since which datetime save logs"
+                  type: "string"
+                  nullable: true
+                until:
+                  description: "Until which datetime save logs"
+                  type: "string"
+                  nullable: true
+      responses:
+        200:
+          description: "Container logs"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "string"
+  
+  /docker/logs/save:
+    put:
+      description: "Save logs of containers"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                destination_path:
+                  description: "Destination path of log files"
+                  type: "string"
+                file_format:
+                  description: "Log file format (ex: 'CSV', 'JSON', 'PrettyTable') (default: JSON)"
+                  type: "string"
+                  nullable: true
+                container_include_patterns:
+                  description: "List of regex for container names to include"
+                  type: "array"
+                  items:
+                    type: "string"
+                  nullable: true
+                container_exclude_patterns:
+                  description: "List of regex for container names to exclude"
+                  type: "array"
+                  items:
+                    type: "string"
+                  nullable: true
+                with_timestamps:
+                  description: "If log timestamps are added"
+                  type: "boolean"
+                  default: true
+                timestamps_field_name:
+                  description: "Field name to use for timestamps (used only if with_timestamps is true or omitted)"
+                  type: "string"
+                  nullable: true
+                field_include_patterns:
+                  description: "Dictionary of (pattern, pattern_info), with pattern for field names to include, and pattern_info a dictionary for actions like 'replace' for a replace name"
+                  type: "object"
+                  nullable: true
+                field_exclude_patterns:
+                  description: "List of regex for field names to exclude (if not included)"
+                  type: "array"
+                  items:
+                    type: "string"
+                  nullable: true
+                field_include_others_name:
+                  description: "Field name used to surround other fields (i.e. not explicitly included or excluded) (used only if field_include_patterns is defined)"
+                  type: "string"
+                  nullable: true
+                since:
+                  description: "Since which datetime save logs"
+                  type: "string"
+                  nullable: true
+                until:
+                  description: "Until which datetime save logs"
+                  type: "string"
+                  nullable: true
+      responses:
+        200:
+          description: "Number of containers for which logs have been saved"
+          content:
+            application/json:
+              schema:
+                type: "integer"
+
+
+  /config/yaml_file:
+    get:
+      description: "Get content of a YAML file"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                file_path:
+                  type: string
+                field_keys:
+                  description: "List of keys to the field"
+                  type: "array"
+                  items:
+                    type: "string"
+                  nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "object"
+    
+    patch:
+      description: "Update a YAML file"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                file_path:
+                  type: string
+                yaml_string:
+                  type: string
+                with_backup:
+                  type: "boolean"
+                  default: false
+                backup_extension:
+                  type: string
+                  default: '.bak'
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+    
+    put:
+      description: "Replace a YAML file"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                action:
+                  description: "Action to perform"
+                  type: string
+                  enum:
+                    - "restore"
+                file_path:
+                  type: string
+                backup_extension:
+                  type: string
+                  default: '.bak'
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+components:
+  securitySchemes: {}
+  schemas:
+    DockerControler:
+      properties: {}
+
