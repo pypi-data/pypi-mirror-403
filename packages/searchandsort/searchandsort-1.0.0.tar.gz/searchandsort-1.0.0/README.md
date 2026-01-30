@@ -1,0 +1,42 @@
+# searchandsort
+
+A lightweight Python package that provides commonly used **searching and sorting algorithms**
+with optional **execution time analysis**.
+
+This package is designed for:
+- Learning algorithms
+- Comparing performance
+- Reusing clean implementations in projects
+
+---
+
+## Features
+
+### Searching Algorithms
+- Linear Search
+- Binary Search (with automatic sorting)
+
+### Sorting Algorithms
+- Bubble Sort
+- Selection Sort
+- Insertion Sort
+- Merge Sort
+- Quick Sort
+- Heap Sort
+- Counting Sort
+- Radix Sort
+- Bucket Sort
+- Shell Sort
+- Tim Sort (Python built-in)
+
+Each algorithm is implemented as a **clean, reusable function**.
+Optional `*_print` variants display execution time.
+
+---
+
+## Installation
+
+### From PyPI
+```bash
+pip install searchandsort
+
