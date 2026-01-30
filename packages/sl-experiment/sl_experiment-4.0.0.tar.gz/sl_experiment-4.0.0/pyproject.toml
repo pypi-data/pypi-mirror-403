@@ -1,0 +1,212 @@
+# Defines the build system used for the project.
+[build-system]
+requires = ["hatchling>=1,<2"]
+build-backend = "hatchling.build"
+
+# Project metadata section. Provides the general ID information about the project.
+[project]
+name = "sl-experiment"
+version = "4.0.0"
+description = "Provides the assets for acquiring and preprocessing scientific data in the Sun (NeuroAI) lab."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.14,<3.15"
+authors = [
+    { name = "Ivan Kondratyev" },
+    { name = "Kushaan Gupta" },
+    { name = "Natalie Yeung" },
+    { name = "Katlynn Ryu" },
+    { name = "Jasmine Si" }
+]
+maintainers = [
+    { name = "Ivan Kondratyev", email = "ik278@cornell.edu" },
+]
+
+keywords = ["sunlab", "data", "acquisition", "ataraxis", "interface", "experiment", "mesoscope"]
+
+classifiers = [
+    # Development status
+    "Development Status :: 5 - Production/Stable",
+    # Intended audience and project topic
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    # License
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    # Supported Python Versions
+    "Programming Language :: Python :: 3.14",
+    # Supported OS systems
+    "Operating System :: POSIX :: Linux",
+    # Typing
+    "Typing :: Typed"
+]
+
+# Runtime project dependencies.
+dependencies = [
+    "zaber-motion==8.0.3",
+    "crc==7.1.0",
+    "tabulate2==1.10.2",
+    "click==8.3.1",
+    "numpy==2.3.5",
+    "numba==0.63.1",
+    "intel-cmplr-lib-rt==2025.3.2; platform_system != 'Darwin'",
+    "scipy==1.17.0",
+    "matplotlib==3.10.8",
+    "ataraxis-time==5.0.0",
+    "ataraxis-base-utilities==5.0.0",
+    "ataraxis-data-structures==5.0.0",
+    "ataraxis-transport-layer-pc==3.1.1",
+    "ataraxis-communication-interface==4.2.0",
+    "ataraxis-video-system==2.3.0",
+    "tifffile==2026.1.14",
+    "imagecodecs==2026.1.14",
+    "tqdm==4.67.1",
+    "google-api-python-client==2.188.0",
+    "appdirs==1.4.4",
+    "pyqt6==6.10.2",
+    "importlib_metadata==8.7.1",
+    "natsort-rs==0.1.17",
+    "sl-shared-assets==7.0.0",
+    "mcp>=1,<2",
+    "httpx>=0.27,<1",
+]
+
+[project.urls]
+Homepage = "https://github.com/Sun-Lab-NBB/sl-experiment"
+Documentation = "https://sl-experiment-api-docs.netlify.app/"
+
+# Specifies additional dependencies that can be installed alongside the main library.
+[project.optional-dependencies]
+
+# Dependencies that support developing this project.
+dev = [
+    # Tox
+    "tox>=4,<5",
+    "uv>=0,<1",
+    "tox-uv>=1,<2",
+
+    # Development Automation
+    "ataraxis-automation>=7,<8",
+
+    # Types
+    "types-appdirs>=1,<2",
+    "google-api-python-client-stubs>=1,<2",
+    "scipy-stubs>=1,<2",
+    "types-tabulate>=0,<1",
+    "types-tqdm>=4,<5",
+]
+
+# Currently, the library is intended to be interfaced with more or less exclusively through the CLI commands exported
+# below.
+[project.scripts]
+sl-get = "sl_experiment.command_line_interfaces.entry_points:get_cli"
+sl-manage = "sl_experiment.command_line_interfaces.entry_points:manage_cli"
+sl-run = "sl_experiment.command_line_interfaces.entry_points:run_cli"
+
+# Specifies files that should not be included in the source-code distribution but are also not part of gitignore.
+[tool.hatch.build.targets.sdist]
+exclude = [".github", "recipe"]
+
+# Specifies the library structure.
+[tool.hatch.build.targets.wheel]
+packages = ["src/sl_experiment"]
+
+# Ruff Configuration.
+[tool.ruff]
+line-length = 120         # The maximum column length is set to 120 for this project.
+indent-width = 4          # Same as black, indents are 4 spaces
+target-version = "py314"  # Targets the lowest supported version of python
+src = ["src"]             # The name of the source directory
+
+# Excludes 'service' .py files, such as the sphinx configuration file, from linting.
+extend-exclude = ["conf.py"]
+
+# Checks for all potential violations and uses the exclusions below to target-disable specific ones.
+lint.select = ["ALL"]
+
+# General ignore directives
+lint.ignore = [
+    "W291",  # Conflicts with docstring formatting.
+    "W293",  # Conflicts with UI style formatting.
+    "BLE001",  # Catching blind exceptions is necessary for the functioning of this library.
+    "T201",  # Print is necessary to work with some external formatters used in this library.
+    "ANN401",  # While suboptimal, ANY is a helpful type when used with caution
+    "C901",  # Sometimes complex functions are necessary
+    "PLR0913",  # Sometimes complex functions are necessary
+    "PLR0912",  # Sometimes complex functions are necessary
+    "PLR0915",  # Sometimes complex type defenitions are necessary
+    "PLR0911", # Sometimes complex return graphs are necessary
+    "TID252", # Conflicts with the project's import management strategy
+    "COM812", # Conflicts with the formatter
+    "ISC001", # Conflicts with the formatter
+    "PT001", # https://github.com/astral-sh/ruff/issues/8796#issuecomment-182590771
+    "PT023", # https://github.com/astral-sh/ruff/issues/8796#issuecomment-1825907715
+    "D107", # Project-specific, __init__ is documented inside the main class docstring where applicable
+    "D205", # Bugs out for file descriptions
+    "PLW0603", # While global statement usage is not ideal, it greatly streamlines certain development patterns
+]
+
+# Additional formatting configurations
+[tool.ruff.format]
+quote-style = "double"             # Uses double quotes for strings
+indent-style = "space"             # Uses space for indents
+skip-magic-trailing-comma = false  # Like black, ignores trailing commas
+line-ending = "auto"               # Automatically detects and standardizes line-ending character
+
+# Docstrings and comments' line length
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 120  # Maximum documentation line length, the same as code
+
+# Docstrings style
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# Additional, file-specific 'ignore' directives
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = [
+    "F401", # Imported but unused
+    "F403", # Wildcard imports
+]
+
+[tool.ruff.lint.isort]
+case-sensitive = true              # Takes case into account when sorting imports
+combine-as-imports = true          # Combines multiple "as" imports for the same package
+force-wrap-aliases = true          # Wraps "as" imports so that each uses a separate line (after combining for package)
+force-sort-within-sections = true  # Forces "as" and "from" imports for the same package to be close
+length-sort = true                 # Places shorter imports first
+
+# MyPy configuration section.
+[tool.mypy]
+disallow_untyped_defs = true # Enforces function annotation
+warn_unused_ignores = true   # Warns against using 'type: ignore' for packages that have type stubs available.
+exclude = [
+    "sl-experiment-\\d+", # Ignores the temporary directory created by setuptools when building the sdist
+    "venv.*/",            # Ignores virtual environments
+    "build/",             # Ignores the sdist directory
+    "dist/",              # Ignores the wheel directory
+    "docs/",              # Ignores the sphinx / doxygen directory
+    "stubs/",             # Ignores stubs directory (stubgen output target)
+    "recipe/",            # Ignores recipe directory (grayskull output target)
+    "tests/",             # Ignores the test directory.
+]
+
+# This is used by the 'test' tox tasks to aggregate coverage data produced during pytest runtimes.
+[tool.coverage.paths]
+
+# Maps coverage measured in site-packages to source files in src
+source = ["src/", ".tox/*/lib/python*/site-packages/"]
+
+# Same as above, specifies the output directory for the coverage .html report
+[tool.coverage.html]
+directory = "reports/coverage_html"
+
+# Specifies additional ignore directives
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __del__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+]
