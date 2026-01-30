@@ -1,0 +1,47 @@
+"""Constants for weld CLI.
+
+Centralized timeout and limit values for subprocess operations.
+All timeouts are in seconds and are designed to prevent hanging
+while allowing sufficient time for legitimate long-running operations.
+
+Timeout Guidelines:
+    - AI operations (Codex, Claude): 10 minutes to handle complex analysis
+    - Build/test checks: 5 minutes for typical CI operations
+    - Git operations: 30 seconds, enough for most repos
+    - Quick checks: 10 seconds for simple tool availability tests
+"""
+
+# =============================================================================
+# Subprocess Timeouts (in seconds)
+# =============================================================================
+
+#: Timeout for git commands (rev-parse, diff, commit, etc.)
+GIT_TIMEOUT = 30
+
+#: Timeout for Codex CLI invocations (review, plan analysis)
+CODEX_TIMEOUT = 600  # 10 minutes
+
+#: Timeout for Claude CLI invocations (implementation, review)
+CLAUDE_TIMEOUT = 1800  # 30 minutes
+
+#: Timeout for transcript gist generation (legacy wrapper)
+TRANSCRIPT_TIMEOUT = 120
+
+#: Timeout for running configured checks command (tests, linting)
+CHECKS_TIMEOUT = 300  # 5 minutes
+
+#: Timeout for tool availability checks during `weld init`
+INIT_TOOL_CHECK_TIMEOUT = 10
+
+# =============================================================================
+# Telegram Bot Timeouts (in seconds)
+# =============================================================================
+
+#: Timeout for Telegram Bot API calls (getUpdates, sendMessage, etc.)
+TELEGRAM_BOT_TIMEOUT = 30
+
+#: Timeout for full weld command runs triggered via Telegram
+TELEGRAM_RUN_TIMEOUT = 1800  # 30 minutes
+
+#: Minimum interval between message edits to avoid Telegram rate limits
+TELEGRAM_EDIT_THROTTLE = 2.0

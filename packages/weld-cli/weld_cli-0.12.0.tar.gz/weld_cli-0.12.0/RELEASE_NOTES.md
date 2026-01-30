@@ -1,0 +1,12 @@
+### Added
+- Automatic shell completion installation during `make bin-install` for bash, zsh, and fish
+- Auto-install shell completions on first CLI run for seamless onboarding
+- Shell completion documentation with installation instructions for bash, zsh, fish, and PowerShell
+- Shell completion for CLI commands:
+  - `weld interview apply` questionnaire argument
+  - `weld research`, `weld plan`, `weld interview generate` markdown file arguments
+  - `weld prompt export --format` option
+  - `weld implement --step` option and plan file argument
+  - Phase and step number arguments
+  - Task type arguments
+- `run_claude_interactive` service function for fully interactive Claude sessions
