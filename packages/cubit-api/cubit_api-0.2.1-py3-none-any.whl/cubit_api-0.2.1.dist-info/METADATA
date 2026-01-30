@@ -1,0 +1,258 @@
+Metadata-Version: 2.4
+Name: cubit-api
+Version: 0.2.1
+Summary: Python SDK for the Cubit API - AI Job Vulnerability Intelligence
+Project-URL: Homepage, https://maidenlabs.org
+Author-email: Maiden Labs <tim@maidenlabs.org>
+License-Expression: MIT
+License-File: LICENSE
+Keywords: ai,api,automation,cubit,jobs,labor-market,sdk
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Typing :: Typed
+Requires-Python: >=3.8
+Requires-Dist: httpx>=0.24.0
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.21.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Requires-Dist: respx>=0.20.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Cubit Python SDK
+
+The official Python client for the Cubit API — AI Job Vulnerability Intelligence by Maiden Labs.
+
+## Installation
+
+```bash
+pip install cubit-api
+```
+
+## Quick Start
+
+```python
+from cubit import CubitClient
+
+# Initialize with your API key
+client = CubitClient("cubit_xxxxxxxxxxxx")
+
+# Search for jobs
+results = client.search_jobs("software developer")
+for job in results["jobs"]:
+    print(f"{job['title']}: {job['balanced_impact_score']}")
+
+# Get a specific job profile
+job = client.get_job("15-1252.00")
+print(f"Automation Risk: {job['scores']['automation_susceptibility_score']}")
+print(f"Human Resilience: {job['scores']['human_centric_resilience_score']}")
+```
+
+## Features
+
+- **Full API Coverage**: All Cubit API endpoints in a Pythonic interface
+- **Sync & Async**: Both synchronous and asynchronous clients
+- **Type Hints**: Full type annotations for IDE autocompletion
+- **Error Handling**: Structured exceptions for all error cases
+- **Minimal Dependencies**: Only requires `httpx`
+
+## Usage
+
+### Synchronous Client
+
+```python
+from cubit import CubitClient
+
+client = CubitClient("cubit_xxxxxxxxxxxx")
+
+# Check API key info
+me = client.me()
+print(f"Tier: {me['tier']}, Org: {me['org_name']}")
+
+# Search jobs by keyword
+results = client.search_jobs("nurse", limit=5)
+
+# Semantic search (Builder+ tier)
+results = client.search_jobs_semantic("jobs for people who like to argue but hate math")
+
+# Get job profile
+job = client.get_job("29-1141.00")  # Registered Nurses
+
+# Get job tasks with AI exposure analysis (Builder+ tier)
+tasks = client.get_job_tasks("29-1141.00", sort_by="ai_exposure_potential")
+
+# List skills with AI resilience scores
+skills = client.list_skills(type="abilities", limit=20)
+
+# Regional data (Builder+ tier)
+regions = client.list_regions(state="CA", limit=10)
+
+# Clean up
+client.close()
+```
+
+### Context Manager
+
+```python
+from cubit import CubitClient
+
+with CubitClient("cubit_xxxxxxxxxxxx") as client:
+    job = client.get_job("15-1252.00")
+    print(job["title"])
+# Connection automatically closed
+```
+
+### Async Client
+
+```python
+import asyncio
+from cubit import CubitAsyncClient
+
+async def main():
+    async with CubitAsyncClient("cubit_xxxxxxxxxxxx") as client:
+        # All methods are async
+        job = await client.get_job("15-1252.00")
+        print(job["title"])
+        
+        # Fetch multiple jobs concurrently
+        jobs = await asyncio.gather(
+            client.get_job("15-1252.00"),
+            client.get_job("29-1141.00"),
+            client.get_job("11-1021.00"),
+        )
+
+asyncio.run(main())
+```
+
+### Enterprise Features
+
+```python
+from cubit import CubitClient
+
+client = CubitClient("cubit_xxxxxxxxxxxx")
+
+# Custom scoring with your own dimension weights
+result = client.calculate_custom_score(
+    weights={
+        "procedural": 0.3,
+        "digitization": 0.3,
+        "physicality": -0.2,
+        "socio_emotional": -0.2,
+    },
+    jobs=["15-1252.00", "29-1141.00", "11-1021.00"],
+)
+
+# Batch lookup (up to 500 jobs)
+batch = client.batch_lookup(
+    soc_codes=["15-1252.00", "29-1141.00", "11-1021.00"],
+    fields=["scores", "pillars"],
+)
+
+# Career transition pathways
+transitions = client.find_transitions(
+    source_soc="43-9061.00",  # Office Clerks
+    similarity_threshold=0.7,
+    max_results=10,
+)
+```
+
+## Error Handling
+
+```python
+from cubit import CubitClient, AuthenticationError, NotFoundError, RateLimitError
+
+client = CubitClient("cubit_xxxxxxxxxxxx")
+
+try:
+    job = client.get_job("99-9999.00")
+except NotFoundError as e:
+    print(f"Job not found: {e}")
+except AuthenticationError as e:
+    print(f"Invalid API key: {e}")
+except RateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after} seconds")
+```
+
+### Exception Types
+
+| Exception | HTTP Status | Description |
+|-----------|-------------|-------------|
+| `AuthenticationError` | 401 | Invalid or missing API key |
+| `AuthorizationError` | 403 | API key lacks permission for this resource |
+| `NotFoundError` | 404 | Resource doesn't exist |
+| `ValidationError` | 422 | Invalid request parameters |
+| `RateLimitError` | 429 | Rate limit exceeded |
+| `ServerError` | 5xx | API server error |
+| `CubitError` | * | Base exception for all errors |
+
+## Configuration
+
+```python
+from cubit import CubitClient
+
+client = CubitClient(
+    api_key="cubit_xxxxxxxxxxxx",
+    base_url="https://api.maidenlabs.tools",  # Default
+    timeout=30.0,  # Request timeout in seconds
+)
+```
+
+## API Reference
+
+### Utility
+
+| Method | Description | Tier |
+|--------|-------------|------|
+| `health()` | Health check | Public |
+| `me()` | API key info | All |
+| `schema()` | Data schema definitions | Public |
+
+### Jobs
+
+| Method | Description | Tier |
+|--------|-------------|------|
+| `search_jobs(query, limit)` | Keyword search | All |
+| `search_jobs_semantic(query, limit, scope)` | Semantic search | Builder+ |
+| `get_job(soc_code)` | Get job profile | All |
+| `get_job_tasks(soc_code, ...)` | Get job tasks | Builder+ |
+| `get_job_requirements(soc_code, ...)` | Get skill requirements | Builder+ |
+| `explain_job(soc_code)` | Get methodology explanation | Builder+ |
+
+### Skills
+
+| Method | Description | Tier |
+|--------|-------------|------|
+| `list_skills(type, sort_by, limit)` | List all skills | All |
+| `search_skills_semantic(query, limit)` | Semantic search | Builder+ |
+| `get_skill(element_id)` | Get skill profile | Builder+ |
+
+### Regions
+
+| Method | Description | Tier |
+|--------|-------------|------|
+| `list_regions(state, min_employment, ...)` | List MSA regions | Builder+ |
+| `get_region(msa_code, include_jobs)` | Get region detail | Builder+ |
+
+### Enterprise
+
+| Method | Description | Tier |
+|--------|-------------|------|
+| `calculate_custom_score(weights, jobs)` | Custom scoring | Enterprise |
+| `batch_lookup(soc_codes, fields)` | Batch job lookup | Enterprise |
+| `find_transitions(source_soc, ...)` | Career transitions | Enterprise |
+
+## Requirements
+
+- Python 3.8+
+- httpx >= 0.24.0
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
