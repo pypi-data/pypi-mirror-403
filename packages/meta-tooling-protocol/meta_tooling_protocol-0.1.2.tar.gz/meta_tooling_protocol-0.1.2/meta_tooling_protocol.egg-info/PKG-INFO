@@ -1,0 +1,182 @@
+Metadata-Version: 2.4
+Name: meta-tooling-protocol
+Version: 0.1.2
+Summary: Lightweight Python runtime for Meta Tooling Protocol (MTP)
+Author: APG Team
+License: MIT
+Keywords: mtp,tooling,mcp,openapi,sdk
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: typer>=0.9.0
+Requires-Dist: IPython>=8.0.0
+Requires-Dist: nbformat>=5.0.0
+Requires-Dist: docstring-parser>=0.15
+Provides-Extra: api
+Requires-Dist: fastapi>=0.110.0; extra == "api"
+Requires-Dist: uvicorn>=0.30.0; extra == "api"
+Provides-Extra: langchain
+Requires-Dist: langchain-core>=0.2.0; extra == "langchain"
+Provides-Extra: mcp
+Requires-Dist: fastmcp>=2.0.0; extra == "mcp"
+Requires-Dist: mcp>=1.25.0; extra == "mcp"
+Provides-Extra: all
+Requires-Dist: fastapi>=0.110.0; extra == "all"
+Requires-Dist: uvicorn>=0.30.0; extra == "all"
+Requires-Dist: langchain-core>=0.2.0; extra == "all"
+Requires-Dist: fastmcp>=2.0.0; extra == "all"
+Requires-Dist: mcp>=1.25.0; extra == "all"
+Dynamic: license-file
+
+# MTP (Meta Tooling Protocol)
+
+**Python Is All You Need.**
+
+MTP 是下一代 AI 交互方式，让 AI 通过 Python 解决所有问题，将交互效率提升 2 倍以上。
+
+## 核心理念
+
+传统的 MCP/Function Call 为每个功能定义独立工具：
+
+```
+AI: 我需要读取文件
+→ 调用 read_file 工具
+→ 等待响应
+→ 我需要分析数据
+→ 调用 analyze_data 工具
+→ 等待响应
+→ 我需要生成报告
+→ 调用 generate_report 工具
+```
+
+MTP 只提供一个 `python_exec` 工具：
+
+```
+AI: 我需要读取文件、分析数据、生成报告
+→ 写 Python 代码一次性完成
+→ 返回结果
+```
+
+**结果**：交互次数减少 70%，Token 消耗减半，效率提升 2 倍。
+
+## Quick Start
+
+### 安装
+
+```bash
+pip install mtp
+```
+
+### 在 Claude Code 中使用
+
+```bash
+# 添加工具
+mtp add playwright
+
+# 配置 MCP 服务器
+claude mcp add --transport stdio mtp -- 'mtp mcp'
+```
+
+现在可以直接对话：
+- "用 Playwright 打开百度并截图"
+- "分析这个 CSV 文件并生成报告"
+
+MTP 只暴露一个 `python_exec` 工具，AI 会自动用 Python 调用所有能力。
+
+### 在代码中使用
+
+7 行代码构建一个完整的 Agent：
+
+```python
+import sys
+from pydantic_ai import Agent
+from mtp import PydanticAdapter
+
+agent = Agent('openai:gpt-4', tools=[PydanticAdapter().tool()])
+print(agent.run_sync(" ".join(sys.argv[1:])).data)
+```
+
+运行：
+```bash
+python agent.py "分析数据并导出 Excel"
+```
+
+AI 会在 `python_exec` 中使用工具：
+
+```python
+# 从 mtp.infra 导入工具
+from mtp.infra import playwright, github
+result = playwright.goto(url="https://example.com")
+repos = github.list_repos(owner="anthropics")
+```
+
+### 工具管理
+
+```bash
+# 添加 MCP 服务器
+mtp add github --env GITHUB_TOKEN=$GITHUB_TOKEN
+
+# 添加 OpenAPI
+mtp add myapi --openapi https://api.example.com/openapi.json
+
+# 添加命令行工具
+mtp add curl --cmd curl
+
+# 列出所有工具
+mtp list
+```
+
+MTP 是 Agent 时代的包管理器，统一管理所有工具。
+
+## 使用场景
+
+**安全测试**
+- 自动化渗透测试（腾讯云 AI 渗透赛第四名）
+- 漏洞扫描和分析
+- 安全报告生成
+
+**数据分析**
+- CSV/Excel 数据处理
+- 数据可视化
+- 自动生成报告
+
+**API 集成**
+- 调用任意 OpenAPI 服务
+- GitHub/GitLab 自动化
+- 云服务管理
+
+**自定义 Agent**
+- 快速构建专属 Agent
+- 集成到现有应用
+- 支持 LangChain、Pydantic AI 等框架
+
+## 核心特性
+
+- **持久化执行**：基于 IPython，跨调用保持状态，内存即上下文，数据留在 Python 内存中
+- **渐进发现**：极简的工具描述，通过 `help()` 和 `dir()` 逐步探索工具能力，避免上下文膨胀
+- **装饰器 SDK**：简洁的 `@namespace`、`@toolset`、`@tool` 装饰器系统，快速注册自定义工具
+- **多协议支持**：REST API、MCP、Function Call、LangChain、Pydantic AI
+- **统一管理**：通过 `infra.yaml` 管理所有工具（MCP、OpenAPI、Python、CLI）
+- **MCP 兼容**：支持 Anthropic 官方 MCP Registry，可透传和聚合 MCP 服务
+
+## 文档
+
+| 文档 | 描述 |
+|------|------|
+| [CLI 使用指南](./docs/CLI_GUIDE.md) | 命令行工具详细使用方法 |
+| [SDK 使用指南](./docs/SDK_GUIDE.md) | Python SDK 完整 API 参考 |
+| [最佳实践](./docs/BEST_PRACTICES.md) | AI 集成、项目组织、部署指南 |
+| [核心设计](./docs/CORE_DESIGN.md) | 架构原理和设计理念 |
+
+## License
+
+MIT
