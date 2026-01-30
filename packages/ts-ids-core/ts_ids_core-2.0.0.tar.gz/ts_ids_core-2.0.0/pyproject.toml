@@ -1,0 +1,128 @@
+[[tool.poetry.source]]
+name = "ts_pypi_virtual"
+url = "https://tetrascience.jfrog.io/artifactory/api/pypi/ts-pypi-virtual/simple"
+priority = "primary"
+
+
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+skip = [
+    "snapshots",
+    ".venv/",
+    "dist/"
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312', 'py313']
+include = '\.pyi?$|docs/source/conf.py'
+extend-exclude = "snapshots"
+
+
+[tool.pytest.ini_options]
+addopts = "-vv -p no:warnings --cov-report xml"
+testpaths = [
+    "tests",
+    "docs/source/examples"
+]
+
+[tool.coverage.run]
+branch = true
+source = [
+    "ts_ids_core"
+]
+omit = ["snapshots"]
+
+# Many options copied from the docs here:
+# https://coverage.readthedocs.io/en/coverage-5.5/config.html#syntax
+[tool.coverage.report]
+show_missing = true
+# Regexes for lines to exclude from consideration
+exclude_lines = [
+    # Have to re-enable the standard pragma
+    "pragma: no cover",
+
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+ignore_errors = true
+
+[tool.poetry]
+name = "ts-ids-core"
+version = "2.0.0"
+description = ""
+readme = "README.md"
+authors = ["TetraScience <developers@tetrascience.com>"]
+license = "CC-BY-ND-4.0"
+packages = [
+    { include = "ts_ids_core" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<4"
+typing-extensions = ">=4.0"
+click = ">=8.0"
+jsonref = "^1.1.0"
+# Pydantic 2.10.0 to 2.10.2 contains a JSON Schema generation bug, expected to be fixed
+# in 2.10.3 https://github.com/pydantic/pydantic/issues/10960
+pydantic = ">=2,<3,!=2.10.0,!=2.10.1,!=2.10.2"
+ts-ids-components = "*"
+# `certifi` is not a direct dependency, but it needs to be above this version for security
+# advisory from Dependabot: https://github.com/advisories/GHSA-xqr8-7jwr-rhp7
+certifi = ">=2023.7.22"
+
+# "Extra" dependencies are specified below - see tool.poetry.extras
+datamodel-code-generator = ">=0.25.0"
+
+[tool.poetry.extras]
+# datamodel-code-generator has many dependencies and is only needed for the
+# `import-schema` CLI script, which is used less often than other parts of ts-ids-core.
+# By marking it as an "extra" dependency, it is not installed when users install the
+# ts-ids-core package, unless they opt into it: `pip install ts-ids-core[import-schema]`
+import-schema = ["datamodel-code-generator"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=6.0"
+black = "^23.1.0"
+coverage = {version = "*", extras = ["toml"]}
+pytest-cov = "^3.0"
+pytest-steps = "*"
+isort = "^5.0"
+autoflake = "^1.4"
+invoke = "^2.0"
+pytest-mock = "^3.0"
+pytest-snapshot = "^0.9.0"
+frozendict = "~=2.0"
+pylint = "^2.14.5"  # pinning to 2.7 causes `poetry lock` to hang
+
+[tool.poetry.group.docs.dependencies]
+Sphinx = { version = ">=7.2.6", python = ">3.9, <4" }
+# Required for adding the content of a Markdown file to reStructuredText file
+# in documentation. See docs/index.rst.
+docutils = ">=0.17"
+myst-parser = "^2.0.0"
+sphinx-multiversion = ">=0.2.4"
+furo = "^2024"
+sphinx-copybutton = ">=0.5.2"
+autodoc-pydantic = "^2.0.1"
+sphinx-reredirects = "^0.1.3"
+
+[tool.poetry.scripts]
+ts-ids = "ts_ids_core.scripts.cli:ts_ids"
+export-schema = "ts_ids_core.scripts.cli:legacy_export"
+import-schema = "ts_ids_core.scripts.cli:legacy_import"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
