@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run ruff lint
+        run: |
+          uv run ruff check .
+
+      - name: Run mypy type check
+        run: |
+          uv run mypy src/
+
+      - name: Run bandit security check
+        run: |
+          uv run bandit -r src/
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest --cov=src/skill_creator_mcp --cov-report=xml --cov-report=term
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.12'
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  validate-quality-gate:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov=src/skill_creator_mcp --cov-report=term-missing
+
+      - name: Check coverage threshold
+        run: |
+          coverage=$(uv run pytest --cov=src/skill_creator_mcp --cov-report=term-missing -q | grep "TOTAL" | awk '{print $NF}' | sed 's/%//')
+          echo "Coverage: $coverage%"
+          if (( $(echo "$coverage < 92" | bc -l) )); then
+            echo "Coverage $coverage% is below 92% threshold"
+            exit 1
+          fi
+          echo "Coverage $coverage% meets 92% threshold"
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, validate-quality-gate]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Build package
+        run: |
+          uv build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
