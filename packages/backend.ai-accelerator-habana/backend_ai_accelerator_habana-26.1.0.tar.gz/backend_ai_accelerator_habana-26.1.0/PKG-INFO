@@ -1,0 +1,67 @@
+Metadata-Version: 2.4
+Name: backend.ai-accelerator-habana
+Version: 26.1.0
+Summary: Backend.AI Accelerator Plugin for Intel® Gaudi® HPUs
+Home-page: https://github.com/lablup/backend.ai
+Author: Lablup Inc. and contributors
+License: LGPLv3
+Project-URL: Documentation, https://docs.backend.ai/
+Project-URL: Source, https://github.com/lablup/backend.ai
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Environment :: No Input/Output (Daemon)
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Software Development
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Programming Language :: Python :: 3.13
+Classifier: License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)
+Requires-Python: >=3.13,<3.14
+Description-Content-Type: text/markdown
+Requires-Dist: aiodocker==0.24.0
+Requires-Dist: habana-pyhlml~=1.22.1.6
+Requires-Dist: trafaret~=2.1
+Dynamic: author
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: project-url
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+Backend.AI Accelerator Plugin for Habana
+======================================
+
+Just install this along with Backend.AI agents, using the same virtual environment.
+This will allow the agents to detect Habana devices on their hosts and make them
+available to Backend.AI kernel sessions.
+
+```console
+$ pip install -e <Path to this repository>
+```
+
+This open-source edition of Habana plugins support allocation of one or more Habana
+devices to a container, slot-by-slot.
+
+Compatibility Matrix
+--------------------
+
+TBD
+
+Generating Docker macvlan interfaces for inter-container network 
+----------------------------------------------------------------
+```sh
+#! /bin/bash
+set -e
+for pci_bus_id in $(hl-smi --format=csv,noheader -Q bus_id); do
+    for net_dev in $(grep PCI_SLOT_NAME /sys/class/net/*/device/uevent | grep "${pci_bus_id}" | awk -F: '{print $1}' | awk -F/ '{print $5}'); do
+        docker network create --attachable -o parent="${net_dev}" -d macvlan "gaudi_${net_dev}" >/dev/null
+        echo "Docker network gaudi_${net_dev} created"
+    done
+done
+```
