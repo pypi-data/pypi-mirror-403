@@ -1,0 +1,229 @@
+# jvdeploy deployment configuration
+# This file defines how your jvagent application is deployed to AWS Lambda and/or Kubernetes
+
+version: "1.0"
+
+# Application metadata
+app:
+  name: my-jvagent-app
+  version: "1.0.0"
+  description: "My jvagent application"
+
+# Docker image configuration
+image:
+  name: my-jvagent-app
+  tag: "{{app.version}}"  # Use app version as image tag
+  build:
+    platform: linux/amd64  # Target platform (linux/amd64 or linux/arm64)
+    cache: true            # Use Docker build cache
+    args:
+      PYTHON_VERSION: "3.12"
+
+# AWS Lambda deployment configuration
+lambda:
+  enabled: false  # Set to true to enable Lambda deployment
+
+  # AWS Configuration
+  region: us-east-1
+  account_id: ""  # Your AWS account ID (optional - will be auto-detected from AWS credentials if not provided)
+
+  # Lambda Function Configuration
+  function:
+    name: "{{app.name}}"
+    description: "{{app.description}}"
+    memory: 1024      # Memory in MB (128-10240)
+    timeout: 300      # Timeout in seconds (1-900)
+    architecture: x86_64  # x86_64 or arm64
+    ephemeral_storage: 512  # Ephemeral storage in MB (512-10240)
+
+  # ECR Repository Configuration
+  ecr:
+    repository_name: "{{app.name}}"
+    create_if_missing: true  # Automatically create ECR repository if it doesn't exist
+
+  # Environment Variables
+  environment:
+    JVAGENT_ADMIN_PASSWORD: "${JVAGENT_ADMIN_PASSWORD}"  # From environment
+    JVSPATIAL_DB_TYPE: "json"
+    JVSPATIAL_DB_PATH: "/mnt/efs/jvagent_db"
+    LOG_LEVEL: "INFO"
+
+  # IAM Role Configuration
+  iam:
+    role_arn: null  # Leave null to auto-create a role
+    role_name: "{{app.name}}-lambda-role"
+    policies:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      # Add more policy ARNs as needed
+
+  # VPC Configuration (optional)
+  vpc:
+    enabled: false
+    security_group_ids: []
+    subnet_ids: []
+
+  # EFS Configuration (optional)
+  efs:
+    enabled: false
+    file_system_id: ""
+    access_point_arn: ""
+    mount_path: "/mnt/efs"
+
+  # Function URL Configuration (optional)
+  function_url:
+    enabled: false
+    auth_type: "NONE"  # NONE (public) or AWS_IAM
+    cors:
+      enabled: true
+      allow_origins: ["*"]
+      allow_methods: ["*"]
+      allow_headers: ["*"]
+      allow_credentials: false
+      max_age: 0
+
+  # API Gateway Configuration
+  api_gateway:
+    enabled: true
+    type: "HTTP"  # HTTP or REST
+    name: "{{app.name}}-api"
+    stage_name: "$default"
+    cors:
+      enabled: true
+      allow_origins: ["*"]
+      allow_methods: ["*"]
+      allow_headers: ["*"]
+    throttling:
+      rate_limit: 1000   # Requests per second
+      burst_limit: 2000  # Burst capacity
+    custom_domain:
+      enabled: false
+      domain_name: ""
+      certificate_arn: ""
+
+# Kubernetes deployment configuration
+kubernetes:
+  enabled: false  # Set to true to enable Kubernetes deployment
+
+  # Cluster Configuration
+  context: "my-cluster"  # kubectl context name
+  namespace: "default"
+
+  # Image Registry Configuration
+  registry:
+    url: "docker.io/myorg"  # Registry URL (or use ECR)
+    secret_name: "regcred"  # Name of image pull secret
+    create_secret: false    # Whether to create the secret automatically
+
+  # Deployment Configuration
+  deployment:
+    replicas: 2
+
+    # Update Strategy
+    strategy:
+      type: "RollingUpdate"
+      rolling_update:
+        max_surge: 1          # Max pods above desired count during update
+        max_unavailable: 0    # Max unavailable pods during update
+
+    # Pod Configuration
+    pod:
+      labels:
+        app: "{{app.name}}"
+        version: "{{app.version}}"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+
+    # Container Configuration
+    container:
+      name: "{{app.name}}"
+      port: 8080
+
+      # Environment Variables
+      environment:
+        JVAGENT_ADMIN_PASSWORD: "${JVAGENT_ADMIN_PASSWORD}"
+        JVSPATIAL_DB_TYPE: "json"
+        JVSPATIAL_DB_PATH: "/data/jvagent_db"
+        LOG_LEVEL: "INFO"
+
+      # Resource Limits
+      resources:
+        requests:
+          cpu: "100m"      # 0.1 CPU cores
+          memory: "256Mi"  # 256 MB
+        limits:
+          cpu: "2000m"     # 2 CPU cores
+          memory: "2Gi"    # 2 GB
+
+      # Liveness Probe (restart container if unhealthy)
+      liveness_probe:
+        http_get:
+          path: "/health"
+          port: 8080
+        initial_delay_seconds: 30
+        period_seconds: 10
+        timeout_seconds: 3
+        failure_threshold: 3
+
+      # Readiness Probe (remove from load balancer if not ready)
+      readiness_probe:
+        http_get:
+          path: "/ready"
+          port: 8080
+        initial_delay_seconds: 5
+        period_seconds: 5
+        timeout_seconds: 2
+        failure_threshold: 3
+
+  # Service Configuration
+  service:
+    type: "LoadBalancer"  # ClusterIP, NodePort, or LoadBalancer
+    port: 80              # External port
+    target_port: 8080     # Container port
+    annotations: {}
+      # Example: AWS Load Balancer annotations
+      # service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+  # Ingress Configuration (optional)
+  ingress:
+    enabled: false
+    class_name: "nginx"
+    annotations: {}
+      # Example: cert-manager annotation
+      # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    rules:
+      - host: "my-app.example.com"
+        paths:
+          - path: "/"
+            path_type: "Prefix"
+    tls: []
+      # Example TLS configuration
+      # - hosts:
+      #     - "my-app.example.com"
+      #   secret_name: "my-app-tls"
+
+  # Persistent Storage Configuration (optional)
+  persistence:
+    enabled: false
+    storage_class: "gp2"  # Storage class name
+    size: "10Gi"          # Volume size
+    mount_path: "/data"   # Mount path in container
+    access_modes:
+      - "ReadWriteOnce"
+
+  # ConfigMap Configuration (optional)
+  config_map:
+    enabled: false
+    data: {}
+      # Example: application configuration
+      # app.conf: |
+      #   debug: false
+      #   max_connections: 100
+
+  # Horizontal Pod Autoscaler (optional)
+  autoscaling:
+    enabled: false
+    min_replicas: 2
+    max_replicas: 10
+    target_cpu_utilization: 80      # Scale when CPU > 80%
+    target_memory_utilization: 80   # Scale when memory > 80%
