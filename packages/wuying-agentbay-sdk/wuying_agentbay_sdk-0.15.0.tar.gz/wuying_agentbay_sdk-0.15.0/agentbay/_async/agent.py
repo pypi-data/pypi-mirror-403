@@ -1,0 +1,1142 @@
+import asyncio
+import json
+import sys
+from typing import TYPE_CHECKING, Type
+
+from .._common.exceptions import AgentBayError, AgentError
+from .._common.logger import get_logger
+from .._common.models.agent import (
+    ExecutionResult,
+    QueryResult,
+    DefaultSchema,
+    Schema,
+)
+from .base_service import AsyncBaseService
+
+if TYPE_CHECKING:
+    from .session import AsyncSession
+
+# Initialize logger for this module
+_logger = get_logger("agent")
+
+
+class AsyncAgent(AsyncBaseService):
+    """
+    An Agent to manipulate applications to complete specific tasks.
+
+    > **⚠️ Note**: Currently, for agent services (including ComputerUseAgent, BrowserUseAgent, and MobileUseAgent), we do not provide services for overseas users registered with **alibabacloud.com**.
+    """
+
+    def __init__(self, session: "AsyncSession"):
+        super().__init__(session)
+        self.browser = self.Browser(session)
+        self.computer = self.Computer(session)
+        self.mobile = self.Mobile(session)
+
+    def _handle_error(self, e):
+        """
+        Convert AgentBayError to AgentError for compatibility.
+
+        Args:
+            e (Exception): The exception to convert.
+
+        Returns:
+            AgentError: The converted exception.
+        """
+        if isinstance(e, AgentError):
+            return e
+        if isinstance(e, AgentBayError):
+            return AgentError(str(e))
+        return e
+
+    class _BaseTaskAgent(AsyncBaseService):
+        """Base class for task execution agents."""
+
+        def __init__(self, session: "AsyncSession", tool_prefix: str):
+            """
+            Initialize base task agent.
+
+            Args:
+                session: The session object.
+                tool_prefix: Prefix for MCP tool names (e.g., "flux" or "browser_use").
+            """
+            super().__init__(session)
+            self.tool_prefix = tool_prefix
+
+        def _get_tool_name(self, action: str) -> str:
+            """Get the full MCP tool name based on prefix and action."""
+            tool_map = {
+                "execute": "execute_task",
+                "get_status": "get_task_status",
+                "terminate": "terminate_task",
+            }
+            base_name = tool_map.get(action, action)
+            if self.tool_prefix:
+                return f"{self.tool_prefix}_{base_name}"
+            return base_name
+
+        def _handle_error(self, e):
+            """
+            Convert AgentBayError to AgentError for compatibility.
+
+            Args:
+                e (Exception): The exception to convert.
+
+            Returns:
+                AgentError: The converted exception.
+            """
+            if isinstance(e, AgentError):
+                return e
+            if isinstance(e, AgentBayError):
+                return AgentError(str(e))
+            return e
+
+        async def execute_task(self, task: str) -> ExecutionResult:
+            """
+            Execute a task in human language without waiting for completion (non-blocking).
+
+            This is a fire-and-return interface that immediately provides a task ID.
+            Call get_task_status to check the task status. You can control the timeout
+            of the task execution in your own code by setting the frequency of calling
+            get_task_status.
+
+            Args:
+                task: Task description in human language.
+
+            Returns:
+                ExecutionResult: Result object containing success status, task ID,
+                    task status, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                result = await session.agent.computer.execute_task("Open Chrome browser")
+                print(f"Task ID: {result.task_id}, Status: {result.task_status}")
+                status = await session.agent.computer.get_task_status(result.task_id)
+                print(f"Task status: {status.task_status}")
+                await session.delete()
+                ```
+            """
+            try:
+                args = {"task": task}
+                tool_name = self._get_tool_name("execute")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    task_id = content.get("task_id", "")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=True,
+                        error_message="",
+                        task_id=task_id,
+                        task_status="running",
+                    )
+                else:
+                    _logger.error("task execute failed")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message or "Failed to execute task",
+                        task_status="failed",
+                        task_id="",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return ExecutionResult(
+                    request_id="", success=False, error_message=str(handled_error)
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to execute: {handled_error}",
+                    task_status="failed",
+                    task_id="",
+                )
+
+        async def execute_task_and_wait(
+            self, task: str, timeout: int
+        ) -> ExecutionResult:
+            """
+            Execute a specific task described in human language synchronously.
+
+            This is a synchronous interface that blocks until the task is completed or
+            an error occurs, or timeout happens. The default polling interval is 3 seconds.
+
+            Args:
+                task: Task description in human language.
+                timeout: Maximum time to wait for task completion in seconds.
+                    Used to control how long to wait for task completion.
+
+            Returns:
+                ExecutionResult: Result object containing success status, task ID,
+                    task status, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                result = await session.agent.computer.execute_task_and_wait("Open Chrome browser", timeout=60)
+                print(f"Task result: {result.task_result}")
+                await session.delete()
+                ```
+            """
+            poll_interval = 3
+            max_poll_attempts = timeout // poll_interval
+
+            try:
+                args = {"task": task}
+                tool_name = self._get_tool_name("execute")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    task_id = content.get("task_id", "")
+                    tried_time: int = 0
+                    while tried_time < max_poll_attempts:
+                        query = await self.get_task_status(task_id)
+                        if query.task_status == "finished":
+                            return ExecutionResult(
+                                request_id=result.request_id,
+                                success=True,
+                                error_message="",
+                                task_id=task_id,
+                                task_status=query.task_status,
+                                task_result=query.task_product,
+                            )
+                        elif query.task_status == "failed":
+                            error_msg = query.error_message or "Failed to execute task."
+                            return ExecutionResult(
+                                request_id=query.request_id,
+                                success=False,
+                                error_message="Failed to execute task.",
+                                task_id=task_id,
+                                task_status=query.task_status,
+                            )
+                        elif query.task_status == "unsupported":
+                            error_msg = query.error_message or "Unsupported task."
+                            return ExecutionResult(
+                                request_id=query.request_id,
+                                success=False,
+                                error_message=error_msg,
+                                task_id=task_id,
+                                task_status=query.task_status,
+                            )
+                        _logger.info(
+                            f"⏳ Task {task_id} running 🚀: {query.task_action}."
+                        )
+                        await asyncio.sleep(poll_interval)
+                        tried_time += 1
+                    _logger.warning("⚠️ task execution timeout!")
+                    # Automatically terminate the task on timeout
+                    try:
+                        terminate_result = await self.terminate_task(task_id)
+                        if terminate_result.success:
+                            _logger.info(f"✅ Task {task_id} terminated successfully after timeout")
+                        else:
+                            _logger.warning(f"⚠️ Failed to terminate task {task_id} after timeout: {terminate_result.error_message}")
+                    except Exception as e:
+                        _logger.warning(f"⚠️ Exception while terminating task {task_id} after timeout: {e}")
+                    timeout_error_msg = f"Task execution timed out after {timeout} seconds. Task ID: {task_id}. Polled {tried_time} times (max: {max_poll_attempts})."
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=timeout_error_msg,
+                        task_id=task_id,
+                        task_status="failed",
+                        task_result=f"Task execution timed out after {timeout} seconds.",
+                    )
+                else:
+                    _logger.error("❌ Task execution failed")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message or "Failed to execute task",
+                        task_status="failed",
+                        task_id="",
+                        task_result="Task Failed",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_status="failed",
+                    task_id="",
+                    task_result="Task Failed",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to execute: {handled_error}",
+                    task_status="failed",
+                    task_id="",
+                    task_result="Task Failed",
+                )
+
+        async def get_task_status(self, task_id: str) -> QueryResult:
+            """
+            Get the status of the task with the given task ID.
+
+            Args:
+                task_id: The ID of the task to query.
+
+            Returns:
+                QueryResult: Result object containing success status, task status,
+                    task action, task product, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                result = await session.agent.computer.execute_task("Query the weather in Shanghai with Baidu")
+                status = await session.agent.computer.get_task_status(result.task_id)
+                print(f"Status: {status.task_status}, Action: {status.task_action}")
+                await session.delete()
+                ```
+            """
+            try:
+                args = {"task_id": task_id}
+                tool_name = self._get_tool_name("get_status")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    return QueryResult(
+                        success=True,
+                        request_id=result.request_id,
+                        error_message="",
+                        task_id=content.get("task_id", task_id),
+                        task_status=content.get("status", "finished"),
+                        task_action=content.get("action", ""),
+                        task_product=content.get("product", ""),
+                    )
+                else:
+                    return QueryResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message
+                        or "Failed to get task status",
+                        task_id=task_id,
+                        task_status="failed",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return QueryResult(
+                    request_id="",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_id=task_id,
+                    task_status="failed",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return QueryResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to get task status: {handled_error}",
+                    task_id=task_id,
+                    task_status="failed",
+                )
+
+        async def terminate_task(self, task_id: str) -> ExecutionResult:
+            """
+            Terminate a task with a specified task ID.
+
+            Args:
+                task_id: The ID of the running task to terminate.
+
+            Returns:
+                ExecutionResult: Result object containing success status, task ID,
+                    task status, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                result = await session.agent.computer.execute_task("Query the weather in Shanghai with Baidu")
+                terminate_result = await session.agent.computer.terminate_task(result.task_id)
+                print(f"Terminated: {terminate_result.success}")
+                await session.delete()
+                ```
+            """
+            _logger.info("Terminating task")
+            try:
+                args = {"task_id": task_id}
+                tool_name = self._get_tool_name("terminate")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    task_id = content.get("task_id", task_id)
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=True,
+                        error_message="",
+                        task_id=task_id,
+                        task_status=content.get("status", "finised"),
+                    )
+                else:
+                    content = json.loads(result.data) if result.data else {}
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message
+                        or "Failed to terminate task",
+                        task_id=task_id,
+                        task_status="failed",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return ExecutionResult(
+                    request_id=result.request_id if "result" in locals() else "",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_id=task_id,
+                    task_status="failed",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to terminate: {handled_error}",
+                    task_id=task_id,
+                    task_status="failed",
+                )
+
+    class Computer(_BaseTaskAgent):
+        """
+        An Agent to perform tasks on the computer.
+
+        > **⚠️ Note**: Currently, for agent services (including ComputerUseAgent, BrowserUseAgent, and MobileUseAgent), we do not provide services for overseas users registered with **alibabacloud.com**.
+        """
+
+        def __init__(self, session: "AsyncSession"):
+            super().__init__(session, tool_prefix="flux")
+
+    class Browser(_BaseTaskAgent):
+        """
+        An Agent(⚠️ Still in BETA) to perform tasks on the browser
+
+        > **⚠️ Note**: Currently, for agent services (including ComputerUseAgent, BrowserUseAgent, and MobileUseAgent), we do not provide services for overseas users registered with **alibabacloud.com**.
+        """
+
+        def __init__(self, session: "AsyncSession"):
+            super().__init__(session, tool_prefix="browser_use")
+
+        async def execute_task(
+            self,
+            task: str,
+            use_vision: bool = False,
+            output_schema: Type[Schema] = None,
+        ) -> ExecutionResult:
+            """
+            Execute a task described in human language on a browser without waiting for completion (non-blocking).
+
+            This is a fire-and-return interface that immediately provides a task ID.
+            Call get_task_status to check the task status. You can control the timeout
+            of the task execution in your own code by setting the frequency of calling
+            get_task_status.
+
+            Args:
+                task: Task description in human language.
+                use_vision: Whether to use vision to performe the task.
+                output_schema: The schema of the structured output.
+
+            Returns:
+                ExecutionResult: Result object containing success status, task ID,
+                    task status, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                class WeatherSchema(BaseModel):
+                    city:str
+                    weather: str
+                result = await session.agent.browser.execute_task(task="Query the weather in Shanghai",use_vision=False, output_schema=WeatherSchema)
+                print(
+                    f"Task ID: {result.task_id}, Status: {result.task_status}")
+                status = await session.agent.browser.get_task_status(result.task_id)
+                print(f"Task status: {status.task_status}")
+                await session.delete()
+                ```
+            """
+            try:
+                args = {
+                    "task": task,
+                    "use_vision": use_vision,
+                }
+                if output_schema:
+                    args["output_schema"] = json.dumps(
+                        output_schema.model_json_schema()
+                    )
+                else:
+                    args["output_schema"] = json.dumps(
+                        DefaultSchema.model_json_schema()
+                    )
+
+                tool_name = self._get_tool_name("execute")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    task_id = content.get("task_id", "")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=True,
+                        error_message="",
+                        task_id=task_id,
+                        task_status="running",
+                    )
+                else:
+                    _logger.error("task execute failed")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message or "Failed to execute task",
+                        task_status="failed",
+                        task_id="",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return ExecutionResult(
+                    request_id="", success=False, error_message=str(handled_error)
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to execute: {handled_error}",
+                    task_status="failed",
+                    task_id="",
+                )
+
+        async def execute_task_and_wait(
+            self,
+            task: str,
+            timeout: int,
+            use_vision: bool = False,
+            output_schema: Type[Schema] = None,
+        ) -> ExecutionResult:
+            """
+            Execute a task described in human language on a browser synchronously.
+
+            This is a synchronous interface that blocks until the task is completed or
+            an error occurs, or timeout happens. The default polling interval is 3 seconds.
+
+            Args:
+                task: Task description in human language.
+                timeout: Maximum time to wait for task completion in seconds.
+                    Used to control how long to wait for task completion.
+                use_vision: Whether to use vision to performe the task.
+                output_schema: The schema of the structured output.
+
+            Returns:
+                ExecutionResult: Result object containing success status, task ID,
+                    task status, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                class WeatherSchema(BaseModel):
+                    city:str
+                    weather: str
+                result = await session.agent.computer.execute_task_and_wait(task="Query the weather in Shanghai",timeout=60, use_vision=False, output_schema=WeatherSchema)
+                print(f"Task result: {result.task_result}")
+                await session.delete()
+                ```
+            """
+            poll_interval = 3
+            max_poll_attempts = timeout // poll_interval
+
+            try:
+                args = {
+                    "task": task,
+                    "use_vision": use_vision,
+                }
+                if output_schema:
+                    args["output_schema"] = json.dumps(
+                        output_schema.model_json_schema()
+                    )
+                else:
+                    args["output_schema"] = json.dumps(
+                        DefaultSchema.model_json_schema()
+                    )
+
+                tool_name = self._get_tool_name("execute")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    task_id = content.get("task_id", "")
+                    tried_time: int = 0
+                    while tried_time < max_poll_attempts:
+                        query = await self.get_task_status(task_id)
+                        if query.task_status == "finished":
+                            return ExecutionResult(
+                                request_id=result.request_id,
+                                success=True,
+                                error_message="",
+                                task_id=task_id,
+                                task_status=query.task_status,
+                                task_result=query.task_product,
+                            )
+                        elif query.task_status == "failed":
+                            error_msg = query.error_message or "Failed to execute task."
+                            return ExecutionResult(
+                                request_id=query.request_id,
+                                success=False,
+                                error_message="Failed to execute task.",
+                                task_id=task_id,
+                                task_status=query.task_status,
+                            )
+                        elif query.task_status == "unsupported":
+                            error_msg = query.error_message or "Unsupported task."
+                            return ExecutionResult(
+                                request_id=query.request_id,
+                                success=False,
+                                error_message=error_msg,
+                                task_id=task_id,
+                                task_status=query.task_status,
+                            )
+                        _logger.info(
+                            f"⏳ Task {task_id} running 🚀: {query.task_action}."
+                        )
+                        await asyncio.sleep(poll_interval)
+                        tried_time += 1
+                    _logger.warning("⚠️ task execution timeout!")
+                    # Automatically terminate the task on timeout
+                    try:
+                        terminate_result = await self.terminate_task(task_id)
+                        if terminate_result.success:
+                            _logger.info(
+                                f"✅ Task {task_id} terminated successfully after timeout"
+                            )
+                        else:
+                            _logger.warning(
+                                f"⚠️ Failed to terminate task {task_id} after timeout: {terminate_result.error_message}"
+                            )
+                    except Exception as e:
+                        _logger.warning(
+                            f"⚠️ Exception while terminating task {task_id} after timeout: {e}"
+                        )
+                    timeout_error_msg = f"Task execution timed out after {timeout} seconds. Task ID: {task_id}. Polled {tried_time} times (max: {max_poll_attempts})."
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=timeout_error_msg,
+                        task_id=task_id,
+                        task_status="failed",
+                        task_result=f"Task execution timed out after {timeout} seconds.",
+                    )
+                else:
+                    _logger.error("❌ Task execution failed")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message or "Failed to execute task",
+                        task_status="failed",
+                        task_id="",
+                        task_result="Task Failed",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_status="failed",
+                    task_id="",
+                    task_result="Task Failed",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to execute: {handled_error}",
+                    task_status="failed",
+                    task_id="",
+                    task_result="Task Failed",
+                )
+
+    class Mobile(_BaseTaskAgent):
+        """
+        An Agent to perform tasks on mobile devices.
+
+        > **⚠️ Note**: Currently, for agent services (including ComputerUseAgent, BrowserUseAgent, and MobileUseAgent), we do not provide services for overseas users registered with **alibabacloud.com**.
+        """
+
+        def __init__(self, session: "AsyncSession"):
+            super().__init__(session, tool_prefix="")
+
+        async def execute_task(
+            self,
+            task: str,
+            max_steps: int = 50,
+        ) -> ExecutionResult:
+            """
+            Execute a task in human language without waiting for completion
+            (non-blocking).
+
+            This is a fire-and-return interface that immediately provides a task ID.
+            Call get_task_status to check the task status. You can control the timeout
+            of the task execution in your own code by setting the frequency of calling
+            get_task_status.
+
+            Args:
+                task: Task description in human language.
+                max_steps: Maximum number of steps (clicks/swipes/etc.) allowed.
+                    Used to prevent infinite loops or excessive resource consumption.
+                    Default is 50.
+
+            Returns:
+                ExecutionResult: Result object containing success status, task ID,
+                    task status, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                result = await session.agent.mobile.execute_task(
+                    "Open WeChat app", max_steps=100
+                )
+                print(f"Task ID: {result.task_id}, Status: {result.task_status}")
+                status = await session.agent.mobile.get_task_status(result.task_id)
+                print(f"Task status: {status.task_status}")
+                await session.delete()
+                ```
+            """
+            args = {
+                "task": task,
+                "max_steps": max_steps,
+            }
+
+            try:
+                tool_name = self._get_tool_name("execute")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+
+                if result.success:
+                    content = json.loads(result.data)
+                    task_id = content.get("taskId") or content.get("task_id", "")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=True,
+                        error_message="",
+                        task_id=task_id,
+                        task_status="running",
+                    )
+                else:
+                    error_message = result.error_message or "Failed to execute task"
+                    _logger.error(f"Task execution failed: {error_message}")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=error_message,
+                        task_status="failed",
+                        task_id="",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                _logger.error(f"Task execution failed: {handled_error}")
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_status="failed",
+                    task_id="",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                _logger.error(f"Task execution failed: {handled_error}")
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to execute: {handled_error}",
+                    task_status="failed",
+                    task_id="",
+                )
+
+        async def execute_task_and_wait(
+            self,
+            task: str,
+            timeout: int,
+            max_steps: int = 50,
+        ) -> ExecutionResult:
+            """
+            Execute a specific task described in human language synchronously.
+
+            This is a synchronous interface that blocks until the task is
+            completed or an error occurs, or timeout happens. The default
+            polling interval is 3 seconds.
+
+            Args:
+                task: Task description in human language.
+                timeout: Maximum time to wait for task completion in seconds.
+                    Used to control how long to wait for task completion.
+                max_steps: Maximum number of steps (clicks/swipes/etc.) allowed.
+                    Used to prevent infinite loops or excessive resource consumption.
+                    Default is 50.
+
+            Returns:
+                ExecutionResult: Result object containing success status, task ID,
+                    task status, and error message if any.
+
+            Example:
+                ```python
+                session_result = await agent_bay.create()
+                session = session_result.session
+                result = await session.agent.mobile.execute_task_and_wait(
+                    "Open WeChat app and send a message",
+                    timeout=180,
+                    max_steps=100
+                )
+                print(f"Task result: {result.task_result}")
+                await session.delete()
+                ```
+            """
+            args = {
+                "task": task,
+                "max_steps": max_steps,
+            }
+
+            poll_interval = 3
+            max_poll_attempts = timeout // poll_interval
+
+            try:
+                tool_name = self._get_tool_name("execute")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+
+                if not result.success:
+                    error_message = result.error_message or "Failed to execute task"
+                    _logger.error(f"Task execution failed: {error_message}")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=error_message,
+                        task_status="failed",
+                        task_id="",
+                        task_result="Task Failed",
+                    )
+
+                content = json.loads(result.data)
+                task_id = content.get("taskId") or content.get("task_id", "")
+
+                if not task_id:
+                    error_message = content.get("error") or "Failed to get task_id from response"
+                    _logger.error(f"Failed to get task_id from response: {error_message}")
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=error_message,
+                        task_status="failed",
+                        task_id="",
+                        task_result="Task Failed",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                _logger.error(f"Task execution failed: {handled_error}")
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_status="failed",
+                    task_id="",
+                    task_result="Task Failed",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                _logger.error(f"Task execution failed: {handled_error}")
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to execute: {handled_error}",
+                    task_status="failed",
+                    task_id="",
+                    task_result="Task Failed",
+                )
+
+            last_request_id = result.request_id
+            tried_time: int = 0
+            processed_timestamps = set()  # Track processed stream fragments by timestamp_ms
+            last_query = None  # Save last query status for timeout result
+            while tried_time < max_poll_attempts:
+                query = await self.get_task_status(task_id)
+                # Only update last_query if stream is not empty
+                if query.stream:
+                    last_query = query
+
+                # Process new stream fragments for real-time output
+                if query.stream:
+                    for stream_item in query.stream:
+                        if isinstance(stream_item, dict):
+                            timestamp = stream_item.get("timestamp_ms")
+                            # Use timestamp_ms to identify new fragments (handles backend returning snapshots)
+                            if timestamp is not None and timestamp not in processed_timestamps:
+                                processed_timestamps.add(timestamp)  # Mark as processed immediately
+
+                                # Output immediately for true streaming effect
+                                content = stream_item.get("content", "")
+                                reasoning = stream_item.get("reasoning", "")
+                                if content:
+                                    # Use sys.stdout.write for streaming output without automatic newlines
+                                    sys.stdout.write(content)
+                                    sys.stdout.flush()  # Flush immediately for real-time display
+                                if reasoning:
+                                    _logger.debug(f"💭 {reasoning}")
+
+                # Check for error field
+                if query.error:
+                    _logger.warning(f"⚠️ Task error: {query.error}")
+
+                if query.task_status == "completed":
+                    return ExecutionResult(
+                        request_id=last_request_id,
+                        success=True,
+                        error_message="",
+                        task_id=task_id,
+                        task_status=query.task_status,
+                        task_result=query.task_product,
+                    )
+                elif query.task_status == "failed":
+                    error_msg = query.error or query.error_message or "Failed to execute task."
+                    return ExecutionResult(
+                        request_id=query.request_id,
+                        success=False,
+                        error_message=error_msg,
+                        task_id=task_id,
+                        task_status=query.task_status,
+                    )
+                elif query.task_status == "cancelled":
+                    error_msg = query.error or query.error_message or "Task was cancelled."
+                    return ExecutionResult(
+                        request_id=query.request_id,
+                        success=False,
+                        error_message=error_msg,
+                        task_id=task_id,
+                        task_status=query.task_status,
+                    )
+                elif query.task_status == "unsupported":
+                    error_msg = query.error or query.error_message or "Unsupported task."
+                    return ExecutionResult(
+                        request_id=query.request_id,
+                        success=False,
+                        error_message=error_msg,
+                        task_id=task_id,
+                        task_status=query.task_status,
+                    )
+                _logger.info(
+                    f"⏳ Task {task_id} running 🚀: {query.task_action}."
+                )
+                await asyncio.sleep(poll_interval)
+                tried_time += 1
+
+            _logger.warning("⚠️ task execution timeout!")
+            try:
+                terminate_result = await self.terminate_task(task_id)
+                if terminate_result.success:
+                    _logger.info(f"✅ Terminate request sent for task {task_id} after timeout")
+                else:
+                    _logger.warning(f"⚠️ Failed to terminate task {task_id} after timeout: {terminate_result.error_message}")
+            except Exception as e:
+                _logger.warning(f"⚠️ Exception while terminating task {task_id} after timeout: {e}")
+
+            _logger.info(f"⏳ Waiting for task {task_id} to be fully terminated...")
+            terminate_poll_interval = 1
+            max_terminate_poll_attempts = 30
+            terminate_tried_time = 0
+            task_terminated_confirmed = False
+
+            while terminate_tried_time < max_terminate_poll_attempts:
+                try:
+                    status_query = await self.get_task_status(task_id)
+                    if not status_query.success:
+                        error_msg = status_query.error_message or ""
+                        if error_msg.startswith("Task not found or already finished"):
+                            _logger.info(f"✅ Task {task_id} confirmed terminated (not found or finished)")
+                            task_terminated_confirmed = True
+                            break
+                    await asyncio.sleep(terminate_poll_interval)
+                    terminate_tried_time += 1
+                except Exception as e:
+                    _logger.warning(f"⚠️ Exception while polling task status during termination: {e}")
+                    await asyncio.sleep(terminate_poll_interval)
+                    terminate_tried_time += 1
+
+            if not task_terminated_confirmed:
+                _logger.warning(f"⚠️ Timeout waiting for task {task_id} to be fully terminated")
+
+            timeout_error_msg = f"Task execution timed out after {timeout} seconds. Task ID: {task_id}. Polled {tried_time} times (max: {max_poll_attempts})."
+
+            # Build task_result with last query status information
+            task_result_parts = [f"Task execution timed out after {timeout} seconds."]
+
+            if last_query:
+                # Concatenate stream content from last query
+                if last_query.stream:
+                    stream_content_parts = []
+                    for stream_item in last_query.stream:
+                        if isinstance(stream_item, dict):
+                            content = stream_item.get("content", "")
+                            if content:
+                                stream_content_parts.append(content)
+
+                    if stream_content_parts:
+                        stream_content = "".join(stream_content_parts)
+                        task_result_parts.append(f"Last task status output: {stream_content}")
+
+                # Also add other status information if available
+                if last_query.task_action:
+                    task_result_parts.append(f"Last action: {last_query.task_action}")
+                if last_query.task_product:
+                    task_result_parts.append(f"Last result: {last_query.task_product}")
+                if last_query.error:
+                    task_result_parts.append(f"Last error: {last_query.error}")
+                if last_query.task_status:
+                    task_result_parts.append(f"Last status: {last_query.task_status}")
+
+            task_result = " | ".join(task_result_parts)
+
+            return ExecutionResult(
+                request_id=last_request_id,
+                success=False,
+                error_message=timeout_error_msg,
+                task_id=task_id,
+                task_status="failed",
+                task_result=task_result,
+            )
+
+        async def get_task_status(self, task_id: str) -> QueryResult:
+            try:
+                args = {"task_id": task_id}
+                tool_name = self._get_tool_name("get_status")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    content_task_id = content.get("taskId") or content.get("task_id", task_id)
+                    task_product = content.get("result") or content.get("product", "")
+
+                    stream = content.get("stream", [])
+                    if not isinstance(stream, list):
+                        _logger.warning(f"⚠️ Stream is not a list (type: {type(stream)}), converting to empty list")
+                        stream = []
+
+                    error = content.get("error", "")
+
+                    return QueryResult(
+                        success=True,
+                        request_id=result.request_id,
+                        error_message="",
+                        task_id=content_task_id,
+                        task_status=content.get("status", "completed"),
+                        task_action=content.get("action", ""),
+                        task_product=task_product,
+                        stream=stream,
+                        error=error,
+                    )
+                else:
+                    return QueryResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message
+                        or "Failed to get task status",
+                        task_id=task_id,
+                        task_status="failed",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return QueryResult(
+                    request_id="",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_id=task_id,
+                    task_status="failed",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return QueryResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to get task status: {handled_error}",
+                    task_id=task_id,
+                    task_status="failed",
+                )
+
+        async def terminate_task(self, task_id: str) -> ExecutionResult:
+            _logger.info("Terminating task")
+            try:
+                args = {"task_id": task_id}
+                tool_name = self._get_tool_name("terminate")
+                result = await self.session.call_mcp_tool(
+                    tool_name,
+                    args,
+                )
+                if result.success:
+                    content = json.loads(result.data)
+                    content_task_id = content.get("taskId") or content.get("task_id", task_id)
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=True,
+                        error_message="",
+                        task_id=content_task_id,
+                        task_status=content.get("status", "cancelling"),
+                    )
+                else:
+                    content = json.loads(result.data) if result.data else {}
+                    return ExecutionResult(
+                        request_id=result.request_id,
+                        success=False,
+                        error_message=result.error_message
+                        or "Failed to terminate task",
+                        task_id=task_id,
+                        task_status="failed",
+                    )
+            except AgentError as e:
+                handled_error = self._handle_error(e)
+                return ExecutionResult(
+                    request_id=result.request_id if "result" in locals() else "",
+                    success=False,
+                    error_message=str(handled_error),
+                    task_id=task_id,
+                    task_status="failed",
+                )
+            except Exception as e:
+                handled_error = self._handle_error(AgentBayError(str(e)))
+                return ExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=f"Failed to terminate: {handled_error}",
+                    task_id=task_id,
+                    task_status="failed",
+                )

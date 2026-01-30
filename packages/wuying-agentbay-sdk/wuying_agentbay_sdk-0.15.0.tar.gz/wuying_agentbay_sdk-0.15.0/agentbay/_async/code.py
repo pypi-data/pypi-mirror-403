@@ -1,0 +1,390 @@
+import json
+from typing import Any, Dict, List, Optional
+from .._common.exceptions import AgentBayError, CommandError
+from .._common.logger import get_logger
+from .._common.models.code import (
+    CodeExecutionResult,
+    EnhancedCodeExecutionResult,
+    ExecutionLogs,
+    ExecutionResult,
+    ExecutionError,
+)
+from .._common.models.response import ApiResponse
+from .base_service import AsyncBaseService
+
+# Initialize _logger for this module
+_logger = get_logger("code")
+
+
+class AsyncCode(AsyncBaseService):
+    """
+    Handles code execution operations in the AgentBay cloud environment.
+    """
+
+    def _handle_error(self, e):
+        """
+        Convert AgentBayError to CommandError for compatibility.
+
+        Args:
+            e (Exception): The exception to convert.
+
+        Returns:
+            CommandError: The converted exception.
+        """
+        if isinstance(e, CommandError):
+            return e
+        if isinstance(e, AgentBayError):
+            return CommandError(str(e))
+        return e
+
+    def _parse_response_body(
+        self, body: Dict[str, Any], parse_json: bool = False
+    ) -> Any:
+        """
+        Parses the response body from the MCP tool, supporting rich output.
+
+        Args:
+            body (Dict[str, Any]): The response body.
+            parse_json (bool, optional): Whether to parse the text as JSON.
+            Defaults to False.
+
+        Returns:
+            Any: The parsed content, typically EnhancedCodeExecutionResult.
+        """
+        try:
+            response_data = body.get("Data", {})
+            if not response_data:
+                # Handle empty data
+                raise AgentBayError("No data field in response")
+
+            # First, check if the response is in the legacy format where JSON is in content[0].text
+            content = response_data.get("content", [])
+            if content and isinstance(content, list) and len(content) > 0:
+                content_item = content[0]
+                text_string = content_item.get("text")
+                if text_string:
+                    try:
+                        # Try to parse the text as JSON
+                        parsed_json = json.loads(text_string)
+                        if isinstance(parsed_json, dict) and ("result" in parsed_json or "executionError" in parsed_json):
+                            # This looks like our expected format, use it as response_data
+                            response_data = parsed_json
+                    except json.JSONDecodeError:
+                        # If not valid JSON, fall through to legacy handling
+                        pass
+
+            # 1. New JSON format structure check (based on actual user feedback)
+            # {
+            #    "executionError": "",
+            #    "result": ["{\"isMainResult\":false,\"text/html\":\"<h1>...\"}"],
+            #    "stderr": [],
+            #    "stdout": []
+            # }
+            if "result" in response_data and isinstance(response_data["result"], list):
+                # Parse logs
+                logs = ExecutionLogs(
+                    stdout=response_data.get("stdout", []),
+                    stderr=response_data.get("stderr", [])
+                )
+
+                # Parse results
+                results = []
+                for res_item in response_data.get("result", []):
+                    # Handle both dict (if already parsed) and string (if JSON stringified)
+                    parsed_item = res_item
+
+                    if isinstance(res_item, str):
+                        try:
+                            parsed_item = json.loads(res_item)
+                            # Handle potential double-encoding
+                            if isinstance(parsed_item, str):
+                                try:
+                                    parsed_item = json.loads(parsed_item)
+                                except json.JSONDecodeError:
+                                    pass
+                        except json.JSONDecodeError:
+                            # Keep as plain string if not valid JSON
+                            parsed_item = res_item
+
+                    if isinstance(parsed_item, dict):
+                        result_obj = ExecutionResult(
+                            text=parsed_item.get("text/plain") or parsed_item.get("text"), # Handle both keys
+                            html=parsed_item.get("text/html") or parsed_item.get("html"),
+                            markdown=parsed_item.get("text/markdown") or parsed_item.get("markdown"),
+                            png=parsed_item.get("image/png") or parsed_item.get("png"),
+                            jpeg=parsed_item.get("image/jpeg") or parsed_item.get("jpeg"),
+                            svg=parsed_item.get("image/svg+xml") or parsed_item.get("svg"),
+                            json=parsed_item.get("application/json") or parsed_item.get("json"),
+                            latex=parsed_item.get("text/latex") or parsed_item.get("latex"),
+                            chart=parsed_item.get("application/vnd.vegalite.v4+json") or parsed_item.get("application/vnd.vegalite.v5+json") or parsed_item.get("chart"),
+                            is_main_result=parsed_item.get("isMainResult", False) or parsed_item.get("is_main_result", False)
+                        )
+                        results.append(result_obj)
+                    else:
+                        # Fallback for plain text string
+                        results.append(ExecutionResult(text=str(parsed_item)))
+
+                # Parse error if present
+                error_obj = None
+                execution_error = response_data.get("executionError")
+                if execution_error:
+                    # executionError might be a string or object in this format
+                     error_obj = ExecutionError(
+                        name="ExecutionError",
+                        value=str(execution_error),
+                        traceback=""
+                    )
+
+                return EnhancedCodeExecutionResult(
+                    execution_count=response_data.get("execution_count"),
+                    execution_time=response_data.get("execution_time", 0.0),
+                    logs=logs,
+                    results=results,
+                    error=error_obj,
+                    success=not bool(execution_error) and not response_data.get("isError", False)
+                )
+
+            # 2. Check if this is a rich response (legacy/speculated format with 'logs' key)
+            is_rich = "logs" in response_data or "results" in response_data
+
+            if is_rich:
+                # Parse logs
+                logs_data = response_data.get("logs", {})
+                logs = ExecutionLogs(
+                    stdout=logs_data.get("stdout", []),
+                    stderr=logs_data.get("stderr", [])
+                )
+
+                # Parse results
+                results = []
+                for res_data in response_data.get("results", []):
+                    result_obj = ExecutionResult(
+                        text=res_data.get("text"),
+                        html=res_data.get("html"),
+                        markdown=res_data.get("markdown"),
+                        png=res_data.get("png"),
+                        jpeg=res_data.get("jpeg"),
+                        svg=res_data.get("svg"),
+                        json=res_data.get("json"),
+                        latex=res_data.get("latex"),
+                        chart=res_data.get("chart"),
+                        is_main_result=res_data.get("is_main_result", False)
+                    )
+                    results.append(result_obj)
+
+                # Parse error if present
+                error_obj = None
+                error_data = response_data.get("error")
+                if error_data:
+                    error_obj = ExecutionError(
+                        name=error_data.get("name", "UnknownError"),
+                        value=error_data.get("value", ""),
+                        traceback=error_data.get("traceback", "")
+                    )
+
+                return EnhancedCodeExecutionResult(
+                    execution_count=response_data.get("execution_count"),
+                    execution_time=response_data.get("execution_time", 0.0),
+                    logs=logs,
+                    results=results,
+                    error=error_obj,
+                    success=not response_data.get("isError", False)
+                )
+
+            # 3. Fallback to existing logic for backward compatibility / legacy responses
+            if response_data.get("isError", False):
+                error_content = response_data.get("content", [])
+                error_message = "; ".join(
+                    item.get("text", "Unknown error")
+                    for item in error_content
+                    if isinstance(item, dict)
+                )
+                raise AgentBayError(f"Error in response: {error_message}")
+
+            # Handle 'content' field for legacy responses
+            content = response_data.get("content", [])
+            if content and isinstance(content, list):
+                content_item = content[0]
+                text_string = content_item.get("text")
+                if text_string is not None:
+                    # Wrap legacy text in EnhancedCodeExecutionResult
+                    return EnhancedCodeExecutionResult(
+                        success=True,
+                        logs=ExecutionLogs(stdout=[text_string]), # Assume stdout/result mix
+                        results=[ExecutionResult(text=text_string, is_main_result=True)]
+                    )
+
+            # If no content, try other fields or raise
+            raise AgentBayError("Unknown response format")
+
+        except AgentBayError as e:
+            # Transform AgentBayError to the expected type
+            handled_error = self._handle_error(e)
+            raise handled_error
+        except Exception as e:
+            # Transform AgentBayError to the expected type
+            handled_error = self._handle_error(
+                AgentBayError(f"Error parsing response body: {e}")
+            )
+            raise handled_error
+
+    async def run_code(
+        self, code: str, language: str, timeout_s: int = 60
+    ) -> EnhancedCodeExecutionResult:
+        """
+        Execute code in the specified language with a timeout.
+
+        Args:
+            code: The code to execute.
+            language: The programming language of the code. Case-insensitive.
+                Supported values: 'python', 'javascript', 'r', 'java'.
+            timeout_s: The timeout for the code execution in seconds. Default is 60s.
+                Note: Due to gateway limitations, each request cannot exceed 60 seconds.
+
+        Returns:
+            EnhancedCodeExecutionResult: Result object containing success status, execution
+                result, and error message if any.
+
+        Raises:
+            CommandError: If the code execution fails or if an unsupported language is
+                specified.
+
+        Important:
+            The `run_code` method requires a session created with the `code_latest`
+            image to function properly. If you encounter errors indicating that the
+            tool is not found, make sure to create your session with
+            `image_id="code_latest"` in the `CreateSessionParams`.
+
+        Example:
+            Execute Python code in a code execution environment::
+
+                from agentbay import AsyncAgentBay, CreateSessionParams
+
+                agent_bay = AsyncAgentBay(api_key="your_api_key")
+                result = await agent_bay.create(CreateSessionParams(image_id="code_latest"))
+                code_result = await result.session.code.run_code("print('Hello')", "python")
+                print(code_result.result)
+                await result.session.delete()
+        """
+        try:
+            def _normalize_tool_data_to_response_data(data: Any) -> Dict[str, Any]:
+                """
+                Normalize tool output into a dict shape consumable by _parse_response_body().
+
+                Session.call_mcp_tool may return either:
+                - dict (already structured response data), or
+                - str (plain text, or JSON string with rich output).
+                """
+                if isinstance(data, dict):
+                    return data
+
+                if isinstance(data, str):
+                    text = data
+                    stripped = text.strip()
+                    if stripped:
+                        try:
+                            parsed = json.loads(stripped)
+                            if isinstance(parsed, dict):
+                                return parsed
+                        except json.JSONDecodeError:
+                            pass
+                    return {"content": [{"text": text}]}
+
+                return {"content": [{"text": "" if data is None else str(data)}]}
+
+            # Normalize and validate language (case-insensitive)
+            raw_language = "" if language is None else str(language)
+            normalized_language = raw_language.strip().lower()
+
+            aliases = {
+                "py": "python",
+                "python3": "python",
+                "js": "javascript",
+                "node": "javascript",
+                "nodejs": "javascript",
+            }
+            canonical_language = aliases.get(normalized_language, normalized_language)
+
+            supported_languages = {"python", "javascript", "r", "java"}
+            if canonical_language not in supported_languages:
+                return EnhancedCodeExecutionResult(
+                    request_id="",
+                    success=False,
+                    error_message=(
+                        f"Unsupported language: {raw_language}. Supported languages are "
+                        "'python', 'javascript', 'r', and 'java'"
+                    ),
+                )
+
+            args = {"code": code, "language": canonical_language, "timeout_s": timeout_s}
+
+            result = await self._call_mcp_tool(
+                "run_code",
+                args,
+            )
+            _logger.debug(f"Run code response: {result}")
+
+            if not result.success:
+                return EnhancedCodeExecutionResult(
+                    request_id=result.request_id,
+                    success=False,
+                    error_message=result.error_message or "Failed to run code",
+                )
+
+            if isinstance(result.data, EnhancedCodeExecutionResult):
+                result.data.request_id = result.request_id
+                return result.data
+
+            response_data = _normalize_tool_data_to_response_data(result.data)
+            parsed = self._parse_response_body({"Data": response_data})
+            if isinstance(parsed, EnhancedCodeExecutionResult):
+                parsed.request_id = result.request_id
+                return parsed
+
+            return EnhancedCodeExecutionResult(
+                request_id=result.request_id,
+                success=True,
+                results=[ExecutionResult(text=str(result.data), is_main_result=True)],
+                logs=ExecutionLogs(stdout=[str(result.data)]),
+            )
+        except AgentBayError as e:
+            # Handle AgentBayError specifically - these are SDK-level errors
+            handled_error = self._handle_error(e)
+            _logger.error(f"AgentBay error during code execution: {e}")
+            return EnhancedCodeExecutionResult(
+                request_id="", 
+                success=False, 
+                error_message=f"AgentBay error: {handled_error}"
+            )
+        except CommandError as e:
+            # Handle CommandError - these are command execution specific errors
+            _logger.error(f"Command error during code execution: {e}")
+            return EnhancedCodeExecutionResult(
+                request_id="", 
+                success=False, 
+                error_message=f"Command error: {e}"
+            )
+        except Exception as e:
+            # Handle any other unexpected exceptions
+            _logger.exception(f"Unexpected error during code execution: {e}")
+            return EnhancedCodeExecutionResult(
+                request_id="",
+                success=False,
+                error_message=f"Failed to run code: {e}",
+            )
+
+    async def run(
+        self, code: str, language: str, timeout_s: int = 60
+    ) -> EnhancedCodeExecutionResult:
+        """
+        Alias of run_code() for better ergonomics and LLM friendliness.
+        """
+        return await self.run_code(code=code, language=language, timeout_s=timeout_s)
+
+    async def execute(
+        self, code: str, language: str, timeout_s: int = 60
+    ) -> EnhancedCodeExecutionResult:
+        """
+        Alias of run_code() for better ergonomics and LLM friendliness.
+        """
+        return await self.run_code(code=code, language=language, timeout_s=timeout_s)
