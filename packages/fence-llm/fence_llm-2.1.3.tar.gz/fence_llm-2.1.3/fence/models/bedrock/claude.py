@@ -1,0 +1,305 @@
+"""
+Claude models
+"""
+
+import logging
+
+from fence.models.bedrock.base import BedrockBase
+
+logger = logging.getLogger(__name__)
+
+MODEL_ID_V2 = "anthropic.anthropic.claude-v2"
+MODEL_ID_INSTANT = "anthropic.claude-instant-v1"
+MODEL_ID_SONNET = "anthropic.claude-3-sonnet-20240229-v1:0"
+MODEL_ID_SONNET_3_5_V2 = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+MODEL_ID_SONNET_3_5 = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+MODEL_ID_SONNET_3_7 = "anthropic.claude-3-7-sonnet-20250219-v1:0"
+MODEL_ID_HAIKU = "anthropic.claude-3-haiku-20240307-v1:0"
+MODEL_ID_HAIKU_4_5 = "anthropic.claude-haiku-4-5-20251001-v1:0"
+MODEL_ID_SONNET_4 = "anthropic.claude-sonnet-4-20250514-v1:0"
+MODEL_ID_OPUS_4 = "anthropic.claude-opus-4-20250514-v1:0"
+MODEL_ID_SONNET_4_5 = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+
+class ClaudeInstant(BedrockBase):
+    """Claude Instant model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude Instant model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_INSTANT
+        self.model_name = "Claude Instant"
+
+        super().__init__(**kwargs)
+
+
+class ClaudeHaiku(BedrockBase):
+    """Claude Haiku model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude Haiku model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_HAIKU
+        self.model_name = "Claude Haiku"
+
+        super().__init__(**kwargs)
+
+
+class ClaudeHaiku45(BedrockBase):
+    """Claude Haiku 4.5 model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude Haiku 4.5 model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_HAIKU_4_5
+        self.model_name = "Claude Haiku 4.5"
+
+        super().__init__(**kwargs)
+
+
+class ClaudeSonnet(BedrockBase):
+    """Claude Sonnet model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude Sonnet model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_SONNET
+        self.model_name = "Claude Sonnet"
+
+        super().__init__(**kwargs)
+
+
+class Claude35Sonnet(BedrockBase):
+    """Claude 3.5 Sonnet V1 model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude Sonnet 3.5 model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_SONNET_3_5
+        self.model_name = "Claude 3.5 Sonnet"
+
+        super().__init__(**kwargs)
+
+
+class Claude35SonnetV2(BedrockBase):
+    """Claude 3.5 Sonnet V2 model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude Sonnet 3 model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_SONNET_3_5_V2
+        self.model_name = "Claude 3.5 Sonnet V2"
+
+        super().__init__(**kwargs)
+
+
+class Claude37Sonnet(BedrockBase):
+    """Claude 3.7 Sonnet model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude 3.7 Sonnet model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_SONNET_3_7
+        self.model_name = "Claude 3.7 Sonnet"
+
+        super().__init__(**kwargs)
+
+
+class Claude4Sonnet(BedrockBase):
+    """Claude 4 Sonnet model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude 4 Sonnet model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_SONNET_4
+        self.model_name = "Claude 4 Sonnet"
+
+        super().__init__(**kwargs)
+
+
+class Claude4Opus(BedrockBase):
+    """Claude 4 Opus model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude 4 Opus model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_OPUS_4
+        self.model_name = "Claude 4 Opus"
+
+        super().__init__(**kwargs)
+
+
+class Claude45Sonnet(BedrockBase):
+    """Claude 4.5 Sonnet model class"""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a Claude 4.5 Sonnet model
+        :param str source: An indicator of where (e.g., which feature) the model is operating from.
+        :param **kwargs: Additional keyword arguments
+        """
+
+        self.model_id = MODEL_ID_SONNET_4_5
+        self.model_name = "Claude 4.5 Sonnet"
+
+        super().__init__(**kwargs)
+
+
+if __name__ == "__main__":
+
+    import json
+    from pydantic import BaseModel, Field
+
+    # Create model with tools
+    claude_with_tools = Claude37Sonnet(
+        cross_region="eu",
+        source="test",
+        metric_prefix="supertest",
+        extra_tags={"test": "test"},
+        region="eu-central-1",
+        toolConfig={
+            "tools": [
+                {
+                    "toolSpec": {
+                        "name": "top_song",
+                        "description": "Get the most popular song played on a radio station.",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "sign": {
+                                        "type": "string",
+                                        "description": "The call sign for the radio station for which you want the most popular song. Example calls signs are WZPZ, and WKRP.",
+                                    }
+                                },
+                                "required": ["sign"],
+                            }
+                        },
+                    }
+                }
+            ]
+        },
+    )
+
+    # Create model without tools
+    claude_without_tools = Claude35Sonnet(
+        source="test",
+        metric_prefix="supertest",
+        extra_tags={"test": "test"},
+        region="eu-central-1",
+    )
+
+    class CustomerReview(BaseModel):
+        rating: int = Field(..., description="The rating of the review.")
+        comment: str = Field(..., description="The comment of the review.")
+
+    claude_with_structured_output = Claude35Sonnet(
+        source="test",
+        metric_prefix="supertest",
+        extra_tags={"test": "test"},
+        region="eu-central-1",
+        output_structure=CustomerReview,
+    )
+
+    prompt = "What is the top music played on WABC?"
+    customer_review = (
+        "I love this product! It works great. Ten out of ten, would recommend."
+    )
+
+    # # Test with tools
+    # print("\n=== Testing with tools ===")
+
+    # print("\n1. Invoke without full_response:")
+    # response = claude_with_tools.invoke(prompt)
+    # print(response)
+
+    # print("\n2. Invoke with full_response:")
+    # response = claude_with_tools.invoke(prompt, full_response=True)
+    # print(response)
+
+    # print("\n3. Stream without full_response:")
+    # for chunk in claude_with_tools.stream(prompt):
+    #     print(chunk, end="")
+
+    # print("\n4. Stream with full_response:")
+    # for chunk in claude_with_tools.stream(prompt, full_response=False):
+    #     print(chunk, end="")
+
+    # # Test without tools
+    # print("\n=== Testing without tools ===")
+
+    # print("\n1. Invoke without full_response:")
+    # response = claude_without_tools.invoke(prompt)
+    # print(response)
+
+    # print("\n2. Invoke with full_response:")
+    # response = claude_without_tools.invoke(prompt, full_response=True)
+    # print(response)
+
+    # print("\n3. Stream without full_response:")
+    # for chunk in claude_without_tools.stream(prompt):
+    #     print(chunk, end="")
+
+    # print("\n4. Stream with full_response:")
+    # for chunk in claude_without_tools.stream(prompt, full_response=True):
+    #     print(chunk)
+
+    # Test with structured output
+    print("\n=== Testing with structured output ===")
+
+    # print("\n1. Invoke without full_response:")
+    # response = claude_with_structured_output.invoke(customer_review)
+    # print(response)
+
+    # print("\n2. Invoke with full_response:")
+    # response = claude_with_structured_output.invoke(customer_review, full_response=True)
+    # print(response)
+
+    print("\n3. Stream without full_response:")
+    output_buffer = ""
+    for chunk in claude_with_structured_output.stream(customer_review):
+        print(chunk, end="\n\n")
+        output_buffer += chunk
+    print(CustomerReview(**json.loads(output_buffer)))
+
+    # print("\n4. Stream with full_response:")
+    # for chunk in claude_with_structured_output.stream(
+    #     customer_review, full_response=True
+    # ):
+    #     print(chunk, end="\n\n")
