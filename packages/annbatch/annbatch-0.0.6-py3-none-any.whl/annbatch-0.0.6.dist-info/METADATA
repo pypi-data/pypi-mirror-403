@@ -1,0 +1,227 @@
+Metadata-Version: 2.4
+Name: annbatch
+Version: 0.0.6
+Summary: A minibatch loader for AnnData stores
+Project-URL: Documentation, https://annbatch.readthedocs.io/
+Project-URL: Homepage, https://github.com/scverse/annbatch
+Project-URL: Source, https://github.com/scverse/annbatch
+Author: Ilan Gold, Felix Fischer
+Maintainer-email: Ilan Gold <ilan.gold@scverse.org>, Felix Fischer <felix.fischer@lamin.ai>
+License: MIT License
+        
+        Copyright (c) 2025, Ilan Gold
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: <3.14,>=3.12
+Requires-Dist: anndata[lazy]>=0.12.6
+Requires-Dist: dask>=2025.9
+Requires-Dist: pandas>=2.2.2
+Requires-Dist: scipy>1.15
+Requires-Dist: session-info2
+Requires-Dist: tqdm
+Requires-Dist: zarr>=3.1.4
+Provides-Extra: cupy-cuda12
+Requires-Dist: cupy-cuda12x; extra == 'cupy-cuda12'
+Provides-Extra: cupy-cuda13
+Requires-Dist: cupy-cuda13x; extra == 'cupy-cuda13'
+Provides-Extra: dev
+Requires-Dist: pre-commit; extra == 'dev'
+Requires-Dist: twine>=4.0.2; extra == 'dev'
+Provides-Extra: doc
+Requires-Dist: docutils!=0.18.*,!=0.19.*,>=0.8; extra == 'doc'
+Requires-Dist: ipykernel; extra == 'doc'
+Requires-Dist: ipython; extra == 'doc'
+Requires-Dist: myst-nb>=1.1; extra == 'doc'
+Requires-Dist: pandas; extra == 'doc'
+Requires-Dist: scanpydoc[theme,typehints]>=0.15.3; extra == 'doc'
+Requires-Dist: sphinx-autodoc-typehints; extra == 'doc'
+Requires-Dist: sphinx-book-theme>=1; extra == 'doc'
+Requires-Dist: sphinx-copybutton; extra == 'doc'
+Requires-Dist: sphinx-issues>=5.0.1; extra == 'doc'
+Requires-Dist: sphinx-tabs; extra == 'doc'
+Requires-Dist: sphinx-toolbox>=3.8; extra == 'doc'
+Requires-Dist: sphinx<=8.2.3,>=8.1; extra == 'doc'
+Requires-Dist: sphinxcontrib-bibtex>=1; extra == 'doc'
+Requires-Dist: sphinxext-opengraph; extra == 'doc'
+Provides-Extra: test
+Requires-Dist: coverage; extra == 'test'
+Requires-Dist: pytest; extra == 'test'
+Requires-Dist: zarrs>=0.2.1; extra == 'test'
+Provides-Extra: torch
+Requires-Dist: torch>=2; extra == 'torch'
+Provides-Extra: zarrs
+Requires-Dist: zarrs>=0.2.1; extra == 'zarrs'
+Description-Content-Type: text/markdown
+
+<!--Links at the top because this document is split for docs home page-->
+
+[uv]: https://github.com/astral-sh/uv
+
+[scverse discourse]: https://discourse.scverse.org/
+
+[issue tracker]: https://github.com/scverse/annbatch/issues
+
+[tests]: https://github.com/scverse/annbatch/actions/workflows/test.yaml
+
+[documentation]: https://annbatch.readthedocs.io
+
+[changelog]: https://annbatch.readthedocs.io/en/latest/changelog.html
+
+[api documentation]: https://annbatch.readthedocs.io/en/latest/api.html
+
+[pypi]: https://pypi.org/project/annbatch
+
+[zarrs-python]: https://zarrs-python.readthedocs.io/
+
+[Lamin Labs]: https://lamin.ai/
+
+[scverse]: https://scverse.org/
+
+[in-depth section of our docs]: https://annbatch.readthedocs.io/en/latest/notebooks/example.html
+
+# annbatch
+
+> [!CAUTION]
+> This package does not have a stable API.
+> However, we do not anticipate the on-disk format to change in a fully incompatible manner.
+> Small changes to how we store the shuffled data may occur but you should always be able to load your data somehow i.e., they will never be fully breaking.
+> We will always provide lower-level APIs that should make this guarantee possible.
+
+[![Tests][badge-tests]][tests]
+[![Documentation][badge-docs]][documentation]
+[![PyPI](https://img.shields.io/pypi/v/annbatch.svg)](https://pypi.org/project/annbatch)
+[![Downloads](https://static.pepy.tech/badge/annbatch/month)](https://pepy.tech/project/annbatch)
+[![Downloads](https://static.pepy.tech/badge/annbatch)](https://pepy.tech/project/annbatch)
+
+[badge-tests]: https://img.shields.io/github/actions/workflow/status/scverse/annbatch/test.yaml?branch=main
+
+[badge-docs]: https://img.shields.io/readthedocs/annbatch
+
+A data loader and io utilities for minibatching on-disk AnnData, co-developed by [Lamin Labs][] and [scverse][]
+
+## Getting started
+
+Please refer to the [documentation][], in particular, the [API documentation][].
+
+## Installation
+
+You need to have Python 3.12 or newer installed on your system.
+If you don't have Python installed, we recommend installing [uv][].
+
+To install the latest release of `annbatch` from [PyPI][]:
+
+```bash
+pip install annbatch
+```
+
+We provide extras for `torch`, `cupy-cuda12`, `cupy-cuda13`, and [zarrs-python][].
+`cupy` provides accelerated handling of the data via `preload_to_gpu` once it has been read off disk and does not need to be used in conjunction with `torch`.
+> [!IMPORTANT]
+> [zarrs-python][] gives the necessary performance boost for the sharded data produced by our preprocessing functions to be useful when loading data off a local filesystem.
+
+## Detailed tutorial
+
+For a detailed tutorial, please see the [in-depth section of our docs][]
+
+## Basic usage example
+
+Basic preprocessing:
+
+```python
+from annbatch import DatasetCollection
+
+import zarr
+from pathlib import Path
+
+# Using zarrs is necessary for local filesystem performance.
+# Ensure you installed it using our `[zarrs]` extra i.e., `pip install annbatch[zarrs]` to get the right version.
+zarr.config.set(
+    {"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"}
+)
+
+# Create a collection at the given path. The subgroups will all be anndata stores.
+collection = DatasetCollection("path/to/output/collection.zarr")
+collection.add_adatas(
+    adata_paths=[
+        "path/to/your/file1.h5ad",
+        "path/to/your/file2.h5ad"
+    ],
+    shuffle=True,  # shuffling is needed if you want to use chunked access, but is the default
+)
+```
+
+Data loading:
+
+> [!IMPORTANT]
+> Without custom loading via `Loader.load_adata` *all* obs columns will be loaded and yielded potentially degrading performance.
+
+```python
+from pathlib import Path
+
+from annbatch import Loader
+import anndata as ad
+import zarr
+
+# Using zarrs is necessary for local filesystem performance.
+# Ensure you installed it using our `[zarrs]` extra i.e., `pip install annbatch[zarrs]` to get the right version.
+zarr.config.set(
+    {"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"}
+)
+
+# WARNING: Without custom loading *all* obs columns will be loaded and yielded potentially degrading performance.
+def custom_load_func(g: zarr.Group) -> ad.AnnData:
+    return ad.AnnData(X=ad.io.sparse_dataset(g["layers"]["counts"]), obs=ad.io.read_elem(g["obs"])[some_subset_of_columns_useful_for_training])
+
+# A non empty collection
+collection = DatasetCollection("path/to/output/collection.zarr")
+# This settings override ensures that you don't lose/alter your categorical codes when reading the data in!
+with ad.settings.override(remove_unused_categories=False):
+    ds = Loader(
+        batch_size=4096,
+        chunk_size=32,
+        preload_nchunks=256,
+    )
+    # `use_collection` automatically uses the on-disk `X` and full `obs` in the `Loader`
+    # but the `load_adata` arg can override this behavior
+    # (see `custom_load_func` above for an example of customization).
+    ds = ds.use_collection(collection, load_adata = custom_load_func)
+
+# Iterate over dataloader (plugin replacement for torch.utils.DataLoader)
+for batch in ds:
+    data, obs = batch["X"], batch["obs"]
+```
+
+> [!IMPORTANT]
+> For usage of our loader inside of `torch`, please see [this note](https://annbatch.readthedocs.io/en/latest/#user-configurable-sampling-strategy) for more info.
+> At the minimum, be aware that deadlocking will occur on linux unless you pass `multiprocessing_context="spawn"` to the `torch.utils.data.DataLoader` class.
+
+<!--FOOTER-->
+
+## Release notes
+
+See the [changelog][].
+
+## Contact
+
+For questions and help requests, you can reach out in the [scverse discourse][].
+If you found a bug, please use the [issue tracker][].
