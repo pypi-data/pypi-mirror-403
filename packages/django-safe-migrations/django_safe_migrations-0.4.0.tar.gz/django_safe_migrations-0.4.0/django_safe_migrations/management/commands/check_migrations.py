@@ -1,0 +1,226 @@
+"""Management command to check migrations for unsafe operations."""
+
+from __future__ import annotations
+
+import json
+import sys
+from typing import IO, Any
+
+from django.core.management.base import BaseCommand, CommandParser
+
+from django_safe_migrations.analyzer import MigrationAnalyzer
+from django_safe_migrations.conf import get_category_for_rule, log_config_warnings
+from django_safe_migrations.reporters import get_reporter
+from django_safe_migrations.rules import ALL_RULES, _load_extra_rules
+from django_safe_migrations.rules.base import Severity
+
+
+class Command(BaseCommand):
+    """Check Django migrations for unsafe operations.
+
+    This command analyzes migrations and reports issues that could
+    cause problems in production, such as:
+
+    - Adding NOT NULL columns without defaults
+    - Creating indexes without CONCURRENTLY
+    - Dropping columns/tables unsafely
+
+    Usage:
+        python manage.py check_migrations
+        python manage.py check_migrations myapp
+        python manage.py check_migrations --new-only
+        python manage.py check_migrations --format=json
+    """
+
+    help = "Check migrations for unsafe operations"
+
+    def add_arguments(self, parser: CommandParser) -> None:
+        """Add command arguments.
+
+        Args:
+            parser: The argument parser.
+        """
+        parser.add_argument(
+            "app_labels",
+            nargs="*",
+            help="App labels to check. If empty, checks all apps.",
+        )
+        parser.add_argument(
+            "--format",
+            choices=["console", "json", "github", "sarif"],
+            default="console",
+            help="Output format (default: console)",
+        )
+        parser.add_argument(
+            "--output",
+            "-o",
+            type=str,
+            help="Output file path (defaults to stdout)",
+        )
+        parser.add_argument(
+            "--fail-on-warning",
+            action="store_true",
+            help="Exit with error code on warnings (not just errors)",
+        )
+        parser.add_argument(
+            "--new-only",
+            action="store_true",
+            help="Only check unapplied migrations",
+        )
+        parser.add_argument(
+            "--no-suggestions",
+            action="store_true",
+            help="Hide fix suggestions in output",
+        )
+        parser.add_argument(
+            "--exclude-apps",
+            nargs="*",
+            default=[],
+            help="Apps to exclude from checking",
+        )
+        parser.add_argument(
+            "--include-django-apps",
+            action="store_true",
+            help="Include Django's built-in apps (auth, admin, etc.)",
+        )
+        parser.add_argument(
+            "--list-rules",
+            action="store_true",
+            help="List all available rules and exit",
+        )
+
+    def list_rules(self, output_format: str) -> None:
+        """List all available rules.
+
+        Lists both built-in rules and any custom rules configured via EXTRA_RULES.
+
+        Args:
+            output_format: Output format ('console' or 'json').
+        """
+        # Collect both built-in and custom rules
+        all_rule_classes = list(ALL_RULES) + _load_extra_rules()
+
+        rules_data = []
+        for rule_cls in all_rule_classes:
+            rule = rule_cls()
+            categories = get_category_for_rule(rule.rule_id)
+            db_vendors = rule.db_vendors if rule.db_vendors else ["all"]
+
+            rules_data.append(
+                {
+                    "rule_id": rule.rule_id,
+                    "severity": rule.severity.value,
+                    "description": rule.description,
+                    "categories": categories,
+                    "db_vendors": db_vendors,
+                }
+            )
+
+        if output_format == "json":
+            self.stdout.write(json.dumps(rules_data, indent=2))
+        else:
+            # Console table format
+            self.stdout.write("Available Rules:")
+            self.stdout.write("-" * 80)
+            for rule_info in rules_data:
+                severity_str = str(rule_info["severity"]).upper()
+                categories_str = ", ".join(rule_info["categories"]) or "none"
+                db_str = ", ".join(rule_info["db_vendors"])
+                desc = rule_info["description"]
+                self.stdout.write(f"{rule_info['rule_id']} [{severity_str}] {desc}")
+                self.stdout.write(f"    Categories: {categories_str}")
+                self.stdout.write(f"    Databases: {db_str}")
+                self.stdout.write("")
+
+    def handle(self, *args: Any, **options: Any) -> None:
+        """Execute the command.
+
+        Args:
+            *args: Positional arguments.
+            **options: Command options.
+        """
+        output_format = options["format"]
+
+        # Handle --list-rules
+        if options.get("list_rules"):
+            self.list_rules(output_format)
+            return
+
+        # Validate configuration and log any warnings
+        log_config_warnings()
+
+        app_labels = options["app_labels"]
+        output_file = options["output"]
+        fail_on_warning = options["fail_on_warning"]
+        new_only = options["new_only"]
+        show_suggestions = not options["no_suggestions"]
+        exclude_apps = options["exclude_apps"]
+        include_django_apps = options["include_django_apps"]
+
+        # Build exclude list
+        if not include_django_apps:
+            django_apps = [
+                "admin",
+                "auth",
+                "contenttypes",
+                "sessions",
+                "messages",
+                "staticfiles",
+            ]
+            exclude_apps = list(set(exclude_apps + django_apps))
+
+        # Create analyzer
+        analyzer = MigrationAnalyzer()
+
+        # Collect issues
+        issues = []
+
+        if new_only:
+            # Only check unapplied migrations
+            if app_labels:
+                for app_label in app_labels:
+                    issues.extend(analyzer.analyze_new_migrations(app_label))
+            else:
+                issues.extend(analyzer.analyze_new_migrations())
+        elif app_labels:
+            # Check specific apps
+            for app_label in app_labels:
+                if app_label not in exclude_apps:
+                    issues.extend(analyzer.analyze_app(app_label))
+        else:
+            # Check all apps
+            issues.extend(analyzer.analyze_all(exclude_apps=exclude_apps))
+
+        # Determine output stream
+        output_stream: IO[str]
+        if output_file:
+            output_stream = open(output_file, "w", encoding="utf-8")
+        else:
+            output_stream = self.stdout  # type: ignore[assignment]
+
+        try:
+            # Get reporter
+            reporter_kwargs: dict[str, object] = {"stream": output_stream}
+            if output_format == "console":
+                reporter_kwargs["show_suggestions"] = show_suggestions
+
+            reporter = get_reporter(output_format, **reporter_kwargs)
+
+            # Generate report
+            reporter.report(issues)
+        finally:
+            # Close file if we opened one
+            if output_file:
+                output_stream.close()
+                self.stdout.write(
+                    self.style.SUCCESS(f"Report written to {output_file}")
+                )
+
+        # Determine exit code
+        errors = [i for i in issues if i.severity == Severity.ERROR]
+        warnings = [i for i in issues if i.severity == Severity.WARNING]
+
+        if errors:
+            sys.exit(1)
+        elif warnings and fail_on_warning:
+            sys.exit(1)
