@@ -1,0 +1,40 @@
+# degr33
+
+ degr33 is a **read-only Linux command and tool explanation assistant**.
+
+ It helps you understand **what a command or tool would do BEFORE you run it**.
+ degr33  **never executes commands** and **never simulates execution**.
+
+This makes it safe for:
+- Security environments
+- Kali / hardened Linux systems
+- Auditing & learning
+- Beginners who want to avoid breaking their system
+
+---
+
+## 🔒 Safety Guarantees
+
+- ❌ Never executes commands  
+- ❌ Never simulates execution  
+- ✅ Only explains behavior  
+- ⚠️ Clearly warns about dangerous commands  
+- 🧠 Admits uncertainty when behavior depends on environment  
+
+---
+
+## 📦 Installation (Recommended: pipx)
+
+ degr33 must be installed as an **application**, not a library.
+
+### 1️⃣ Install pipx (one time)
+
+```bash
+sudo apt update
+sudo apt install pipx
+pipx ensurepath
+
+### 2 Install tool
+
+```bash
+pipx install degr33 
