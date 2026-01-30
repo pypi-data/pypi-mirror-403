@@ -1,0 +1,173 @@
+# =============================================================================
+# PIPELINE CONFIGURATION - ReconVoy (SOP-Driven)
+# =============================================================================
+#
+# ReconVoy is an SOP-driven intercompany open-items research and
+# clearance pipeline. Unlike the original ReconVoy (8 agents), this version
+# uses a simplified 4-agent architecture where the Matcher agent follows
+# Standard Operating Procedures loaded dynamically via MCP tools.
+#
+# Architecture:
+# - Scanner: Gets unmatched BlackLine items (reuses reconvoy_blackline_scanner)
+# - Matcher (SOP-driven): Handles discovery, matching, FX analysis, journal proposal
+# - Journal Applier: Posts approved journals (reuses reconvoy_journal_applier)
+# - Results Recorder: Saves processing results (reuses reconvoy_results_recorder)
+# - Reporter: Generates summary report (reconvoy_summary_reporter - case-level focus)
+#
+# =============================================================================
+
+name: "ReconVoy"
+description: "SOP-driven intercompany open-items research and clearance pipeline. Follows Standard Operating Procedures for discovery, matching, FX analysis, and journal proposal."
+
+# =============================================================================
+# EXECUTION SETTINGS - Async HITL Configuration
+# =============================================================================
+
+execution_settings:
+  hitl_mode: "async"
+  checkpoint_expiry_days: 7
+
+# =============================================================================
+# CASE MANAGEMENT CONFIGURATION
+# =============================================================================
+
+case_management:
+  config_file: "cases/reconvoy.yml"  # Reuse same case config (supports both pipelines via ternary expressions)
+  tracking_variables:
+    hitl_queued: "hitl_queued_cases"
+    completed: "completed_cases"
+
+# =============================================================================
+# NODES REGISTRY
+# =============================================================================
+
+nodes:
+  - id: reconvoy_blackline_scanner
+    config_file: "agents/reconvoy_blackline_scanner.yml"
+  - id: reconvoy_sop_matcher
+    config_file: "agents/reconvoy_sop_matcher.yml"
+  - id: reconvoy_journal_applier
+    config_file: "agents/reconvoy_journal_applier.yml"
+  - id: reconvoy_results_recorder
+    config_file: "agents/reconvoy_results_recorder.yml"
+  - id: reconvoy_summary_reporter
+    config_file: "agents/reconvoy_summary_reporter.yml"
+
+# =============================================================================
+# PIPELINE PATTERN
+# =============================================================================
+
+pattern:
+  type: sequential
+  name: "ReconVoy SOP-Driven Flow"
+  description: |
+    ## ReconVoy Processing Flow
+
+    This pipeline uses an SOP-driven Matcher agent that reads and follows
+    Standard Operating Procedures dynamically:
+
+    1. **Scanner** – Gets all unmatched BlackLine items
+
+    2. **Processing Loop** – For each unmatched item:
+       - **SOP-Driven Matcher** – Follows SOP steps to:
+         - Identify target foreign book
+         - Find matching entry
+         - Discover related items recursively
+         - Calculate FX variance
+         - Propose journal entries
+         - Determine straight-through eligibility
+       - **HITL Gate** – Routes complex cases for review
+       - **Journal Applier** – Posts approved journals
+       - **Results Recorder** – Saves processing results and updates final status
+
+    3. **Reporter** – Generates final summary
+
+  steps:
+    # Step 1: Scanner gets all unmatched items (reuses original scanner)
+    - node: reconvoy_blackline_scanner
+
+    # Step 2: Process each item
+    - type: loop
+      name: "BlackLine Item Processing Loop"
+      description: |
+        ## Processing All Unmatched BlackLine Items
+
+        Each item goes through the SOP-driven Matcher which handles:
+        - Foreign book matching
+        - Related item discovery
+        - FX variance calculation
+        - Journal proposal
+
+        Items with variance ≤ £100 are auto-posted (straight-through).
+        Items with variance > £100 require HITL review.
+      iterate_over_tool_results: "reconvoy.get_blackline_unmatched_items"
+      iterate_over_tool_args:
+        db_file: "{{reconvoy_blackline_scanner.database_path}}"
+        project_dir: "{{project_dir}}"
+      iterate_over_result_path: "unmatched_items"
+      loop_item_key: "current_blackline_item"
+      accumulate_results: true
+      termination:
+        max_iterations: 100
+      body:
+        type: sequential
+        name: "Single Item Processing"
+        description: |
+          {% if current_blackline_item %}
+          ### Processing BlackLine Item
+
+          | Field | Value |
+          |-------|-------|
+          | Item ID | {{ current_blackline_item.item_id }} |
+          | Currency | {{ current_blackline_item.currency }} |
+          | Amount (Foreign) | {{ current_blackline_item.amount_foreign }} |
+          | Amount (GBP) | {{ current_blackline_item.amount_local_gbp }} |
+          | Reference | {{ current_blackline_item.reference_description }} |
+          {% endif %}
+        steps:
+          # SOP-driven matcher handles all discovery, matching, FX, and journal proposal
+          - node: reconvoy_sop_matcher
+
+          # HITL gate for non-straight-through cases
+          - gate: reconvoy_review
+            condition: "reconvoy_sop_matcher.is_straight_through == false"
+            on_false:
+              - node: reconvoy_journal_applier
+            on_approve:
+              - node: reconvoy_journal_applier
+            on_reject: continue
+
+          # Results Recorder: Save processing results and update final status
+          - node: reconvoy_results_recorder
+
+    # Step 3: Generate summary report (reuses original reporter)
+    - node: reconvoy_summary_reporter
+
+# =============================================================================
+# HITL SECTION - Human-in-the-loop gates
+# =============================================================================
+
+gates:
+  - id: reconvoy_review
+    type: approval
+    title: "Review Intercompany Open Item Resolution"
+    description:
+      jinja: "hitl/reconvoy_review.jinja"
+    context_key: "reconvoy_review_decision"
+    timeout_ms: 300000
+    on_timeout: reject
+    resume_match_field: "item_id"
+
+# =============================================================================
+# OUTPUTS SECTION - Final Outputs
+# =============================================================================
+
+outputs:
+  final:
+    node: reconvoy_summary_reporter
+    selectors:
+      - summary_report
+      - summary_report_path
+      - statistics
+      - error
+    transform: "{{ summary_report if summary_report else 'No summary available' }}"

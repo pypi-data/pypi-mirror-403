@@ -1,0 +1,44 @@
+# =============================================================================
+# ANOMALY DETECTOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent analyzes journal entries for anomalies, specifically detecting
+# Capital/Revenue misclassifications and Lease/ROU misclassifications. It uses
+# account classifications and historical patterns to identify irregularities
+# before posting.
+#
+# =============================================================================
+id: argus_anomaly_detector
+type: maf
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/argus_anomaly_detector
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.argus.argus_tools
+  toolkits: ["argus"]
+  tools: ["argus.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/argus_anomaly_detector.jinja
+  inputs:
+    inline: |
+      - Current Journal Transaction: {{current_journal}}
+      - Extracted Entry: {{argus_journal_extractor.extracted_entry}}
+      - Database Path: {{argus_pending_journal_scanner.database_path}}
+      - Project Directory: {{project_dir}}

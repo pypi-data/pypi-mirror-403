@@ -1,0 +1,490 @@
+# =============================================================================
+# CASE CONFIGURATION - Covenant Pipeline (All Branches)
+# =============================================================================
+#
+# Defines how cases are displayed and managed for the Covenant pipeline.
+# Supports all branches: pre_contract_synthesis, draft_validation, signed_intelligence_and_wbs, change_order_review
+# Sections are conditionally shown based on covenant_orchestrator.selected_branch.
+#
+# =============================================================================
+
+identity:
+  # Each contract gets its own case ID
+  # Format: COVENANT-{contract_id}
+  prefix: "COVENANT"
+  uniqueness: "contract_id"  # Uses contract_id from orchestrator
+
+# =============================================================================
+# LIST VIEW - Case List Display (Tabbed View)
+# =============================================================================
+#
+# Defines pipeline-specific fields and column order for the Covenant pipeline tab.
+#
+# Common fields (always available, don't need to define):
+#   - case_id, pipeline_id, status, hitl_gate_title, hitl_description,
+#     hitl_status, hitl_decision, responded_by, created_at, updated_at, actions
+#
+# When "ALL" tab is selected: Only common fields are shown (default order)
+# When "Covenant" tab is selected: Columns are shown in the order specified in
+#   column_order, mixing common fields and pipeline-specific fields
+
+list_view:
+  # Define pipeline-specific fields (extracted from upstream context)
+  pipeline_fields:
+    - key: "contract_id"
+      field: "covenant_orchestrator.contract_id"
+      label: "Contract ID"
+      type: text
+    - key: "selected_branch"
+      field: "covenant_orchestrator.selected_branch"
+      label: "Branch"
+      type: text
+      value_mapping:
+        "pre_contract_synthesis": "Pre-Contract Synthesis"
+        "draft_validation": "Draft Validation"
+        "signed_intelligence_and_wbs": "Signed Intelligence & WBS"
+        "change_order_review": "Change Order Review"
+    - key: "overall_risk_level"
+      field: "covenant_risk_assessor.risk_assessment.overall_risk_level"
+      label: "Risk Level"
+      type: text
+      condition: "covenant_orchestrator.selected_branch == 'draft_validation' OR covenant_orchestrator.selected_branch == 'change_order_review'"
+    - key: "high_risk"
+      field: "covenant_risk_assessor.risk_assessment.high_risk"
+      label: "High Risk"
+      type: boolean
+      condition: "covenant_orchestrator.selected_branch == 'draft_validation' OR covenant_orchestrator.selected_branch == 'change_order_review'"
+    - key: "total_deviations"
+      field: "covenant_risk_assessor.risk_assessment.total_deviations"
+      label: "Total Deviations"
+      type: number
+      condition: "covenant_orchestrator.selected_branch == 'draft_validation'"
+    - key: "total_modified_terms"
+      field: "covenant_change_order_risk_assessor.risk_assessment.total_modified_terms"
+      label: "Modified Terms"
+      type: number
+      condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+    - key: "change_order_version"
+      field: "covenant_change_order_extractor.change_order_version"
+      label: "Change Order Version"
+      type: text
+      condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+    - key: "contract_type"
+      field: "covenant_pre_contract_synthesizer.synthesized_summary.contract_overview.contract_type"
+      label: "Contract Type"
+      type: text
+      condition: "covenant_orchestrator.selected_branch == 'pre_contract_synthesis'"
+    - key: "estimated_value"
+      field: "covenant_pre_contract_synthesizer.synthesized_summary.contract_overview.estimated_value"
+      label: "Estimated Value"
+      type: text
+      condition: "covenant_orchestrator.selected_branch == 'pre_contract_synthesis'"
+  
+  # Column order for Covenant pipeline tab
+  # Mix common field keys (case_id, status, etc.) and pipeline field keys (contract_id, selected_branch, etc.)
+  # Only columns listed here will be shown on the pipeline tab
+  column_order:
+    - "case_id"              # Common field (contains contract_id: COVENANT-{contract_id})
+    - "contract_id"          # Pipeline field (actual contract ID)
+    - "selected_branch"      # Pipeline field
+    - "status"               # Common field
+    - "overall_risk_level"   # Pipeline field (for draft_validation and change_order_review)
+    - "high_risk"            # Pipeline field (for draft_validation and change_order_review)
+    - "total_deviations"     # Pipeline field (for draft_validation)
+    - "total_modified_terms" # Pipeline field (for change_order_review)
+    - "change_order_version" # Pipeline field (for change_order_review)
+    - "contract_type"        # Pipeline field (for pre_contract_synthesis)
+    - "estimated_value"      # Pipeline field (for pre_contract_synthesis)
+    - "hitl_status"          # Common field
+    - "created_at"           # Common field
+    - "updated_at"           # Common field
+    - "actions"              # Common field (action buttons)
+
+# =============================================================================
+# DOCUMENTS - Case Documents Tab
+# =============================================================================
+#
+# Defines which documents to display in the Documents tab.
+# Documents can be conditionally shown based on branch or other fields.
+# If a document file is missing, a message will be shown.
+
+documents:
+  # =============================================================================
+  # INPUT DOCUMENTS - Documents that go into the pipeline
+  # =============================================================================
+  
+  # Pre-contract artifacts - input for pre_contract_synthesis branch
+  - key: "input_pre_contract_artifacts"
+    label: "Input: Pre-Contract Artifacts"
+    field: "covenant_orchestrator.file_paths"
+    type: "list"
+    condition: "covenant_orchestrator.selected_branch == 'pre_contract_synthesis'"
+    missing_message: "No pre-contract artifacts available"
+    item_label_field: null  # Use filename from path
+    item_path_field: null   # Each item is already a path
+  
+  # Draft contract - input for draft_validation branch
+  - key: "input_draft_contract"
+    label: "Input: Draft Contract"
+    field: "covenant_orchestrator.draft_pdf_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'draft_validation'"
+    missing_message: "Draft contract document not available"
+  
+  # Signed contract (SOW) - input for signed_intelligence_and_wbs branch
+  - key: "input_signed_contract"
+    label: "Input: Signed Contract (SOW)"
+    field: "covenant_orchestrator.signed_pdf_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'signed_intelligence_and_wbs'"
+    missing_message: "Signed contract document not available"
+  
+  # Change order - input for change_order_review branch
+  - key: "input_change_order"
+    label: "Input: Change Order"
+    field: "covenant_orchestrator.change_order_pdf_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+    missing_message: "Change order document not available"
+  
+  # =============================================================================
+  # OUTPUT DOCUMENTS - Documents produced by the pipeline
+  # =============================================================================
+  
+  # Pre-contract synthesis report - output from pre_contract_synthesis branch
+  - key: "output_pre_contract_report"
+    label: "Output: Pre-Contract Synthesis Report"
+    field: "covenant_pre_contract_synthesizer.report_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'pre_contract_synthesis'"
+    missing_message: "Pre-contract synthesis report not available"
+  
+  # Draft validation report - output from draft_validation branch
+  - key: "output_draft_validation_report"
+    label: "Output: Draft Validation Report"
+    field: "covenant_risk_assessor.report_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'draft_validation'"
+    missing_message: "Draft validation report not available"
+  
+  # Signed contract intelligence report - output from signed_intelligence_and_wbs branch
+  - key: "output_signed_intelligence_report"
+    label: "Output: Signed Contract Intelligence Report"
+    field: "covenant_signed_analyzer.report_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'signed_intelligence_and_wbs'"
+    missing_message: "Signed contract intelligence report not available"
+  
+  # WBS generation report - output from signed_intelligence_and_wbs branch
+  - key: "output_wbs_report"
+    label: "Output: WBS Generation Report"
+    field: "covenant_wbs_generator.report_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'signed_intelligence_and_wbs'"
+    missing_message: "WBS generation report not available"
+  
+  # Change order review report - output from change_order_review branch
+  - key: "output_change_order_report"
+    label: "Output: Change Order Review Report"
+    field: "covenant_change_order_risk_assessor.report_path"
+    type: "pdf"
+    condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+    missing_message: "Change order review report not available"
+
+# =============================================================================
+# DETAIL VIEW - Case Detail Display
+# =============================================================================
+
+detail_view:
+  sections:
+    # Common section - shown for all branches
+    - name: "Case Data"
+      fields:
+        - field: "covenant_orchestrator.contract_id"
+          label: "CONTRACT ID"
+          type: text
+        - field: "covenant_orchestrator.selected_branch"
+          label: "Branch Executed"
+          type: text
+    
+    # Pre-Contract Synthesis Branch
+    - name: "Pre-Contract Synthesis"
+      condition: "covenant_orchestrator.selected_branch == 'pre_contract_synthesis'"
+      fields:
+        - field: "covenant_pre_contract_synthesizer.contract_id"
+          label: "Contract ID"
+          type: text
+        - field: "covenant_pre_contract_synthesizer.synthesized_summary.contract_overview.contract_type"
+          label: "Contract Type"
+          type: text
+        - field: "covenant_pre_contract_synthesizer.synthesized_summary.contract_overview.estimated_value"
+          label: "Estimated Value"
+          type: text
+        - field: "covenant_pre_contract_synthesizer.synthesized_summary.contract_overview.industry"
+          label: "Industry"
+          type: text
+        - field: "covenant_pre_contract_synthesizer.synthesized_summary.commercial_terms.payment_terms"
+          label: "Payment Terms"
+          type: text
+        - field: "covenant_pre_contract_synthesizer.report_path"
+          label: "Pre-Contract Synthesis Report"
+          type: file_path
+        - field: "covenant_pre_contract_synthesizer.report_md"
+          label: "Report Summary"
+          type: multiline
+    
+    # Draft Validation Branch
+    - name: "Contract Information"
+      condition: "covenant_orchestrator.selected_branch == 'draft_validation'"
+      fields:
+        - field: "covenant_orchestrator.contract_id"
+          label: "Contract ID"
+          type: text
+        - field: "covenant_orchestrator.draft_pdf_path"
+          label: "Draft Contract File"
+          type: file_path
+    
+    - name: "Risk Assessment"
+      condition: "covenant_orchestrator.selected_branch == 'draft_validation'"
+      fields:
+        - field: "covenant_risk_assessor.risk_assessment.overall_risk_level"
+          label: "Overall Risk Level"
+          type: text
+        - field: "covenant_risk_assessor.risk_assessment.high_risk"
+          label: "High Risk"
+          type: boolean
+        - field: "covenant_risk_assessor.risk_assessment.total_deviations"
+          label: "Total Deviations"
+          type: number
+        - field: "covenant_risk_assessor.risk_assessment.risk_distribution"
+          label: "Risk Distribution"
+          type: object
+    
+    - name: "Deviations"
+      condition: "covenant_orchestrator.selected_branch == 'draft_validation'"
+      fields:
+        - field: "covenant_draft_validator.deviations"
+          label: "All Deviations"
+          type: list
+        - field: "covenant_risk_assessor.deviations_with_risk"
+          label: "Deviations with Risk Assessment"
+          type: list
+    
+    - name: "Recommendations"
+      condition: "covenant_orchestrator.selected_branch == 'draft_validation'"
+      fields:
+        - field: "covenant_risk_assessor.recommendations_summary"
+          label: "Recommendations Summary"
+          type: multiline
+        - field: "covenant_risk_assessor.deviations_with_risk"
+          label: "Detailed Recommendations"
+          type: list
+        - field: "covenant_risk_assessor.report_path"
+          label: "Draft Validation Report"
+          type: file_path
+        - field: "covenant_risk_assessor.report_md"
+          label: "Report Summary"
+          type: multiline
+    
+    # Signed Intelligence & WBS Branch
+    - name: "Signed Contract Intelligence"
+      condition: "covenant_orchestrator.selected_branch == 'signed_intelligence_and_wbs'"
+      fields:
+        - field: "covenant_orchestrator.contract_id"
+          label: "Contract ID"
+          type: text
+        - field: "covenant_orchestrator.signed_pdf_path"
+          label: "Signed Contract File"
+          type: file_path
+        - field: "covenant_signed_analyzer.contract_summary"
+          label: "Contract Summary"
+          type: object
+    
+    - name: "Work Breakdown Structure (WBS)"
+      condition: "covenant_orchestrator.selected_branch == 'signed_intelligence_and_wbs'"
+      fields:
+        - field: "covenant_wbs_generator.contract_id"
+          label: "Contract ID"
+          type: text
+        - field: "covenant_wbs_generator.proposed_wbs.wbs_id"
+          label: "WBS ID"
+          type: text
+        - field: "covenant_wbs_generator.proposed_wbs.hierarchy_levels"
+          label: "Hierarchy Levels"
+          type: number
+        - field: "covenant_wbs_generator.proposed_wbs.structure"
+          label: "WBS Structure"
+          type: list
+        - field: "covenant_wbs_generator.proposed_wbs.milestones"
+          label: "Milestones"
+          type: list
+        - field: "covenant_wbs_generator.report_path"
+          label: "WBS Generation Report"
+          type: file_path
+        - field: "covenant_wbs_generator.report_md"
+          label: "Report Summary"
+          type: multiline
+    
+    # Change Order Review Branch
+    - name: "Change Order Information"
+      condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+      fields:
+        - field: "covenant_orchestrator.contract_id"
+          label: "Contract ID"
+          type: text
+        - field: "covenant_change_order_extractor.change_order_version"
+          label: "Change Order Version"
+          type: text
+        - field: "covenant_change_order_extractor.change_order_date"
+          label: "Change Order Date"
+          type: text
+        - field: "covenant_orchestrator.change_order_pdf_path"
+          label: "Change Order File"
+          type: file_path
+    
+    - name: "Change Order Risk Assessment"
+      condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+      fields:
+        - field: "covenant_change_order_risk_assessor.risk_assessment.overall_risk_level"
+          label: "Overall Risk Level"
+          type: text
+        - field: "covenant_change_order_risk_assessor.risk_assessment.high_risk"
+          label: "High Risk"
+          type: boolean
+        - field: "covenant_change_order_risk_assessor.risk_assessment.total_modified_terms"
+          label: "Total Modified Terms"
+          type: number
+        - field: "covenant_change_order_risk_assessor.risk_assessment.risk_distribution"
+          label: "Risk Distribution"
+          type: object
+        - field: "covenant_change_order_risk_assessor.risk_assessment.risk_by_category"
+          label: "Risk by Category"
+          type: object
+    
+    - name: "Modified Terms"
+      condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+      fields:
+        - field: "covenant_change_order_comparator.modified_terms"
+          label: "All Modified Terms"
+          type: list
+        - field: "covenant_change_order_risk_assessor.modified_terms_with_risk"
+          label: "Modified Terms with Risk Assessment"
+          type: list
+    
+    - name: "Change Order Recommendations"
+      condition: "covenant_orchestrator.selected_branch == 'change_order_review'"
+      fields:
+        - field: "covenant_change_order_risk_assessor.recommendations_summary"
+          label: "Recommendations Summary"
+          type: multiline
+        - field: "covenant_change_order_risk_assessor.modified_terms_with_risk"
+          label: "Detailed Recommendations"
+          type: list
+        - field: "covenant_change_order_risk_assessor.report_path"
+          label: "Change Order Review Report"
+          type: file_path
+        - field: "covenant_change_order_risk_assessor.report_md"
+          label: "Report Summary"
+          type: multiline
+
+# =============================================================================
+# DASHBOARD - Pipeline-Specific Analytics Cards
+# =============================================================================
+#
+# Defines analytics cards to display in the Operations dashboard for this pipeline.
+# Cards are filtered by the same criteria as the list view (pipeline, time range, status, search).
+#
+# Card Types:
+#   - metric: Numeric metric (count, sum, avg, min, max)
+#   - percentage: Percentage with numerator/denominator
+#   - donut: Distribution chart grouped by field value
+#   - bar: Bar chart (same as donut, different visualization)
+#   - timeline: Time-based distribution
+#
+# Field paths use dot notation to access case_data fields (e.g., "agent_id.field").
+# Special fields: "status", "created_at", "total"
+
+dashboard:
+  # Enable dashboard for this pipeline
+  enabled: true
+  
+  # Cards to display (order matters)
+  cards:
+    # Card 1: High Risk Rate (for draft_validation and change_order_review branches)
+    - type: "percentage"
+      title: "High Risk Rate"
+      icon: "AlertTriangle"
+      numerator:
+        field: "covenant_risk_assessor.risk_assessment.high_risk"
+        filter: true
+      denominator:
+        field: "total"
+      color: "red"
+      show_breakdown: true
+      footer:
+        type: "text"
+        content: "Based on {{totalCases}} processed contracts"
+    
+    # Card 2: Average Total Deviations (for draft_validation branch)
+    - type: "metric"
+      title: "Average Deviations"
+      icon: "FileWarning"
+      field: "covenant_risk_assessor.risk_assessment.total_deviations"
+      aggregation: "avg"
+      format: "number"
+      decimals: 1
+      color: "amber"
+      visualization: "progress"
+      footer:
+        type: "legend"
+        items:
+          - label: "Draft Validation Cases"
+          - label: "Average Deviations"
+            value: "{{formatted}}"
+    
+    # Card 3: Branch Distribution
+    - type: "donut"
+      title: "Branch Distribution"
+      icon: "GitBranch"
+      field: "covenant_orchestrator.selected_branch"
+      show_legend: true
+      show_percentages: true
+      colors:
+        "pre_contract_synthesis": "blue"
+        "draft_validation": "amber"
+        "signed_intelligence_and_wbs": "green"
+        "change_order_review": "red"
+    
+    # Card 4: Risk Level Distribution (for draft_validation and change_order_review branches)
+    - type: "donut"
+      title: "Risk Level Distribution"
+      icon: "ShieldAlert"
+      field: "covenant_risk_assessor.risk_assessment.overall_risk_level"
+      show_legend: true
+      show_percentages: true
+      colors:
+        "LOW": "green"
+        "MEDIUM": "amber"
+        "HIGH": "red"
+        "CRITICAL": "red"
+    
+    # Card 5: Cases Timeline (uses full timeline component like "All" tab)
+    - type: "timeline"
+      title: "Cases Timeline"
+      icon: "Calendar"
+      # When type is timeline, cases are passed directly - no field needed
+    
+    # Card 6: Response Method (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "response_method"
+      title: "Response Method"
+    
+    # Card 7: Auto-Resolution Rate (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "auto_resolution_rate"
+      title: "Auto-Resolution Rate"
+    
+    # Card 8: Success Rate (reuse default card from "All" tab)
+    - type: "default"
+      card_id: "success_rate"
+      title: "Success Rate"

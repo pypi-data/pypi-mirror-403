@@ -1,0 +1,41 @@
+# =============================================================================
+# SIGNED ANALYZER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent analyzes signed contract terms, obligations, and risks, and
+# generates a structured summary with markdown report.
+#
+# =============================================================================
+id: covenant_signed_analyzer
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_signed_analyzer
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_signed_analyzer.jinja
+  inputs:
+    inline: |
+      Contract ID: {{covenant_orchestrator.contract_id}}
+      Extracted Data: {{covenant_signed_extractor.extracted_data}}
+      Project Directory: {{project_dir}}

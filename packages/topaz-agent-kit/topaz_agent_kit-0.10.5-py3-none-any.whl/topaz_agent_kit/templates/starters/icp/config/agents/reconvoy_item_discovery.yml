@@ -1,0 +1,37 @@
+id: reconvoy_item_discovery
+type: oak
+model: azure_openai
+run_mode: local
+
+remote:
+  url: http://127.0.0.1:8100/reconvoy_item_discovery
+  timeout: 30000
+  retry_attempts: 3
+
+local_tools:
+  modules:
+    - tools.reconvoy.reconvoy_tools
+  toolkits: ["reconvoy"]
+  tools:
+    - "reconvoy.find_foreign_book_match"
+    - "reconvoy.update_blackline_match_status"
+    - "reconvoy.update_blackline_processing_status"
+    - "reconvoy.update_blackline_status"
+    - "reconvoy.get_blackline_item_by_id"
+    - "reconvoy.get_foreign_book_entries_by_document"
+
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_item_discovery.jinja
+  inputs:
+    inline: |
+      - Project Directory: {{project_dir}}
+      - Database Path: {{reconvoy_blackline_scanner.database_path}}
+      - Run ID: {{reconvoy_blackline_scanner.run_id}}
+      {% if related_item and related_item is mapping %}
+      - **Processing Related Item (Recursive Loop)**: {{related_item}}
+      - Original BlackLine Item (for context): {{current_blackline_item}}
+      - **Related Items Discovery Results**: {{reconvoy_related_items_discovery}}
+      {% else %}
+      - **Current BlackLine Item (Main Loop)**: {{current_blackline_item}}
+      {% endif %}

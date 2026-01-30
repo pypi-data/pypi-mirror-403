@@ -1,0 +1,34 @@
+id: reconvoy_results_recorder
+type: oak
+model: azure_openai
+run_mode: local
+
+remote:
+  url: http://127.0.0.1:8100/reconvoy_results_recorder
+  timeout: 30000
+  retry_attempts: 3
+
+local_tools:
+  modules:
+    - tools.reconvoy.reconvoy_tools
+  toolkits: ["reconvoy"]
+  tools:
+    - "reconvoy.save_reconvoy_processing_results"
+    - "reconvoy.update_blackline_status"
+
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_results_recorder.jinja
+  inputs:
+    inline: |
+      - Project Directory: {{project_dir}}
+      - Database Path: {{reconvoy_blackline_scanner.database_path}}
+      - Case Items: {{reconvoy_sop_matcher.case_items}}
+      - Current BlackLine Item: {{current_blackline_item}}
+      - Run ID: {{reconvoy_blackline_scanner.run_id}}
+      - Is Straight-Through: {{reconvoy_sop_matcher.is_straight_through}}
+      - Variance GBP: {{reconvoy_sop_matcher.variance_gbp}}
+      - Variance Percent: {{reconvoy_sop_matcher.variance_percent}}
+      - Review Decision: {{reconvoy_review.decision}}
+      - Journal Applier Results: {{reconvoy_journal_applier}}
+

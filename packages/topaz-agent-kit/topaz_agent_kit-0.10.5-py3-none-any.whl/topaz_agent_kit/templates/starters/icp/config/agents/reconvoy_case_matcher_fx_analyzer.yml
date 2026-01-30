@@ -1,0 +1,28 @@
+id: reconvoy_case_matcher_fx_analyzer
+type: oak
+model: azure_openai
+run_mode: local
+
+remote:
+  url: http://127.0.0.1:8100/reconvoy_case_matcher_fx_analyzer
+  timeout: 30000
+  retry_attempts: 3
+
+local_tools:
+  modules:
+    - tools.reconvoy.reconvoy_tools
+  toolkits: ["reconvoy"]
+  tools:
+    - "reconvoy.get_case_item_foreign_book_mappings"
+    - "reconvoy.calculate_case_fx_variance"
+    - "reconvoy.get_foreign_book_entries_by_document"
+
+prompt:
+  instruction:
+    jinja: prompts/reconvoy_case_matcher_fx_analyzer.jinja
+  inputs:
+    inline: |
+      - Project Directory: {{project_dir}}
+      - Database Path: {{reconvoy_blackline_scanner.database_path}}
+      - Current BlackLine Item: {{current_blackline_item}}
+      - Related Items Mappings: {{reconvoy_related_items_discovery.related_items_mappings | tojson}}

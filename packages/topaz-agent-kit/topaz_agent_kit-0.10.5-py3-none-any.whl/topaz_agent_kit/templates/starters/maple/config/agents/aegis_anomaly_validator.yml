@@ -1,0 +1,44 @@
+# =============================================================================
+# ANOMALY VALIDATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent validates invoice amounts against historical patterns to detect
+# abnormal spikes. It compares the current invoice amount to historical
+# invoice amounts for the same vendor/SOW and flags invoices that are
+# significantly higher than the historical average (typically 1.5x or more).
+#
+# =============================================================================
+id: aegis_anomaly_validator
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_anomaly_validator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - tools.aegis.aegis_tools
+  toolkits: ["aegis"]
+  tools: ["aegis.get_historical_invoice_patterns", "aegis.get_anomaly_thresholds", "aegis.get_payment_patterns"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_anomaly_validator.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Extracted Invoice Data: {{aegis_translator.translated_data.invoice_data if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data}}
+      - Database Path: {{aegis_pending_invoice_scanner.database_path}}
+      - Project Directory: {{project_dir}}

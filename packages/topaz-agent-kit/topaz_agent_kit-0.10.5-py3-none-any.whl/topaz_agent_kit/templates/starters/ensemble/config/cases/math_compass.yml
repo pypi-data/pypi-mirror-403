@@ -1,0 +1,83 @@
+# =============================================================================
+# CASE MANAGEMENT CONFIGURATION FOR MATH COMPASS PIPELINE
+# =============================================================================
+#
+# This configuration file defines how cases are displayed and managed in the
+# Operations Center UI for the math_compass pipeline.
+#
+# SECTIONS:
+# - identity: How to identify and name cases
+# - detail_view: What to show in the case detail panel
+#
+# =============================================================================
+
+# Case type for categorization
+case_type: "math_problem"
+
+# =============================================================================
+# IDENTITY CONFIGURATION
+# =============================================================================
+# Defines how to extract the case ID from agent outputs
+#
+# id_source: Dot-notation path to the field containing the case ID
+# prefix: Optional prefix for the case ID
+# format: Format string for the final case ID
+# =============================================================================
+
+identity:
+  # Simple format: MATH-ABC12345 (prefix + UUID)
+  # The expression/data is stored in case_data, not in the ID
+  prefix: "MATH"
+  # Uniqueness strategy: "uuid_suffix" (default), "timestamp", or "none"
+  # uuid_suffix: case_id = "MATH-ABC12345" (unique)
+  # timestamp:   case_id = "MATH-20260108-130500" (unique)
+  # none:        case_id = "MATH" (not guaranteed unique - use with caution)
+  uniqueness: "uuid_suffix"
+
+# =============================================================================
+# DETAIL VIEW CONFIGURATION
+# =============================================================================
+# Defines what to show in the case detail panel
+#
+# sections: List of sections to display
+#   - id: Section identifier
+#   - title: Section header
+#   - source_agent: Include all outputs from this agent
+#   - fields: Explicit field list (optional, adds to source_agent)
+# =============================================================================
+
+detail_view:
+  sections:
+    - id: "problem_analysis"
+      title: "Problem Analysis"
+      source_agent: "math_strategist"
+      fields:
+        - source: "math_strategist.expression"
+          label: "Expression"
+        - source: "math_strategist.steps"
+          label: "Solution Steps"
+          type: "list"
+          
+    - id: "calculation"
+      title: "Calculation Result"
+      source_agent: "math_calculator"
+      fields:
+        - source: "math_calculator.result"
+          label: "Result"
+        - source: "math_calculator.rationale"
+          label: "Rationale"
+          type: "text"
+          
+    - id: "audit"
+      title: "Audit Results"
+      source_agent: "math_auditor"
+      fields:
+        - source: "math_auditor.final_answer"
+          label: "Final Answer"
+        - source: "math_auditor.strategist_validated"
+          label: "Strategist Validated"
+          type: "boolean"
+        - source: "math_auditor.calculator_validated"
+          label: "Calculator Validated"
+          type: "boolean"
+
