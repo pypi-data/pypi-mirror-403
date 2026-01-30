@@ -1,0 +1,353 @@
+# FST (Fondazione Sistema Toscana) Default Configuration
+# This file contains FST-specific organization settings
+# Import this file in your ci-config.yaml for FST projects
+
+# Default Node.js version for FST projects
+defaults:
+  nodeVersion: "18"
+  
+  # Default build configuration for FST
+  build:
+    # FST Docker registry destinations
+    destination:
+      - type: dockerRegistry
+        url: "registry.fst.toscana.it:5000"
+        credentials: "FST_REGISTRY_CREDENTIALS"
+        tags:
+          - "{{ project.version }}.{{ git.branch }}.{{ git.build_number }}"
+          - "{{ git.branch }}-latest"
+      
+      - type: dockerRegistry
+        url: "987654321098.dkr.ecr.eu-south-1.amazonaws.com"
+        credentials: "FST_AWS_ECR_CREDENTIALS"
+        tags:
+          - "{{ project.version }}.{{ git.branch }}.{{ git.build_number }}"
+          - "{{ git.branch }}-latest"
+        lifecyclePolicy:
+          enabled: true
+          keepLastImages: 15
+          expireUntaggedAfterDays: 5
+  
+  # Default Kubernetes resources for FST
+  kubernetes:
+    resources:
+      - type: deployment
+        replicas: 3
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+      
+      - type: service
+        serviceType: ClusterIP
+        port: 80
+        targetPort: 8080
+      
+      - type: ingress
+        className: "nginx"
+        pathType: "Prefix"
+        path: "/"
+        tls:
+          enabled: true
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+# FST-specific environment configurations
+environments:
+  dev:
+    branches:
+      - "develop"
+      - "develop-*"
+      - "feature/*"
+      - "hotfix/*"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://k8s-dev.fst.toscana.it:6443"
+        namespace: "fst-{{ project.name }}-dev"
+        credentials: "FST_K8S_DEV_CREDENTIALS"
+    argocd:
+      server: "https://argocd-dev.fst.toscana.it"
+      project: "fst-projects"
+      chartsRepo:
+        url: "https://gitlab.fst.toscana.it/infrastructure/k8s-charts.git"
+        branch: "main"
+        credentials: "FST_GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - "CreateNamespace=true"
+    build:
+      destination:
+        - type: dockerRegistry
+          url: "registry.fst.toscana.it:5000"
+          credentials: "FST_REGISTRY_CREDENTIALS"
+          imageName: "fst/{{ project.name }}/{{ component.name }}"
+          tags:
+            - "{{ project.version }}.dev.{{ git.build_number }}"
+            - "dev-latest"
+  
+  stg:
+    branches:
+      - "staging"
+      - "stage"
+      - "release/*"
+      - "rc/*"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://k8s-stg.fst.toscana.it:6443"
+        namespace: "fst-{{ project.name }}-stg"
+        credentials: "FST_K8S_STG_CREDENTIALS"
+    argocd:
+      server: "https://argocd-stg.fst.toscana.it"
+      project: "fst-projects"
+      chartsRepo:
+        url: "https://gitlab.fst.toscana.it/infrastructure/k8s-charts.git"
+        branch: "main"
+        credentials: "FST_GITLAB_TOKEN"
+      application:
+        autoSync: true
+        selfHeal: true
+        prune: true
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - "CreateNamespace=true"
+      retry:
+        limit: 5
+        backoff:
+          duration: "5s"
+          factor: 2
+          maxDuration: "3m"
+    build:
+      destination:
+        - type: dockerRegistry
+          url: "registry.fst.toscana.it:5000"
+          credentials: "FST_REGISTRY_CREDENTIALS"
+          imageName: "fst/{{ project.name }}/{{ component.name }}"
+          tags:
+            - "{{ project.version }}.stg.{{ git.build_number }}"
+            - "stg-latest"
+  
+  ese:
+    branches:
+      - "main"
+      - "master"
+      - "production"
+    deployMethod: kubernetes
+    destination:
+      - type: kubernetes
+        cluster: "https://k8s-prod.fst.toscana.it:6443"
+        namespace: "fst-{{ project.name }}-prod"
+        credentials: "FST_K8S_PROD_CREDENTIALS"
+    argocd:
+      server: "https://argocd-prod.fst.toscana.it"
+      project: "fst-projects"
+      chartsRepo:
+        url: "https://gitlab.fst.toscana.it/infrastructure/k8s-charts.git"
+        branch: "main"
+        credentials: "FST_GITLAB_TOKEN"
+      application:
+        autoSync: false
+        selfHeal: false
+        prune: false
+      syncPolicy:
+        automated: null
+        syncOptions:
+          - "CreateNamespace=true"
+      retry:
+        limit: 3
+        backoff:
+          duration: "10s"
+          factor: 2
+          maxDuration: "5m"
+    build:
+      destination:
+        - type: dockerRegistry
+          url: "987654321098.dkr.ecr.eu-south-1.amazonaws.com"
+          credentials: "FST_AWS_ECR_CREDENTIALS"
+          imageName: "fst/{{ project.name }}/{{ component.name }}"
+          tags:
+            - "{{ project.version }}"
+            - "{{ project.version }}.{{ git.build_number }}"
+            - "latest"
+            - "stable"
+          lifecyclePolicy:
+            enabled: true
+            keepLastImages: 30
+            expireUntaggedAfterDays: 3
+            rules:
+              - rulePriority: 1
+                description: "Keep last 30 production images"
+                selection:
+                  tagStatus: "tagged"
+                  tagPrefixList: ["stable", "latest"]
+                  countType: "imageCountMoreThan"
+                  countNumber: 30
+                action:
+                  type: "expire"
+
+# FST Change detection configuration
+changeDetection:
+  enabled: true
+  strategy:
+    dev:
+      enabled: false
+      compareWith: null
+      useLastSuccessful: false
+    stg:
+      enabled: true
+      compareWith: "develop"
+      useLastSuccessful: true
+    ese:
+      enabled: true
+      compareWith: "staging"
+      useLastSuccessful: true
+  artifactRegistry:
+    type: dockerRegistry
+    url: "registry.fst.toscana.it:5000"
+    credentials: "FST_REGISTRY_CREDENTIALS"
+
+# FST SonarQube configuration
+sonarqube:
+  enabled: true
+  server: "https://sonarqube.fst.toscana.it"
+  token: "FST_SONARQUBE_TOKEN"
+  
+  # FST Quality gate thresholds (stricter for production)
+  qualityGates:
+    coverage:
+      enabled: true
+      threshold: 85
+      operator: "GTE"
+    bugs:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    vulnerabilities:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    codeSmells:
+      enabled: true
+      threshold: 30
+      operator: "LTE"
+    duplicatedLinesDensity:
+      enabled: true
+      threshold: 2
+      operator: "LTE"
+    securityHotspots:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+  
+  # FST acceptable failures
+  acceptableFailures:
+    - "duplicatedLinesDensity"
+  
+  # FST failure behavior per environment
+  onFailure:
+    dev:
+      allowFailure: true
+      blockDeploy: false
+    stg:
+      allowFailure: false
+      blockDeploy: true
+    ese:
+      allowFailure: false
+      blockDeploy: true
+  
+  # FST analysis strategy per environment
+  strategy:
+    dev:
+      enabled: true
+      skipIfNoChanges: false
+      compareWith: null
+    stg:
+      enabled: true
+      skipIfNoChanges: true
+      compareWith: "develop"
+    ese:
+      enabled: true
+      skipIfNoChanges: false
+      compareWith: "staging"
+
+# FST Notification configuration
+notifications:
+  slack:
+    enabled: true
+    webhook: "FST_SLACK_WEBHOOK_URL"
+    channel: "#fst-deployments"
+    events:
+      - "pipeline_failure"
+      - "deploy_success"
+      - "deploy_failure"
+      - "quality_gate_failed"
+  
+  teams:
+    enabled: true
+    webhook: "FST_TEAMS_WEBHOOK_URL"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+      - "quality_gate_failed"
+  
+  email:
+    enabled: true
+    recipients:
+      - "devops@fst.toscana.it"
+      - "infrastruttura@fst.toscana.it"
+    events:
+      - "pipeline_failure"
+      - "deploy_failure"
+      - "quality_gate_failed"
+
+# FST Auto-dependencies configuration
+defaults:
+  autoDependencies:
+    enabled: true
+    rules:
+      - package: "@fst/phoenix-js"
+        version: "^2.0.0"
+        installAs: "devDependency"
+        installWhen:
+          componentType:
+            - "vue"
+            - "angular"
+            - "react"
+          projectNameNot:
+            - "phoenix-js"
+      
+      - package: "@fst/ramani-js"
+        version: "^1.5.0"
+        installAs: "devDependency"
+        installWhen:
+          componentType:
+            - "vue"
+            - "angular"
+            - "react"
+          projectNameNot:
+            - "ramani-js"
+      
+      - package: "@fst/common-utils"
+        version: "^3.0.0"
+        installAs: "dependency"
+        installWhen:
+          componentType:
+            - "vue"
+            - "angular"
+            - "react"
+            - "npm"
