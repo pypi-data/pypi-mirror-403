@@ -1,0 +1,89 @@
+Metadata-Version: 2.4
+Name: dvtag
+Version: 0.7.7
+Summary: A command-line tool designed to tag your doujin voice library.
+Home-page: https://github.com/nobekanai/dvtag
+Author: Nobe Kanai
+Author-email: nobekanai@gmail.com
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: certifi
+Requires-Dist: charset-normalizer
+Requires-Dist: idna
+Requires-Dist: mutagen
+Requires-Dist: natsort
+Requires-Dist: Pillow
+Requires-Dist: requests
+Requires-Dist: urllib3
+Dynamic: license-file
+
+# DVTAG
+
+Command-line tagger for doujin voice libraries. Point it at a folder tree that contains DLSite work numbers (RJ/BJ/VJ) in folder names and it will fetch metadata, write tags, and optionally transcode wav files.
+
+## What it does
+- Recursively finds directories whose names include `RJxxxxxx`, `BJxxxxxx`, or `VJxxxxxx` (6 or 8 digits) and treats each as a release.
+- Scrapes metadata from DLSite and refines title/cover details via Chobit when possible.
+- Writes tags for FLAC, M4A, and MP3 (album, date, circle, seiyu, genres, cover, track/disc numbers).
+- Tries to strip numbering prefixes from track titles based on filename patterns.
+- Optional: transcode `.wav` to `.flac` or `.mp3` using ffmpeg, deleting the source wavs after success.
+
+## Requirements
+- Python 3.9+
+- ffmpeg on PATH (only needed when using transcoding flags)
+- Network access to dlsite.com and chobit.cc
+
+## Installation
+
+```bash
+pip install dvtag            # or: pipx install dvtag
+pip install --upgrade dvtag  # upgrade (pipx upgrade dvtag)
+```
+
+## Quick start
+1) Ensure each release folder name contains a work number (e.g., `RJ123456`, `rj123456 bonus`, `xxx_RJ01123456`).
+2) Run:
+
+```bash
+dvtag /path/to/your/library        # tag in place
+dvtag -w2f /path/to/your/library   # tag + transcode wav -> flac
+dvtag -w2m /path/to/your/library   # tag + transcode wav -> mp3 (320k)
+```
+
+## CLI reference
+
+```
+usage: dvtag [-h] [-v] [-w2f] [-w2m] dirpath
+
+Doujin Voice Tagging Tool (tagging in place)
+
+positional arguments:
+  dirpath        a required directory path
+
+options:
+  -h, --help     show this help message and exit
+  -v, --version  show program's version number and exit
+  -w2f           transcode all wav files to flac [LOSELESS]
+  -w2m           transcode all wav files to mp3
+```
+
+## How it works (and current quirks)
+- **Discovery**: walks the given directory; once a folder with a work number is found, tagging happens inside it instead of recursing deeper.
+- **Metadata**: pulls work name, circle, seiyu, genres, sale date, cover from DLSite; Chobit is queried for a potentially shorter title and a square thumbnail if available.
+- **Cover choice**: currently prefers the Chobit square thumbnail, but some releases look better with the standard DLSite cover (usually landscape). A user-selectable preference is a known need.
+- **Genre order**: genres are kept in the order returned by DLSite. The tag comparison logic may still rewrite files when the same genres appear in a different order; smarter equality is on the roadmap.
+- **Track titles**: attempts to remove numeric prefixes from filenames when they follow common track-number patterns; otherwise uses the raw stem.
+- **Logging**: minimal console logging; improving verbosity/structure is planned.
+- **Idempotency**: tags are only written when they differ from existing tags, but the gaps above can still cause redundant writes.
+
+## Current limitations and ideas
+- **Caching**: no cache; repeated runs on large libraries hit DLSite/Chobit every time, slowing execution and adding load. Add a local metadata cache with expiry.
+- **Genre/tag comparison**: treat genre lists as sets (or configurable) to avoid unnecessary rewrites while preserving source order.
+- **Logging and observability**: structured logs, progress, and clearer error handling.
+
+## License
+[MIT](LICENSE)
