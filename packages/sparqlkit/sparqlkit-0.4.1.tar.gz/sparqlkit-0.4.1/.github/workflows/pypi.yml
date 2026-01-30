@@ -1,0 +1,51 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Task
+        uses: go-task/setup-task@v1
+
+      - name: Resolve version
+        id: version
+        run: echo "VALUE=$(npx --yes semver ${{ github.event.release.tag_name }})" >> "$GITHUB_OUTPUT"
+
+      - name: Set package version
+        run: uv version ${{ steps.version.outputs.VALUE }}
+
+      - name: Install project
+        run: task install
+
+      - name: Build dists
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
