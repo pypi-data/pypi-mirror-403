@@ -1,0 +1,1539 @@
+{% extends "_base.html" %}
+
+{% block title %}Create Model{% endblock %}
+
+{% block styles %}
+
+<style>
+  .action-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  canvas {
+    border: 1px solid #ccc;
+    max-width: 100%;
+    height: auto;
+  }
+
+  #actionList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .discrete-only {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .remove-btn {
+    border: none;
+    background-color: transparent;
+    color: #dc3545;
+    font-weight: bold;
+    font-size: 1.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+
+  .remove-btn:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+  }
+
+  /* Continuous 섹션은 기본적으로 숨김 */
+  .continuous-only {
+    display: none;
+  }
+
+  /* JS 에서 show 클래스를 주면 표시 */
+  .continuous-only.show {
+    display: block;
+  }
+
+  /* 숫자 입력 너비(≈90 px) */
+  .action-row input[type="number"] {
+    width: 6rem;
+  }
+
+  #actionList .form-control {
+    padding: .3rem .5rem;
+  }
+
+  /* CodeMirror 에디터 스타일 */
+  .CodeMirror {
+    border: 1px solid #ccc;
+    height: auto;
+    min-height: 200px;
+  }
+
+  /* 이 셀렉트 박스 안(option 태그)에서만 적용 */
+  #sub-simulation-count-id option:disabled {
+    color: #c0c0c0;
+    /* 원하는 밝은 회색으로 조정 */
+  }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+<!-- SweetAlert2 CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+
+
+{% endblock %}
+
+{% block header %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="page-pretitle">Models</div>
+    <h2 class="page-title">Create Model</h2>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<div class="card">
+  <!-- ★ card-header를 card-body 밖으로 꺼냅니다 -->
+  <div class="card-header">
+    <h3 class="card-title mb-0">MODEL NAME</h3>
+  </div>
+
+  <div class="card-body">
+    <div class="col-md-12">
+      <div class="d-flex align-items-center gap-2">
+        <input type="text" class="form-control w-25" id="model-name-id" placeholder="Model name">
+        <span id="model-name-status" class="d-none"></span>
+        <span id="model-name-spinner" class="spinner-border spinner-border-sm text-primary d-none" role="status"></span>
+      </div>
+      <div id="model-name-feedback" class="mt-1 small"></div>
+      <div class="invalid-feedback">
+        {{ _("create_model.model_name_validation")}}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SIMULATION header section -->
+<div class="card mt-3 " id="simulation-card-wrapper">
+  <div class="card-header">
+    <h3 class="card-title">SIMULATION</h3>
+  </div>
+
+  <div class="card-body">
+    <div class="row align-items-center">
+      <!-- Title -->
+      <div class="col-md-2">
+        <label class="form-label mb-0">Sub Simulation Count</label>
+      </div>
+      <!-- Select box -->
+
+      <!-- {{max_sub_simulation_count}} -->
+      <div class="col-md-3">
+
+        <!-- {{max_sub_simulation_count}} -->
+        <!-- {# 입력값을 정수로 변환 #} -->
+        {% set max_cnt = max_sub_simulation_count|int %}
+        <!-- {# 선택 가능 마지막 인덱스 계산 #} -->
+        <!-- {% set last_selectable = max_cnt - 0 if max_cnt > 0 else 0 %} -->
+        {% set last_selectable = [max_cnt, 0] | max %}
+        <select class="form-select w-75" id="sub-simulation-count-id">
+          {% for count in range(7) %}
+          <option value="{{ count }}" {% if count==0 %}selected{% endif %} {% if count> last_selectable %}disabled{%
+            endif %}>
+            {{ 'only main' if count == 0 else count }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="mt-2">
+        <p class="text-muted fs-6">{{ _('create_model.max_sub_simulation_count_description') }}</p>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- Tab Layout for Simulation -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <ul class="nav nav-tabs card-header-tabs" data-bs-toggle="tabs" role="tablist">
+            <li class="nav-item sub-nav-item" role="presentation">
+              <a href="#tabs-main" class="nav-link active" data-bs-toggle="tab" aria-selected="true" role="tab">Main</a>
+            </li>
+            <li class="nav-item sub-nav-item d-none" role="presentation">
+              <a href="#tabs-sub1" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab">Sub1</a>
+            </li>
+            <li class="nav-item sub-nav-item d-none" role="presentation">
+              <a href="#tabs-sub2" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab">Sub2</a>
+            </li>
+            <li class="nav-item sub-nav-item d-none" role="presentation">
+              <a href="#tabs-sub3" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab">Sub3</a>
+            </li>
+            <li class="nav-item sub-nav-item d-none" role="presentation">
+              <a href="#tabs-sub4" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab">Sub4</a>
+            </li>
+            <li class="nav-item sub-nav-item d-none" role="presentation">
+              <a href="#tabs-sub5" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab">Sub5</a>
+            </li>
+            <li class="nav-item sub-nav-item d-none" role="presentation">
+              <a href="#tabs-sub6" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab">Sub6</a>
+            </li>
+
+          </ul>
+        </div>
+        <div class="card-body">
+          <div class="tab-content">
+            <!-- Main Tab Content -->
+            <div class="tab-pane fade active show simulation-pane" id="tabs-main" role="tabpanel">
+              <!-- 메인 시뮬레이션 내용 -->
+              <div class="card-title">MAIN SIMULATION</div>
+              <div class="row">
+                <!-- 왼쪽 컨트롤 영역 -->
+                <div class="col-12 col-md-4">
+                  <div class="mb-3">
+                    <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+                      Choose a track
+                    </a>
+                  </div>
+                  <div class="mb-3">
+                    <div class="form-label">Direction</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction" value="clockwise">
+                        <span class="form-check-label">Clockwise</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction" value="counterclockwise"
+                          checked>
+                        <span class="form-check-label">Counter Clockwise</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="dropdown-item">
+                      <input class="form-check-input m-0 me-2" type="checkbox" id="alternate-training-main">
+                      Alternate Training Direction
+                    </label>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="form-label">Race Type</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type" value="TIME_TRIAL" checked>
+                        <span class="form-check-label">Time Trial</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type" value="OBJECT_AVOIDANCE">
+                        <span class="form-check-label">Object Avoidance</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 중앙 프리뷰 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-preview-box"
+                    class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box"
+                    style="min-height: 250px;"></div>
+                </div>
+
+                <!-- 오른쪽 트랙 정보 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-description-box" class="p-3 rounded border bg-light h-100" style="min-height: 250px;">
+                    <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+                      <span>Select a track to see details</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row d-none mt-4" id="race-type-wrapper">
+                <div class="card w-100">
+                  <div class="card-header">
+                    <h3 class="card-title">Object Avoidance</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <!-- 좌측: 옵션들 -->
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <h5 class="card-title">Randomize Object Locations</h5>
+                          <label class="form-check">
+                            <input class="form-check-input" type="checkbox" id="object-position">
+                            <span class="form-check-label">Randomize Obstacle Positions</span>
+                          </label>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Number Of Objects</h5>
+                          <select class="form-select w-75" id="number-of-objects">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i==3 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Object Type</h5>
+                          <select class="form-select w-75" name="object-type">
+                            <option value="box_obstacle">Box</option>
+                            <option value="deepracer_box_obstacle">Deepracer Box</option>
+                            <option value="amazon_box_obstacle">Amazon Box</option>
+                          </select>
+                        </div>
+                      </div>
+                      <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+                      <div class="col-md-6 d-none" id="object-location-wrapper">
+                        <div class="card h-100">
+                          <div class="card-header py-2">
+                            <h5 class="card-title mb-0">Object Locations</h5>
+                          </div>
+                          <div class="card-body" id="object-location-wrapper-inside">
+                            <!-- JS Appends Here -->
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub1 Tab Content -->
+            <div class="tab-pane fade simulation-pane" id="tabs-sub1" role="tabpanel">
+              <div class="card-title">SUB SIMULATION 1</div>
+              <div class="row">
+                <!-- 왼쪽 컨트롤 영역 -->
+                <div class="col-12 col-md-4">
+                  <div class="mb-3">
+                    <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+                      Choose a track
+                    </a>
+                  </div>
+                  <div class="mb-3">
+                    <div class="form-label">Direction</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub1" value="clockwise">
+                        <span class="form-check-label">Clockwise</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub1"
+                          value="counterclockwise" checked>
+                        <span class="form-check-label">Counter Clockwise</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="dropdown-item">
+                      <input class="form-check-input m-0 me-2" type="checkbox" id="alternate-sub1">
+                      Alternate Training Direction
+                    </label>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="form-label">Race Type</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub1" value="TIME_TRIAL" checked>
+                        <span class="form-check-label">Time Trial</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub1" value="OBJECT_AVOIDANCE">
+                        <span class="form-check-label">Object Avoidance</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 중앙 프리뷰 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-preview-box-sub1"
+                    class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box"
+                    style="min-height: 250px;"></div>
+                </div>
+
+                <!-- 오른쪽 트랙 정보 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-description-box-sub1" class="p-3 rounded border bg-light h-100" style="min-height: 250px;">
+                    <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+                      <span>Select a track to see details</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row d-none mt-4" id="race-type-wrapper-sub1">
+                <div class="card w-100">
+                  <div class="card-header">
+                    <h3 class="card-title">Object Avoidance</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <!-- 좌측: 옵션들 -->
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <h5 class="card-title">Randomize Object Locations</h5>
+                          <label class="form-check">
+                            <input class="form-check-input" type="checkbox" id="object-position-sub1">
+                            <span class="form-check-label">Randomize Obstacle Positions</span>
+                          </label>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Number Of Objects</h5>
+                          <select class="form-select w-75" id="number-of-objects-sub1">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i==3 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Object Type</h5>
+                          <select class="form-select w-75" name="object-type-sub1">
+                            <option value="box_obstacle">Box</option>
+                            <option value="deepracer_box_obstacle">Deepracer Box</option>
+                            <option value="amazon_box_obstacle">Amazon Box</option>
+                          </select>
+                        </div>
+                      </div>
+                      <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+                      <div class="col-md-6 d-none" id="object-location-wrapper-sub1">
+                        <div class="card h-100">
+                          <div class="card-header py-2">
+                            <h5 class="card-title mb-0">Object Locations</h5>
+                          </div>
+                          <div class="card-body" id="object-location-wrapper-inside-sub1">
+                            <!-- JS Appends Here -->
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub2 Tab Content -->
+            <div class="tab-pane fade simulation-pane" id="tabs-sub2" role="tabpanel">
+              <div class="card-title">SUB SIMULATION 2</div>
+              <div class="row">
+                <!-- 왼쪽 컨트롤 영역 -->
+                <div class="col-12 col-md-4">
+                  <div class="mb-3">
+                    <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+                      Choose a track
+                    </a>
+                  </div>
+                  <div class="mb-3">
+                    <div class="form-label">Direction</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub2" value="clockwise">
+                        <span class="form-check-label">Clockwise</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub2"
+                          value="counterclockwise" checked>
+                        <span class="form-check-label">Counter Clockwise</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="dropdown-item">
+                      <input class="form-check-input m-0 me-2" type="checkbox" id="alternate-sub2">
+                      Alternate Training Direction
+                    </label>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="form-label">Race Type</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub2" value="TIME_TRIAL" checked>
+                        <span class="form-check-label">Time Trial</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub2" value="OBJECT_AVOIDANCE">
+                        <span class="form-check-label">Object Avoidance</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 중앙 프리뷰 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-preview-box-sub2"
+                    class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box"
+                    style="min-height: 250px;"></div>
+                </div>
+
+                <!-- 오른쪽 트랙 정보 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-description-box-sub2" class="p-3 rounded border bg-light h-100" style="min-height: 250px;">
+                    <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+                      <span>Select a track to see details</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row d-none mt-4" id="race-type-wrapper-sub2">
+                <div class="card w-100">
+                  <div class="card-header">
+                    <h3 class="card-title">Object Avoidance</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <!-- 좌측: 옵션들 -->
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <h5 class="card-title">Randomize Object Locations</h5>
+                          <label class="form-check">
+                            <input class="form-check-input" type="checkbox" id="object-position-sub2">
+                            <span class="form-check-label">Randomize Obstacle Positions</span>
+                          </label>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Number Of Objects</h5>
+                          <select class="form-select w-75" id="number-of-objects-sub2">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i==3 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Object Type</h5>
+                          <select class="form-select w-75" name="object-type-sub2">
+                            <option value="box_obstacle">Box</option>
+                            <option value="deepracer_box_obstacle">Deepracer Box</option>
+                            <option value="amazon_box_obstacle">Amazon Box</option>
+                          </select>
+                        </div>
+                      </div>
+                      <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+                      <div class="col-md-6 d-none" id="object-location-wrapper-sub2">
+                        <div class="card h-100">
+                          <div class="card-header py-2">
+                            <h5 class="card-title mb-0">Object Locations</h5>
+                          </div>
+                          <div class="card-body" id="object-location-wrapper-inside-sub2">
+                            <!-- JS Appends Here -->
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub3 Tab Content -->
+            <div class="tab-pane fade simulation-pane" id="tabs-sub3" role="tabpanel">
+              <div class="card-title">SUB SIMULATION 3</div>
+              <div class="row">
+                <!-- 왼쪽 컨트롤 영역 -->
+                <div class="col-12 col-md-4">
+                  <div class="mb-3">
+                    <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+                      Choose a track
+                    </a>
+                  </div>
+                  <div class="mb-3">
+                    <div class="form-label">Direction</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub3" value="clockwise">
+                        <span class="form-check-label">Clockwise</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub3"
+                          value="counterclockwise" checked>
+                        <span class="form-check-label">Counter Clockwise</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="dropdown-item">
+                      <input class="form-check-input m-0 me-2" type="checkbox" id="alternate-sub3">
+                      Alternate Training Direction
+                    </label>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="form-label">Race Type</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub3" value="TIME_TRIAL" checked>
+                        <span class="form-check-label">Time Trial</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub3" value="OBJECT_AVOIDANCE">
+                        <span class="form-check-label">Object Avoidance</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 중앙 프리뷰 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-preview-box-sub3"
+                    class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box"
+                    style="min-height: 250px;"></div>
+                </div>
+
+                <!-- 오른쪽 트랙 정보 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-description-box-sub3" class="p-3 rounded border bg-light h-100" style="min-height: 250px;">
+                    <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+                      <span>Select a track to see details</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row d-none mt-4" id="race-type-wrapper-sub3">
+                <div class="card w-100">
+                  <div class="card-header">
+                    <h3 class="card-title">Object Avoidance</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <!-- 좌측: 옵션들 -->
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <h5 class="card-title">Randomize Object Locations</h5>
+                          <label class="form-check">
+                            <input class="form-check-input" type="checkbox" id="object-position-sub3">
+                            <span class="form-check-label">Randomize Obstacle Positions</span>
+                          </label>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Number Of Objects</h5>
+                          <select class="form-select w-75" id="number-of-objects-sub3">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i==3 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Object Type</h5>
+                          <select class="form-select w-75" name="object-type-sub3">
+                            <option value="box_obstacle">Box</option>
+                            <option value="deepracer_box_obstacle">Deepracer Box</option>
+                            <option value="amazon_box_obstacle">Amazon Box</option>
+                          </select>
+                        </div>
+                      </div>
+                      <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+                      <div class="col-md-6 d-none" id="object-location-wrapper-sub3">
+                        <div class="card h-100">
+                          <div class="card-header py-2">
+                            <h5 class="card-title mb-0">Object Locations</h5>
+                          </div>
+                          <div class="card-body" id="object-location-wrapper-inside-sub3">
+                            <!-- JS Appends Here -->
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub4 Tab Content -->
+            <div class="tab-pane fade simulation-pane" id="tabs-sub4" role="tabpanel">
+              <div class="card-title">SUB SIMULATION 4</div>
+              <div class="row">
+                <!-- 왼쪽 컨트롤 영역 -->
+                <div class="col-12 col-md-4">
+                  <div class="mb-3">
+                    <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+                      Choose a track
+                    </a>
+                  </div>
+                  <div class="mb-3">
+                    <div class="form-label">Direction</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub4" value="clockwise">
+                        <span class="form-check-label">Clockwise</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub4"
+                          value="counterclockwise" checked>
+                        <span class="form-check-label">Counter Clockwise</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="dropdown-item">
+                      <input class="form-check-input m-0 me-2" type="checkbox" id="alternate-sub4">
+                      Alternate Training Direction
+                    </label>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="form-label">Race Type</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub4" value="TIME_TRIAL" checked>
+                        <span class="form-check-label">Time Trial</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub4" value="OBJECT_AVOIDANCE">
+                        <span class="form-check-label">Object Avoidance</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 중앙 프리뷰 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-preview-box-sub4"
+                    class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box"
+                    style="min-height: 250px;"></div>
+                </div>
+
+                <!-- 오른쪽 트랙 정보 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-description-box-sub4" class="p-3 rounded border bg-light h-100" style="min-height: 250px;">
+                    <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+                      <span>Select a track to see details</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row d-none mt-4" id="race-type-wrapper-sub4">
+                <div class="card w-100">
+                  <div class="card-header">
+                    <h3 class="card-title">Object Avoidance</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <!-- 좌측: 옵션들 -->
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <h5 class="card-title">Randomize Object Locations</h5>
+                          <label class="form-check">
+                            <input class="form-check-input" type="checkbox" id="object-position-sub4">
+                            <span class="form-check-label">Randomize Obstacle Positions</span>
+                          </label>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Number Of Objects</h5>
+                          <select class="form-select w-75" id="number-of-objects-sub4">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i==3 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Object Type</h5>
+                          <select class="form-select w-75" name="object-type-sub4">
+                            <option value="box_obstacle">Box</option>
+                            <option value="deepracer_box_obstacle">Deepracer Box</option>
+                            <option value="amazon_box_obstacle">Amazon Box</option>
+                          </select>
+                        </div>
+                      </div>
+                      <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+                      <div class="col-md-6 d-none" id="object-location-wrapper-sub4">
+                        <div class="card h-100">
+                          <div class="card-header py-2">
+                            <h5 class="card-title mb-0">Object Locations</h5>
+                          </div>
+                          <div class="card-body" id="object-location-wrapper-inside-sub4">
+                            <!-- JS Appends Here -->
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub5 Tab Content -->
+            <div class="tab-pane fade simulation-pane" id="tabs-sub5" role="tabpanel">
+              <div class="card-title">SUB SIMULATION 5</div>
+              <div class="row">
+                <!-- 왼쪽 컨트롤 영역 -->
+                <div class="col-12 col-md-4">
+                  <div class="mb-3">
+                    <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+                      Choose a track
+                    </a>
+                  </div>
+                  <div class="mb-3">
+                    <div class="form-label">Direction</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub5" value="clockwise">
+                        <span class="form-check-label">Clockwise</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub5"
+                          value="counterclockwise" checked>
+                        <span class="form-check-label">Counter Clockwise</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="dropdown-item">
+                      <input class="form-check-input m-0 me-2" type="checkbox" id="alternate-sub5">
+                      Alternate Training Direction
+                    </label>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="form-label">Race Type</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub5" value="TIME_TRIAL" checked>
+                        <span class="form-check-label">Time Trial</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub5" value="OBJECT_AVOIDANCE">
+                        <span class="form-check-label">Object Avoidance</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 중앙 프리뷰 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-preview-box-sub5"
+                    class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box"
+                    style="min-height: 250px;"></div>
+                </div>
+
+                <!-- 오른쪽 트랙 정보 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-description-box-sub5" class="p-3 rounded border bg-light h-100" style="min-height: 250px;">
+                    <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+                      <span>Select a track to see details</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row d-none mt-4" id="race-type-wrapper-sub5">
+                <div class="card w-100">
+                  <div class="card-header">
+                    <h3 class="card-title">Object Avoidance</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <!-- 좌측: 옵션들 -->
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <h5 class="card-title">Randomize Object Locations</h5>
+                          <label class="form-check">
+                            <input class="form-check-input" type="checkbox" id="object-position-sub5">
+                            <span class="form-check-label">Randomize Obstacle Positions</span>
+                          </label>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Number Of Objects</h5>
+                          <select class="form-select w-75" id="number-of-objects-sub5">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i==3 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Object Type</h5>
+                          <select class="form-select w-75" name="object-type-sub5">
+                            <option value="box_obstacle">Box</option>
+                            <option value="deepracer_box_obstacle">Deepracer Box</option>
+                            <option value="amazon_box_obstacle">Amazon Box</option>
+                          </select>
+                        </div>
+                      </div>
+                      <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+                      <div class="col-md-6 d-none" id="object-location-wrapper-sub5">
+                        <div class="card h-100">
+                          <div class="card-header py-2">
+                            <h5 class="card-title mb-0">Object Locations</h5>
+                          </div>
+                          <div class="card-body" id="object-location-wrapper-inside-sub5">
+                            <!-- JS Appends Here -->
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub6 Tab Content -->
+            <div class="tab-pane fade simulation-pane" id="tabs-sub6" role="tabpanel">
+              <div class="card-title">SUB SIMULATION 6</div>
+              <div class="row">
+                <!-- 왼쪽 컨트롤 영역 -->
+                <div class="col-12 col-md-4">
+                  <div class="mb-3">
+                    <a href="#" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-report">
+                      Choose a track
+                    </a>
+                  </div>
+                  <div class="mb-3">
+                    <div class="form-label">Direction</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub6" value="clockwise">
+                        <span class="form-check-label">Clockwise</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="clock-direction-sub6"
+                          value="counterclockwise" checked>
+                        <span class="form-check-label">Counter Clockwise</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="dropdown-item">
+                      <input class="form-check-input m-0 me-2" type="checkbox" id="alternate-sub6">
+                      Alternate Training Direction
+                    </label>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="form-label">Race Type</div>
+                    <div>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub6" value="TIME_TRIAL" checked>
+                        <span class="form-check-label">Time Trial</span>
+                      </label>
+                      <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="race-type-sub6" value="OBJECT_AVOIDANCE">
+                        <span class="form-check-label">Object Avoidance</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 중앙 프리뷰 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-preview-box-sub6"
+                    class="p-4 rounded border bg-white shadow-sm d-flex flex-column align-items-center justify-content-center track-preview-box"
+                    style="min-height: 250px;"></div>
+                </div>
+
+                <!-- 오른쪽 트랙 정보 -->
+                <div class="col-12 col-md-4">
+                  <div id="track-description-box-sub6" class="p-3 rounded border bg-light h-100" style="min-height: 250px;">
+                    <div class="text-muted text-center d-flex align-items-center justify-content-center h-100">
+                      <span>Select a track to see details</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row d-none mt-4" id="race-type-wrapper-sub6">
+                <div class="card w-100">
+                  <div class="card-header">
+                    <h3 class="card-title">Object Avoidance</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <!-- 좌측: 옵션들 -->
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <h5 class="card-title">Randomize Object Locations</h5>
+                          <label class="form-check">
+                            <input class="form-check-input" type="checkbox" id="object-position-sub6">
+                            <span class="form-check-label">Randomize Obstacle Positions</span>
+                          </label>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Number Of Objects</h5>
+                          <select class="form-select w-75" id="number-of-objects-sub6">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i==3 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <h5 class="card-title">Object Type</h5>
+                          <select class="form-select w-75" name="object-type-sub6">
+                            <option value="box_obstacle">Box</option>
+                            <option value="deepracer_box_obstacle">Deepracer Box</option>
+                            <option value="amazon_box_obstacle">Amazon Box</option>
+                          </select>
+                        </div>
+                      </div>
+                      <!-- 우측: Object Locations (Randomize 해제 시 표시) -->
+                      <div class="col-md-6 d-none" id="object-location-wrapper-sub6">
+                        <div class="card h-100">
+                          <div class="card-header py-2">
+                            <h5 class="card-title mb-0">Object Locations</h5>
+                          </div>
+                          <div class="card-body" id="object-location-wrapper-inside-sub6">
+                            <!-- JS Appends Here -->
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div> <!-- 여기가 SIMULATION 카드(id="simulation-card-wrapper")의 끝입니다. -->
+
+<!-- Vehicles Card (병렬) -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title mb-0">Vehicles</h3>
+  </div>
+  <div class="card-body">
+    <!-- ① Vehicle Type & Sensor + Preview 이미지 ------------------------------------>
+    <div class="row g-4 mb-4">
+      <!-- 왼쪽 : Vehicle Type / Sensor -->
+      <div class="col-12 col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h4 class="mb-3">Vehicle Type</h4>
+            <div class="mb-4">
+              <select class="form-select w-75" id="vehicle-layout" name="vehicle-layout">
+                <option value="deepracer" selected>DeepRacer</option>
+                <option value="physicar">PhysiCar</option>
+              </select>
+            </div>
+
+            <h4 class="mb-3">Sensor</h4>
+            <div class="card w-75 mb-4">
+              <div class="card-body py-2">
+                <label class="me-3">Camera&nbsp;:&nbsp;1</label>
+              </div>
+            </div>
+
+
+            <div class="card w-75">
+              <div class="card-body py-2">
+                <label for="lidar-checkbox" class="d-inline-flex align-items-center mb-0">
+                  Lidar
+                  <input id="lidar-checkbox" class="form-check-input ms-3" type="checkbox">
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 오른쪽 : 차량 이미지 -->
+      <div class="col-lg-6 col-md-6 d-flex justify-content-center align-items-center">
+        <div class="card-body d-flex justify-content-center align-items-center">
+          <img id="vehicleImg"
+            src="/static/img/sensor_modification/deepracer/camera_1-lidar_false.png"
+            alt="vehicle preview" class="img-fluid rounded shadow-sm" style="max-width:100%;height:250px;">
+        </div>
+      </div>
+    </div>
+
+
+    <div class="card w-100">
+      <div class="card-header d-flex align-items-center">
+        <h3 class="card-title mb-0">Action Space</h3>
+      </div>
+
+      <div class="card-body">
+        <div class="row g-4">
+          <!-- 왼쪽 : 컨트롤 -->
+          <div class="col-lg-5">
+            <!-- DISCRETE -------------------------------------------------------->
+            <div class="discrete-only">
+              <div id="actionList" class="mb-3"></div>
+
+              <!-- choose-a-track 와 동일한 스타일 & SVG 아이콘 -->
+              <button id="addAction"
+                class="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-1">
+                <!-- plus 아이콘 -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Add&nbsp;Action
+              </button>
+              <div class="mt-2">
+                <p class="text-muted fs-6">{{ _("vehicles.add_action_button_message")}}</p>
+              </div>
+            </div>
+
+            <!-- CONTINUOUS ------------------------------------------------------->
+            <div class="continuous-only">
+              <!-- Speed -->
+              <h4 class="mb-1 me-2">Speed</h4>
+              <!-- mb-0: 세로 여백 제거, fs-6: 글꼴 0.875 rem -->
+              <p class="text-muted fs-6 mb-0"><b>{{ _("vehicles.speed_message") }}</b></p>
+              <hr class="my-1">
+
+              <div class="row g-3 mb-3 mt-1">
+
+                <div class="col-6 col-md-4">
+                  <label class="form-label" for="maxSpeed">Max (m/s)</label>
+                  <input id="maxSpeed" type="number" class="form-control" value="4" step="0.1" min="0" max="4"
+                    oninput="this.value = Math.max(this.min, Math.min(this.max, this.value))">
+
+                </div>
+
+
+                <div class="col-6 col-md-4">
+                  <label class="form-label" for="minSpeed">Min (m/s)</label>
+                  <input id="minSpeed" type="number" class="form-control" value="0.5" step="0.1" min="0.5" max="4"
+                    oninput="this.value = Math.max(this.min, Math.min(this.max, this.value))">
+                </div>
+              </div>
+
+              <!-- Angle -->
+              <h4 class="mb-1">Angle</h4>
+              <p class="text-muted fs-6 mb-0"><b>{{ _("vehicles.steering_angle_message") }}</b></p>
+
+              <hr class="my-1">
+              <div class="row g-3">
+                <div class="col-6 col-md-4">
+                  <label class="form-label" for="maxAngle">Max (°)</label>
+                  <input id="maxAngle" type="number" class="form-control" value="25" step="1" min="0" max="25"
+                    oninput="this.value = Math.max(this.min, Math.min(this.max, this.value))">
+                </div>
+                <div class="col-6 col-md-4">
+                  <label class="form-label" for="minAngle">Min (°)</label>
+                  <input id="minAngle" type="number" class="form-control" value="-25" step="1" min="-25" max="-0.1"
+                    oninput="this.value = Math.max(this.min, Math.min(this.max, this.value))">
+                </div>
+              </div>
+            </div><!-- /.continuous-only -->
+          </div><!-- /.col-lg-6 -->
+
+          <!-- 오른쪽 : Canvas ---------------------------------------------------->
+          <div class="col-lg-7 d-flex justify-content-center align-items-start" style="align-items: center !important;">
+            <canvas id="canvas"></canvas>
+          </div>
+        </div><!-- /.row -->
+      </div><!-- /.card-body -->
+    </div><!-- /.card (Action Space) -->
+
+  </div><!-- /.card-body -->
+</div><!-- /.card -->
+
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title mb-0">Training</h3>
+  </div>
+
+  <div class="card-body">
+    <!-- Action Space Section -->
+    <!-- <h3 class="mb-3">hyperparameters</h3> -->
+    <h3 class style="margin-left:5px; margin-bottom:15px;"> Algorithm : PPO </h3>
+    <div class="card w-100">
+      <div class="card-header">
+        <h3 class="card-title mb-0">Hyperparameters</h3>
+      </div>
+
+      <div class="card-body">
+        <div class="row">
+          <!-- Mode Select Placeholder -->
+          <div class="row">
+            <div class="col-md-3">
+              <label class="form-label me-3 mb-0" for="batchSize">Batch size</label>
+            </div>
+            <div class="col-md-9">
+              <div class="mb-3">
+                <div class="d-flex align-items-center">
+
+                  <select id="batchSize" name="batch-size" class="form-select w-25">
+                    <option value="32" selected>32</option>
+                    <option value="64">64</option>
+                    <option value="128">128</option>
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <div class="row">
+            <div class="col-md-3">
+              <label class="form-label me-3 mb-0" for="batchSize">Discount factor</label>
+              <div class="mt-2">
+                <p class="text-muted fs-6">{{ _("training.discount_factor_message")}}</p>
+              </div>
+
+            </div>
+            <div class="col-md-9">
+              <div class="mb-3">
+                <div class="d-flex align-items-center">
+                  <input type="number" step="0.01" min="0" max="1" class="w-25 form-control mb-2" name="discount_factor" "
+                    oninput=" this.value=Math.min(1, Math.max(0, this.value))" value="0.99">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-3">
+              <label class="form-label me-3 mb-0" for="batchSize">Learning Rate</label>
+              <div class="mt-2">
+                <p class="text-muted fs-6">{{ _("training.learning_rate_message")}}</p>
+              </div>
+            </div>
+            <div class="col-md-9">
+              <div class="mb-3">
+                <div class="d-flex align-items-center">
+                  <input type="number" step="0.0001" min="0" max="1" class="w-25 form-control mb-2" name="learning_rate"
+                    oninput="this.value = Math.min(1, Math.max(0, this.value))" value="0.0003">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-3">
+              <label class="form-label me-3 mb-0" for="entropy">Entropy</label>
+              <div class="mt-2">
+                <p class="text-muted fs-6">{{ _("training.entropy_message")}}</p>
+              </div>
+            </div>
+            <div class="col-md-9">
+              <div class="mb-3">
+                <div class="d-flex align-items-center">
+                  <input type="number" step="0.01" min="0" max="1" class="w-25 form-control mb-2" name="entropy"
+                    oninput="this.value = Math.min(1, Math.max(0, this.value))" value="0.01">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-3">
+              <label class="form-label me-3 mb-0" for="lossType">Loss type</label>
+            </div>
+
+            <div class="col-md-9">
+              <div class="mb-3">
+                <div class="d-flex align-items-center">
+                  <label class="form-check form-check-inline mt-1">
+                    <input class="form-check-input" type="radio" name="loss_type" value="huber" checked="">
+                    <span class="form-check-label">Huber</span>
+                  </label>
+                  <label class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="loss_type" value="mean_squared_error">
+                    <span class="form-check-label">Mean Squared Error</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /.row -->
+    </div><!-- /.card-body -->
+
+    <div class="row align-items-center mb-3 mt-3">
+      <div class="col-md-3">
+        <label for="best_model_metric" class="col-form-label">Best Model Metric</label>
+      </div>
+      <div class="col-md-9 mt-2">
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="best_model_metric" id="best_model_metric_progress"
+            value="progress" checked>
+          <label class="form-check-label" for="best_model_metric_progress">
+            Progress
+          </label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="best_model_metric" id="best_model_metric_reward"
+            value="reward">
+          <label class="form-check-label" for="best_model_metric_reward">
+            Reward
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Max Training Time -->
+    <div class="row align-items-center mb-3">
+      <div class="col-md-3">
+        <label class="col-form-label" for="max_training_time">Max Training Time</label>
+        <div class="mt-1">
+          <p class="text-muted fs-6 mb-0">1~1440 min</p>
+        </div>
+      </div>
+      <div class="col-md-9">
+        <div class="d-flex align-items-center">
+          <input type="number" step="1" min="1" max="1440" class="form-control" style="width: 120px;" 
+            id="max_training_time" name="max_training_time"
+            oninput="this.value = Math.max(1, Math.min(1440, this.value))" value="60">
+          <span class="ms-2">min</span>
+        </div>
+      </div>
+    </div>
+
+
+  </div><!-- /.card-body -->
+</div><!-- /.card -->
+
+<div class="card mt-3">
+
+  <div class="card-header">
+    <h3 class="card-title mb-0">Reward Function</h3>
+  </div>
+
+  <div class="card-body">
+    <!-- AI 보상함수 생성 UI -->
+    <div class="card mb-3 border-primary">
+      <div class="card-header bg-primary text-white py-2">
+        <i class="bi bi-stars me-2"></i>{{ _("ai_generation.title") }}
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label for="ai-prompt" class="form-label small text-muted">{{ _("ai_generation.prompt_label") }}</label>
+          <div class="d-flex gap-2">
+            <textarea id="ai-prompt" class="form-control" rows="2"
+                   placeholder="{{ _('ai_generation.prompt_placeholder') }}"></textarea>
+            <div class="d-flex flex-column gap-1 align-self-end">
+              <select id="ai-model" class="form-select form-select-sm" style="width: auto; min-width: 120px;">
+                <option value="gpt-4o" selected>GPT-4o</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+              </select>
+              <button id="ai-generate-btn" class="btn btn-primary btn-sm" type="button">
+                <span id="ai-generate-text"><i class="bi bi-magic me-1"></i>{{ _("ai_generation.generate_btn") }}</span>
+                <span id="ai-generate-spinner" class="d-none">
+                  <span class="spinner-border spinner-border-sm me-1"></span>{{ _("ai_generation.generating") }}
+                </span>
+              </button>
+            </div>
+          </div>
+          <div id="ai-error" class="text-danger small mt-1 d-none"></div>
+        </div>
+        <div class="small text-muted">
+          <strong>{{ _("ai_generation.example_title") }}</strong>
+          <span class="badge bg-light text-dark me-1 cursor-pointer ai-example" data-prompt="중앙선을 최대한 따라가도록">{{ _("ai_generation.example_centerline") }}</span>
+          <span class="badge bg-light text-dark me-1 cursor-pointer ai-example" data-prompt="속도를 최대화하면서 트랙을 벗어나지 않도록">{{ _("ai_generation.example_max_speed") }}</span>
+          <span class="badge bg-light text-dark me-1 cursor-pointer ai-example" data-prompt="우측 차선을 따라가도록 해줘">{{ _("ai_generation.example_right_lane") }}</span>
+          <span class="badge bg-light text-dark me-1 cursor-pointer ai-example" data-prompt="코너에서는 속도를 줄이고 직선에서는 속도를 높이도록">{{ _("ai_generation.example_corner_slow") }}</span>
+          <span class="badge bg-light text-dark me-1 cursor-pointer ai-example" data-prompt="waypoint 방향과 차량 heading이 일치하도록 보상">{{ _("ai_generation.example_direction_align") }}</span>
+        </div>
+        <div class="mt-2 small text-muted" style="font-size: 0.75rem;">
+          <i class="bi bi-info-circle me-1"></i>
+          {{ _("ai_generation.disclaimer") }}
+        </div>
+      </div>
+    </div>
+
+    <div id="code-runner-wrapper" class="card mt-4">
+      <div class="d-flex flex-column gap-2">
+        <div class="px-3 py-2" style="font-family: monospace; font-size: 0.9rem;">
+          reward_function.py
+        </div>
+        <textarea id="editor">
+def reward_function(params):
+    # Read input parameters
+    distance_from_center = params['distance_from_center']
+    track_width = params['track_width']
+
+    # Calculate 3 marks that are farther and father away from the center line
+    marker_1 = 0.1 * track_width
+    marker_2 = 0.25 * track_width
+    marker_3 = 0.5 * track_width
+
+    # Give higher reward if the car is closer to center line and vice versa
+    if distance_from_center <= marker_1:
+        reward = 1
+    elif distance_from_center <= marker_2:
+        reward = 0.5
+    elif distance_from_center <= marker_3:
+        reward = 0.1
+    else:
+        reward = 1e-3  # likely crashed/ close to off track
+
+    return float(reward)</textarea>
+      </div>
+    </div>
+
+    <!-- 한 줄에 나란히, 균일한 간격(gap) 적용 -->
+    <div class="mt-2 d-inline-flex align-items-center gap-3">
+      <!-- 1) 버튼은 mt-2 제거 -->
+
+      <button id="submitCodeBtn" class="btn btn-6 btn-success w-100">
+        Validate
+      </button>
+
+      <!-- 2) 스피너 (필요 시) -->
+      <span id="loadingSpinner" class="spinner-border spinner-border-sm text-primary d-none" role="status" 
+        aria-hidden="true" style="width: 1rem; height: 1rem; flex-shrink: 0;"></span>
+    </div>
+  </div>
+
+  <div class="container mb-3">
+    <!-- 성공카드 -->
+    <div id="successIcon" class="alert alert-success py-2 px-4 mb-0 d-inline-flex align-items-center d-none"
+      role="alert">
+      <div class="alert-icon">
+        <!-- Download SVG icon from http://tabler.io/icons/icon/check -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          class="icon alert-icon icon-2">
+          <path d="M5 12l5 5l10 -10"></path>
+        </svg>
+      </div>
+      Completed successfully!
+    </div>
+  </div>
+
+  <pre id="responseOutput" class="d-none mt-2 mx-3 alert alert-danger" style="color:#374151"></pre>
+</div>
+
+
+<div class="mt-4 mb-3 text-end">
+  <button id="submit-model-btn" class="btn btn-primary btn-lg px-5 disabled">
+    <span id="createModelSpinner" class="spinner-border spinner-border-sm me-2 d-none" role="status"
+      aria-hidden="true"></span>
+    🚀 Create Model
+  </button>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+
+<!-- 전역 설정 변수 -->
+<script>
+  // 번역 메시지
+  window.translations = {
+    vehicles: {
+      speed_message: "{{ _('vehicles.speed_message') }}",
+      steering_angle_message: "{{ _('vehicles.steering_angle_message') }}"
+    },
+    ai_generation: {
+      success: "{{ _('ai_generation.success') }}",
+      error_empty_prompt: "{{ _('ai_generation.error_empty_prompt') }}"
+    },
+    common: {
+      enabled: "{{ _('common.enabled') }}",
+      disabled: "{{ _('common.disabled') }}"
+    }
+  };
+  // 액션 스페이스 이미지 경로
+  const actionSpaceImage = "/static/img/action_space.png";
+</script>
+
+<!-- 외부 라이브러리 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<!-- CodeMirror 초기화 (code-mirror.js 대체) -->
+<script>
+{% include "js/code-mirror.js" %}
+</script>
+
+<!-- 통합 Create Model 모듈 -->
+<script>
+{% include "js/create-model.js" %}
+</script>
+
+<!-- AI 보상함수 생성 (독립 기능) -->
+<script>
+(function() {
+  document.addEventListener('DOMContentLoaded', function() {
+    const promptInput = document.getElementById('ai-prompt');
+    const generateBtn = document.getElementById('ai-generate-btn');
+    const generateText = document.getElementById('ai-generate-text');
+    const generateSpinner = document.getElementById('ai-generate-spinner');
+    const errorDiv = document.getElementById('ai-error');
+    
+    if (!generateBtn) return;
+    
+    // 예시 클릭 시 프롬프트 입력
+    document.querySelectorAll('.ai-example').forEach(badge => {
+      badge.style.cursor = 'pointer';
+      badge.addEventListener('click', function() {
+        promptInput.value = this.dataset.prompt;
+        promptInput.focus();
+      });
+    });
+    
+    // AI 생성 버튼 클릭
+    generateBtn.addEventListener('click', async function() {
+      const prompt = promptInput.value.trim();
+      if (!prompt) {
+        errorDiv.textContent = window.translations?.ai_generation?.error_empty_prompt || 'Please describe the reward function.';
+        errorDiv.classList.remove('d-none');
+        return;
+      }
+      
+      const raceTypeRadio = document.querySelector('input[name="race-type"]:checked');
+      const raceType = raceTypeRadio?.value || 'TIME_TRIAL';
+      const aiModel = document.getElementById('ai-model')?.value || 'gpt-4o';
+      
+      generateBtn.disabled = true;
+      generateText.classList.add('d-none');
+      generateSpinner.classList.remove('d-none');
+      errorDiv.classList.add('d-none');
+      
+      try {
+        const response = await fetch('/api/reward-function/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, race_type: raceType, model: aiModel })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.code) {
+          if (window.editor?.setValue) {
+            window.editor.setValue(data.code);
+          }
+          promptInput.value = '';
+          errorDiv.textContent = '✅ ' + (window.translations?.ai_generation?.success || '보상함수가 생성되었습니다.');
+          errorDiv.classList.remove('text-danger');
+          errorDiv.classList.add('text-success');
+          errorDiv.classList.remove('d-none');
+          setTimeout(() => {
+            errorDiv.classList.add('d-none');
+            errorDiv.classList.remove('text-success');
+            errorDiv.classList.add('text-danger');
+          }, 5000);
+        } else {
+          errorDiv.textContent = data.error || 'Failed to generate.';
+          errorDiv.classList.remove('d-none');
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Error: ' + err.message;
+        errorDiv.classList.remove('d-none');
+      } finally {
+        generateBtn.disabled = false;
+        generateText.classList.remove('d-none');
+        generateSpinner.classList.add('d-none');
+      }
+    });
+  });
+})();
+</script>
+
+{% endblock %}
+
+{% block modals %}
+{% include "modals/tracks.html" %}
+{% endblock %}
