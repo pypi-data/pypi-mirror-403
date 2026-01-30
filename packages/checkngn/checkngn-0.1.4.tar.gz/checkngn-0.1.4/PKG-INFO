@@ -1,0 +1,380 @@
+Metadata-Version: 2.4
+Name: checkngn
+Version: 0.1.4
+Summary: A lightweight Python DSL for setting up business intelligence rules that can be configured without code.
+Project-URL: Homepage, https://github.com/AhnafCodes/checkngn
+Author: AhnafCodes
+License-Expression: MIT
+License-File: LICENSE
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Python: >=3.13
+Requires-Dist: numpy>=2.4.0
+Requires-Dist: pandas>=2.3.3
+Requires-Dist: python-dateutil
+Requires-Dist: pyyaml>=6.0.3
+Provides-Extra: dev
+Requires-Dist: mock>=5.0.0; extra == 'dev'
+Requires-Dist: pandas>=2.3.3; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# checkngn (venmo-business-rules style)
+
+A lightweight Python DSL for setting up business intelligence rules that can be configured without code.
+
+(NOTE Disclaimer: Fork of Venmo-Business-Rules and CDICS-business-rules-enhanced, with simple updates like project setup and logging. But, not a drop-in replacement for the original)
+
+[![CI](https://github.com/AhnafCodes/checkngn/actions/workflows/automatic-test.yml/badge.svg)](https://github.com/AhnafCodes/checkngn/actions/workflows/automatic-test.yml)
+
+## Overview
+
+At its core any Rule Engine is "IF condition, THEN do action", but it is also MORE.. . As any system grows in complexity and usage, it can become burdensome if every change to the logic/behavior of the system also requires code change and deploy new code. **checkngn** provides a simple interface allowing anyone to capture new rules and logic defining the behavior of a system, and a way to then process those rules on the backend.
+
+Use cases:
+- Marketing logic for customer/item discount eligibility
+- Automated emails based on user state or event sequences
+- Data validation rules for pandas DataFrames
+- Any condition-action workflow
+
+## Installation
+
+```bash
+# Using pip
+pip install checkngn
+
+# Using uv (faster)
+uv pip install checkngn
+```
+
+**Requirements:** Python 3.13+
+
+## Quick Start
+
+```python
+from checkngn import run_all
+from checkngn.variables import BaseVariables, numeric_rule_variable, string_rule_variable
+from checkngn.actions import BaseActions, rule_action
+from checkngn.fields import FIELD_NUMERIC
+
+# 1. Define variables
+class ProductVariables(BaseVariables):
+    def __init__(self, product):
+        self.product = product
+
+    @numeric_rule_variable()
+    def current_inventory(self):
+        return self.product['inventory']
+
+    @string_rule_variable()
+    def product_name(self):
+        return self.product['name']
+
+# 2. Define actions
+class ProductActions(BaseActions):
+    def __init__(self, product):
+        self.product = product
+
+    @rule_action(params={"sale_percentage": FIELD_NUMERIC})
+    def put_on_sale(self, sale_percentage, results=None):
+        self.product['price'] *= (1.0 - sale_percentage)
+
+# 3. Define rules
+rules = [
+    {
+        "conditions": {
+            "all": [
+                {"field": "current_inventory", "operator": "greater_than", "value": 20},
+                {"field": "product_name", "operator": "contains", "value": "Widget"}
+            ]
+        },
+        "actions": [
+            {"action": "put_on_sale", "params": {"sale_percentage": 0.25}}
+        ]
+    }
+]
+
+# 4. Run rules
+product = {'name': 'Super Widget', 'inventory': 50, 'price': 100.0}
+run_all(rules, ProductVariables(product), ProductActions(product))
+print(product['price'])  # 75.0
+```
+
+## Debug Mode
+
+Enable "check engine light" debug output to see rule evaluation:
+
+```python
+run_all(rules, variables, actions, debug=True)
+```
+
+Output:
+```
+🔧 [checkngn] Evaluating rule 1/1
+🔧 [checkngn] ✓ condition 'current_inventory greater_than 20' → True
+🔧 [checkngn] ✓ condition 'product_name contains Widget' → True
+🔧 [checkngn] ✓ 'all' block → True
+🔧 [checkngn] Rule triggered ✓
+🔧 [checkngn] Executing action 'put_on_sale' with {'sale_percentage': 0.25}
+```
+
+Or enable globally:
+```python
+from checkngn import enable_debug
+enable_debug(True)
+```
+
+## Usage Guide
+
+### 1. Define Variables
+
+Variables represent values in your system. You define all available variables for a certain kind of object, then dynamically set conditions and thresholds for those.
+
+```python
+from checkngn.variables import (
+    BaseVariables,
+    numeric_rule_variable,
+    string_rule_variable,
+    boolean_rule_variable,
+    select_rule_variable,
+    select_multiple_rule_variable,
+    dataframe_rule_variable
+)
+
+class ProductVariables(BaseVariables):
+    def __init__(self, product):
+        self.product = product
+
+    @numeric_rule_variable()
+    def current_inventory(self):
+        return self.product.current_inventory
+
+    @numeric_rule_variable(label='Days until expiration')
+    def expiration_days(self):
+        return (self.product.expiration_date - datetime.date.today()).days
+
+    @string_rule_variable()
+    def current_month(self):
+        return datetime.datetime.now().strftime("%B")
+
+    @select_rule_variable(options=['Electronics', 'Clothing', 'Food'])
+    def category(self):
+        return self.product.category
+```
+OR with dataclasses(this applies to Actions Definitions as well):
+```python
+...
+@dataclass
+class ProductVariables(BaseVariables):
+    product: Product 
+
+    @numeric_rule_variable
+    def current_inventory(self):
+        # This works because 'Product' has an .inventory attribute
+        return self.product.inventory 
+
+    @string_rule_variable
+    def product_name(self):
+        return self.product.name
+    ....
+
+```
+
+
+### 2. Define Actions
+
+Actions are executed when conditions are triggered.
+
+```python
+from checkngn.actions import BaseActions, rule_action
+from checkngn.fields import FIELD_NUMERIC, FIELD_TEXT, FIELD_SELECT
+
+class ProductActions(BaseActions):
+    def __init__(self, product):
+        self.product = product
+
+    @rule_action(params={"sale_percentage": FIELD_NUMERIC})
+    def put_on_sale(self, sale_percentage, results=None):
+        self.product.price *= (1.0 - sale_percentage)
+        self.product.save()
+
+    @rule_action(params={"number_to_order": FIELD_NUMERIC})
+    def order_more(self, number_to_order, results=None):
+        ProductOrder.objects.create(
+            product_id=self.product.id,
+            quantity=number_to_order
+        )
+```
+
+### 3. Build Rules
+
+Rules are JSON/dict structures with `conditions` and `actions`:
+NOTE: JSON structures uses different terminology from venmo's business-rules i.e.
+     - generic "name" in conditions is replaced with "field".
+     - generic "name" in actions is replace with "action" as it is self-documenting. 
+```python
+rules = [
+    # expiration_days < 5 AND current_inventory > 20
+    {
+        "conditions": {
+            "all": [
+                {"field": "expiration_days", "operator": "less_than", "value": 5},
+                {"field": "current_inventory", "operator": "greater_than", "value": 20}
+            ]
+        },
+        "actions": [
+            {"action": "put_on_sale", "params": {"sale_percentage": 0.25}}
+        ]
+    },
+    # current_inventory < 5 OR current_month = "December"
+    {
+        "conditions": {
+            "any": [
+                {"field": "current_inventory", "operator": "less_than", "value": 5},
+                {"field": "current_month", "operator": "equal_to", "value": "December"}
+            ]
+        },
+        "actions": [
+            {"action": "order_more", "params": {"number_to_order": 40}}
+        ]
+    },
+    # NOT (current_inventory > 100)
+    {
+        "conditions": {
+            "not": {
+                "field": "current_inventory", "operator": "greater_than", "value": 100
+            }
+        },
+        "actions": [
+            {"action": "order_more", "params": {"number_to_order": 10}}
+        ]
+    }
+]
+```
+
+**Condition operators:**
+- `all` - All conditions must be True (AND)
+- `any` - At least one condition must be True (OR)
+- `not` - Negates the condition
+
+**Action formats:**
+
+Actions support three formats using utility function "normalize_action":
+NOTE: dict is default, everything is normalized to "dict" use utility function "normalize_action"
+
+```python
+from checkngn.utils import normalize_action
+normalized_actions = normalize_action(actions)
+run_all(rules, variables, normalized_actions, debug=True)
+```
+
+```python
+"actions": [
+    {"action": "put_on_sale", "params": {"percent": 25}},   # dict - default
+    ["order_more", {"quantity": 10}],                       # list, or tuple
+    "notify_manager"                                        # string (no params)
+]
+```
+
+### 4. Export Rule Schema
+
+Export available variables, operators, and actions for UI generation:
+
+```python
+from checkngn import export_rule_data
+
+schema = export_rule_data(ProductVariables, ProductActions)
+```
+
+Returns:
+```python
+{
+    "variables": [
+        {"field": "current_inventory", "label": "Current Inventory", "field_type": "numeric", "options": []},
+        {"field": "expiration_days", "label": "Days until expiration", "field_type": "numeric", "options": []},
+        ...
+    ],
+    "actions": [
+        {"action": "put_on_sale", "label": "Put On Sale", "params": [{"name": "sale_percentage", "fieldType": "numeric", "label": "Sale Percentage"}]},
+        ...
+    ],
+    "variable_type_operators": {
+        "numeric": [
+            {"operator": "equal_to", "label": "Equal To", "input_type": "numeric"},
+            {"operator": "greater_than", "label": "Greater Than", "input_type": "numeric"},
+            ...
+        ],
+        "string": [...],
+        ...
+    }
+}
+```
+
+### 5. Run Rules
+
+```python
+from checkngn import run_all
+
+for product in products:
+    run_all(
+        rule_list=rules,
+        defined_variables=ProductVariables(product),
+        defined_actions=ProductActions(product),
+        stop_on_first_trigger=True,  # Stop after first matching rule
+        debug=False  # Set True for debug output
+    )
+```
+
+## Variable Types & Operators
+
+| Decorator | Type | Operators |
+|-----------|------|-----------|
+| `@numeric_rule_variable()` | int, float | `equal_to`, `greater_than`, `less_than`, `greater_than_or_equal_to`, `less_than_or_equal_to` |
+| `@string_rule_variable()` | str | `equal_to`, `equal_to_case_insensitive`, `starts_with`, `ends_with`, `contains`, `matches_regex`, `non_empty` |
+| `@boolean_rule_variable()` | bool | `is_true`, `is_false` |
+| `@select_rule_variable()` | list | `contains`, `does_not_contain` |
+| `@select_multiple_rule_variable()` | list | `contains_all`, `is_contained_by`, `shares_at_least_one_element_with`, `shares_exactly_one_element_with`, `shares_no_elements_with` |
+| `@dataframe_rule_variable()` | pd.DataFrame/Series | `exists`, `not_exists` |
+
+
+## Rules in YAML using utils
+
+```python
+from checkngn.utils import yaml_to_dict, dict_to_yaml
+
+yaml_rules = """
+- conditions:
+    all:
+      - field: current_inventory
+        operator: greater_than
+        value: 20
+  actions:
+    - action: put_on_sale
+      params:
+        sale_percentage: 0.25
+"""
+
+rules = yaml_to_dict(yaml_rules)
+run_all(rules, variables, actions)
+
+# Convert results back to YAML if needed
+yaml_result = dict_to_yaml(rules)
+```
+
+## Alterntives
+  - [CDIS Business Rules -Fork Venmo original](https://github.com/cdisc-org/business-rules) i.e. pre-cursor of this repo
+  - [Funnel Rules Engine](https://github.com/funnel-io/funnel-rules-engine) : A code-driven engine designed for developers. Rules are defined as Python objects/functions.
+It is ideal for simple, maintainable logic within a codebase without the overhead of parsing JSON or managing external rule definitions. Choose funnel-rules-engine if you need to refactor complex conditional logic (spaghetti code) into a clean, testable structure within your application, and the rules are part of the application logic itself.
+Related Conference Talk by its creator: [Rules Rule(Creating and Using a Rules Engine)](https://youtu.be/Lsi1ZhmbNDc?t=87) 
+
+
+## Documentation
+
+See [INTERNALS.md](https://github.com/AhnafCodes/checkngn/blob/master/INTERNALS.md) for detailed architecture documentation.
+
+## License
+
+MIT
