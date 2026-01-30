@@ -1,0 +1,138 @@
+.rules:
+  rules:
+    - changes:
+      - components/tyko-client/**/*
+
+.test_template:
+  stage: test
+  image: python:3.12
+  before_script:
+    - cd components/tyko-client
+    - pip install uv
+    - uv sync --extra dev
+  script:
+    - uv run pytest
+    - uv run mypy src/
+    - uv run ruff check src/ tests/
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: components/tyko-client/coverage.xml
+    paths:
+      - components/tyko-client/htmlcov/
+    expire_in: 1 week
+  rules: !reference [.rules, rules]
+
+test:python3.10:
+  extends: .test_template
+  image: python:3.10
+
+test:python3.11:
+  extends: .test_template
+  image: python:3.11
+
+test:python3.12:
+  extends: .test_template
+  image: python:3.12
+
+test:python3.13:
+  extends: .test_template
+  image: python:3.13
+
+lint:  
+  extends: .test_template
+  stage: test
+  script:
+    - uv run ruff check src/ tests/ --diff
+
+# Build package
+build-package:
+  stage: build
+  image: python:3.12
+  before_script:
+    - cd components/tyko-client
+    - pip install hatch
+  script:
+    - hatch build
+  artifacts:
+    paths:
+      - components/tyko-client/dist/
+    expire_in: 1 week
+  needs:
+    - test:python3.12
+    - test:python3.11
+    - test:python3.10
+    - test:python3.13
+    - lint
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - components/tyko-client/**/*
+
+# Publish package to PyPI
+publish-package:
+  stage: deploy
+  image: python:3.12
+  variables:
+    HATCH_INDEX_USER: __token__
+    HATCH_INDEX_AUTH: ${PYPI_TOKEN}
+  before_script:
+    - cd components/tyko-client
+    - pip install hatch
+  script:
+    - hatch publish
+  needs:
+    - build-package    
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - components/tyko-client/**/*
+
+# # Publish to Test PyPI (for testing releases)
+# publish:test:
+#   stage: publish
+#   before_script:
+#     - pip install uv
+#   script:
+#     - uv publish --publish-url https://test.pypi.org/legacy/ --token $TEST_PYPI_TOKEN
+#   only:
+#     - /^v\d+\.\d+\.\d+(-rc\d+)?$/  # Tags like v1.0.0 or v1.0.0-rc1
+#   except:
+#     - branches
+#   when: manual
+
+# # Publish to PyPI (production releases)
+# publish:pypi:
+#   stage: publish
+#   before_script:
+#     - pip install uv
+#   script:
+#     - uv publish --token $PYPI_TOKEN
+#   only:
+#     - /^v\d+\.\d+\.\d+$/  # Only tags like v1.0.0 (no pre-release)
+#   except:
+#     - branches
+#   environment:
+#     name: production
+#     url: https://pypi.org/project/tyko-client/
+
+# Security scanning
+security:
+  stage: test
+  before_script:
+    - cd components/tyko-client
+    - pip install uv safety
+    - uv sync
+  script:
+    - uv pip freeze > requirements.txt
+    - safety check --file requirements.txt
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - components/tyko-client/**/*
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - components/tyko-client/**/*
