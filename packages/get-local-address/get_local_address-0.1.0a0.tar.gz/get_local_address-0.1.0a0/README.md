@@ -1,0 +1,50 @@
+# `get-local-address`
+
+A simple utility to determine the local IP address that would be used to communicate with a specified remote UDP server.
+
+## Description
+
+This program creates a UDP socket, connects it to a target server (default: Cloudflare's DNS at 1.1.1.1:53), and then retrieves the local IP address that would be used for this connection. This is particularly useful for systems with multiple network interfaces to determine which interface would be used to reach a specific destination.
+
+## Features
+
+- Configurable target address and port
+- Lightweight, dependency-free
+- Cross-platform
+
+## Installation
+
+```bash
+pip install get-local-address
+```
+
+## Usage
+
+```
+python -m get_local_address [-a ADDRESS] [-p PORT] [-h]
+```
+
+### Options
+| Option | Description |
+|--------|-------------|
+| `-a`, `--address ADDRESS` | Target server address (default: 1.1.1.1) |
+| `-p`, `--port PORT`       | Target server port (default: 53) |
+| `-h`, `--help`            | Show help message |
+
+## Output
+
+The program outputs the local IP address that would be used to communicate with the specified server, e.g.:
+
+```
+192.168.1.5
+```
+
+## Limitations
+
+- Only supports IPv4 addresses
+- Requires network connectivity to the target server (though no actual packets are sent)
+- May not work correctly with some firewall configurations
+
+## License
+
+MIT License
