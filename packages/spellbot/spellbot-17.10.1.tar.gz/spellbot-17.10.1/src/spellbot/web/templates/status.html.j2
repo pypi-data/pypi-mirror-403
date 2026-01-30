@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>SpellBot Status</title>
+    <meta name="author" content="lexicalunit">
+    <meta name="description" content="SpellBot Shard Status">
+    <meta name="theme-color" content="#5A3EFD">
+    <link rel="icon" type="image/x-icon" href="https://spellbot.io/favicon.ico">
+    <meta http-equiv="refresh" content="30">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        a, a:visited, a:active {
+            color: rgba(246, 173, 75);
+            text-decoration: none;
+            transition: all 0.3s ease-in-out;
+        }
+        a:hover { filter: brightness(150%);  }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header {
+            display: flex; align-items: center; gap: 1rem;
+            margin-bottom: 2rem; padding-bottom: 1rem;
+            border-bottom: 1px solid #333;
+        }
+        .header img { width: 64px; height: 64px; border-radius: 50%; }
+        .header h1 { font-size: 1.75rem; font-weight: 600; }
+        .overall-status {
+            background: #252545; border-radius: 12px; padding: 1.5rem;
+            margin-bottom: 2rem; display: flex; justify-content: space-between;
+            align-items: center; flex-wrap: wrap; gap: 1rem;
+        }
+        .status-indicator {
+            display: flex; align-items: center; gap: 0.75rem;
+            font-size: 1.25rem; font-weight: 600;
+        }
+        .status-dot {
+            width: 16px; height: 16px; border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .status-healthy .status-dot { background: #4ade80; box-shadow: 0 0 12px #4ade80; }
+        .status-degraded .status-dot { background: #fbbf24; box-shadow: 0 0 12px #fbbf24; }
+        .status-down .status-dot { background: #f87171; box-shadow: 0 0 12px #f87171; }
+        .status-unknown .status-dot { background: #9ca3af; }
+        .status-upgrading .status-dot { background: #60a5fa; box-shadow: 0 0 12px #60a5fa; }
+        .stats { display: flex; gap: 2rem; flex-wrap: wrap; }
+        .stat { text-align: center; }
+        .stat-value { font-size: 1.5rem; font-weight: 700; color: #818cf8; }
+        .stat-label { font-size: 0.875rem; color: #9ca3af; }
+        .shards-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+        .shard-card {
+            background: #252545; border-radius: 8px; padding: 1rem;
+            border-left: 4px solid #4ade80; transition: transform 0.2s;
+        }
+        .shard-card:hover { transform: translateY(-2px); }
+        .shard-card.status-down { border-left-color: #f87171; }
+        .shard-card.status-degraded { border-left-color: #fbbf24; }
+        .shard-header {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 0.75rem;
+        }
+        .shard-id { font-weight: 600; font-size: 1.1rem; }
+        .shard-status {
+            padding: 0.25rem 0.75rem; border-radius: 9999px;
+            font-size: 0.75rem; font-weight: 600;
+        }
+        .shard-status.status-healthy { background: #166534; color: #4ade80; }
+        .shard-status.status-down { background: #7f1d1d; color: #f87171; }
+        .shard-metrics { display: flex; gap: 1.5rem; font-size: 0.875rem; color: #9ca3af; }
+        .metric { display: flex; flex-direction: column; }
+        .metric-value { color: #e0e0e0; font-weight: 500; }
+        .latency-good .metric-value { color: #4ade80; }
+        .latency-ok .metric-value { color: #fbbf24; }
+        .latency-bad .metric-value { color: #f87171; }
+        .footer {
+            margin-top: 2rem; padding-top: 1rem;
+            border-top: 1px solid #333; text-align: center;
+            font-size: 0.875rem; color: #6b7280;
+        }
+        .no-data {
+            text-align: center; padding: 3rem; background: #252545;
+            border-radius: 12px; color: #9ca3af;
+        }
+        .upgrade-banner {
+            background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%);
+            border: 1px solid #3b82f6;
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .upgrade-icon {
+            font-size: 1.5rem;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .upgrade-content { flex: 1; }
+        .upgrade-title {
+            font-weight: 600;
+            color: #60a5fa;
+            margin-bottom: 0.25rem;
+        }
+        .upgrade-details { font-size: 0.875rem; color: #9ca3af; }
+        .version-groups {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+        }
+        .version-group {
+            background: #252545;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+        .version-group.is-newest {
+            border: 1px solid #4ade80;
+        }
+        .version-group.is-old {
+            border: 1px solid #6b7280;
+            opacity: 0.8;
+        }
+        .version-label {
+            font-weight: 600;
+            color: #818cf8;
+        }
+        .version-shards {
+            color: #9ca3af;
+            font-size: 0.75rem;
+        }
+        .shard-version {
+            font-size: 0.7rem;
+            color: #60a5fa;
+            margin-left: auto;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="https://spellbot.io/">
+                <img alt="SpellBot" src="https://spellbot.io/assets/img/avatar-icon.png">
+            </a>
+            <h1>SpellBot Status</h1>
+        </div>
+
+        <div class="overall-status {{ overall_status_class }}">
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span>{{ overall_status | capitalize }}</span>
+            </div>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value">{{ ready_shards }}/{{ total_shards }}</div>
+                    <div class="stat-label">Shards Online</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">{{ "{:,}".format(total_guilds) }}</div>
+                    <div class="stat-label">Servers</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">{{ version }}</div>
+                    <div class="stat-label">Version</div>
+                </div>
+            </div>
+        </div>
+
+        {% if upgrade_in_progress %}
+        <div class="upgrade-banner">
+            <span class="upgrade-icon">⚙️</span>
+            <div class="upgrade-content">
+                <div class="upgrade-title">Upgrade in Progress</div>
+                <div class="upgrade-details">Rolling deployment is in progress. Some shards are running different versions.</div>
+                <div class="version-groups">
+                    {% for group in version_groups %}
+                    <div class="version-group {{ 'is-newest' if group.is_newest else 'is-old' }}">
+                        <span class="version-label">{{ group.version }}</span>
+                        <span class="version-shards">{% if group.shard_ids | length == 1 %}Shard #{{ group.shard_ids[0] }}{% else %}Shards #{{ group.shard_ids | join(', #') }}{% endif %}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if shards %}
+        <div class="shards-grid">
+            {% for shard in shards %}
+            <div class="shard-card {{ shard.status_class }}">
+                <div class="shard-header">
+                    <span class="shard-id">Shard {{ shard.shard_id }}</span>
+                    {% if upgrade_in_progress %}
+                    <span class="shard-version">{{ shard.version }}</span>
+                    {% endif %}
+                    <span class="shard-status {{ shard.status_class }}">{{ shard.status_text }}</span>
+                </div>
+                <div class="shard-metrics">
+                    <div class="metric {{ shard.latency_class }}">
+                        <span class="metric-label">Latency</span>
+                        <span class="metric-value">{{ shard.latency }}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Servers</span>
+                        <span class="metric-value">{{ "{:,}".format(shard.guild_count) }}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Updated</span>
+                        <span class="metric-value">{{ shard.last_updated }}</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-data">
+            <p>No shard data available.</p>
+            <p>The bot may be starting up or Redis may not be configured.</p>
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p>Last updated: {{ last_updated }} • Auto-refreshes every 30 seconds</p>
+            <p>Please check <a href="https://bsky.app/profile/spellbot.io">Bluesky</a> for more information</p>
+        </div>
+    </div>
+</body>
+</html>
