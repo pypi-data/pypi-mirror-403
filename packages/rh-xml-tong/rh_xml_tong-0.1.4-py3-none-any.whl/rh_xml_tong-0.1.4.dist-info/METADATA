@@ -1,0 +1,270 @@
+Metadata-Version: 2.4
+Name: rh-xml-tong
+Version: 0.1.4
+Summary: 人行XML征信数据处理库
+Home-page: https://github.com/yourusername/rh-xml-tong
+Author: Tong
+Author-email: Tong <tong@example.com>
+License: MIT License
+        
+        Copyright (c) 2026 Tong
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+Project-URL: Homepage, https://github.com/yourusername/rh-xml-tong
+Project-URL: Documentation, https://github.com/yourusername/rh-xml-tong/wiki
+Project-URL: Repository, https://github.com/yourusername/rh-xml-tong
+Project-URL: Bug Tracker, https://github.com/yourusername/rh-xml-tong/issues
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Office/Business :: Financial
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pandas>=1.0.0
+Requires-Dist: numpy>=1.18.0
+Requires-Dist: tqdm>=4.50.0
+Dynamic: author
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-python
+
+# rh_xml_tong - 人行XML征信数据处理库
+
+一个专门用于解析和处理中国人民银行XML格式征信数据的Python库，支持批量处理、自动验证、智能错误处理等功能。
+
+## 🚀 快速开始
+
+### 安装
+
+```bash
+pip install rh-xml-tong
+```
+
+### 基本使用
+
+```python
+from rh_xml_tong import quick_process
+
+# 快速处理XML征信文件
+df, stats = quick_process('xml目录', '输出文件.csv')
+print(f"成功处理 {stats['valid']} 个文件")
+```
+
+## ✨ 主要功能
+
+### 🔍 智能报文验证
+- **7重验证机制**：文件存在性、内容完整性、XML格式、必需字段、错误状态、时间格式等
+- **自动跳过失效报文**：智能识别并跳过损坏或无效的文件
+- **详细错误报告**：提供具体的失效原因分析
+
+### ⚡ 高效批量处理
+- **进度条显示**：实时显示处理进度
+- **内存优化**：支持大量文件的批量处理
+- **中断恢复**：支持处理过程中的错误恢复
+
+### 📊 数据标准化
+- **统一输出格式**：标准化的DataFrame格式
+- **JSON结构化**：报文内容转换为结构化JSON
+- **时间格式统一**：自动处理多种时间格式
+
+### 🛡️ 稳定性保障
+- **异常处理**：完善的错误处理机制
+- **数据验证**：确保输出数据的完整性
+- **测试覆盖**：全面的单元测试
+
+## 📖 详细文档
+
+### 核心API
+
+#### quick_process()
+```python
+from rh_xml_tong import quick_process
+
+df, stats = quick_process(
+    xml_dir='xml',                    # XML文件目录
+    output_file='结果.csv'            # 输出文件路径
+)
+
+# 返回结果
+# df: pandas.DataFrame - 解析后的数据
+# stats: dict - 处理统计信息
+```
+
+#### process_all_xml_files()
+```python
+from rh_xml_tong import process_all_xml_files
+
+df, stats = process_all_xml_files(
+    xml_dir='xml',
+    output_file='结果.csv',
+    save_csv=True,                    # 是否保存CSV
+    show_progress=True,               # 是否显示进度条
+    validate_output=True              # 是否验证输出路径
+)
+```
+
+#### validate_xml_content()
+```python
+from rh_xml_tong import validate_xml_content
+
+is_valid, reason = validate_xml_content('file.xml', 'xml_dir')
+if not is_valid:
+    print(f"文件无效: {reason}")
+```
+
+#### get_invalid_files_report()
+```python
+from rh_xml_tong import get_invalid_files_report
+
+df_invalid = get_invalid_files_report('xml目录')
+print(df_invalid)  # 显示所有失效文件及原因
+```
+
+### 输出格式
+
+处理后的DataFrame包含以下列：
+
+| 列名 | 说明 | 示例 |
+|------|------|------|
+| 用户id | XML文件名（不含扩展名） | `91234567` |
+| 报告编号 | 征信报告编号 | `2024091012345678` |
+| 姓名 | 个人姓名 | `张三` |
+| 报告时间 | 完整报告时间 | `2024-09-10T09:05:47` |
+| 报文内容 | 完整XML内容的JSON格式 | `{"Document": {...}}` |
+| 报告时间修改 | 仅日期部分 | `2024-09-10` |
+
+### 配置选项
+
+```python
+from rh_xml_tong import Config
+
+# 修改默认配置
+Config.XML_DIR = 'my_xml_files'
+Config.OUTPUT_FILE = 'my_output.csv'
+Config.ENCODING = 'utf-8'
+
+# 自定义必需字段
+Config.REQUIRED_FIELDS = [
+    './/PA01AR01',  # 报告时间
+    './/PA01AI01',  # 报告编号
+    './/PA01BQ01',  # 姓名 (新增)
+]
+```
+
+## 🔧 高级用法
+
+### 处理单个文件
+```python
+from rh_xml_tong import process_single_file
+
+result = process_single_file('example.xml', 'xml_dir')
+if result['status'] == 'success':
+    print("处理成功:", result['data'])
+else:
+    print("处理失败:", result['reason'])
+```
+
+### 获取处理统计
+```python
+from rh_xml_tong import get_processing_statistics
+
+stats = get_processing_statistics('xml_dir')
+print(f"预计有效文件: {stats['estimated_valid']}")
+print(f"预计无效文件: {stats['estimated_invalid']}")
+```
+
+### 批处理模式
+```python
+import os
+from rh_xml_tong import quick_process
+
+# 处理多个目录
+directories = ['dir1/xml', 'dir2/xml', 'dir3/xml']
+
+all_results = []
+for xml_dir in directories:
+    if os.path.exists(xml_dir):
+        df, stats = quick_process(xml_dir, f'结果_{os.path.basename(xml_dir)}.csv')
+        all_results.append(df)
+
+# 合并所有结果
+import pandas as pd
+final_df = pd.concat(all_results, ignore_index=True)
+```
+
+## ⚙️ 环境要求
+
+- Python 3.7+
+- pandas >= 1.0.0
+- numpy >= 1.18.0
+- tqdm >= 4.50.0
+
+## 🐛 故障排除
+
+### 常见问题
+
+**Q: 为什么有些XML文件被跳过？**
+
+A: 可能的原因：
+- 文件损坏或格式不正确
+- 缺少必需字段（报告时间、报告编号）
+- 包含错误状态标识
+- 时间格式无效
+
+可以使用 `get_invalid_files_report()` 查看详细原因。
+
+**Q: 内存使用过高怎么办？**
+
+A: 
+- 分批处理文件
+- 设置 `save_csv=False` 避免立即保存
+- 处理完立即释放DataFrame
+
+**Q: 处理速度慢怎么优化？**
+
+A:
+- 设置 `show_progress=False` 关闭进度条
+- 确保XML文件在SSD上
+- 考虑并行处理（自行实现）
+
+## 🤝 贡献指南
+
+欢迎提交Issue和Pull Request！
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件
+
+## 📞 联系方式
+
+- 作者：Tong
+- 邮箱：tong@example.com
+- 项目主页：https://github.com/yourusername/rh-xml-tong
+
+---
+
+**注意**：本库专门用于处理中国人民银行征信数据，请确保数据处理符合相关法律法规要求。
