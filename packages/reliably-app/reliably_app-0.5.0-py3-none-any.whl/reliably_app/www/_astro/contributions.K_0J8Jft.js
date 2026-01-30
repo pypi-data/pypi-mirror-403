@@ -1,0 +1,1 @@
+function t(r){let e=null;switch(r){case"none":e=0;break;case"low":e=1;break;case"medium":e=2;break;case"high":e=3;break}return e}function a(r){let e="",n=null;if(typeof r=="string"?n=Number(r):n=r,n!==null)switch(n){case 0:e="none";break;case 1:e="low";break;case 2:e="medium";break;case 3:e="high";break}return e}export{a,t as c};

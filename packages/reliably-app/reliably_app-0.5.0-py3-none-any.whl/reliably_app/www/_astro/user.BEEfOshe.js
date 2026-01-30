@@ -1,0 +1,1 @@
+import{a as r,u as e}from"./user.Bg1Nd46A.js";import{u as i}from"./index.CwJxcYEt.js";async function u(o){const a=i(r);let n=a.value===""?"[unknown]":a.value;await e(),window.location.replace(`/?origin=403&org_name=${n}&org_id=${o}`)}export{u as h};
