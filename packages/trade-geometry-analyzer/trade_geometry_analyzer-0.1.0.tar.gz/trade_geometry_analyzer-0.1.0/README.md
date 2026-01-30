@@ -1,0 +1,861 @@
+# Signal Analyzer
+
+**Trade Geometry Diagnostic Engine** - A Python library for analyzing the post-entry behavior of trading signals.
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Poetry](https://img.shields.io/badge/poetry-dependency%20management-blue)](https://python-poetry.org/)
+
+---
+
+## Table of Contents
+
+- [What is Trade Geometry?](#what-is-trade-geometry)
+- [The Core Concept](#the-core-concept)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [API Reference](#api-reference)
+- [Component Architecture](#component-architecture)
+- [Section Details](#section-details)
+- [Interpreting Results](#interpreting-results)
+- [Advanced Usage](#advanced-usage)
+- [Examples](#examples)
+
+---
+
+## Example Visualizations
+
+Here's what you get from running the analyzer on a real trading strategy:
+
+<table>
+<tr>
+<td width="50%">
+
+**Trade Geometry**
+![Scatter](examples/scatter.png)
+
+</td>
+<td width="50%">
+
+**TP/SL Probability**
+![Heatmap](examples/heatmap_prob.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Risk/Reward Frontiers**
+![Frontiers](examples/frontiers.png)
+
+</td>
+<td width="50%">
+
+**Time Sequencing**
+![Ordering](examples/ordering.png)
+
+</td>
+</tr>
+</table>
+
+*Analysis run on EURGBP hourly data (3,500+ trades). See [Section Details](#section-details) for all visualizations.*
+
+---
+
+## What is Trade Geometry?
+
+Trade geometry refers to the **path-dependent behavior** of trades after entry. Instead of just looking at final P&L, we analyze:
+
+- **MFE (Max Favorable Excursion)**: Best achievable profit within a time horizon
+- **MAE (Max Adverse Excursion)**: Worst drawdown experienced
+- **Time sequencing**: When did profit vs pain occur?
+- **Path dependencies**: Can the trade hit TP before SL?
+
+### **Why This Matters**
+
+Traditional backtesting shows you *if* a signal works. Trade geometry shows you:
+- **HOW** it works (profit-first vs pain-first)
+- **WHERE** to place stops and targets (based on empirical paths)
+- **WHEN** to exit (time-based vs price-based)
+- **WHAT** risk management suits the signal (trailing vs fixed)
+
+### **This is NOT**
+- A signal generator or optimizer
+- A backtesting engine
+- A portfolio management tool
+
+### **This IS**
+- A diagnostic tool for analyzing signal behavior
+- An empirical guide for exit rule design
+- A path-dependent risk analysis framework
+
+---
+
+## The Core Concept
+
+### **The Problem**
+
+You have a trading signal that fires entry triggers. You need to answer:
+1. What stop-loss size is realistic?
+2. What take-profit targets are achievable?
+3. Should I use trailing stops or fixed stops?
+4. Does the signal need "room to breathe" or does profit come quickly?
+5. Are there different trade archetypes within my signal?
+
+### **The Solution**
+
+For each entry signal, we:
+1. Extract the forward price path over horizon H
+2. Compute MFE/MAE along the path
+3. Record timing: when did MFE/MAE occur?
+4. Analyze the 2D distribution (MFE, MAE)
+5. Derive actionable insights for exits
+
+### **The Process Flow**
+
+```
+Signal → Entry Events → Trade Paths → Geometry Analysis → Exit Rules
+  ↓          ↓              ↓               ↓                 ↓
+ ±1        indices      MFE/MAE/t     Distributions     TP/SL/Time
+```
+
+---
+
+## Installation
+
+### Using Poetry (Recommended)
+
+```bash
+git clone git@github.com:alihaskar/signal_analyzer.git
+cd signal_analyzer
+poetry install
+```
+
+### Using pip
+
+```bash
+git clone git@github.com:alihaskar/signal_analyzer.git
+cd signal_analyzer
+pip install -e .
+```
+
+### Requirements
+
+- Python 3.12+
+- numpy >= 2.2.3
+- pandas >= 2.2.3
+- matplotlib >= 3.10.0
+- scipy >= 1.15.1
+- scikit-learn >= 1.6.1
+
+---
+
+## Quick Start
+
+### **Minimal Example**
+
+```python
+import pandas as pd
+from signal_analyzer import analyze, AnalysisConfig
+
+# Your OHLC data with signals
+df = pd.DataFrame({
+    'Open': [...],
+    'High': [...],
+    'Low': [...],
+    'Close': [...],
+    'sig': [1, -1, 0, 1, ...],  # +1=long, -1=short, 0=neutral
+})
+
+# Configure analysis
+config = AnalysisConfig(
+    H=20,                        # 20-bar forward horizon
+    sections=['A', 'B', 'C', 'D'],  # Run these sections
+    store_paths=True,            # Required for Section D
+)
+
+# Run analysis
+result = analyze(df, sig_col='sig', config=config)
+
+# Access results
+print(result.section_a['long']['metrics'])
+print(result.section_d['long']['best_zones'][:5])
+
+# Show plots
+import matplotlib.pyplot as plt
+plt.show()
+```
+
+### **With ATR Normalization**
+
+```python
+# Add ATR column to your data
+df['atr'] = calculate_atr(df)  # Your ATR calculation
+
+config = AnalysisConfig(
+    H=20,
+    sections=['A', 'B', 'C', 'D', 'E'],  # Include Section E
+    vol_col='atr',                       # Enable vol normalization
+    store_paths=True,
+)
+
+result = analyze(df, sig_col='sig', config=config)
+```
+
+---
+
+## API Reference
+
+### **Main Functions**
+
+#### `analyze(ohlc, sig_col, config)`
+
+Main entry point for trade geometry analysis.
+
+**Parameters:**
+- `ohlc` (pd.DataFrame): OHLC data with signal column
+- `sig_col` (str): Name of signal column (default: 'sig')
+- `config` (AnalysisConfig): Configuration object
+- `open_col, high_col, low_col` (str): Column names (default: 'Open', 'High', 'Low')
+- `sig_mode` (str): 'transitions' or 'levels' (default: 'transitions')
+
+**Returns:**
+- `AnalysisResult`: Container with all analysis results and plots
+
+**Example:**
+```python
+result = analyze(
+    df, 
+    sig_col='my_signal',
+    config=AnalysisConfig(H=10),
+    open_col='open',  # lowercase
+    high_col='high',
+    low_col='close'
+)
+```
+
+### **AnalysisConfig**
+
+Configuration for analysis run.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `H` | int | 10 | Forward horizon in bars |
+| `sections` | list[str] | ['A','B','C','D','E','F'] | Sections to run |
+| `trim_method` | str\|None | 'iqr' | Outlier removal: 'iqr', 'percentile', None |
+| `trim_k` | float | 1.5 | IQR multiplier (3.0 = very permissive) |
+| `risk_q` | float | 0.9 | Quantile for risk frontier |
+| `opp_q` | float | 0.8 | Quantile for opportunity frontier |
+| `tp_grid` | np.ndarray\|None | None | TP grid (auto-generated if None) |
+| `sl_grid` | np.ndarray\|None | None | SL grid (auto-generated if None) |
+| `store_paths` | bool | True | Store full paths (required for Section D) |
+| `vol_col` | str\|None | None | Volatility column name (for Section E) |
+| `n_regimes` | int | 3 | Number of volatility regimes |
+| `n_clusters` | int\|None | None | Number of clusters (auto-select if None) |
+
+**Example:**
+```python
+config = AnalysisConfig(
+    H=30,                    # 30-bar horizon
+    sections=['A', 'D'],     # Only geometry and TP/SL
+    trim_k=3.0,              # More permissive outlier removal
+    store_paths=True,
+    vol_col='atr_14',        # Use 14-period ATR
+)
+```
+
+### **AnalysisResult**
+
+Container for all analysis outputs.
+
+**Attributes:**
+- `config` (AnalysisConfig): Configuration used
+- `long_trades` (TradeSet): Long trade geometry
+- `short_trades` (TradeSet): Short trade geometry
+- `section_a` (dict): Geometry overview results
+- `section_b` (dict): Frontier analysis results
+- `section_c` (dict): Ordering analysis results
+- `section_d` (dict): TP/SL feasibility results
+- `section_e` (dict): Vol normalization results
+- `section_f` (dict): Cluster analysis results
+- `plots` (dict): All generated matplotlib figures
+
+**Example:**
+```python
+# Access metrics
+long_metrics = result.section_a['long']['metrics']
+print(f"Win rate: {long_metrics['win_rate']*100:.1f}%")
+
+# Access best TP/SL zones
+best_zones = result.section_d['long']['best_zones']
+print(f"Best TP/SL: {best_zones[0]['tp']:.2f}% / {best_zones[0]['sl']:.2f}%")
+
+# Show specific plot
+result.plots['scatter'].show()
+```
+
+### **TradeSet**
+
+Container for trade geometry data.
+
+**Attributes:**
+- `side` (str): 'long' or 'short'
+- `n_trades` (int): Number of trades
+- `entry_idx` (np.ndarray): Entry bar indices
+- `entry_price` (np.ndarray): Entry prices
+- `mfe` (np.ndarray): Max Favorable Excursion (%)
+- `mae` (np.ndarray): Max Adverse Excursion (%)
+- `t_mfe` (np.ndarray): Bars to reach MFE
+- `t_mae` (np.ndarray): Bars to reach MAE
+- `vol_at_entry` (np.ndarray): Volatility at entry (optional)
+- `mfe_path` (np.ndarray): Full MFE paths (optional, shape: n_trades × H)
+- `mae_path` (np.ndarray): Full MAE paths (optional, shape: n_trades × H)
+
+---
+
+## Component Architecture
+
+### **Directory Structure**
+
+```
+signal_analyzer/
+├── core/                    # Core functionality
+│   ├── events.py           # Signal → Entry events
+│   ├── trades.py           # TradeSet & path computation
+│   └── utils.py            # Statistical helpers
+├── analysis/               # Analysis modules (one per section)
+│   ├── geometry.py         # Section A: Geometry overview
+│   ├── frontiers.py        # Section B: Risk/reward frontiers
+│   ├── ordering.py         # Section C: Time sequencing
+│   ├── feasibility.py      # Section D: TP/SL feasibility
+│   ├── volnorm.py          # Section E: Vol normalization
+│   └── clusters.py         # Section F: Trade archetypes
+├── plotting/               # Visualization (mirrors analysis/)
+│   ├── scatter.py
+│   ├── frontiers.py
+│   ├── heatmaps.py
+│   ├── volnorm.py
+│   └── clusters.py
+├── report/                 # Text summaries
+│   └── summaries.py
+└── analyzer.py             # Main orchestrator
+```
+
+### **Data Flow**
+
+```
+1. Signal Detection (events.py)
+   Input:  DataFrame with signal column
+   Output: Entry/exit event indices
+   
+2. Path Extraction (trades.py)
+   Input:  OHLC + entry indices + horizon H
+   Output: TradeSet with MFE/MAE/timing
+   
+3. Analysis (analysis/*.py)
+   Input:  TradeSet
+   Output: Metrics, distributions, probabilities
+   
+4. Visualization (plotting/*.py)
+   Input:  TradeSet + analysis results
+   Output: Matplotlib figures
+   
+5. Reporting (report/*.py)
+   Input:  Metrics
+   Output: Textual findings
+```
+
+---
+
+## Section Details
+
+### **Section A: Geometry Overview**
+
+**What it does:** Visualizes the 2D distribution of MFE vs MAE.
+
+**Key Outputs:**
+- Scatter plots (raw + trimmed)
+- Marginal distributions (histograms + KDE)
+- Summary metrics
+
+**Questions Answered:**
+- What is the overall shape of outcomes?
+- Is there asymmetry suggesting an edge?
+- Are there obvious data quality issues?
+- Is the signal "tight-stop friendly"?
+
+**API:**
+```python
+from signal_analyzer.analysis.geometry import geometry_metrics, marginals
+
+metrics = geometry_metrics(trades)
+# Returns: median_mfe, median_mae, win_rate, tail stats, correlation
+
+marg = marginals(trades, bins=50, use_kde=True)
+# Returns: histogram bins/counts and KDE for MFE and MAE
+```
+
+**Interpretation:**
+- **Dense cluster near (0, 0)**: Weak follow-through, consider filtering
+- **Right tail in MFE**: Edge from subset of winners
+- **Large negative MAE tail**: Survival risk, need wide stops
+- **Wedge shape**: Good asymmetry (winners bigger than losers)
+
+**Example Output:**
+
+![Scatter Plot: MFE vs MAE](examples/scatter.png)
+
+*Scatter plot showing the 2D distribution of trade outcomes. Each point is one trade.*
+
+![Marginal Distributions](examples/marginals.png)
+
+*Marginal distributions reveal the shape of MFE and MAE separately.*
+
+---
+
+### **Section B: Frontiers**
+
+**What it does:** Analyzes risk/reward boundaries and diminishing returns (knee points).
+
+**Key Outputs:**
+- Risk-constrained frontier: Max upside for given DD cap
+- Opportunity-constrained frontier: DD required for target
+- Knee points: Optimal stop sizing
+
+**Questions Answered:**
+- Where do we get diminishing returns on risk?
+- What DD is realistic for a given profit target?
+- What is the "sweet spot" for stop sizing?
+
+**API:**
+```python
+from signal_analyzer.analysis.frontiers import compute_frontiers
+
+frontiers = compute_frontiers(
+    trades, 
+    dd_grid=None,      # Auto-generate
+    risk_q=0.9,        # 90th percentile MFE
+    opp_q=0.8          # 80th percentile DD
+)
+
+knee_dd, knee_mfe = frontiers['risk_constrained']['knee']
+print(f"Optimal stop: {knee_dd:.2f}%")
+```
+
+**Interpretation:**
+- **Knee point**: Where more risk doesn't buy much more upside
+- **Steep initial slope**: Good risk/reward at small DD levels
+- **Flat tail**: No benefit to wider stops beyond knee
+- **Use knee for stop sizing**: Empirically optimal DD tolerance
+
+**Example Output:**
+
+![Risk/Reward Frontiers](examples/frontiers.png)
+
+*Frontiers show optimal risk/reward boundaries. Red stars indicate knee points (sweet spots for stop sizing).*
+
+---
+
+### **Section C: Ordering**
+
+**What it does:** Time-sequencing analysis (profit-first vs pain-first).
+
+**Key Outputs:**
+- MFE-first vs MAE-first classification
+- Ordering proportions
+- Trailing suitability metrics
+- "Needs room" analysis
+
+**Questions Answered:**
+- Does profit usually come before pain, or vice versa?
+- Should I use trailing stops?
+- Does the signal need "room to breathe"?
+
+**API:**
+```python
+from signal_analyzer.analysis.ordering import (
+    ordering_proportions,
+    trailing_suitability,
+    needs_room
+)
+
+props = ordering_proportions(trades)
+# Returns: {'mfe_first': 0.6, 'mae_first': 0.35, 'tie': 0.05}
+
+trailing = trailing_suitability(trades)
+# Returns: suitability rate for trailing stops
+
+needs = needs_room(trades, mfe_threshold=1.0)
+# Returns: success rate of MAE-first trades
+```
+
+**Interpretation:**
+- **>60% MFE-first**: Use trailing stops, profit comes quickly
+- **>60% MAE-first**: Use wide fixed stops, signal needs room
+- **50/50 split**: Use time-based exits or hybrid approach
+- **Low MAE-first success rate**: Many losers get stopped out early
+
+**Example Output:**
+
+![Time Sequencing Analysis](examples/ordering.png)
+
+*Green = profit before pain (trailing-stop friendly), Red = pain before profit (needs room).*
+
+---
+
+### **Section D: TP/SL Feasibility**
+
+**What it does:** Probabilistic analysis of hitting targets vs stops (path-dependent).
+
+**Key Outputs:**
+- P(TP before SL) heatmaps
+- Expected value maps
+- Best TP/SL zones (ranked by EV)
+
+**Questions Answered:**
+- Is my TP=1%, SL=0.5% realistic or fantasy?
+- What TP/SL combinations have positive EV?
+- Where are the robust (stable) zones?
+
+**API:**
+```python
+from signal_analyzer.analysis.feasibility import hit_matrix, ev_proxy, find_best_zones
+
+# Compute hit probabilities
+hit_data = hit_matrix(
+    trades,
+    tp_grid=np.linspace(0.1, 5, 25),
+    sl_grid=np.linspace(0.1, 5, 25)
+)
+prob = hit_data['prob_matrix']  # Shape: (n_tp, n_sl)
+
+# Compute expected values
+ev_data = ev_proxy(hit_data, slippage=0.05, commission=0.02)
+
+# Find best zones
+best = find_best_zones(ev_data, top_n=5)
+print(f"Best TP/SL: {best[0]['tp']:.2f}% / {best[0]['sl']:.2f}%")
+print(f"Expected Value: {best[0]['ev']:.2f}%")
+```
+
+**Interpretation:**
+- **High probability zones**: Where TP before SL is likely
+- **Positive EV zones**: Where risk/reward math works out
+- **Robust zones**: Stable across nearby TP/SL values
+- **Avoid fragile optima**: Single peak with low counts
+
+**Example Output:**
+
+![TP/SL Probability Heatmap](examples/heatmap_prob.png)
+
+*Probability of hitting TP before SL. Warmer colors = higher success rate.*
+
+![Expected Value Heatmap](examples/heatmap_ev.png)
+
+*Expected value heatmap. Green zones are profitable, black line shows break-even.*
+
+---
+
+### **Section E: Volatility Normalization**
+
+**What it does:** Adapts analysis to market regimes (vol-adjusted metrics).
+
+**Key Outputs:**
+- Vol-normalized metrics (R-multiples)
+- Regime-split analysis (low/mid/high vol)
+- Side-by-side comparisons (% vs vol-adjusted)
+
+**Questions Answered:**
+- Does geometry become more stable in vol-adjusted space?
+- Do I need different rules per volatility regime?
+- Should I scale stops/targets by ATR?
+
+**API:**
+```python
+from signal_analyzer.analysis.volnorm import (
+    normalize_metrics,
+    split_by_vol_regime,
+    compare_percent_vs_volnorm
+)
+
+# Normalize to vol units
+norm_trades = normalize_metrics(trades)  # MFE/MAE in R-multiples
+
+# Split by regime
+regimes = split_by_vol_regime(trades, n_regimes=3)
+# Returns: {'low': TradeSet, 'mid': TradeSet, 'high': TradeSet}
+
+# Compare
+comp = compare_percent_vs_volnorm(trades)
+# Returns: metrics in both % and vol-normalized space
+```
+
+**Interpretation:**
+- **Stable in vol space**: Edge is vol-regime independent
+- **Unstable in vol space**: Need regime-specific rules
+- **Large % change**: Strategy mixes different vol environments
+- **Use ATR-adaptive exits**: Scale TP/SL by volatility at entry
+
+**Example Output:**
+
+![Vol-Normalized Comparison](examples/volnorm_long.png)
+
+*Left: percentage space, Right: volatility-adjusted space.*
+
+![Volatility Regime Analysis](examples/regime_long.png)
+
+*Trade geometry split by volatility regimes (low/mid/high vol).*
+
+---
+
+### **Section F: Clusters**
+
+**What it does:** Unsupervised learning to identify trade archetypes.
+
+**Key Outputs:**
+- Cluster labels and scatter plots
+- Cluster summaries (size, win rate, ordering)
+- Suggested exit strategies per archetype
+
+**Questions Answered:**
+- Is one signal actually multiple trade types?
+- Which archetype carries the edge?
+- Can I apply different exits per archetype?
+
+**API:**
+```python
+from signal_analyzer.analysis.clusters import (
+    cluster_trades,
+    cluster_summary,
+    suggest_exit_rules
+)
+
+# Cluster trades
+clusters = cluster_trades(trades, n_clusters=3)
+labels = clusters['labels']  # Cluster ID per trade
+
+# Summarize clusters
+summary = cluster_summary(trades, clusters)
+# Returns: {0: {...}, 1: {...}, 2: {...}}
+
+# Get exit suggestions
+rules = suggest_exit_rules(summary)
+# Returns: {0: "Fast Winner (trailing stop)", 1: "Needs Room (wide SL)", ...}
+```
+
+**Interpretation:**
+- **Fast winners**: High MFE, low DD, MFE-first → trailing stops
+- **Needs room**: High MFE, high DD, MAE-first → wide SL + time stop
+- **Noise**: Low MFE, low DD → consider filtering
+- **Strong edge**: High MFE, high win rate → hold longer
+
+**Example Output:**
+
+![Trade Clusters](examples/clusters_long.png)
+
+*Different colors represent distinct trade archetypes identified by clustering.*
+
+![Cluster Statistics](examples/cluster_stats_long.png)
+
+*Detailed statistics per cluster with suggested exit strategies.*
+
+---
+
+## Interpreting Results
+
+### **Example: Mean-Reversion Strategy**
+
+```python
+# Results from a real strategy analysis
+Section A: Win Rate = 93%, Median MFE = 0.24%, Median MAE = -0.24%
+Section B: Knee at DD=0.66%, MFE=0.76%
+Section C: 50% MFE-first, 50% MAE-first
+Section D: Best TP/SL = 2.35% / 5.00% (EV=2.35%)
+```
+
+**Interpretation:**
+1. **High win rate** but small moves → scalping strategy
+2. **Symmetric MFE/MAE** → tight risk control
+3. **50/50 ordering** → don't use tight trailing stops
+4. **Wide optimal stop** (5%) → mean reversion needs room
+5. **Action**: Use TP=2.35%, SL=5%, time stop=30 bars
+
+### **Example: Trend-Following Strategy**
+
+```python
+Section A: Win Rate = 45%, Median MFE = 2.5%, Median MAE = -0.8%
+Section B: Knee at DD=2.0%, MFE=4.5%
+Section C: 75% MFE-first, 25% MAE-first
+```
+
+**Interpretation:**
+1. **Positive asymmetry** (MFE >> MAE) → good for trends
+2. **75% MFE-first** → use trailing stops
+3. **Steep frontier** → wider stops pay off
+4. **Action**: Use trailing stop, initial SL=2%, trail at 50%
+
+---
+
+## Advanced Usage
+
+### **Custom Signal Modes**
+
+```python
+from signal_analyzer.core.events import signal_to_events
+
+# Transitions mode (default): Fire on state changes
+events = signal_to_events(df, sig_col='sig', mode='transitions')
+# Returns: enter_long, enter_short, exit_long, exit_short
+
+# Levels mode: Fire on all long/short bars
+events = signal_to_events(df, sig_col='sig', mode='levels')
+# Returns: enter_long, enter_short (every bar signal is active)
+```
+
+### **Manual TradeSet Creation**
+
+```python
+from signal_analyzer.core.trades import compute_trade_paths
+
+# Get entry indices however you want
+long_entries = np.where(df['my_condition'])[0]
+
+# Compute trade paths manually
+trades = compute_trade_paths(
+    df,
+    entries=long_entries,
+    H=20,
+    side='long',
+    vol_col='atr',
+    store_paths=True  # If you need Section D
+)
+```
+
+### **Accessing Raw Paths**
+
+```python
+# Get full MFE/MAE paths for custom analysis
+mfe_paths = trades.mfe_path  # Shape: (n_trades, H)
+mae_paths = trades.mae_path
+
+# Example: Find trades that hit 1% within 5 bars
+quick_winners = np.any(mfe_paths[:, :5] >= 1.0, axis=1)
+print(f"Quick winners: {quick_winners.sum()} / {trades.n_trades}")
+```
+
+### **Custom Visualizations**
+
+```python
+import matplotlib.pyplot as plt
+
+# Create your own plots using TradeSet data
+fig, ax = plt.subplots()
+ax.scatter(trades.mfe, trades.mae, c=trades.t_mfe, cmap='viridis')
+ax.set_xlabel('MFE (%)')
+ax.set_ylabel('MAE (%)')
+ax.set_title('Colored by Time to MFE')
+plt.colorbar(ax.collections[0], label='Bars to MFE')
+plt.show()
+```
+
+---
+
+## Examples
+
+### **Complete Analysis Script**
+
+See `example.py` for a full working example with synthetic data.
+
+### **Real Strategy Analysis**
+
+See `test_strat/test.py` for a real EMA regression mean-reversion strategy on EURGBP data.
+
+---
+
+## Contributing
+
+Contributions welcome! Areas of interest:
+- Additional analysis sections
+- Performance optimizations
+- Better visualizations
+- Documentation improvements
+- Example strategies
+
+---
+
+## License
+
+MIT License - see LICENSE file for details.
+
+---
+
+## Author
+
+**Ali Askar**  
+GitHub: [@alihaskar](https://github.com/alihaskar)  
+Email: 26202651+alihaskar@users.noreply.github.com
+
+---
+
+## Acknowledgments
+
+This library implements trade geometry analysis concepts for systematic trading. The core methodology focuses on path-dependent analysis of trade outcomes rather than point-in-time P&L.
+
+---
+
+## Further Reading
+
+### **Recommended Order for First-Time Users**
+
+1. Run `example.py` to see the package in action
+2. Read "What is Trade Geometry?" above
+3. Review Section A output to understand MFE/MAE
+4. Study Section D output for TP/SL guidance
+5. Apply to your own strategy
+
+### **Key Concepts**
+
+- **MFE (Max Favorable Excursion)**: The best profit achieved during the trade
+- **MAE (Max Adverse Excursion)**: The worst drawdown experienced
+- **Ordering**: Whether MFE or MAE occurred first (time sequencing)
+- **Frontiers**: Risk/reward boundaries (knee points = optimal stops)
+- **Feasibility**: Path-dependent probability of hitting TP before SL
+
+### **Common Questions**
+
+**Q: Why analyze geometry instead of just final P&L?**  
+A: Because two trades with same P&L can have vastly different paths. One might go straight to profit, another might drawdown 5% first. This affects what exit rules will work.
+
+**Q: What's a good sample size?**  
+A: Minimum 100 trades per side. 500+ is better. 1000+ is ideal for Section D heatmaps.
+
+**Q: Should I optimize TP/SL based on Section D?**  
+A: No. Use it as a *guide* for realistic zones. The "best" TP/SL is just one data point. Look for *robust zones* with stable EV.
+
+**Q: My strategy shows 50/50 ordering. What does that mean?**  
+A: Your signal is regime-mixing (sometimes catches trends, sometimes mean-reverts). Consider filtering by regime or using hybrid exits.
+
+**Q: Section E shows huge changes in vol-normalized space. Why?**  
+A: Your % metrics are mixing different volatility environments. Scale your stops/targets by ATR at entry.
+
+---
+
+## Quick Decision Guide
+
+Based on your results:
+
+| Observation | Action |
+|-------------|--------|
+| Win rate > 70%, small MFE | Use small targets, wide stops, time exits |
+| Win rate < 50%, large MFE tail | Use wide targets, trailing stops, cut losers fast |
+| 60%+ MFE-first | Use trailing stops |
+| 60%+ MAE-first | Use wide fixed stops + time stops |
+| Steep frontier | Wider stops pay off |
+| Flat frontier beyond knee | Don't go wider than knee point |
+| Multiple distinct clusters | Apply different exits per cluster |
+| Large vol-normalization change | Scale stops/targets by ATR |
+
+---
+
+**Ready to analyze your strategy?** Start with `example.py` or dive into the API!
