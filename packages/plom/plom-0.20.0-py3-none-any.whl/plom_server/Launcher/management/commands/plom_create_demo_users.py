@@ -1,0 +1,139 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2022 Brennen Chiu
+# Copyright (C) 2022 Edith Coates
+# Copyright (C) 2022-2025 Colin B. Macdonald
+# Copyright (C) 2024 Andrew Rechnitzer
+
+from tabulate import tabulate
+
+from django.core.management.base import BaseCommand, CommandError
+from django.contrib.auth.models import User, Group
+from django.db import IntegrityError
+
+from plom_server.Authentication.services import AuthService
+from plom_server.UserManagement.services import UsersService
+
+
+# -m to get number of scanners and markers
+class Command(BaseCommand):
+    """Create canned demo users, for demos and testing.
+
+    This is the command for "python manage.py plom_create_demo_users"
+    It creates demo users such as 1 manager, 3 scanners and 8 markers.
+    Then, add the users to their respective group.
+    This command also prints a table with a list of the demo users and
+    passwords.
+
+    TODO: consider centralizing this code into UserManagement App.
+    """
+
+    def handle(self, *args, **options) -> None:
+        if not Group.objects.exists():
+            raise CommandError(
+                "No groups. Please run 'python3 manage.py plom_create_groups' "
+                "before running this command"
+            )
+        number_of_scanners = 3
+        number_of_markers = 8
+        admin_group = Group.objects.get(name="admin")
+        manager_group = Group.objects.get(name="manager")
+        user_passwords = {}
+
+        # Here is to create a single demo admin user
+        # is_staff means they can use the django admin tools
+        # is_superuser grants all permissions
+        username = "demoAdmin"
+        password = username
+        email = f"{username}@example.com"
+        try:
+            User.objects.create_superuser(
+                username=username,
+                email=email,
+                password=password,
+                is_staff=True,
+                is_superuser=True,
+            ).groups.add(admin_group)
+            self.stdout.write(
+                f"User {username} created and added to {admin_group} group"
+            )
+            user_passwords[username] = password
+        except IntegrityError as err:
+            self.stderr.write(f"{username} already exists!")
+            raise CommandError(err)
+        except Group.DoesNotExist as err:
+            self.stderr.write(f"Admin group {admin_group} does not exist.")
+            raise CommandError(err)
+
+        # create managers
+        for username, password in (
+            ("demoManager1", "demoManager1"),
+            ("manager", "1234"),
+        ):
+            email = f"{username}@example.com"
+            # check if manager-user already exists, new demo launch
+            # workflow may create one already. If it does exist
+            # then change the password.
+            try:
+                user_obj = User.objects.get(username=username)
+                self.stdout.write(
+                    f"{username} already exists - updating with demo password."
+                )
+                user_obj.set_password(password)
+                user_obj.email = email
+                user_obj.save()
+                user_passwords[username] = password
+                continue
+            except User.DoesNotExist:
+                pass
+            try:
+                AuthService.create_manager_user(
+                    username, email=email, password=password
+                )
+                self.stdout.write(
+                    f"User {username} created and added to {manager_group} group"
+                )
+                user_passwords[username] = password
+            except IntegrityError as err:
+                self.stderr.write(f"{username} already exists!")
+                raise CommandError(err)
+
+        # create scanners
+        for n in range(number_of_scanners):
+            username = f"demoScanner{n + 1}"
+            password = username
+            email = f"{username}@example.com"
+            if User.objects.filter(username=username).exists():
+                self.stderr.write(f'User "{username}" already exists, skipping')
+            else:
+                AuthService.create_user_and_add_to_group(
+                    username, "scanner", email=email, password=password
+                )
+                user_passwords[username] = password
+
+        # create markers
+        for n in range(number_of_markers):
+            username = f"demoMarker{n + 1}"
+            password = username
+            email = f"{username}@example.com"
+            if User.objects.filter(username=username).exists():
+                self.stderr.write(f'User "{username}" already exists, skipping')
+            else:
+                AuthService.create_user_and_add_to_group(
+                    username, "marker", email=email, password=password
+                )
+                user_passwords[username] = password
+
+        user_list = UsersService.get_list_of_user_info()
+        # rebuild to reorder, and lookup passwords
+        user_list = [
+            {
+                "Username": d["username"],
+                "Password": user_passwords.get(d["username"], None),
+                "Groups": d["groups"],
+            }
+            for d in user_list
+        ]
+        self.stdout.write("\nDemo usernames and passwords")
+        self.stdout.write(
+            str(tabulate(user_list, headers="keys", tablefmt="simple_outline"))
+        )
