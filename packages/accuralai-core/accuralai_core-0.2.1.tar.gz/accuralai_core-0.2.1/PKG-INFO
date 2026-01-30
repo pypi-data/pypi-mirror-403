@@ -1,0 +1,100 @@
+Metadata-Version: 2.4
+Name: accuralai-core
+Version: 0.2.1
+Summary: Async orchestration nucleus for the AccuralAI local LLM ecosystem.
+Project-URL: homepage, https://accural-ai.web.app/
+Project-URL: repository, https://github.com/accuralai/accuralai-core
+Project-URL: documentation, https://accuralai.readthedocs.io/en/latest/packages/accuralai-core/index.html
+Author: AccuralAI Maintainers
+License: Apache-2.0
+License-File: LICENSE
+Requires-Python: >=3.10
+Requires-Dist: anyio>=3.7
+Requires-Dist: click>=8.1
+Requires-Dist: pydantic-settings>=2.2
+Requires-Dist: pydantic>=2.5
+Requires-Dist: tomli>=2.0; python_version < '3.11'
+Requires-Dist: typing-extensions>=4.7
+Provides-Extra: all-backends
+Requires-Dist: accuralai-google; extra == 'all-backends'
+Requires-Dist: accuralai-ollama; extra == 'all-backends'
+Provides-Extra: all-plugins
+Requires-Dist: accuralai-cache; extra == 'all-plugins'
+Requires-Dist: accuralai-canonicalize; extra == 'all-plugins'
+Requires-Dist: accuralai-router; extra == 'all-plugins'
+Requires-Dist: accuralai-validator; extra == 'all-plugins'
+Provides-Extra: cache
+Requires-Dist: accuralai-cache; extra == 'cache'
+Provides-Extra: canonicalize
+Requires-Dist: accuralai-canonicalize; extra == 'canonicalize'
+Provides-Extra: cli
+Requires-Dist: accuralai-cli; extra == 'cli'
+Provides-Extra: complete
+Requires-Dist: accuralai-cache; extra == 'complete'
+Requires-Dist: accuralai-canonicalize; extra == 'complete'
+Requires-Dist: accuralai-google; extra == 'complete'
+Requires-Dist: accuralai-ollama; extra == 'complete'
+Requires-Dist: accuralai-rag; extra == 'complete'
+Requires-Dist: accuralai-router; extra == 'complete'
+Requires-Dist: accuralai-validator; extra == 'complete'
+Provides-Extra: dev
+Requires-Dist: pytest; extra == 'dev'
+Requires-Dist: pytest-anyio; extra == 'dev'
+Requires-Dist: pytest-mock; extra == 'dev'
+Requires-Dist: ruff; extra == 'dev'
+Provides-Extra: google
+Requires-Dist: accuralai-google; extra == 'google'
+Provides-Extra: ollama
+Requires-Dist: accuralai-ollama; extra == 'ollama'
+Provides-Extra: rag
+Requires-Dist: accuralai-rag; extra == 'rag'
+Provides-Extra: router
+Requires-Dist: accuralai-router; extra == 'router'
+Provides-Extra: validators
+Requires-Dist: accuralai-validator; extra == 'validators'
+Description-Content-Type: text/markdown
+
+# accuralai-core
+
+`accuralai-core` is the orchestration nucleus for the AccuralAI open-source ecosystem. It provides an async pipeline that coordinates canonicalization, caching, routing, backend invocation, validation, and post-processing for local LLM text generation workflows.
+
+This package exposes both a Python API and CLI surface while remaining transport-agnostic. Concrete functionality (canonicalizers, caches, routers, backends, validators) is supplied by sibling packages or third-party plugins via entry-point discovery.
+
+## Quick start
+
+Install with the canonicalizer plugin for a fully working local pipeline:
+
+```bash
+pip install accuralai-core accuralai-canonicalize
+```
+
+Generate completions via the CLI:
+
+```bash
+accuralai-core generate \
+  --prompt " Summarize   this text.  " \
+  --system-prompt "You are a precise assistant." \
+  --tag demo --metadata topic=news --param temperature=0.3
+```
+
+The `accuralai-canonicalize` plugin normalizes the prompt, merges metadata defaults, and creates deterministic cache keys before the request is routed to the configured backend.
+
+Add `accuralai-cache` to enable TTL-aware in-memory caching:
+
+```bash
+pip install accuralai-cache
+```
+
+With caching enabled, repeat invocations are served instantly until the configured TTL expires.
+
+See `plan/accuralai-core-spec.md` for the full architectural specification guiding implementation.
+
+## Interactive CLI
+
+Launch the Codex-style REPL by invoking `accuralai` (or `accuralai-cli`) with no subcommand:
+
+```bash
+accuralai --config ~/.accuralai/core.toml
+```
+
+The shell remains active until `/exit`, and supports `/` commands for adjusting settings on the fly (`/help`, `/backend`, `/model`, `/meta`, `/history`, `/save`, `/tool ...`, etc.). Plain text input triggers pipeline runs using the current session defaults, and multi-line prompts are accepted by entering `"""` on an empty line. Tools can be listed via `/tool list`, executed manually with `/tool run ...`, and made available to the model for function calling via `/tool enable <name>`.
