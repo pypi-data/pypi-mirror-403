@@ -1,0 +1,301 @@
+openapi: "3.0.0"
+info:
+  version: "1"
+  title: "Host Viewer API"
+  description: |
+    API to process some host actions from anywhere on the network.
+    In a microservice architecture, the host-viewer can be run in a docker with special privileges,
+    whereas all other microservices have user privileges.
+    For example, it is usefull to monitor containers statuses from any terminal on the network.
+paths:
+  /health:
+    get:
+      description: "Healthcheck"
+      responses:
+        200:
+          description: "Healthy"
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /os/env:
+    get:
+      description: "Get environment variable values"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "array"
+              items:
+                type: "string"
+      responses:
+        200:
+          description: "Environment variable values"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "object"
+
+  /os/ls:
+    get:
+      description: "List directory filenames"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                path:
+                  type: string
+                extension:
+                  type: string
+                  nullable: true
+      responses:
+        200:
+          description: "Directory filenames"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "string"
+
+  /docker/container:
+    get:
+      description: "List containers and their status"
+      parameters:
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', list all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "List of container names with their status"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "string"
+  
+  /docker/container/{name}:
+    get:
+      description: "Display all information of a container"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', search container in all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "Container information"
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/status:
+    get:
+      description: "Get container status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', search container in all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "Container status"
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/health_status:
+    get:
+      description: "Get container health status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "all"
+          description: "if set to 'true', search container in all containers, not only running ones"
+          schema:
+            type: "boolean"
+            default: false
+      responses:
+        200:
+          description: "Container health status"
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+
+  /docker/container/{name}/await_started:
+    put:
+      description: "Wait until a container is started ('healthy' if container has healthcheck else 'running')"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "timeout"
+          description: "Timeout is seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/await_status:
+    put:
+      description: "Wait until a container has given status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "status"
+          description: "Status to wait (possible status: created, restarting, running, removing, paused, exited, dead, removed)"
+          schema:
+            type: "string"
+            default: "running"
+        - in: "query"
+          name: "timeout"
+          description: "Timeout is seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/container/{name}/await_health_status:
+    put:
+      description: "Wait until a container has given health status"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+        - in: "query"
+          name: "status"
+          description: "Health status to wait (possible status: starting, healthy, unhealthy, removed)"
+          schema:
+            type: "string"
+            default: "healthy"
+        - in: "query"
+          name: "timeout"
+          description: "Timeout is seconds (if not set, a default timeout is used)"
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              nullable: true
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: "string"
+
+  /docker/logs/{name}:
+    get:
+      description: "get logs of a container"
+      parameters:
+        - in: "path"
+          name: "name"
+          description: "Container name"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                with_timestamps:
+                  description: "If log timestamps are added"
+                  type: "boolean"
+                  default: true
+                since:
+                  description: "Since which datetime save logs"
+                  type: "string"
+                  nullable: true
+                until:
+                  description: "Until which datetime save logs"
+                  type: "string"
+                  nullable: true
+      responses:
+        200:
+          description: "Container logs"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "string"
+  
+components:
+  securitySchemes: {}
+  schemas:
+    DockerControler:
+      properties: {}
+
