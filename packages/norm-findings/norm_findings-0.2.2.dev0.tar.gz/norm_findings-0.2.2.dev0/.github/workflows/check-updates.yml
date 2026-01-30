@@ -1,0 +1,57 @@
+name: Check for DefectDojo Updates
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Every day at midnight
+  workflow_dispatch:
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev,server]"
+
+      - name: Run Updater
+        run: |
+          python -m norm_findings.updater
+
+      - name: Run Tests
+        run: |
+          pytest tests/test_cli.py
+          pytest tests/test_e2e.py --ignore norm_findings/stubs/models.py
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.git-check.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update parsers from DefectDojo"
+          branch: auto-update-parsers
+          title: "chore: update parsers from DefectDojo"
+          body-path: update_summary.md
+          labels: |
+            dependencies
+            automated-pr

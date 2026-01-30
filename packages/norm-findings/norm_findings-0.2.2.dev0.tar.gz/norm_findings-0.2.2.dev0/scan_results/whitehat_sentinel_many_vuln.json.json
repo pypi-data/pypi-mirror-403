@@ -1,0 +1,98 @@
+[
+    {
+        "unsaved_vulnerability_ids": null,
+        "unsaved_endpoints": [
+            {
+                "host": "site.com",
+                "protocol": "https",
+                "userinfo": null,
+                "port": 443,
+                "path": "images/footer_logo.svg",
+                "query": null,
+                "fragment": null
+            }
+        ],
+        "title": "Information Leakage",
+        "test": "unittests/scans/",
+        "cwe": "310",
+        "active": false,
+        "verified": true,
+        "description": "Information Leakage is an application weakness where an application reveals sensitive data, such as technical details of the web application, environment, or user-specific data. Sensitive data may be used by an attacker to exploit the target web application, its hosting network, or its users. Therefore, leakage of sensitive data should be limited or prevented whenever possible. Information Leakage, in its most common form, is the result of one or more of the following conditions: A failure to scrub out HTML/Script comments containing sensitive information, improper application or server configurations, or differences in page responses for valid versus invalid data.\r\n\r\n",
+        "steps_to_reproduce": "This application uses a BIG-IP cookie that can be easily decoded to reveal a private IP address.\n\n",
+        "mitigation": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\n In order to prevent the disclosure of private IP addresses, configure BIG-IP cookie encryption.\n\nhttps://support.f5.com/csp/article/K23254150",
+        "references": "https://source.whitehatsec.com/asset-management/site-summary/69858/findings/52440000\nhttps://capec.mitre.org/data/definitions/118.html\nhttps://cwe.mitre.org/data/definitions/209.html\nhttps://cwe.mitre.org/data/definitions/200.html\nhttps://owasp-aasvs.readthedocs.io/en/latest/requirement-8.1.html\nhttps://owasp.org/www-project-top-ten/OWASP_Top_Ten_2017/Top_10-2017_A3-Sensitive_Data_Exposure\n",
+        "severity": "Medium",
+        "false_p": false,
+        "date": "2020-01-09",
+        "is_mitigated": true,
+        "mitigated": "2020-01-09T16:30:24Z",
+        "last_reviewed": null,
+        "dynamic_finding": true,
+        "created": "2020-01-09",
+        "unique_id_from_tool": "52440000"
+    },
+    {
+        "unsaved_vulnerability_ids": null,
+        "unsaved_endpoints": [
+            {
+                "host": "site.com",
+                "protocol": "https",
+                "userinfo": null,
+                "port": 443,
+                "path": "api/1_0/articles/feed/1097809",
+                "query": "p=WIDGET&f=0&n=10&ext=s&cn=10&am=include&fd=&uc=false&host_header=x-forwarded-host",
+                "fragment": null
+            }
+        ],
+        "title": "Improper Input Handling",
+        "test": "unittests/scans/",
+        "cwe": "20",
+        "active": false,
+        "verified": true,
+        "description": "Improper input handling is one of the most common weaknesses identified across applications today. Poorly handled input is a leading cause behind critical vulnerabilities that exist in systems and applications.\r\n\r\nGenerally, the term input handing is used to describe functions like validation, sanitization, filtering, and encoding and/or decoding of input data. Applications receive input from various sources including human users, software agents (browsers), and network/peripheral devices. In the case of web applications, input can be transferred in various formats (name value pairs, JSON, SOAP, etc...) and obtained via URL query strings, POST data, HTTP headers, Cookies, etc... Non-web application input can be obtained via application variables, environment variables, the registry, configuration files, etc... Regardless of the data format or source/location of the input, all input should be considered untrusted and potentially malicious. Applications which process untrusted input may become vulnerable to attacks such as Buffer Overflows, SQL Injection, OS Commanding, or Denial of Service.\r\n\r\n",
+        "steps_to_reproduce": "The application uses the input coming from the Host or X-Forwarded-Host request headers as part of the response without proper validation. Information from these headers should not be trusted as it is just another client side value an attacker can tamper with which can result in unintended behavior. Practical attacks were discussed in the article https://www.skeletonscribe.net/2013/05/practical-http-host-header-attacks.html and involve hijacking links and resources in the response with typical exploitation using web-caching poisoning.\r\n\r\nExamples:\r\n\r\n<link href=\"http://_SERVER['HOST']/\">\r\n\r\n<script src=\"http://_SERVER['HOST']/misc/jquery.js?v=1.4.4\">\r\n\r\nTo reproduce the vulnerability follow these steps:\r\n\r\n1) Determine if the request discovered was placed authenticated or unauthenticated and login as necessary.\r\n\r\n2) Place the request from the URL in question\r\n\r\n3) Intercept the request using a proxy tool\r\n\r\n4) Modify the test header I.E. Host: or X-Forwarded-Host: \r\n\r\n - If the query string contains the value 'host_header=host', edit the \"Host: YOURSITE\" request header to \"Host: host.whitehatsec.com\". \r\n\r\n - If the query string contains the value 'x_forwarded_host=host', add the request header \"X-Forwarded-Host: host.whitehatsec.com\"\r\n\r\n5) Forward the edited request\r\n\r\n6) Search for \"host.whitehatsec.com\" in the response and observe that the injection reflects\r\n\r\nThis demonstrates that the application is using the value of the \"Host\" or \"X-Forward-Host\" header in its response. This is vulnerable behavior because the user can control the values of the request headers.\r\n\r\nAlternatively, use a terminal cURL command to send the attack:\r\n\r\ncurl -v -H 'Host: www.whitehatsec.com' example.com > curlTest.html\r\n\r\nThis should supply the full verbose (-v) response in the terminal. The argument -H gives a custom header, in this case the injected host header. Use the -L flag to follow redirects if the proxy gives a 3xx response (curl -v -L -H ...).\r\n\r\nThe response can also be piped to a file in the current working directory (pwd to print current working directory) by using:\r\n\r\ncurl -v -H 'Host: www.whitehatsec.com' example.com > curlTest.html\r\n\r\n\r\ncurlTest.html should contain the HTML response. Load that file in a browser or a text editor to view the changes.\r\n\r\n\r\n\r\nReferences\r\n\r\nhttps://www.skeletonscribe.net/2013/05/practical-http-host-header-attacks.html\r\n\r\nhttps://cwe.mitre.org/data/definitions/20.html",
+        "mitigation": "\r\n\r\n\r\n\r\n\r\n\t\r\n\t\r\n\t\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\n In Apache (https://httpd.apache.org/docs/trunk/vhosts/examples.html#defaultallports) and Nginx (https://www.nginx.com/resources/wiki/start/topics/examples/server_blocks/) you can make SERVER_NAME trustworthy which can be done by creating a dummy vhost that catches all requests with invalid Host headers. Another method under Nginx is to specify a non-wildcard SERVER_NAME (https://nginx.org/en/docs/http/server_names.html) and under Apache you can use a non-wildcard serverName (https://httpd.apache.org/docs/2.2/mod/core.html#servername) and turning the UseCanonicalName directive on.\r\n\r\nIn IIS one method is to have proper bindings setup with a specified host header (https://docs.microsoft.com/en-us/iis/configuration/system.applicationHost/sites/site/bindings/binding) so that if someone changes the host header it will not reach the web site on IIS.\r\n\r\nAlternatively, at the application level, you can attempt to validate any values coming from the Host or X-Forwarded-Host request headers using a whitelist of acceptable values. You can also choose not to use host header values that come from the client in your application logic and use variables set through server configurations if necessary.\r\n\r\nReferences\r\n\r\nhttps://www.skeletonscribe.net/2013/05/practical-http-host-header-attacks.html\r\nhttps://httpd.apache.org/docs/trunk/vhosts/examples.html#defaultallports\r\nhttps://www.nginx.com/resources/wiki/start/topics/examples/server_blocks/\r\nhttps://nginx.org/en/docs/http/server_names.html\r\nhttps://httpd.apache.org/docs/2.2/mod/core.html#servername\r\nhttps://docs.microsoft.com/en-us/iis/configuration/system.applicationHost/sites/site/bindings/binding",
+        "references": "https://source.whitehatsec.com/asset-management/site-summary/69858/findings/52440001\nhttps://projects.webappsec.org/w/page/13246933/Improper%20Input%20Handling\n",
+        "severity": "Low",
+        "false_p": false,
+        "date": "2019-05-09",
+        "is_mitigated": true,
+        "mitigated": "2020-10-16T08:24:34Z",
+        "last_reviewed": null,
+        "dynamic_finding": true,
+        "created": "2019-05-09",
+        "unique_id_from_tool": "52440001"
+    },
+    {
+        "unsaved_vulnerability_ids": null,
+        "unsaved_endpoints": [
+            {
+                "host": "site.com",
+                "protocol": "https",
+                "userinfo": null,
+                "port": 443,
+                "path": "crossdomain.xml",
+                "query": null,
+                "fragment": null
+            }
+        ],
+        "title": "Fingerprinting",
+        "test": "unittests/scans/",
+        "cwe": null,
+        "active": true,
+        "verified": true,
+        "description": "The most common methodology for attackers is to begin by getting the target&#39;s web presence &quot;footprint&quot; and enumerating as much information as possible -- e.g. the target&#39;s platform, web application software technology, backend database version, configurations and possibly even their network architecture/topology. With this information, the attacker may develop an accurate attack scenario, which will effectively exploit a vulnerability in the software type/version being utilized by the target host.\r\n\r\n",
+        "steps_to_reproduce": "We have identified version information being disclosed in the response body. An attacker can use this information to search for known exploits specific to the technology.",
+        "mitigation": "\r\n\r\n\r\n\r\n\r\n\n Remove any specific information, at a minimum the version number, from being disclosed.",
+        "references": "https://source.whitehatsec.com/asset-management/site-summary/69858/findings/53102222\nhttps://projects.webappsec.org/w/page/13246925/Fingerprinting\n",
+        "severity": "Informational",
+        "false_p": false,
+        "date": "2021-02-24",
+        "is_mitigated": false,
+        "mitigated": null,
+        "last_reviewed": null,
+        "dynamic_finding": true,
+        "created": "2021-02-24",
+        "unique_id_from_tool": "53102222"
+    }
+]
