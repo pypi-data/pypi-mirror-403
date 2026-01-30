@@ -1,0 +1,149 @@
+# CDISC Builder
+
+**`cdiscbuilder`** is a Python package designed to simplify the transformation of clinical trial data from **ODM (Operational Data Model)** XML format into **CDISC SDTM (Study Data Tabulation Model)** and **ADaM (Analysis Data Model)** datasets.
+
+It provides a flexible, configuration-driven approach to data mapping, allowing users to define rules using simple YAML files or Python dictionaries without harcoding complex logic.
+
+## Key Features
+
+-   **ODM XML Parsing**: Efficiently parses CDISC ODM strings and files into workable dataframes.
+-   **Configurable Mappings**: Define your mapping rules (source columns, hardcoded values, custom logic) in YAML.
+-   **Schema Validation**: Ensures your configuration files adhere to strict standards before processing.
+-   **Metadata-Driven Findings**: Powerful processor for Findings domains (VS, LB, FA, etc.) using granular metadata.
+-   **Excel/Parquet Output**: Generates regulatory-compliant datasets in modern formats.
+
+## Installation
+
+```bash
+pip install cdiscbuilder
+```
+
+## Quick Start
+
+### 1. Command Line Interface
+
+You can generate datasets directly from your terminal:
+
+```bash
+# Generate SDTM datasets from an ODM XML file
+cdisc-sdtm --xml study_data.xml --output ./sdtm_data
+```
+
+### 2. Python API
+
+```python
+from cdiscbuilder.sdtm import create_sdtm_datasets
+
+# Define paths
+xml_file = "study_data.xml"
+config_dir = "path/to/my/specs" 
+output_dir = "./sdtm_outputs"
+
+# Generate Datasets
+create_sdtm_datasets(config_dir, xml_file, output_dir)
+```
+
+## Configuration
+
+The package comes with standard configurations for common domains (`DM`, `AE`, `VS`, etc.) in `src/cdisc_builder/specs`. You can override these or add new ones by creating your own configuration directory.
+
+### Example YAML (`DM.yaml`)
+
+```yaml
+DM:
+    - formoid: "FORM.DEMOG"
+      keys: ["StudyOID", "StudySubjectID"]
+      columns:
+          STUDYID:
+              source: StudyOID
+              type: str
+          USUBJID:
+              source: StudySubjectID
+              prefix: "PPT-"
+              type: str
+          AGE:
+              source: IT.AGE
+              type: int
+              type: str
+          SEX:
+              source: I_DEMOG_SEX
+              type: str
+              value_mapping:
+                  "M": "Male"
+                  "F": "Female"
+
+```
+### Finding Domains (Dynamic Mapping)
+
+For domains like `IE`, `LB`, `FA` where many input items map to a single `Test Code` / `Test Name` pair, use `type: finding`.
+
+```yaml
+IE:
+  - type: finding
+    formoid: "F_ELIGIBILITY"
+    # Filter rows using Regex
+    item_group_regex: "IG_ELIGI_.*"
+    item_oid_regex: "I_ELIGI_.*"
+    
+    columns:
+      # Extract part of the OID for the Short Code
+      IETESTCD:
+        source: ItemOID
+        regex_extract: "I_ELIGI_(.*)"
+      
+      # Use Metadata from parsed XML for the Description
+      IETEST:
+        source: Metadata.Question
+      
+      IEORRES:
+        source: Value
+```
+
+### Advanced Mapping Features
+
+**Prefixing**:
+```yaml
+USUBJID:
+  source: StudySubjectID
+  prefix: "PPT-"
+```
+
+**Substring Extraction** (extracts chars 3-5 before mapping):
+```yaml
+SITEID:
+  source: FULL_ID
+  substring_start: 3
+  substring_length: 3
+
+**Fallback** (use secondary source if primary is missing):
+```yaml
+SUBJID:
+  source: RFSTDTC
+  fallback: USUBJID
+```
+```
+
+**Default Values**:
+```yaml
+CUSTOM_COL:
+  source: ORG_COL
+  value_mapping:
+    "A": "Alpha"
+  mapping_default: "Other" # used if not A
+  # mapping_default_source: "AnotherCol" # Fallback to column value
+```
+
+**Case Sensitive Mapping**:
+By default, mapping is case-sensitive. You can disable this to map values regardless of case (e.g. "Yes", "yes", "YES" -> "Y"). Unmapped values preserve their original casing.
+```yaml
+RESP:
+  source: INPUT_VAL
+  value_mapping:
+    "Yes": "Y"
+    "No": "N"
+  case_sensitive: false
+```
+
+## License
+
+[MIT License](LICENSE)

@@ -1,0 +1,513 @@
+"""SQL-based derivation handling most CDISC patterns."""
+
+import logging
+from typing import Any
+
+import polars as pl
+
+from .base import BaseDerivation
+
+logger = logging.getLogger(__name__)
+
+
+class SQLDerivation(BaseDerivation):
+    """
+    Handles derivations using SQL expressions.
+    Covers: constant, source, mapping, aggregation, cut patterns.
+    """
+
+    def derive(self) -> pl.Series:
+        """Derive column using SQL expression."""
+
+        derivation = self.col_spec.get("derivation", {})
+        col_name = self.col_spec["name"]
+        key_vars = self.col_spec.get("_key_vars", ["USUBJID"])
+
+        # Dispatch to appropriate SQL generator
+        series: pl.Series
+        if "constant" in derivation:
+            series = self._derive_constant(derivation["constant"])
+        elif "source" in derivation:
+            series = self._derive_source(derivation, key_vars)
+        elif "cut" in derivation:
+            series = self._derive_cut(derivation)
+        else:
+            raise ValueError(f"Unknown derivation type for {col_name}")
+
+        # Post-processing: Value Mapping
+        # Support both inside derivation (legacy) and outside (col_spec)
+        value_mapping = self.col_spec.get("value_mapping") or derivation.get("value_mapping") or self.col_spec.get("mapping_value") or derivation.get("mapping_value")
+        mapping_default = self.col_spec.get("mapping_default") or derivation.get("mapping_default")
+        
+        # Check for case sensitivity setting (default is True)
+        case_sensitive = self.col_spec.get("case_sensitive")
+        if case_sensitive is None:
+            case_sensitive = derivation.get("case_sensitive", True)
+        
+        if value_mapping:
+             series = self._apply_mapping(series, value_mapping, default=mapping_default, case_sensitive=case_sensitive)
+
+        # Post-processing: Cut (Categorization)
+        if "cut" in derivation:
+            series = self._apply_cut(series, derivation["cut"])
+
+        return series
+
+    def _derive_constant(self, value: Any) -> pl.Series:
+        """Create a constant value column."""
+        return pl.Series([value] * self.target_df.height)
+
+    def _apply_cut(self, series: pl.Series, cuts: dict[str, str]) -> pl.Series:
+        """Apply cut logic to an existing series using temporary SQL context."""
+        
+        # We perform the cut logic by creating a temporary DataFrame with the series
+        # and running the SQL generation logic on it.
+        temp_col = "_val"
+        temp_df = pl.DataFrame({temp_col: series})
+        source = temp_col
+        
+        # Build CASE expression (logic lifted from original _derive_cut)
+        case_parts = []
+        for condition, label in cuts.items():
+            # Convert condition syntax to SQL
+            sql_condition = condition.replace("and", "AND").replace("or", "OR")
+            sql_condition = sql_condition.replace(">=", "___GTE___")
+            sql_condition = sql_condition.replace("<=", "___LTE___")
+            sql_condition = sql_condition.replace(">", "___GT___")
+            sql_condition = sql_condition.replace("<", "___LT___")
+            sql_condition = sql_condition.replace("=", "___EQ___")
+
+            # Now replace back with source reference
+            sql_condition = sql_condition.replace("___GTE___", f">= {source} AND {source} >=")
+            sql_condition = sql_condition.replace("___LTE___", f"<= {source} AND {source} <=")
+            sql_condition = sql_condition.replace("___GT___", f"> {source} AND {source} >")
+            sql_condition = sql_condition.replace("___LT___", f"< {source} AND {source} <")
+            sql_condition = sql_condition.replace("___EQ___", f"= {source} AND {source} =")
+
+            # Clean up the condition
+            if condition.startswith("<"):
+                value = condition[1:].strip()
+                case_parts.append(f"WHEN {source} < {value} THEN '{label}'")
+            elif condition.startswith(">=") and " and " in condition.lower():
+                parts = condition.split(" and ")
+                lower = parts[0].replace(">=", "").strip()
+                upper = parts[1].replace("<", "").strip()
+                case_parts.append(f"WHEN {source} >= {lower} AND {source} < {upper} THEN '{label}'")
+            elif condition.startswith(">="):
+                value = condition[2:].strip()
+                case_parts.append(f"WHEN {source} >= {value} THEN '{label}'")
+            else:
+                # Generic condition
+                case_parts.append(f"WHEN {condition} THEN '{label}'")
+
+        case_expr = "CASE " + " ".join(case_parts) + " ELSE NULL END"
+
+        # Execute using Polars expressions
+        ctx = pl.SQLContext(frame=temp_df)
+        try:
+            result_df = ctx.execute(f"SELECT {case_expr} as result FROM frame").collect()
+            return result_df["result"]
+        except Exception as e:
+            logger.warning(f"Cut execution failed: {e}")
+            return pl.Series([None] * len(series))
+    def _derive_source(self, derivation: dict[str, Any], key_vars: list[str]) -> pl.Series:
+        """Derive from source with optional mapping, filter, and aggregation."""
+
+        source = derivation["source"]
+
+        # Parse source reference (e.g., "DM.AGE" or "AGE")
+        # Parse source reference (e.g., "DM.AGE" or "AGE")
+        series: pl.Series
+        
+        if "." in source:
+            dataset_name, column_name = source.split(".", 1)
+            source_col = f"{dataset_name}.{column_name}"
+            
+            # Build SQL query
+
+            # Handle aggregation
+            if "aggregation" in derivation:
+                agg_spec = derivation["aggregation"]
+                sql_query = self._build_aggregation_sql(
+                    source_col, agg_spec, derivation.get("filter"), key_vars
+                )
+            else:
+                # Simple source with optional filter
+                sql_query = self._build_source_sql(
+                    source_col, derivation.get("filter"), derivation.get("mapping"), key_vars
+                )
+
+            # Execute SQL using Polars SQL context
+            series = self._execute_sql(sql_query, key_vars)
+            
+        else:
+            # Column from target dataset
+            if source in self.target_df.columns:
+                series = self.target_df[source]
+            else:
+                # If source is not in target, check if it's meant to be from source data implicitly?
+                # The original code raised ValueError here.
+                raise ValueError(f"Column {source} not found in target dataset")
+
+            # Apply mapping if present (legacy / optimization for local cols)
+            if "mapping" in derivation:
+                series = self._apply_mapping(series, derivation["mapping"])
+
+        return series
+
+    def _derive_cut(self, derivation: dict[str, Any]) -> pl.Series:
+        """Derive using cut (categorization) logic."""
+
+        source = derivation["source"]
+        cuts = derivation["cut"]
+
+        # Get source column
+        if source in self.target_df.columns:
+            self.target_df[source]
+        else:
+            raise ValueError(f"Source column {source} not found for cut")
+
+        # Build CASE expression
+        case_parts = []
+        for condition, label in cuts.items():
+            # Convert condition syntax to SQL
+            sql_condition = condition.replace("and", "AND").replace("or", "OR")
+            sql_condition = sql_condition.replace(">=", "___GTE___")
+            sql_condition = sql_condition.replace("<=", "___LTE___")
+            sql_condition = sql_condition.replace(">", "___GT___")
+            sql_condition = sql_condition.replace("<", "___LT___")
+            sql_condition = sql_condition.replace("=", "___EQ___")
+
+            # Now replace back with source reference
+            sql_condition = sql_condition.replace("___GTE___", f">= {source} AND {source} >=")
+            sql_condition = sql_condition.replace("___LTE___", f"<= {source} AND {source} <=")
+            sql_condition = sql_condition.replace("___GT___", f"> {source} AND {source} >")
+            sql_condition = sql_condition.replace("___LT___", f"< {source} AND {source} <")
+            sql_condition = sql_condition.replace("___EQ___", f"= {source} AND {source} =")
+
+            # Clean up the condition
+            # For patterns like "<18", ">=18 and <65", ">=65"
+            if condition.startswith("<"):
+                value = condition[1:].strip()
+                case_parts.append(f"WHEN {source} < {value} THEN '{label}'")
+            elif condition.startswith(">=") and " and " in condition.lower():
+                parts = condition.split(" and ")
+                lower = parts[0].replace(">=", "").strip()
+                upper = parts[1].replace("<", "").strip()
+                case_parts.append(f"WHEN {source} >= {lower} AND {source} < {upper} THEN '{label}'")
+            elif condition.startswith(">="):
+                value = condition[2:].strip()
+                case_parts.append(f"WHEN {source} >= {value} THEN '{label}'")
+            else:
+                # Generic condition
+                case_parts.append(f"WHEN {condition} THEN '{label}'")
+
+        case_expr = "CASE " + " ".join(case_parts) + " ELSE NULL END"
+
+        # Execute using Polars expressions
+        ctx = pl.SQLContext(frame=self.target_df)
+        result_df = ctx.execute(f"SELECT {case_expr} as result FROM frame")
+        return result_df["result"]
+
+    def _build_source_sql(
+        self,
+        source_col: str,
+        filter_expr: str | None,
+        mapping: dict[str, str] | None,
+        key_vars: list[str],
+    ) -> str:
+        """Build SQL for simple source derivation."""
+
+        # Handle mapping with CASE statement
+        if mapping:
+            case_parts = []
+            for key, value in mapping.items():
+                if key == "":
+                    case_parts.append(f"WHEN {source_col} = '' THEN NULL")
+                elif value == "Null" or value is None:
+                    case_parts.append(f"WHEN {source_col} = '{key}' THEN NULL")
+                else:
+                    case_parts.append(f"WHEN {source_col} = '{key}' THEN '{value}'")
+
+            select_expr = f"CASE {' '.join(case_parts)} ELSE NULL END as result"
+        else:
+            select_expr = f"{source_col} as result"
+
+        # Build complete query
+        sql = f"SELECT {', '.join(key_vars)}, {select_expr} FROM merged"
+
+        if filter_expr:
+            sql += f" WHERE {filter_expr}"
+
+        return sql
+
+    def _build_aggregation_sql(
+        self,
+        source_col: str,
+        agg_spec: dict[str, Any],
+        filter_expr: str | None,
+        key_vars: list[str],
+    ) -> str:
+        """Build SQL for aggregation derivation."""
+
+        function = agg_spec.get("function", "first")
+
+        # Map aggregation functions to SQL
+        if function == "first":
+            agg_expr = f"FIRST({source_col}) as result"
+            order_by = ""
+        elif function == "last":
+            agg_expr = f"LAST({source_col}) as result"
+            order_by = ""
+        elif function == "mean":
+            agg_expr = f"AVG(CAST({source_col} AS FLOAT)) as result"
+            order_by = ""
+        elif function == "sum":
+            agg_expr = f"SUM(CAST({source_col} AS FLOAT)) as result"
+            order_by = ""
+        elif function == "max":
+            agg_expr = f"MAX({source_col}) as result"
+            order_by = ""
+        elif function == "min":
+            agg_expr = f"MIN({source_col}) as result"
+            order_by = ""
+        elif function == "closest":
+            # For closest, we need special handling as Polars SQL doesn't support ROW_NUMBER
+            # We'll handle this with native Polars operations
+            target = agg_spec.get("target")
+            if not target:
+                raise ValueError("'closest' aggregation requires 'target' field")
+
+            # Return a special marker to handle in execute
+            return f"CLOSEST:{source_col}:{target}:{filter_expr or ''}"
+        else:
+            raise ValueError(f"Unknown aggregation function: {function}")
+
+        # Build query
+        sql = f"SELECT {', '.join(key_vars)}, {agg_expr} FROM merged"
+
+        if filter_expr:
+            sql += f" WHERE {filter_expr}"
+
+        sql += f" GROUP BY {', '.join(key_vars)}"
+
+        if order_by:
+            sql += f" ORDER BY {order_by}"
+
+        return sql
+
+    def _execute_sql(self, sql: str, key_vars: list[str]) -> pl.Series:
+        """Execute SQL query and return result as Series."""
+
+        # Check for special CLOSEST handling
+        if sql.startswith("CLOSEST:"):
+            return self._execute_closest(sql, key_vars)
+
+        # Start with target DataFrame for context
+        merged_df = self.target_df.clone()
+
+        # Add source data if needed
+        for dataset_name, df in self.source_data.items():
+            # Check if this dataset is referenced in the SQL
+            if dataset_name in sql or f'"{dataset_name}.' in sql:
+                # Get available keys for joining
+                available_keys = [k for k in key_vars if k in df.columns]
+                if available_keys and dataset_name not in merged_df.columns:
+                    # Join the source data
+                    merged_df = merged_df.join(
+                        df, on=available_keys, how="left", suffix=f"_{dataset_name.lower()}"
+                    )
+
+        # Create SQL context and execute
+        # Use the column names as they are (already renamed with dots)
+        ctx = pl.SQLContext(merged=merged_df)
+
+        try:
+            # Execute the SQL - wrap column names with dots in quotes
+            # Replace DM.COLUMN with "DM.COLUMN" for proper SQL
+            import re
+
+            sql_quoted = re.sub(r"(\w+)\.(\w+)", r'`\1.\2`', sql)
+
+            result_df = ctx.execute(sql_quoted).collect()
+
+            # Handle result based on size
+            # Fix: Always join if keys vary to ensure order safety
+            # Previous optimization (len check) was unsafe for SQL aggregation
+            if len(key_vars) > 0:
+                # Join to get all rows aligned correctly
+                final_df = self.target_df.select(key_vars).join(result_df, on=key_vars, how="left")
+                return final_df["result"]
+            
+            elif len(result_df) == len(self.target_df):
+                 # No keys (rare), assume safe only if 1:1 and no order change (risky but fallback)
+                 return result_df["result"]
+            else:
+                # Fallback - ensure we return right number of rows
+                return pl.Series([None] * self.target_df.height)
+
+        except Exception as e:
+            logger.warning(f"SQL execution failed: {e}, returning nulls")
+            logger.debug(f"SQL: {sql}")
+            logger.debug(f"Available columns: {merged_df.columns}")
+            return pl.Series([None] * self.target_df.height)
+
+    def _execute_closest(self, sql_spec: str, key_vars: list[str]) -> pl.Series:
+        """Execute 'closest' aggregation using native Polars operations."""
+
+        # Parse the CLOSEST spec
+        parts = sql_spec.split(":", 3)
+        source_col = parts[1]  # e.g., "VS.VSORRES"
+        target_col = parts[2]  # e.g., "DM.RFSTDTC"
+        filter_expr = parts[3] if len(parts) > 3 else None
+
+        # Get dataset name from source column
+        dataset_name = source_col.split(".")[0]
+
+        # Build merged DataFrame with necessary data
+        merged_df = self.target_df.clone()
+
+        # Add source data
+        for ds_name, df in self.source_data.items():
+            if ds_name == dataset_name or ds_name in target_col:
+                available_keys = [k for k in key_vars if k in df.columns]
+                if available_keys:
+                    merged_df = merged_df.join(df, on=available_keys, how="left")
+
+        # Apply filter if present
+        if filter_expr:
+            try:
+                # Use polars expressions for filtering
+                # Convert SQL-like filter to Polars expression
+                import re
+
+                # Replace column references with pl.col()
+                filter_polars = filter_expr
+                # Handle column references with dots
+                filter_polars = re.sub(
+                    r"(\w+\.\w+)", lambda m: f'pl.col("{m.group(1)}")', filter_polars
+                )
+                # Use & for and in Polars
+                filter_polars = filter_polars.replace(" and ", " & ")
+                filter_polars = filter_polars.replace(" or ", " | ")
+                filter_polars = filter_polars.replace("==", "=").replace("=", "==")
+                # Add parentheses around all comparisons to fix operator precedence
+                filter_polars = re.sub(
+                    r'(pl\.col\("[^"]+"\)\s*[<>=!]+\s*(?:"[^"]*"|pl\.col\("[^"]+"\)))',
+                    r"(\1)",
+                    filter_polars,
+                )
+                # Apply filter
+                filtered_df = merged_df.filter(eval(filter_polars))
+            except Exception as e:
+                logger.warning(f"Filter failed: {e}, using unfiltered data")
+                filtered_df = merged_df
+        else:
+            filtered_df = merged_df
+
+        # Get the date column for VS/FA/Other dataset
+        if dataset_name == "VS":
+            date_col = f"{dataset_name}.VSDTC"
+        elif dataset_name == "FA":
+            date_col = f"{dataset_name}.FADTC"
+        else:
+            date_col = f"{dataset_name}.DTC"
+
+        # Get unique subjects to iterate over
+        unique_subjects = self.target_df[key_vars[0]].unique().to_list()
+
+        # Find closest value for each subject
+        result_list = []
+        for subject in unique_subjects:
+            subject_data = filtered_df.filter(pl.col(key_vars[0]) == subject)
+
+            if subject_data.height > 0 and source_col in subject_data.columns:
+                # Calculate distance to target date
+                if target_col in subject_data.columns and date_col in subject_data.columns:
+                    # Get target date (should be same for all rows of this subject)
+                    target_date = subject_data[target_col][0]
+
+                    # Calculate date differences and find closest
+                    # Handle partial dates by using strptime with appropriate format
+                    with_diff = subject_data.with_columns(
+                        (
+                            pl.col(date_col).str.strptime(pl.Date, "%Y-%m-%d", strict=False)
+                            - pl.lit(target_date).str.strptime(pl.Date, "%Y-%m-%d", strict=False)
+                        )
+                        .dt.total_days()
+                        .abs()
+                        .alias("date_diff")
+                    )
+
+                    # Get the row with minimum difference
+                    closest_row = with_diff.filter(
+                        pl.col("date_diff") == with_diff["date_diff"].min()
+                    ).head(1)
+
+                    if closest_row.height > 0:
+                        result_list.append(closest_row[source_col][0])
+                    else:
+                        result_list.append(None)
+                else:
+                    # No date columns, just take first value
+                    result_list.append(subject_data[source_col][0])
+            else:
+                result_list.append(None)
+
+        # Create result series matching target_df order
+        # Fix: Zip the unique subjects (keys) with their results
+        result_dict = dict(zip(unique_subjects, result_list))
+        result = [result_dict.get(subj) for subj in self.target_df[key_vars[0]].to_list()]
+
+        logger.info(
+            f"Applied closest aggregation, {sum(v is not None for v in result)} non-null values"
+        )
+        return pl.Series(result)
+
+    def _apply_mapping(self, series: pl.Series, mapping: dict[str, str], default: Any = None, case_sensitive: bool = True) -> pl.Series:
+        """Apply value mapping to a series."""
+        if not mapping:
+            return series
+            
+        try:
+             # Handle "Null" string in config as actual None
+             clean_mapping = {k: (None if v == "Null" else v) for k, v in mapping.items()}
+             
+             if not case_sensitive:
+                 # Case insensitive logic
+                 lower_mapping = {k.lower(): v for k, v in clean_mapping.items()}
+                 lower_series = series.str.to_lowercase()
+                 
+                 if default is not None:
+                     # If default is provided, replace works nicely on lower_series
+                     return lower_series.replace(lower_mapping, default=default)
+                 else:
+                     # If no default (keep original), we only want to replace MATCHES
+                     # replace() on lower_series will return lowercased originals for non-matches
+                     # So we use when/then to conditionally apply the mapping
+                     mapped_lower = lower_series.replace(lower_mapping)
+                     is_mapped = lower_series.is_in(list(lower_mapping.keys()))
+
+                     # Must execute the expression to get a Series
+                     temp_df = pl.DataFrame({
+                         "original": series,
+                         "mapped": mapped_lower,
+                         "mask": is_mapped
+                     })
+                     
+                     return temp_df.select(
+                         pl.when(pl.col("mask"))
+                         .then(pl.col("mapped"))
+                         .otherwise(pl.col("original"))
+                     ).to_series()
+             
+             else:
+                 # Standard strict mapping (Default)
+                 if default is not None:
+                     return series.replace(clean_mapping, default=default)
+                 else:
+                     return series.replace(clean_mapping)
+
+        except Exception as e:
+             logger.warning(f"Mapping failed: {e}")
+             return series
