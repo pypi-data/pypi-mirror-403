@@ -1,0 +1,308 @@
+# complex-expr-parser
+
+A fault-tolerant parser for complex-valued mathematical functions with human-friendly notation support.
+
+## Features
+
+- **Human-friendly syntax**: Accepts natural mathematical notation
+- **Implicit multiplication**: `2z` becomes `2*z`
+- **Power notation**: `z^2` becomes `z**2`
+- **Absolute value**: `|z|` becomes `Abs(z)`
+- **Conjugate shorthand**: `z*` becomes `conjugate(z)`
+- **Unicode support**: `pi`, `sqrt`, `oo` (infinity)
+- **Function aliases**: `ln` -> `log`, `arcsin` -> `asin`, etc.
+- **Special functions**: Gamma, Zeta, and more via mpmath
+- **Vectorized evaluation**: Works with NumPy arrays for fast computation
+
+## Installation
+
+```bash
+pip install complex-expr-parser
+```
+
+With optional dependencies:
+
+```bash
+# For numpy array support (recommended)
+pip install complex-expr-parser[numpy]
+
+# For special functions (gamma, zeta)
+pip install complex-expr-parser[mpmath]
+
+# All optional dependencies
+pip install complex-expr-parser[all]
+```
+
+## Quick Start
+
+```python
+from complex_expr_parser import parse_complex_function, get_callable, validate_expression
+
+# Parse an expression to a sympy object
+expr = parse_complex_function("z^2 + 2z + 1")
+print(expr)  # z**2 + 2*z + 1
+
+# Get a callable function
+f = get_callable("sin(z)/z")
+print(f(1+1j))  # (0.6349639147847361+0.2988350886551747j)
+
+# Validate user input
+is_valid, error = validate_expression("z^2 + 1")
+if is_valid:
+    print("Expression is valid!")
+else:
+    print(f"Invalid: {error}")
+```
+
+## Supported Notations
+
+### Basic Operations
+
+```python
+from complex_expr_parser import get_callable
+
+# Power notation
+f = get_callable("z^2")      # or z**2
+f = get_callable("z^3 - 1")
+
+# Implicit multiplication
+f = get_callable("2z + 3")           # 2*z + 3
+f = get_callable("z(z+1)")           # z*(z+1)
+f = get_callable("(z+1)(z-1)")       # (z+1)*(z-1)
+
+# Rational functions
+f = get_callable("(z-1)/(z+1)")
+f = get_callable("1/z")
+```
+
+### Trigonometric Functions
+
+```python
+f = get_callable("sin(z)")
+f = get_callable("cos(z)")
+f = get_callable("tan(z)")
+
+# Inverse trig (multiple notations)
+f = get_callable("asin(z)")
+f = get_callable("arcsin(z)")  # alias
+```
+
+### Hyperbolic Functions
+
+```python
+f = get_callable("sinh(z)")
+f = get_callable("cosh(z)")
+f = get_callable("tanh(z)")
+f = get_callable("asinh(z)")
+```
+
+### Exponential and Logarithmic
+
+```python
+f = get_callable("exp(z)")
+f = get_callable("e^z")       # equivalent to exp(z)
+f = get_callable("log(z)")    # natural log
+f = get_callable("ln(z)")     # alias for log
+f = get_callable("sqrt(z)")
+```
+
+### Complex-Specific Operations
+
+```python
+# Absolute value
+f = get_callable("|z|")
+f = get_callable("Abs(z)")
+
+# Conjugate
+f = get_callable("z*")              # z* notation
+f = get_callable("conjugate(z)")
+f = get_callable("conj(z)")         # alias
+
+# Real and imaginary parts
+f = get_callable("re(z)")
+f = get_callable("Re(z)")           # alias
+f = get_callable("real(z)")         # alias
+
+f = get_callable("im(z)")
+f = get_callable("Im(z)")           # alias
+f = get_callable("imag(z)")         # alias
+
+# Argument (phase)
+f = get_callable("arg(z)")
+f = get_callable("phase(z)")        # alias
+f = get_callable("angle(z)")        # alias
+```
+
+### Constants
+
+```python
+# Imaginary unit
+f = get_callable("z + i")
+f = get_callable("z + j")     # j also works
+
+# Euler's number
+f = get_callable("e^(i*pi)")
+
+# Pi
+f = get_callable("exp(i*pi*z)")
+
+# Unicode supported
+f = get_callable("z + \u03c0")       # pi symbol
+```
+
+### Special Functions (requires mpmath)
+
+```python
+# Gamma function
+f = get_callable("gamma(z)")
+
+# Riemann zeta function
+f = get_callable("zeta(z)")
+```
+
+## Using with NumPy Arrays
+
+The parser generates vectorized functions that work efficiently with NumPy arrays:
+
+```python
+import numpy as np
+from complex_expr_parser import get_callable
+
+# Create a complex grid
+x = np.linspace(-2, 2, 100)
+y = np.linspace(-2, 2, 100)
+X, Y = np.meshgrid(x, y)
+Z = X + 1j * Y
+
+# Evaluate function over the grid
+f = get_callable("z^2 + 1")
+result = f(Z)  # Returns 100x100 complex array
+```
+
+## Using the Parser Class Directly
+
+For more control, use the `ComplexFunctionParser` class:
+
+```python
+from complex_expr_parser import ComplexFunctionParser
+
+parser = ComplexFunctionParser()
+
+# Parse to sympy expression
+expr = parser.parse("z^2 + 2z + 1")
+print(expr)          # z**2 + 2*z + 1
+print(expr.expand()) # z**2 + 2*z + 1
+print(expr.factor()) # (z + 1)**2
+
+# Convert to callable
+f = parser.to_callable(expr, use_numpy=True)
+print(f(1+1j))  # (3+4j)
+
+# Access the preprocessing step
+preprocessed = parser.preprocess("2z^2 + |z|")
+print(preprocessed)  # 2*z**2 + Abs(z)
+```
+
+## Input Validation
+
+Use `validate_expression` to check user input before processing:
+
+```python
+from complex_expr_parser import validate_expression
+
+# Valid expression
+is_valid, error = validate_expression("sin(z)/z")
+assert is_valid and error is None
+
+# Empty expression
+is_valid, error = validate_expression("")
+assert not is_valid
+print(error)  # "Expression cannot be empty"
+
+# Invalid syntax
+is_valid, error = validate_expression("z +* 1")
+assert not is_valid
+print(error)  # Error details
+```
+
+## Integration with Domain Coloring
+
+This parser is ideal for domain coloring visualizations of complex functions:
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from complex_expr_parser import get_callable
+
+def domain_coloring(expr_str, xlim=(-2, 2), ylim=(-2, 2), resolution=500):
+    """Simple domain coloring plot."""
+    f = get_callable(expr_str)
+
+    x = np.linspace(*xlim, resolution)
+    y = np.linspace(*ylim, resolution)
+    X, Y = np.meshgrid(x, y)
+    Z = X + 1j * Y
+
+    W = f(Z)
+
+    # Color by argument, brightness by magnitude
+    H = np.angle(W) / (2 * np.pi) + 0.5
+    S = np.ones_like(H)
+    V = 1 - 1 / (1 + np.abs(W)**0.3)
+
+    # Convert HSV to RGB (simplified)
+    # ... plotting code ...
+
+    return W
+
+# Plot z^2 - 1
+W = domain_coloring("z^2 - 1")
+```
+
+## API Reference
+
+### Functions
+
+- `parse_complex_function(expr_str)` - Parse string to sympy expression
+- `get_callable(expr_str, use_numpy=True)` - Parse and return callable function
+- `validate_expression(expr_str)` - Validate expression, returns `(bool, error_msg)`
+
+### Classes
+
+- `ComplexFunctionParser` - Main parser class with `parse()` and `to_callable()` methods
+
+### Constants
+
+- `z` - The sympy Symbol for the complex variable
+- `KNOWN_FUNCTIONS` - List of recognized function names
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/complex-expr-parser
+cd complex-expr-parser
+
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=complex_expr_parser
+```
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Changelog
+
+### 0.1.0
+
+- Initial release
+- ComplexFunctionParser class with fault-tolerant parsing
+- Support for human-friendly notation
+- NumPy vectorized evaluation
+- Special function support via mpmath
