@@ -1,0 +1,1 @@
+"""Paracord CLI core functionality."""
