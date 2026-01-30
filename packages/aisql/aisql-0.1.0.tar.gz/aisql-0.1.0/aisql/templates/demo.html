@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Query Generator Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs" defer></script>
+    <!-- Code highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-json.min.js"></script>
+</head>
+<body class="h-full" x-data="{ 
+    dbType: 'mongodb',
+    question: '',
+    result: {
+        query: '',
+        explanation: '',
+        is_valid: false,
+        error: null
+    },
+    loading: false,
+    async generateQuery() {
+        this.loading = true;
+        this.result.error = null;
+        try {
+            const endpoint = this.dbType === 'mongodb' ? '/generate-mongodb' : '/generate-postgresql';
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    question: this.question
+                })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.detail || 'Failed to generate query');
+            }
+            this.result = data;
+            // Trigger Prism to highlight the new code
+            setTimeout(() => Prism.highlightAll(), 100);
+        } catch (e) {
+            this.result.error = e.message;
+        } finally {
+            this.loading = false;
+        }
+    }
+}">
+    <div class="min-h-full">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-sm">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div class="flex h-16 justify-between">
+                    <div class="flex">
+                        <div class="flex flex-shrink-0 items-center">
+                            <h1 class="text-2xl font-bold text-gray-900">AI Query Generator</h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main>
+            <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+                <!-- Query form -->
+                <div class="bg-white shadow sm:rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-lg font-medium leading-6 text-gray-900">Generate Database Query</h3>
+                        <div class="mt-2 max-w-xl text-sm text-gray-500">
+                            <p>Enter your question in natural language and select the database type.</p>
+                        </div>
+                        <form class="mt-5" @submit.prevent="generateQuery">
+                            <div class="space-y-4">
+                                <!-- Database type selector -->
+                                <div>
+                                    <label class="text-base font-medium text-gray-900">Database Type</label>
+                                    <div class="mt-2 space-x-4">
+                                        <label class="inline-flex items-center">
+                                            <input type="radio" x-model="dbType" value="mongodb" class="form-radio text-indigo-600">
+                                            <span class="ml-2">MongoDB</span>
+                                        </label>
+                                        <label class="inline-flex items-center">
+                                            <input type="radio" x-model="dbType" value="postgresql" class="form-radio text-indigo-600">
+                                            <span class="ml-2">PostgreSQL</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Question input -->
+                                <div>
+                                    <label for="question" class="block text-sm font-medium text-gray-700">Your Question</label>
+                                    <div class="mt-1">
+                                        <textarea
+                                            id="question"
+                                            x-model="question"
+                                            rows="3"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                            placeholder="e.g., Show me all customers who ordered in the last 30 days"
+                                        ></textarea>
+                                    </div>
+                                </div>
+
+                                <!-- Submit button -->
+                                <div>
+                                    <button
+                                        type="submit"
+                                        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                        :disabled="loading || !question.trim()"
+                                    >
+                                        <span x-show="!loading">Generate Query</span>
+                                        <span x-show="loading">
+                                            <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Error message -->
+                <div x-show="result.error" class="mt-4">
+                    <div class="rounded-md bg-red-50 p-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-red-800" x-text="result.error"></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div x-show="result.query" class="mt-4">
+                    <div class="bg-white shadow sm:rounded-lg">
+                        <div class="px-4 py-5 sm:p-6">
+                            <h3 class="text-lg font-medium leading-6 text-gray-900">Generated Query</h3>
+                            
+                            <!-- Query -->
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium text-gray-700">Query</label>
+                                <div class="mt-2">
+                                    <pre><code x-text="result.query" 
+                                        :class="dbType === 'mongodb' ? 'language-json' : 'language-sql'" 
+                                        class="rounded-md"></code></pre>
+                                </div>
+                            </div>
+
+                            <!-- Explanation -->
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium text-gray-700">Explanation</label>
+                                <div class="mt-2 text-sm text-gray-600" x-text="result.explanation"></div>
+                            </div>
+
+                            <!-- Validation status -->
+                            <div class="mt-4">
+                                <span
+                                    :class="result.is_valid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                >
+                                    <svg :class="result.is_valid ? 'text-green-400' : 'text-red-400'" class="mr-1.5 h-2 w-2" fill="currentColor" viewBox="0 0 8 8">
+                                        <circle cx="4" cy="4" r="3" />
+                                    </svg>
+                                    <span x-text="result.is_valid ? 'Valid Query' : 'Invalid Query'"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html> 

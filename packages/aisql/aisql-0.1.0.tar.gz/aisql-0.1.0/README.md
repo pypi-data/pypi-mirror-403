@@ -1,0 +1,366 @@
+# AI SQL Generator
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+A powerful AI-powered SQL and MongoDB query generator that converts natural language questions into optimized database queries.
+
+## 🎬 Demo
+
+```
+    ╔═══════════════════════════════════════════════════════════╗
+    ║                                                           ║
+    ║     █████╗ ██╗███████╗ ██████╗ ██╗                        ║
+    ║    ██╔══██╗██║██╔════╝██╔═══██╗██║                        ║
+    ║    ███████║██║███████╗██║   ██║██║                        ║
+    ║    ██╔══██║██║╚════██║██║▄▄ ██║██║                        ║
+    ║    ██║  ██║██║███████║╚██████╔╝███████╗                   ║
+    ║    ╚═╝  ╚═╝╚═╝╚══════╝ ╚══▀▀═╝ ╚══════╝                   ║
+    ║                                                           ║
+    ║    Natural Language to SQL Generator                      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+Using OPENAI_API_KEY from environment: ************
+
+> Show me all customers who ordered in the last 30 days
+
+Generating SQL...
+
+============================================================
+SQL Query:
+------------------------------------------------------------
+SELECT DISTINCT c.id, c.name, c.email
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE o.order_date >= CURRENT_DATE - INTERVAL '30 days';
+------------------------------------------------------------
+
+Explanation: This query retrieves unique customer records (id, name, email)
+for customers who have placed at least one order in the last 30 days.
+Valid: Yes
+============================================================
+
+> What are the top 5 products by total sales?
+
+Generating SQL...
+
+============================================================
+SQL Query:
+------------------------------------------------------------
+SELECT p.id, p.name, SUM(oi.quantity * oi.unit_price) AS total_sales
+FROM products p
+JOIN order_items oi ON p.id = oi.product_id
+GROUP BY p.id, p.name
+ORDER BY total_sales DESC
+LIMIT 5;
+------------------------------------------------------------
+
+Explanation: This query calculates total sales for each product and returns
+the top 5 products ranked by their total sales amount.
+Valid: Yes
+============================================================
+
+> /quit
+Goodbye!
+```
+
+Run the animated demo yourself:
+```bash
+make demo
+```
+
+## 🚀 Features
+
+- Natural language to SQL query conversion
+- Natural language to MongoDB query conversion
+- Detailed query explanations
+- Query validation against user intent
+- Interactive CLI with custom schema support
+- RESTful API interface
+
+## 📋 Requirements
+
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv) package manager
+- OpenAI API key
+
+## 🛠 Installation
+
+### Install from PyPI
+
+```bash
+pip install aisql
+
+# Development extras (formatting, linting, tests)
+pip install "aisql[dev]"
+```
+
+### Install from source
+
+1. Clone the repository
+
+    ```bash
+    git clone https://github.com/aladagemre/aisql.git
+    cd aisql
+    ```
+
+2. Install uv (if not already installed)
+
+    ```bash
+    # macOS/Linux
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Or with Homebrew
+    brew install uv
+
+    # Or with pip
+    pip install uv
+    ```
+
+3. Install dependencies
+
+    ```bash
+    uv sync
+    ```
+
+4. Set up your OpenAI API key
+
+Option A: Set environment variable (recommended)
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+Option B: Create a `.env` file
+```bash
+cp .env.example .env
+# Edit .env and add your OpenAI API key
+```
+
+Option C: Enter interactively when running the CLI
+
+Optional: Use deterministic mocks without calling the OpenAI API
+```bash
+export AISQL_USE_MOCK=true
+```
+
+## 🖥 Running the CLI
+
+The interactive CLI is the easiest way to use AISQL:
+
+```bash
+make cli
+```
+
+Or directly with Python:
+```bash
+uv run python -m aisql.cli
+```
+
+Once installed, you can also run:
+```bash
+aisql-cli
+```
+
+Once installed, you can also run:
+```bash
+aisql-cli
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/schema` | View current database schema |
+| `/set schema` | Define a custom schema (multi-line input) |
+| `/set key` | Change OpenAI API key |
+| `/clear` | Clear the screen |
+| `/quit` | Exit the application |
+
+### Example Session
+
+```
+> /schema
+
+Current Schema:
+----------------------------------------
+Table: customers
+- id (int, primary key)
+- name (varchar)
+- email (varchar)
+- created_at (timestamp)
+
+Table: orders
+- id (int, primary key)
+- customer_id (int, foreign key -> customers.id)
+- order_date (date)
+- total (decimal)
+- status (varchar)
+----------------------------------------
+
+> Find customers who spent more than $1000 but haven't ordered in 90 days
+
+============================================================
+SQL Query:
+------------------------------------------------------------
+SELECT c.id, c.name, c.email, SUM(o.total) AS total_spent,
+       MAX(o.order_date) AS last_order_date
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+GROUP BY c.id, c.name, c.email
+HAVING SUM(o.total) > 1000
+   AND MAX(o.order_date) < CURRENT_DATE - INTERVAL '90 days';
+------------------------------------------------------------
+
+Explanation: This query identifies high-value customers (>$1000 total spend)
+who have become inactive (no orders in the last 90 days).
+Valid: Yes
+============================================================
+```
+
+## 🎬 Running the Demo
+
+Watch an animated demonstration of the CLI:
+
+```bash
+make demo
+```
+
+Or directly:
+```bash
+uv run python demo_cast.py
+```
+
+## 🌐 Running the REST API
+
+Start the API server:
+
+```bash
+make run
+```
+
+Or directly:
+```bash
+uv run uvicorn aisql.main:app --reload
+```
+
+Once installed, you can also run:
+```bash
+aisql-api
+```
+
+Once installed, you can also run:
+```bash
+aisql-api
+```
+
+The API will be available at `http://localhost:8000`
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | API info |
+| GET | `/demo` | Interactive web demo |
+| GET | `/docs` | Swagger documentation |
+| POST | `/generate-postgresql` | Generate SQL query |
+| POST | `/generate-mongodb` | Generate MongoDB query |
+
+### API Example
+
+```bash
+curl -X POST "http://localhost:8000/generate-postgresql" \
+     -H "Content-Type: application/json" \
+     -d '{"question": "Show me all customers who ordered in the last 30 days"}'
+```
+
+Response:
+```json
+{
+    "query": "SELECT DISTINCT c.id, c.name, c.email FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.order_date >= CURRENT_DATE - INTERVAL '30 days';",
+    "explanation": "This query retrieves unique customers who have placed orders in the last 30 days.",
+    "is_valid": true,
+    "error": null
+}
+```
+
+## 🧱 SDK Usage
+
+Import the generators directly in your Python project:
+
+```python
+from aisql.lib import SQLGenerator
+from aisql.schemas import POSTGRESQL_SCHEMA
+
+generator = SQLGenerator(schema=POSTGRESQL_SCHEMA)
+result = generator.generate("Show me all customers who ordered in the last 30 days")
+print(result.query)
+print(result.explanation)
+```
+
+Set `OPENAI_API_KEY` before instantiating the generators, or export `AISQL_USE_MOCK=true` to run with the deterministic offline mocks used in the test suite.
+
+## 🧪 Testing
+
+Run the test suite:
+```bash
+make test
+```
+
+Or directly:
+```bash
+uv run pytest -v
+```
+
+Tests use deterministic mock query generators so they can run without an
+`OPENAI_API_KEY`. Integration testing with the real OpenAI models still works
+by running the application normally.
+
+## 🛠 Development
+
+Format code:
+```bash
+make format
+```
+
+Run linter:
+```bash
+make lint
+```
+
+## 📁 Project Structure
+
+```
+aisql/
+├── aisql/
+│   ├── __init__.py
+│   ├── cli.py           # Interactive CLI
+│   ├── lib.py           # Query generation logic
+│   ├── main.py          # FastAPI application
+│   ├── models.py        # Pydantic models
+│   ├── schemas/         # Database schema definitions
+│   └── templates/       # HTML templates
+├── tests/               # Test suite
+├── demo_cast.py         # ASCII cinema demo
+├── Makefile             # Build commands
+└── pyproject.toml       # Project configuration
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🔒 Security
+
+For security concerns, please see our [Security Policy](SECURITY.md).
