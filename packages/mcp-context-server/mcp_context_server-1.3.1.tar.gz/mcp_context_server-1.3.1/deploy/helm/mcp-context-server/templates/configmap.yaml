@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mcp-context-server.fullname" . }}
+  labels:
+    {{- include "mcp-context-server.labels" . | nindent 4 }}
+data:
+  # Transport settings
+  MCP_TRANSPORT: {{ .Values.env.MCP_TRANSPORT | quote }}
+  FASTMCP_HOST: {{ .Values.env.FASTMCP_HOST | quote }}
+  FASTMCP_PORT: {{ .Values.env.FASTMCP_PORT | quote }}
+  LOG_LEVEL: {{ .Values.env.LOG_LEVEL | quote }}
+  # Storage backend
+  STORAGE_BACKEND: {{ .Values.storage.backend | quote }}
+  {{- if .Values.storage.sqlite.enabled }}
+  DB_PATH: {{ .Values.storage.sqlite.path | quote }}
+  {{- end }}
+  {{- if .Values.storage.postgresql.enabled }}
+  POSTGRESQL_HOST: {{ .Values.storage.postgresql.host | quote }}
+  POSTGRESQL_PORT: {{ .Values.storage.postgresql.port | quote }}
+  POSTGRESQL_USER: {{ .Values.storage.postgresql.user | quote }}
+  POSTGRESQL_DATABASE: {{ .Values.storage.postgresql.database | quote }}
+  POSTGRESQL_SSL_MODE: {{ .Values.storage.postgresql.sslMode | quote }}
+  {{- end }}
+  # Search features
+  ENABLE_FTS: {{ .Values.search.fts.enabled | quote }}
+  {{- if .Values.search.fts.enabled }}
+  FTS_LANGUAGE: {{ .Values.search.fts.language | quote }}
+  {{- end }}
+  ENABLE_SEMANTIC_SEARCH: {{ .Values.search.semantic.enabled | quote }}
+  {{- if .Values.search.semantic.enabled }}
+  EMBEDDING_PROVIDER: {{ .Values.search.semantic.provider | quote }}
+  EMBEDDING_MODEL: {{ .Values.search.semantic.model | quote }}
+  EMBEDDING_DIM: {{ .Values.search.semantic.dim | quote }}
+  EMBEDDING_TIMEOUT_S: {{ .Values.search.semantic.timeout | quote }}
+  EMBEDDING_RETRY_MAX_ATTEMPTS: {{ .Values.search.semantic.retryMaxAttempts | quote }}
+  EMBEDDING_RETRY_BASE_DELAY_S: {{ .Values.search.semantic.retryBaseDelay | quote }}
+  {{- if eq .Values.search.semantic.provider "ollama" }}
+  {{- if .Values.ollama.enabled }}
+  OLLAMA_HOST: "http://localhost:11434"
+  {{- end }}
+  {{- end }}
+  {{- if eq .Values.search.semantic.provider "azure" }}
+  AZURE_OPENAI_ENDPOINT: {{ .Values.embeddingSecrets.azureOpenaiEndpoint | quote }}
+  AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: {{ .Values.embeddingSecrets.azureOpenaiDeployment | quote }}
+  AZURE_OPENAI_API_VERSION: {{ .Values.embeddingSecrets.azureOpenaiApiVersion | quote }}
+  {{- end }}
+  {{- end }}
+  # LangSmith tracing (optional)
+  {{- if .Values.langsmith.enabled }}
+  LANGSMITH_TRACING: "true"
+  LANGSMITH_ENDPOINT: {{ .Values.langsmith.endpoint | quote }}
+  LANGSMITH_PROJECT: {{ .Values.langsmith.project | quote }}
+  {{- end }}
+  ENABLE_HYBRID_SEARCH: {{ .Values.search.hybrid.enabled | quote }}
+  {{- if .Values.search.hybrid.enabled }}
+  HYBRID_RRF_K: {{ .Values.search.hybrid.rrfK | quote }}
+  HYBRID_RRF_OVERFETCH: {{ .Values.search.hybrid.rrfOverfetch | quote }}
+  {{- end }}
+  # Chunking settings
+  ENABLE_CHUNKING: {{ .Values.search.chunking.enabled | quote }}
+  {{- if .Values.search.chunking.enabled }}
+  CHUNK_SIZE: {{ .Values.search.chunking.size | quote }}
+  CHUNK_OVERLAP: {{ .Values.search.chunking.overlap | quote }}
+  CHUNK_AGGREGATION: {{ .Values.search.chunking.aggregation | quote }}
+  CHUNK_DEDUP_OVERFETCH: {{ .Values.search.chunking.dedupOverfetch | quote }}
+  {{- end }}
+  # Reranking settings
+  ENABLE_RERANKING: {{ .Values.search.reranking.enabled | quote }}
+  {{- if .Values.search.reranking.enabled }}
+  RERANKING_PROVIDER: {{ .Values.search.reranking.provider | quote }}
+  RERANKING_MODEL: {{ .Values.search.reranking.model | quote }}
+  RERANKING_MAX_LENGTH: {{ .Values.search.reranking.maxLength | quote }}
+  RERANKING_OVERFETCH: {{ .Values.search.reranking.overfetch | quote }}
+  {{- if .Values.search.reranking.cacheDir }}
+  RERANKING_CACHE_DIR: {{ .Values.search.reranking.cacheDir | quote }}
+  {{- end }}
+  {{- end }}
+  # Search default sort
+  SEARCH_DEFAULT_SORT_BY: {{ .Values.search.defaultSortBy | quote }}
