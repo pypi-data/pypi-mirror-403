@@ -1,0 +1,37 @@
+---
+- name: Avocado test 1/1 - Checking for the Avocado version
+  shell: "{{ temporary_dir.path | default('/usr') }}/bin/avocado --version"
+  changed_when: false
+
+- name: Avocado-VT test 1/5 - vt-bootstrap
+  shell: "{{ temporary_dir.path | default('/usr') }}/bin/avocado vt-bootstrap --yes-to-all --vt-skip-verify-download-assets"
+  when:
+    - avocado_vt|default(false)|bool == true
+
+- name: Avocado-VT test 2/5 - list boot
+  shell: "{{ temporary_dir.path | default('/usr') }}/bin/avocado list boot"
+  when:
+    - ansible_facts['distribution_file_variety'] == "RedHat"
+    - avocado_vt|default(false)|bool == true
+
+# PATH Workaround needed by method=pip, taken from https://github.com/avocado-framework/avocado-vt/pull/3204
+- name: Avocado-VT test 3/5 - dry-run execution
+  shell: "PATH={{ temporary_dir.path | default('/usr') }}/bin/:$PATH {{ temporary_dir.path | default('/usr') }}/bin/avocado run --dry-run -- io-github-autotest-qemu.boot"
+  changed_when: false
+  when:
+    - ansible_facts['distribution_file_variety'] == "RedHat"
+    - avocado_vt|default(false)|bool == true
+
+- name: Avocado-VT test 4/5 - bootstrap, tp-qemu and JeOS download
+  shell: "{{ temporary_dir.path | default('/usr') }}/bin/avocado vt-bootstrap --vt-type=qemu --yes-to-all"
+  when:
+    - ansible_facts['distribution_file_variety'] == "RedHat"
+    - avocado_vt|default(false)|bool == true
+
+# PATH Workaround needed by method=pip, taken from https://github.com/avocado-framework/avocado-vt/pull/3204
+- name: Avocado-VT test 5/5 - boot and migrate execution
+  shell: "PATH={{ temporary_dir.path | default('/usr') }}/bin/:$PATH {{ temporary_dir.path | default('/usr') }}/bin/avocado run --vt-extra-params='nettype=user' -- io-github-autotest-qemu.boot type_specific.io-github-autotest-qemu.migrate.default.tcp.default"
+  changed_when: false
+  when:
+    - ansible_facts['distribution_file_variety'] == "RedHat"
+    - avocado_vt|default(false)|bool == true

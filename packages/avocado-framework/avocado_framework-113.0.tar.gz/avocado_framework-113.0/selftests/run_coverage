@@ -1,0 +1,37 @@
+#!/bin/bash
+# Execute all unittests with coverage and report code coverage.
+#
+# Copyright: Red Hat Inc.
+# License: GPLv2
+# Author: Lukas Doktor <ldoktor@redhat.com>
+
+CANDIDATES="coverage3 coverage coverage2"
+COVERAGE="$(which $CANDIDATES 2>/dev/null| head -n 1)"
+if [ "x$COVERAGE" == "x" ]; then
+    echo "No coverage utility found, looked for: $CANDIDATES"
+    exit -1
+fi
+echo "Using coverage utility: $COVERAGE"
+
+test_config="--skip=static-checks"
+if [ -n "$1" ]; then
+    test_config=$1
+fi
+coverage_source=""
+coverage_include=""
+if [ -n "$2" ]; then
+    coverage_source="--source=$2"
+    coverage_include="--include=$2"
+fi
+
+$COVERAGE erase
+rm -f .coverage.*
+echo -e "import coverage\ncoverage.process_startup()" >> sitecustomize.py
+env COVERAGE_PROCESS_START=.coveragerc $COVERAGE run $coverage_source selftests/check.py $test_config
+test_status=$?
+rm -f sitecustomize.py
+$COVERAGE combine -q
+echo
+$COVERAGE report $coverage_include
+$COVERAGE xml $coverage_include
+exit $test_status

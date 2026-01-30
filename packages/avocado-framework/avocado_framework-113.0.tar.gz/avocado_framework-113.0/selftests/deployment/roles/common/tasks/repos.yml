@@ -1,0 +1,81 @@
+# Copr Modules disable
+- name: Disable Fedora module to avoid conflict
+  ini_file:
+    path: /etc/yum.repos.d/fedora-modular.repo
+    section: fedora-modular
+    option: enabled
+    value: '0'
+  when:
+    - method == 'copr'
+    - ansible_facts['distribution'] == "Fedora"
+
+- name: Disable Fedora module updates to avoid conflict
+  ini_file:
+    path: /etc/yum.repos.d/fedora-updates-modular.repo
+    section: updates-modular
+    option: enabled
+    value: '0'
+  when:
+    - method == 'copr'
+    - ansible_facts['distribution'] == "Fedora"
+
+# Official repos (avocado)
+- name: enable avocado module
+  shell:
+    cmd: dnf module -y enable avocado:latest
+  when:
+    - method == 'official'
+
+# Official repos (avocado-vt)
+- name: enable avocado-vt module
+  shell:
+    cmd: dnf module -y enable avocado-vt:latest
+  when:
+    - method == 'official'
+    - avocado_vt|default(false)|bool == true
+
+# Copr repos (Avocado)
+- name: Avocado EPEL Copr repo
+  yum_repository:
+    name: avocado-latest
+    description: Copr repo for avocado-latest
+    baseurl: https://copr-be.cloud.fedoraproject.org/results/@avocado/avocado-latest/epel-$releasever-$basearch/
+    gpgcheck: no
+  when:
+    - method == 'copr'
+    - ansible_facts['distribution_file_variety'] == "RedHat"
+    - ansible_facts['distribution'] != "Fedora"
+
+- name: Avocado Fedora Copr repo
+  yum_repository:
+    name: avocado-latest
+    description: Copr repo for avocado-latest
+    baseurl: https://copr-be.cloud.fedoraproject.org/results/@avocado/avocado-latest/fedora-$releasever-$basearch/
+    gpgcheck: no
+  when:
+    - method == 'copr'
+    - ansible_facts['distribution'] == "Fedora"
+
+# Copr repos (Avocado-VT)
+- name: Avocado-VT EPEL Copr repo
+  yum_repository:
+    name: avocado-vt-latest
+    description: Copr repo for avocado-vt-latest
+    baseurl: https://copr-be.cloud.fedoraproject.org/results/@avocado/avocado-vt-latest/epel-$releasever-$basearch/
+    gpgcheck: no
+  when:
+    - method == 'copr'
+    - ansible_facts['distribution_file_variety'] == "RedHat"
+    - ansible_facts['distribution'] != "Fedora"
+    - avocado_vt|default(false)|bool == true
+
+- name: Avocado-VT Fedora Copr repo
+  yum_repository:
+    name: avocado-vt-latest
+    description: Copr repo for avocado-vt-latest
+    baseurl: https://copr-be.cloud.fedoraproject.org/results/@avocado/avocado-vt-latest/fedora-$releasever-$basearch/
+    gpgcheck: no
+  when:
+    - method == 'copr'
+    - ansible_facts['distribution'] == "Fedora"
+    - avocado_vt|default(false)|bool == true
