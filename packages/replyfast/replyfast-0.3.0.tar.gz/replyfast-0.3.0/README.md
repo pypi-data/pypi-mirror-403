@@ -1,0 +1,269 @@
+# ReplyFast
+
+Signal messaging library for Python using [Presage](https://github.com/whisperfish/presage) (Rust).
+
+## Installation
+
+```bash
+uv pip install replyfast
+
+# With optional dependencies
+uv pip install replyfast[scheduler]  # For cron scheduling
+uv pip install replyfast[qrcode]     # For QR code display
+uv pip install replyfast[all]        # Everything
+```
+
+## Contents
+
+- [Quick Start](#quick-start)
+- [API Reference](#api-reference)
+  - [SignalClient](#signalclient)
+  - [Message](#message)
+- [Signal Handling](#signal-handling)
+- [Scheduler](#scheduler)
+  - [Scheduler with Message Receiving](#scheduler-with-message-receiving)
+  - [Scheduler Only](#scheduler-only-no-message-receiving)
+  - [Cron Expression Format](#cron-expression-format)
+  - [Decorator Syntax](#decorator-syntax)
+- [Examples](#examples)
+- [Requirements](#requirements)
+
+## Quick Start
+
+```python
+from replyfast import SignalClient
+
+# Create client
+client = SignalClient("./data")
+
+# Link as secondary device (first time only)
+def on_url(url):
+    print(f"Scan this QR code with Signal app: {url}")
+
+client.link_device_sync("MyDevice", on_url)
+
+# Send a message
+client.send_message_sync("recipient-uuid", "Hello!")
+
+# Or find contact by phone/name first
+contact = client.find_contact_by_phone_sync("+1234567890")
+if contact:
+    client.send_message_sync(contact.uuid, "Hello!")
+
+# Receive messages
+def on_message(msg):
+    if msg.is_queue_empty:
+        print("Initial sync complete")
+        return True
+
+    print(f"From: {msg.sender}, Body: {msg.body}")
+    return True  # Return True to continue, False to stop
+
+client.receive_messages_sync(on_message)
+```
+
+## API Reference
+
+### SignalClient
+
+| Method | Description |
+|--------|-------------|
+| `is_registered_sync()` | Check if device is linked |
+| `link_device_sync(name, callback)` | Link as secondary device |
+| `send_message_sync(uuid, message)` | Send message to contact |
+| `send_group_message_sync(group_id, message)` | Send message to group |
+| `receive_messages_sync(callback)` | Receive messages with callback |
+| `get_contacts_sync()` | List synced contacts |
+| `get_groups_sync()` | List groups |
+| `find_contact_by_phone_sync(phone)` | Find contact by phone number |
+| `find_contacts_by_name_sync(name)` | Find contacts by name |
+| `whoami_sync()` | Get account info |
+
+### Message
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sender` | `str` | Sender's UUID |
+| `body` | `str \| None` | Message text |
+| `timestamp` | `int` | Unix timestamp (ms) |
+| `group_id` | `str \| None` | Group ID if group message |
+| `is_read_receipt` | `bool` | Is read receipt |
+| `is_typing_indicator` | `bool` | Is typing indicator |
+| `is_queue_empty` | `bool` | Initial sync complete marker |
+
+## Signal Handling
+
+The library handles SIGINT (Ctrl+C) cleanly. When you press Ctrl+C during `receive_messages_sync()`, it will:
+1. Stop the receive loop gracefully
+2. Raise `KeyboardInterrupt` in Python
+3. Allow cleanup code to run
+
+```python
+try:
+    client.receive_messages_sync(on_message)
+except KeyboardInterrupt:
+    pass  # Clean exit
+
+print("Stopped")
+```
+
+## Scheduler
+
+Send messages at scheduled times using cron syntax.
+
+### Scheduler with Message Receiving
+
+When running a bot that both receives messages and runs scheduled tasks, start the scheduler **after** the initial sync is complete (indicated by `is_queue_empty`):
+
+```python
+import time
+from replyfast import SignalClient, Scheduler
+
+client = SignalClient("./data")
+scheduler = Scheduler()
+
+# Define scheduled task
+def periodic_task():
+    client.send_message_sync("recipient-uuid", "Scheduled message!")
+
+# Register jobs before starting
+scheduler.register(
+    "*/5 * * * *",  # Every 5 minutes
+    periodic_task,
+    name="periodic-task"
+)
+
+# Message handler that starts scheduler after sync
+def on_message(msg):
+    # Start scheduler once initial sync is complete
+    if msg.is_queue_empty:
+        print("Ready to receive messages")
+        scheduler.start()  # Start scheduler in background
+        return True
+
+    if msg.body:
+        print(f"From: {msg.sender}: {msg.body}")
+        # Handle commands here
+
+    return True
+
+# Run with reconnection loop for long-running bots
+reconnect_delay = 5
+
+while True:
+    try:
+        client.receive_messages_sync(on_message)
+        break  # Normal exit
+    except KeyboardInterrupt:
+        break  # Ctrl+C
+    except Exception as e:
+        print(f"Connection error: {e}")
+        print(f"Reconnecting in {reconnect_delay}s...")
+        time.sleep(reconnect_delay)
+        reconnect_delay = min(reconnect_delay * 2, 300)  # Max 5 min
+
+scheduler.stop()
+print("Stopped")
+```
+
+### Scheduler Only (No Message Receiving)
+
+```python
+from replyfast import SignalClient, Scheduler
+
+client = SignalClient("./data")
+scheduler = Scheduler()
+
+def send_greeting():
+    contact = client.find_contact_by_phone_sync("+1234567890")
+    if contact:
+        client.send_message_sync(contact.uuid, "Good morning!")
+
+scheduler.register(
+    "0 9 * * *",  # cron: minute hour day month weekday
+    send_greeting,
+    name="morning-greeting"
+)
+
+# Run scheduler (blocking)
+scheduler.run()
+
+# Or run in background
+scheduler.start()
+# ... do other things ...
+scheduler.stop()
+```
+
+### Cron Expression Format
+
+```
+┌───────────── minute (0-59)
+│ ┌───────────── hour (0-23)
+│ │ ┌───────────── day of month (1-31)
+│ │ │ ┌───────────── month (1-12)
+│ │ │ │ ┌───────────── day of week (0-6, 0=Sunday)
+│ │ │ │ │
+* * * * *
+```
+
+Examples:
+- `*/5 * * * *` - Every 5 minutes
+- `0 9 * * *` - Every day at 9:00 AM
+- `0 9 * * 1-5` - Weekdays at 9:00 AM
+- `30 */2 * * *` - Every 2 hours at minute 30
+
+### Decorator Syntax
+
+```python
+from replyfast import schedule, get_scheduler
+
+@schedule("0 9 * * *")
+def daily_task():
+    print("Runs every day at 9 AM")
+
+get_scheduler().start()
+```
+
+## Examples
+
+The `examples/` directory contains complete working examples:
+
+### example.py
+
+Basic usage showing how to list contacts, groups, and receive messages with proper signal handling:
+
+```bash
+python examples/example.py
+```
+
+Demonstrates:
+- Checking registration status
+- Getting account info with `whoami_sync()`
+- Listing contacts and groups
+- Receiving messages with callback
+- Handling typing indicators and read receipts
+- Clean Ctrl+C shutdown
+
+### demo_bot.py
+
+A bot that sends system stats on a schedule while also responding to commands:
+
+```bash
+DEMO_RECIPIENT=<uuid> python examples/demo_bot.py
+```
+
+Demonstrates:
+- Scheduler with message receiving (starts after `is_queue_empty`)
+- Multiple scheduled jobs (`df -h` every 5 min, `free -m` every hour)
+- Interactive commands (ping, df, free, help)
+- Reconnection loop with exponential backoff
+- Proper cleanup on shutdown
+
+## Requirements
+
+- Python 3.10+
+- Rust toolchain (for building from source)
+
+## License
+
+AGPL-3.0-or-later
