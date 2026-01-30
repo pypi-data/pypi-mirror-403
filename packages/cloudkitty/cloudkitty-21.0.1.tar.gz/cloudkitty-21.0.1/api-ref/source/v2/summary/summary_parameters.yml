@@ -1,0 +1,143 @@
+begin: &begin
+  in: query
+  description: |
+    Begin of the period for which the summary is required.
+  type: iso8601 timestamp
+  required: false
+
+custom_fields:
+  in: query
+  description: |
+    Optional attributes to customize the summary GET API response. When
+    using this parameter, users can create custom reports. The default
+    behavior is to list the sum of the quantity and the sum of the price,
+    which is projected as ``rate`` field. The default value for the
+    ``custom_fields`` parameter is ``SUM(qty) AS qty, SUM(price) AS rate``.
+    One can customize this field as they wish with InfluxDB queries. The
+    following statements ``"select", "from", "drop", "delete", "create",
+    "alter", "insert", "update"`` are not allowed though. For instance, if
+    one wants to retrieve the quantity field as the last value of the
+    quantity, and not the sum (this is quite interesting when generating
+    reports for storage values), the user can send the parameter as ``last(qty)
+    AS qty, SUM(price) AS rate``. To discover all possible fields that one
+    can work with, the user can also use ``*`` as a parameter.
+
+    ``Currently this feature only works for Influx storage backend.`` It
+    (the feature) depends on the storage backend driver to support it. If
+    the user tries to set this configuration while using other storage
+    backends, it will be ignored.
+  type: list of strings
+  required: false
+
+end: &end
+  in: query
+  description: |
+    End of the period for which the summary is required.
+  type: iso8601 timestamp
+  required: false
+
+filters:
+  in: query
+  description: |
+    Optional filters. These filters accept multiple query parameters. To use
+    this option with multiple parameters, repeat it as many time as desired in
+    the query string. For instance, to restrict the result to only two
+    projects, add to the query string
+    ``filters=project_id:<project_id_one>&filters=project_id:<project_id_two>``.
+    Bear in mind that this string must be URL escaped. Therefore, it becomes
+    ``filters=project_id%3A<project_id_one>&filters=project_id%3A<project_id_two>``.
+  type: dict
+  required: false
+
+groupby:
+  in: query
+  description: |
+    Optional attributes to group the summary by. The ``groupby`` elements are
+    defined in the collector YML settings. Therefore, one can group the
+    result using any of the ``groupby`` attributes defined in the collector
+    settings of CloudKitty. Besides those attributes, by default, starting
+    in CloudKitty ``2024.1`` release, we will have the following new groupby
+    options: (i) time: to group data hourly; (ii) time-d: to group data
+    by day of the year; (iii) time-w: to group data by week of the year;
+    (iv) time-m: to group data by month; and, (v) time-y: to group data by
+    year. If you have old data in CloudKitty and you wish to use these
+    group by methods, you will need to reprocess the desired timeframe.
+    The `groupby` options ``time-d``, ``time-w``, ``time-m``, ``time-y`` are the
+    short versions of the following `groupby` options ``day_of_the_year``,
+    ``week_of_the_year``, ``month``, and ``year`` respectively.
+  type: list of strings
+  required: false
+
+limit:
+  in: query
+  description: |
+    For pagination. The maximum number of results to return.
+  type: int
+  required: false
+
+offset: &offset
+  in: query
+  description: |
+    For pagination. The index of the first element that should be returned.
+  type: int
+  required: false
+
+response_format:
+  in: query
+  description: |
+    Optional attribute to define the object structure used in the response.
+    Both responses will be JSON objects. Possible values are ``table`` or
+    ``object``.
+
+    The default value is ``table`` object structure, where one has the
+    attributes `total`, which indicates the total number of entries in the
+    response; `results`, which is a list of lists, where the nested list
+    contains the values of each entry; and, `columns`, which is the attribute
+    that describes all of the available columns. Then, each index in this
+    list (`columns`) corresponds to the metadata of the values in the `results`
+    list.
+
+    The structure for the `object` option uses a dictionary. The response still
+    has the `total` attribute. However, in the `results` attribute, one will
+    find a list of objects, instead of a list of lists of values that we see
+    in the `table` option. This facilitates the processing of some use cases.
+  type: string
+  required: false
+
+begin_resp:
+  <<: *begin
+  required: true
+  description: Begin of the period for the item.
+  in: body
+
+end_resp:
+  <<: *end
+  required: true
+  description: End of the period for the item.
+  in: body
+
+qty: &qty
+  in: body
+  description: |
+    Qty for the item.
+  type: float
+  required: true
+
+qty_resp:
+  <<: *qty
+  required: true
+  description: Qty for the item in the specified period.
+  in: body
+
+rate: &rate
+  in: body
+  description: |
+    Rate for the item.
+  type: float
+  required: true
+
+rate_resp:
+  <<: *rate
+  required: true
+  description: Rate for the item in the specified period.
+  in: body

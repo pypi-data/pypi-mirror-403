@@ -1,0 +1,141 @@
+fixtures:
+  - PyScriptsConfigFixture
+  - UUIDFixture
+
+tests:
+
+  - name: reload list of modules available
+    url: /v1/rating/reload_modules
+    status: 204
+
+  - name: check pyscripts module is loaded
+    url: /v1/rating/modules
+    response_strings:
+      - '"module_id": "pyscripts"'
+      - '"description": "PyScripts rating module."'
+
+  - name: typo of script
+    url: /v1/rating/module_config/pyscripts/script
+    status: 405
+
+  - name: list scripts (empty)
+    url: /v1/rating/module_config/pyscripts/scripts
+    status: 200
+    response_strings:
+      - "[]"
+
+  - name: create policy script
+    url: /v1/rating/module_config/pyscripts/scripts
+    method: POST
+    request_headers:
+        content-type: application/json
+        x-roles: admin
+    data:
+      name: "policy1"
+      data: "a = 0"
+    status: 201
+    response_json_paths:
+      $.script_id: "6c1b8a30-797f-4b7e-ad66-9879b79059fb"
+      $.name: "policy1"
+      $.data: "a = 0"
+      $.checksum: "4c612e33c0e40b7bf53cf95fad47dbfbeab9dd62f9bc181a9d1c6f40a087782223c23f793e747b0466b9e6998c6ea54f4edbd20febd13edb13b55074b5ee1a5a"
+    response_headers:
+      location: '$SCHEME://$NETLOC/v1/rating/module_config/pyscripts/scripts/6c1b8a30-797f-4b7e-ad66-9879b79059fb'
+
+  - name: create duplicate policy script
+    url: /v1/rating/module_config/pyscripts/scripts
+    method: POST
+    request_headers:
+      content-type: application/json
+      x-roles: admin
+    data:
+      name: "policy1"
+      data: "a = 0"
+    status: 409
+    response_strings:
+      - "Script policy1 already exists (UUID: 6c1b8a30-797f-4b7e-ad66-9879b79059fb)"
+
+  - name: list scripts
+    url: /v1/rating/module_config/pyscripts/scripts
+    status: 200
+    response_json_paths:
+      $.scripts[0].script_id: "6c1b8a30-797f-4b7e-ad66-9879b79059fb"
+      $.scripts[0].name: "policy1"
+      $.scripts[0].data: "a = 0"
+      $.scripts[0].checksum: "4c612e33c0e40b7bf53cf95fad47dbfbeab9dd62f9bc181a9d1c6f40a087782223c23f793e747b0466b9e6998c6ea54f4edbd20febd13edb13b55074b5ee1a5a"
+
+  - name: list scripts excluding data
+    url: /v1/rating/module_config/pyscripts/scripts?no_data=true
+    status: 200
+    response_json_paths:
+      $.scripts[0].script_id: "6c1b8a30-797f-4b7e-ad66-9879b79059fb"
+      $.scripts[0].name: "policy1"
+      $.scripts[0].checksum: "4c612e33c0e40b7bf53cf95fad47dbfbeab9dd62f9bc181a9d1c6f40a087782223c23f793e747b0466b9e6998c6ea54f4edbd20febd13edb13b55074b5ee1a5a"
+
+  - name: get script
+    url: /v1/rating/module_config/pyscripts/scripts/6c1b8a30-797f-4b7e-ad66-9879b79059fb
+    status: 200
+    response_json_paths:
+      $.script_id: "6c1b8a30-797f-4b7e-ad66-9879b79059fb"
+      $.name: "policy1"
+      $.data: "a = 0"
+      $.checksum: "4c612e33c0e40b7bf53cf95fad47dbfbeab9dd62f9bc181a9d1c6f40a087782223c23f793e747b0466b9e6998c6ea54f4edbd20febd13edb13b55074b5ee1a5a"
+
+  - name: modify script
+    url: /v1/rating/module_config/pyscripts/scripts/6c1b8a30-797f-4b7e-ad66-9879b79059fb
+    method: PUT
+    request_headers:
+        content-type: application/json
+        x-roles: admin
+    data:
+      name: "policy1"
+      data: "a = 1"
+    status: 201
+    response_json_paths:
+      $.script_id: "6c1b8a30-797f-4b7e-ad66-9879b79059fb"
+      $.name: "policy1"
+      $.data: "a = 1"
+      $.checksum: "acb3095e24b13960484e75bce070e13e8a7728760517c31b34929a6f732841c652e9d2cc4d186bd02ef2e7495fab3c4850673bedc945cee7c74fea85eabd542c"
+
+  - name: modify unknown script
+    url: /v1/rating/module_config/pyscripts/scripts/42
+    method: PUT
+    request_headers:
+        content-type: application/json
+        x-roles: admin
+    data:
+      name: "policy1"
+      data: "a = 1"
+    status: 404
+    response_strings:
+      - "No such script: None (UUID: 42)"
+
+  - name: check updated script
+    url: /v1/rating/module_config/pyscripts/scripts/6c1b8a30-797f-4b7e-ad66-9879b79059fb
+    request_headers:
+        content-type: application/json
+        x-roles: admin
+    status: 200
+    response_json_paths:
+      $.script_id: "6c1b8a30-797f-4b7e-ad66-9879b79059fb"
+      $.name: "policy1"
+      $.data: "a = 1"
+      $.checksum: "acb3095e24b13960484e75bce070e13e8a7728760517c31b34929a6f732841c652e9d2cc4d186bd02ef2e7495fab3c4850673bedc945cee7c74fea85eabd542c"
+
+  - name: delete script
+    url: /v1/rating/module_config/pyscripts/scripts/6c1b8a30-797f-4b7e-ad66-9879b79059fb
+    method: DELETE
+    status: 204
+
+  - name: get unknown script
+    url: /v1/rating/module_config/pyscripts/scripts/42
+    status: 404
+    response_strings:
+      - "No such script: None (UUID: 42)"
+
+  - name: delete unknown script
+    url: /v1/rating/module_config/pyscripts/scripts/42
+    method: DELETE
+    status: 404
+    response_strings:
+      - "No such script: None (UUID: 42)"

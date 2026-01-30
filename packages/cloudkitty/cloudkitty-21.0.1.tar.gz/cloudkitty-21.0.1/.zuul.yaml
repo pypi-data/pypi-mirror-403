@@ -1,0 +1,199 @@
+- job:
+    name: base-cloudkitty-tempest-job
+    parent: devstack-tempest
+    description: |
+      Job testing cloudkitty installation and running tempest tests
+    required-projects: &base_required_projects
+      - name: openstack/cloudkitty
+      - name: openstack/cloudkitty-tempest-plugin
+      - name: openstack/python-cloudkittyclient
+    roles: &base_roles
+      - zuul: openstack-infra/devstack
+    timeout: 5400
+    irrelevant-files: &base_irrelevant_files
+      - ^.*\.rst$
+      - ^doc/.*$
+      - ^releasenotes/.*$
+    vars: &base_vars
+      devstack_plugins:
+        cloudkitty: https://opendev.org/openstack/cloudkitty
+        cloudkitty-tempest-plugin: https://opendev.org/openstack/cloudkitty-tempest-plugin
+      devstack_services:
+        ck-api: true
+        ck-proc: true
+        horizon: false
+        tempest: true
+      tempest_concurrency: 1
+      tempest_test_regex: cloudkitty_tempest_plugin.*
+      tox_envlist: all
+      devstack_localrc:
+        CLOUDKITTY_FETCHER: keystone
+        USE_PYTHON3: True
+        TEMPEST_PLUGINS: /opt/stack/cloudkitty-tempest-plugin
+
+- job:
+    name: cloudkitty-grenade-job
+    parent: grenade
+    description: |
+      Grenade job to test release upgrades
+    required-projects:
+      - opendev.org/openstack/grenade
+      - opendev.org/openstack/cloudkitty
+      - opendev.org/openstack/cloudkitty-tempest-plugin
+      - opendev.org/openstack/python-cloudkittyclient
+    irrelevant-files: *base_irrelevant_files
+    vars:
+      devstack_plugins:
+        cloudkitty: https://opendev.org/openstack/cloudkitty.git
+        cloudkitty-tempest-plugin: https://opendev.org/openstack/cloudkitty-tempest-plugin.git
+      devstack_services:
+        ck-api: true
+        ck-proc: true
+      tempest_concurrency: 1
+      tempest_plugins:
+        - cloudkitty-tempest-plugin
+      tempest_test_regex: cloudkitty_tempest_plugin.*
+      tox_envlist: all
+      grenade_devstack_localrc:
+        shared:
+          CLOUDKITTY_USE_MOD_WSGI: false
+          CLOUDKITTY_FETCHER: keystone
+
+- job:
+    name: base-cloudkitty-v1-api-tempest-job
+    parent: base-cloudkitty-tempest-job
+    description: |
+      Job running tempest tests on devstack with the v1 API only
+      and the v1 storage driver
+    vars:
+      tempest_test_regex: cloudkitty_tempest_plugin.tests.api.v1.*
+
+- job:
+    name: base-cloudkitty-v2-api-tempest-job
+    parent: base-cloudkitty-tempest-job
+    description: |
+      Job running tempest tests on devstack with the v2 API
+      and a v2 storage driver
+    vars:
+      tempest_test_regex: cloudkitty_tempest_plugin.*
+
+- job:
+    name: cloudkitty-tempest-full-ipv6-only
+    parent: devstack-tempest-ipv6
+    description: |
+      Job testing cloudkitty installation on devstack on IPv6
+      and running tempest tests
+    required-projects: *base_required_projects
+    roles: *base_roles
+    timeout: 5400
+    irrelevant-files: *base_irrelevant_files
+    vars: *base_vars
+
+- job:
+    name: cloudkitty-tempest-full-v1-storage-sqlalchemy
+    parent: base-cloudkitty-v1-api-tempest-job
+    description: |
+      Job testing cloudkitty installation on devstack with python 3 and the
+      SQLAlchemy v1 storage driver and running tempest tests
+    vars:
+      devstack_localrc:
+        CLOUDKITTY_STORAGE_BACKEND: sqlalchemy
+        CLOUDKITTY_STORAGE_VERSION: 1
+
+- job:
+    name: cloudkitty-tempest-full-v2-storage-influxdb
+    parent: base-cloudkitty-v2-api-tempest-job
+    description: |
+      Job testing cloudkitty installation on devstack with python 3, InfluxDB
+      v1 and the InfluxDB v2 storage driver and running tempest tests
+    vars:
+      devstack_localrc:
+        CLOUDKITTY_STORAGE_BACKEND: influxdb
+        CLOUDKITTY_STORAGE_VERSION: 2
+        CLOUDKITTY_INFLUX_VERSION: 1
+
+- job:
+    name: cloudkitty-tempest-full-v2-storage-influxdb-v2
+    parent: base-cloudkitty-v2-api-tempest-job
+    description: |
+      Job testing cloudkitty installation on devstack with python 3, InfluxDB
+      v2 and the InfluxDB v2 storage driver and running tempest tests
+    vars:
+      devstack_localrc:
+        CLOUDKITTY_STORAGE_BACKEND: influxdb
+        CLOUDKITTY_STORAGE_VERSION: 2
+        CLOUDKITTY_INFLUX_VERSION: 2
+
+- job:
+    name: cloudkitty-tempest-full-v2-storage-elasticsearch
+    parent: base-cloudkitty-v2-api-tempest-job
+    description: |
+      Job testing cloudkitty installation on devstack with python 3 and the
+      Elasticsearch v2 storage driver and running tempest tests
+    vars:
+      devstack_localrc:
+        CLOUDKITTY_STORAGE_BACKEND: elasticsearch
+        CLOUDKITTY_STORAGE_VERSION: 2
+
+- job:
+    name: cloudkitty-tempest-full-v2-storage-opensearch
+    parent: base-cloudkitty-v2-api-tempest-job
+    description: |
+      Job testing cloudkitty installation on devstack with python 3 and the
+      OpenSearch v2 storage driver and running tempest tests
+    vars:
+      devstack_localrc:
+        CLOUDKITTY_STORAGE_BACKEND: opensearch
+        CLOUDKITTY_STORAGE_VERSION: 2
+
+- job:
+    name: cloudkitty-tox-bandit
+    parent: openstack-tox
+    timeout: 2400
+    vars:
+      tox_envlist: bandit
+    required-projects:
+      - openstack/requirements
+    irrelevant-files:
+      - ^.*\.rst$
+      - ^.*\.txt$
+      - ^api-ref/.*$
+      - ^apidocs/.*$
+      - ^contrib/.*$
+      - ^doc/.*$
+      - ^etc/.*$
+      - ^releasenotes/.*$
+      - ^setup.cfg$
+      - ^tools/.*$
+      - ^cloudkitty/hacking/.*$
+      - ^cloudkitty/tests/scenario/.*$
+      - ^cloudkitty/tests/unittests/.*$
+
+- project:
+    queue: cloudkitty
+    templates:
+      - check-requirements
+      - openstack-cover-jobs
+      - openstack-python3-jobs
+      - publish-openstack-docs-pti
+      - release-notes-jobs-python3
+    check:
+      jobs:
+        - cloudkitty-tempest-full-v2-storage-influxdb
+        - cloudkitty-tempest-full-v2-storage-influxdb-v2
+        - cloudkitty-tempest-full-v2-storage-elasticsearch
+        - cloudkitty-tempest-full-v2-storage-opensearch
+        - cloudkitty-tempest-full-v1-storage-sqlalchemy
+        - cloudkitty-tempest-full-ipv6-only
+        - cloudkitty-tox-bandit:
+            voting: false
+        - cloudkitty-grenade-job
+    gate:
+      jobs:
+        - cloudkitty-tempest-full-v2-storage-influxdb
+        - cloudkitty-tempest-full-v2-storage-influxdb-v2
+        - cloudkitty-tempest-full-v2-storage-elasticsearch
+        - cloudkitty-tempest-full-v2-storage-opensearch
+        - cloudkitty-tempest-full-v1-storage-sqlalchemy
+        - cloudkitty-tempest-full-ipv6-only
+        - cloudkitty-grenade-job
