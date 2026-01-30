@@ -1,0 +1,98 @@
+{
+  "metadata": {
+    "name": "Run Network Fault Proxy",
+    "labels": [
+      "reliability",
+      "load",
+      "fault",
+      "Kubernetes",
+      "AWS",
+      "GCP",
+      "on-premise",
+      "network"
+    ],
+    "annotations": null
+  },
+  "spec": {
+    "provider": "chaostoolkit",
+    "type": "experiment",
+    "schema": {
+      "configuration": [
+        {
+          "title": "Proxy Arguments",
+          "key": "proxy_args",
+          "help": "Proxy arguments as per https://fault-project.com/reference/cli-commands/#run-command-options",
+          "placeholder": "--duration=45 --with-latency --latency-mean=300 --upstream=*",
+          "default": "",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    "template": {
+      "version": "1.0.0",
+      "title": "Run the fault network proxy to inject network faults into application's traffic: latency, blackhole, bandwidth, jitter, HTTP error, packet loss.",
+      "description": "This experiment should perform a non-destructive operation against your system. Still we recommend you try it against a non-production environment. This kind of experiment is useful when you want to measure how your system is performing.",
+      "tags": [
+        "reliability",
+        "load",
+        "fault",
+        "Kubernetes",
+        "AWS",
+        "GCP",
+        "on-premise",
+        "network"
+      ],
+      "contributions": {
+        "availability": "none",
+        "latency": "none",
+        "security": "none",
+        "errors": "none"
+      },
+      "configuration": {
+        "proxy_args": {
+          "type": "env",
+          "key": "RELIABLY_PARAM_PROXY_ARGS",
+          "default": "",
+          "env_var_type": "str"
+        }
+      },
+      "extensions": [
+        {
+          "name": "chatgpt",
+          "messages": [
+            {
+              "role": "user",
+              "content": "What are well-known public incidents that happened because of network degradations?"
+            },
+            {
+              "role": "user",
+              "content": "Can you give me a good scenario of latency incident using a normal distribution (mean/stddev)?"
+            }
+          ]
+        }
+      ],
+      "method": [
+        {
+          "name": "Run Network Fault Proxy",
+          "type": "action",
+          "background": true,
+          "provider": {
+            "type": "python",
+            "module": "chaosfault.actions",
+            "func": "run_proxy",
+            "arguments": {
+              "proxy_args": "${proxy_args}"
+            }
+          }
+        }
+      ]
+    },
+    "related": [
+      {
+        "block": "method",
+        "name": "fault-proxy-stop_proxy"
+      }
+    ]
+  }
+}

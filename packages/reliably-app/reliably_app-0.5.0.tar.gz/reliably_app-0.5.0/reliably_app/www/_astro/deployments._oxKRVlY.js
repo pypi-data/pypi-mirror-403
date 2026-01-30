@@ -1,0 +1,1 @@
+function r(e){return e==="github"?"[GitHub]":e==="reliably_cloud"?"[Reliably Cloud]":e==="reliably_cli"?"[Reliably CLI]":e==="container"?"[Docker]":e==="k8s_job"?"[Kubernetes]":`[${e}]`}export{r as f};
