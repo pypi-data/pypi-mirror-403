@@ -1,0 +1,152 @@
+# Ergane
+
+[![PyPI version](https://badge.fury.io/py/ergane.svg)](https://badge.fury.io/py/ergane)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
+High-performance async web scraper with HTTP/2 support, built with Python.
+
+*Named after Ergane, Athena's title as goddess of crafts and weaving in Greek mythology.*
+
+## Features
+
+- **HTTP/2 & Async** - Fast concurrent connections with rate limiting and retry logic
+- **Fast Parsing** - Selectolax HTML parsing (16x faster than BeautifulSoup)
+- **Built-in Presets** - Pre-configured schemas for popular sites (no coding required)
+- **Custom Schemas** - Define Pydantic models with CSS selectors and type coercion
+- **Multi-Format Output** - Export to CSV, Excel, or Parquet with native types
+- **Response Caching** - SQLite-based caching for faster development and debugging
+- **Production Ready** - robots.txt compliance, graceful shutdown, checkpoints, proxy support
+
+## Installation
+
+```bash
+pip install ergane
+```
+
+## Quick Start
+
+### Using Presets (Easiest)
+
+```bash
+# Use a preset - no schema needed!
+ergane --preset quotes -o quotes.csv
+
+# Export to Excel
+ergane --preset hacker-news -o stories.xlsx
+
+# List available presets
+ergane --list-presets
+```
+
+### Manual Crawling
+
+```bash
+# Crawl a single site
+ergane -u https://example.com -n 100
+
+# Custom output and settings
+ergane -u https://docs.python.org -n 50 -c 20 -r 5 -o python_docs.parquet
+```
+
+## Built-in Presets
+
+| Preset | Site | Fields Extracted |
+|--------|------|------------------|
+| `hacker-news` | news.ycombinator.com | title, link, score, author, comments |
+| `github-repos` | github.com/search | name, description, stars, language, link |
+| `reddit` | old.reddit.com | title, subreddit, score, author, comments, link |
+| `quotes` | quotes.toscrape.com | quote, author, tags |
+| `amazon-products` | amazon.com | title, price, rating, reviews, link |
+| `ebay-listings` | ebay.com | title, price, condition, shipping, link |
+| `wikipedia-articles` | en.wikipedia.org | title, link |
+| `bbc-news` | bbc.com/news | title, summary, link |
+
+## CLI Options
+
+Common options:
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--url` | `-u` | none | Start URL(s), can specify multiple |
+| `--output` | `-o` | `output.parquet` | Output file path |
+| `--max-pages` | `-n` | `100` | Maximum pages to crawl |
+| `--max-depth` | `-d` | `3` | Maximum crawl depth |
+| `--concurrency` | `-c` | `10` | Concurrent requests |
+| `--rate-limit` | `-r` | `10.0` | Requests per second per domain |
+| `--schema` | `-s` | none | YAML schema file for custom extraction |
+| `--preset` | `-p` | none | Use a built-in preset |
+| `--format` | `-f` | `auto` | Output format: `csv`, `excel`, `parquet` |
+| `--cache` | | `false` | Enable response caching |
+| `--cache-dir` | | `.ergane_cache` | Cache directory |
+| `--cache-ttl` | | `3600` | Cache TTL in seconds |
+
+Run `ergane --help` for all options including proxy, resume, logging, and config settings.
+
+## Response Caching
+
+Enable caching to speed up development and debugging workflows:
+
+```bash
+# First run - fetches from web, caches responses
+ergane --preset quotes --cache -n 10 -o quotes.csv
+
+# Second run - instant (served from cache)
+ergane --preset quotes --cache -n 10 -o quotes.csv
+
+# Custom cache settings
+ergane --preset bbc-news --cache --cache-dir ./my_cache --cache-ttl 60 -o news.csv
+```
+
+Cache is stored in SQLite at `.ergane_cache/response_cache.db` by default.
+
+## Custom Schemas
+
+Define extraction rules in a YAML schema file:
+
+```yaml
+# schema.yaml
+name: ProductItem
+fields:
+  name:
+    selector: "h1.product-title"
+    type: str
+  price:
+    selector: "span.price"
+    type: float
+    coerce: true  # "$19.99" -> 19.99
+  tags:
+    selector: "span.tag"
+    type: list[str]
+  image_url:
+    selector: "img.product"
+    attr: src
+    type: str
+```
+
+```bash
+ergane -u https://example.com --schema schema.yaml -o products.parquet
+```
+
+Type coercion (`coerce: true`) handles common patterns: `"$19.99"` → `19.99`, `"1,234"` → `1234`, `"yes"` → `True`.
+
+Supported types: `str`, `int`, `float`, `bool`, `datetime`, `list[T]`.
+
+## Output Formats
+
+Output format is auto-detected from file extension:
+
+```bash
+ergane --preset quotes -o quotes.csv      # CSV
+ergane --preset quotes -o quotes.xlsx     # Excel
+ergane --preset quotes -o quotes.parquet  # Parquet (default)
+```
+
+```python
+import polars as pl
+df = pl.read_parquet("output.parquet")
+```
+
+## License
+
+MIT
