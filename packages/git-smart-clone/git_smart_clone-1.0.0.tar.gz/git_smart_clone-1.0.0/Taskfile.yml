@@ -1,0 +1,132 @@
+version: "3"
+
+tasks:
+  default:
+    desc: "Show available tasks"
+    cmds:
+      - task --list
+
+  install:
+    desc: "Install dependencies"
+    cmds:
+      - uv sync
+
+  hooks:install:
+  desc: "Install pre-commit hooks (uses prek)"
+  cmds:
+      - prek install
+
+  hooks:run:
+    desc: "Run pre-commit hooks on all files"
+    cmds:
+      - prek run --all-files
+
+  test:
+    desc: "Run tests"
+    cmds:
+      - uv run pytest {{.CLI_ARGS}}
+
+  test:watch:
+    desc: "Run tests in watch mode"
+    cmds:
+      - uv run pytest --watch {{.CLI_ARGS}}
+
+  lint:
+    desc: "Run linter"
+    cmds:
+      - uv run ruff check src tests
+
+  typecheck:
+    desc: "Run type checker (ty)"
+    cmds:
+      - uvx ty check src
+
+  format:
+    desc: "Format code"
+    cmds:
+      - uv run ruff format src tests
+
+  check:
+    desc: "Run all checks (lint, typecheck, test)"
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
+  build:
+    desc: "Build package"
+    cmds:
+      - rm -rf dist/
+      - uv build
+
+  clean:
+    desc: "Clean build artifacts"
+    cmds:
+      - rm -rf dist/ build/ *.egg-info .pytest_cache .ruff_cache
+
+  publish:
+    desc: "Publish to PyPI (requires PYPI_TOKEN env var or ~/.pypirc)"
+    deps: [test, build]
+    cmds:
+      - uv publish
+
+  publish:test:
+    desc: "Publish to TestPyPI"
+    deps: [test, build]
+    cmds:
+      - uv publish --publish-url https://test.pypi.org/legacy/
+
+  version:patch:
+    desc: "Bump patch version (0.0.x) and commit"
+    cmds:
+      - |
+        CURRENT=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        MAJOR=$(echo $CURRENT | cut -d. -f1)
+        MINOR=$(echo $CURRENT | cut -d. -f2)
+        PATCH=$(echo $CURRENT | cut -d. -f3)
+        NEW="$MAJOR.$MINOR.$((PATCH + 1))"
+        sed -i '' "s/^version = .*/version = \"$NEW\"/" pyproject.toml
+        git add pyproject.toml
+        git commit -m "Bump version to v$NEW"
+        echo "Bumped version: $CURRENT -> $NEW"
+
+  version:minor:
+    desc: "Bump minor version (0.x.0) and commit"
+    cmds:
+      - |
+        CURRENT=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        MAJOR=$(echo $CURRENT | cut -d. -f1)
+        MINOR=$(echo $CURRENT | cut -d. -f2)
+        NEW="$MAJOR.$((MINOR + 1)).0"
+        sed -i '' "s/^version = .*/version = \"$NEW\"/" pyproject.toml
+        git add pyproject.toml
+        git commit -m "Bump version to v$NEW"
+        echo "Bumped version: $CURRENT -> $NEW"
+
+  version:major:
+    desc: "Bump major version (x.0.0) and commit"
+    cmds:
+      - |
+        CURRENT=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        MAJOR=$(echo $CURRENT | cut -d. -f1)
+        NEW="$((MAJOR + 1)).0.0"
+        sed -i '' "s/^version = .*/version = \"$NEW\"/" pyproject.toml
+        git add pyproject.toml
+        git commit -m "Bump version to v$NEW"
+        echo "Bumped version: $CURRENT -> $NEW"
+
+  release:
+    desc: "Create a new release (usage: task release -- 0.2.0)"
+    cmds:
+      - |
+        VERSION={{.CLI_ARGS}}
+        if [ -z "$VERSION" ]; then
+          echo "Usage: task release -- <version>"
+          exit 1
+        fi
+        echo "Releasing version $VERSION..."
+        sed -i '' "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+        git add pyproject.toml
+        git commit -m "Release v$VERSION"
+        git tag -a "v$VERSION" -m "Release v$VERSION"
+        echo "Created tag v$VERSION. Push with: git push && git push --tags"
