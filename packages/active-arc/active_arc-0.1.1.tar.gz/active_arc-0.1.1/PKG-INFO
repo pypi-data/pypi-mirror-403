@@ -1,0 +1,181 @@
+Metadata-Version: 2.4
+Name: active-arc
+Version: 0.1.1
+Summary: Active-ARC Agents
+License-File: LICENSE
+Requires-Python: >=3.10
+Requires-Dist: openai>=1.0.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: requests>=2.32.0
+Provides-Extra: agentops
+Requires-Dist: agentops>=0.4.18; extra == 'agentops'
+Description-Content-Type: text/markdown
+
+# Active-ARC
+
+A Python SDK for building agents that solve [Active-ARC](https://active-arc.vercel.app) tasks.
+
+## Installation
+
+```bash
+pip install active-arc
+```
+
+Or with uv:
+
+```bash
+uv add active-arc
+```
+
+## Quick Start
+
+```python
+from active_arc import Agent, Swarm, SessionState, Grid
+
+class MyAgent(Agent):
+    MAX_QUERIES = 50
+
+    def query(self, session: SessionState) -> Grid | None:
+        """Choose an input grid to query the oracle. Return None to stop querying."""
+        # Your logic here
+        return [[1, 2], [3, 4]]
+
+    def submit(self, session: SessionState) -> Grid:
+        """Predict the output grid for session.test_input."""
+        # Your logic here
+        return session.test_input
+
+# Run on tasks
+swarm = Swarm(
+    tasks=["007bbfb7"],
+    agent_class=MyAgent,
+)
+swarm.run()
+```
+
+## Configuration
+
+Set your API key as an environment variable:
+
+```bash
+export ACTIVE_ARC_API_KEY="your_api_key_here"
+```
+
+Or create a `.env` file:
+
+```
+ACTIVE_ARC_API_KEY=your_api_key_here
+```
+
+## Agent API
+
+Agents must implement two methods:
+
+| Method                           | Purpose                                                                                             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `query(session) -> Grid \| None` | Choose an input grid to query the oracle. Return `None` to stop querying and proceed to test phase. |
+| `submit(session) -> Grid`        | Predict the output grid for `session.test_input`.                                                   |
+
+### Session State
+
+The `SessionState` object provides:
+
+- `session.task_id` - Current task ID
+- `session.query_count` - Number of queries made
+- `session.queries` - List of `QueryRecord` objects (input/output pairs)
+- `session.test_input` - The test input grid (available in test phase)
+- `session.phase` - Current phase (`learning`, `test`, or `completed`)
+
+### Optional Methods
+
+Override these for custom reasoning metadata:
+
+```python
+def get_query_reasoning(self, session: SessionState, query_input: Grid) -> Any:
+    """Return metadata to store with this query."""
+    return {"model": "gpt-4o", "tokens": 150}
+
+def get_submit_reasoning(self, session: SessionState, answer: Grid) -> Any:
+    """Return metadata to store with the submission."""
+    return {"confidence": 0.85}
+```
+
+## Swarm API
+
+The `Swarm` class runs agents on multiple tasks:
+
+```python
+from active_arc import Swarm, Random
+
+# Using a built-in agent
+swarm = Swarm(tasks=["007bbfb7", "00d62c1b"], agent="random")
+
+# Using a custom agent class
+swarm = Swarm(tasks=["007bbfb7"], agent_class=MyAgent)
+
+# With explicit configuration
+swarm = Swarm(
+    tasks=["007bbfb7"],
+    root_url="https://api.active-arc.com",
+    agent_class=MyAgent,
+    tags=["experiment-1", "v1.0"],
+)
+
+scorecard = swarm.run()
+print(f"Solved: {scorecard.solved}/{scorecard.attempted}")
+```
+
+## Built-in Agents
+
+### Random Agent
+
+Makes random queries and returns the test input as the answer:
+
+```python
+from active_arc import Swarm
+
+swarm = Swarm(tasks=["007bbfb7"], agent="random")
+swarm.run()
+```
+
+### LLM Agent
+
+Uses OpenAI's API to make intelligent queries:
+
+```python
+from active_arc import Swarm
+
+# Requires OPENAI_API_KEY environment variable
+swarm = Swarm(tasks=["007bbfb7"], agent="llm")
+swarm.run()
+```
+
+## CLI Usage
+
+Run agents from the command line:
+
+```bash
+# Run random agent on a specific task
+python main.py -a random -t 007bbfb7
+
+# Run with custom tags
+python main.py -a random -t 007bbfb7 --tags "experiment,v1.0"
+```
+
+## Data Types
+
+```python
+from active_arc import (
+    Grid,          # list[list[int]] - 2D grid of integers 0-9
+    SessionState,  # Current session state
+    SessionPhase,  # Enum: LEARNING, TEST, COMPLETED
+    Scorecard,     # Results for all tasks
+    TaskCard,      # Results for a single task
+    QueryRecord,   # Input/output pair from a query
+)
+```
+
+## License
+
+MIT License
