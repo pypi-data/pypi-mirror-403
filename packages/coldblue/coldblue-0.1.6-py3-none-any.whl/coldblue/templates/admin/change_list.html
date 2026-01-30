@@ -1,0 +1,61 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_list %}
+
+{% block content %}
+
+
+<h2 class="page-title">
+    {{ cl.opts.verbose_name_plural|capfirst }}
+</h2>
+{% if cl.search_fields %}
+<form method="get" class="coldblue-search">
+    <input
+        type="text"
+        name="q"
+        value="{{ cl.query }}"
+        placeholder="Search {{ cl.opts.verbose_name_plural }}..."
+    />
+    <button type="submit">Search</button>
+
+    {# Preserve filters while searching #}
+    {% for key, value in cl.params.items %}
+        {% if key != 'q' %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+        {% endif %}
+    {% endfor %}
+</form>
+{% endif %}
+<p class="result-count">
+    {{ cl.result_count }} result{{ cl.result_count|pluralize }}
+</p>
+
+
+<div class="card-grid">
+  {% for obj in cl.result_list %}
+    <div class="card">
+      <strong>{{ obj }}</strong>
+<div class="card-actions">
+    <!-- EDIT -->
+    <a href="{% url cl.opts|admin_urlname:'change' obj.pk %}"
+       class="action-link edit">
+        <i class="fa-solid fa-pen"></i> Edit
+    </a>
+
+    <!-- DELETE -->
+    {% if perms.coldblue.delete_product %}
+    <a href="{% url cl.opts|admin_urlname:'delete' obj.pk %}"
+       class="action-link delete">
+        <i class="fa-solid fa-trash"></i> Delete
+    </a>
+    {% endif %}
+</div>
+
+
+
+
+    </div>
+  {% empty %}
+    <p>No records found.</p>
+  {% endfor %}
+</div>
+{% endblock %}
