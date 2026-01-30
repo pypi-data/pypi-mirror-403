@@ -1,0 +1,95 @@
+openapi: 3.0.0
+info:
+  contact:
+    email: contact@lecomptoirdespharmacies.fr
+  description: This is the REST API of LCDP products
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: https://www.lecomptoirdespharmacies.fr/mentions-legales
+  title: LCDP REST API
+  version: 1.0.0
+servers:
+- url: https://lecomptoirdespharmacies.fr/v1
+tags:
+- description: Manage notifications
+  name: notification
+paths:
+  /token:
+    post:
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            example:
+              login: example@example.fr
+              password: mymagicpassword
+              grantType: password
+            schema:
+              $ref: '#/components/schemas/AnyAuthenticationCredential'
+        description: Credentials to use in order to create the session
+        required: true
+      responses:
+        "200":
+          description: Session created
+      summary: Create a new session
+      tags:
+      - auth
+      x-openapi-router-controller: openapi_server.controllers.auth_controller
+components:
+  schemas:
+    AnyAuthenticationCredential:
+      discriminator:
+        mapping:
+          password: '#/components/schemas/LoginCredential'
+          refresh_token: '#/components/schemas/RefreshSessionCredential'
+        propertyName: grantType
+      oneOf:
+      - $ref: '#/components/schemas/LoginCredential'
+      - $ref: '#/components/schemas/RefreshSessionCredential'
+      title: AnyAuthenticationCredential
+    AuthenticationCredential:
+      properties:
+        grantType:
+          description: Action allowed by the request
+          pattern: ^(password|refresh_token)$
+          title: grantType
+          type: string
+      required:
+      - grantType
+      title: AuthenticationCredential
+      type: object
+    LoginCredential:
+      allOf:
+      - $ref: '#/components/schemas/AuthenticationCredential'
+      - $ref: '#/components/schemas/LoginCredential_allOf'
+      title: LoginCredential
+    RefreshSessionCredential:
+      allOf:
+      - $ref: '#/components/schemas/AuthenticationCredential'
+      - $ref: '#/components/schemas/RefreshSessionCredential_allOf'
+      title: RefreshSessionCredential
+    LoginCredential_allOf:
+      properties:
+        login:
+          description: User e-mail
+          title: login
+          type: string
+        password:
+          description: User password
+          title: password
+          type: string
+      required:
+      - login
+      - password
+      title: LoginCredential_allOf
+      type: object
+    RefreshSessionCredential_allOf:
+      properties:
+        refreshToken:
+          title: refreshToken
+          type: string
+      required:
+      - refreshToken
+      title: RefreshSessionCredential_allOf
+      type: object

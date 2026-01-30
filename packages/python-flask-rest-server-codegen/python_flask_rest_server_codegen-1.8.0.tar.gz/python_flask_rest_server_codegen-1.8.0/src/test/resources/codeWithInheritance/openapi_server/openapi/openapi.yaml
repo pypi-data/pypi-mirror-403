@@ -1,0 +1,198 @@
+openapi: 3.0.0
+info:
+  contact:
+    email: contact@lecomptoirdespharmacies.fr
+  description: This is the REST API of LCDP products
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: https://www.lecomptoirdespharmacies.fr/mentions-legales
+  title: LCDP REST API
+  version: 1.0.0
+servers:
+- url: https://lecomptoirdespharmacies.fr/v1
+tags:
+- description: Manage notifications
+  name: notification
+paths:
+  /notification:
+    get:
+      operationId: get_notifications
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: false
+        schema:
+          type: string
+        style: simple
+      - description: Number of notifications
+        explode: true
+        in: query
+        name: number
+        required: false
+        schema:
+          format: int64
+          maximum: 10.0
+          minimum: 1.0
+          type: integer
+        style: form
+      - description: Page number to search for
+        explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          format: int64
+          maximum: 10.0
+          minimum: 1.0
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/NotificationSending'
+                type: array
+          description: successful operation
+        "400":
+          description: Invalid ID supplied
+        "403":
+          description: Access denied
+        "405":
+          description: User not found
+      summary: Request all notifications
+      tags:
+      - notification
+      x-openapi-router-controller: openapi_server.controllers.notification_controller
+components:
+  schemas:
+    Ad:
+      properties:
+        reference:
+          title: reference
+          type: string
+      title: Ad
+      type: object
+    LOrder:
+      properties:
+        reference:
+          title: reference
+          type: string
+      title: LOrder
+      type: object
+    Notification:
+      example:
+        readableName: readableName
+        subject: subject
+        notificationSendings:
+        - null
+        - null
+        name: ORDER_CREATED_SELLER
+        content: content
+      properties:
+        name:
+          description: Notification type
+          enum:
+          - ORDER_CREATED_SELLER
+          - ORDER_CREATED_BUYER
+          - ORDER_ACCEPTED
+          - ORDER_SENT_BUYER
+          - ORDER_RECEIVED
+          - ORDER_ARCHIVED_BUYER
+          - ORDER_VALIDATED_SELLER
+          - ORDER_VALIDATED_BUYER
+          - ORDER_CANCELED_BUYER
+          - AD_ARCHIVED
+          - AD_ARCHIVED_BY_ADMIN
+          - AD_VALIDATED
+          - AD_EXPIRED
+          - AD_MANIFESTATION_INTERET
+          - AD_SOLD_OUT
+          - AD_PRICE_UPDATE_REFUSED
+          - AD_PRICE_UPDATE_ACCEPTED
+          - AD_WISHLIST_LINE
+          - ORDER_ACCEPTATION_DELAY
+          - ORDER_SENDING_DELAY
+          - CLIENT_SUBSCRIPTION_STEP_4_VALIDATED
+          - CLIENT_SUBSCRIPTION_VALIDATED
+          - CLIENT_TEST_ACCOUNT_EXPIRED
+          - CLIENT_KYC_LIMITED
+          - CLIENT_CREDIT_CARD_EXPIRATION
+          - CLIENT_FIRST_SALE
+          - CLIENT_FIRST_BUY
+          - CLIENT_FIRST_AD
+          - DAILY_MAIL
+          - AD_DAILY_MAIL
+          - ORDER_DAILY_MAIL
+          - ORDER_TWICE_DAILY_MAIL
+          - CLIENT_HAS_A_REQUEST
+          - DOCUMENT_EXPIRE
+          - GLOBAL_COMMISSION_INVOICE
+          - PHARMAIDE_FIRST_SUBSCRIPTION
+          - PHARMAIDE_TEST_TEST_EXPIRATION
+          - PHARMAIDE_SB_TEST_EXPIRATION
+          title: name
+          type: string
+        readableName:
+          description: Human readable name
+          title: readableName
+          type: string
+        subject:
+          title: subject
+          type: string
+        content:
+          title: content
+          type: string
+        notificationSendings:
+          items:
+            $ref: '#/components/schemas/NotificationSending'
+          title: notificationSendings
+          type: array
+      title: Notification
+      type: object
+    NotificationSending:
+      example:
+        notification:
+          readableName: readableName
+          subject: subject
+          notificationSendings:
+          - null
+          - null
+          name: ORDER_CREATED_SELLER
+          content: content
+      properties:
+        notification:
+          $ref: '#/components/schemas/Notification'
+      title: NotificationSending
+      type: object
+    AdNotificationSending:
+      allOf:
+      - $ref: '#/components/schemas/NotificationSending'
+      - $ref: '#/components/schemas/AdNotificationSending_allOf'
+    LOrderNotificationSending:
+      allOf:
+      - $ref: '#/components/schemas/NotificationSending'
+      - $ref: '#/components/schemas/LOrderNotificationSending_allOf'
+    WishlistLineNotificationSending:
+      type: object
+    DailyMailNotificationSending:
+      type: object
+    PerishableNotificationSending:
+      type: object
+    MutlipleOrderNotificationSending:
+      type: object
+    AdNotificationSending_allOf:
+      properties:
+        ad:
+          $ref: '#/components/schemas/Ad'
+      title: AdNotificationSending_allOf
+      type: object
+    LOrderNotificationSending_allOf:
+      properties:
+        ad:
+          $ref: '#/components/schemas/LOrder'
+      title: LOrderNotificationSending_allOf
+      type: object

@@ -1,0 +1,98 @@
+openapi: 3.0.0
+info:
+  contact:
+    email: contact@lecomptoirdespharmacies.fr
+  description: This is the REST API of LCDP products
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: https://www.lecomptoirdespharmacies.fr/mentions-legales
+  title: LCDP REST API
+  version: 1.0.0
+servers:
+- url: https://lecomptoirdespharmacies.fr/v1
+tags:
+- description: Search sale offer
+  name: searchSaleOffer
+paths:
+  /sale-offers:
+    get:
+      operationId: get_sale_offers
+      parameters:
+      - description: Filter on status to include in the search (can be given multiple
+          time which result in a OR condition)
+        explode: true
+        in: query
+        name: st[eq]
+        required: false
+        schema:
+          items:
+            $ref: '#/components/schemas/SaleOfferStatus'
+          type: array
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Session id created
+          headers:
+            authorization:
+              description: Session token to use for future call
+              explode: false
+              schema:
+                format: int32
+                type: integer
+              style: simple
+        "405":
+          description: Invalid input
+      summary: Search sale offers
+      tags:
+      - searchSaleOffer
+      x-openapi-router-controller: openapi_server.controllers.search_sale_offer_controller
+  /sale-offers/{saleOfferStatus}:
+    get:
+      operationId: get_sale_offers_by_status
+      parameters:
+      - explode: false
+        in: path
+        name: saleOfferStatus
+        required: true
+        schema:
+          $ref: '#/components/schemas/SaleOfferStatus'
+        style: simple
+      responses:
+        "200":
+          description: Success
+        "403":
+          description: Access denied
+        "400":
+          description: Bad Request
+      summary: Search sale offers by status
+      tags:
+      - searchSaleOffer
+      x-openapi-router-controller: openapi_server.controllers.search_sale_offer_controller
+components:
+  parameters:
+    SaleOfferStatusParameter:
+      explode: false
+      in: path
+      name: saleOfferStatus
+      required: true
+      schema:
+        $ref: '#/components/schemas/SaleOfferStatus'
+      style: simple
+  schemas:
+    SaleOfferStatus:
+      description: Is this sale offer enabled or not
+      enum:
+      - WAITING_FOR_PRODUCT
+      - ENABLED
+      - DISABLED
+      - REFUSED
+      - ARCHIVED
+      - HOLIDAY
+      - ASKING_FOR_INVOICE
+      title: SaleOfferStatus
+      type: string

@@ -1,0 +1,97 @@
+openapi: 3.0.0
+info:
+  contact:
+    email: contact@lecomptoirdespharmacies.fr
+  description: This is the REST API of LCDP products
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: https://www.lecomptoirdespharmacies.fr/mentions-legales
+  title: LCDP REST API
+  version: 1.0.0
+servers:
+- url: https://lecomptoirdespharmacies.fr/v1
+tags:
+- description: Authentication/Authorization of users
+  name: auth
+paths:
+  /session:
+    post:
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credential'
+        description: Credentials to use in order to create the session
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Session id created
+          headers:
+            authorization:
+              description: Session token to use for future call
+              explode: false
+              schema:
+                format: int32
+                type: integer
+              style: simple
+        "405":
+          description: Invalid input
+      summary: Create a new session
+      tags:
+      - auth
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+      x-openapi-router-controller: openapi_server.controllers.auth_controller
+  /session/{sessionId}:
+    delete:
+      operationId: logout
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: false
+        schema:
+          type: string
+        style: simple
+      - description: Session id to delete
+        explode: false
+        in: path
+        name: sessionId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      responses:
+        "400":
+          description: Invalid ID supplied
+        "404":
+          description: User not found
+      summary: Delete an existing session
+      tags:
+      - auth
+      x-openapi-router-controller: openapi_server.controllers.auth_controller
+components:
+  schemas:
+    Credential:
+      example:
+        password: password
+        login: login
+      properties:
+        login:
+          description: User e-mail
+          title: login
+          type: string
+        password:
+          description: User password
+          title: password
+          type: string
+      title: Credential
+      type: object

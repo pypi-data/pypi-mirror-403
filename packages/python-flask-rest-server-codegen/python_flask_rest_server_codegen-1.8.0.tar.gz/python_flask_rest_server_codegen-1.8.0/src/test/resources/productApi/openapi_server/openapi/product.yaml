@@ -1,0 +1,1528 @@
+openapi: 3.0.0
+info:
+  contact:
+    email: contact@lecomptoirdespharmacies.fr
+  description: This is the REST API of LCDP products
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: https://www.lecomptoirdespharmacies.fr/mentions-legales
+  title: lcdp-monolith-service
+  version: 1.0.0
+servers:
+- url: https://www.lcdp.ovh/api/v1
+- url: https://www.lecomptoirdespharmacies.fr/api/v1
+- url: http://www.lcdp.local/api/v1
+- url: http://localhost:7072/api/v1
+tags:
+- description: Get product's types
+  name: SearchProductMetadata
+- description: The product reader
+  name: SearchProduct
+- description: The product update
+  name: ManageProduct
+- description: Search products images
+  name: SearchProductImage
+- description: Modify products images
+  name: ManageProductImage
+- description: Modify product proscription
+  name: ManageProductProscription
+- description: Search products proscription
+  name: SearchProductProscription
+paths:
+  /products:
+    get:
+      operationId: get_products
+      parameters:
+      - description: Any field in the product contains 'q'
+        explode: true
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+        style: form
+      - description: Vidal package equal this one
+        explode: true
+        in: query
+        name: vidalPackage[eq]
+        required: false
+        schema:
+          format: int64
+          type: integer
+        style: form
+      - description: Filter on status to include in the search (can be given multiple
+          time which result in a OR condition)
+        explode: true
+        in: query
+        name: st[eq]
+        required: false
+        schema:
+          items:
+            $ref: '#/components/schemas/ProductStatus'
+          type: array
+        style: form
+      - description: Product type to search on
+        explode: true
+        in: query
+        name: pt[eq]
+        required: false
+        schema:
+          type: string
+        style: form
+      - description: Secondary product type to search on
+        explode: true
+        in: query
+        name: spt[eq]
+        required: false
+        schema:
+          type: string
+        style: form
+      - description: Laboratory to search on (can be given multiple time which result
+          in a OR condition)
+        explode: true
+        in: query
+        name: lab[eq]
+        required: false
+        schema:
+          items:
+            format: int64
+            type: integer
+          type: array
+        style: form
+      - description: Waiting sale offers count greater than or equal
+        explode: true
+        in: query
+        name: sWaitingSaleOfferCount[gte]
+        required: false
+        schema:
+          format: int32
+          type: integer
+        style: form
+      - description: Sort by
+        explode: true
+        in: query
+        name: orderBy
+        required: false
+        schema:
+          default: CREATED_AT:desc
+          enum:
+          - NAME:asc
+          - NAME:desc
+          - BARCODES:asc
+          - BARCODES:desc
+          - UNIT_PRICE:asc
+          - UNIT_PRICE:desc
+          - TYPE:asc
+          - TYPE:desc
+          - VAT_VALUE:asc
+          - VAT_VALUE:desc
+          - LABORATORY_NAME:asc
+          - LABORATORY_NAME:desc
+          - UNIT_WEIGHT:asc
+          - UNIT_WEIGHT:desc
+          - STATUS:asc
+          - STATUS:desc
+          - CREATED_AT:desc
+          - CREATED_AT:asc
+          type: string
+        style: form
+      - description: Page number to search for (start at 0)
+        explode: true
+        in: query
+        name: p
+        required: false
+        schema:
+          minimum: 0
+          type: integer
+        style: form
+      - description: Number of user per page
+        explode: true
+        in: query
+        name: pp
+        required: false
+        schema:
+          maximum: 50
+          minimum: 1
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProducts'
+          description: Product's list found
+        "403":
+          description: Access denied
+        "4XX":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Search for products with his name or status
+      tags:
+      - SearchProduct
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - SELLER_BUYER
+        - LABORATORY
+        - TEST
+        - HOLLIDAYS
+        - UNPAID
+        - LITIGATION
+      x-openapi-router-controller: openapi_server.controllers.search_product_controller
+    post:
+      description: |
+        Required parameters for creation of vidal synchronized product :
+         - vidalPackageId
+
+        Required parameters for creation of product from scratch :
+         - name
+         - barcodes
+         - dci
+         - laboratoryId
+         - unitWeight
+         - vatId
+         - unitPrice
+         - typeId
+      operationId: create_product
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreationOrUpdateParameters'
+        description: Product to add
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: successful operation
+        "403":
+          description: Access denied
+        "409":
+          description: Product already exist
+        "4XX":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Create product from product form
+      tags:
+      - ManageProduct
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - SELLER_BUYER
+        - LABORATORY
+        - TEST
+        - HOLLIDAYS
+        - UNPAID
+        - LITIGATION
+      x-openapi-router-controller: openapi_server.controllers.manage_product_controller
+  /products/secondary-types:
+    get:
+      operationId: get_product_secondary_types
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ProductSecondaryType'
+                type: array
+          description: Product's types found
+        "403":
+          description: Access denied
+        "4XX":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Get product secondary types
+      tags:
+      - SearchProductMetadata
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - SELLER_BUYER
+        - LABORATORY
+        - TEST
+        - HOLLIDAYS
+        - UNPAID
+        - LITIGATION
+      x-openapi-router-controller: openapi_server.controllers.search_product_metadata_controller
+  /products/testFreeAccess:
+    get:
+      operationId: test_free_access
+      responses:
+        "200":
+          description: Success
+        "403":
+          description: Access denied
+      summary: Test generation without bearer
+      tags:
+      - SearchProduct
+      x-openapi-router-controller: openapi_server.controllers.search_product_controller
+  /products/types:
+    get:
+      operationId: get_product_types
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ProductType'
+                type: array
+          description: Product's types found
+        "403":
+          description: Access denied
+        "4XX":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Get product types
+      tags:
+      - SearchProductMetadata
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - SELLER_BUYER
+        - LABORATORY
+        - TEST
+        - HOLLIDAYS
+        - UNPAID
+        - LITIGATION
+      x-openapi-router-controller: openapi_server.controllers.search_product_metadata_controller
+  /products/{productId}:
+    get:
+      operationId: get_product
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: Product found
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+        "403":
+          description: Access denied
+        "404":
+          description: Product not found
+      security:
+      - bearerAuth: []
+      summary: Retrieve a product with ID
+      tags:
+      - SearchProduct
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - SELLER_BUYER
+        - LABORATORY
+        - TEST
+        - HOLLIDAYS
+        - UNPAID
+        - LITIGATION
+      x-openapi-router-controller: openapi_server.controllers.search_product_controller
+    patch:
+      description: |
+        Administrator can update every fields (override allowed)
+        Other users can only update the following fields if empty :
+          - unitWeight
+          - vat
+          - unitPrice
+          - type
+      operationId: update_product
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/ProductCreationOrUpdateParameters'
+        description: Modifications to apply
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: successful operation
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+        "403":
+          description: Access denied
+        "404":
+          description: Product not found
+        "409":
+          description: Product already exist
+      security:
+      - bearerAuth: []
+      summary: Update product from product form
+      tags:
+      - ManageProduct
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - SELLER_BUYER
+        - LABORATORY
+        - TEST
+        - HOLLIDAYS
+        - UNPAID
+        - LITIGATION
+      x-openapi-router-controller: openapi_server.controllers.manage_product_controller
+  /products/{productId}/images:
+    get:
+      operationId: get_product_images
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Image'
+                type: array
+          description: successful operation
+        "403":
+          description: Access denied
+        "404":
+          description: Product not found
+        "4XX":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Return product's images
+      tags:
+      - SearchProductImage
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - LABORATORY
+      x-openapi-router-controller: openapi_server.controllers.search_product_image_controller
+    post:
+      operationId: create_product_image
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImageCreationParameters'
+      responses:
+        "204":
+          description: successful operation
+        "404":
+          description: No product found
+        "403":
+          description: Bad request
+        "413":
+          description: Image too large maximum allowed is 10 MB
+        "415":
+          description: Wrong media type
+      security:
+      - bearerAuth: []
+      summary: Upload one or more images
+      tags:
+      - ManageProductImage
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - LABORATORY
+      x-openapi-router-controller: openapi_server.controllers.manage_product_image_controller
+  /products/{productId}/images/{imageId}:
+    delete:
+      operationId: delete_product_image
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      - description: The id of the product image concerned by the request
+        explode: false
+        in: path
+        name: imageId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: successful operation
+        "404":
+          description: No product found
+        "403":
+          description: Access denied
+        "4XX":
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Remove product's image
+      tags:
+      - ManageProductImage
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - LABORATORY
+      x-openapi-router-controller: openapi_server.controllers.manage_product_image_controller
+    get:
+      operationId: get_product_image
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      - description: The id of the product image concerned by the request
+        explode: false
+        in: path
+        name: imageId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Image'
+          description: successful operation
+        "403":
+          description: Access denied
+        "404":
+          description: Product not found
+        "4XX":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Return product's images
+      tags:
+      - SearchProductImage
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - LABORATORY
+      x-openapi-router-controller: openapi_server.controllers.search_product_image_controller
+  /products/{productId}/proscriptions:
+    get:
+      operationId: get_product_proscriptions
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      - description: Sort by
+        explode: true
+        in: query
+        name: orderBy
+        required: false
+        schema:
+          default: BATCH:asc
+          enum:
+          - BATCH:asc
+          - BATCH:desc
+          - CREATED_AT:asc
+          - CREATED_AT:desc
+          type: string
+        style: form
+      - description: Page number to search for (start at 0)
+        explode: true
+        in: query
+        name: p
+        required: false
+        schema:
+          minimum: 0
+          type: integer
+        style: form
+      - description: Number of proscriptions per page
+        explode: true
+        in: query
+        name: pp
+        required: false
+        schema:
+          maximum: 50
+          minimum: 1
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProductProscriptions'
+          description: successful operation
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+        "403":
+          description: Access denied
+        "404":
+          description: Product not found
+      security:
+      - bearerAuth: []
+      summary: Get product proscriptions
+      tags:
+      - SearchProductProscription
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+      x-openapi-router-controller: openapi_server.controllers.search_product_proscription_controller
+    post:
+      description: |
+        **! WARNING !** this method can change the status of one or more sales-offers
+      operationId: create_product_proscription
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductProscriptionCreationParameters'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductProscription'
+          description: successful operation
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+        "403":
+          description: Access denied
+        "404":
+          description: Product or Batch not found
+        "409":
+          description: Proscription already exist
+      security:
+      - bearerAuth: []
+      summary: Create a product proscription
+      tags:
+      - ManageProductProscription
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+      x-openapi-router-controller: openapi_server.controllers.manage_product_proscription_controller
+  /products/{productId}/proscriptions/{proscriptionId}:
+    delete:
+      operationId: delete_product_proscription
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      - description: The id of the product proscription
+        explode: false
+        in: path
+        name: proscriptionId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      responses:
+        "204":
+          description: successful operation
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+        "403":
+          description: Access denied
+        "404":
+          description: Product or Proscription Id not found
+      security:
+      - bearerAuth: []
+      summary: Delete this product proscription
+      tags:
+      - ManageProductProscription
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+      x-openapi-router-controller: openapi_server.controllers.manage_product_proscription_controller
+  /products/{productId}/vidal-package:
+    put:
+      operationId: set_product_vidal_package
+      parameters:
+      - description: The id of the product concerned by the request
+        explode: false
+        in: path
+        name: productId
+        required: true
+        schema:
+          format: int64
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVidalPackageParameters'
+      responses:
+        "204":
+          description: successful operation
+        "403":
+          description: Access denied
+        "404":
+          description: Product not found
+        "4XX":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestError'
+          description: Bad Request
+      security:
+      - bearerAuth: []
+      summary: Synchronize product against vidal id
+      tags:
+      - ManageProduct
+      x-restrict:
+        roles:
+        - ADMINISTRATOR
+        - SELLER_BUYER
+        - LABORATORY
+        - TEST
+        - HOLLIDAYS
+        - UNPAID
+        - LITIGATION
+      x-openapi-router-controller: openapi_server.controllers.manage_product_controller
+components:
+  parameters:
+    ProductIdParameter:
+      description: The id of the product concerned by the request
+      explode: false
+      in: path
+      name: productId
+      required: true
+      schema:
+        format: int64
+        type: integer
+      style: simple
+    ImageIdParameter:
+      description: The id of the product image concerned by the request
+      explode: false
+      in: path
+      name: imageId
+      required: true
+      schema:
+        format: int64
+        type: integer
+      style: simple
+    ProductProscriptionIdParameter:
+      description: The id of the product proscription
+      explode: false
+      in: path
+      name: proscriptionId
+      required: true
+      schema:
+        format: int64
+        type: integer
+      style: simple
+  schemas:
+    PaginatedProductProscriptions:
+      allOf:
+      - $ref: '#/components/schemas/PaginatedObject'
+      - $ref: '#/components/schemas/PaginatedProductProscriptions_allOf'
+      title: PaginatedProductProscriptions
+    PaginatedProducts:
+      allOf:
+      - $ref: '#/components/schemas/PaginatedObject'
+      - $ref: '#/components/schemas/PaginatedProducts_allOf'
+      title: PaginatedProducts
+    ProductProscription:
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        batch: batch
+        id: 0
+      properties:
+        id:
+          format: int64
+          title: id
+          type: integer
+        batch:
+          title: batch
+          type: string
+        createdAt:
+          format: date-time
+          title: createdAt
+          type: string
+      title: ProductProscription
+      type: object
+    Product:
+      example:
+        vidalPackage: ""
+        unitWeight: 1.6027456183070403
+        anyType: ""
+        dispensationPlace: ""
+        isDrugInSport: true
+        dci: dci
+        type: ""
+        proscriptions:
+          href: https://openapi-generator.tech
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        narcoticPrescription: true
+        id: 0
+        isAutomaticVidalSyncEnabled: true
+        unitPrice: 1.4658129805029452
+        secondaryType: ""
+        images:
+          href: https://openapi-generator.tech
+        vat: ""
+        isOtc: true
+        barcodes:
+          ean: ean
+          cip13: cip13
+          cip: cip
+        laboratory: ""
+        restricted: true
+        name: name
+        marketStatus: ""
+        manufacturerPrice: 5.962133916683182
+        storageType: storageType
+        shortName: shortName
+        status: ""
+        statistics:
+          waitingSaleOfferCount: 5
+      properties:
+        anyType:
+          title: anyType
+        id:
+          format: int64
+          title: id
+          type: integer
+        vidalPackage:
+          allOf:
+          - $ref: '#/components/schemas/VidalPackageLink'
+          nullable: true
+          title: vidalPackage
+        isAutomaticVidalSyncEnabled:
+          description: Indicates if automatic synchronization to vidal is enabled
+          title: isAutomaticVidalSyncEnabled
+          type: boolean
+        barcodes:
+          $ref: '#/components/schemas/Barcodes'
+        name:
+          title: name
+          type: string
+        shortName:
+          nullable: true
+          title: shortName
+          type: string
+        dci:
+          nullable: true
+          title: dci
+          type: string
+        unitWeight:
+          description: Weight of a single unit in grams
+          minimum: 1
+          nullable: true
+          title: unitWeight
+          type: number
+        unitPrice:
+          description: Public price of the product
+          nullable: true
+          title: unitPrice
+          type: number
+        manufacturerPrice:
+          description: Manufacturer price of the product
+          nullable: true
+          title: manufacturerPrice
+          type: number
+        type:
+          allOf:
+          - $ref: '#/components/schemas/ProductType'
+          nullable: true
+          title: type
+        secondaryType:
+          allOf:
+          - $ref: '#/components/schemas/ProductSecondaryType'
+          nullable: true
+          title: secondaryType
+        laboratory:
+          allOf:
+          - $ref: '#/components/schemas/LaboratoryLink'
+          nullable: true
+          title: laboratory
+        vat:
+          allOf:
+          - $ref: '#/components/schemas/Vat'
+          nullable: true
+          title: vat
+        narcoticPrescription:
+          nullable: true
+          title: narcoticPrescription
+          type: boolean
+        storageType:
+          nullable: true
+          title: storageType
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ProductStatus'
+          nullable: true
+          title: status
+        marketStatus:
+          allOf:
+          - $ref: '#/components/schemas/ProductMarketStatus'
+          nullable: true
+          title: marketStatus
+        dispensationPlace:
+          allOf:
+          - $ref: '#/components/schemas/ProductDispensationPlace'
+          nullable: true
+          title: dispensationPlace
+        isOtc:
+          title: isOtc
+          type: boolean
+        isDrugInSport:
+          nullable: true
+          title: isDrugInSport
+          type: boolean
+        images:
+          $ref: '#/components/schemas/HttpLink'
+        createdAt:
+          description: Creation date of this product
+          format: date-time
+          title: createdAt
+          type: string
+        statistics:
+          $ref: '#/components/schemas/Statistics'
+        restricted:
+          description: If True, can only be sold by LABORATORY. If False, it can be
+            sold by anyone.
+          title: restricted
+          type: boolean
+        proscriptions:
+          $ref: '#/components/schemas/HttpLink'
+      title: Product
+      type: object
+    Statistics:
+      example:
+        waitingSaleOfferCount: 5
+      properties:
+        waitingSaleOfferCount:
+          format: int32
+          title: waitingSaleOfferCount
+          type: integer
+      title: Statistics
+      type: object
+    Barcodes:
+      example:
+        ean: ean
+        cip13: cip13
+        cip: cip
+      properties:
+        cip:
+          nullable: true
+          title: cip
+          type: string
+        cip13:
+          nullable: true
+          title: cip13
+          type: string
+        ean:
+          nullable: true
+          title: ean
+          type: string
+      title: Barcodes
+      type: object
+    ProductType:
+      example:
+        name: name
+        id: id
+      properties:
+        id:
+          description: Id of the product type (machine name)
+          title: id
+          type: string
+        name:
+          description: Readable name for display
+          title: name
+          type: string
+      title: ProductType
+      type: object
+    ProductSecondaryType:
+      example:
+        name: name
+        id: id
+      properties:
+        id:
+          description: Id of the product secondary type
+          title: id
+          type: string
+        name:
+          description: Readable name for display
+          title: name
+          type: string
+      title: ProductSecondaryType
+      type: object
+    ProductStatus:
+      enum:
+      - VALIDATED
+      - WAITING_FOR_VALIDATION
+      - ARCHIVED
+      - UNIT_PRICE_UPDATED
+      title: ProductStatus
+      type: string
+    ProductMarketStatus:
+      enum:
+      - AVAILABLE
+      - DELETED
+      - PHARMACO
+      - NEW
+      - DELETED_ONEYEAR
+      - PHARMACO_ONEYEAR
+      title: ProductMarketStatus
+      type: string
+    ProductDispensationPlace:
+      enum:
+      - PHARMACY
+      - HOSPITAL
+      title: ProductDispensationPlace
+      type: string
+    Image:
+      example:
+        versions:
+          small: https://openapi-generator.tech
+          xsmall: https://openapi-generator.tech
+          original: https://openapi-generator.tech
+          large: https://openapi-generator.tech
+          xlarge: https://openapi-generator.tech
+          medium: https://openapi-generator.tech
+        active: true
+        id: 0
+      properties:
+        id:
+          description: Image identifier
+          format: int64
+          title: id
+          type: integer
+        active:
+          description: Image is active
+          title: active
+          type: boolean
+        versions:
+          $ref: '#/components/schemas/ImageVersions'
+      title: Image
+      type: object
+    ProductCreationOrUpdateParameters:
+      example:
+        unitWeight: 1.6027456183070403
+        unitPrice: 1.4658129805029452
+        dispensationPlace: ""
+        isDrugInSport: true
+        laboratoryId: 5
+        vatId: vatId
+        isOtc: true
+        dci: dci
+        barcodes:
+          ean: ean
+          cip13: cip13
+          cip: cip
+        narcoticPrescription: true
+        name: name
+        marketStatus: ""
+        vidalPackageId: 0
+        manufacturerPrice: 5.962133916683182
+        storageType: storageType
+        typeId: typeId
+        secondaryTypeId: secondaryTypeId
+        refundRate: refundRate
+        shortName: shortName
+        isAutomaticVidalSyncEnabled: true
+      properties:
+        vidalPackageId:
+          description: |
+            Set vidal package id of product.
+            If vidalPackageId is set:
+              - Product will be created/synchronized from vidal data.
+              - More fields can be added to override data (after sync)
+            If vidalPackageId is not set:
+              - Given product is created/updated without vidal sync
+            Restrictions :
+              - You should be from role 'ADMINISTRATOR' to update it.
+          format: int64
+          nullable: true
+          title: vidalPackageId
+          type: integer
+        isAutomaticVidalSyncEnabled:
+          description: |
+            Set automatic synchronization to vidal enabled or not.
+            Automatic does not mean periodic here. It means sync can be
+            done without it's clearly asked (Ex: When product is selected
+            in the front end, or when product details export is requested).
+            Triggers (single) synchronization to vidal if set to true.
+            Restrictions :
+              - You should be from role 'ADMINISTRATOR' to change its value. Otherwise,
+                you can just set it from true to true to trigger a (single) vidal synchronization.
+          title: isAutomaticVidalSyncEnabled
+          type: boolean
+        barcodes:
+          $ref: '#/components/schemas/Barcodes'
+        name:
+          title: name
+          type: string
+        shortName:
+          nullable: true
+          title: shortName
+          type: string
+        dci:
+          nullable: true
+          title: dci
+          type: string
+        unitWeight:
+          description: Weight of a single unit in grams
+          minimum: 1
+          nullable: true
+          title: unitWeight
+          type: number
+        unitPrice:
+          description: Public price of the product
+          nullable: true
+          title: unitPrice
+          type: number
+        manufacturerPrice:
+          description: Manufacturer price of the product
+          nullable: true
+          title: manufacturerPrice
+          type: number
+        typeId:
+          description: Product Type Identifier
+          nullable: true
+          title: typeId
+          type: string
+        secondaryTypeId:
+          description: Product Secondary Type Identifier
+          nullable: true
+          title: secondaryTypeId
+          type: string
+        refundRate:
+          nullable: true
+          title: refundRate
+          type: string
+        laboratoryId:
+          description: Laboratory ID
+          format: int64
+          nullable: true
+          title: laboratoryId
+          type: integer
+        vatId:
+          description: VAT identifier
+          nullable: true
+          title: vatId
+          type: string
+        narcoticPrescription:
+          nullable: true
+          title: narcoticPrescription
+          type: boolean
+        storageType:
+          nullable: true
+          title: storageType
+          type: string
+        marketStatus:
+          allOf:
+          - $ref: '#/components/schemas/ProductMarketStatus'
+          nullable: true
+          title: marketStatus
+        status:
+          $ref: '#/components/schemas/ProductStatus'
+        dispensationPlace:
+          allOf:
+          - $ref: '#/components/schemas/ProductDispensationPlace'
+          nullable: true
+          title: dispensationPlace
+        isOtc:
+          title: isOtc
+          type: boolean
+        isDrugInSport:
+          nullable: true
+          title: isDrugInSport
+          type: boolean
+      title: ProductCreationOrUpdateParameters
+      type: object
+    ImageCreationParameters:
+      properties:
+        images:
+          description: File to upload related to image type (Max 10 Mo)
+          items:
+            format: binary
+            type: string
+          minItems: 1
+          type: array
+      type: object
+    UpdateVidalPackageParameters:
+      example:
+        vidalPackageId: 0
+      properties:
+        vidalPackageId:
+          description: Vidal package to set
+          format: int64
+          title: vidalPackageId
+          type: integer
+      title: UpdateVidalPackageParameters
+      type: object
+    ProductProscriptionCreationParameters:
+      example:
+        batch: batch
+      properties:
+        batch:
+          description: The batch value
+          title: batch
+          type: string
+      title: ProductProscriptionCreationParameters
+      type: object
+    VidalPackageLink:
+      allOf:
+      - $ref: '#/components/schemas/HttpLink'
+      - $ref: '#/components/schemas/VidalPackageLink_allOf'
+      title: VidalPackageLink
+    LaboratoryLink:
+      allOf:
+      - $ref: '#/components/schemas/HttpLink'
+      - $ref: '#/components/schemas/LaboratoryLink_allOf'
+      title: LaboratoryLink
+    RestError:
+      properties:
+        code:
+          description: |
+            Unique code to identify an error : * `CODE000` - Using outdated resource * `CODE001` - Invalid credentials * `CODE002` - Cannot renew token * `CODE003` - Invalid User CGV * `CODE004` - Resource already exists * `CODE005` - User account is disabled * `CODE006` - Invalid schedule * `CODE007` - Wrong Address according CHRONOPOST * `CODE008` - Invalid Mangopay Mandate * `CODE009` - Invalid Status * `CODE010` - Empty Meta-Order * `CODE011` - Empty User Address * `CODE012` - Empty User Legal Name * `CODE013` - Invalid quantities * `CODE014` - Invalid Meta-Order * `CODE015` - Can not release quantity greater than claimed * `CODE016` - Can not release a negative quantity of items
+          enum:
+          - CODE000
+          - CODE001
+          - CODE002
+          - CODE003
+          - CODE004
+          - CODE005
+          - CODE006
+          - CODE007
+          - CODE008
+          - CODE009
+          - CODE010
+          - CODE011
+          - CODE012
+          - CODE013
+          - CODE014
+          - CODE015
+          - CODE016
+          title: code
+          type: string
+        message:
+          description: |
+            Unique code to identify an error : * `MESSAGE000` - Using outdated resource * `MESSAGE001` - Invalid credentials * `MESSAGE002` - Cannot renew token * `MESSAGE003` - Invalid User CGV * `MESSAGE004` - Resource already exists * `MESSAGE005` - User account is disabled * `MESSAGE006` - Invalid schedule * `MESSAGE007` - Wrong Address according CHRONOPOST * `MESSAGE008` - Invalid Mangopay Mandate * `MESSAGE009` - Invalid Status * `MESSAGE010` - Empty Meta-Order * `MESSAGE011` - Empty User Address * `MESSAGE012` - Empty User Legal Name * `MESSAGE013` - Invalid quantities * `MESSAGE014` - Invalid Meta-Order * `MESSAGE015` - Can not release quantity greater than claimed * `MESSAGE016` - Can not release a negative quantity of items
+          enum:
+          - Using outdated resource
+          - Login failed
+          - Cannot renew token
+          - Invalid User CGV
+          - Resource already exists
+          - User account is disabled
+          - Invalid schedule
+          - Wrong Address according CHRONOPOST
+          - Invalid Mangopay Mandate
+          - Invalid Status
+          - Empty Meta-Order
+          - Empty User Address
+          - Empty User Legal Name
+          - Invalid quantities
+          - Invalid Meta-Order
+          - Can not release quantity greater than claimed
+          - Can not release a negative quantity of items
+          title: message
+          type: string
+          x-enum-varnames:
+          - MESSAGE000
+          - MESSAGE001
+          - MESSAGE002
+          - MESSAGE003
+          - MESSAGE004
+          - MESSAGE005
+          - MESSAGE006
+          - MESSAGE007
+          - MESSAGE008
+          - MESSAGE009
+          - MESSAGE010
+          - MESSAGE011
+          - MESSAGE012
+          - MESSAGE013
+          - MESSAGE014
+          - MESSAGE015
+          - MESSAGE016
+      required:
+      - code
+      - message
+      title: RestError
+      type: object
+    PaginatedObject:
+      description: An object which is not complete (only a specific page is available)
+      properties:
+        metadata:
+          $ref: '#/components/schemas/PagingMetadata'
+      required:
+      - metadata
+      title: PaginatedObject
+      type: object
+    PagingMetadata:
+      description: All information about current and available pages
+      properties:
+        page:
+          description: Current page requested. Start at 0.
+          minimum: 0
+          title: page
+          type: integer
+        perPage:
+          description: Number of item per page
+          minimum: 1
+          title: perPage
+          type: integer
+        totalVisible:
+          description: Total number of item visible by the client in the request
+          minimum: 0
+          title: totalVisible
+          type: integer
+        totalFound:
+          description: Total number of item found in database
+          minimum: 0
+          title: totalFound
+          type: integer
+      required:
+      - page
+      - perPage
+      - totalFound
+      - totalVisible
+      title: PagingMetadata
+      type: object
+    Vat:
+      properties:
+        id:
+          description: Vat Id
+          title: id
+          type: string
+        name:
+          description: Vat name
+          title: name
+          type: string
+        value:
+          description: Vat value
+          title: value
+          type: number
+      title: Vat
+      type: object
+    HttpLink:
+      description: A base type of objects representing links to resources.
+      example:
+        href: https://openapi-generator.tech
+      properties:
+        href:
+          description: Any URI that is using http or https protocol
+          format: uri
+          title: href
+          type: string
+      required:
+      - href
+      title: HttpLink
+      type: object
+    ImageVersions:
+      example:
+        small: https://openapi-generator.tech
+        xsmall: https://openapi-generator.tech
+        original: https://openapi-generator.tech
+        large: https://openapi-generator.tech
+        xlarge: https://openapi-generator.tech
+        medium: https://openapi-generator.tech
+      properties:
+        xsmall:
+          description: URI to S3 file (width 100px, height computed with original
+            image aspect ratio)
+          format: uri
+          title: xsmall
+          type: string
+        small:
+          description: URI to S3 file (width 350px, height computed with original
+            image aspect ratio)
+          format: uri
+          title: small
+          type: string
+        medium:
+          description: URI to S3 file (width 1024px, height computed with original
+            image aspect ratio)
+          format: uri
+          title: medium
+          type: string
+        large:
+          description: URI to S3 file (width 1920px, height computed with original
+            image aspect ratio)
+          format: uri
+          title: large
+          type: string
+        xlarge:
+          description: URI to S3 file (width 3840px, height computed with original
+            image aspect ratio)
+          format: uri
+          title: xlarge
+          type: string
+        original:
+          description: URI to S3 file (Original size)
+          format: uri
+          title: original
+          type: string
+      title: ImageVersions
+      type: object
+    PaginatedProductProscriptions_allOf:
+      properties:
+        records:
+          items:
+            $ref: '#/components/schemas/ProductProscription'
+          title: records
+          type: array
+      required:
+      - records
+      title: PaginatedProductProscriptions_allOf
+      type: object
+    PaginatedProducts_allOf:
+      properties:
+        records:
+          items:
+            $ref: '#/components/schemas/Product'
+          title: records
+          type: array
+      required:
+      - records
+      title: PaginatedProducts_allOf
+      type: object
+    VidalPackageLink_allOf:
+      properties:
+        id:
+          description: Identifier of the vidal package
+          format: int64
+          title: id
+          type: integer
+      title: VidalPackageLink_allOf
+      type: object
+    LaboratoryLink_allOf:
+      properties:
+        id:
+          description: Identifier of the laboratory
+          format: int64
+          title: id
+          type: integer
+        name:
+          description: Name of the laboratory
+          title: name
+          type: string
+      title: LaboratoryLink_allOf
+      type: object
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http
+      x-bearerInfoFunc: openapi_server.controllers.security_controller_.info_from_bearerAuth

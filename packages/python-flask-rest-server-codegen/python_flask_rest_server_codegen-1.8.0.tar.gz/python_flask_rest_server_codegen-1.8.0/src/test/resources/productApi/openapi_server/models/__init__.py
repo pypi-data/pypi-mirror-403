@@ -1,0 +1,32 @@
+# coding: utf-8
+
+# flake8: noqa
+from __future__ import absolute_import
+# import models into model package
+from openapi_server.models.barcodes import Barcodes
+from openapi_server.models.http_link import HttpLink
+from openapi_server.models.image import Image
+from openapi_server.models.image_versions import ImageVersions
+from openapi_server.models.laboratory_link import LaboratoryLink
+from openapi_server.models.laboratory_link_all_of import LaboratoryLinkAllOf
+from openapi_server.models.paginated_object import PaginatedObject
+from openapi_server.models.paginated_product_proscriptions import PaginatedProductProscriptions
+from openapi_server.models.paginated_product_proscriptions_all_of import PaginatedProductProscriptionsAllOf
+from openapi_server.models.paginated_products import PaginatedProducts
+from openapi_server.models.paginated_products_all_of import PaginatedProductsAllOf
+from openapi_server.models.paging_metadata import PagingMetadata
+from openapi_server.models.product import Product
+from openapi_server.models.product_creation_or_update_parameters import ProductCreationOrUpdateParameters
+from openapi_server.models.product_dispensation_place import ProductDispensationPlace
+from openapi_server.models.product_market_status import ProductMarketStatus
+from openapi_server.models.product_proscription import ProductProscription
+from openapi_server.models.product_proscription_creation_parameters import ProductProscriptionCreationParameters
+from openapi_server.models.product_secondary_type import ProductSecondaryType
+from openapi_server.models.product_status import ProductStatus
+from openapi_server.models.product_type import ProductType
+from openapi_server.models.rest_error import RestError
+from openapi_server.models.statistics import Statistics
+from openapi_server.models.update_vidal_package_parameters import UpdateVidalPackageParameters
+from openapi_server.models.vat import Vat
+from openapi_server.models.vidal_package_link import VidalPackageLink
+from openapi_server.models.vidal_package_link_all_of import VidalPackageLinkAllOf
