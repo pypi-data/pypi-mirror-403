@@ -1,0 +1,44 @@
+import unittest
+from pathlib import Path
+
+from openagentic_sdk.tools.openai import tool_schemas_for_openai
+
+
+class TestOpenAiToolSchemas(unittest.TestCase):
+    def test_websearch_array_items_present(self) -> None:
+        schemas = tool_schemas_for_openai(["WebSearch"])
+        self.assertEqual(len(schemas), 1)
+        params = schemas[0]["function"]["parameters"]
+        props = params["properties"]
+        self.assertEqual(props["allowed_domains"]["type"], "array")
+        self.assertEqual(props["allowed_domains"]["items"]["type"], "string")
+        self.assertEqual(props["blocked_domains"]["type"], "array")
+        self.assertEqual(props["blocked_domains"]["items"]["type"], "string")
+
+    def test_ask_user_question_items_present(self) -> None:
+        schemas = tool_schemas_for_openai(["AskUserQuestion"])
+        params = schemas[0]["function"]["parameters"]
+        props = params["properties"]
+        self.assertEqual(props["questions"]["type"], "array")
+        self.assertEqual(props["questions"]["items"]["type"], "object")
+
+    def test_skill_schema_exists(self) -> None:
+        schemas = tool_schemas_for_openai(["Skill"])
+        self.assertEqual(len(schemas), 1)
+        fn = schemas[0]["function"]
+        self.assertEqual(fn["name"], "Skill")
+
+    def test_skill_schema_lists_available_skills_in_description(self) -> None:
+        project_dir = Path(__file__).resolve().parents[1] / "example"
+        schemas = tool_schemas_for_openai(["Skill"], context={"project_dir": str(project_dir)})
+        desc = schemas[0]["function"]["description"]
+        self.assertIn("Only the skills listed here are available", desc)
+        self.assertIn("main-process", desc)
+        self.assertIn("drawing", desc)
+        name_desc = schemas[0]["function"]["parameters"]["properties"]["name"]["description"]
+        self.assertIn("available_skills", name_desc)
+        self.assertIn("e.g.", name_desc)
+
+
+if __name__ == "__main__":
+    unittest.main()
