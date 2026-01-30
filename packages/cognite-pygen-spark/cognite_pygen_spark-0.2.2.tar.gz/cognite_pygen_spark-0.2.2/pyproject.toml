@@ -1,0 +1,146 @@
+[build-system]
+requires = ["uv_build>=0.9.15,<0.10.0"]
+build-backend = "uv_build"
+
+[project]
+name = "cognite-pygen-spark"
+version = "0.2.2"
+description = "Code generation library for creating Python UDTFs from CDF Data Models"
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+license = "Apache-2.0"
+authors = [
+    {name = "Cognite", email = "support@cognite.com"}
+]
+keywords = ["cognite", "cdf", "databricks", "udtf", "code-generation", "pyspark"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "cognite-pygen>=1.2.29",
+    "cognite-sdk>=7.90.1",
+    "jinja2>=3.0.0",
+    "typing_extensions>=4.5.0",  # Required by pydantic (for Sentinel support)
+    # Runtime dependencies for generated UDTFs (required in Spark cluster)
+    # Note: Generated UDTFs require these at runtime, not at code generation time
+    # PySpark is provided by Databricks runtime - do not include as dependency
+    # Generated UDTFs use scalar mode only (no Arrow/vectorization)
+    "requests>=2.31.0",  # HTTP client (replaces Cognite SDK in generated UDTFs)
+    "protobuf>=4.21.0",  # REQUIRED for time series datapoints (protobuf parsing)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-rerunfailures>=14.0",
+    "pytest-icdiff>=0.8",
+    "black>=24.4.2",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "pre-commit>=4.0.0",
+    "pandas>=1.5.3",  # Required by cognite-pygen._build
+    "pyspark>=4.0.0",  # Required for testing and type checking (not in main deps - provided by Databricks runtime)
+    "twine>=6.0.0",  # For PyPI upload
+    "typer>=0.9.0",  # For dev.py CLI
+    "marko>=2.1.0,<3.0.0",  # For parsing commit messages
+    "packaging>=21.3",  # For version parsing
+]
+
+[project.urls]
+Homepage = "https://github.com/cognitedata/pygen-spark"
+Documentation = "https://cognite-pygen-spark.readthedocs.io"
+Repository = "https://github.com/cognitedata/pygen-spark"
+Issues = "https://github.com/cognitedata/pygen-spark/issues"
+
+[tool.uv.build-backend]
+module-name = "cognite.pygen_spark"
+module-root = ""
+
+[tool.black]
+line-length = 120
+target_version = ['py310']
+include = '\.py$'
+
+[tool.ruff]
+# See https://beta.ruff.rs/docs/rules for an overview of ruff rules
+line-length = 120
+target-version = "py310"
+exclude = ["examples", "scripts"]
+fix = true
+
+[tool.ruff.lint]
+select = ["E","W","F","I","RUF","TID","UP", "B", "FLY", "PTH", "ERA"]
+fixable = ["E","W","F","I","RUF","TID","UP", "B", "FLY", "PTH", "ERA"]
+ignore = [
+    # This is causing issues for pydantic which does not support use of X | Y for type annotations before 3.10
+    "UP007", # Use X | Y for type annotations
+    # isinstance with tuple syntax is more readable for multiple types
+    "UP038", # Use X | Y in isinstance call instead of (X, Y)
+    # Typer do function calls when setting up the CLI.
+    "B008", # Do not perform function call {name} in argument defaults
+    # This is done when setting the pygen configs, and useful for getting pretty docs.
+    # In that case, this is also safe as the function calls produced immutable data.
+    "RUF009", #Do not perform function call in defaults
+    # Whitespace in docstrings - ruff format should handle this but sometimes doesn't catch all cases
+    "W293", # Blank line contains whitespace
+]
+
+[tool.ruff.lint.isort]
+known-first-party = []
+known-third-party = ["cognite.client"]
+
+[tool.mypy]
+explicit_package_bases = true
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = false  # Set to false by default, use overrides for specific modules
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# Ignore missing imports for third-party libraries without type stubs
+[[tool.mypy.overrides]]
+module = "pyspark.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "cognite.client.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "cognite.pygen.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore::DeprecationWarning:pkg_resources",
+]
+addopts = "--doctest-modules"
+markers = [
+    "integration: Integration tests requiring external services.",
+    "slow: Slow running tests.",
+]
+pythonpath = ["."]
+testpaths = ["tests", "cognite/pygen_spark"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "ruff>=0.14.10",
+    "ruff-format>=0.4.1",
+]
+
