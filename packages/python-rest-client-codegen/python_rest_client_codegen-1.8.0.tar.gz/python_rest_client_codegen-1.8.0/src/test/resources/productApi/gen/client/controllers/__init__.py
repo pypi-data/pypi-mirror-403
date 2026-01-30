@@ -1,0 +1,11 @@
+# flake8: noqa
+
+# import apis into api package
+from gen.client.controllers.manage_product_api import ManageProductApi
+from gen.client.controllers.manage_product_image_api import ManageProductImageApi
+from gen.client.controllers.manage_product_proscription_api import ManageProductProscriptionApi
+from gen.client.controllers.search_product_api import SearchProductApi
+from gen.client.controllers.search_product_image_api import SearchProductImageApi
+from gen.client.controllers.search_product_metadata_api import SearchProductMetadataApi
+from gen.client.controllers.search_product_proscription_api import SearchProductProscriptionApi
+
