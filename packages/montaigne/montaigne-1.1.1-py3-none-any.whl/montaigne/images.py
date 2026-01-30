@@ -1,0 +1,239 @@
+"""Image translation using Gemini AI."""
+
+import base64
+import mimetypes
+import sys
+from pathlib import Path
+from typing import List, Optional, Union
+
+from .config import get_gemini_client
+from .logging import get_logger
+from .audio import GeminiQuotaError
+
+logger = get_logger(__name__)
+
+
+def _check_quota_error(e: Exception) -> None:
+    """Check if exception is a quota error and raise GeminiQuotaError if so."""
+    error_str = str(e)
+    if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
+        raise GeminiQuotaError(
+            "Gemini API daily quota exceeded. Your free tier limit has been reached.\n"
+            "Options:\n"
+            "  - Wait until tomorrow for quota reset\n"
+            "  - Upgrade your plan at https://ai.google.dev/pricing"
+        ) from e
+
+
+IMAGE_EXTENSIONS = {".jpeg", ".jpg", ".png", ".gif", ".webp"}
+DEFAULT_IMAGE_MODEL = "gemini-3-pro-image-preview"
+
+
+def _save_image(file_path: Path, data: Union[str, bytes]):
+    """Save image data, handling base64 encoding if necessary."""
+    if isinstance(data, str):
+        data = base64.b64decode(data)
+    elif isinstance(data, bytes):
+        # Check if bytes look like base64-encoded data
+        try:
+            if data[:4] in (b"/9j/", b"iVBO", b"R0lG", b"UklG"):
+                data = base64.b64decode(data)
+        except Exception:
+            pass
+
+    with open(file_path, "wb") as f:
+        f.write(data)
+
+
+def translate_image(
+    image_path: Path,
+    output_path: Optional[Path] = None,
+    target_lang: str = "French",
+    client=None,
+    model: Optional[str] = None,
+) -> Path:
+    """
+    Translate text in an image to target language using Gemini.
+
+    Args:
+        image_path: Path to source image
+        output_path: Path for translated image (default: {stem}_{lang_code}.{ext})
+        target_lang: Target language (default: French)
+        client: Optional pre-configured Gemini client
+        model: Optional model name (default: gemini-3-pro-image-preview)
+
+    Returns:
+        Path to translated image
+    """
+    from google.genai import types
+
+    model = model or DEFAULT_IMAGE_MODEL
+    image_path = Path(image_path)
+    if not image_path.exists():
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    if client is None:
+        client = get_gemini_client()
+
+    # Determine output path
+    if output_path is None:
+        lang_code = target_lang[:2].lower()
+        output_path = image_path.parent / f"{image_path.stem}_{lang_code}{image_path.suffix}"
+
+    output_path = Path(output_path)
+
+    # Read source image
+    with open(image_path, "rb") as f:
+        image_data = f.read()
+
+    mime_type, _ = mimetypes.guess_type(str(image_path))
+    if mime_type is None:
+        mime_type = "image/png"
+
+    # Build prompt
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_bytes(mime_type=mime_type, data=image_data),
+                types.Part.from_text(
+                    text=f"""Generate a new image based on this one with the following changes:
+1. Translate all text to {target_lang}
+2. Keep the same layout, colors, and visual style
+
+Output the modified image, not text."""
+                ),
+            ],
+        ),
+    ]
+
+    config = types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"])
+
+    # Generate translated image
+    try:
+        for chunk in client.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=config,
+        ):
+            if (
+                chunk.candidates is None
+                or chunk.candidates[0].content is None
+                or chunk.candidates[0].content.parts is None
+            ):
+                continue
+
+            part = chunk.candidates[0].content.parts[0]
+            if part.inline_data and part.inline_data.data:
+                # Determine output format from response
+                resp_ext = mimetypes.guess_extension(part.inline_data.mime_type) or ".png"
+                if output_path.suffix != resp_ext:
+                    output_path = output_path.with_suffix(resp_ext)
+
+                _save_image(output_path, part.inline_data.data)
+                return output_path
+    except Exception as e:
+        _check_quota_error(e)
+        raise
+
+    raise RuntimeError("No image data received from API")
+
+
+def translate_images(
+    input_path: Path,
+    output_dir: Optional[Path] = None,
+    target_lang: str = "French",
+    model: Optional[str] = None,
+    add_branding: bool = True,
+    logo_path: Optional[Path] = None,
+) -> List[Path]:
+    """
+    Translate images from input path (file or directory).
+
+    Args:
+        input_path: Single image file or directory containing images
+        output_dir: Directory for output (default: {input}_translated/)
+        target_lang: Target language
+        model: Optional model name (default: gemini-3-pro-image-preview)
+        add_branding: If True, add montaigne.cc logo to bottom right (default: True)
+        logo_path: Optional path to logo image (default: montaigne amber logo)
+
+    Returns:
+        List of paths to translated images
+    """
+    model = model or DEFAULT_IMAGE_MODEL
+    input_path = Path(input_path)
+
+    # Determine input images
+    if input_path.is_file():
+        images = [input_path]
+        if output_dir is None:
+            output_dir = input_path.parent / "images_translated"
+    elif input_path.is_dir():
+        images = sorted([f for f in input_path.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS])
+        if output_dir is None:
+            output_dir = input_path.parent / f"{input_path.name}_translated"
+    else:
+        raise FileNotFoundError(f"Input not found: {input_path}")
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Found %d image(s) to translate", len(images))
+    logger.info("Using model: %s", model)
+
+    client = get_gemini_client()
+    lang_code = target_lang[:2].lower()
+    translated_images = []
+
+    # Use tqdm for progress bar if available in TTY environment
+    try:
+        from tqdm import tqdm
+
+        use_tqdm = sys.stderr.isatty()
+    except ImportError:
+        use_tqdm = False
+
+    image_iterator = images
+    if use_tqdm:
+        image_iterator = tqdm(images, desc="Translating images", unit="image")
+
+    for idx, image_path in enumerate(image_iterator, 1):
+        if not use_tqdm:
+            logger.info("Translating: %s...", image_path.name)
+
+        try:
+            output_path = output_dir / f"{image_path.stem}_{lang_code}{image_path.suffix}"
+            result = translate_image(
+                image_path, output_path, target_lang, client=client, model=model
+            )
+            translated_images.append(result)
+            if not use_tqdm:
+                logger.info("  Saved: %s", result.name)
+        except GeminiQuotaError:
+            # Fail fast on quota errors - no point continuing
+            logger.error("Gemini quota exceeded at image %d (%s)", idx, image_path.name)
+            if translated_images:
+                logger.error(
+                    "Translated %d of %d images before hitting quota limit",
+                    len(translated_images),
+                    len(images),
+                )
+            raise
+        except Exception as e:
+            if not use_tqdm:
+                logger.error("  Error: %s", e)
+
+    # Add branding if requested
+    if add_branding and translated_images:
+        from .branding import add_branding_overlay
+
+        logger.info("Adding branding to translated images...")
+        for img_path in translated_images:
+            try:
+                add_branding_overlay(img_path, output_path=img_path, logo_path=logo_path)
+            except Exception as e:
+                logger.warning("  Failed to add branding to %s: %s", img_path.name, e)
+
+    logger.info("Translated %d images to %s/", len(translated_images), output_dir)
+    return translated_images
