@@ -1,0 +1,281 @@
+openapi: 3.0.1
+info:
+  title: Match Predicting ANN Server Public API
+  version: "1.0"
+servers:
+- url: /
+paths:
+  /api/network/predict:
+    post:
+      operationId: predict_result
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictingData"
+        description: Predicting data
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  format: double
+                  type: number
+                type: array
+          description: Successful operation
+      summary: Predicts the result using the given network and input data
+      tags:
+      - Network
+      x-openapi-router-controller: match_predicting_ann_server_pub_api.controllers.network_controller
+  /api/network/train:
+    post:
+      operationId: start_training
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingData"
+        description: Training data
+        required: true
+      responses:
+        default:
+          content:
+            application/json: {}
+          description: default response
+      summary: Starts the training with the given data
+      tags:
+      - Network
+      x-openapi-router-controller: match_predicting_ann_server_pub_api.controllers.network_controller
+  /dummy:
+    get:
+      operationId: dummy
+      responses:
+        default:
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DummyDTO"
+          description: default response
+      tags:
+      - Dummy
+      x-openapi-router-controller: match_predicting_ann_server_pub_api.controllers.dummy_controller
+components:
+  schemas:
+    DummyDTO:
+      example:
+        trainingProgressMessage:
+          precision: 6.027456183070403
+          progress: 0.8008281904610115
+      properties:
+        trainingProgressMessage:
+          $ref: "#/components/schemas/TrainingProgressMessage"
+      title: DummyDTO
+      type: object
+    TrainingProgressMessage:
+      example:
+        precision: 6.027456183070403
+        progress: 0.8008281904610115
+      properties:
+        progress:
+          format: double
+          title: progress
+          type: number
+        precision:
+          format: double
+          title: precision
+          type: number
+      title: TrainingProgressMessage
+      type: object
+    NetworkDTO:
+      example:
+        sizes: sizes
+        biases: biases
+        weights: weights
+      properties:
+        sizes:
+          title: sizes
+          type: string
+        biases:
+          title: biases
+          type: string
+        weights:
+          title: weights
+          type: string
+      title: NetworkDTO
+      type: object
+    PredictingData:
+      example:
+        networkData:
+          sizes: sizes
+          biases: biases
+          weights: weights
+        inputs:
+        - 0.8008281904610115
+        - 0.8008281904610115
+      properties:
+        networkData:
+          $ref: "#/components/schemas/NetworkDTO"
+        inputs:
+          items:
+            format: double
+            type: number
+          title: inputs
+          type: array
+      title: PredictingData
+      type: object
+    TrainingData:
+      example:
+        trainingDTO:
+          seasons:
+          - 6
+          - 6
+          competitionIds:
+          - 0
+          - 0
+          trainingNetwork:
+            ignoreMatchesWithInsufficientData: true
+            numberOfLastCommonMatches: 7
+            numberOfMatchesForTeamHardFactor: 9
+            networkVersion: 5
+            numberOfLastMatches: 2
+            numberOfMatchesForPlayerHardFactor: 3
+          numberOfEpochs: 1
+          learningRate: 5.962133916683182
+        sizes:
+        - 1
+        - 1
+        startingTime: 2
+        matches:
+        - result:
+          - 7
+          - 7
+          inputs:
+          - 4.145608029883936
+          - 4.145608029883936
+        - result:
+          - 7
+          - 7
+          inputs:
+          - 4.145608029883936
+          - 4.145608029883936
+      properties:
+        trainingDTO:
+          $ref: "#/components/schemas/TrainingRequestDTO"
+        startingTime:
+          format: int64
+          title: startingTime
+          type: integer
+        matches:
+          items:
+            $ref: "#/components/schemas/TrainingMatchDTO"
+          title: matches
+          type: array
+        sizes:
+          items:
+            format: int32
+            type: integer
+          title: sizes
+          type: array
+      title: TrainingData
+      type: object
+    TrainingMatchDTO:
+      example:
+        result:
+        - 7
+        - 7
+        inputs:
+        - 4.145608029883936
+        - 4.145608029883936
+      properties:
+        inputs:
+          items:
+            format: double
+            type: number
+          title: inputs
+          type: array
+        result:
+          items:
+            format: int32
+            type: integer
+          title: result
+          type: array
+      title: TrainingMatchDTO
+      type: object
+    TrainingNetworkDTO:
+      example:
+        ignoreMatchesWithInsufficientData: true
+        numberOfLastCommonMatches: 7
+        numberOfMatchesForTeamHardFactor: 9
+        networkVersion: 5
+        numberOfLastMatches: 2
+        numberOfMatchesForPlayerHardFactor: 3
+      properties:
+        networkVersion:
+          format: int32
+          title: networkVersion
+          type: integer
+        ignoreMatchesWithInsufficientData:
+          title: ignoreMatchesWithInsufficientData
+          type: boolean
+        numberOfLastMatches:
+          format: int32
+          title: numberOfLastMatches
+          type: integer
+        numberOfLastCommonMatches:
+          format: int32
+          title: numberOfLastCommonMatches
+          type: integer
+        numberOfMatchesForTeamHardFactor:
+          format: int32
+          title: numberOfMatchesForTeamHardFactor
+          type: integer
+        numberOfMatchesForPlayerHardFactor:
+          format: int32
+          title: numberOfMatchesForPlayerHardFactor
+          type: integer
+      title: TrainingNetworkDTO
+      type: object
+    TrainingRequestDTO:
+      example:
+        seasons:
+        - 6
+        - 6
+        competitionIds:
+        - 0
+        - 0
+        trainingNetwork:
+          ignoreMatchesWithInsufficientData: true
+          numberOfLastCommonMatches: 7
+          numberOfMatchesForTeamHardFactor: 9
+          networkVersion: 5
+          numberOfLastMatches: 2
+          numberOfMatchesForPlayerHardFactor: 3
+        numberOfEpochs: 1
+        learningRate: 5.962133916683182
+      properties:
+        competitionIds:
+          items:
+            format: int64
+            type: integer
+          title: competitionIds
+          type: array
+        seasons:
+          items:
+            format: int32
+            type: integer
+          title: seasons
+          type: array
+        numberOfEpochs:
+          format: int64
+          title: numberOfEpochs
+          type: integer
+        learningRate:
+          format: double
+          title: learningRate
+          type: number
+        trainingNetwork:
+          $ref: "#/components/schemas/TrainingNetworkDTO"
+      title: TrainingRequestDTO
+      type: object
