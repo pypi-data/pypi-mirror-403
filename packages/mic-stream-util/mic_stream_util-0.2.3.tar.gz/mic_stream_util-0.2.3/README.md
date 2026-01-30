@@ -1,0 +1,402 @@
+# Microphone Stream Utility
+
+A Python utility for managing microphone streams with support for both manual reading and callback-based processing, plus optional Voice Activity Detection (VAD).
+
+## Features
+
+- **Multi-process audio capture**: Audio is captured in a separate process to avoid blocking the main thread
+- **Shared memory buffer**: Efficient data transfer between processes using shared memory
+- **Flexible audio configuration**: Configurable sample rate, channels, data type, and buffer settings
+- **Callback support**: Process audio data automatically in a separate thread
+- **Manual reading**: Traditional read-based approach for custom processing
+- **Device management**: Automatic device detection and selection
+- **Context manager support**: Easy stream lifecycle management
+- **Voice Activity Detection (VAD)**: Optional speech detection using Silero VAD (requires additional dependencies)
+
+## Installation
+
+### Basic Installation (Core Features Only)
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd mic-stream-util
+
+# Install core dependencies only
+uv sync
+```
+
+### With Voice Activity Detection (VAD)
+
+```bash
+# Install with VAD support (includes torch and silero-vad)
+uv add mic-stream-util[vad]
+
+# Or if installing from source
+uv sync --extra vad
+```
+
+## Quick Start
+
+### Basic Usage (Manual Reading)
+
+```python
+from mic_stream_util import MicrophoneStream, AudioConfig
+import numpy as np
+
+# Create configuration
+config = AudioConfig(
+    sample_rate=16000,
+    channels=1,
+    dtype="float32",
+    num_samples=1024
+)
+
+# Create and use microphone stream
+mic_stream = MicrophoneStream(config)
+
+with mic_stream.stream():
+    while True:
+        # Read audio data manually
+        audio_data = mic_stream.read()
+        print(f"Audio shape: {audio_data.shape}")
+        # Process audio_data as needed
+```
+
+### Callback Mode
+
+```python
+from mic_stream_util import MicrophoneStream, AudioConfig
+import numpy as np
+
+def audio_callback(audio_data: np.ndarray) -> None:
+    """Process audio data automatically."""
+    rms = np.sqrt(np.mean(audio_data**2))
+    print(f"Audio level: {rms:.4f}")
+
+# Create configuration
+config = AudioConfig(
+    sample_rate=16000,
+    channels=1,
+    dtype="float32",
+    num_samples=1024
+)
+
+# Create microphone stream
+mic_stream = MicrophoneStream(config)
+
+# Set callback function
+mic_stream.set_callback(audio_callback)
+
+# Start streaming - callback will be called automatically
+with mic_stream.stream():
+    # Keep main thread alive
+    import time
+    while True:
+        time.sleep(0.1)
+```
+
+### Voice Activity Detection (VAD)
+
+```python
+from mic_stream_util import SpeechManager, VADConfig, AudioConfig, SpeechChunk
+
+# Check if VAD is available
+from mic_stream_util import VAD_AVAILABLE
+if not VAD_AVAILABLE:
+    print("VAD requires additional dependencies. Install with: uv sync --extra vad")
+    exit(1)
+
+# Create configurations
+audio_config = AudioConfig(sample_rate=16000, dtype="float32", num_samples=512)
+vad_config = VADConfig(threshold=0.5, padding_before_ms=300, padding_after_ms=300)
+
+# Create speech manager
+speech_manager = SpeechManager(audio_config=audio_config, vad_config=vad_config)
+
+def on_speech_start(timestamp: float) -> None:
+    print(f"Speech started at {timestamp:.2f}s")
+
+def on_vad_changed(vad_score: float) -> None:
+    print(f"VAD score: {vad_score:.3f}")
+
+def on_speech_chunk(chunk: SpeechChunk, vad_score: float) -> None:
+    print(f"Speech chunk: {chunk.duration:.2f}s, VAD: {vad_score:.3f}")
+
+def on_speech_ended(chunk: SpeechChunk) -> None:
+    print(f"Speech ended, duration: {chunk.duration:.2f}s")
+
+# Set callbacks
+speech_manager.set_callbacks(
+    on_speech_start=on_speech_start,
+    on_vad_changed=on_vad_changed,
+    on_speech_chunk=on_speech_chunk,
+    on_speech_ended=on_speech_ended
+)
+
+# Start VAD
+with speech_manager.stream_context():
+    import time
+    while True:
+        time.sleep(0.1)
+```
+
+## Command Line Interface
+
+The package includes a CLI with various commands:
+
+```bash
+# List audio devices
+mic devices [filter]              # Also: mic d, mic ls, mic list
+mic diagnose                      # Also: mic diag, mic debug
+mic device-info <device>          # Also: mic i, mic info
+
+# Audio monitoring and recording
+mic monitor                       # Also: mic m, mic mon
+mic record --output recording.wav # Also: mic r, mic rec
+mic spectrum                      # Also: mic s, mic spec
+mic loopback                      # Record and playback
+
+# Voice Activity Detection (requires VAD dependencies)
+mic vad                           # Also: mic v
+mic vad-debug                     # Also: mic vd
+
+# Device management (Pipewire only)
+mic route [device]                # Also: mic rt
+
+# Performance and testing
+mic latency-test
+mic cpu-usage
+mic memory-usage
+```
+
+## API Reference
+
+### Core Classes
+
+#### MicrophoneStream
+
+Main class for managing microphone streams.
+
+#### Constructor
+
+```python
+MicrophoneStream(config: AudioConfig | None = None)
+```
+
+- `config`: Audio configuration. If None, uses default configuration.
+
+#### Methods
+
+##### `set_callback(callback: Callable[[np.ndarray], None] | None)`
+
+Set a callback function to be called when audio data is available.
+
+- `callback`: Function that accepts a numpy array with shape (num_samples, channels)
+- If `None`, callback mode is disabled
+
+##### `clear_callback()`
+
+Clear the callback function and disable callback mode.
+
+##### `has_callback() -> bool`
+
+Check if a callback function is set.
+
+##### `start_stream()`
+
+Start the microphone stream in a separate process.
+
+##### `stop_stream()`
+
+Stop the microphone stream and clean up resources.
+
+##### `stream()`
+
+Context manager for automatic stream start/stop.
+
+##### `is_streaming() -> bool`
+
+Check if the stream is currently active.
+
+##### `read_raw(num_samples: int) -> bytes`
+
+Read raw audio data from the stream buffer.
+
+**Note**: This method is disabled when callback mode is active.
+
+##### `read(num_samples: int | None = None) -> np.ndarray`
+
+Read audio data from the stream buffer.
+
+**Note**: This method is disabled when callback mode is active.
+
+### AudioConfig
+
+Configuration class for audio settings.
+
+#### Constructor
+
+```python
+AudioConfig(
+    sample_rate: int = 16000,
+    channels: int = 1,
+    dtype: str = "float32",
+    blocksize: int = None,
+    buffer_size: int | None = None,
+    device: int | None = None,
+    device_name: str | None = None,
+    latency: str = "low",
+    num_samples: int = 512
+)
+```
+
+#### Parameters
+
+- `sample_rate`: Sample rate in Hz
+- `channels`: Number of audio channels
+- `dtype`: Data type ("float32", "int32", "int16", "int8", "uint8")
+- `blocksize`: Audio block size (defaults to sample_rate // 10)
+- `buffer_size`: Buffer size in samples (defaults to sample_rate * 10)
+- `device`: Device index
+- `device_name`: Device name (will be used to find device index)
+- `latency`: Latency setting ("low" or "high")
+- `num_samples`: Number of samples to process at a time
+
+### Speech Classes (VAD Dependencies Required)
+
+#### SpeechManager
+
+Main class for Voice Activity Detection.
+
+**Note**: Silero VAD only supports:
+- 16000 Hz sample rate with 512 samples per chunk
+- 8000 Hz sample rate with 256 samples per chunk
+
+The `SpeechManager` will automatically adjust `num_samples` if needed.
+
+#### Constructor
+
+```python
+SpeechManager(audio_config: AudioConfig, vad_config: VADConfig)
+```
+
+#### Methods
+
+##### `set_callbacks(...)`
+
+Set callbacks for speech events:
+
+- `on_speech_start(timestamp: float) -> None`: Called when speech starts
+- `on_vad_changed(vad_score: float) -> None`: Called when VAD score changes
+- `on_speech_chunk(chunk: SpeechChunk, vad_score: float) -> None`: Called for each speech chunk
+- `on_audio_chunk(audio: np.ndarray, timestamp: float) -> None`: Called for all audio chunks
+- `on_speech_ended(chunk: SpeechChunk) -> None`: Called when speech segment ends
+
+##### `stream_context()`
+
+Context manager for automatic stream start/stop.
+
+##### `get_buffer_stats() -> dict`
+
+Get buffer statistics for monitoring.
+
+#### VADConfig
+
+Configuration for Voice Activity Detection.
+
+```python
+VADConfig(
+    threshold: float = 0.5,
+    padding_before_ms: int = 300,
+    padding_after_ms: int = 300,
+    max_silence_ms: int = 1000,
+    min_speech_duration_ms: int = 250,
+    max_speech_duration_s: float = 60.0
+)
+```
+
+#### SpeechChunk
+
+Represents a chunk of speech audio with timing information.
+
+```python
+@dataclass
+class SpeechChunk:
+    audio_chunk: np.ndarray
+    start_time: float
+    end_time: float
+    duration: float
+```
+
+#### CallbackProcessor
+
+Handles callback execution in a separate thread. Used internally by SpeechManager.
+
+#### CallbackEvent / CallbackEventType
+
+Event types for callback processing. Used internally by SpeechManager.
+
+### Backend Classes
+
+#### DeviceBackend
+
+Base class for device management backends. Automatically selects appropriate backend (Pipewire or Sounddevice).
+
+#### DeviceInfo
+
+Information about an audio device.
+
+```python
+@dataclass
+class DeviceInfo:
+    index: int
+    name: str
+    hostapi: int
+    max_input_channels: int
+    max_output_channels: int
+    default_samplerate: float
+    # ... additional fields
+```
+
+## Examples
+
+See the `examples/` directory for complete demonstrations:
+- `example_usage.py` - Basic microphone usage
+- `example_callback_usage.py` - Callback-based processing
+- `example_speech_usage.py` - Voice Activity Detection
+
+## Important Notes
+
+### Optional Dependencies
+
+- **Core functionality**: Works without any additional dependencies
+- **VAD functionality**: Requires `torch` and `silero-vad` (install with `uv sync --extra vad`)
+- **Check availability**: Use `from mic_stream_util import VAD_AVAILABLE` to check if VAD is available
+- **Backends**: Automatically uses Pipewire backend on Linux if available, otherwise falls back to Sounddevice
+
+### Callback Mode vs Manual Reading
+
+- **Callback Mode**: Audio data is automatically processed in a separate thread. The `read()` and `read_raw()` methods are disabled.
+- **Manual Reading**: You must manually call `read()` or `read_raw()` to get audio data.
+
+### Thread Safety
+
+- Callback functions are called in a separate thread, so ensure thread-safe operations
+- The callback function should handle exceptions gracefully as they won't stop the stream
+
+### Resource Management
+
+- Always use the context manager (`with mic_stream.stream():`) or call `stop_stream()` to clean up resources
+- The stream uses shared memory, so proper cleanup is important
+
+## Development
+
+```bash
+# Install development dependencies
+uv sync --extra vad
+
+# Run examples
+uv run examples/example_callback_usage.py
+uv run examples/example_speech_usage.py
+```
