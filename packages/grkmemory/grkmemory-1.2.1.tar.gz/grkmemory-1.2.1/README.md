@@ -1,0 +1,407 @@
+# 🧠 GRKMemory - Graph Retrieve Knowledge Memory
+
+> **GRKMemory** = **G**raph **R**etrieve **K**nowledge **Memory**
+
+[![PyPI version](https://badge.fury.io/py/grkmemory.svg)](https://badge.fury.io/py/grkmemory)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**GRKMemory** é um sistema de memória semântica baseado em grafos para agentes de IA, desenvolvido pelo time **MonkAI**. Recuperação inteligente de conhecimento com economia de 95% em tokens.
+
+## 🚀 Começando
+
+### 1️⃣ Instalação
+
+```bash
+pip install grkmemory
+```
+
+### 2️⃣ Obter Token de Acesso
+
+Para utilizar o GRKMemory, você precisa de um token fornecido pelo time **MonkAI**:
+
+📧 **Contato:** contato@monkai.com.br  
+🌐 **Site:** [www.monkai.com.br](https://www.monkai.com.br)
+
+### 3️⃣ Configurar Token
+
+```bash
+# Configurar como variável de ambiente
+export GRKMEMORY_API_KEY="grk_seu_token_aqui"
+
+# OpenAI (padrão)
+export OPENAI_API_KEY="sua_openai_key"
+
+# OU Azure OpenAI
+export USE_AZURE_OPENAI="true"
+export AZURE_OPENAI_API_KEY="sua_azure_key"
+export AZURE_OPENAI_ENDPOINT="https://seu-recurso.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-3-small"
+```
+
+### 4️⃣ Autenticar e Usar
+
+```python
+from grkmemory import GRKMemory, GRKAuth, AuthenticatedGRK
+
+# Autenticar com token MonkAI
+auth = GRKAuth.from_env()  # Usa GRKMEMORY_API_KEY
+print("✅ Autenticado!")
+
+# Inicializar GRKMemory protegido
+grk = GRKMemory()
+secure = AuthenticatedGRK(grk, auth.get_current_token())
+
+# Usar!
+secure.save_conversation([
+    {"role": "user", "content": "Olá!"},
+    {"role": "assistant", "content": "Oi! Como posso ajudar?"}
+])
+
+results = secure.search("Olá")
+```
+
+## 🎯 Quick Start (Completo)
+
+```python
+from grkmemory import GRKMemory, GRKAuth, AuthenticatedGRK
+import os
+
+# 1. Autenticar
+api_key = os.getenv("GRKMEMORY_API_KEY")
+auth = GRKAuth()
+auth.authenticate(api_key)
+
+# 2. Criar GRKMemory autenticado
+grk = GRKMemory()
+secure = AuthenticatedGRK(grk, api_key)
+
+# 3. Salvar conversa
+secure.save_conversation([
+    {"role": "user", "content": "Vamos falar sobre Python"},
+    {"role": "assistant", "content": "Claro! O que você quer saber?"}
+])
+
+# 4. Buscar memórias relevantes
+results = secure.search("O que discutimos sobre Python?")
+
+# 5. Chat com contexto de memória automático
+response = secure.chat("Me conte sobre nossas discussões anteriores")
+```
+
+## 🔐 Autenticação
+
+### Token MonkAI
+
+A autenticação é uma camada de proteção fornecida pelo time **MonkAI**. Todos os recursos requerem um token válido.
+
+| Permissão | Descrição |
+|-----------|-----------|
+| `read` | Buscar e consultar memórias |
+| `write` | Salvar novas memórias |
+| `admin` | Gerenciamento completo |
+
+### Métodos de Autenticação
+
+```python
+from grkmemory import GRKAuth
+
+# Método 1: Via variável de ambiente (recomendado)
+auth = GRKAuth.from_env()  # Usa GRKMEMORY_API_KEY
+
+# Método 2: Diretamente
+auth = GRKAuth()
+auth.authenticate("grk_seu_token")
+
+# Verificar permissões
+print(f"Pode ler: {auth.check_permission('read')}")
+print(f"Pode escrever: {auth.check_permission('write')}")
+```
+
+> ⚠️ **Importante:** Tokens são fornecidos exclusivamente pelo time MonkAI.
+
+## ⚙️ Configuração
+
+```python
+from grkmemory import GRKMemory, MemoryConfig
+
+config = MemoryConfig(
+    model="gpt-4o",
+    memory_file="minhas_memorias.json",
+    enable_embeddings=True,
+    background_memory_method="graph",  # 'graph', 'embedding', 'tags', 'entities'
+    background_memory_limit=5,
+    background_memory_threshold=0.3,
+    storage_format="json",   # 'json' (padrão) ou 'toon'
+    output_format="json"     # 'json', 'toon' ou 'text'
+)
+
+grk = GRKMemory(config=config)
+```
+
+## ☁️ Azure OpenAI
+
+GRKMemory suporta Azure OpenAI nativamente. Configure via variáveis de ambiente ou código:
+
+### Via Variáveis de Ambiente
+
+```bash
+export USE_AZURE_OPENAI="true"
+export AZURE_OPENAI_API_KEY="sua-api-key"
+export AZURE_OPENAI_ENDPOINT="https://seu-recurso.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-3-small"
+export AZURE_OPENAI_API_VERSION="2024-02-01"  # opcional
+```
+
+### Via Código
+
+```python
+from grkmemory import GRKMemory, MemoryConfig
+
+# Configuração Azure OpenAI
+config = MemoryConfig(
+    use_azure=True,
+    api_key="sua-azure-api-key",
+    azure_endpoint="https://seu-recurso.openai.azure.com",
+    azure_deployment="gpt-4o",
+    azure_embedding_deployment="text-embedding-3-small",
+    azure_api_version="2024-02-01"
+)
+
+grk = GRKMemory(config=config)
+```
+
+### Tabela de Configurações Azure
+
+| Variável | Config | Descrição |
+|----------|--------|-----------|
+| `USE_AZURE_OPENAI` | `use_azure` | Ativar Azure (true/false) |
+| `AZURE_OPENAI_API_KEY` | `api_key` | Chave da API Azure |
+| `AZURE_OPENAI_ENDPOINT` | `azure_endpoint` | URL do recurso Azure |
+| `AZURE_OPENAI_DEPLOYMENT` | `azure_deployment` | Nome do deployment (chat) |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | `azure_embedding_deployment` | Nome do deployment (embeddings) |
+| `AZURE_OPENAI_API_VERSION` | `azure_api_version` | Versão da API (default: 2024-02-01) |
+
+## 📦 Formatos de Armazenamento (JSON vs TOON)
+
+GRKMemory suporta dois formatos de serialização:
+
+| Formato | Vantagem | Uso Recomendado |
+|---------|----------|-----------------|
+| **JSON** | Parsing 27x mais rápido | Armazenamento (padrão) |
+| **TOON** | 25% menos tokens | Contexto para LLM |
+
+### Instalando TOON (opcional)
+
+```bash
+pip install toon_format
+```
+
+### Estratégia Híbrida (Recomendada)
+
+```python
+from grkmemory import MemoryRepository
+
+# JSON para armazenamento (rápido) + TOON para LLM (economia de tokens)
+repo = MemoryRepository(
+    memory_file="memorias.json",
+    storage_format="json",      # Parsing rápido
+    output_format="toon"        # 25% menos tokens para LLM
+)
+
+# Buscar e formatar para LLM
+results = repo.search("Python")
+context = repo.format_for_llm(results)  # Retorna em TOON (~25% menos tokens)
+```
+
+### Comparando Formatos
+
+```python
+# Estimar economia de tokens
+estimates = repo.get_token_estimate(results)
+print(estimates)
+# {'json': 689, 'toon': 512, 'savings_toon_vs_json': '25.7%'}
+```
+
+### Convertendo entre Formatos
+
+```python
+# Exportar para TOON
+repo.export("backup.toon", format="toon")
+
+# Converter armazenamento para TOON
+repo.convert_storage_format("toon")
+```
+
+## 🔓 Modo Offline (Sem Token)
+
+Você pode usar o `MemoryRepository` **sem token/API key** quando embeddings estão desabilitados:
+
+```python
+from grkmemory import MemoryRepository
+
+# Modo offline - não precisa de API key
+repo = MemoryRepository(
+    memory_file="memories.json",
+    enable_embeddings=False  # ← Chave: desabilitar embeddings
+)
+
+# Funcionalidades disponíveis sem token:
+# ✅ Salvar memórias
+repo.save({
+    "summary": "Conversa sobre Python",
+    "tags": ["python", "programação"],
+    "entities": ["Python"],
+    "key_points": ["Linguagem interpretada"]
+})
+
+# ✅ Buscar por tags
+results = repo.search("python", method="tags")
+
+# ✅ Buscar por entities
+results = repo.search("Python", method="entities")
+
+# ✅ Buscar por grafo (sem embeddings)
+results = repo.search("programação", method="graph")
+
+# ❌ Busca por embedding requer API key
+# results = repo.search("query", method="embedding")  # Retorna vazio sem API key
+```
+
+> **Nota:** `GRKMemory` e `MemoryConfig` **requerem** API key. Apenas `MemoryRepository` com `enable_embeddings=False` funciona sem token.
+
+## 💾 Salvando Conversas em JSON
+
+O GRKMemory salva automaticamente as conversas em um arquivo JSON estruturado:
+
+### Estrutura do JSON
+
+```json
+{
+  "sessoes": [
+    {
+      "id": "sess_abc123",
+      "timestamp": "2025-01-09T12:00:00",
+      "summary": "Discussão sobre Python e IA",
+      "tags": ["python", "ia", "programação"],
+      "entities": ["Python", "OpenAI", "GPT"],
+      "concepts": ["machine learning", "api"],
+      "messages": [
+        {"role": "user", "content": "..."},
+        {"role": "assistant", "content": "..."}
+      ]
+    }
+  ]
+}
+```
+
+### Usando o MemoryRepository diretamente
+
+```python
+from grkmemory import MemoryRepository
+
+# Inicializar repositório
+repo = MemoryRepository(memory_file="minhas_memorias.json")
+
+# Salvar memória estruturada
+memoria = {
+    "summary": "Conversa sobre Python",
+    "tags": ["python", "programação"],
+    "entities": ["Python", "VS Code"],
+    "concepts": ["sintaxe", "bibliotecas"],
+    "messages": [
+        {"role": "user", "content": "Como instalar Python?"},
+        {"role": "assistant", "content": "Baixe em python.org..."}
+    ]
+}
+repo.save(memoria)
+
+# Buscar memórias
+resultados = repo.search("Python", method="tags")
+```
+
+## 📊 Métodos de Busca
+
+| Método | Descrição |
+|--------|-----------|
+| `graph` | Grafo semântico (recomendado) |
+| `embedding` | Similaridade vetorial |
+| `tags` | Busca por tags |
+| `entities` | Busca por entidades |
+
+```python
+# Busca por grafo semântico
+results = secure.search("IA", method="graph")
+
+# Busca por embedding
+results = secure.search("machine learning", method="embedding")
+```
+
+## 📈 Estatísticas
+
+```python
+# Estatísticas gerais
+stats = secure.get_stats()
+print(f"Total de memórias: {stats['total_memories']}")
+
+# Estatísticas do grafo
+graph_stats = secure.get_graph_stats()
+print(f"Nós: {graph_stats['total_nodes']}")
+print(f"Arestas: {graph_stats['total_edges']}")
+```
+
+## 📁 Estrutura do Projeto
+
+```
+GRKMemory/
+├── grkmemory/              # 📦 Pacote principal
+│   ├── core/               # Classes principais
+│   ├── memory/             # Repositório de memória
+│   ├── graph/              # Grafo semântico
+│   ├── auth/               # Autenticação
+│   └── utils/              # Utilitários
+├── examples/               # 💡 Exemplos de uso
+├── papers/                 # 📄 Documentação técnica
+└── README.md
+```
+
+## 📚 Exemplos
+
+Veja a pasta `examples/` para exemplos completos:
+
+| Exemplo | Descrição |
+|---------|-----------|
+| `01_basic_usage.py` | Uso básico |
+| `02_custom_config.py` | Configuração personalizada |
+| `03_chatbot_with_memory.py` | Chatbot com memória |
+| `04_graph_analysis.py` | Análise do grafo |
+| `05_batch_processing.py` | Processamento em lote |
+| `06_authentication.py` | Uso com autenticação |
+| `07_storage_formats.py` | Formatos de armazenamento (JSON/TOON) |
+| `08_azure_openai.py` | **Integração com Azure OpenAI** |
+
+## 🔬 Performance
+
+| Métrica | Context Window | GRKMemory |
+|---------|----------------|-----------|
+| Tokens/query | ~50.000 | ~2.500 |
+| Economia | - | **95%** |
+| Precisão | Variável | **95%** |
+| Velocidade | Lenta | **10x mais rápido** |
+
+## 📞 Contato
+
+Para obter seu token de acesso ou suporte:
+
+📧 **Email:** contato@monkai.com.br  
+🌐 **Site:** [www.monkai.com.br](https://www.monkai.com.br)
+
+## 📄 Licença
+
+MIT License - veja [LICENSE](LICENSE)
+
+## 👨‍💻 Autor
+
+**Arthur Vaz** - [MonkAI](https://www.monkai.com.br)
