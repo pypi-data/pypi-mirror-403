@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ site.daisyui_theme }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ page.title }}{% if site.title %} - {{ site.title }}{% endif %}{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    typography: {
+                        DEFAULT: {
+                            css: {
+                                maxWidth: 'none',
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    </script>
+    {% block head %}{% endblock %}
+    <style>
+        .nav-tree a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+</head>
+<body class="min-h-screen bg-base-100">
+    <div class="drawer lg:drawer-open">
+        <input id="nav-drawer" type="checkbox" class="drawer-toggle" />
+
+        <div class="drawer-content flex flex-col">
+            <!-- Navbar -->
+            <div class="navbar bg-base-200 lg:hidden">
+                <div class="flex-none">
+                    <label for="nav-drawer" class="btn btn-square btn-ghost drawer-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-5 h-5 stroke-current">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </label>
+                </div>
+                <div class="flex-1">
+                    <span class="text-lg font-semibold">{{ site.title or 'Documentation' }}</span>
+                </div>
+                <div class="flex-none">
+                    {% include "components/theme_toggle.html" %}
+                </div>
+            </div>
+
+            <!-- Main content -->
+            <main class="flex-1 p-4 lg:p-8">
+                <div class="max-w-4xl mx-auto">
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="drawer-side z-40">
+            <label for="nav-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+            <aside class="bg-base-200 min-h-full w-64 p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <a href="/" class="text-lg font-bold">{{ site.title or 'Home' }}</a>
+                    <div class="hidden lg:block">
+                        {% include "components/theme_toggle.html" %}
+                    </div>
+                </div>
+                {% if site.nav and site.nav.children %}
+                {% include "components/nav.html" %}
+                {% endif %}
+            </aside>
+        </div>
+    </div>
+    {% block footer %}{% endblock %}
+    <script>
+        // Theme toggle functionality
+        document.querySelectorAll('.theme-controller').forEach(function(el) {
+            el.addEventListener('change', function() {
+                const theme = this.checked ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                // Sync all theme toggles
+                document.querySelectorAll('.theme-controller').forEach(function(toggle) {
+                    toggle.checked = theme === 'dark';
+                });
+            });
+        });
+        // Sync checkbox state on load
+        (function() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            document.querySelectorAll('.theme-controller').forEach(function(el) {
+                el.checked = theme === 'dark';
+            });
+        })();
+
+        // Nav state persistence
+        (function() {
+            const STORAGE_KEY = 'rockgarden-nav-state';
+
+            function getNavState() {
+                try {
+                    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+                } catch {
+                    return {};
+                }
+            }
+
+            function saveNavState(state) {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            }
+
+            // Restore state on load
+            const state = getNavState();
+            document.querySelectorAll('.nav-tree details[data-nav-path]').forEach(function(el) {
+                const path = el.dataset.navPath;
+                if (path in state) {
+                    el.open = state[path];
+                }
+            });
+
+            // Save state on toggle
+            document.querySelectorAll('.nav-tree details[data-nav-path]').forEach(function(el) {
+                el.addEventListener('toggle', function() {
+                    const state = getNavState();
+                    state[this.dataset.navPath] = this.open;
+                    saveNavState(state);
+                });
+            });
+
+            // Folder link click: expand and navigate
+            document.querySelectorAll('.nav-folder-link').forEach(function(link) {
+                link.addEventListener('click', function(e) {
+                    const details = this.closest('details');
+                    if (details && !details.open) {
+                        details.open = true;
+                        const state = getNavState();
+                        state[details.dataset.navPath] = true;
+                        saveNavState(state);
+                    }
+                    // Don't prevent default - let the link navigate
+                    // But stop propagation so summary doesn't toggle
+                    e.stopPropagation();
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
