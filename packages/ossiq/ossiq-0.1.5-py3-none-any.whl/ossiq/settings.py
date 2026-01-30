@@ -1,0 +1,39 @@
+# config.py
+
+from typing import ClassVar
+
+from pydantic import BaseModel, Field
+
+ENV_PREFIX = "OSSIQ_"
+
+
+class Settings(BaseModel):
+    """
+    The immutable configuration object for the CLI tool.
+    Pydantic handles environment variable loading (using the field names).
+    """
+
+    # Configuration to make the instance immutable (read-only after creation)
+    # Use 'frozen=True' in Pydantic v2
+    model_config = {
+        "frozen": True,
+        "env_prefix": ENV_PREFIX,
+        "extra": "ignore",
+    }
+
+    # Configuration Fields
+    github_token: str | None = Field(
+        default=None, description="Optional Github Token to authorize calls to the Github API and overcome limits"
+    )
+
+    presentation: str = Field(default="console", description="How to present results, options: console, html")
+
+    verbose: bool = Field(default=False, description="Enable verbose output")
+
+    # Store the environment prefix for reference (not a setting itself)
+    ENV_PREFIX: ClassVar[str] = ENV_PREFIX
+
+    @classmethod
+    def load_from_env(cls) -> "Settings":
+        """Load settings from defaults and environment variables."""
+        return cls()
