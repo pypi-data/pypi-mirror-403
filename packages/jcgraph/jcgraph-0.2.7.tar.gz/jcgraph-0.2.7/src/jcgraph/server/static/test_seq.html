@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Sequence</title>
+    <script src="/static/js/lib/alpine.min.js" defer></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8">
+    <div x-data="{
+        sequenceData: null,
+        depth: 3,
+        minImportance: 50,
+        loading: false,
+        async loadData() {
+            this.loading = true;
+            const response = await fetch(`/api/graph/sequence/com.ctrip.train.intl.offline.soa.soa.IntlOfflineServiceImpl%23getProductCardInfo?depth=${this.depth}&min_importance=${this.minImportance}`);
+            this.sequenceData = await response.json();
+            console.log('Loaded:', this.sequenceData);
+            this.loading = false;
+        },
+        renderSequence(node, depth) {
+            if (!node || !node.calls) {
+                console.log('No calls at depth', depth);
+                return '';
+            }
+
+            console.log('Rendering', node.calls.length, 'calls at depth', depth);
+            let html = '';
+            const indent = '  '.repeat(depth);
+
+            for (const call of node.calls) {
+                if (!call.resolved) {
+                    html += `<div style=\"padding-left: ${depth * 20}px\">${indent}├─ [L${call.line}] ${call.raw}</div>`;
+                    continue;
+                }
+
+                const method = call.method;
+                const methodDisplay = method.name || method.id;
+                const classDisplay = method.class_name ? method.class_name.split('.').pop() : '';
+                const importance = method.importance_score || 0;
+
+                const importanceTag = ` <span style="color: ${importance >= 50 ? 'green' : 'orange'}; font-size: 0.8em;">[${importance}]</span>`;
+
+                html += `<div style=\"padding-left: ${depth * 20}px; color: blue;\">
+                    ${indent}├─ [L${call.line}] ${methodDisplay}() ${classDisplay}${importanceTag}
+                </div>`;
+
+                if (call.calls && call.calls.length > 0) {
+                    html += this.renderSequence(call, depth + 1);
+                }
+            }
+
+            return html;
+        }
+    }" x-init="loadData()">
+        <h1 class="text-2xl font-bold mb-4">时序图测试</h1>
+
+        <!-- 参数控制 -->
+        <div class="mb-4 p-4 border rounded bg-gray-50">
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">深度 (Depth)</label>
+                    <input type="number" x-model.number="depth" min="1" max="10"
+                           class="border rounded px-3 py-1 w-full" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">最小重要度 (Min Importance)</label>
+                    <input type="number" x-model.number="minImportance" min="0" max="100"
+                           class="border rounded px-3 py-1 w-full" />
+                    <p class="text-xs text-gray-500 mt-1">低于此值的节点不展开</p>
+                </div>
+                <div class="flex items-end">
+                    <button @click="loadData()" :disabled="loading"
+                            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
+                            x-text="loading ? '加载中...' : '重新加载'">
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="loading" class="text-gray-500">加载中...</div>
+        
+        <div x-show="sequenceData" class="border p-4">
+            <div class="font-bold mb-4" x-text="sequenceData?.method?.name + '()'"></div>
+            <div class="font-mono text-sm">
+                <template x-if="sequenceData">
+                    <div x-html="renderSequence(sequenceData, 0)"></div>
+                </template>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

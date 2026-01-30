@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jcgraph - Java代码知识图谱</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/js/lib/alpine.min.js" defer></script>
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/java.min.js"></script>
+    <style>
+        /* 重要度级别样式 */
+        .node-critical {
+            color: #e53935;
+            font-weight: bold;
+        }
+        .node-important {
+            color: #1976d2;
+        }
+        .node-normal {
+            color: #666;
+        }
+        .node-auxiliary {
+            color: #aaa;
+        }
+
+        /* 折叠按钮样式 */
+        .fold-btn {
+            display: inline-block;
+            width: 28px;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            color: #666;
+            font-weight: bold;
+            margin-right: 4px;
+        }
+        .fold-btn:hover {
+            color: #1976d2;
+            background-color: #f0f0f0;
+            border-radius: 3px;
+        }
+
+        /* 节点容器 - 统一行高 */
+        .sequence-node {
+            display: flex;
+            align-items: center;
+            padding: 2px 0;
+            margin: 0;       /* 确保没有外边距 */
+            min-height: 28px;
+            line-height: 28px;
+        }
+
+        /* 子节点容器 */
+        .sequence-children {
+            margin-left: 0;
+        }
+        .sequence-children.folded {
+            display: none;
+        }
+
+        /* 重要度圆点图标 */
+        .importance-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            flex-shrink: 0;
+        }
+
+        .importance-critical .importance-dot {
+            background: #e53935;
+        }
+
+        .importance-important .importance-dot {
+            background: #1976d2;
+        }
+
+        .importance-normal .importance-dot {
+            background: #9e9e9e;
+        }
+
+        .importance-auxiliary .importance-dot {
+            background: #e0e0e0;
+        }
+
+        .importance-critical .method-name {
+            color: #e53935;
+            font-weight: bold;
+        }
+
+        .importance-important .method-name {
+            color: #1976d2;
+        }
+
+        .importance-normal .method-name {
+            color: #666;
+        }
+
+        .importance-auxiliary .method-name {
+            color: #aaa;
+        }
+
+        /* 代码弹窗样式 */
+        #codeModal .modal-container {
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #codeModal .modal-header {
+            flex-shrink: 0;
+        }
+
+        #codeModal .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        #codeModal .modal-footer {
+            flex-shrink: 0;
+        }
+
+        /* 代码块样式 */
+        #codeModalContent pre {
+            margin: 0;
+            overflow-x: auto;
+        }
+
+        #codeModalContent code {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            display: block;
+            white-space: pre;
+        }
+
+        /* 循环标记样式 */
+        .loop-tag {
+            display: inline-block;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            color: #d97706;
+            background-color: #fef3c7;
+            border: 1px solid #fbbf24;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+
+        /* 循环内调用的视觉指示 */
+        .sequence-node.in-loop {
+            border-left: 2px solid #fbbf24;
+            background-color: #fffbeb;
+        }
+
+        /* 分支标记样式 */
+        .branch-tag {
+            display: inline-block;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            color: #7c3aed;
+            background-color: #ede9fe;
+            border: 1px solid #a78bfa;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+
+        /* 行号样式 - 在树形图中隐藏 */
+        .line-number {
+            display: none;  /* 隐藏行号，将在详情面板中显示 */
+        }
+
+        /* 分支组样式 - 用浅色背景标识整个分支组 */
+        .branch-group {
+            margin: 0;  /* 移除外边距，与普通行保持一致 */
+            padding: 0;  /* 移除内边距 */
+            background: linear-gradient(to right, #faf5ff 0%, transparent 50%);
+            /* 移除左侧竖线 */
+        }
+
+        /* 分支调用行样式 - 与 .sequence-node 保持一致 */
+        .branch-call-row {
+            display: flex;
+            align-items: center;
+            padding: 2px 0;  /* 与 .sequence-node 一致 */
+            margin: 0;       /* 移除 margin，统一行间距 */
+            min-height: 28px;
+            line-height: 28px;
+        }
+
+        .branch-continuation {
+            /* 后续调用使用竖线连接 */
+            opacity: 0.95;
+        }
+
+        /* 分支条件样式 - 内联显示，不影响行高，长条件截断 */
+        .branch-condition {
+            display: inline-flex;
+            align-items: center;
+            background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+            border: 1px solid #a78bfa;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-weight: 600;
+            font-size: 11px;
+            color: #6d28d9;
+            margin: 0 4px 0 0;  /* 只有右边距 */
+            height: 20px;
+            line-height: 20px;
+            vertical-align: middle;
+            max-width: 300px;       /* 限制最大宽度 */
+            overflow: hidden;       /* 隐藏溢出 */
+            text-overflow: ellipsis;  /* 显示省略号 */
+            white-space: nowrap;    /* 不换行 */
+        }
+
+        .branch-condition:hover {
+            max-width: none;        /* hover 时显示完整内容 */
+            white-space: normal;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 分支子调用 */
+        .branch-subcalls {
+            margin-left: 0;
+        }
+
+        /* 方法签名样式 */
+        .method-name {
+            font-weight: 500;
+            color: #1e40af;
+        }
+
+        .method-name:hover {
+            color: #1e3a8a;
+        }
+
+        /* 虚拟调用边样式 */
+        .virtual-call-indicator {
+            display: inline-block;
+            margin: 0 4px;
+            font-size: 14px;
+        }
+
+        .virtual-call-tag {
+            display: inline-block;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            color: #0369a1;
+            background: linear-gradient(135deg, #bae6fd 0%, #7dd3fc 100%);
+            border: 1px solid #0ea5e9;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+
+        .sequence-node.virtual-caller {
+            border-left: 3px solid #0ea5e9;
+            background: linear-gradient(to right, #e0f2fe 0%, transparent 30%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div x-data="app()" x-init="init()" class="min-h-screen">
+        <!-- 顶部导航栏 -->
+        <nav class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <h1 class="text-xl font-bold text-gray-800">jcgraph</h1>
+                        <span class="text-sm text-gray-500" x-text="currentProject?.name"></span>
+                    </div>
+
+                    <!-- 搜索框 -->
+                    <div class="flex-1 max-w-md mx-8 relative">
+                        <input
+                            type="text"
+                            x-model="searchQuery"
+                            @input="debounceSearch()"
+                            @focus="searchFocused = true"
+                            placeholder="搜索类或方法..."
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+
+                        <!-- 搜索结果下拉 -->
+                        <div x-show="searchFocused && (searchResults.classes.length > 0 || searchResults.methods.length > 0 || searchResults.code_refs.length > 0)"
+                             @click.away="searchFocused = false"
+                             class="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-96 overflow-y-auto">
+
+                            <!-- 类结果 -->
+                            <div x-show="searchResults.classes.length > 0" class="p-2">
+                                <div class="text-xs font-semibold text-gray-500 px-2 py-1">类 (<span x-text="searchResults.classes.length"></span>)</div>
+                                <template x-for="cls in searchResults.classes" :key="cls.id">
+                                    <div @click="viewClass(cls)"
+                                         class="px-3 py-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <div class="font-medium text-sm" x-text="cls.name"></div>
+                                        <div class="text-xs text-gray-500 truncate" x-text="cls.package_name"></div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- 方法结果 -->
+                            <div x-show="searchResults.methods.length > 0" class="p-2 border-t">
+                                <div class="text-xs font-semibold text-gray-500 px-2 py-1">方法 (<span x-text="searchResults.methods.length"></span>)</div>
+                                <template x-for="method in searchResults.methods" :key="method.id">
+                                    <div @click="viewMethod(method)"
+                                         class="px-3 py-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <div class="font-medium text-sm" x-text="method.name + '()'"></div>
+                                        <div class="text-xs text-gray-500" x-html="getFormattedClassName(method.class_name)"></div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- 代码引用结果 -->
+                            <div x-show="searchResults.code_refs && searchResults.code_refs.length > 0" class="p-2 border-t">
+                                <div class="text-xs font-semibold text-gray-500 px-2 py-1">代码引用 (<span x-text="searchResults.code_refs.length"></span>)</div>
+                                <template x-for="ref in searchResults.code_refs" :key="ref.method_id">
+                                    <div @click="viewMethodById(ref.method_id)"
+                                         class="px-3 py-2 hover:bg-gray-100 rounded cursor-pointer border-b border-gray-100 last:border-b-0">
+                                        <!-- 类名.方法名 -->
+                                        <div class="text-sm mb-1">
+                                            <span class="text-gray-600" x-text="ref.class_name.split('.').pop()"></span>
+                                            <span class="text-gray-400">.</span>
+                                            <span class="font-medium text-gray-800" x-text="ref.method_name + '()'"></span>
+                                        </div>
+                                        <!-- 匹配的代码行 - 只显示第一行，突出显示 -->
+                                        <template x-for="(line, index) in ref.matched_lines.slice(0, 1)" :key="line.absolute_line">
+                                            <div class="text-xs font-mono bg-blue-50 px-2 py-1 rounded">
+                                                <span class="text-gray-400">L<span x-text="line.absolute_line"></span></span>
+                                                <span class="text-blue-700 ml-1" x-text="line.content"></span>
+                                            </div>
+                                        </template>
+                                        <!-- 如果有多个匹配行，显示省略提示 -->
+                                        <template x-if="ref.matched_lines.length > 1">
+                                            <div class="text-xs text-gray-400 mt-1">
+                                                + <span x-text="ref.matched_lines.length - 1"></span> 个其他匹配
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button @click="currentView = 'projects'" class="text-blue-600 hover:text-blue-800 text-sm">
+                        返回首页
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <div class="max-w-7xl mx-auto px-4 py-6">
+
+            <!-- 项目列表视图 -->
+            <div x-show="currentView === 'projects'">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <template x-for="project in projects" :key="project.id">
+                        <div class="bg-white rounded-lg shadow hover:shadow-lg transition cursor-pointer"
+                             @click="selectProject(project)">
+                            <div class="p-6">
+                                <h2 class="text-xl font-bold text-gray-800 mb-2" x-text="project.name"></h2>
+                                <p class="text-sm text-gray-500 mb-4 truncate" x-text="project.path"></p>
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-blue-600" x-text="project.stats?.class_count || 0"></div>
+                                        <div class="text-xs text-gray-500">类</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-green-600" x-text="project.stats?.method_count || 0"></div>
+                                        <div class="text-xs text-gray-500">方法</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-purple-600" x-text="project.stats?.edge_count || 0"></div>
+                                        <div class="text-xs text-gray-500">关系</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- 类详情视图 -->
+            <div x-show="currentView === 'class'" class="bg-white rounded-lg shadow-lg p-6">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800" x-text="currentClass?.name"></h2>
+                    <p class="text-gray-600 mt-1" x-text="currentClass?.full_name"></p>
+                </div>
+
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold mb-3">方法列表</h3>
+                    <div class="space-y-2">
+                        <template x-for="method in classMethods" :key="method.id">
+                            <div class="border rounded p-3 hover:bg-gray-50 cursor-pointer"
+                                 @click="viewMethod(method)">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <span class="font-medium" x-text="method.name"></span>
+                                        <span class="text-gray-500 text-sm" x-text="method.signature"></span>
+                                    </div>
+                                    <span class="text-xs text-gray-400" x-text="method.visibility"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 方法详情视图 -->
+            <div x-show="currentView === 'method'" class="space-y-6">
+                <!-- 方法信息卡片 -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800" x-text="currentMethod?.name"></h2>
+                            <p class="text-gray-600 mt-1" x-text="currentMethod?.full_name"></p>
+                        </div>
+                        <button @click="currentView = 'class'"
+                                class="text-blue-600 hover:text-blue-800">
+                            ← 返回类详情
+                        </button>
+                    </div>
+
+                    <!-- Tab切换 -->
+                    <div class="border-b mb-4">
+                        <nav class="-mb-px flex space-x-8">
+                            <button @click="switchTab('code')"
+                                    :class="activeTab === 'code' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'"
+                                    class="py-2 px-1 border-b-2 font-medium text-sm">
+                                代码
+                            </button>
+                            <button @click="switchTab('sequence')"
+                                    :class="activeTab === 'sequence' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'"
+                                    class="py-2 px-1 border-b-2 font-medium text-sm">
+                                时序图 ⚡
+                            </button>
+                            <button @click="switchTab('caller-sequence')"
+                                    :class="activeTab === 'caller-sequence' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'"
+                                    class="py-2 px-1 border-b-2 font-medium text-sm">
+                                调用者时序 ⬆️
+                            </button>
+                        </nav>
+                    </div>
+
+                    <!-- 代码Tab -->
+                    <div x-show="activeTab === 'code'">
+                        <div class="bg-gray-50 rounded p-4 overflow-x-auto">
+                            <pre class="text-sm"><code x-text="methodCode"></code></pre>
+                        </div>
+                        <div class="mt-2 text-xs text-gray-500">
+                            <span x-text="methodCodeInfo?.file_path"></span>
+                            <span> (行 <span x-text="methodCodeInfo?.line_start"></span>-<span x-text="methodCodeInfo?.line_end"></span>)</span>
+                        </div>
+                    </div>
+
+                    <!-- 时序图Tab -->
+                    <div x-show="activeTab === 'sequence'">
+                        <div class="mb-4 flex items-center space-x-4 flex-wrap gap-y-2">
+                            <div class="flex items-center space-x-2">
+                                <label class="text-sm font-medium">深度:</label>
+                                <select x-model="sequenceDepth" @change="loadSequence()"
+                                        class="px-3 py-1 border rounded">
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="7">7</option>
+                                    <option value="10">10</option>
+                                    <option value="15">15</option>
+                                </select>
+                            </div>
+
+                            <div class="flex items-center space-x-2">
+                                <label class="text-sm font-medium">最小重要度:</label>
+                                <input type="number" x-model.number="minImportance"
+                                       @change="loadSequence()"
+                                       min="0" max="100" step="10"
+                                       class="px-3 py-1 border rounded w-20">
+                                <span class="text-xs text-gray-500">(0-100)</span>
+                            </div>
+
+                            <span class="text-sm text-gray-500" x-show="sequenceData">
+                                调用: <span x-text="countCalls(sequenceData)"></span> 个
+                            </span>
+                        </div>
+                        <div class="bg-white border rounded p-4">
+                            <div x-show="sequenceLoading" class="text-center text-gray-500 py-8">
+                                <div class="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent rounded-full mb-2" role="status" aria-label="loading"></div>
+                                <div>加载中...</div>
+                            </div>
+                            <div x-show="!sequenceLoading && sequenceData" class="font-mono text-sm" id="sequence-container">
+                                <div class="font-bold text-blue-600 mb-4" x-text="currentMethod?.name + '()'"></div>
+                                <template x-if="sequenceData">
+                                    <div x-html="renderSequence(sequenceData, 0)"></div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 调用者时序Tab -->
+                    <div x-show="activeTab === 'caller-sequence'">
+                        <div class="mb-4 flex items-center space-x-4 flex-wrap gap-y-2">
+                            <div class="flex items-center space-x-2">
+                                <label class="text-sm font-medium">深度:</label>
+                                <select x-model="callerSequenceDepth" @change="loadCallerSequence()"
+                                        class="px-3 py-1 border rounded">
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="7">7</option>
+                                    <option value="10" selected>10</option>
+                                    <option value="15">15</option>
+                                    <option value="20">20</option>
+                                </select>
+                            </div>
+
+                            <div class="flex items-center space-x-2">
+                                <label class="text-sm font-medium">最小重要度:</label>
+                                <input type="number" x-model.number="callerSequenceMinImportance"
+                                       @change="loadCallerSequence()"
+                                       min="0" max="100" step="10"
+                                       class="px-3 py-1 border rounded w-20">
+                                <span class="text-xs text-gray-500">(0-100)</span>
+                            </div>
+
+                            <span class="text-sm text-gray-500" x-show="callerSequenceData">
+                                调用者: <span x-text="countCallers(callerSequenceData)"></span> 个
+                            </span>
+                        </div>
+                        <div class="bg-white border rounded p-4">
+                            <div x-show="callerSequenceLoading" class="text-center text-gray-500 py-8">
+                                <div class="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent rounded-full mb-2" role="status" aria-label="loading"></div>
+                                <div>加载中...</div>
+                            </div>
+                            <div x-show="!callerSequenceLoading && callerSequenceData" class="font-mono text-sm" id="caller-sequence-container">
+                                <div class="font-bold text-blue-600 mb-4" x-text="currentMethod?.name + '()'"></div>
+                                <template x-if="callerSequenceData">
+                                    <div x-html="renderCallerSequence(callerSequenceData)"></div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 代码查看弹窗 -->
+        <div id="codeModal"
+             style="display: none"
+             onclick="if(event.target.id==='codeModal') window.app_instance.closeCodeModal()"
+             class="fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+            <div class="modal-container bg-white rounded-lg shadow-2xl w-11/12 max-w-4xl">
+                <!-- 弹窗头部 -->
+                <div class="modal-header flex items-center justify-between px-6 py-4 border-b">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800" id="codeModalTitle">代码查看</h3>
+                        <p class="text-sm text-gray-500 mt-1" id="codeModalFilePath"></p>
+                        <p class="text-xs text-gray-400 mt-1" id="codeModalLineInfo">
+                            行号: <span id="codeModalLineStart"></span>-<span id="codeModalLineEnd"></span>
+                        </p>
+                    </div>
+                    <button onclick="window.app_instance.closeCodeModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- 代码内容 -->
+                <div class="modal-body px-6 py-4">
+                    <div id="codeModalLoading" style="display: block" class="text-center py-8">
+                        <div class="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent rounded-full text-blue-500" role="status"></div>
+                        <div class="mt-2 text-gray-500">加载中...</div>
+                    </div>
+                    <div id="codeModalContent" style="display: none" class="bg-gray-50 rounded p-4">
+                        <pre><code id="codeModalCode" class="language-java"></code></pre>
+                    </div>
+                </div>
+
+                <!-- 弹窗底部 -->
+                <div class="modal-footer px-6 py-4 border-t flex justify-end space-x-3">
+                    <button onclick="window.app_instance.copyCode()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        复制代码
+                    </button>
+                    <button onclick="window.app_instance.closeCodeModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                        关闭
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 字段查看弹窗 -->
+        <div id="fieldsModal"
+             style="display: none"
+             onclick="if(event.target.id==='fieldsModal') window.app_instance.closeFieldsModal()"
+             class="fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+            <div class="modal-container bg-white rounded-lg shadow-2xl w-11/12 max-w-2xl">
+                <div class="modal-header flex items-center justify-between px-6 py-4 border-b">
+                    <h3 class="text-lg font-bold text-gray-800">
+                        类字段: <span id="fieldsClassName"></span>
+                    </h3>
+                    <button onclick="window.app_instance.closeFieldsModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body px-6 py-4 max-h-96 overflow-y-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="px-4 py-2 text-left">字段名</th>
+                                <th class="px-4 py-2 text-left">类型</th>
+                                <th class="px-4 py-2 text-left">可见性</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fieldsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer px-6 py-4 border-t flex justify-end">
+                    <button onclick="window.app_instance.closeFieldsModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                        关闭
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 序列渲染模块 -->
+    <script src="/static/js/sequence-loader.js"></script>
+    <script src="/static/js/sequence-renderer.js?v=6"></script>
+    <script src="/static/js/app.js?v=21"></script>
+    <script>
+        // 添加 ESC 键关闭弹窗支持
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const codeModal = document.getElementById('codeModal');
+                const fieldsModal = document.getElementById('fieldsModal');
+                if (codeModal && codeModal.style.display === 'flex') {
+                    window.app_instance.closeCodeModal();
+                } else if (fieldsModal && fieldsModal.style.display === 'flex') {
+                    window.app_instance.closeFieldsModal();
+                }
+            }
+        });
+    </script>
+
+    <!-- 临时调试脚本 -->
+    <script>
+    // 等待 Alpine 初始化后运行调试
+    document.addEventListener('alpine:init', () => {
+        console.log('[DEBUG] Alpine initialized');
+
+        // 添加全局调试函数
+        window.debugModal = function() {
+            console.log('=== Modal Debug Info ===');
+            console.log('1. window.app_instance exists:', !!window.app_instance);
+            console.log('2. codeModalOpen value:', window.app_instance?.codeModalOpen);
+
+            const modal = document.querySelector('[x-show="codeModalOpen"]');
+            console.log('3. Modal element found:', !!modal);
+            if (modal) {
+                const computedStyle = window.getComputedStyle(modal);
+                console.log('4. Modal computed display:', computedStyle.display);
+                console.log('5. Modal inline style:', modal.style.display);
+                console.log('6. Modal classes:', modal.className);
+                console.log('7. Modal parent:', modal.parentElement?.tagName);
+                console.log('8. Has x-show attribute:', modal.hasAttribute('x-show'));
+                console.log('9. x-show value:', modal.getAttribute('x-show'));
+
+                // 检查 Alpine data
+                console.log('10. Alpine $data on modal:', modal.__x?.$data);
+                console.log('11. Alpine $data.codeModalOpen:', modal.__x?.$data?.codeModalOpen);
+            }
+
+            console.log('\n=== Trying to open modal manually ===');
+            if (window.app_instance) {
+                const before = window.app_instance.codeModalOpen;
+                window.app_instance.codeModalOpen = true;
+                const after = window.app_instance.codeModalOpen;
+                console.log('12. Before:', before, 'After:', after);
+
+                setTimeout(() => {
+                    if (modal) {
+                        const newDisplay = window.getComputedStyle(modal).display;
+                        console.log('13. Modal display after 100ms:', newDisplay);
+                        console.log('14. Manual style set test...');
+                        modal.style.display = 'flex';
+                        console.log('15. After manual flex, visible?', modal.offsetHeight > 0);
+                    }
+                }, 100);
+            }
+        };
+
+        console.log('[DEBUG] Call window.debugModal() in console to run diagnostics');
+    });
+    </script>
+</body>
+</html>
