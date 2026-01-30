@@ -1,0 +1,290 @@
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+# See LICENSE for more details.
+#
+#
+# Copyright: 2021 Red Hat Inc.
+# Authors : Beraldo Leal <bleal@redhat.com>
+
+"""
+This module provides an basic API for interacting with podman.
+
+This module it was designed to be executed in async mode. Remember this when
+consuming this API.
+"""
+
+import json
+import logging
+import subprocess
+from asyncio import create_subprocess_exec
+from asyncio import subprocess as asyncio_subprocess
+from shutil import which
+
+LOG = logging.getLogger(__name__)
+
+
+class PodmanException(Exception):
+    pass
+
+
+class _Podman:
+
+    PYTHON_VERSION_COMMAND = json.dumps(
+        [
+            "/usr/bin/env",
+            "python3",
+            "-c",
+            (
+                "import sys; print(sys.version_info.major, "
+                "sys.version_info.minor, sys.executable)"
+            ),
+        ]
+    )
+
+    def __init__(self, podman_bin=None):
+        path = which(podman_bin or "podman")
+        if not path:
+            msg = f"Podman binary {podman_bin} is not available on the system."
+            raise PodmanException(msg)
+
+        self.podman_bin = path
+
+
+class Podman(_Podman):
+    def execute(self, *args):
+        """Execute a command and return the returncode, stdout and stderr.
+
+        :param args: Variable length argument list to be used as argument
+                      during execution.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            LOG.debug("Executing %s", args)
+
+            cmd = [self.podman_bin, *args]
+            with subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            ) as proc:
+                stdout, stderr = proc.communicate()
+                LOG.debug("Return code: %s", proc.returncode)
+                LOG.debug("Stdout: %s", stdout.decode("utf-8", "replace"))
+                LOG.debug("Stderr: %s", stderr.decode("utf-8", "replace"))
+                if proc.returncode:
+                    command_args = " ".join(args)
+                    msg = f'Failure from command "{self.podman_bin} {command_args}": returned code "{proc.returncode}" stderr: "{stderr}"'
+                    LOG.error(msg)
+                    raise PodmanException(msg)
+
+                return proc.returncode, stdout, stderr
+        except (FileNotFoundError, PermissionError) as ex:
+            # Since this method is also used by other methods, let's
+            # log here as well.
+            msg = "Could not execute the command."
+            LOG.error("%s: %s", msg, str(ex))
+            raise PodmanException(msg) from ex
+
+    def copy_to_container(self, container_id, src, dst):
+        """Copy artifacts from src to container:dst.
+
+        This method allows copying the contents of src to the dst. Files will
+        be copied from the local machine to the container. The "src" argument
+        can be a file or a directory.
+
+        :param str container_id: string with the container identification.
+        :param str src: what file or directory you are trying to copy.
+        :param str dst: the destination inside the container.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            return self.execute("cp", src, f"{container_id}:{dst}")
+        except PodmanException as ex:
+            error = f"Failed copying data to container {container_id}"
+            LOG.error(error)
+            raise PodmanException(error) from ex
+
+    def get_python_version(self, image):
+        """Return the current Python version installed in an image.
+
+        :param str image: Image name. i.e: 'fedora:33'.
+        :rtype: tuple with both: major, minor numbers and executable path.
+        """
+        try:
+            _, stdout, _ = self.execute(
+                "run", "--rm", f"--entrypoint={self.PYTHON_VERSION_COMMAND}", image
+            )
+        except PodmanException as ex:
+            raise PodmanException("Failed getting Python version.") from ex
+
+        if stdout:
+            output = stdout.decode().strip().split()
+            return int(output[0]), int(output[1]), output[2]
+        return None
+
+    def get_container_info(self, container_id):
+        """Return all information about specific container.
+
+        :param container_id: identifier of container
+        :type container_id: str
+        :rtype: dict
+        """
+        try:
+            _, stdout, _ = self.execute(
+                "ps", "--all", "--format=json", "--filter", f"id={container_id}"
+            )
+        except PodmanException as ex:
+            raise PodmanException(
+                f"Failed getting information about container: {container_id}."
+            ) from ex
+        containers = json.loads(stdout.decode())
+        for container in containers:
+            if container.get("Id") == container_id:
+                return container
+        return {}
+
+    def start(self, container_id):
+        """Starts a container and return the returncode, stdout and stderr.
+
+        :param str container_id: Container identification string to start.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            return self.execute("start", container_id)
+        except PodmanException as ex:
+            raise PodmanException("Failed to start the container.") from ex
+
+    def stop(self, container_id):
+        """Stops a container and return the returncode, stdout and stderr.
+
+        :param str container_id: Container identification string to stop.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            return self.execute("stop", "-t=0", container_id)
+        except PodmanException as ex:
+            raise PodmanException("Failed to stop the container.") from ex
+
+
+class AsyncPodman(_Podman):
+    async def execute(self, *args):
+        """Execute a command and return the returncode, stdout and stderr.
+
+        :param args: Variable length argument list to be used as argument
+                      during execution.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            LOG.debug("Executing %s", args)
+
+            proc = await create_subprocess_exec(
+                self.podman_bin,
+                *args,
+                stdout=asyncio_subprocess.PIPE,
+                stderr=asyncio_subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            LOG.debug("Return code: %s", proc.returncode)
+            LOG.debug("Stdout: %s", stdout.decode("utf-8", "replace"))
+            LOG.debug("Stderr: %s", stderr.decode("utf-8", "replace"))
+        except (FileNotFoundError, PermissionError) as ex:
+            # Since this method is also used by other methods, let's
+            # log here as well.
+            msg = "Could not execute the command."
+            LOG.error("%s: %s", msg, str(ex))
+            raise PodmanException(msg) from ex
+
+        if proc.returncode:
+            command_args = " ".join(args)
+            msg = f'Failure from command "{self.podman_bin} {command_args}": returned code "{proc.returncode}" stderr: "{stderr}"'
+            LOG.error(msg)
+            raise PodmanException(msg)
+
+        return proc.returncode, stdout, stderr
+
+    async def copy_to_container(self, container_id, src, dst):
+        """Copy artifacts from src to container:dst.
+
+        This method allows copying the contents of src to the dst. Files will
+        be copied from the local machine to the container. The "src" argument
+        can be a file or a directory.
+
+        :param str container_id: string with the container identification.
+        :param str src: what file or directory you are trying to copy.
+        :param str dst: the destination inside the container.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            return await self.execute("cp", src, f"{container_id}:{dst}")
+        except PodmanException as ex:
+            error = f"Failed copying data to container {container_id}"
+            LOG.error(error)
+            raise PodmanException(error) from ex
+
+    async def get_python_version(self, image):
+        """Return the current Python version installed in an image.
+
+        :param str image: Image name. i.e: 'fedora:33'.
+        :rtype: tuple with both: major, minor numbers and executable path.
+        """
+        try:
+            _, stdout, _ = await self.execute(
+                "run", "--rm", f"--entrypoint={self.PYTHON_VERSION_COMMAND}", image
+            )
+        except PodmanException as ex:
+            raise PodmanException("Failed getting Python version.") from ex
+
+        if stdout:
+            output = stdout.decode().strip().split()
+            return int(output[0]), int(output[1]), output[2]
+
+    async def get_container_info(self, container_id):
+        """Return all information about specific container.
+
+        :param container_id: identifier of container
+        :type container_id: str
+        :rtype: dict
+        """
+        try:
+            _, stdout, _ = await self.execute(
+                "ps", "--all", "--format=json", "--filter", f"id={container_id}"
+            )
+        except PodmanException as ex:
+            raise PodmanException(
+                f"Failed getting information about container:" f" {container_id}."
+            ) from ex
+        containers = json.loads(stdout.decode())
+        for container in containers:
+            if container["Id"] == container_id:
+                return container
+        return {}
+
+    async def start(self, container_id):
+        """Starts a container and return the returncode, stdout and stderr.
+
+        :param str container_id: Container identification string to start.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            return await self.execute("start", container_id)
+        except PodmanException as ex:
+            raise PodmanException("Failed to start the container.") from ex
+
+    async def stop(self, container_id):
+        """Stops a container and return the returncode, stdout and stderr.
+
+        :param str container_id: Container identification string to stop.
+        :rtype: tuple with returncode, stdout and stderr.
+        """
+        try:
+            return await self.execute("stop", "-t=0", container_id)
+        except PodmanException as ex:
+            raise PodmanException("Failed to stop the container.") from ex
