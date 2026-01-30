@@ -1,0 +1,39 @@
+{% if advanced_alchemy %}
+from advanced_alchemy.extensions.litestar import (
+    AsyncSessionConfig,
+    SQLAlchemyAsyncConfig,
+    SQLAlchemyPlugin,
+)
+{% endif %}
+{% if litestar_vite %}
+from pathlib import Path
+from litestar_vite import ViteConfig, PathConfig
+{% endif %}
+
+from settings import get_settings
+
+settings = get_settings()
+
+
+{% if advanced_alchemy %}
+alchemy_config = SQLAlchemyAsyncConfig(
+    connection_string=settings.DATABASE_URL,
+    before_send_handler="autocommit",
+    session_config=AsyncSessionConfig(expire_on_commit=False),
+    create_all=True,
+)
+alchemy = SQLAlchemyPlugin(config=alchemy_config)
+{% endif %}
+
+{% if litestar_vite %}
+vite_config = ViteConfig(
+    mode="spa",
+    dev_mode=True,
+    types=True,
+    paths=PathConfig(
+        root=Path(__file__).parent,
+        resource_dir="src",
+        bundle_dir="public",
+    ),
+)
+{% endif %}
