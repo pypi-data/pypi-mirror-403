@@ -1,0 +1,312 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "651953414958119180"
+    }
+  },
+  "parameters": {
+    "namingPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Naming prefix for resources"
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for resources"
+      }
+    },
+    "environmentId": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Apps Environment ID"
+      }
+    },
+    "containerImage": {
+      "type": "string",
+      "metadata": {
+        "description": "Container image for Chainlit"
+      }
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR login server"
+      }
+    },
+    "acrUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR username"
+      }
+    },
+    "acrPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "ACR password"
+      }
+    },
+    "managedIdentityId": {
+      "type": "string",
+      "metadata": {
+        "description": "User-assigned managed identity resource ID"
+      }
+    },
+    "redisUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Redis connection string"
+      }
+    },
+    "redisPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Redis password"
+      }
+    },
+    "sessionPoolEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Session Pool management endpoint"
+      }
+    },
+    "appInsightsConnectionString": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Insights connection string"
+      }
+    },
+    "oauthClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "OAuth Azure AD Client ID"
+      }
+    },
+    "oauthClientSecret": {
+      "type": "securestring",
+      "metadata": {
+        "description": "OAuth Azure AD Client Secret"
+      }
+    },
+    "oauthTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "OAuth Azure AD Tenant ID"
+      }
+    },
+    "chainlitAuthSecret": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Chainlit auth secret"
+      }
+    },
+    "minReplicas": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Minimum replicas"
+      }
+    },
+    "maxReplicas": {
+      "type": "int",
+      "defaultValue": 3,
+      "metadata": {
+        "description": "Maximum replicas"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[format('{0}-chainlit', parameters('namingPrefix'))]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('managedIdentityId'))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[parameters('environmentId')]",
+        "configuration": {
+          "activeRevisionsMode": "Single",
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "http",
+            "allowInsecure": false
+          },
+          "registries": [
+            {
+              "server": "[parameters('acrLoginServer')]",
+              "username": "[parameters('acrUsername')]",
+              "passwordSecretRef": "acr-password"
+            }
+          ],
+          "secrets": [
+            {
+              "name": "acr-password",
+              "value": "[parameters('acrPassword')]"
+            },
+            {
+              "name": "redis-password",
+              "value": "[parameters('redisPassword')]"
+            },
+            {
+              "name": "oauth-client-secret",
+              "value": "[parameters('oauthClientSecret')]"
+            },
+            {
+              "name": "chainlit-auth-secret",
+              "value": "[parameters('chainlitAuthSecret')]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "chainlit",
+              "image": "[parameters('containerImage')]",
+              "resources": {
+                "cpu": "[json('1.0')]",
+                "memory": "2Gi"
+              },
+              "env": [
+                {
+                  "name": "WEBSITES_PORT",
+                  "value": "8080"
+                },
+                {
+                  "name": "PYTHONUNBUFFERED",
+                  "value": "1"
+                },
+                {
+                  "name": "TRIAGENT_SESSION_POOL_ENDPOINT",
+                  "value": "[parameters('sessionPoolEndpoint')]"
+                },
+                {
+                  "name": "TRIAGENT_LOCAL_MODE",
+                  "value": "false"
+                },
+                {
+                  "name": "REDIS_URL",
+                  "value": "[parameters('redisUrl')]"
+                },
+                {
+                  "name": "REDIS_PASSWORD",
+                  "secretRef": "redis-password"
+                },
+                {
+                  "name": "OAUTH_AZURE_AD_CLIENT_ID",
+                  "value": "[parameters('oauthClientId')]"
+                },
+                {
+                  "name": "OAUTH_AZURE_AD_CLIENT_SECRET",
+                  "secretRef": "oauth-client-secret"
+                },
+                {
+                  "name": "OAUTH_AZURE_AD_TENANT_ID",
+                  "value": "[parameters('oauthTenantId')]"
+                },
+                {
+                  "name": "OAUTH_AZURE_AD_ENABLE_SINGLE_TENANT",
+                  "value": "true"
+                },
+                {
+                  "name": "CHAINLIT_AUTH_SECRET",
+                  "secretRef": "chainlit-auth-secret"
+                },
+                {
+                  "name": "CHAINLIT_COOKIE_SAMESITE",
+                  "value": "lax"
+                },
+                {
+                  "name": "AZURE_CLIENT_ID",
+                  "value": "[parameters('oauthClientId')]"
+                },
+                {
+                  "name": "AZURE_TENANT_ID",
+                  "value": "[parameters('oauthTenantId')]"
+                },
+                {
+                  "name": "AZURE_CLIENT_SECRET",
+                  "secretRef": "oauth-client-secret"
+                },
+                {
+                  "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                  "value": "[parameters('appInsightsConnectionString')]"
+                },
+                {
+                  "name": "CHAINLIT_URL",
+                  "value": "https://triagent-sandbox-chainlit.orangemeadow-28f875d9.eastus.azurecontainerapps.io"
+                }
+              ],
+              "probes": [
+                {
+                  "type": "Liveness",
+                  "httpGet": {
+                    "path": "/health",
+                    "port": 8080
+                  },
+                  "initialDelaySeconds": 30,
+                  "periodSeconds": 30
+                },
+                {
+                  "type": "Readiness",
+                  "httpGet": {
+                    "path": "/health",
+                    "port": 8080
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 10
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": "[parameters('minReplicas')]",
+            "maxReplicas": "[parameters('maxReplicas')]",
+            "rules": [
+              {
+                "name": "http-scaling",
+                "http": {
+                  "metadata": {
+                    "concurrentRequests": "10"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "tags": {
+        "Project": "Triagent",
+        "Component": "ChainlitContainerApp"
+      }
+    }
+  ],
+  "outputs": {
+    "fqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.App/containerApps', format('{0}-chainlit', parameters('namingPrefix'))), '2024-03-01').configuration.ingress.fqdn]"
+    },
+    "url": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', format('{0}-chainlit', parameters('namingPrefix'))), '2024-03-01').configuration.ingress.fqdn)]"
+    },
+    "appName": {
+      "type": "string",
+      "value": "[format('{0}-chainlit', parameters('namingPrefix'))]"
+    },
+    "appId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.App/containerApps', format('{0}-chainlit', parameters('namingPrefix')))]"
+    }
+  }
+}

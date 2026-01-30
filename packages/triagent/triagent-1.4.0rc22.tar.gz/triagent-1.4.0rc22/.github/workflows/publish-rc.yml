@@ -1,0 +1,92 @@
+name: Publish RC
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  rc-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/triagent
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install python-semantic-release build
+
+      - name: Get next version and create RC tag
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get what the next version would be
+          NEXT_VERSION=$(semantic-release version --print 2>/dev/null || echo "")
+          if [ -z "$NEXT_VERSION" ]; then
+            echo "No releasable commits"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Count existing RCs for this version (both old and new formats)
+          # Old format: v1.4.0-rc.X, New format: v1.4.0rcX
+          OLD_RC_COUNT=$(git tag -l "v${NEXT_VERSION}-rc.*" | wc -l)
+          NEW_RC_COUNT=$(git tag -l "v${NEXT_VERSION}rc*" | wc -l)
+          RC_COUNT=$((OLD_RC_COUNT + NEW_RC_COUNT))
+          RC_NUM=$((RC_COUNT + 1))
+          # PEP 440 compliant: 1.4.0rc17 (no dash, no dot)
+          RC_VERSION="${NEXT_VERSION}rc${RC_NUM}"
+          TAG_NAME="v${RC_VERSION}"
+
+          echo "version=$RC_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+
+          # Create git tag BEFORE building so hatch-vcs picks it up
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG_NAME"
+
+      - name: Build package
+        if: steps.version.outputs.skip != 'true'
+        env:
+          TRIAGENT_CORP_ID: ${{ secrets.TRIAGENT_CORP_ID }}
+        run: |
+          # hatch-vcs will now pick up the clean version from the tag
+          python -m build --wheel
+          # Create sdist for reference (skip encryption for sdist)
+          TRIAGENT_SKIP_ENCRYPT=1 python -m build --sdist
+
+      - name: Push git tag
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Publish to TestPyPI
+        if: steps.version.outputs.skip != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Create GitHub Pre-release
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --prerelease \
+            --generate-notes \
+            dist/*

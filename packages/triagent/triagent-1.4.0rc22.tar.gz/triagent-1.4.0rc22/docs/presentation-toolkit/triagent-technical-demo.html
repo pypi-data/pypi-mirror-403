@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Triagent - Technical Architecture Review</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #007CB0;
+            --primary-dark: #005A87;
+            --primary-light: #00B4E5;
+            --accent: #86BC25;
+            --bg-dark: #121212;
+            --bg-surface: #1E1E1E;
+            --bg-elevated: #2D2D2D;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B0B0B0;
+            --text-muted: #6B7280;
+            --border: rgba(255, 255, 255, 0.1);
+            --border-accent: rgba(0, 124, 176, 0.5);
+            --error: #DA291C;
+            --success: #86BC25;
+            --warning: #E87722;
+            --purple: #8661c5;
+            --claude-orange: #D97706;
+            --gpt-green: #10A37F;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Roboto', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+        .slide-container { position: relative; width: 100%; height: 100vh; overflow: hidden; }
+        .slide {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            padding: 80px; opacity: 0; transform: translateX(100%); transition: all 0.5s ease-in-out;
+        }
+        .slide.active { opacity: 1; transform: translateX(0); }
+        .slide.prev { transform: translateX(-100%); }
+        h1 { font-size: 4.5rem; font-weight: 300; margin-bottom: 20px; text-align: center; color: var(--text-primary); }
+        h1 .brand { font-weight: 700; }
+        h1 .brand-accent { font-weight: 400; color: var(--primary); }
+        h2 { font-size: 2.8rem; font-weight: 500; margin-bottom: 50px; color: var(--primary); text-align: center; }
+        h3 { font-size: 1.9rem; color: var(--primary); margin-bottom: 15px; font-weight: 500; }
+        .subtitle { font-size: 1.8rem; color: var(--text-secondary); margin-bottom: 50px; text-align: center; }
+        .content { max-width: 1600px; width: 100%; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 35px; margin-top: 30px; }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        .card {
+            background: var(--bg-surface); border: 1px solid var(--border); border-left: 3px solid var(--primary);
+            border-radius: 4px; padding: 35px; transition: all 0.3s ease;
+        }
+        .card:hover { background: var(--bg-elevated); transform: translateY(-5px); border-color: var(--primary); box-shadow: 0 4px 12px rgba(0, 124, 176, 0.15); }
+        .card-icon { font-size: 2.5rem; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: var(--primary); }
+        .card-icon svg { width: 64px; height: 64px; }
+        .card h3 { font-size: 1.2rem; margin-bottom: 10px; }
+        .card p, .card ul { color: var(--text-secondary); font-size: 1.15rem; line-height: 1.6; }
+        .card ul { list-style: none; padding-left: 0; }
+        .card ul li { padding: 5px 0; padding-left: 20px; position: relative; }
+        .card ul li::before { content: "\2192"; position: absolute; left: 0; color: var(--primary); }
+        .highlight { color: var(--primary-light); font-weight: 500; }
+        .badge { display: inline-block; padding: 4px 12px; background: rgba(0, 124, 176, 0.2); border: 1px solid var(--primary); border-radius: 2px; font-size: 0.8rem; color: var(--primary-light); margin-right: 8px; margin-bottom: 8px; }
+        .architecture { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; }
+        .arch-row { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+        .arch-box { background: var(--bg-surface); border: 2px solid var(--border-accent); border-radius: 4px; padding: 15px 25px; text-align: center; min-width: 200px; transition: all 0.3s ease; }
+        .arch-box:hover { border-color: var(--primary); background: rgba(0, 124, 176, 0.1); }
+        .arch-box.highlight-box { border-color: var(--purple); background: rgba(134, 97, 197, 0.2); }
+        .arch-box .title { font-weight: 600; color: var(--primary-light); font-size: 0.95rem; }
+        .arch-box .subtitle { font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px; margin-bottom: 0; }
+        .arch-arrow { color: var(--primary); font-size: 1.5rem; }
+        .nav { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; align-items: center; z-index: 100; }
+        .nav-btn { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-primary); padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 1rem; font-family: 'Roboto', sans-serif; transition: all 0.3s ease; }
+        .nav-btn:hover { background: rgba(0, 124, 176, 0.2); border-color: var(--primary); }
+        .slide-counter { color: var(--text-secondary); font-size: 0.9rem; }
+        .progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--primary), var(--accent)); transition: width 0.3s ease; z-index: 100; }
+        .keyboard-hint { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); color: var(--text-muted); font-size: 0.8rem; }
+        .logo { position: fixed; top: 25px; left: 30px; font-size: 1.3rem; font-weight: 600; color: var(--primary); z-index: 100; }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; width: 100%; }
+        .skills-diagram { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .skill-files { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
+        .skill-file { background: rgba(134, 97, 197, 0.2); border: 1px solid var(--purple); border-radius: 4px; padding: 10px 15px; font-size: 0.85rem; font-family: 'Monaco', 'Consolas', monospace; color: var(--text-primary); }
+        .product-box { background: var(--bg-surface); border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: 4px; padding: 30px; text-align: center; }
+        .product-box h3 { font-size: 1.8rem; color: var(--primary-light); margin-bottom: 20px; }
+        .product-box p { color: var(--text-secondary); font-size: 1.1rem; line-height: 1.7; }
+        .metric { font-size: 3.2rem; font-weight: 700; color: var(--primary-light); display: block; margin-bottom: 5px; }
+        .advantage-item { display: flex; align-items: flex-start; gap: 15px; padding: 20px; background: var(--bg-surface); border-radius: 4px; margin-bottom: 15px; border-left: 3px solid var(--primary); }
+        .advantage-item .number { background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+        .fluent-icon { fill: var(--primary); }
+        .powered-by { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 12px 24px; background: rgba(217, 119, 6, 0.15); border: 1px solid var(--claude-orange); border-radius: 4px; }
+        .powered-by span { color: var(--text-secondary); font-size: 0.9rem; }
+        .powered-by .claude-text { color: var(--claude-orange); font-weight: 600; font-size: 1rem; }
+        .claude-icon { width: 28px; height: 28px; }
+        /* Comparison table */
+        .comparison-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .comparison-table th, .comparison-table td { padding: 16px 20px; text-align: left; border-bottom: 1px solid var(--border); }
+        .comparison-table th { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; font-size: 1rem; }
+        .comparison-table th:first-child { border-left: 3px solid var(--primary); }
+        .comparison-table td { color: var(--text-secondary); font-size: 0.9rem; vertical-align: top; }
+        .comparison-table td:first-child { color: var(--text-primary); font-weight: 500; border-left: 3px solid var(--primary); background: var(--bg-surface); }
+        .comparison-table tr:hover td { background: var(--bg-elevated); }
+        .comparison-table .header-gpt { background: rgba(16, 163, 127, 0.1); color: var(--gpt-green); border-top: 3px solid var(--gpt-green); }
+        .comparison-table .header-claude { background: rgba(217, 119, 6, 0.1); color: var(--claude-orange); border-top: 3px solid var(--claude-orange); }
+        .check-yes { color: var(--accent); font-weight: 600; }
+        .check-no { color: var(--error); }
+        .check-partial { color: var(--warning); }
+        .tool-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg-elevated); border-radius: 4px; margin: 2px; font-size: 0.75rem; color: var(--text-primary); }
+        .tool-chip svg { width: 16px; height: 16px; }
+        /* Problem slide styling */
+        .problem-item { display: flex; align-items: flex-start; gap: 15px; padding: 18px 25px; background: var(--bg-surface); border-radius: 4px; margin-bottom: 12px; border-left: 3px solid var(--error); }
+        .problem-item .icon { color: var(--error); font-size: 1.5rem; flex-shrink: 0; }
+        .problem-item h4 { color: var(--text-primary); margin-bottom: 5px; font-size: 1.1rem; }
+        .problem-item p { color: var(--text-secondary); font-size: 0.95rem; }
+        /* Pillar styling */
+        .pillar { text-align: center; padding: 25px; background: var(--bg-surface); border-radius: 4px; border-top: 3px solid var(--primary); }
+        .pillar-icon { font-size: 2.5rem; margin-bottom: 15px; color: var(--primary); }
+        .pillar h3 { color: var(--primary-light); margin-bottom: 10px; font-size: 1.3rem; }
+        .pillar p { color: var(--text-secondary); font-size: 1rem; }
+        /* Use case quadrant */
+        .use-case { padding: 20px; background: var(--bg-surface); border-radius: 4px; border-left: 3px solid var(--primary); }
+        .use-case h4 { color: var(--primary-light); margin-bottom: 12px; font-size: 1.1rem; display: flex; align-items: center; gap: 10px; }
+        .use-case ul { color: var(--text-secondary); font-size: 0.9rem; list-style: none; padding-left: 0; }
+        .use-case ul li { padding: 4px 0; padding-left: 18px; position: relative; }
+        .use-case ul li::before { content: "\2192"; position: absolute; left: 0; color: var(--primary); font-size: 0.8rem; }
+        /* Architecture Split Layout */
+        .architecture-split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            width: 100%;
+            max-width: 1500px;
+            margin: 0 auto 25px;
+        }
+        .arch-column {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            position: relative;
+            min-height: 380px;
+        }
+        .arch-column.local-machine {
+            border-color: var(--primary);
+            background: rgba(0, 124, 176, 0.03);
+        }
+        .arch-column.azure-cloud {
+            border-color: #0078D4;
+            background: rgba(0, 120, 212, 0.03);
+        }
+        .column-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            background: var(--bg-dark);
+            position: absolute;
+            top: -16px;
+            left: 20px;
+            border-radius: 4px;
+        }
+        .column-header svg {
+            width: 24px;
+            height: 24px;
+        }
+        .column-header span {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .local-machine .column-header span { color: var(--primary); }
+        .azure-cloud .column-header span { color: #0078D4; }
+        .arch-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin-top: 25px;
+        }
+        .arch-component {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-accent);
+            border-radius: 4px;
+            padding: 12px 20px;
+            text-align: center;
+            width: 100%;
+            max-width: 280px;
+        }
+        .arch-component .title {
+            font-weight: 600;
+            color: var(--primary-light);
+            font-size: 0.9rem;
+        }
+        .arch-component .desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 3px;
+        }
+        .arch-nested {
+            margin-top: 25px;
+        }
+        .azure-boundary {
+            border: 1px solid #0078D4;
+            border-radius: 6px;
+            padding: 12px;
+            background: rgba(0, 120, 212, 0.05);
+            margin-bottom: 10px;
+        }
+        .azure-boundary .boundary-label {
+            font-size: 0.75rem;
+            color: #0078D4;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .azure-boundary .boundary-label svg {
+            width: 16px;
+            height: 16px;
+        }
+        .sandbox-container {
+            border: 2px dashed var(--purple);
+            border-radius: 4px;
+            padding: 12px;
+            background: rgba(134, 97, 197, 0.08);
+        }
+        .sandbox-label {
+            font-size: 0.7rem;
+            color: var(--purple);
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .sandbox-tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 8px;
+            justify-content: center;
+        }
+        .sandbox-tool {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            background: rgba(134, 97, 197, 0.2);
+            border-radius: 2px;
+            color: var(--text-secondary);
+        }
+        .arch-annotation {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 15px;
+            font-style: italic;
+            padding: 0 10px;
+        }
+        .stack-arrow {
+            color: var(--primary);
+            font-size: 1rem;
+        }
+        .arch-shared-services {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+        .shared-service {
+            flex: 1;
+            max-width: 400px;
+            background: var(--bg-surface);
+            border: 2px solid;
+            border-radius: 4px;
+            padding: 15px 25px;
+            text-align: center;
+        }
+        .shared-service.ai-foundry {
+            border-color: var(--purple);
+            background: rgba(134, 97, 197, 0.1);
+        }
+        .shared-service.mcp-tools {
+            border-color: var(--primary);
+        }
+        .shared-service .service-icon {
+            margin-bottom: 8px;
+        }
+        .shared-service .service-icon svg {
+            width: 32px;
+            height: 32px;
+        }
+        .shared-service .title {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .shared-service.ai-foundry .title { color: var(--purple); }
+        .shared-service.mcp-tools .title { color: var(--primary-light); }
+        .shared-service .desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 3px;
+        }
+        .connection-arrows {
+            display: flex;
+            justify-content: center;
+            gap: 200px;
+            margin: 10px 0;
+        }
+        .connection-arrows .arrow {
+            color: var(--text-muted);
+            font-size: 1.2rem;
+        }
+        /* Security quadrant */
+        .security-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+        .security-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 25px;
+        }
+        .security-card h4 {
+            color: var(--primary-light);
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .security-card h4 svg {
+            width: 24px;
+            height: 24px;
+            fill: var(--primary);
+        }
+        .security-card ul {
+            list-style: none;
+            padding: 0;
+        }
+        .security-card ul li {
+            padding: 6px 0;
+            padding-left: 20px;
+            position: relative;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        .security-card ul li::before {
+            content: "\2713";
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+        }
+        .security-card .roadmap {
+            color: var(--warning);
+            font-size: 0.8rem;
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: rgba(232, 119, 34, 0.1);
+            border-radius: 4px;
+        }
+        /* Data flow diagram */
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .flow-row {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .flow-box {
+            background: var(--bg-surface);
+            border: 2px solid var(--border-accent);
+            border-radius: 4px;
+            padding: 15px 25px;
+            text-align: center;
+            min-width: 150px;
+        }
+        .flow-box.user { border-color: var(--accent); }
+        .flow-box.azure { border-color: #0078D4; }
+        .flow-box.ai { border-color: var(--purple); }
+        .flow-box.tools { border-color: var(--claude-orange); }
+        .flow-box .label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+        .flow-box .sublabel {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 3px;
+        }
+        .flow-arrow {
+            color: var(--primary);
+            font-size: 1.5rem;
+        }
+        .data-storage {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 30px;
+            max-width: 1200px;
+        }
+        .storage-item {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px;
+            text-align: center;
+        }
+        .storage-item .icon {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+        .storage-item .name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+        .storage-item .purpose {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+        /* Demo slide */
+        .demo-container {
+            text-align: center;
+            padding: 60px;
+        }
+        .demo-icon {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, var(--primary), var(--purple));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+        }
+        .demo-icon svg {
+            width: 60px;
+            height: 60px;
+            fill: white;
+        }
+        /* Scalability grid */
+        .scalability-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .scalability-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--primary);
+            border-radius: 4px;
+            padding: 25px;
+        }
+        .scalability-card h4 {
+            color: var(--primary-light);
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+        .scalability-card ul {
+            list-style: none;
+            padding: 0;
+        }
+        .scalability-card ul li {
+            padding: 8px 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .scalability-card ul li .value {
+            color: var(--primary-light);
+            font-weight: 500;
+        }
+        @media (max-width: 1024px) {
+            h1 { font-size: 2.5rem; }
+            h2 { font-size: 1.8rem; }
+            .slide { padding: 40px; }
+            .grid-3 { grid-template-columns: 1fr 1fr; }
+            .grid-4 { grid-template-columns: 1fr 1fr; }
+            .two-col { grid-template-columns: 1fr; }
+            .architecture-split { grid-template-columns: 1fr; }
+            .arch-shared-services { flex-direction: column; align-items: center; }
+            .connection-arrows { gap: 50px; }
+            .security-grid { grid-template-columns: 1fr; }
+            .scalability-grid { grid-template-columns: 1fr; }
+            .data-storage { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">triagent</div>
+    <div class="progress-bar" id="progress"></div>
+
+    <div class="slide-container">
+        <!-- Slide 1: Title -->
+        <div class="slide active" data-slide="1">
+            <h1><span class="brand">Tri</span><span class="brand-accent">agent</span></h1>
+            <p class="subtitle">AI Assistant for Every Persona in Your Team</p>
+
+            <!-- Powered by Claude badge -->
+            <div class="powered-by">
+                <svg class="claude-icon" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="3" fill="#D97706"/>
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="#D97706" stroke-width="2" fill="none" stroke-linecap="round"/>
+                </svg>
+                <span>Powered by</span>
+                <span class="claude-text">Claude Agent SDK</span>
+                <span style="color: var(--text-muted); font-size: 0.8rem;">Anthropic</span>
+            </div>
+
+            <div class="card" style="max-width: 800px; margin-top: 50px; text-align: center; padding: 30px 50px;">
+                <p style="font-size: 1.3rem; color: var(--text-secondary); line-height: 1.7;">
+                    <span class="highlight">Context-aware AI agent platform</span> that understands your team,
+                    integrates with your tools, and automates tasks autonomously
+                </p>
+            </div>
+        </div>
+
+        <!-- Slide 2: The Problem -->
+        <div class="slide" data-slide="2">
+            <h2>Why Current AI Tools Fail in Enterprise</h2>
+            <p class="subtitle">The Gap Between Chat Assistants and Productive AI Agents</p>
+            <div class="content" style="max-width: 1200px;">
+                <div class="problem-item">
+                    <div class="icon">&#10007;</div>
+                    <div>
+                        <h4>Generic AI Lacks Team Context</h4>
+                        <p>No understanding of your ADO structure, coding standards, team workflows, or internal processes</p>
+                    </div>
+                </div>
+                <div class="problem-item">
+                    <div class="icon">&#10007;</div>
+                    <div>
+                        <h4>Chat-Only = No Action Execution</h4>
+                        <p>AI provides suggestions but cannot execute - users must copy/paste and run commands manually</p>
+                    </div>
+                </div>
+                <div class="problem-item">
+                    <div class="icon">&#10007;</div>
+                    <div>
+                        <h4>No Compute Sandbox for Code</h4>
+                        <p>Cannot run scripts, execute commands, or interact with file systems in a secure environment</p>
+                    </div>
+                </div>
+                <div class="problem-item">
+                    <div class="icon">&#10007;</div>
+                    <div>
+                        <h4>No Cross-System Integration</h4>
+                        <p>Limited to search - cannot write to systems, execute authenticated API calls, or correlate data</p>
+                    </div>
+                </div>
+                <div class="problem-item">
+                    <div class="icon">&#10007;</div>
+                    <div>
+                        <h4>No Persistent Memory</h4>
+                        <p>Every session starts fresh - no project context, no learnings from previous interactions</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Solution Overview -->
+        <div class="slide" data-slide="3">
+            <h2>Triagent: Context-Aware AI Agent Platform</h2>
+            <div class="content">
+                <div class="grid grid-3" style="max-width: 1400px; margin: 0 auto 40px;">
+                    <div class="pillar">
+                        <div class="pillar-icon">
+                            <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93s3.05-7.44 7-7.93v15.86zm2-15.86c3.95.49 7 3.85 7 7.93s-3.05 7.44-7 7.93V4.07z"/></svg>
+                        </div>
+                        <h3>Team Context</h3>
+                        <p>Loads team-specific skills and context, understands ADO projects, repositories, and workflows</p>
+                    </div>
+                    <div class="pillar">
+                        <div class="pillar-icon">
+                            <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                        </div>
+                        <h3>Tool Integration</h3>
+                        <p>Connects with ADO, Azure, Databricks, Kusto via MCP protocol - read AND write access</p>
+                    </div>
+                    <div class="pillar">
+                        <div class="pillar-icon">
+                            <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                        </div>
+                        <h3>Task Automation</h3>
+                        <p>Creates PRs, updates work items, runs CLI commands - all autonomously with user controls</p>
+                    </div>
+                </div>
+                <div class="card" style="max-width: 1000px; margin: 0 auto; text-align: center; background: rgba(134, 97, 197, 0.1); border-color: var(--purple);">
+                    <p style="font-size: 1.1rem; color: var(--text-primary);">
+                        Built on <span style="color: var(--claude-orange); font-weight: 600;">Claude Agent SDK</span> &mdash;
+                        the same infrastructure powering Anthropic's official Claude Code CLI
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 4: Architecture Overview (CLI vs Web) -->
+        <div class="slide" data-slide="4">
+            <h2>Architecture Overview</h2>
+            <div class="content">
+                <!-- Side-by-Side: CLI vs Web -->
+                <div class="architecture-split">
+                    <!-- Left Column: Triagent CLI -->
+                    <div class="arch-column local-machine">
+                        <div class="column-header">
+                            <svg viewBox="0 0 24 24" fill="var(--primary)">
+                                <path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z"/>
+                            </svg>
+                            <span>Triagent CLI</span>
+                        </div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted); position: absolute; top: 8px; left: 140px;">Local Machine</div>
+                        <div class="arch-stack">
+                            <div class="arch-component">
+                                <div class="title">Triagent CLI</div>
+                                <div class="desc">Terminal Interface</div>
+                            </div>
+                            <span class="stack-arrow">&darr;</span>
+                            <div class="arch-component">
+                                <div class="title">Triagent Core</div>
+                                <div class="desc">Skills + Personas</div>
+                            </div>
+                            <span class="stack-arrow">&darr;</span>
+                            <div class="arch-component" style="border-color: var(--purple);">
+                                <div class="title" style="color: var(--purple);">Claude Agent SDK</div>
+                                <div class="desc">+ Claude Code CLI</div>
+                            </div>
+                            <div class="sandbox-tools" style="margin-top: 12px;">
+                                <span class="sandbox-tool" style="background: rgba(0, 124, 176, 0.2);">Git</span>
+                                <span class="sandbox-tool" style="background: rgba(0, 124, 176, 0.2);">Azure CLI</span>
+                                <span class="sandbox-tool" style="background: rgba(0, 124, 176, 0.2);">Python</span>
+                                <span class="sandbox-tool" style="background: rgba(0, 124, 176, 0.2);">.NET</span>
+                                <span class="sandbox-tool" style="background: rgba(0, 124, 176, 0.2);">Bash</span>
+                            </div>
+                        </div>
+                        <div class="arch-annotation">
+                            Developer tools installed locally with full filesystem access
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Triagent Web (Azure Cloud) -->
+                    <div class="arch-column azure-cloud">
+                        <div class="column-header">
+                            <svg viewBox="0 0 24 24" fill="#0078D4">
+                                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4c-3.64 0-6.67 2.59-7.35 6.04C2.34 10.36 0 12.91 0 16c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+                            </svg>
+                            <span>Triagent Web</span>
+                        </div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted); position: absolute; top: 8px; left: 145px;">Azure Cloud</div>
+                        <div class="arch-nested">
+                            <!-- App Service Boundary -->
+                            <div class="azure-boundary">
+                                <div class="boundary-label">
+                                    <svg viewBox="0 0 24 24" fill="#0078D4"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93s3.05-7.44 7-7.93v15.86zm2-15.86c3.95.49 7 3.85 7 7.93s-3.05 7.44-7 7.93V4.07z"/></svg>
+                                    App Service
+                                </div>
+                                <div class="arch-component" style="max-width: 100%;">
+                                    <div class="title">Triagent Web (Chainlit)</div>
+                                    <div class="desc">Browser UI</div>
+                                </div>
+                            </div>
+
+                            <!-- Container Apps Session Pool -->
+                            <div class="azure-boundary">
+                                <div class="boundary-label">
+                                    <svg viewBox="0 0 24 24" fill="#0078D4"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/><path d="M7 12h2v5H7zm4-3h2v8h-2zm4-3h2v11h-2z"/></svg>
+                                    Container Apps Session Pool
+                                </div>
+
+                                <!-- Sandboxed Container -->
+                                <div class="sandbox-container">
+                                    <div class="sandbox-label">Sandboxed Container (per session)</div>
+                                    <div class="arch-component" style="max-width: 100%; margin-bottom: 8px;">
+                                        <div class="title">Triagent Core</div>
+                                        <div class="desc">Skills + Personas</div>
+                                    </div>
+                                    <div class="arch-component" style="max-width: 100%; border-color: var(--purple);">
+                                        <div class="title" style="color: var(--purple);">Claude Agent SDK</div>
+                                        <div class="desc">+ Claude Code CLI</div>
+                                    </div>
+                                    <div class="sandbox-tools">
+                                        <span class="sandbox-tool">Git</span>
+                                        <span class="sandbox-tool">Azure CLI</span>
+                                        <span class="sandbox-tool">Python</span>
+                                        <span class="sandbox-tool">.NET</span>
+                                        <span class="sandbox-tool">Bash</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Single Connection Arrow -->
+                <div style="text-align: center; margin: 15px 0;">
+                    <span style="color: var(--text-muted); font-size: 1.5rem;">&darr;</span>
+                </div>
+
+                <!-- Shared Services Box -->
+                <div style="border: 2px solid var(--accent); border-radius: 8px; padding: 20px; max-width: 900px; margin: 0 auto; background: rgba(134, 188, 37, 0.05); position: relative;">
+                    <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--bg-dark); padding: 4px 16px; border-radius: 4px;">
+                        <span style="color: var(--accent); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Shared Services</span>
+                    </div>
+                    <div class="arch-shared-services" style="margin: 0;">
+                        <div class="shared-service ai-foundry">
+                            <div class="service-icon">
+                                <svg viewBox="0 0 24 24" fill="var(--purple)">
+                                    <path d="M21 11V9h-2V7a2 2 0 0 0-2-2h-2V3h-2v2h-2V3H9v2H7a2 2 0 0 0-2 2v2H3v2h2v2H3v2h2v2a2 2 0 0 0 2 2h2v2h2v-2h2v2h2v-2h2a2 2 0 0 0 2-2v-2h2v-2h-2v-2h2zm-4 6H7V7h10v10z"/>
+                                </svg>
+                            </div>
+                            <div class="title">Azure AI Foundry</div>
+                            <div class="desc">Claude Models (Opus / Sonnet)</div>
+                        </div>
+                        <div class="shared-service mcp-tools">
+                            <div class="service-icon">
+                                <svg viewBox="0 0 24 24" fill="var(--primary)">
+                                    <path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/>
+                                </svg>
+                            </div>
+                            <div class="title">MCP Tools</div>
+                            <div class="desc">ADO, Azure, Kusto, Databricks, Git...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 5: Security Architecture (NEW) -->
+        <div class="slide" data-slide="5">
+            <h2>Security Architecture</h2>
+            <p class="subtitle">Enterprise-Grade Security Controls</p>
+            <div class="content">
+                <div class="security-grid">
+                    <!-- Authentication -->
+                    <div class="security-card">
+                        <h4>
+                            <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+                            Authentication
+                        </h4>
+                        <ul>
+                            <li><strong>Stage 1:</strong> Azure AD OAuth (MSAL) for Web UI access</li>
+                            <li><strong>Stage 2:</strong> Device Code Flow for Azure CLI in container</li>
+                            <li>User identity propagation (no shared service accounts)</li>
+                            <li>RBAC for Azure resource access control</li>
+                        </ul>
+                    </div>
+
+                    <!-- Network Security -->
+                    <div class="security-card">
+                        <h4>
+                            <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+                            Network Security
+                        </h4>
+                        <ul>
+                            <li>Container Apps in dedicated subnet</li>
+                            <li>Private endpoints for Azure services</li>
+                            <li>NSG rules for traffic control</li>
+                            <li>Azure AD protection on public endpoints</li>
+                        </ul>
+                        <div class="roadmap">Roadmap: Full VNET integration with private network deployment</div>
+                    </div>
+
+                    <!-- Data Protection -->
+                    <div class="security-card">
+                        <h4>
+                            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg>
+                            Data Protection
+                        </h4>
+                        <ul>
+                            <li><strong>Session Isolation:</strong> Each session = isolated container</li>
+                            <li><strong>Ephemeral Filesystem:</strong> Destroyed on session end</li>
+                            <li><strong>Storage Encryption:</strong> TDE for SQL, encrypted Redis</li>
+                            <li>No PII retention in AI model context</li>
+                        </ul>
+                    </div>
+
+                    <!-- Secrets & Identity -->
+                    <div class="security-card">
+                        <h4>
+                            <svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                            Secrets & Identity
+                        </h4>
+                        <ul>
+                            <li>Azure Key Vault for API keys</li>
+                            <li>Managed Identity for service-to-service auth</li>
+                            <li>No hardcoded credentials in containers</li>
+                            <li>Audit logging via Application Insights</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 6: Data Flow & Integration (NEW) -->
+        <div class="slide" data-slide="6">
+            <h2>Data Flow & Integration</h2>
+            <p class="subtitle">End-to-End Request Flow</p>
+            <div class="content">
+                <div class="flow-diagram">
+                    <!-- Main Flow -->
+                    <div class="flow-row">
+                        <div class="flow-box user">
+                            <div class="label">User</div>
+                            <div class="sublabel">Browser</div>
+                        </div>
+                        <span class="flow-arrow">&rarr;</span>
+                        <div class="flow-box azure">
+                            <div class="label">Chainlit</div>
+                            <div class="sublabel">App Service</div>
+                        </div>
+                        <span class="flow-arrow">&rarr;</span>
+                        <div class="flow-box azure">
+                            <div class="label">Session Pool</div>
+                            <div class="sublabel">Container Apps</div>
+                        </div>
+                        <span class="flow-arrow">&rarr;</span>
+                        <div class="flow-box ai">
+                            <div class="label">Claude API</div>
+                            <div class="sublabel">AI Foundry</div>
+                        </div>
+                    </div>
+
+                    <!-- Tool Integration -->
+                    <div style="margin-top: 20px; text-align: center;">
+                        <span style="color: var(--text-muted);">&darr; Tool Calls &darr;</span>
+                    </div>
+
+                    <div class="flow-row">
+                        <div class="flow-box tools" style="border-color: var(--primary);">
+                            <div class="label">Azure DevOps</div>
+                            <div class="sublabel">Work Items, PRs</div>
+                        </div>
+                        <div class="flow-box tools" style="border-color: var(--primary);">
+                            <div class="label">Azure CLI</div>
+                            <div class="sublabel">Resource Mgmt</div>
+                        </div>
+                        <div class="flow-box tools" style="border-color: var(--primary);">
+                            <div class="label">Kusto</div>
+                            <div class="sublabel">Telemetry</div>
+                        </div>
+                        <div class="flow-box tools" style="border-color: var(--primary);">
+                            <div class="label">Git</div>
+                            <div class="sublabel">Repos</div>
+                        </div>
+                    </div>
+
+                    <!-- Data Storage -->
+                    <div style="margin-top: 40px; width: 100%;">
+                        <div style="text-align: center; margin-bottom: 15px;">
+                            <span style="color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Data Storage</span>
+                        </div>
+                        <div class="data-storage">
+                            <div class="storage-item">
+                                <div class="icon">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="#0078D4">
+                                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                                        <path d="M21 5v6c0 1.66-4.03 3-9 3s-9-1.34-9-3V5"/>
+                                        <path d="M21 11v6c0 1.66-4.03 3-9 3s-9-1.34-9-3v-6"/>
+                                    </svg>
+                                </div>
+                                <div class="name">Azure SQL</div>
+                                <div class="purpose">Chat History</div>
+                            </div>
+                            <div class="storage-item">
+                                <div class="icon">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="#D83B01">
+                                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                        <rect x="7" y="7" width="4" height="4" fill="white"/>
+                                        <rect x="13" y="7" width="4" height="4" fill="white"/>
+                                        <rect x="7" y="13" width="4" height="4" fill="white"/>
+                                        <rect x="13" y="13" width="4" height="4" fill="white"/>
+                                    </svg>
+                                </div>
+                                <div class="name">Redis Cache</div>
+                                <div class="purpose">Session State</div>
+                            </div>
+                            <div class="storage-item">
+                                <div class="icon">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="#68217A">
+                                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4c-3.64 0-6.67 2.59-7.35 6.04C2.34 10.36 0 12.91 0 16c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+                                        <circle cx="9" cy="14" r="1.5" fill="white"/>
+                                        <circle cx="15" cy="14" r="1.5" fill="white"/>
+                                        <path d="M9 17h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                                    </svg>
+                                </div>
+                                <div class="name">App Insights</div>
+                                <div class="purpose">Logs & Telemetry</div>
+                            </div>
+                            <div class="storage-item">
+                                <div class="icon">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--purple)">
+                                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+                                        <path d="M7 12h2v5H7zm4-3h2v8h-2zm4-3h2v11h-2z"/>
+                                    </svg>
+                                </div>
+                                <div class="name">Container FS</div>
+                                <div class="purpose">Ephemeral (per-session)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 7: Technology Stack -->
+        <div class="slide" data-slide="7">
+            <h2>Technology Stack</h2>
+            <p class="subtitle">Powered by Microsoft Azure</p>
+            <div class="content">
+                <div style="border: 3px dashed #0078D4; border-radius: 4px; padding: 30px; max-width: 1500px; margin: 0 auto; position: relative;">
+                    <div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: var(--bg-dark); padding: 5px 20px;">
+                        <span style="color: #0078D4; font-weight: 600; font-size: 1.1rem;">Microsoft Azure</span>
+                    </div>
+
+                    <!-- AI Layer -->
+                    <div style="margin-bottom: 25px;">
+                        <div style="color: #0078D4; font-size: 0.85rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">AI Layer</div>
+                        <div class="card" style="border-color: #0078D4; background: rgba(0, 120, 212, 0.1);">
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <div style="width: 50px; height: 50px; background: linear-gradient(135deg, #0078D4, #00BCF2); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                                    <svg width="30" height="30" viewBox="0 0 24 24" fill="white"><path d="M21 11V9h-2V7a2 2 0 0 0-2-2h-2V3h-2v2h-2V3H9v2H7a2 2 0 0 0-2 2v2H3v2h2v2H3v2h2v2a2 2 0 0 0 2 2h2v2h2v-2h2v2h2v-2h2a2 2 0 0 0 2-2v-2h2v-2h-2v-2h2zm-4 6H7V7h10v10z"/></svg>
+                                </div>
+                                <div>
+                                    <strong style="color: var(--text-primary); font-size: 1.1rem;">Azure AI Foundry</strong>
+                                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Claude Opus 4 / Sonnet 4 (via Anthropic on Azure)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Compute Layer -->
+                    <div style="margin-bottom: 25px;">
+                        <div style="color: #0078D4; font-size: 0.85rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Compute Layer</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <!-- Container Apps with tools -->
+                            <div class="card" style="border-color: #0078D4; background: rgba(0, 120, 212, 0.05);">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+                                    <div style="width: 40px; height: 40px; background: #0078D4; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/><path d="M7 12h2v5H7zm4-3h2v8h-2zm4-3h2v11h-2z"/></svg>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text-primary);">Container Apps</strong>
+                                        <p style="color: var(--text-secondary); font-size: 0.8rem;">Session Pool | 2 vCPU / 4GB per session</p>
+                                    </div>
+                                </div>
+                                <!-- Tools inside container -->
+                                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                    <span class="tool-chip">Triagent-Core</span>
+                                    <span class="tool-chip">Claude-SDK</span>
+                                    <span class="tool-chip">Claude-Code</span>
+                                    <span class="tool-chip">Git</span>
+                                    <span class="tool-chip">Azure-CLI</span>
+                                    <span class="tool-chip">Python</span>
+                                    <span class="tool-chip">.NET</span>
+                                    <span class="tool-chip">Bash</span>
+                                </div>
+                            </div>
+                            <div class="card" style="border-color: #0078D4; background: rgba(0, 120, 212, 0.05);">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="width: 40px; height: 40px; background: #0078D4; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93s3.05-7.44 7-7.93v15.86zm2-15.86c3.95.49 7 3.85 7 7.93s-3.05 7.44-7 7.93V4.07z"/></svg>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text-primary);">App Service</strong>
+                                        <p style="color: var(--text-secondary); font-size: 0.8rem;">Chainlit Web UI | P1v3 SKU</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Storage & Observability -->
+                    <div>
+                        <div style="color: #0078D4; font-size: 0.85rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Storage &amp; Observability</div>
+                        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;">
+                            <div class="card" style="border-color: #0078D4; background: rgba(0, 120, 212, 0.05); padding: 15px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 35px; height: 35px; background: #0078D4; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/></svg>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text-primary); font-size: 0.85rem;">ACR</strong>
+                                        <p style="color: var(--text-secondary); font-size: 0.7rem;">Standard SKU</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card" style="border-color: #D83B01; background: rgba(216, 59, 1, 0.05); padding: 15px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 35px; height: 35px; background: #D83B01; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M15 9H9v6h6V9z"/></svg>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text-primary); font-size: 0.85rem;">Redis</strong>
+                                        <p style="color: var(--text-secondary); font-size: 0.7rem;">Basic C0</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card" style="border-color: #0078D4; background: rgba(0, 120, 212, 0.05); padding: 15px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 35px; height: 35px; background: #0078D4; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                                            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                                            <path d="M21 5v6c0 1.66-4.03 3-9 3s-9-1.34-9-3V5"/>
+                                            <path d="M21 11v6c0 1.66-4.03 3-9 3s-9-1.34-9-3v-6"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text-primary); font-size: 0.85rem;">SQL Database</strong>
+                                        <p style="color: var(--text-secondary); font-size: 0.7rem;">Basic 5 DTU</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card" style="border-color: #68217A; background: rgba(104, 33, 122, 0.05); padding: 15px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 35px; height: 35px; background: #68217A; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4c-3.64 0-6.67 2.59-7.35 6.04C2.34 10.36 0 12.91 0 16c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text-primary); font-size: 0.85rem;">App Insights</strong>
+                                        <p style="color: var(--text-secondary); font-size: 0.7rem;">Telemetry</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card" style="border-color: #FFB900; background: rgba(255, 185, 0, 0.05); padding: 15px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 35px; height: 35px; background: #FFB900; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text-primary); font-size: 0.85rem;">Identity</strong>
+                                        <p style="color: var(--text-secondary); font-size: 0.7rem;">Managed ID</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 8: AI Comparison -->
+        <div class="slide" data-slide="8">
+            <h2>AI Assistant Comparison</h2>
+            <p class="subtitle">Internal Tools (GPT-4o) vs Triagent (Claude)</p>
+            <div class="content" style="max-width: 1600px;">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 22%;">Capability</th>
+                            <th class="header-gpt" style="width: 39%;">Sidekick / Pal (GPT-4o)</th>
+                            <th class="header-claude" style="width: 39%;">Triagent (Claude)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Team Context</strong></td>
+                            <td><span class="check-no">&#10007;</span> Generic AI assistant - no team knowledge</td>
+                            <td><span class="check-yes">&#10003;</span> Loads team-specific skills, ADO context</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Autonomous Agent</strong></td>
+                            <td><span class="check-no">&#10007;</span> Chat only - user must execute</td>
+                            <td><span class="check-yes">&#10003;</span> Creates PRs, updates work items autonomously</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Compute Sandbox</strong></td>
+                            <td><span class="check-no">&#10007;</span> No sandbox - text generation only</td>
+                            <td><span class="check-yes">&#10003;</span> Isolated container with dev tools</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Multi-Agent / Skills</strong></td>
+                            <td><span class="check-no">&#10007;</span> Single model conversation</td>
+                            <td><span class="check-yes">&#10003;</span> PR-reviewer, code-analyzer, subagents</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tool Integration</strong></td>
+                            <td><span class="check-partial">&#9679;</span> Web & Enterprise Search (read-only)</td>
+                            <td><span class="check-yes">&#10003;</span> MCP: ADO, Azure, Kusto (read + write)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Deep Research</strong></td>
+                            <td><span class="check-partial">&#9679;</span> Document search only</td>
+                            <td><span class="check-yes">&#10003;</span> Cross-system: Git + Logs + Wiki + APIs</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Context & Memory</strong></td>
+                            <td><span class="check-partial">&#9679;</span> Basic chat history</td>
+                            <td><span class="check-yes">&#10003;</span> Project context, file awareness, resume</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Slide 9: Claude Agent SDK -->
+        <div class="slide" data-slide="9">
+            <h2>Claude Agent SDK: Key Features</h2>
+            <p class="subtitle" style="margin-bottom: 30px;">Programmatic access to the same infrastructure powering Claude Code</p>
+            <div class="content">
+                <div class="grid" style="max-width: 1500px; margin: 0 auto;">
+                    <div class="card">
+                        <h3>1. Autonomous Tool Execution</h3>
+                        <p>Built-in tools for file operations, bash commands, git, web search - no need to implement tool loops yourself</p>
+                    </div>
+                    <div class="card">
+                        <h3>2. Specialized Subagents</h3>
+                        <p>Spawn focused agents for subtasks - code-reviewer, documentation, testing - enabling parallel work distribution</p>
+                    </div>
+                    <div class="card">
+                        <h3>3. MCP Integration</h3>
+                        <p>Connect to 100+ external systems - Jira, Figma, Slack, Databricks, databases - without custom implementation</p>
+                    </div>
+                    <div class="card">
+                        <h3>4. Enterprise Security</h3>
+                        <p>Pre/post-tool hooks, permission controls, allowlist tools, audit trails - enterprise-grade compliance</p>
+                    </div>
+                    <div class="card">
+                        <h3>5. Persistent Sessions</h3>
+                        <p>Maintain context across exchanges - resume sessions, fork explorations - critical for multi-stage workflows</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 10: Skills System -->
+        <div class="slide" data-slide="10">
+            <h2>Dynamic Skills System</h2>
+            <div class="content">
+                <div class="two-col" style="max-width: 1500px; margin: 0 auto;">
+                    <div>
+                        <div class="card" style="margin-bottom: 20px;">
+                            <h3>Skills as Markdown Files</h3>
+                            <p>Each skill is a markdown file with metadata - easily editable, version controlled, and extensible</p>
+                            <div style="margin-top: 15px; padding: 12px; background: rgba(134, 97, 197, 0.1); border-radius: 4px; font-size: 0.9rem; color: var(--text-secondary);">
+                                <strong style="color: var(--purple);">Version Controlled:</strong> Skills live in Git, enabling collaboration and change tracking
+                            </div>
+                        </div>
+                        <div class="skills-diagram">
+                            <div class="skill-files">
+                                <div class="skill-file">pr_review.md</div>
+                                <div class="skill-file">finops.md</div>
+                                <div class="skill-file">telemetry.md</div>
+                            </div>
+                            <div class="skill-files">
+                                <div class="skill-file">lsi_creation.md</div>
+                                <div class="skill-file">code_review.md</div>
+                                <div class="skill-file">backlog.md</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="card" style="height: 100%;">
+                            <h3>Session Initialization</h3>
+                            <p style="margin-bottom: 20px;">Skills loaded dynamically based on user's persona</p>
+                            <div style="background: rgba(0, 0, 0, 0.2); padding: 15px; border-radius: 4px; font-family: monospace; font-size: 0.85rem;">
+                                <div style="color: var(--purple);">User selects: Developer</div>
+                                <div style="color: var(--text-muted); margin: 10px 0;">&darr; Skills Loaded:</div>
+                                <div style="color: var(--primary-light);">&bull; pr_review</div>
+                                <div style="color: var(--primary-light);">&bull; code_review</div>
+                                <div style="color: var(--primary-light);">&bull; telemetry</div>
+                                <div style="color: var(--primary-light);">&bull; pipeline_investigation</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 11: Live Demo (NEW) -->
+        <div class="slide" data-slide="11">
+            <h2>Live Demo</h2>
+            <div class="content">
+                <div class="demo-container">
+                    <div class="demo-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                    </div>
+                    <p style="font-size: 1.8rem; color: var(--text-primary); margin-bottom: 20px;">See Triagent in Action</p>
+                    <p style="font-size: 1.1rem; color: var(--text-secondary);">Switch to Triagent Web UI</p>
+                    <div style="margin-top: 40px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                        <div class="badge" style="font-size: 0.9rem; padding: 8px 16px;">Developer PR Review</div>
+                        <div class="badge" style="font-size: 0.9rem; padding: 8px 16px;">Telemetry Investigation</div>
+                        <div class="badge" style="font-size: 0.9rem; padding: 8px 16px;">Work Item Creation</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 12: Use Cases -->
+        <div class="slide" data-slide="12">
+            <h2>Use Cases by Persona</h2>
+            <p class="subtitle">One platform, tailored capabilities for every role</p>
+            <div class="content">
+                <div class="grid grid-4" style="max-width: 1600px; margin: 0 auto;">
+                    <div class="use-case">
+                        <h4>
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="var(--primary)"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+                            Developer
+                        </h4>
+                        <ul>
+                            <li>Automated PR reviews</li>
+                            <li>Build failure investigation</li>
+                            <li>Telemetry analysis</li>
+                            <li>Create PRs with fixes</li>
+                        </ul>
+                    </div>
+                    <div class="use-case">
+                        <h4>
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="var(--primary)"><path d="M12 2a9 9 0 0 0-9 9v4.5A3.5 3.5 0 0 0 6.5 19H8a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H5v-1a7 7 0 0 1 14 0v1h-3a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1.5a3.5 3.5 0 0 0 3.5-3.5V11a9 9 0 0 0-9-9Z"/></svg>
+                            Support
+                        </h4>
+                        <ul>
+                            <li>Telemetry investigation</li>
+                            <li>LSI ticket creation</li>
+                            <li>Root cause analysis</li>
+                            <li>Backlog recommendations</li>
+                        </ul>
+                    </div>
+                    <div class="use-case">
+                        <h4>
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="var(--primary)"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                            BA / PO
+                        </h4>
+                        <ul>
+                            <li>AI work item creation</li>
+                            <li>Acceptance criteria</li>
+                            <li>Test specifications</li>
+                            <li>Backlog prioritization</li>
+                        </ul>
+                    </div>
+                    <div class="use-case">
+                        <h4>
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="var(--primary)"><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2Zm-.5 4.75a.75.75 0 0 0-.75.75v.586c-1.26.144-2.25 1.035-2.25 2.087a.75.75 0 0 0 1.5 0c0-.18.435-.443 1-.51v3.086l-.109-.01c-.51-.072-.891-.317-.891-.5a.75.75 0 0 0-1.5 0c0 1.023.9 1.892 2.25 2.087v.584a.75.75 0 0 0 1.5 0v-.584c1.26-.144 2.25-1.035 2.25-2.087a.75.75 0 0 0-1.5 0c0 .18-.435.443-1 .51V9.659l.109.01c.51.072.891.317.891.5a.75.75 0 0 0 1.5 0c0-1.015-.9-1.884-2.25-2.079V7.5a.75.75 0 0 0-.75-.75Z"/></svg>
+                            FinOps
+                        </h4>
+                        <ul>
+                            <li>Azure cost insights</li>
+                            <li>Daily/weekly reports</li>
+                            <li>Resource optimization</li>
+                            <li>Budget tracking</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 13: Scalability & Operations (NEW) -->
+        <div class="slide" data-slide="13">
+            <h2>Scalability & Operations</h2>
+            <p class="subtitle">Enterprise-Ready Infrastructure</p>
+            <div class="content">
+                <div class="scalability-grid">
+                    <div class="scalability-card">
+                        <h4>Session Pool Scaling</h4>
+                        <ul>
+                            <li>Container startup <span class="value">&lt; 1 second (warm pool)</span></li>
+                            <li>Session timeout <span class="value">30 min idle</span></li>
+                            <li>Max session duration <span class="value">2 hours</span></li>
+                            <li>Scale trigger <span class="value">CPU > 70%</span></li>
+                        </ul>
+                    </div>
+                    <div class="scalability-card">
+                        <h4>Resource Limits (per session)</h4>
+                        <ul>
+                            <li>CPU <span class="value">2 vCPU</span></li>
+                            <li>Memory <span class="value">4 GB</span></li>
+                            <li>Ephemeral storage <span class="value">8 GB</span></li>
+                            <li>Network <span class="value">Egress allowed</span></li>
+                        </ul>
+                    </div>
+                    <div class="scalability-card">
+                        <h4>Monitoring & Observability</h4>
+                        <ul>
+                            <li>Telemetry <span class="value">Application Insights</span></li>
+                            <li>Custom metrics <span class="value">Session duration, tokens</span></li>
+                            <li>Alerting <span class="value">Error rate > 5%</span></li>
+                            <li>Log retention <span class="value">30 days</span></li>
+                        </ul>
+                    </div>
+                    <div class="scalability-card">
+                        <h4>Operational Excellence</h4>
+                        <ul>
+                            <li>Deployments <span class="value">Zero-downtime rolling</span></li>
+                            <li>Container registry <span class="value">ACR with geo-replication</span></li>
+                            <li>Health probes <span class="value">Liveness + Readiness</span></li>
+                            <li>IaC <span class="value">Bicep templates</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 14: Enterprise Vision -->
+        <div class="slide" data-slide="14">
+            <h2>Vision: Deloitte AI Agent Marketplace</h2>
+            <p class="subtitle">From Single Team Tool to Enterprise Platform</p>
+            <div class="content">
+                <div class="two-col" style="max-width: 1500px; margin: 0 auto;">
+                    <div>
+                        <div class="card" style="margin-bottom: 20px; border-left-color: var(--accent);">
+                            <h3 style="color: var(--accent);">Today: v1.0</h3>
+                            <p style="font-size: 1.1rem; margin-bottom: 15px;">Triagent for Omnia Data Team</p>
+                            <ul>
+                                <li>Developer PR Reviews</li>
+                                <li>Support Telemetry Investigation</li>
+                                <li>Product Owner Work Items</li>
+                                <li>FinOps Cost Analysis</li>
+                            </ul>
+                        </div>
+                        <div style="text-align: center; padding: 15px;">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="var(--primary)"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="card" style="border-left-color: var(--purple); background: rgba(134, 97, 197, 0.1);">
+                            <h3 style="color: var(--purple);">Tomorrow: Marketplace</h3>
+                            <p style="font-size: 1.1rem; margin-bottom: 15px;">Deloitte-wide Skills &amp; Agents</p>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;">
+                                <span class="badge" style="border-color: var(--purple); background: rgba(134, 97, 197, 0.2);">ServiceNow Agent</span>
+                                <span class="badge" style="border-color: var(--purple); background: rgba(134, 97, 197, 0.2);">Time Management</span>
+                                <span class="badge" style="border-color: var(--purple); background: rgba(134, 97, 197, 0.2);">KX Articles</span>
+                                <span class="badge" style="border-color: var(--purple); background: rgba(134, 97, 197, 0.2);">SAP Integration</span>
+                                <span class="badge" style="border-color: var(--purple); background: rgba(134, 97, 197, 0.2);">Salesforce Agent</span>
+                                <span class="badge" style="border-color: var(--purple); background: rgba(134, 97, 197, 0.2);">HR Self-Service</span>
+                            </div>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">
+                                <strong style="color: var(--purple);">Any team</strong> can publish skills &rarr; <strong style="color: var(--purple);">Any team</strong> can consume
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 15: Next Steps / Q&A -->
+        <div class="slide" data-slide="15">
+            <h2>Next Steps</h2>
+            <div class="content" style="max-width: 1400px;">
+                <div class="grid grid-4" style="margin-bottom: 40px;">
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 2.5rem; color: var(--primary); margin-bottom: 15px;">1</div>
+                        <h3>Architecture Approval</h3>
+                        <p>Review security controls, data flow, and infrastructure design</p>
+                    </div>
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 2.5rem; color: var(--primary); margin-bottom: 15px;">2</div>
+                        <h3>Claude Model Access</h3>
+                        <p>Get Claude model usage approval for Audit Cortex team via AI Foundry</p>
+                    </div>
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 2.5rem; color: var(--primary); margin-bottom: 15px;">3</div>
+                        <h3>Pilot Deployment</h3>
+                        <p>Deploy to sandbox environment with Omnia Data team</p>
+                    </div>
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 2.5rem; color: var(--primary); margin-bottom: 15px;">4</div>
+                        <h3>Production Rollout</h3>
+                        <p>VNET integration, private endpoints, full compliance review</p>
+                    </div>
+                </div>
+
+                <div class="card" style="text-align: center; background: rgba(134, 97, 197, 0.1); border-color: var(--purple);">
+                    <h3 style="color: var(--purple); margin-bottom: 20px;">Questions?</h3>
+                    <p style="font-size: 1.1rem; color: var(--text-secondary);">
+                        Ready to discuss architecture details, security requirements, or deployment strategy
+                    </p>
+                </div>
+
+                <div style="text-align: center; margin-top: 30px;">
+                    <div class="powered-by" style="display: inline-flex;">
+                        <svg class="claude-icon" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="3" fill="#D97706"/>
+                            <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="#D97706" stroke-width="2" fill="none" stroke-linecap="round"/>
+                        </svg>
+                        <span>Powered by</span>
+                        <span class="claude-text">Claude Agent SDK</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <nav class="nav">
+        <button class="nav-btn" onclick="prevSlide()">&larr; Previous</button>
+        <span class="slide-counter"><span id="current">1</span> / <span id="total">15</span></span>
+        <button class="nav-btn" onclick="nextSlide()">Next &rarr;</button>
+    </nav>
+    <div class="keyboard-hint">Use &larr; &rarr; arrow keys or click to navigate</div>
+
+    <script>
+        let currentSlide = 1;
+        const totalSlides = 15;
+
+        function updateSlide() {
+            document.querySelectorAll('.slide').forEach((slide, index) => {
+                slide.classList.remove('active', 'prev');
+                if (index + 1 === currentSlide) {
+                    slide.classList.add('active');
+                } else if (index + 1 < currentSlide) {
+                    slide.classList.add('prev');
+                }
+            });
+            document.getElementById('current').textContent = currentSlide;
+            document.getElementById('progress').style.width = `${(currentSlide / totalSlides) * 100}%`;
+        }
+
+        function nextSlide() {
+            if (currentSlide < totalSlides) { currentSlide++; updateSlide(); }
+        }
+
+        function prevSlide() {
+            if (currentSlide > 1) { currentSlide--; updateSlide(); }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') { nextSlide(); }
+            else if (e.key === 'ArrowLeft') { prevSlide(); }
+        });
+
+        let touchStartX = 0;
+        document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+        document.addEventListener('touchend', (e) => {
+            const diff = touchStartX - e.changedTouches[0].clientX;
+            if (Math.abs(diff) > 50) { diff > 0 ? nextSlide() : prevSlide(); }
+        });
+    </script>
+</body>
+</html>

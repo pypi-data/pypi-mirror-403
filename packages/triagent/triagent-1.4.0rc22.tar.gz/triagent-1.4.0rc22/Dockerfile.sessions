@@ -1,0 +1,98 @@
+# Dockerfile for Sessions API - Persistent Claude SDK sessions
+#
+# This container runs the Sessions API which keeps the Claude Agent SDK
+# client alive across multiple HTTP requests, maintaining conversation context.
+#
+# SECURITY: Runs as non-root 'triagent' user to enable bypassPermissions mode
+# in Claude SDK. Running as root blocks this mode for security reasons.
+#
+# Endpoints:
+# - POST /init: Initialize SDK with credentials (SSE streaming)
+# - POST /chat: Send message and stream response (SSE streaming)
+# - POST /command: Execute slash command (JSON)
+# - GET /health: Health check (JSON)
+# - DELETE /session: Shutdown SDK session (JSON)
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Azure CLI for MCP tools (Azure DevOps operations)
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
+# Install Node.js for MCP Azure DevOps server
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create triagent user and group (non-root for security)
+# This enables bypassPermissions mode in Claude SDK
+RUN groupadd --gid 1000 triagent && \
+    useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash triagent
+
+# Create config directories owned by triagent
+# ~/.triagent: Triagent session state and configuration
+# ~/.azure: Azure CLI credentials for OAuth token storage
+RUN mkdir -p /home/triagent/.triagent && \
+    mkdir -p /home/triagent/.azure && \
+    chmod 700 /home/triagent/.azure && \
+    chown -R triagent:triagent /home/triagent
+
+# Copy project files with triagent ownership
+COPY --chown=triagent:triagent pyproject.toml .
+COPY --chown=triagent:triagent hatch_build.py .
+COPY --chown=triagent:triagent README.md .
+COPY --chown=triagent:triagent src/ ./src/
+
+# Copy entrypoint script for orphaned session cleanup
+COPY --chown=triagent:triagent scripts/sessions-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/sessions-entrypoint.sh
+
+# Set version for setuptools-scm (Docker build context doesn't include .git)
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=1.4.0
+
+# Install triagent with web dependencies (as root for system-wide install)
+# TRIAGENT_SKIP_ENCRYPT=1 skips the encryption hook (use plaintext skills)
+# claude-agent-sdk includes Claude CLI components
+RUN TRIAGENT_SKIP_ENCRYPT=1 pip install --no-cache-dir -e ".[web]"
+
+# Set ownership of app directory to triagent
+RUN chown -R triagent:triagent /app
+
+# Switch to triagent user for runtime
+USER triagent
+
+# Set HOME environment for triagent user
+ENV HOME=/home/triagent
+ENV USER=triagent
+
+# Set environment variables for non-interactive mode
+ENV CI=true
+ENV ANTHROPIC_HEADLESS=1
+ENV CLAUDE_CODE_SKIP_ONBOARDING=1
+ENV PYTHONUNBUFFERED=1
+
+# Expose Sessions API port (8080 for Azure Container Apps Session Pool)
+EXPOSE 8080
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Set entrypoint to handle orphaned session cleanup on container start
+ENTRYPOINT ["/usr/local/bin/sessions-entrypoint.sh"]
+
+# Run Sessions API server on port 8080 for Azure Dynamic Sessions
+CMD ["uvicorn", "triagent.web.sessions_server:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info"]
