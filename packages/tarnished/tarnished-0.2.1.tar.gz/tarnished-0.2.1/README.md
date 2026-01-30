@@ -1,0 +1,130 @@
+# tarnished
+
+File state checkpoint tool - has your code tarnished?
+
+## Installation
+
+### Using uv (recommended)
+
+```bash
+uv tool install tarnished
+```
+
+### Using pip
+
+```bash
+pip install tarnished
+```
+
+### From source
+
+```bash
+git clone https://github.com/RasmusGodske/tarnished.git
+cd tarnished
+uv tool install .
+```
+
+## Quick Start
+
+```bash
+# Initialize .tarnished/ directory
+tarnished init
+
+# Save a checkpoint for a profile
+tarnished save lint:php "app/**/*.php" "tests/**/*.php"
+
+# Check if files have changed
+tarnished check lint:php  # Exit 0 = clean, Exit 1 = tarnished
+
+# See status of all profiles
+tarnished status
+```
+
+## Usage
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `tarnished init` | Initialize .tarnished/ directory |
+| `tarnished save <profile> [patterns...]` | Save checkpoint for profile |
+| `tarnished check <profile>` | Check if profile is tarnished |
+| `tarnished status` | Show JSON status of all profiles |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Clean (no changes) |
+| 1 | Tarnished (changes detected) |
+| 2 | Unknown profile |
+
+## How It Works
+
+**tarnished** is a simple CLI tool that tracks file state via checksums. It helps you know when code has changed and needs re-checking (linting, testing, etc.).
+
+### Core Concepts
+
+- **Profile:** A named set of glob patterns (e.g., `lint:php` tracks `app/**/*.php`)
+- **Checkpoint:** A saved checksum representing file state at a specific moment
+- **Tarnished:** A profile is "tarnished" if files have changed since the last checkpoint
+
+### Implementation
+
+tarnished uses file metadata (path + size + mtime) to compute checksums. This is:
+
+- **Git-independent** - works regardless of commit history
+- **Fast** - no file content hashing required
+- **Simple** - single JSON files for config and state
+
+### File Structure
+
+```
+.tarnished/
+├── config.json    # Profile patterns (commit this)
+└── state.json     # Current checksums (gitignored)
+```
+
+## Integration Example
+
+Add to your CI/test scripts:
+
+```bash
+# After successful test run, save checkpoint
+./run-tests.sh && tarnished save tests
+
+# Before committing, check if tests need re-running
+if ! tarnished check tests; then
+    echo "Tests are tarnished - please run tests first"
+    exit 1
+fi
+```
+
+### Pre-commit Hook
+
+```bash
+#!/bin/bash
+# .git/hooks/pre-commit
+
+# Check if any profiles are tarnished
+status=$(tarnished status)
+if echo "$status" | grep -q '"status": "tarnished"'; then
+    echo "Some profiles are tarnished. Please run the relevant checks."
+    tarnished status
+    exit 1
+fi
+```
+
+### CI Pipeline Example
+
+```yaml
+# In your CI workflow
+- name: Check code state
+  run: |
+    tarnished check lint:php || echo "PHP files changed - running linter"
+    tarnished check tests || echo "Test files changed - running tests"
+```
+
+## License
+
+MIT
