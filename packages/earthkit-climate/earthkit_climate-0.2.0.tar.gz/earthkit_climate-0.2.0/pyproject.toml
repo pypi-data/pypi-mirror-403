@@ -1,0 +1,136 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=65", "wheel", "setuptools-scm>=8"]
+
+[project]
+authors = [
+  {name = "European Centre for Medium-Range Weather Forecasts (ECMWF)", email = "software.support@ecmwf.int"}
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering"
+]
+dependencies = [
+  "earthkit-data>=0.17.0",
+  "numpy>=1.22",
+  "xarray>=2023.1",
+  "xclim>=0.59.1",
+  "xsdba>=0.5,<0.6"
+]
+description = "Tools for calculating climate indicies, climate change analysis and attribution."
+dynamic = ["version", "readme"]
+license = {file = "LICENSE"}
+name = "earthkit-climate"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "ruff",
+  "mypy",
+  "pre-commit",
+  "ipython",
+  "pytest",
+  "pytest-cov",
+  "pytest-mock",
+  "ipykernel"
+]
+docs = [
+  "nbsphinx",
+  "roman-numerals-py>=3.1.0,<4",
+  "sphinx",
+  "sphinx-autoapi",
+  "sphinx-rtd-theme"
+]
+
+[tool.coverage.run]
+branch = true
+
+[tool.pixi.dependencies]
+ipykernel = ">=7.1.0,<8"
+pre-commit = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-mock = ">=3.15.1,<4"
+python = "3.12.*"
+
+# ---- Pixi environments ----
+[tool.pixi.environments]
+dev = {features = ["dev"]}
+docs = {features = ["docs"]}
+
+[tool.pixi.feature.docs.dependencies]
+nbsphinx = ">=0.9.8,<0.10"
+pandoc = "*"
+sphinx = "*"
+sphinx-autoapi = ">=3.6.1,<4"
+sphinx-rtd-theme = ">=3.0.2,<4"
+
+[tool.pixi.feature.docs.tasks]
+docs-build = "rm -rf docs/_api docs/_build && sphinx-build -M html docs docs/_build"
+
+[tool.pixi.pypi-dependencies]
+earthkit-plots = ">=0.5.0"
+
+[tool.pixi.tasks]
+qa = "pre-commit run --all-files"
+type-check = "python -m mypy . --no-namespace-packages"
+unit-tests = "python -m pytest -vv --cov=. --cov-report=html --doctest-glob='*.md' --doctest-glob='*.rst'"
+
+# ---- Pixi CONFIGURATION ----
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[tool.pytest.ini_options]
+addopts = "-vv --cov=. --cov-report=html --doctest-glob='*.md' --doctest-glob='*.rst'"
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+ignore = [
+  "D1",  # pydocstyle: Missing Docstrings
+  "D107",  # pydocstyle: numpy convention
+  "D203",
+  "D205",
+  "D212",
+  "D213",
+  "D401",
+  "D402",
+  "D413",
+  "D415",
+  "D416",
+  "D417"
+]
+select = [
+  "F",  # pyflakes
+  "E",  # pycodestyle
+  "W",  # pycodestyle warnings
+  "I",  # isort
+  "D"  # pydocstyle
+]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"], content-type = "text/markdown"}
+
+# ---- Namespace package configuration ----
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"
+write_to = "src/earthkit/climate/version.py"
+write_to_template = '''
+# Do not change! Do not track in version control!
+__version__ = "{version}"
+'''
