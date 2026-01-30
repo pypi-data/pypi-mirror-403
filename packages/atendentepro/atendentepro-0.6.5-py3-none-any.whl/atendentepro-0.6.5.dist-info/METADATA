@@ -1,0 +1,1327 @@
+Metadata-Version: 2.4
+Name: atendentepro
+Version: 0.6.5
+Summary: Framework de orquestração de agentes IA com tom e estilo customizáveis. Integra documentos (RAG), APIs e bancos de dados em uma plataforma inteligente multi-agente.
+Author-email: BeMonkAI <contato@monkai.com.br>
+Maintainer-email: BeMonkAI <contato@monkai.com.br>
+License: Proprietary
+Project-URL: Homepage, https://github.com/BeMonkAI/atendentepro
+Project-URL: Documentation, https://github.com/BeMonkAI/atendentepro#readme
+Project-URL: Repository, https://github.com/BeMonkAI/atendentepro
+Project-URL: Issues, https://github.com/BeMonkAI/atendentepro/issues
+Project-URL: Changelog, https://github.com/BeMonkAI/atendentepro/blob/main/CHANGELOG.md
+Keywords: ai,agents,customer-service,chatbot,openai,multi-agent,atendimento,openai-agents,conversational-ai,rag,triage,handoff,escalation,feedback,knowledge-base,interview
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: Other/Proprietary License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Communications :: Chat
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: openai-agents<1.0.0,>=0.3.3
+Requires-Dist: openai<2.0.0,>=1.107.1
+Requires-Dist: pydantic<3.0.0,>=2.0.0
+Requires-Dist: PyYAML<7.0,>=6.0
+Requires-Dist: python-dotenv<2.0.0,>=1.0.0
+Requires-Dist: httpx<1.0.0,>=0.27.0
+Provides-Extra: dev
+Requires-Dist: pytest<9.0.0,>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio<1.0.0,>=0.21.0; extra == "dev"
+Requires-Dist: black<25.0.0,>=23.0.0; extra == "dev"
+Requires-Dist: isort<6.0.0,>=5.12.0; extra == "dev"
+Requires-Dist: mypy<2.0.0,>=1.0.0; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: mkdocs<2.0.0,>=1.5.0; extra == "docs"
+Requires-Dist: mkdocs-material<10.0.0,>=9.0.0; extra == "docs"
+Provides-Extra: rag
+Requires-Dist: numpy<2.0.0,>=1.24.0; extra == "rag"
+Requires-Dist: scikit-learn<2.0.0,>=1.3.0; extra == "rag"
+Requires-Dist: PyPDF2<4.0.0,>=3.0.0; extra == "rag"
+Requires-Dist: python-docx<2.0.0,>=0.8.11; extra == "rag"
+Requires-Dist: python-pptx<1.0.0,>=0.6.21; extra == "rag"
+Requires-Dist: PyMuPDF<2.0.0,>=1.23.0; extra == "rag"
+Provides-Extra: tracing
+Requires-Dist: monkai-trace<1.0.0,>=0.2.9; extra == "tracing"
+Provides-Extra: azure
+Requires-Dist: opentelemetry-sdk<2.0.0,>=1.20.0; extra == "azure"
+Requires-Dist: azure-monitor-opentelemetry-exporter<2.0.0,>=1.0.0; extra == "azure"
+Provides-Extra: all
+Requires-Dist: atendentepro[azure,dev,docs,rag,tracing]; extra == "all"
+Dynamic: license-file
+
+# AtendentePro
+
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://badge.fury.io/py/atendentepro.svg)](https://pypi.org/project/atendentepro/)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+
+**Framework de orquestração de agentes IA para interações complexas**
+
+Plataforma que unifica múltiplos agentes especializados para resolver demandas que envolvem diferentes fontes de dados, sistemas e fluxos de decisão — tudo orquestrado em um único lugar. Baseado no [OpenAI Agents SDK](https://github.com/openai/openai-agents-python).
+
+### Principais Capacidades
+
+| Capacidade | Descrição |
+|------------|-----------|
+| **Classificação Inteligente** | Identifica a intenção e direciona para o agente especializado |
+| **Integração de Dados** | Conecta documentos (RAG), CSVs, bancos de dados SQL e APIs externas |
+| **Orquestração de Fluxos** | Handoffs automáticos entre agentes conforme a complexidade da demanda |
+| **Tom e Estilo Customizáveis** | AgentStyle para personalizar linguagem, tom e formato de respostas |
+| **Escalonamento Controlado** | Transferência para atendimento humano com contexto preservado |
+| **Gestão de Feedbacks** | Sistema de tickets para reclamações, sugestões e acompanhamento |
+| **Configuração Declarativa** | Personalização completa via arquivos YAML |
+
+---
+
+## 📋 Índice
+
+- [Instalação](#-instalação)
+- [Ativação (Licença)](#-ativação-licença)
+- [Configurar API Key](#-configurar-api-key)
+- [Início Rápido](#-início-rápido)
+- [Arquitetura](#-arquitetura)
+- [Agentes Disponíveis](#-agentes-disponíveis)
+- [Criar Templates Customizados](#-criar-templates-customizados)
+- [Configurações YAML](#-configurações-yaml)
+- [Escalation Agent](#-escalation-agent)
+- [Feedback Agent](#-feedback-agent)
+- [Fluxo de Handoffs](#-fluxo-de-handoffs)
+- [Estilo de Comunicação](#-estilo-de-comunicação-agentstyle)
+- [Single Reply Mode](#-single-reply-mode)
+- [Filtros de Acesso](#-filtros-de-acesso-roleuser)
+- [Múltiplos Agentes](#-múltiplos-agentes-multi-interview--knowledge)
+- [Tracing e Monitoramento](#-tracing-e-monitoramento)
+- [Suporte](#-suporte)
+
+---
+
+## 📦 Instalação
+
+```bash
+# Via PyPI
+pip install atendentepro
+
+# Com monitoramento (recomendado)
+pip install atendentepro[tracing]
+```
+
+---
+
+## 🔑 Ativação (Licença)
+
+A biblioteca **requer um token de licença** para funcionar.
+
+### Opção 1: Variável de Ambiente (Recomendado)
+
+```bash
+export ATENDENTEPRO_LICENSE_KEY="ATP_seu-token-aqui"
+```
+
+### Opção 2: Via Código
+
+```python
+from atendentepro import activate
+
+activate("ATP_seu-token-aqui")
+```
+
+### Opção 3: Arquivo .env
+
+```env
+ATENDENTEPRO_LICENSE_KEY=ATP_seu-token-aqui
+OPENAI_API_KEY=sk-sua-chave-openai
+```
+
+### Obter um Token
+
+Entre em contato para obter seu token:
+- 📧 **Email:** contato@monkai.com.br
+- 🌐 **Site:** https://www.monkai.com.br
+
+---
+
+## 🔐 Configurar API Key
+
+### OpenAI
+
+```bash
+# .env
+OPENAI_API_KEY=sk-sua-chave-openai
+```
+
+### Azure OpenAI
+
+```bash
+# .env
+OPENAI_PROVIDER=azure
+AZURE_API_KEY=sua-chave-azure
+AZURE_API_ENDPOINT=https://seu-recurso.openai.azure.com
+AZURE_API_VERSION=2024-02-15-preview
+AZURE_DEPLOYMENT_NAME=gpt-4o
+```
+
+### Via Código
+
+```python
+from atendentepro import activate, configure
+
+activate("ATP_seu-token")
+
+configure(
+    openai_api_key="sk-sua-chave-openai",
+    default_model="gpt-4o-mini"
+)
+```
+
+---
+
+## ⚡ Início Rápido
+
+```python
+import asyncio
+from pathlib import Path
+from atendentepro import activate, create_standard_network
+from agents import Runner
+
+# 1. Ativar
+activate("ATP_seu-token")
+
+async def main():
+    # 2. Criar rede de agentes
+    network = create_standard_network(
+        templates_root=Path("./meu_cliente"),
+        client="config"
+    )
+    
+    # 3. Executar conversa
+    result = await Runner.run(
+        network.triage,
+        [{"role": "user", "content": "Olá, preciso de ajuda"}]
+    )
+    
+    print(result.final_output)
+
+asyncio.run(main())
+```
+
+---
+
+## 🏗️ Arquitetura
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              ATENDENTEPRO                                  │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│   👤 Usuário                                                               │
+│       │                                                                    │
+│       ▼                                                                    │
+│   ┌─────────────┐                                                         │
+│   │   Triage    │──► Classifica intenção do usuário                       │
+│   └─────────────┘                                                         │
+│         │                                                                  │
+│    ┌────┴────┬─────────┬─────────┬─────────┬─────────┬─────────┐          │
+│    ▼         ▼         ▼         ▼         ▼         ▼         ▼          │
+│ ┌──────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐     │
+│ │ Flow │ │Knowl. │ │Confirm│ │ Usage │ │Onboard│ │Escala.│ │Feedbk.│     │
+│ └──────┘ └───────┘ └───────┘ └───────┘ └───────┘ └───────┘ └───────┘     │
+│    │                                                                       │
+│    ▼                                                                       │
+│ ┌─────────────┐                                                           │
+│ │  Interview  │──► Coleta informações estruturadas                        │
+│ └─────────────┘                                                           │
+│       │                                                                    │
+│       ▼                                                                    │
+│ ┌─────────────┐                                                           │
+│ │   Answer    │──► Sintetiza resposta final                               │
+│ └─────────────┘                                                           │
+│                                                                            │
+│ ══════════════════════════════════════════════════════════════════════    │
+│  📞 Escalation → Transfere para atendimento humano IMEDIATO               │
+│  📝 Feedback   → Registra tickets para resposta POSTERIOR                 │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🤖 Agentes Disponíveis
+
+| Agente | Descrição | Quando Usar |
+|--------|-----------|-------------|
+| **Triage** | Classifica intenção e direciona | Sempre (ponto de entrada) |
+| **Flow** | Apresenta opções/menu ao usuário | Múltiplas opções disponíveis |
+| **Interview** | Coleta informações através de perguntas | Precisa de dados do usuário |
+| **Answer** | Sintetiza resposta final | Após coletar informações |
+| **Knowledge** | Consulta RAG e dados estruturados | Perguntas sobre documentos/dados |
+| **Confirmation** | Valida com respostas sim/não | Confirmar ações |
+| **Usage** | Responde dúvidas sobre o sistema | "Como funciona?" |
+| **Onboarding** | Cadastro de novos usuários | Novos usuários |
+| **Escalation** | Transfere para humano | Urgente/não resolvido |
+| **Feedback** | Registra tickets | Dúvidas/reclamações/sugestões |
+
+---
+
+## 📁 Criar Templates Customizados
+
+### Estrutura de Pastas
+
+```
+meu_cliente/
+├── triage_config.yaml       # ✅ Obrigatório
+├── flow_config.yaml         # Recomendado
+├── interview_config.yaml    # Recomendado
+├── answer_config.yaml       # Opcional
+├── knowledge_config.yaml    # Opcional
+├── escalation_config.yaml   # Recomendado
+├── feedback_config.yaml     # Recomendado
+├── guardrails_config.yaml   # Recomendado
+├── style_config.yaml        # Opcional - Tom e estilo
+└── data/                    # Dados estruturados (CSV, etc.)
+```
+
+### Usar o Template
+
+```python
+from pathlib import Path
+from atendentepro import create_standard_network
+
+network = create_standard_network(
+    templates_root=Path("./"),
+    client="meu_cliente",
+    include_escalation=True,
+    include_feedback=True,
+)
+```
+
+---
+
+## ⚙️ Configurações YAML
+
+### triage_config.yaml (Obrigatório)
+
+Define palavras-chave para classificação:
+
+```yaml
+agent_name: "Triage Agent"
+
+keywords:
+  - agent: "Flow Agent"
+    keywords:
+      - "produto"
+      - "serviço"
+      - "preço"
+  
+  - agent: "Knowledge Agent"
+    keywords:
+      - "documentação"
+      - "manual"
+      - "como funciona"
+  
+  - agent: "Escalation Agent"
+    keywords:
+      - "falar com humano"
+      - "atendente"
+```
+
+### flow_config.yaml
+
+Define opções/menu:
+
+```yaml
+agent_name: "Flow Agent"
+
+topics:
+  - id: 1
+    label: "Vendas"
+    keywords: ["comprar", "preço", "orçamento"]
+    
+  - id: 2
+    label: "Suporte"
+    keywords: ["problema", "erro", "ajuda"]
+    
+  - id: 3
+    label: "Financeiro"
+    keywords: ["pagamento", "boleto", "fatura"]
+```
+
+### interview_config.yaml
+
+Define perguntas para coleta:
+
+```yaml
+agent_name: "Interview Agent"
+
+interview_questions: |
+  Para cada tópico, faça as seguintes perguntas:
+  
+  ## Vendas
+  1. Qual produto você tem interesse?
+  2. Qual quantidade desejada?
+  3. Qual seu email para contato?
+  
+  ## Suporte
+  1. Descreva o problema
+  2. Quando começou?
+  3. Já tentou alguma solução?
+```
+
+### guardrails_config.yaml
+
+Define escopo e restrições:
+
+```yaml
+scope: |
+  Este assistente pode ajudar com:
+  - Informações sobre produtos
+  - Suporte técnico
+  - Dúvidas sobre serviços
+
+forbidden_topics:
+  - "política"
+  - "religião"
+  - "conteúdo adulto"
+
+out_of_scope_message: |
+  Desculpe, não posso ajudar com esse assunto.
+  Posso ajudar com produtos, suporte ou serviços.
+```
+
+---
+
+## 📞 Escalation Agent
+
+Transfere para atendimento humano quando:
+- Usuário solicita explicitamente
+- Tópico não coberto pelo sistema
+- Usuário demonstra frustração
+- Agente não consegue resolver
+
+### escalation_config.yaml
+
+```yaml
+name: "Escalation Agent"
+
+triggers:
+  explicit_request:
+    - "quero falar com um humano"
+    - "atendente humano"
+    - "falar com uma pessoa"
+  
+  frustration:
+    - "você não está me ajudando"
+    - "isso não resolve"
+
+channels:
+  phone:
+    enabled: true
+    number: "0800-123-4567"
+    hours: "Seg-Sex 8h-18h"
+  
+  email:
+    enabled: true
+    address: "atendimento@empresa.com"
+    sla: "Resposta em até 24h"
+  
+  whatsapp:
+    enabled: true
+    number: "(11) 99999-9999"
+
+business_hours:
+  start: 8
+  end: 18
+  days: [monday, tuesday, wednesday, thursday, friday]
+
+messages:
+  greeting: "Entendo que você precisa de um atendimento especializado."
+  out_of_hours: "Nosso atendimento funciona de Seg-Sex, 8h-18h."
+```
+
+### Usar Escalation
+
+```python
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    include_escalation=True,
+    escalation_channels="""
+📞 Telefone: 0800-123-4567 (Seg-Sex 8h-18h)
+📧 Email: atendimento@empresa.com
+💬 WhatsApp: (11) 99999-9999
+""",
+)
+```
+
+---
+
+## 📝 Feedback Agent
+
+Registra tickets para:
+- ❓ **Dúvidas** - Perguntas que precisam de pesquisa
+- 💬 **Feedback** - Opinião sobre produto/serviço
+- 📢 **Reclamação** - Insatisfação formal (prioridade alta)
+- 💡 **Sugestão** - Ideia de melhoria
+- ⭐ **Elogio** - Agradecimento
+- ⚠️ **Problema** - Bug/erro técnico (prioridade alta)
+
+### feedback_config.yaml
+
+```yaml
+name: "Feedback Agent"
+
+protocol_prefix: "SAC"  # Formato: SAC-20240106-ABC123
+
+ticket_types:
+  - name: "duvida"
+    label: "Dúvida"
+    default_priority: "normal"
+    
+  - name: "reclamacao"
+    label: "Reclamação"
+    default_priority: "alta"
+    
+  - name: "sugestao"
+    label: "Sugestão"
+    default_priority: "baixa"
+
+email:
+  enabled: true
+  brand_color: "#660099"
+  brand_name: "Minha Empresa"
+  sla_message: "Retornaremos em até 24h úteis."
+
+priorities:
+  - name: "baixa"
+    sla_hours: 72
+  - name: "normal"
+    sla_hours: 24
+  - name: "alta"
+    sla_hours: 8
+  - name: "urgente"
+    sla_hours: 2
+```
+
+### Usar Feedback
+
+```python
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    include_feedback=True,
+    feedback_protocol_prefix="SAC",
+    feedback_brand_color="#660099",
+    feedback_brand_name="Minha Empresa",
+)
+```
+
+### Diferença: Escalation vs Feedback
+
+| Aspecto | Escalation | Feedback |
+|---------|------------|----------|
+| **Propósito** | Atendimento IMEDIATO | Registro para DEPOIS |
+| **Urgência** | Alta | Pode aguardar |
+| **Canal** | Telefone, chat | Email, ticket |
+| **Protocolo** | ESC-XXXXXX | SAC-XXXXXX |
+| **Quando usar** | "Quero falar com alguém" | "Tenho uma sugestão" |
+
+---
+
+## 🔄 Fluxo de Handoffs
+
+```
+Triage ──► Flow, Knowledge, Confirmation, Usage, Onboarding, Escalation, Feedback
+Flow ────► Interview, Triage, Escalation, Feedback
+Interview► Answer, Escalation, Feedback
+Answer ──► Triage, Escalation, Feedback
+Knowledge► Triage, Escalation, Feedback
+Escalation► Triage, Feedback
+Feedback ► Triage, Escalation
+```
+
+### Configuração de Agentes
+
+Você pode escolher exatamente quais agentes incluir na sua rede:
+
+```python
+from pathlib import Path
+from atendentepro import create_standard_network
+
+# Todos os agentes habilitados (padrão)
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+)
+
+# Sem Knowledge Agent (para clientes sem base de conhecimento)
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    include_knowledge=False,
+)
+
+# Rede mínima (apenas fluxo principal)
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    include_knowledge=False,
+    include_confirmation=False,
+    include_usage=False,
+    include_escalation=False,
+    include_feedback=False,
+)
+
+# Apenas captura de leads (sem Knowledge nem Usage)
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    include_knowledge=False,
+    include_usage=False,
+)
+```
+
+### Parâmetros Disponíveis
+
+| Parâmetro | Padrão | Descrição |
+|-----------|--------|-----------|
+| `include_flow` | `True` | Agente de fluxo conversacional |
+| `include_interview` | `True` | Agente de entrevista/coleta |
+| `include_answer` | `True` | Agente de resposta final |
+| `include_knowledge` | `True` | Agente de base de conhecimento |
+| `include_confirmation` | `True` | Agente de confirmação |
+| `include_usage` | `True` | Agente de instruções de uso |
+| `include_onboarding` | `False` | Agente de boas-vindas |
+| `include_escalation` | `True` | Agente de escalonamento humano |
+| `include_feedback` | `True` | Agente de tickets/feedback |
+
+---
+
+## 🎨 Estilo de Comunicação (AgentStyle)
+
+Personalize o tom e estilo de resposta dos agentes:
+
+### Via Código
+
+```python
+from pathlib import Path
+from atendentepro import create_standard_network, AgentStyle
+
+# Estilo global (aplicado a todos os agentes)
+global_style = AgentStyle(
+    tone="profissional e consultivo",
+    language_style="formal",      # formal, informal, neutro
+    response_length="moderado",   # conciso, moderado, detalhado
+    custom_rules="Sempre cumprimente o usuário pelo nome.",
+)
+
+# Estilos específicos por agente
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    global_style=global_style,
+    agent_styles={
+        "escalation": AgentStyle(
+            tone="empático e acolhedor",
+            custom_rules="Demonstre compreensão pela situação.",
+        ),
+        "knowledge": AgentStyle(
+            tone="didático e paciente",
+            response_length="detalhado",
+        ),
+    },
+)
+```
+
+### Via YAML (style_config.yaml)
+
+```yaml
+# Estilo Global
+global:
+  tone: "profissional e cordial"
+  language_style: "formal"
+  response_length: "moderado"
+  custom_rules: |
+    - Seja objetivo e claro nas respostas
+    - Use linguagem inclusiva
+
+# Estilos por Agente
+agents:
+  escalation:
+    tone: "empático e tranquilizador"
+    custom_rules: |
+      - Demonstre compreensão pela situação
+      - Assegure que o problema será resolvido
+
+  knowledge:
+    tone: "didático e paciente"
+    response_length: "detalhado"
+    custom_rules: |
+      - Explique conceitos de forma acessível
+      - Cite as fontes das informações
+
+  feedback:
+    tone: "solícito e atencioso"
+    custom_rules: |
+      - Agradeça o feedback recebido
+      - Confirme o registro da solicitação
+```
+
+### Opções Disponíveis
+
+| Parâmetro | Valores | Descrição |
+|-----------|---------|-----------|
+| `tone` | Texto livre | Tom da conversa (ex: "profissional", "empático") |
+| `language_style` | `formal`, `informal`, `neutro` | Nível de formalidade |
+| `response_length` | `conciso`, `moderado`, `detalhado` | Tamanho das respostas |
+| `custom_rules` | Texto livre | Regras personalizadas |
+
+---
+
+## 🔧 Dependências
+
+- Python 3.9+
+- openai-agents >= 0.3.3
+- openai >= 1.107.1
+- pydantic >= 2.0.0
+- PyYAML >= 6.0
+- python-dotenv >= 1.0.0
+
+---
+
+## 📄 Variáveis de Ambiente
+
+| Variável | Descrição | Obrigatório |
+|----------|-----------|-------------|
+| `ATENDENTEPRO_LICENSE_KEY` | Token de licença | ✅ Sim |
+| `OPENAI_API_KEY` | Chave API OpenAI | ✅ (se OpenAI) |
+| `OPENAI_PROVIDER` | `openai` ou `azure` | Não |
+| `DEFAULT_MODEL` | Modelo padrão | Não |
+| `AZURE_API_KEY` | Chave API Azure | ✅ (se Azure) |
+| `AZURE_API_ENDPOINT` | Endpoint Azure | ✅ (se Azure) |
+| `SMTP_HOST` | Servidor SMTP | Para emails |
+| `SMTP_USER` | Usuário SMTP | Para emails |
+| `SMTP_PASSWORD` | Senha SMTP | Para emails |
+
+---
+
+## 🔁 Single Reply Mode
+
+O **Single Reply Mode** permite configurar agentes para responderem apenas uma vez e automaticamente transferirem de volta para o Triage. Isso evita que a conversa fique "presa" em um agente específico.
+
+📂 **Exemplos completos**: [docs/examples/single_reply/](docs/examples/single_reply/)
+
+### Quando Usar
+
+| Cenário | Recomendação |
+|---------|--------------|
+| **Chatbots de alto volume** | ✅ Ativar para respostas rápidas |
+| **FAQ simples** | ✅ Knowledge com single_reply |
+| **Coleta de dados** | ❌ Interview precisa múltiplas interações |
+| **Onboarding** | ❌ Precisa guiar o usuário em etapas |
+| **Confirmações** | ✅ Confirma e volta ao Triage |
+
+### Exemplo 1: FAQ Bot (Via Código)
+
+Chatbot otimizado para perguntas frequentes:
+
+```python
+from pathlib import Path
+from atendentepro import create_standard_network
+
+# FAQ Bot: Knowledge e Answer respondem uma vez
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    global_single_reply=False,
+    single_reply_agents={
+        "knowledge": True,  # FAQ: responde e volta
+        "answer": True,     # Perguntas gerais: responde e volta
+        "flow": True,       # Menu: apresenta e volta
+    },
+)
+```
+
+### Exemplo 2: Bot de Leads (Via Código)
+
+Bot que coleta dados mas responde dúvidas rapidamente:
+
+```python
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    global_single_reply=False,
+    single_reply_agents={
+        # Interview PRECISA de múltiplas interações para coletar dados
+        "interview": False,
+        
+        # Outros agentes podem ser rápidos
+        "knowledge": True,    # Tira dúvidas sobre produto
+        "answer": True,       # Responde perguntas
+        "confirmation": True, # Confirma cadastro
+    },
+)
+```
+
+### Exemplo 3: Ativar para TODOS os agentes
+
+```python
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    global_single_reply=True,  # Todos respondem uma vez
+)
+```
+
+### Via YAML (single_reply_config.yaml)
+
+Crie o arquivo `single_reply_config.yaml` na pasta do cliente:
+
+```yaml
+# Global: se true, TODOS os agentes respondem apenas uma vez
+global: false
+
+# Configuração por agente (sobrescreve global)
+agents:
+  # Agentes de consulta: respondem uma vez
+  knowledge: true      # FAQ: responde e volta
+  answer: true         # Perguntas: responde e volta
+  confirmation: true   # Confirma e volta
+  usage: true          # Explica uso e volta
+  
+  # Agentes de coleta: múltiplas interações
+  interview: false     # Precisa coletar dados
+  onboarding: false    # Precisa guiar usuário
+  
+  # Opcionais
+  flow: true           # Menu: apresenta e volta
+  escalation: true     # Registra e volta
+  feedback: true       # Coleta feedback e volta
+```
+
+### Fluxo Visual
+
+**Com single_reply=True:**
+
+```
+[Usuário: "Qual o preço?"]
+         ↓
+    [Triage] → detecta consulta
+         ↓
+  [Knowledge] → responde: "R$ 99,90"
+         ↓
+    [Triage] ← retorno AUTOMÁTICO
+         ↓
+[Usuário: "E a entrega?"]
+         ↓
+    [Triage] → nova análise (ciclo reinicia)
+```
+
+**Com single_reply=False (padrão):**
+
+```
+[Usuário: "Qual o preço?"]
+         ↓
+    [Triage] → detecta consulta
+         ↓
+  [Knowledge] → responde: "R$ 99,90"
+         ↓
+[Usuário: "E a entrega?"]
+         ↓
+  [Knowledge] → continua no mesmo agente
+         ↓
+[Usuário: "Quero falar com humano"]
+         ↓
+  [Knowledge] → handoff para Escalation
+```
+
+### Configuração Recomendada
+
+Para a maioria dos casos de uso:
+
+```yaml
+global: false
+
+agents:
+  knowledge: true      # FAQ
+  answer: true         # Perguntas gerais
+  confirmation: true   # Confirmações
+  
+  interview: false     # Coleta de dados
+  onboarding: false    # Guia de usuário
+```
+
+---
+
+## 🔐 Filtros de Acesso (Role/User)
+
+O sistema de **Filtros de Acesso** permite controlar quais agentes, prompts e tools estão disponíveis para cada usuário ou role (função).
+
+📂 **Exemplos completos**: [docs/examples/access_filters/](docs/examples/access_filters/)
+
+### Quando Usar
+
+| Cenário | Solução |
+|---------|---------|
+| **Multi-tenant** | Diferentes clientes veem diferentes agentes |
+| **Níveis de acesso** | Admin vê mais opções que cliente |
+| **Segurança** | Dados sensíveis só para roles específicas |
+| **Personalização** | Diferentes instruções por departamento |
+
+### Níveis de Filtragem
+
+1. **Agentes**: Habilitar/desabilitar agentes inteiros
+2. **Prompts**: Adicionar seções condicionais aos prompts
+3. **Tools**: Habilitar/desabilitar tools específicas
+
+### Exemplo 1: Filtros de Agente (Via Código)
+
+```python
+from pathlib import Path
+from atendentepro import (
+    create_standard_network,
+    UserContext,
+    AccessFilter,
+)
+
+# Usuário com role de vendedor
+user = UserContext(user_id="vendedor_123", role="vendedor")
+
+# Filtros de agente
+agent_filters = {
+    # Feedback só para admin
+    "feedback": AccessFilter(allowed_roles=["admin"]),
+    # Escalation para todos exceto clientes
+    "escalation": AccessFilter(denied_roles=["cliente"]),
+}
+
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    user_context=user,
+    agent_filters=agent_filters,
+)
+```
+
+### Exemplo 2: Prompts Condicionais
+
+Adicione instruções específicas baseadas na role:
+
+```python
+from atendentepro import FilteredPromptSection
+
+conditional_prompts = {
+    "knowledge": [
+        # Seção para vendedores
+        FilteredPromptSection(
+            content="\\n## Descontos\\nVocê pode oferecer até 15% de desconto.",
+            filter=AccessFilter(allowed_roles=["vendedor"]),
+        ),
+        # Seção para admin
+        FilteredPromptSection(
+            content="\\n## Admin\\nVocê tem acesso total ao sistema.",
+            filter=AccessFilter(allowed_roles=["admin"]),
+        ),
+    ],
+}
+
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    user_context=user,
+    conditional_prompts=conditional_prompts,
+)
+```
+
+### Exemplo 3: Tools Filtradas
+
+```python
+from atendentepro import FilteredTool
+from agents import function_tool
+
+@function_tool
+def deletar_cliente(cliente_id: str) -> str:
+    """Remove um cliente do sistema."""
+    return f"Cliente {cliente_id} removido"
+
+filtered_tools = {
+    "knowledge": [
+        FilteredTool(
+            tool=deletar_cliente,
+            filter=AccessFilter(allowed_roles=["admin"]),  # Só admin
+        ),
+    ],
+}
+
+network = create_standard_network(
+    templates_root=Path("./meu_cliente"),
+    client="config",
+    user_context=user,
+    filtered_tools=filtered_tools,
+)
+```
+
+### Via YAML (access_config.yaml)
+
+```yaml
+# Filtros de agente
+agent_filters:
+  feedback:
+    allowed_roles: ["admin"]
+  escalation:
+    denied_roles: ["cliente"]
+
+# Prompts condicionais
+conditional_prompts:
+  knowledge:
+    - content: |
+        ## Capacidades de Vendedor
+        Você pode oferecer até 15% de desconto.
+      filter:
+        allowed_roles: ["vendedor"]
+
+# Acesso a tools
+tool_access:
+  deletar_cliente:
+    allowed_roles: ["admin"]
+```
+
+### Tipos de Filtro
+
+| Tipo | Descrição | Exemplo |
+|------|-----------|---------|
+| `allowed_roles` | Whitelist de roles | `["admin", "gerente"]` |
+| `denied_roles` | Blacklist de roles | `["cliente"]` |
+| `allowed_users` | Whitelist de usuários | `["user_vip_1"]` |
+| `denied_users` | Blacklist de usuários | `["user_bloqueado"]` |
+
+### Prioridade de Avaliação
+
+1. `denied_users` - Se usuário está negado, **bloqueia**
+2. `allowed_users` - Se lista existe e usuário está nela, **permite**
+3. `denied_roles` - Se role está negada, **bloqueia**
+4. `allowed_roles` - Se lista existe e role não está nela, **bloqueia**
+5. **Permite por padrão** - Se nenhum filtro matched
+
+### Fluxo Visual
+
+```
+┌────────────────────────────────────────────────┐
+│         Requisição: role="vendedor"            │
+└────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌────────────────────────────────────────────────┐
+│              FILTRO DE AGENTES                 │
+│  Knowledge: ✅ (vendedor allowed)              │
+│  Escalation: ✅ (vendedor not denied)          │
+│  Feedback: ❌ (only admin)                     │
+└────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌────────────────────────────────────────────────┐
+│             FILTRO DE PROMPTS                  │
+│  Knowledge recebe: "## Descontos..."           │
+│  (seção condicional para vendedor)             │
+└────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌────────────────────────────────────────────────┐
+│              FILTRO DE TOOLS                   │
+│  consultar_comissao: ✅                        │
+│  deletar_cliente: ❌ (only admin)              │
+└────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔀 Múltiplos Agentes (Multi Interview + Knowledge)
+
+O AtendentePro suporta criar **múltiplas instâncias** de Interview e Knowledge agents, cada um especializado em um domínio diferente.
+
+📂 **Exemplo completo**: [docs/examples/multi_agents/](docs/examples/multi_agents/)
+
+### Caso de Uso
+
+Empresa que atende diferentes tipos de clientes:
+- **Pessoa Física (PF)**: Produtos de consumo
+- **Pessoa Jurídica (PJ)**: Soluções empresariais
+
+### Arquitetura
+
+```
+                    ┌─────────────────┐
+                    │     Triage      │
+                    │  (entry point)  │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+    │  Interview  │  │  Interview  │  │    Flow     │
+    │     PF      │  │     PJ      │  │   (comum)   │
+    └──────┬──────┘  └──────┬──────┘  └─────────────┘
+           │                │
+           ▼                ▼
+    ┌─────────────┐  ┌─────────────┐
+    │  Knowledge  │  │  Knowledge  │
+    │     PF      │  │     PJ      │
+    └─────────────┘  └─────────────┘
+```
+
+### Implementação
+
+```python
+from atendentepro import (
+    create_custom_network,
+    create_triage_agent,
+    create_interview_agent,
+    create_knowledge_agent,
+)
+
+# 1. Criar agentes especializados
+interview_pf = create_interview_agent(
+    interview_questions="CPF, data de nascimento, renda mensal",
+    name="interview_pf",  # Nome único!
+)
+
+interview_pj = create_interview_agent(
+    interview_questions="CNPJ, razão social, faturamento",
+    name="interview_pj",  # Nome único!
+)
+
+knowledge_pf = create_knowledge_agent(
+    knowledge_about="Produtos para consumidor final",
+    name="knowledge_pf",
+    single_reply=True,
+)
+
+knowledge_pj = create_knowledge_agent(
+    knowledge_about="Soluções empresariais B2B",
+    name="knowledge_pj",
+    single_reply=True,
+)
+
+# 2. Criar Triage
+triage = create_triage_agent(
+    keywords_text="PF: CPF, pessoal, minha conta | PJ: CNPJ, empresa, MEI",
+    name="triage_agent",
+)
+
+# 3. Configurar handoffs
+triage.handoffs = [interview_pf, interview_pj, knowledge_pf, knowledge_pj]
+interview_pf.handoffs = [knowledge_pf, triage]
+interview_pj.handoffs = [knowledge_pj, triage]
+knowledge_pf.handoffs = [triage]
+knowledge_pj.handoffs = [triage]
+
+# 4. Criar network customizada
+network = create_custom_network(
+    triage=triage,
+    custom_agents={
+        "interview_pf": interview_pf,
+        "interview_pj": interview_pj,
+        "knowledge_pf": knowledge_pf,
+        "knowledge_pj": knowledge_pj,
+    },
+)
+```
+
+### Cenários de Roteamento
+
+| Mensagem do Usuário | Rota |
+|---------------------|------|
+| "Quero abrir conta para mim" | Triage → Interview PF → Knowledge PF |
+| "Preciso de maquininha para minha loja" | Triage → Interview PJ → Knowledge PJ |
+| "Quanto custa o cartão gold?" | Triage → Knowledge PF (direto) |
+| "Capital de giro para empresa" | Triage → Knowledge PJ (direto) |
+
+### Padrão: 1 Interview → 2 Knowledge
+
+Outro padrão comum é ter um único Interview que pode direcionar para múltiplos Knowledge:
+
+```
+        ┌───────────────┐
+        │   Interview   │
+        │ (coleta dados)│
+        └───────┬───────┘
+                │
+        ┌───────┴───────┐
+        ▼               ▼
+┌───────────────┐ ┌───────────────┐
+│   Knowledge   │ │   Knowledge   │
+│   Produtos    │ │Troubleshooting│
+└───────────────┘ └───────────────┘
+```
+
+```python
+# Um interview que direciona para múltiplos knowledge
+interview.handoffs = [knowledge_produtos, knowledge_troubleshooting, triage]
+```
+
+📂 **Exemplo completo**: [example_one_interview_two_knowledge.py](docs/examples/multi_agents/example_one_interview_two_knowledge.py)
+
+### Dicas
+
+1. **Nomes únicos**: Cada agente precisa de um `name` distinto
+2. **Handoffs claros**: Configure quais agentes cada um pode chamar
+3. **Keywords no Triage**: Inclua palavras-chave para direcionar corretamente
+4. **single_reply**: Use em Knowledge para evitar loops
+
+---
+
+## 📊 Tracing e Monitoramento
+
+### MonkAI Trace (Recomendado)
+
+Integração com [MonkAI Trace](https://github.com/BeMonkAI/monkai-trace) para monitoramento completo de agentes:
+
+```bash
+pip install monkai-trace
+```
+
+```python
+from atendentepro import (
+    activate,
+    create_standard_network,
+    configure_monkai_trace,
+    run_with_monkai_tracking,
+)
+
+# 1. Ativar biblioteca
+activate("ATP_seu-token")
+
+# 2. Configurar MonkAI Trace
+configure_monkai_trace(
+    tracer_token="tk_seu_token_monkai",  # ou env MONKAI_TRACER_TOKEN
+    namespace="meu-projeto",
+)
+
+# 3. Criar rede
+network = create_standard_network(...)
+
+# 4. Executar com tracking
+result = await run_with_monkai_tracking(
+    agent=network.triage,
+    user_input="Olá, preciso de ajuda",
+    user_id="user123",  # Opcional: para sessões multi-usuário
+)
+```
+
+**Recursos do MonkAI Trace:**
+- ✅ Tracking automático de sessões
+- ✅ Segmentação de tokens (input, output, process, memory)
+- ✅ Rastreamento de handoffs entre agentes
+- ✅ Captura de ferramentas internas (web_search, RAG)
+- ✅ Suporte multi-usuário (WhatsApp, chat)
+
+### Uso Avançado
+
+```python
+from atendentepro import (
+    get_monkai_hooks,
+    set_monkai_user,
+    set_monkai_input,
+)
+from agents import Runner
+
+# Para controle manual
+hooks = get_monkai_hooks()
+set_monkai_user("5511999999999")  # WhatsApp
+set_monkai_input("Como cancelar?")
+
+result = await Runner.run(network.triage, messages, hooks=hooks)
+```
+
+### Application Insights (Azure)
+
+Para Azure, use Application Insights:
+
+```python
+from atendentepro import configure_application_insights
+
+configure_application_insights(
+    connection_string="InstrumentationKey=..."
+)
+```
+
+---
+
+## 🤝 Suporte
+
+- 📧 **Email:** contato@monkai.com.br
+- 🌐 **Site:** https://www.monkai.com.br
+
+---
+
+## 📝 Changelog
+
+### v0.6.1 (Atual)
+- Documentação PyPI atualizada com AgentStyle e changelog completo
+
+### v0.6.0
+- **AgentStyle**: Nova classe para personalizar tom e estilo de comunicação
+  - `tone`, `language_style`, `response_length`, `custom_rules`
+- `style_config.yaml`: Configuração de estilos via YAML
+- Parâmetros `global_style` e `agent_styles` em `create_standard_network()`
+- Todos os agentes aceitam `style_instructions`
+
+### v0.5.9
+- Descrição PyPI formal: "Framework de orquestração de agentes IA"
+- README profissional com foco em capacidades corporativas
+
+### v0.5.8
+- Novos keywords: triage, handoff, escalation, feedback, knowledge-base
+- Dependência `tracing` agora usa `monkai-trace`
+
+### v0.5.7
+- **MonkAI Trace**: Integração completa para monitoramento de agentes
+- Novas funções: `configure_monkai_trace`, `run_with_monkai_tracking`
+- Suporte multi-usuário para WhatsApp/chat
+
+### v0.5.6
+- **Agentes configuráveis**: `include_knowledge=False`, `include_flow=False`, etc.
+- Permite criar redes sem agentes específicos
+
+### v0.5.5
+- Workflow PyPI apenas com tags de versão
+
+### v0.5.4
+- Documentação completa standalone no PyPI
+
+### v0.5.3
+- Links de documentação corrigidos para PyPI
+
+### v0.5.2
+- Contatos atualizados (monkai.com.br)
+
+### v0.5.1
+- Prompts modulares para Escalation e Feedback
+- Remoção de handoff circular Answer→Interview
+
+### v0.5.0
+- **Novo**: Feedback Agent (tickets/SAC)
+- Ferramentas: criar_ticket, consultar_ticket, listar_meus_tickets
+
+### v0.4.0
+- **Novo**: Escalation Agent (transferência humana)
+- Verificação de horário, prioridade automática, webhooks
+
+### v0.3.0
+- Sistema de licenciamento com tokens
+- Publicação inicial no PyPI
+
+### v0.2.0
+- Arquitetura modular completa
+- 8 agentes especializados
+- Sistema de templates YAML
+
+---
+
+**Made with ❤️ by [MonkAI](https://www.monkai.com.br)**
