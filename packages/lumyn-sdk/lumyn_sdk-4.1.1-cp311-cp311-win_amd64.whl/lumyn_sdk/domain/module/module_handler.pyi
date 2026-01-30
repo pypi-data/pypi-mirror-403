@@ -1,0 +1,33 @@
+"""
+Type stubs for lumyn_sdk.domain.module.module_handler
+"""
+
+from typing import Any, Callable, Dict, List, Optional
+from .new_data_info import NewDataInfo
+from ...interfaces.i_module_data_callback import IModuleDataCallback
+
+
+class ModuleHandler:
+    """Handler for module operations and data polling"""
+
+    def __init__(
+        self, connector_instance: Optional[Callable[[Any], None]]) -> None: ...
+
+    def register_module(self, module_id: str,
+                        callback: IModuleDataCallback) -> None: ...
+
+    def unregister_module(self, module_id: str) -> None: ...
+    def get_latest_data(self, module_id: str) -> List[NewDataInfo]: ...
+
+    @staticmethod
+    def extract_data(obj: Any, data: NewDataInfo) -> None: ...
+
+    def get_registered_modules(self) -> List[str]: ...
+
+    # Legacy methods
+    def register_module_legacy(
+        self, module_id: int, poll_interval_ms: int = 1000) -> None: ...
+
+    def start_polling(self) -> None: ...
+    def stop_polling(self) -> None: ...
+    def extract_module_data(self, module_id: int) -> None: ...
