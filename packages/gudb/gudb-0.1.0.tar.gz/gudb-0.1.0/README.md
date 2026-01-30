@@ -1,0 +1,198 @@
+# gudb: The Database Seatbelt 🛡️
+
+**"You never notice a seatbelt until it saves your life. We do the same for your production database."**
+
+gudb is a high-performance safety layer that prevents "Career-Ending" database disasters. It intercepts unconstrained `DELETE`, `DROP`, and `TRUNCATE` operations in real-time with zero latency, while using Gemini AI as an asynchronous "Senior DRE Advisor" to suggest performance optimizations.
+
+## 🎬 Killer Demo (Hackathon Special)
+Check out our high-impact terminal demo that showcases the seatbelt in action:
+```bash
+python3 examples/hackathon_demo.py
+```
+
+## Features
+- ⚡ **Zero-Latency Seatbelt**: Hardcoded safety rules block disasters in <1ms.
+- 🤖 **AI Advisor**: Asynchronous query analysis suggests indexes and refactors.
+- 🔔 **Command Center**: A beautiful dashboard for real-time observability.
+- 🔧 **One-Line Integration**: `conn = monitor(raw_psycopg2_conn)`
+
+## Architecture
+
+```
+User Request → Middleware (Detects Slow Query) → Creates Alert → Triggers AI Analysis
+                                                        ↓
+                                                 Notification Badge
+                                                        ↓
+                                            User Clicks → Shows Details
+                                                        ↓
+                                            AI Recommendations + Fix
+```
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone <your-repo-url>
+cd gudb
+```
+
+2. Create virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Configure environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your database URL and Gemini API key
+```
+
+## Configuration
+
+Edit `.env` file:
+
+```env
+# Database Connection
+DB_URL=postgresql://user:password@localhost:5432/your_database
+
+# Gemini API
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Thresholds (milliseconds)
+SLOW_QUERY_THRESHOLD_MS=500
+CRITICAL_THRESHOLD_MS=2000
+```
+
+## Usage
+
+### Start the Server
+
+```bash
+uvicorn main:app --reload
+```
+
+### Access the Dashboard
+
+Open your browser and navigate to:
+- **Production Dashboard**: [https://gudb.ai/dashboard](https://gudb.ai/dashboard)
+- **Local Dashboard**: http://localhost:8000/dashboard
+- **Local API Docs**: http://localhost:8000/docs
+
+### Test Slow Query Detection
+
+Trigger a test slow query:
+```bash
+curl http://localhost:8000/test/slow
+```
+
+Watch the notification badge update and click to see AI analysis!
+
+## API Endpoints
+
+### Notifications
+- `GET /api/notifications/` - Get all alerts
+- `GET /api/notifications/?severity=critical` - Filter by severity
+- `GET /api/notifications/count` - Get notification count
+- `GET /api/notifications/{alert_id}` - Get specific alert
+
+### Analysis
+- `GET /api/analysis/{alert_id}` - Get detailed AI analysis for an alert
+
+### Health
+- `GET /health` - Health check
+- `GET /` - Service info
+
+## How It Works
+
+1. **Detection**: Middleware measures query execution time
+2. **Alert Creation**: If time exceeds threshold, creates an alert with severity level
+3. **Background Analysis**: Triggers AI analysis using LangGraph workflow:
+   - **Detective Node**: Runs EXPLAIN ANALYZE and gathers schema info
+   - **Architect Node**: Uses Gemini to identify bottlenecks and suggest fixes
+   - **Validator Node**: Stores analysis results
+4. **User Interaction**: User sees notification badge, clicks to view detailed analysis
+5. **Action**: User can copy the suggested SQL fix and apply it
+
+## LangGraph Workflow
+
+```
+Detective → Architect → Validator
+   ↓           ↓           ↓
+EXPLAIN    Gemini AI    Store
+ANALYZE    Analysis     Results
+```
+
+## Project Structure
+
+```
+gudb/
+├── main.py                 # FastAPI app with middleware
+├── services/
+├── src/
+│   └── gudb/               # The SDK Package
+│       ├── core/
+│       ├── providers/
+│       └── middlewares/
+├── static/                 # Dashboard UI
+└── requirements.txt
+```
+
+## Use as SDK/Middleware
+
+To integrate into your own FastAPI app:
+
+```python
+from fastapi import FastAPI
+from gudb.middlewares.fastapi import SafeDBMiddleware
+
+app = FastAPI()
+app.add_middleware(SafeDBMiddleware)
+
+# Your routes here...
+```
+
+## Customization
+
+### Adjust Thresholds
+Edit `.env`:
+```env
+SLOW_QUERY_THRESHOLD_MS=300  # More sensitive
+CRITICAL_THRESHOLD_MS=1000   # Lower critical threshold
+```
+
+### Disable Auto-Analysis
+```env
+ENABLE_AUTO_ANALYSIS=false
+```
+
+## 🌐 Vercel Deployment
+
+To deploy the gudb Command Center on Vercel as a static site:
+
+1.  **Project Root**: Ensure you are in the repository root.
+2.  **Configuration**: The included `vercel.json` automatically handles routing to the `static/` directory.
+3.  **Deployment**:
+    ```bash
+    vercel --prod
+    ```
+
+> [!TIP]
+> This deployment mode is for the **frontend only**. To protect your production database, ensure the gudb SDK is deployed within your application cluster.
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+---
+
+Built with ❤️ using FastAPI, LangGraph, and Google Gemini
