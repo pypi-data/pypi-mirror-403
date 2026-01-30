@@ -1,0 +1,178 @@
+#include <array>
+#include <map>
+#include <string>
+#include <vector>
+#include <cstddef>
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
+#include "visit_struct.hpp"
+
+
+namespace py = pybind11;
+
+extern "C" {
+  struct xc_func_type;
+}
+
+typedef std::map<std::string, py::array> (*to_numpy)(xc_func_type*);
+std::map<int, std::pair<std::string, to_numpy>> registry;
+
+template <typename T>
+decltype(auto) ToNumpy(const T& a) {
+  using Scalar = typename std::remove_const<typename std::remove_reference<T>::type>::type;
+  Scalar* data = new Scalar(static_cast<Scalar>(a));
+  return py::array_t<Scalar>(std::array<int, 0>({}), data,
+    py::capsule(data, [](void *f) {
+      delete reinterpret_cast<Scalar*>(f);
+    })
+  );
+}
+
+template <typename T, size_t N>
+decltype(auto) ToNumpy(const T (&a)[N]) {
+  using Scalar = typename std::remove_const<T>::type;
+  const Scalar* aa = reinterpret_cast<const Scalar*>(a);
+  Scalar* data = new Scalar[N];
+  std::memcpy(data, aa, N * sizeof(Scalar));
+  return py::array_t<Scalar>(std::array<int, 1>({(int)N}), data,
+    py::capsule(data, [](void *f) {
+      delete[] reinterpret_cast<Scalar*>(f);
+    })
+  );
+}
+
+template <typename T, size_t N, size_t M>
+decltype(auto) ToNumpy(const T (&a)[N][M]) {
+  using Scalar = typename std::remove_const<T>::type;
+  const Scalar* aa = reinterpret_cast<const Scalar*>(a);
+  Scalar* data = new Scalar[N * M];
+  std::memcpy(data, aa, N * M * sizeof(Scalar));
+  return py::array_t<Scalar>(std::array<int, 2>({(int)N, (int)M}), data,
+    py::capsule(data, [](void *f) {
+      delete[] reinterpret_cast<Scalar*>(f);
+    })
+  );
+}
+
+#define REGISTER(STRUCT, ...)                                         \
+  VISITABLE_STRUCT(STRUCT, __VA_ARGS__);                              \
+  static auto STRUCT##_to_numpy(xc_func_type* func) {                 \
+    std::map<std::string, py::array> ret;                             \
+    visit_struct::for_each(*reinterpret_cast<STRUCT*>(func->params),  \
+                           [&](const char* name, const auto& value) { \
+                             ret[name] = ToNumpy(value);              \
+                           });                                        \
+    return ret;                                                       \
+  }
+
+static bool register_xc(const std::vector<int>& numbers,
+                        const std::string& maple, to_numpy converter) {
+  for (auto number : numbers) {
+    registry[number] = std::make_pair(maple, converter);
+  }
+  return true;
+}
+
+// register all the structs
+
+extern "C" {
+
+// the xc_func_type struct from libxc
+
+#include "xc.h"
+
+// all param structs from libxc
+
+{% for struct_name, struct, fields, numbers, maple in info %}
+{% if struct != '' %}
+{{ struct }}
+{% endif %}
+{% endfor %}
+
+}
+
+// use visit struct to convert param struct to python
+
+{% for struct_name, struct, fields, numbers, maple_name in info %}
+std::vector<int> {{ maple_name }}_numbers = {
+  {{ numbers | join(', ') }}
+};
+{% if struct != '' %}
+REGISTER({{ struct_name }}, {{ fields | join(', ') }});
+bool {{ maple_name }}_registered = register_xc(
+  {{ maple_name }}_numbers, "{{ maple_name }}", {{ struct_name }}_to_numpy
+);
+{% else %}
+bool {{ maple_name }}_registered = register_xc(
+  {{ maple_name }}_numbers, "{{ maple_name }}", static_cast<to_numpy>(nullptr)
+);
+{% endif %}
+{% endfor %}
+
+// One function to convert them all
+
+py::dict get_p(uint64_t xc_func) {
+  xc_func_type* func = reinterpret_cast<xc_func_type*>(xc_func);
+  py::dict ret;
+  int number = func->info->number;
+  ret["number"] = number;
+  ret["libxc_name"] = std::string(func->info->name);
+  ret["cam_omega"] = func->cam_omega;
+  ret["cam_alpha"] = func->cam_alpha;
+  ret["cam_beta"] = func->cam_beta;
+  ret["nlc_b"] = func->nlc_b;
+  ret["nlc_C"] = func->nlc_C;
+  // thresholds
+  ret["dens_threshold"] = func->dens_threshold;
+  ret["zeta_threshold"] = func->zeta_threshold;
+  ret["sigma_threshold"] = func->sigma_threshold;
+  ret["tau_threshold"] = func->tau_threshold;
+  // params
+  auto it = registry.find(number);
+  if (it == registry.end()) {
+    // Functional not in registry (e.g., no Maple code)
+    ret["params"] = std::map<std::string, py::array>();
+    ret["maple_name"] = "";
+  } else {
+    const auto& entry = it->second;
+    to_numpy get_params = entry.second;
+    const std::string& maple_name = entry.first;
+    if (get_params != nullptr && func->params != nullptr) {
+       auto params_map = get_params(func);
+
+       // Inject derived CAM parameters for functionals that need them
+       // hyb_gga_x_cam_s12 (XC 646, 647) needs bx = 1.0 - cam_alpha
+       if (number == 646 || number == 647) {
+         double bx = 1.0 - func->cam_alpha;
+         params_map["bx"] = ToNumpy(bx);
+       }
+
+       ret["params"] = params_map;
+    } else {
+       ret["params"] = std::map<std::string, py::array>();
+    }
+    ret["maple_name"] = maple_name;
+  }
+  ret["nspin"] = func->nspin;
+  // mix function
+  if (func->n_func_aux > 0 && func->func_aux != nullptr) {
+    py::list l;
+    for (int i = 0; i < func->n_func_aux; ++i) {
+      if (func->func_aux[i] != nullptr) {
+        l.append(get_p(reinterpret_cast<uint64_t>(func->func_aux[i])));
+      }
+    }
+    if (l.size() > 0) {
+      ret["func_aux"] = l;
+      std::vector<double> mix_coef(func->mix_coef, func->mix_coef + func->n_func_aux);
+      ret["mix_coef"] = mix_coef;
+    }
+  }
+  return ret;
+}
+
+PYBIND11_MODULE(helper, m) {
+  m.doc() = "Helper to extract libxc params.";  // optional module docstring
+  m.def("get_p", &get_p);
+}
