@@ -1,0 +1,75 @@
+"""
+Shutdown manager for handling application shutdown signals.
+
+This module provides signal handling for graceful application termination
+on SIGTERM and SIGINT signals. The signal handler raises KeyboardInterrupt
+to allow proper cleanup before shutdown.
+"""
+
+import signal
+from typing import Any
+
+
+class ShutdownManager:
+    """
+    Manages shutdown signal handling.
+
+    Registers handlers for SIGTERM and SIGINT that raise KeyboardInterrupt,
+    allowing the call stack to unwind properly before shutdown. This ensures
+    async cleanup (finally blocks, context managers) completes before the
+    lifecycle logs "done".
+
+    Usage:
+        manager = ShutdownManager()
+        manager.register_signal_handlers()
+
+        # Later, check state or get return code:
+        if manager.is_shutting_down():
+            code = manager.get_signal_return_code()
+    """
+
+    def __init__(self) -> None:
+        """Initialize shutdown manager."""
+        self._shutting_down = False
+        self._signal_return_code: int = 130  # Default to SIGINT
+        self._original_handlers: dict[signal.Signals, Any] = {}
+
+    def register_signal_handlers(self) -> None:
+        """Register signal handlers for SIGTERM and SIGINT."""
+        self._original_handlers[signal.SIGTERM] = signal.signal(
+            signal.SIGTERM, self._handle_signal
+        )
+        self._original_handlers[signal.SIGINT] = signal.signal(
+            signal.SIGINT, self._handle_signal
+        )
+
+    def _handle_signal(self, signum: int, frame: Any) -> None:
+        """
+        Handle shutdown signal by raising KeyboardInterrupt.
+
+        This allows tool code to unwind properly (finally blocks, __aexit__, etc.)
+        before App.main() catches the exception and calls lifecycle.shutdown().
+
+        Args:
+            signum: Signal number (SIGINT=2, SIGTERM=15)
+            frame: Current stack frame (unused)
+        """
+        if self._shutting_down:
+            return  # Ignore duplicate signals
+
+        self._shutting_down = True
+        self._signal_return_code = 130 if signum == signal.SIGINT else 143
+        raise KeyboardInterrupt()
+
+    def is_shutting_down(self) -> bool:
+        """Check if shutdown is in progress."""
+        return self._shutting_down
+
+    def get_signal_return_code(self) -> int:
+        """
+        Get the return code for the signal that triggered shutdown.
+
+        Returns:
+            130 for SIGINT (Ctrl+C), 143 for SIGTERM, or 130 as default.
+        """
+        return self._signal_return_code

@@ -1,0 +1,71 @@
+# PostgreSQL Replication Mode (Primary + Standby)
+# Essential replication params are included; add more via pgserver.postgres_conf
+services:
+  postgres-primary:
+    container_name: ${NAME:?}-primary
+    image: ${IMAGE:-postgres:${VERSION}}
+    # Replication requires: wal_level, max_wal_senders, max_replication_slots, hot_standby, hba_file
+    # User's postgres_conf params are appended (can override these defaults)
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - hot_standby=on
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+    restart: always
+    volumes:
+      - "$PWD:$PWD"
+      - pgdata_primary:/var/lib/postgresql/data
+      - ${PWD}/scripts/docker/pg/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    working_dir: $PWD
+    ports:
+      - ${PORT:?}:${PORT}
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - PGPORT=${PORT}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-standby:
+    container_name: ${NAME:?}-standby
+    image: ${IMAGE:-postgres:${VERSION}}
+    restart: always
+    volumes:
+      - "$PWD:$PWD"
+      - pgdata_standby:/var/lib/postgresql/data
+    working_dir: $PWD
+    ports:
+      - ${PORT_R:?}:${PORT_R}
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - PGPORT=${PORT_R}
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+        rm -rf /var/lib/postgresql/data/*
+        until pg_isready -h postgres-primary -p ${PORT} -U postgres; do
+          echo 'Waiting for primary to be ready...'
+          sleep 2
+        done
+        echo 'Primary is ready, starting base backup...'
+        PGPASSWORD='' pg_basebackup -h postgres-primary -p ${PORT} -U postgres -D /var/lib/postgresql/data -Fp -Xs -P -R
+        chown -R postgres:postgres /var/lib/postgresql/data
+        chmod 0700 /var/lib/postgresql/data
+        echo 'Base backup complete, starting standby server...'
+        exec gosu postgres ${COMMAND:-postgres}
+      "
+
+volumes:
+  pgdata_primary:
+  pgdata_standby:
