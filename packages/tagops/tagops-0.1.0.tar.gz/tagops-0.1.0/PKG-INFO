@@ -1,0 +1,172 @@
+Metadata-Version: 2.4
+Name: tagops
+Version: 0.1.0
+Summary: An AWS Tag-Based Operations Tool for safe and efficient resource management.
+Home-page: https://github.com/tharun-me/tagopss
+Author: Tharun
+Author-email: tharunme25@gmail.com
+License: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: System Administrators
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: System :: Systems Administration
+Classifier: Topic :: Utilities
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: boto3
+Requires-Dist: tabulate
+Requires-Dist: colorama
+Requires-Dist: rich
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# TagOps: AWS Tag-Based Resource Management
+
+```
+████████╗  █████╗   ██████╗  ██████╗ ██████╗ ███████╗
+╚══██╔══╝ ██╔══██╗ ██╔════╝ ██╔═══██╗██╔══██╗██╔════╝
+   ██║    ███████║ ██║  ███╗██║   ██║██████╔╝███████╗
+   ██║    ██╔══██║ ██║   ██║██║   ██║██╔═══╝ ╚════██║
+   ██║    ██║  ██║ ╚██████╔╝╚██████╔╝██║     ███████║
+   ╚═╝    ╚═╝  ╚═╝  ╚═════╝  ╚═════╝ ╚═╝     ╚══════╝
+```
+
+**AWS Tag-Based Operations Tool - Safe and Efficient Resource Management**
+
+---
+
+## Overview
+
+TagOps is a powerful command-line interface (CLI) tool designed to simplify the management of AWS resources by leveraging tags. Instead of manually hunting for resources across different regions, you can specify a tag key and value, and TagOps will find all associated resources and allow you to perform bulk actions on them safely and efficiently.
+
+This tool is perfect for developers, DevOps engineers, and cloud administrators who manage dynamic environments (like development, staging, or project-based infrastructure) where resources are frequently created and destroyed. It helps prevent orphaned resources and control costs by providing a unified entry point for managing the lifecycle of tagged infrastructure.
+
+## Features
+
+- **Tag-Based Discovery:** Scans all AWS regions to find resources matching a specified tag.
+- **Bulk Actions:** Perform `Start`, `Stop`, and `Terminate` operations on all discovered resources at once.
+- **Associated Resource Management:** Intelligently discovers and manages resources associated with a primary resource (e.g., EIPs, EBS Volumes, Security Groups attached to an EC2 instance).
+- **Interactive & Safe:** Displays a clear execution plan and requires user confirmation before making any changes to your infrastructure.
+- **Smart Cleanup:** On termination, TagOps attempts to clean up associated components like volumes and network interfaces to prevent leftover resources.
+- **Protection Aware:** Automatically detects and skips instances with `Stop` or `Termination` protection enabled, preventing accidental shutdowns of critical infrastructure.
+- **Rich CLI Output:** Uses modern, readable tables to display discovered resources and their status.
+
+## How It Works
+
+TagOps operates in a three-phase process:
+
+1.  **Discovery:** The tool iterates through all available AWS regions, scanning for primary resources (like EC2 instances and ASGs) that have the specific tag you provided.
+2.  **Enrichment:** For each discovered resource, TagOps makes additional API calls to find and list all its associated resources. This includes volumes, security groups, EIPs, key pairs, and more, giving you a complete picture of the resource stack.
+3.  **Action & Execution:** After you select an action (`Start`, `Stop`, `Terminate`), the tool generates a detailed plan. Once you approve the plan, TagOps executes the necessary Boto3 API calls to perform the action and any subsequent cleanup tasks.
+
+## Supported Resources
+
+TagOps currently provides primary support for the following AWS services:
+
+-   **Amazon EC2 Instances**
+-   **Amazon Auto Scaling Groups (ASGs)**
+
+It will also discover and manage the following associated resources:
+
+-   Elastic IP Addresses (EIPs)
+-   EBS Volumes
+-   Security Groups (SGs)
+-   EC2 Key Pairs
+-   Elastic Network Interfaces (ENIs)
+-   EBS Snapshots
+
+## Prerequisites
+
+Before using TagOps, ensure you have the following:
+
+-   **Python 3.x** installed.
+-   **AWS Credentials** configured in your environment. The tool uses the standard Boto3 credential discovery process (e.g., via `~/.aws/credentials`, environment variables, or IAM roles). You need permissions to describe and manage the supported resources.
+
+## Installation
+
+1.  **Clone the repository:**
+    ```sh
+    git clone https://github.com/tharun-me/tagops
+    cd TagOps
+    ```
+
+2.  **Install the required dependencies:**
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+3.  **Install the tool in editable mode:**
+    This command registers `tagops` as a command-line tool, pointing to the code in your local directory.
+    ```sh
+    pip install -e .
+    ```
+
+## Usage
+
+To run the tool, use the `tagops` command with the `aws` subcommand.
+
+```sh
+tagops aws
+```
+
+The tool will then interactively prompt you for the **Tag Key** and **Tag Value** you wish to search for.
+
+### Example
+
+```
+$ tagops aws
+
+████████╗  █████╗   ██████╗  ██████╗ ██████╗ ███████╗
+╚══██╔══╝ ██╔══██╗ ██╔════╝ ██╔═══██╗██╔══██╗██╔════╝
+   ██║    ███████║ ██║  ███╗██║   ██║██████╔╝███████╗
+   ██║    ██╔══██║ ██║   ██║██║   ██║██╔═══╝ ╚════██║
+   ██║    ██║  ██║ ╚██████╔╝╚██████╔╝██║     ███████║
+   ╚═╝    ╚═╝  ╚═╝  ╚═════╝  ╚═════╝ ╚═╝     ╚══════╝
+AWS Tag-Based Operations Tool - Safe and Efficient Resource Management
+
+Account ID 4525-9613-7119
+Account name MyTestAccount
+
+Enter Tag Key: Project
+Enter Tag Value: Automation
+Found 18 regions to scan
+🔍 Scanning regions for tagged resources...
+...
+```
+
+You will then be presented with a list of discovered resources and prompted to select an action.
+
+## Safety Features
+
+Cloud infrastructure is sensitive, and TagOps is built with safety as a top priority.
+
+-   **Execution Plan:** No action is performed immediately. TagOps always shows you a summary of what it intends to do.
+-   **User Confirmation:** You must explicitly approve the execution plan by typing `y` before any changes are made to your AWS account.
+-   **API Protection:** The tool respects AWS's built-in `disableApiTermination` and `disableApiStop` flags on EC2 instances and will skip them automatically.
+
+## Development
+
+This tool is built with Python and leverages the following key libraries:
+
+-   `boto3`: The AWS SDK for Python.
+-   `rich`: For beautiful and informative CLI output.
+-   `tabulate`: Used for formatting resource tables.
+
+To contribute, please follow the installation steps for a development environment. Feel free to submit pull requests for new features, bug fixes, or expanded resource support.
