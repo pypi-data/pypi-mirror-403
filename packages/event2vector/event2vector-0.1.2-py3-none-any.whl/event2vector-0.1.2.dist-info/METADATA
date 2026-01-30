@@ -1,0 +1,166 @@
+Metadata-Version: 2.4
+Name: event2vector
+Version: 0.1.2
+Summary: Scikit-learn-style geometric embeddings for event sequences.
+Author: Antonin Sulc
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/sulcantonin/event2vector
+Project-URL: Repository, https://github.com/sulcantonin/event2vector
+Project-URL: Issues, https://github.com/sulcantonin/event2vector/issues
+Keywords: sequence-embedding,event-sequences,representation-learning,word2vec,scikit-learn,time-series
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Intended Audience :: Science/Research
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: torch
+Requires-Dist: scikit-learn
+Requires-Dist: tqdm
+Provides-Extra: viz
+Requires-Dist: matplotlib; extra == "viz"
+Requires-Dist: seaborn; extra == "viz"
+Provides-Extra: manifold
+Requires-Dist: openTSNE; extra == "manifold"
+Provides-Extra: nlp
+Requires-Dist: gensim; extra == "nlp"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+
+<div align="center">
+
+# Event2Vector (event2vec)
+## A Geometric Approach to Learning Composable Representations of Event Sequences
+
+[![PyPI version](https://badge.fury.io/py/event2vector.svg)](https://badge.fury.io/py/event2vector)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
+[![arXiv](https://img.shields.io/badge/arXiv-2509.12188-b31b1b.svg)](https://arxiv.org/abs/2509.12188)
+
+# ![Teaser](./images/teaser.png)
+
+</div>
+
+## Overview
+
+**Event2Vector** is a framework for learning representations of discrete event sequences. Inspired by the geometric structures found in neural representations, this model uses a simple, additive recurrent structure to create composable and interpretable embeddings.
+
+## Key Concepts
+* **Linear Additive Hypothesis**: The core idea behind Event2Vector is that the representation of an event sequence can be modeled as the vector sum of the embeddings of its individual events. This allows for intuitive vector arithmetic, enabling the composition and decomposition of event trajectories.
+* **Euclidean and Hyperbolic Models**: Event2Vector is offered in two geometric variants:
+    * **Euclidean model**: Uses standard vector addition, providing a straightforward, flat geometry for event trajectories.
+    * **Hyperbolic model**: Employs Möbius addition, which is better suited for hierarchical data structures, as it can embed tree-like patterns with less distortion.
+* **Estimator API**: A scikit-learn style `Event2Vec` estimator exposes `fit`, `fit_transform`, and `transform`, enabling drop-in use inside pipelines while keeping the compositional recurrent loss from the paper.
+* **Padded batching**: Optional padding allows entire minibatches of variable-length sequences to be processed in parallel, significantly accelerating training on large corpora without changing model behavior.
+
+For more details, check *Sulc A., Event2Vector: A Geometric Approach to Learning Composable Representations of Event Sequences*
+
+## Example Applications
+* Substack Post: Geometry of Groceries https://sulcantonin.substack.com/p/the-geometry-of-groceries
+* Substack Post: The Geometry of Language Families https://sulcantonin.substack.com/p/the-geometry-of-language-families
+
+## Installation
+
+Install the package directly from PyPI:
+
+```bash
+pip install event2vector
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/sulcantonin/event2vec_public.git
+cd event2vec_public
+pip install .
+```
+
+## Estimator API
+
+The `Event2Vec` class mirrors scikit-learn transformers so it can slot into existing NLP pipelines:
+
+```python
+from event2vector import Event2Vec
+
+model = Event2Vec(
+    num_event_types=len(vocab),
+    geometry="euclidean",
+    embedding_dim=128,
+    pad_sequences=True,
+    num_epochs=50,
+)
+model.fit(train_sequences, verbose=True)
+train_embeddings = model.transform(train_sequences) 
+```
+
+Hyperbolic variant (training + using trained weights):
+
+```python
+from event2vector import Event2Vec, HyperbolicUtils
+import torch
+
+hyp_model = Event2Vec(
+    num_event_types=len(vocab),
+    geometry="hyperbolic",
+    curvature=1.0,
+    embedding_dim=128,
+    pad_sequences=True,
+    num_epochs=50,
+)
+hyp_model.fit(train_sequences, verbose=True)
+
+# Use the trained weights: encode sequences and query the decoder
+seq_embeddings = hyp_model.transform(test_sequences, as_numpy=False)
+torch_model = hyp_model.model
+
+# Hyperbolic addition + distance between two datapoints (Poincaré ball)
+u = seq_embeddings[0]
+v = seq_embeddings[1]
+uv_added = HyperbolicUtils.mobius_add(u, v, hyp_model.curvature)
+uv_dist = HyperbolicUtils.poincare_dist_sq(u, v, hyp_model.curvature).sqrt()
+```
+
+Key methods:
+- `fit`: optimizes embeddings with the additive loss from the paper.
+- `fit_transform`: convenience helper returning the encoded sequences after fitting.
+- `transform`: freezes weights and encodes arbitrary sequences, optionally returning PyTorch tensors for downstream models.
+- `most_similar`: gensim-style nearest-neighbor lookup over learned event embeddings using tokens or full sequences as queries.
+- `pad_sequences=True`: enables fully vectorized batches with masking for substantial throughput gains on large corpora.
+
+Device control: set `use_gpu=False` to force CPU even if CUDA/MPS is present, or pass an explicit `device` (e.g., `"cuda:0"` or `"cpu"`).
+
+
+
+## Brown Corpus POS tagging example
+After installation, you can try to run Brown Part-of-Speech tagging example from the paper. 
+
+```bash
+python3 -m experiments.prepare_brown_data.py
+python3 -m experiments.train_brown_data.py
+python3 -m experiments.visualize_brown_corpus.py
+```
+
+
+## Minimal example script
+
+The repository includes a runnable minimal example that trains a tiny model end-to-end and prints example outputs (loss, embeddings, and nearest tokens). Run it from the repo root:
+
+```bash
+python3 examples/minimal_example.py
+```
+
+To try a hyperbolic run, open `examples/minimal_example.py` and set `geometry="hyperbolic"` in the `Event2Vec` constructor, then rerun the script.
+
+## References
+For citations please use following Bibtex. 
+```bibtex
+@article{sulc2025event2vec,
+  title={Event2Vec: A Geometric Approach to Learning Composable Representations of Event Sequences},
+  author={Sulc, Antonin},
+  journal={arXiv preprint arXiv:2509.12188},
+  year={2025}
+}
+```
