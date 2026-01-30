@@ -1,0 +1,267 @@
+/* Prism Workspace - Layout */
+.workspace {
+  display: grid;
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "sidebar main right"
+    "statusbar statusbar statusbar";
+  grid-template-columns: var(--sidebar-width) 1fr 0;
+  grid-template-rows: var(--toolbar-height) 1fr var(--statusbar-height);
+  height: 100vh;
+  background: var(--bg-0);
+}
+
+.workspace.right-open {
+  grid-template-columns: var(--sidebar-width) 1fr var(--right-width);
+}
+
+/* Regions */
+.toolbar { 
+  grid-area: toolbar; 
+  background: var(--bg-1); 
+  border-bottom: 1px solid var(--border); 
+  display: flex; 
+  align-items: center; 
+  padding: 0 12px; 
+  gap: 12px; 
+  /* Removed overflow:hidden to allow tooltips to show */
+}
+.sidebar { grid-area: sidebar; background: var(--bg-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.main { grid-area: main; display: flex; flex-direction: column; overflow: hidden; position: relative; min-height: 0; }
+.right-panel { grid-area: right; background: var(--bg-1); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.right-panel.collapsed { display: none; }
+
+/* Desktop override: If workspace says right-open, show the panel regardless of internal collapsed class */
+@media (min-width: 769px) {
+  .workspace.right-open .right-panel {
+    display: flex !important;
+  }
+}
+.right-panel-header { padding: 10px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.right-panel-title { font-size: var(--font-size-sm); font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.right-panel-content { flex: 1; overflow-y: auto; min-height: 0; }
+.statusbar { grid-area: statusbar; background: var(--bg-1); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; font-size: var(--font-size-xs); color: var(--text-muted); gap: 16px; }
+
+/* Sidebar content */
+.sidebar-content { flex: 1; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }
+
+.sidebar.collapsed { width: 0 !important; min-width: 0; border-right: none; }
+.sidebar.collapsed ~ .main { grid-column: 1 / 3; }
+.sidebar.collapsed ~ .statusbar { grid-column: 1 / 4; }
+
+.workspace:has(.sidebar.collapsed) {
+  grid-template-columns: 0 1fr 0;
+}
+
+.workspace.right-open:has(.sidebar.collapsed) {
+  grid-template-columns: 0 1fr var(--right-width);
+}
+
+.sidebar.collapsed .sidebar-content,
+.sidebar.collapsed .sidebar-header { display: none; }
+.sidebar.collapsed .tab-bar { flex-direction: column; height: auto; border-bottom: none; padding: 8px 4px; }
+.sidebar.collapsed .tab { padding: 8px; justify-content: center; background: transparent !important; box-shadow: none !important; }
+.sidebar.collapsed .tab span:not(.tab-icon) { display: none; }
+.sidebar.collapsed .tab.active .tab-icon { color: var(--accent); }
+
+/* Main area split (for bottom panel) */
+.main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.bottom-panel { border-bottom: 1px solid var(--border); background: var(--bg-1); overflow: hidden; }
+.bottom-panel.collapsed { height: 0 !important; border-bottom: none; }
+
+/* Resizer handles */
+.resizer {
+  position: absolute;
+  background: transparent;
+  z-index: 20;
+  transition: background var(--transition);
+}
+.resizer:hover, .resizer.active { background: var(--accent); }
+.resizer-h { width: 4px; cursor: ew-resize; top: 0; bottom: 0; right: -2px; }
+.resizer-v { height: 4px; cursor: ns-resize; left: 0; right: 0; bottom: -2px; }
+.sidebar .resizer-h { right: -2px; }
+.right-panel .resizer-h { left: -2px; right: auto; }
+
+/* ============================================
+   MOBILE RESPONSIVE - Overlay Panels
+   ============================================ */
+@media (max-width: 768px) {
+  .workspace {
+    /* On mobile: only toolbar, main, statusbar - sidebars are overlays */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height for mobile browsers */
+  }
+  
+  .workspace.right-open {
+    /* No change needed - right panel is overlay */
+  }
+  
+  /* Toolbar fixed at top */
+  .toolbar {
+    flex-shrink: 0;
+    height: var(--toolbar-height);
+  }
+  
+  /* Main area fills remaining space */
+  .main {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  
+  /* Statusbar fixed at bottom */
+  .statusbar {
+    flex-shrink: 0;
+    height: var(--statusbar-height);
+  }
+  
+  /* Sidebar becomes slide-in overlay from left */
+  .sidebar {
+    position: fixed;
+    top: var(--toolbar-height);
+    left: 0;
+    bottom: var(--statusbar-height);
+    width: 280px !important;
+    max-width: 85vw;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+  }
+  
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  
+  /* When sidebar is open on mobile, don't apply collapsed styles */
+  .sidebar.collapsed {
+    width: 280px !important;
+    transform: translateX(-100%);
+  }
+  
+  .sidebar.collapsed.mobile-open {
+    transform: translateX(0);
+  }
+  
+  .sidebar.collapsed .sidebar-content {
+    display: flex;
+  }
+  
+  .sidebar.collapsed .tab-bar {
+    flex-direction: row;
+    height: auto;
+    border-bottom: 1px solid var(--border);
+    padding: 4px;
+  }
+  
+  .sidebar.collapsed .tab {
+    padding: 4px 10px;
+    justify-content: flex-start;
+  }
+  
+  .sidebar.collapsed .tab span:not(.tab-icon) {
+    display: inline;
+  }
+  
+  /* Right panel becomes slide-in overlay from right */
+  .right-panel {
+    position: fixed;
+    top: var(--toolbar-height);
+    right: 0;
+    bottom: var(--statusbar-height);
+    width: 300px !important;
+    max-width: 85vw;
+    z-index: 100;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+    display: flex !important; /* Override .collapsed display:none */
+  }
+  
+  .right-panel.mobile-open {
+    transform: translateX(0);
+  }
+  
+  .right-panel.collapsed {
+    display: flex !important;
+    transform: translateX(100%);
+  }
+  
+  .right-panel.collapsed.mobile-open {
+    transform: translateX(0);
+  }
+  
+  /* Backdrop overlay when panels are open */
+  .mobile-backdrop {
+    display: none;
+    position: fixed;
+    top: var(--toolbar-height);
+    left: 0;
+    right: 0;
+    bottom: var(--statusbar-height);
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  
+  .mobile-backdrop.visible {
+    display: block;
+    opacity: 1;
+  }
+  
+  /* Toolbar adjustments for mobile */
+  .toolbar {
+    padding: 0 8px;
+    gap: 8px;
+  }
+  
+  .toolbar-token-bar {
+    display: none; /* Hide detailed token bar on mobile - too wide */
+  }
+  
+  /* Project bar compact mode */
+  project-bar {
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .project-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .project-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Main area takes full width */
+  .main {
+    min-width: 0;
+  }
+  
+  /* Hide resizers on mobile */
+  .resizer {
+    display: none;
+  }
+  
+  /* Statusbar compact */
+  .statusbar {
+    padding: 0 8px;
+    gap: 8px;
+    font-size: 10px;
+  }
+  
+  .statusbar .toolbar-spacer {
+    display: none;
+  }
+  
+  /* Make toolbar buttons more visible/tappable on mobile */
+  .toolbar-btn {
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+}
