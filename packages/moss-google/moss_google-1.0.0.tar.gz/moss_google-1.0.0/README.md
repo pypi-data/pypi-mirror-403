@@ -1,0 +1,108 @@
+# moss-google
+
+MOSS signing integration for Google GenAI SDK (Gemini). **Unsigned output is broken output.**
+
+[![PyPI](https://img.shields.io/pypi/v/moss-google)](https://pypi.org/project/moss-google/)
+
+## Installation
+
+```bash
+pip install moss-google
+```
+
+## Quick Start
+
+Sign function calls, responses, and content from Gemini:
+
+```python
+import google.generativeai as genai
+from moss_google import sign_function_call, sign_response, sign_content
+
+genai.configure(api_key="...")
+model = genai.GenerativeModel("gemini-pro")
+
+# Get a response with function calling
+response = model.generate_content(
+    "What's the weather in NYC?",
+    tools=[get_weather_tool]
+)
+
+# Sign the full response
+result = sign_response(response, agent_id="weather-bot")
+print(f"Signed: {result.signature[:20]}...")
+
+# Sign individual function calls
+for part in response.candidates[0].content.parts:
+    if hasattr(part, "function_call"):
+        result = sign_function_call(part.function_call, agent_id="weather-bot")
+```
+
+## Enterprise Mode
+
+Set `MOSS_API_KEY` for automatic policy evaluation:
+
+```python
+import os
+os.environ["MOSS_API_KEY"] = "your-api-key"
+
+from moss_google import sign_function_call, enterprise_enabled
+
+print(f"Enterprise: {enterprise_enabled()}")  # True
+
+result = sign_function_call(
+    function_call,
+    agent_id="finance-bot",
+    context={"user_id": "u123"}
+)
+
+if result.blocked:
+    print(f"Blocked by policy: {result.policy.reason}")
+```
+
+## Verification
+
+```python
+from moss_google import verify_envelope
+
+verify_result = verify_envelope(result.envelope)
+if verify_result.valid:
+    print(f"Signed by: {verify_result.subject}")
+```
+
+## All Functions
+
+| Function | Description |
+|----------|-------------|
+| `sign_function_call()` | Sign a function call |
+| `sign_function_call_async()` | Async version |
+| `sign_response()` | Sign a GenerateContentResponse |
+| `sign_response_async()` | Async version |
+| `sign_content()` | Sign a Content object |
+| `sign_content_async()` | Async version |
+| `sign_part()` | Sign a Part (text or function call) |
+| `sign_part_async()` | Async version |
+| `verify_envelope()` | Verify a signed envelope |
+
+## Enterprise Features
+
+| Feature | Free | Enterprise |
+|---------|------|------------|
+| Local signing | ✓ | ✓ |
+| Offline verification | ✓ | ✓ |
+| Policy evaluation | - | ✓ |
+| Evidence retention | - | ✓ |
+| Audit exports | - | ✓ |
+
+## Links
+
+- [moss-sdk](https://pypi.org/project/moss-sdk/) - Core MOSS SDK
+- [mosscomputing.com](https://mosscomputing.com) - Project site
+
+## License
+
+This package is licensed under the [Business Source License 1.1](LICENSE).
+
+- Free for evaluation, testing, and development
+- Free for non-production use
+- Production use requires a [MOSS subscription](https://mosscomputing.com/pricing)
+- Converts to Apache 2.0 on January 25, 2030
