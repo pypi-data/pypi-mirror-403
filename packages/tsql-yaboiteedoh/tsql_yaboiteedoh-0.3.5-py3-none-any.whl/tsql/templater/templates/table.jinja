@@ -1,0 +1,426 @@
+{%
+    set single_columns = table.columns
+    | selectattr('returns')
+    | selectattr('unique')
+    | selectattr('hidden', 'false')
+    | list
+%}{%
+    set list_columns = table.columns
+    | selectattr('returns')
+    | selectattr('unique', 'false')
+    | selectattr('hidden', 'false')
+    | list
+%}{%
+    set passive_columns = table.columns
+    | selectattr('returns', 'false')
+    | selectattr('hidden', 'false')
+    | list
+%}{%
+    set reference_columns = table.columns
+    | selectattr('references')
+    | list
+%}{%
+    set without_rowid = table.columns
+    | selectattr('name', '!=', 'rowid')
+    | selectattr('hidden', 'false')
+    | list
+%}{%
+    set hidden_columns = table.columns
+    | selectattr('hidden')
+    | list
+%}{%
+    set non_hidden = table.columns
+    | selectattr('hidden', 'false')
+    | list
+%}from ..classes import {{ table.dataclass }}
+
+
+class {{ table.dataclass }}sTable:
+    def __init__(self, database):
+        self.database = database
+
+        self._single_columns = { {%
+    for i, column in enumerate(single_columns)
+        %}
+            '{{ column.name }}': self.read_by_{{ column.name }}{% 
+            if i < len(single_columns) - 1
+                %},{%
+            endif
+        %}{%
+    endfor 
+%}
+        }
+        self._list_columns = { {%
+    for i, column in enumerate(list_columns)
+        %}
+            '{{ column.name }}': self.read_by_{{ column.name }}{% 
+            if i < len(list_columns) - 1
+                %},{%
+            endif
+        %}{%
+    endfor 
+%}
+        }
+        self._passive_columns = [ {%
+    for i, column in enumerate(passive_columns)
+        %}
+            '{{ column.name }}'{% 
+            if i < len(passive_columns) - 1
+                %},{%
+            endif
+        %}{%
+    endfor 
+%}
+        ]
+        self._hidden_columns = [ {%
+    for i, column in enumerate(hidden_columns)
+        %}
+            '{{ column.name }}'{%
+            if i < len(hidden_columns) - 1
+                %},{%
+            endif
+        %}{%
+    endfor
+%}
+        ]
+        self._groups = { {%
+    for i, group in enumerate(table.groups)
+        %}
+            '{{ group.name }}': self.read_by_{{ group.name }}{% 
+            if i < len(table.groups) - 1
+                %},{%
+            endif
+        %}{%
+    endfor 
+%}
+        }
+        self._filters = { {%
+    for i, filter in enumerate(table.filters)
+        %}
+            '{{ filter.name }}': self.read_by_{{ filter.name }}{% 
+            if i < len(table.filters) - 1
+                %},{%
+            endif
+        %}{%
+    endfor 
+%}
+        }
+
+
+    def init_db(self):
+        cur = self.database.cur
+        sql = '''
+            CREATE TABLE {{ table.name }}({%
+    for i, column in enumerate(table.columns)
+        %}
+                {{
+            column.name 
+        }} {{
+            column.data_type
+        }}{%
+            if column.not_null
+                %} NOT NULL{%
+            endif
+        %}{%
+            if column.primary_key
+                %} PRIMARY KEY{%
+            endif
+        %}{%
+            if column.autoincrement
+                %} AUTOINCREMENT{%
+            endif
+        %}{%
+            if column.default
+                %} DEFAULT {{ column.default }}{%
+            endif
+        %}{%
+            if column.check
+                %} CHECK {{ column.check }}{%
+            endif
+        %}{%
+            if column.data_type == 'TEXT'
+                %}{%
+                    if column.collate != 'BINARY'
+                        %} COLLATE {{ column.collate }}{%
+                    endif
+                %}{%
+            endif
+        %}{%
+            if i < len(table.columns) - 1
+                %},{%
+            endif
+        %}{%
+    endfor
+%}{%
+    if table.columns
+    | selectattr('references')
+    | first
+        %},{%
+            for column in reference_columns
+                %}
+                FOREIGN KEY({{ column.name }})
+                    REFERENCES {{
+                            column.referenced_column.table.name
+                        }}({{
+                            column.referenced_column.name
+                        }}){%
+            endfor
+        %}{%
+    endif
+%}
+            )
+        '''
+        cur.execute(sql)
+ 
+
+    def add(self, {{ table.name[:-1] }}: dict) -> int:
+        cur = self.database.cur
+        sql = '''
+            INSERT INTO {{ table.name }} ({%
+    for i, column in enumerate(without_rowid)
+        %}
+                {{ column.name }}{%
+            if i < len(without_rowid) - 1
+                %},{%
+            endif
+        %}{%
+    endfor
+%}
+            )
+            VALUES ({%
+    for i, column in enumerate(without_rowid)
+        %}
+                :{{ column.name }}{%
+            if i < len(without_rowid) - 1
+                %},{%
+            endif
+        %}{%
+    endfor
+%}
+            )
+        '''
+        cur.execute(sql, {{ table.name[:-1] }})
+        self.database.con.commit()
+
+
+    def read_all(self) -> list[{{ table.dataclass }}]:
+        cur = self.database.cur
+        cur.row_factory = self._dataclass_row_factory
+        sql = 'SELECT * FROM {{ table.name }}'
+        cur.execute(sql)
+        return cur.fetchall(){%
+    for column in single_columns
+        %}
+
+
+    def read_by_{{
+            column.name 
+        }}(self, {{
+            column.name 
+        }}: {{
+            column.py_data_type 
+        }}) -> {{
+            table.dataclass 
+        }}:
+        cur = self.database.cur
+        cur.row_factory = self._dataclass_row_factory
+        sql = 'SELECT * FROM {{ table.name }} WHERE {{ column.name }}=?'
+        cur.execute(sql, ({{ column.name }},))
+        return cur.fetchone(){%
+    endfor
+%}{%
+    for column in list_columns
+        %}
+
+
+    def read_by_{{
+            column.name 
+        }}(self, {{
+            column.name 
+        }}: {{
+            column.py_data_type 
+        }}) -> list[{{
+            table.dataclass 
+        }}]:
+        cur = self.database.cur
+        cur.row_factory = self._dataclass_row_factory
+        sql = 'SELECT * FROM {{ table.name }} WHERE {{ column.name }}=?'
+        cur.execute(sql, ({{ column.name }},))
+        return cur.fetchall(){%
+    endfor
+%}{%
+    for group in table.groups
+        %}
+
+
+    def read_by_{{
+            group.name 
+        }}(self, {{
+            group.name 
+        }}: {{
+            group.py_data_type
+        }}) -> list[{{
+            table.dataclass 
+        }}] | {{
+            table.dataclass 
+        }}:
+        cur = self.database.cur
+        cur.row_factory = self._dataclass_row_factory
+        sql = '''
+            SELECT * FROM {{ table.name }}
+            WHERE {%
+            for i, column in enumerate(group.columns)
+                %}
+                {{ column.name }}=?{%
+                    if i < len(group.columns) - 1 
+                        %}
+            OR{%
+                    endif
+                %}{%
+            endfor
+        %}
+        '''
+        cur.execute(sql, ({%
+            for i, column in enumerate(group.columns)
+                %}{{ group.name }}{%
+                    if i < len(group.columns) - 1
+                        %}, {%
+                    endif
+                %}{%
+            endfor
+        %}))
+        response = cur.fetchall()
+
+        if not response or len(response) != 1:
+            return response
+        return response[0]{%
+    endfor
+%}{%
+    for filter in table.filters
+        %}
+
+
+    def read_by_{{ filter.name }}(self, {%
+            for i, query in enumerate(filter.queries)
+                %}{{
+                    query.name 
+                }}: {{
+                    query.py_data_type 
+                }}{% 
+                    if i < len(filter.queries) - 1
+                        %}, {%
+                    endif            
+                %}{%
+            endfor
+        %}) -> list[{{
+            table.dataclass
+        }}] | {{
+            table.dataclass
+        }}:
+        cur = self.database.cur
+        cur.row_factory = self._dataclass_row_factory
+        sql = '''
+            SELECT * FROM {{ table.name }}
+            WHERE{%
+            for i, query in enumerate(filter.queries)
+                %}{%
+                    if query.__name__ == 'Group'
+                        %}
+                ({%
+                            for j, column in enumerate(query.columns)
+                                %}{{ column.name }}=?{%
+                                    if j < len(query.columns) - 1
+                                        %} OR {%
+                                    endif
+                                %}{%
+                            endfor
+                        %}){%
+                    else
+                        %}
+                {{ query.name }}=?{%
+                    endif
+                %}{%
+                    if i < len(filter.queries) - 1
+                        %}
+            AND{%
+                    endif
+                %}{%
+            endfor
+        %}
+        '''
+        cur.execute(sql, ({%
+            for i, query in enumerate(filter.queries)
+                %}{%
+                    if query.__name__ == 'Group'
+                        %}{%
+                            for j, column in enumerate(query.columns)
+                                %}{{ query.name }}{%
+                                    if j < len(query.columns) - 1
+                                        %}, {%
+                                    endif
+                                %}{%
+                            endfor
+                        %}{%
+                    else
+                        %}{{ query.name }}{%
+                            if i < len(filter.queries) - 1
+                                %}, {%
+                            endif
+                        %}{%
+                    endif
+                %}{%
+            endfor
+        %}))
+        response = cur.fetchall()
+
+        if not response or len(response) != 1:
+            return response
+        return response[0]{%
+    endfor
+%}{%
+    for column in hidden_columns
+        %}
+
+
+    def read_{{ column.name }}(rowid: int):
+        cur = self.database.cur
+        cur.row_factory = None
+        sql = 'SELECT {{ column.name }} FROM {{ table.name }} WHERE rowid=?'
+        cur.execute(sql, (rowid,))
+        return cur.fetchone()
+
+
+    def update_{{ column.name }}(rowid: int, {{ column.name }}: {{ column.py_data_type }}):
+        cur = self.database.cur
+        sql = 'UPDATE TABLE {{ table.name }} SET {{ column.name }}=? WHERE rowid=?'
+        cur.execute(sql, (rowid,))
+        self.database.con.commit(){%
+    endfor
+%}
+
+
+    def update(self, {{ table.name[:-1] }}: {{ table.dataclass }}) -> None:
+        cur = self.database.cur
+        sql = '''
+            UPDATE {{ table.name }}
+            SET{%
+    for i, column in enumerate(without_rowid)
+        %}
+                {{ column.name }}=:{{ column.name }}{%
+            if i < len(without_rowid) - 1
+                %},{%
+            endif
+        %}{%
+    endfor
+%}
+            WHERE rowid=:rowid
+        '''
+        cur.execute(sql, {{ table.name[:-1] }}.config)
+        self.database.con.commit()
+
+
+    def _dataclass_row_factory(self, cur, row):
+        fields = [column[0] for column in cur.description]
+        config = {key: value for key, value in zip(fields, row)}
+        return {{ table.dataclass }}(config)
+
