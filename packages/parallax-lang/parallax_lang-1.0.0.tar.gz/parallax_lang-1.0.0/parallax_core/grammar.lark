@@ -1,0 +1,70 @@
+start: statement*
+
+?statement: class_def
+          | func_def
+          | assign
+          | let_stmt
+          | return_stmt
+          | observe_stmt
+          | select_stmt
+          | where_stmt
+          | if_stmt
+          | repeat_stmt
+          | while_stmt
+          | expr
+
+// --- Declarations & Control ---
+let_stmt: "let" NAME "=" expr
+repeat_stmt: "repeat" expr block
+where_stmt: "where" NAME block
+func_def: "func" NAME "(" params? ")" block
+
+if_stmt: "if" expr block ("else" block)?
+while_stmt: "while" expr block
+select_stmt: "select" NAME ":" expr block?
+class_def: "class" NAME "{" method_def* "}"
+method_def: NAME "(" params? ")" block
+params: NAME ("," NAME)*
+block: "{" statement* "}"
+assign: NAME "=" expr
+return_stmt: "return" expr
+observe_stmt: "observe" expr
+
+// --- Expressions ---
+?expr: comparison
+
+?comparison: sum "==" sum -> eq
+           | sum "!=" sum -> neq
+           | sum ">" sum  -> gt
+           | sum "<" sum  -> lt
+           | sum ">=" sum -> ge
+           | sum "<=" sum -> le
+           | sum
+
+?sum: sum "+" product   -> add
+    | sum "-" product   -> sub
+    | product
+
+?product: product "*" postfix -> mul
+        | product "/" postfix -> div
+        | postfix
+
+?postfix: atom "." NAME "(" args? ")" -> method_call
+        | atom "." NAME               -> get_attr
+        | atom
+
+?atom: NUMBER                -> number
+     | STRING                -> string
+     | NAME                  -> var
+     | NAME "(" args? ")"    -> func_call
+     | "superpose" atom ("," atom)* -> superpose
+     | "X" "from" expr       -> x_expr
+     | "(" expr ")"
+
+args: expr ("," expr)*
+STRING: /"[^"]*"/
+
+%import common.CNAME -> NAME
+%import common.NUMBER
+%import common.WS
+%ignore WS
