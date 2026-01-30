@@ -1,0 +1,339 @@
+# Discord MCP Agent
+
+[![PyPI](https://img.shields.io/pypi/v/discord-mcp-agent)](https://pypi.org/project/discord-mcp-agent/)
+[![Python](https://img.shields.io/pypi/pyversions/discord-mcp-agent)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+A Model Context Protocol (MCP) server for Discord-based AI agent-user communication. Enables AI agents to communicate with users through Discord instead of IDE chat interfaces.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Discord Bot Setup](#discord-bot-setup)
+- [Tools Reference](#tools-reference)
+- [Reaction Features](#reaction-features)
+- [Configuration](#configuration)
+- [Usage Examples](#usage-examples)
+- [Troubleshooting](#troubleshooting)
+- [Requirements](#requirements)
+- [Contributing](#contributing)
+- [Links](#links)
+
+## Quick Start
+
+### Installation
+
+```bash
+# Using uvx (recommended - no install needed)
+uvx discord-mcp-agent
+
+# Or install via pip
+pip install discord-mcp-agent
+
+# For screenshot support
+pip install discord-mcp-agent[screenshot]
+```
+
+### VS Code / GitHub Copilot
+
+Add to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "discord": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["discord-mcp-agent"],
+      "env": {
+        "DISCORD_TOKEN": "your-bot-token",
+        "DISCORD_GUILD_ID": "your-server-id",
+        "DISCORD_CHANNEL": "general"
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "discord": {
+      "command": "uvx",
+      "args": ["discord-mcp-agent"],
+      "env": {
+        "DISCORD_TOKEN": "your-bot-token",
+        "DISCORD_GUILD_ID": "your-server-id",
+        "DISCORD_CHANNEL": "general"
+      }
+    }
+  }
+}
+```
+
+## Discord Bot Setup
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application** → Give it a name → Create
+3. Go to **Bot** section → Click **Add Bot**
+4. Copy the **Bot Token** (keep this secret!)
+5. Enable under **Privileged Gateway Intents**:
+   - ✅ Message Content Intent
+6. Go to **OAuth2** → **URL Generator**:
+   - Scopes: `bot`
+   - Bot Permissions: `Send Messages`, `Read Message History`, `Add Reactions`, `Attach Files`
+7. Copy the generated URL and open it to invite the bot to your server
+8. Get your **Server ID**: Enable Developer Mode in Discord settings, right-click your server → Copy ID
+
+> ⚠️ **Security Warning:** Never commit your bot token to version control! Use environment variables or `.env` files.
+
+## Tools Reference
+
+### `discord_ask`
+
+Send a question and wait for user response. Supports reaction-based interactions.
+
+| Parameter  | Type   | Required | Description              |
+| ---------- | ------ | -------- | ------------------------ |
+| `question` | string | ✅       | The question to ask user |
+
+**Reactions automatically added:**
+
+- 📷 Take screenshot
+- ❌ Cancel request
+
+**Response format:**
+
+```json
+{
+  "text": "User's response text",
+  "attachments": [{ "filename": "...", "url": "..." }],
+  "cancelled": false
+}
+```
+
+### `discord_notify`
+
+Send a notification (no response expected).
+
+| Parameter | Type   | Required | Description         |
+| --------- | ------ | -------- | ------------------- |
+| `message` | string | ✅       | The message to send |
+
+### `discord_send_file`
+
+Send a file to the user.
+
+| Parameter   | Type   | Required | Description                    |
+| ----------- | ------ | -------- | ------------------------------ |
+| `file_path` | string | ✅       | Absolute path to the file      |
+| `message`   | string | ❌       | Optional message with the file |
+
+### `discord_screenshot`
+
+Take and send a desktop screenshot.
+
+| Parameter | Type   | Required | Description                          |
+| --------- | ------ | -------- | ------------------------------------ |
+| `message` | string | ❌       | Optional message with the screenshot |
+
+> Requires `pip install discord-mcp-agent[screenshot]`
+
+### `discord_embed`
+
+Send a rich embed message with full formatting.
+
+| Parameter       | Type    | Required | Description                              |
+| --------------- | ------- | -------- | ---------------------------------------- |
+| `title`         | string  | ❌       | Embed title                              |
+| `description`   | string  | ❌       | Main content                             |
+| `color`         | integer | ❌       | Hex color (default: `0x5865F2`)          |
+| `fields`        | array   | ❌       | Array of `{name, value, inline}` objects |
+| `footer`        | string  | ❌       | Footer text                              |
+| `thumbnail_url` | string  | ❌       | Small image (top-right)                  |
+| `image_url`     | string  | ❌       | Large image (bottom)                     |
+| `author_name`   | string  | ❌       | Author name (top)                        |
+| `url`           | string  | ❌       | Title link URL                           |
+
+## Reaction Features
+
+Every message from the bot includes interactive reaction buttons:
+
+| Emoji | Action     | Description                                           |
+| ----- | ---------- | ----------------------------------------------------- |
+| 📷    | Screenshot | Takes a screenshot and sends it to Discord            |
+| ❌    | Cancel     | Cancels the current `discord_ask` and returns control |
+| ⏳    | Timeout    | Added automatically when a request times out          |
+
+### How It Works
+
+1. Bot sends a message with 📷 and ❌ reactions
+2. User can click reactions to trigger actions
+3. 📷 immediately captures and sends a screenshot
+4. ❌ cancels waiting and returns `"cancelled": true`
+
+## Configuration
+
+### Environment Variables
+
+| Variable                     | Required | Default   | Description                           |
+| ---------------------------- | -------- | --------- | ------------------------------------- |
+| `DISCORD_TOKEN`              | ✅       | -         | Your Discord bot token                |
+| `DISCORD_GUILD_ID`           | ✅       | -         | Your Discord server ID                |
+| `DISCORD_CHANNEL`            | ❌       | `general` | Channel name to use                   |
+| `DISCORD_REMINDER`           | ❌       | -         | Custom text appended to all responses |
+| `DISCORD_ASK_TIMEOUT`        | ❌       | `300`     | Seconds to wait for user response     |
+| `DISCORD_HTTP_TIMEOUT`       | ❌       | `30`      | Seconds for HTTP operations           |
+| `DISCORD_CONNECTION_TIMEOUT` | ❌       | `30`      | Seconds to establish connection       |
+
+### Custom Reminder
+
+Inject custom instructions into every tool response:
+
+```json
+{
+  "env": {
+    "DISCORD_REMINDER": "Remember: Always confirm with the user before completing tasks."
+  }
+}
+```
+
+### Timeout Configuration
+
+Adjust timeouts for your use case:
+
+```json
+{
+  "env": {
+    "DISCORD_ASK_TIMEOUT": "600",
+    "DISCORD_HTTP_TIMEOUT": "60"
+  }
+}
+```
+
+## Usage Examples
+
+### MCP Tool Call: Ask Question
+
+```json
+{
+  "name": "discord_ask",
+  "arguments": {
+    "question": "What color theme would you like for the dashboard?"
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "text": "I'd prefer a dark theme with blue accents",
+  "attachments": [],
+  "cancelled": false
+}
+```
+
+### MCP Tool Call: Send Embed
+
+```json
+{
+  "name": "discord_embed",
+  "arguments": {
+    "title": "Build Complete ✅",
+    "description": "Your project has been successfully built.",
+    "color": 5763719,
+    "fields": [
+      { "name": "Duration", "value": "2m 34s", "inline": true },
+      { "name": "Size", "value": "1.2 MB", "inline": true }
+    ],
+    "footer": "Built with discord-mcp-agent"
+  }
+}
+```
+
+### Handling Image Attachments
+
+When users send images in response to `discord_ask`, they're automatically:
+
+1. Downloaded from Discord
+2. Encoded as base64
+3. Returned as `ImageContent` for AI model consumption
+
+## Troubleshooting
+
+| Error                                            | Cause                  | Solution                                            |
+| ------------------------------------------------ | ---------------------- | --------------------------------------------------- |
+| `DISCORD_TOKEN environment variable is required` | Missing token          | Set `DISCORD_TOKEN` in your MCP config              |
+| `Guild with ID X not found`                      | Bot not in server      | Invite bot using OAuth2 URL                         |
+| `Channel 'X' not found in guild`                 | Wrong channel name     | Check `DISCORD_CHANNEL` matches exactly             |
+| `Failed to connect within 30 seconds`            | Network/token issue    | Verify token and network connectivity               |
+| `PIL not installed`                              | Screenshot dep missing | Run `pip install discord-mcp-agent[screenshot]`     |
+| `⏳ No response received within X seconds`       | User didn't respond    | Increase `DISCORD_ASK_TIMEOUT` or user can click ❌ |
+
+### Common Issues
+
+**Bot appears offline:**
+
+- Ensure `Message Content Intent` is enabled in Discord Developer Portal
+- Check that the bot token is correct
+
+**Bot can't see messages:**
+
+- Enable `Message Content Intent` in bot settings
+- Ensure bot has `Read Message History` permission
+
+**Screenshots not working:**
+
+- Install Pillow: `pip install discord-mcp-agent[screenshot]`
+- On Linux, may require display server access
+
+## Requirements
+
+- Python 3.10+
+- `mcp >= 1.0.0`
+- `discord.py >= 2.0.0`
+- `pydantic >= 2.0.0`
+- `aiohttp >= 3.8.0`
+- `Pillow >= 10.0.0` (optional, for screenshots)
+
+## Security
+
+⚠️ **Never commit your Discord bot token to version control!**
+
+- Use environment variables or `.env` files
+- Add `.env` to `.gitignore`
+- Regenerate token immediately if exposed
+
+## Contributing
+
+Contributions are welcome!
+
+1. Fork the repository
+2. Create your feature branch
+3. Add tests for new features
+4. Submit a pull request
+
+### Development Setup
+
+```bash
+git clone https://github.com/zebbern/discord-mcp-agent.git
+cd discord-mcp-agent
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+## Links
+
+- 📦 [PyPI Package](https://pypi.org/project/discord-mcp-agent/)
+- 🐙 [GitHub Repository](https://github.com/zebbern/discord-mcp-agent)
+- 📖 [Model Context Protocol](https://modelcontextprotocol.io/)
+- 🎮 [Discord Developer Portal](https://discord.com/developers/applications)
+
+---
+
+Made with ❤️ for the MCP community
