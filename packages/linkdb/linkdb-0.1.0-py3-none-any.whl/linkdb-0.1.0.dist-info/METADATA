@@ -1,0 +1,221 @@
+Metadata-Version: 2.4
+Name: linkdb
+Version: 0.1.0
+Summary: A zero-dependency CLI tool for managing curated project lists - zero dependencies, stdlib only
+License-File: LICENSE
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+
+# linkdb
+
+A zero-dependency CLI tool for managing curated project lists (like "awesome" lists).
+
+Single-file Python script using only the standard library. Python 3.8+.
+
+## Installation
+
+```bash
+# Clone and install
+git clone https://github.com/user/linkdb.git
+cd linkdb
+uv sync
+
+# Or just run directly
+./linkdb.py --help
+```
+
+## Quick Start
+
+```bash
+# Check data health
+./linkdb.py doctor
+
+# Import to database
+./linkdb.py import
+
+# List entries
+./linkdb.py list
+
+# List with filters
+./linkdb.py list --stars-min 100 --language python --active-only
+
+# Search
+./linkdb.py search synthesizer
+
+# Add a new entry (auto-fetches GitHub metadata)
+./linkdb.py add -r "https://github.com/user/my-project" -c synthesis
+
+# Add interactively
+./linkdb.py add -i
+
+# Add multiple entries from file
+./linkdb.py add --file urls.txt -c synthesis
+
+# Update an entry
+./linkdb.py update my-project -d "An awesome synth"
+
+# Remove an entry
+./linkdb.py remove my-project
+
+# Remove all entries in a category
+./linkdb.py remove --category obsolete-category
+
+# Sort entries.json
+./linkdb.py sort
+./linkdb.py sort --by-category
+
+# Generate README
+./linkdb.py generate -o README.md
+
+# Create backup
+./linkdb.py backup create
+
+# View change history
+./linkdb.py history
+./linkdb.py history my-project
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `add` | Add entry (`--file` for batch, `-i` for interactive) |
+| `backup` | Backup operations (`create`, `restore`, `list`) |
+| `category` | Manage categories (`list`, `add`, `rm`) |
+| `check` | Check URLs for broken links |
+| `dedupe` | Find and merge duplicate entries |
+| `doctor` | Check data integrity and health |
+| `export` | Export database to JSON |
+| `generate` | Generate README from database |
+| `github` | GitHub operations (`fetch`, `stale`, `cache`) |
+| `history` | Show change history |
+| `import` | Import JSON or .webloc files to database |
+| `list` | List entries with filters |
+| `remove` | Remove entry (`--category` for bulk) |
+| `search` | Search entries by name/description |
+| `sort` | Sort entries.json file |
+| `stats` | Show database statistics |
+| `update` | Update existing entry |
+
+### GitHub Subcommands
+
+```bash
+./linkdb.py github fetch          # Fetch stats for all repos
+./linkdb.py github fetch --no-cache  # Bypass cache
+./linkdb.py github stale          # Find unmaintained projects
+./linkdb.py github cache stats    # Show cache statistics
+./linkdb.py github cache clear    # Clear expired cache entries
+```
+
+### Backup Subcommands
+
+```bash
+./linkdb.py backup create         # Create new backup
+./linkdb.py backup list           # List available backups
+./linkdb.py backup restore <file> # Restore from backup
+```
+
+## Global Options
+
+```bash
+-v, --verbose    # Increase verbosity (use -vv for debug)
+-q, --quiet      # Suppress non-error output
+--version        # Show version
+```
+
+## Environment Variables
+
+```bash
+CURATOR_JSON     # Override default entries.json path
+CURATOR_DB       # Override default database path
+GITHUB_TOKEN     # GitHub API token for higher rate limits
+```
+
+## Data Format
+
+Entries are stored in `data/entries.json`:
+
+```json
+{
+  "categories": ["synthesis", "dsp", "midi"],
+  "entries": [
+    {
+      "name": "project-name",
+      "category": "synthesis",
+      "desc": "Project description",
+      "url": "https://example.com",
+      "repo": "https://github.com/user/project"
+    }
+  ]
+}
+```
+
+Each entry must have:
+- `name` - unique project name
+- `category` - from defined categories list
+- `desc` - description
+- `url` and/or `repo` - at least one link
+
+Optional fields (auto-populated from GitHub):
+- `tags` - comma-separated tags
+- `aliases` - alternative names
+- `mirror_urls` - additional URLs
+
+## Programmatic API
+
+```python
+from linkdb import (
+    add_entry, update_entry, remove_entry, get_entry,
+    sort_entries_file, find_duplicates, create_backup
+)
+
+# Add entry (returns entry dict, raises ValueError/KeyError on error)
+entry = add_entry("my-project", "dsp", "Description",
+                  repo="https://github.com/...")
+
+# Add from GitHub URL (auto-fetches metadata)
+from linkdb import add_entry_from_github
+entry = add_entry_from_github("https://github.com/user/repo", "dsp")
+
+# Update entry
+entry = update_entry("my-project", desc="New description")
+
+# Get entry (returns dict or None)
+entry = get_entry("my-project")
+
+# Remove entry
+entry = remove_entry("my-project")
+
+# Sort entries file
+sort_entries_file()                      # Sort by name
+sort_entries_file(by_category=True)      # Sort by category, then name
+
+# Find duplicates
+duplicates = find_duplicates()
+
+# Create backup
+backup_path = create_backup()
+```
+
+## Development
+
+```bash
+# Install dev dependencies
+uv sync
+
+# Run tests
+make test
+
+# Run full QA (test + lint + typecheck + format)
+make qa
+
+# Lint only
+make lint
+
+# Type check
+make typecheck
+```
+
+## License
+
+MIT
