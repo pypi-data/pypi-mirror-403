@@ -1,0 +1,38 @@
+kind: LinearJob
+name: example_job
+description: |
+  Minimal example job demonstrating a basic ETL pipeline
+  using no-op operators.
+
+org: tiozin
+region: latam
+domain: marketing
+layer: refined
+product: users
+model: customers
+
+unplanned_field: 12345
+
+runner:
+  kind: NoOpRunner
+  streaming: false
+  log_level: "{{ ENV.LOG_LEVEL }}"
+  verbose: true
+
+inputs:
+  - kind: NoOpInput
+    name: load_customers
+    path: .output/lake-{{domain}}-raw/{{product}}/{{model}}/date={{ DAY[-1] }}
+    verbose: true
+
+transforms:
+  - kind: NoOpTransform
+    name: mask_pii_fields
+    strategy: sha256
+    verbose: true
+
+outputs:
+  - kind: NoOpOutput
+    name: save_customers
+    path: .output/lake-{{domain}}-{{layer}}/{{product}}/{{model}}/{{ DAY[-1].fsdeep }}
+    verbose: true
