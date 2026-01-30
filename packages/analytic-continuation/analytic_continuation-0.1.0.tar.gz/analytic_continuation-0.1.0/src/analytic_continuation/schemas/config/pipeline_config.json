@@ -1,0 +1,105 @@
+{
+  "pipeline": "laurent_reflection_composition_v1",
+  "input": {
+    "sourceType": "SplineExport",
+    "curveSourceField": "adaptivePolyline",
+    "dropDuplicateTerminalPoints": true,
+    "complexEmbedding": {
+      "re": "x",
+      "im": "y"
+    }
+  },
+  "fitLaurentMap": {
+    "representation": "laurent",
+    "degree": {
+      "N_min": 6,
+      "N_max": 64
+    },
+    "sampling": {
+      "method": "arc_length_resample",
+      "m_samples": 2048
+    },
+    "regularization": {
+      "lambda": "auto",
+      "penalty": "k2",
+      "lambdaAuto": {
+        "scaleFromCurve": "diameter",
+        "lambda0Factor": 1e-06,
+        "increaseFactorOnFailure": 10.0,
+        "maxTries": 6
+      }
+    },
+    "reparameterization": {
+      "iters": 2,
+      "method": "closest_point_theta_search",
+      "thetaSearch": {
+        "grid": 2048,
+        "localRefineIters": 3
+      }
+    },
+    "stopping": {
+      "fitTolMaxFactor": 0.002,
+      "preferSmallestN": true
+    },
+    "checks": {
+      "rho_in": 0.97,
+      "rho_out": 1.03,
+      "theta_grid": 4096,
+      "minAbsDerivFactor": 1e-08,
+      "minSepFactor": 1e-05,
+      "simplicity": {
+        "method": "polyline_self_intersection",
+        "polyEpsFactor": 0.0005
+      }
+    }
+  },
+  "fHolomorphicCheck": {
+    "enabled": true,
+    "theta_grid": 2048,
+    "rho_samples": [
+      0.97,
+      1.0,
+      1.03
+    ],
+    "poleMarginFactor": 1.0,
+    "onFailure": {
+      "action": "shrink_annulus",
+      "shrinkSteps": [
+        0.99,
+        0.985,
+        0.98,
+        0.975
+      ],
+      "then": "refit"
+    }
+  },
+  "invertZ": {
+    "initStrategy": {
+      "type": "grid",
+      "theta_grid": 256,
+      "alsoSeedRadii": [
+        0.99,
+        1.0,
+        1.01
+      ]
+    },
+    "newton": {
+      "maxIters": 40,
+      "tolAbsFactor": 1e-10,
+      "tolRelFactor": 1e-10,
+      "damping": true,
+      "maxBacktracks": 12
+    },
+    "rootSelection": {
+      "criterion": "min_abs(|zeta|-1)"
+    }
+  },
+  "computeComposition": {
+    "useIdentityShortcut": true,
+    "returnAlso": [
+      "zeta",
+      "residual",
+      "N"
+    ]
+  }
+}
