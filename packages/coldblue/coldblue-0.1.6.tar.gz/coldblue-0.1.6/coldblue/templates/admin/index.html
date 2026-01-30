@@ -1,0 +1,91 @@
+
+
+{% extends "admin/base_site.html" %}
+{% load log %}
+{% load coldblue_admin %}
+
+
+
+
+{% block content %}
+{% coldblue_stats %}
+<div class="dashboard-layout">
+
+    <!-- LEFT: MODELS / TABLES -->
+    <div class="dashboard-main">
+        <h2 class="page-title"><u>Models</u></h2>
+
+        <div class="card-grid">
+            {% for app in app_list %}
+                {% for model in app.models %}
+                    <div class="card">
+                        <strong>{{ model.name }}</strong>
+
+                        <div class="card-actions">
+                            {% if model.admin_url %}
+                            <a href="{{ model.admin_url }}" class="action-link view">
+                                View
+                            </a>
+                            {% endif %}
+
+                            {% if model.add_url %}
+                            <a href="{{ model.add_url }}" class="action-link add">
+                                Add
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- RIGHT: RECENT ACTIONS -->
+    {% load log %}
+
+<aside class="dashboard-side">
+    <h3>Recent Actions</h3>
+
+    {% get_admin_log 10 as admin_log %}
+    {% if admin_log %}
+        <ul class="recent-actions-list">
+            {% for entry in admin_log %}
+                <li class="recent-action {{ entry.action_flag }}">
+    <div class="ra-row">
+        <span class="ra-user">{{ entry.user }}</span>
+        <span class="ra-action">
+            {% if entry.is_addition %}added{% endif %}
+            {% if entry.is_change %}edited{% endif %}
+            {% if entry.is_deletion %}deleted{% endif %}
+        </span>
+    </div>
+
+    <div class="ra-object">
+        <span class="ra-action">
+    {% if entry.is_addition %}<i class="fa-solid fa-plus"></i>{% endif %}
+    {% if entry.is_change %}<i class="fa-solid fa-pen"></i>{% endif %}
+    {% if entry.is_deletion %}<i class="fa-solid fa-trash"></i>{% endif %}
+</span>
+
+        {% if entry.get_admin_url %}
+            <a href="{{ entry.get_admin_url }}">
+                {{ entry.object_repr }}
+            </a>
+        {% else %}
+            {{ entry.object_repr }}
+        {% endif %}
+    </div>
+
+    <div class="ra-time">
+        {{ entry.action_time|timesince }} ago
+    </div>
+</li>
+
+{% endfor %}
+        </ul>
+    {% else %}
+        <p class="muted">No recent Activity yet.</p>
+    {% endif %}
+</aside>
+</div>
+{% endblock %}
