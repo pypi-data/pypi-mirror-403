@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: David Fritzsche
+# SPDX-License-Identifier: CC0-1.0
+name: Python package
+
+on: [push]
+
+jobs:
+  test-py:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 8
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+    - uses: actions/checkout@v6
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: |
+          ${{ matrix.python-version }}
+          3.14
+    - uses: astral-sh/setup-uv@v7
+    - name: Run tox
+      env:
+        TOX_PARALLEL_NO_SPINNER: "1"
+      run: |
+        uv run --frozen invoke mkdir build/coverage-data
+        uv run --frozen invoke tox -e "py-*"
+
+
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        python-version: ["3.14"]
+
+    steps:
+    - uses: actions/checkout@v6
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+    - uses: astral-sh/setup-uv@v7
+    - run: uv run --frozen --only-group=tox tox run -e ruff
+    - run: uv run --frozen --only-group=tox tox run -e mypy
