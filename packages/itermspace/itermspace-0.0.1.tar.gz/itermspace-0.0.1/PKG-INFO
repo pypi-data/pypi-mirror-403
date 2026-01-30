@@ -1,0 +1,149 @@
+Metadata-Version: 2.4
+Name: itermspace
+Version: 0.0.1
+Summary: Launch iTerm2 workspaces from YAML configuration
+Author-email: midodimori <midodimori@users.noreply.github.com>
+License: MIT
+License-File: LICENSE
+Requires-Python: >=3.13
+Requires-Dist: iterm2>=2.13
+Requires-Dist: pydantic>=2.12.5
+Requires-Dist: pyyaml>=6.0.3
+Description-Content-Type: text/markdown
+
+# itermspace
+
+Launch iTerm2 workspaces from YAML configuration files.
+
+## Features
+
+- Define terminal workspaces with multiple tabs
+- Configure split panes in flexible grid layouts (vertical/horizontal)
+- Set working directories and startup commands per pane
+- Launch multiple config files at once
+- Validate configurations before launching
+- Dry-run mode to preview workspace setup
+
+## Requirements
+
+- macOS (iTerm2 is macOS-only)
+- iTerm2 with Python API enabled
+- Python 3.13+
+
+### Enable iTerm2 Python API
+
+1. Open iTerm2
+2. Go to **Preferences > General > Magic**
+3. Check **Enable Python API**
+4. Accept the security warning
+
+## Installation
+
+```bash
+# Using uv (recommended)
+uv tool install itermspace
+
+# Or using pip
+pip install itermspace
+```
+
+## Usage
+
+```bash
+# Launch a workspace
+itermspace workspace.yaml
+
+# Launch multiple workspaces at once
+itermspace backend.yaml frontend.yaml database.yaml
+
+# Validate configuration(s)
+itermspace --validate workspace.yaml
+itermspace --validate *.yaml
+
+# Preview without launching (dry-run)
+itermspace --dry-run workspace.yaml
+
+# Short alias
+its workspace.yaml
+```
+
+## Configuration
+
+Create a YAML file defining your workspace:
+
+```yaml
+version: "1"
+name: "My Workspace"
+
+tabs:
+  - name: "Main"
+    working_directory: "~/projects"
+    layout:
+      split: "vertical"
+      panes:
+        - name: "Editor"
+        - name: "Terminal"
+          commands:
+            - "echo 'Ready!'"
+```
+
+See the [`examples/`](examples/) directory for more configuration samples.
+
+## Configuration Reference
+
+### Root Level
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `version` | string | No | Schema version (default: "1") |
+| `name` | string | No | Workspace name |
+| `tabs` | array | Yes | List of tab configurations |
+
+### Tab Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Tab title in iTerm2 |
+| `working_directory` | string | No | Default directory for panes |
+| `layout` | object | No | Pane layout (omit for single pane) |
+| `commands` | array | No | Commands for single-pane tabs |
+
+### Layout Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `split` | string | No | "vertical" or "horizontal" (default: "vertical") |
+| `panes` | array | Yes | List of pane or nested layout objects |
+
+### Pane Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | No | Pane identifier |
+| `working_directory` | string | No | Working directory |
+| `commands` | array | No | Commands to execute |
+| `delay` | float | No | Delay before running commands (seconds) |
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/midodimori/itermspace
+cd itermspace
+
+# Install dependencies
+make install
+
+# Run linting
+make lint
+
+# Run type checking
+make typecheck
+
+# Run tests
+make test
+```
+
+## License
+
+MIT
