@@ -1,0 +1,72 @@
+"""Application configuration."""
+
+import os
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+
+TRUTHY = ("true", "1", "yes")
+
+
+@dataclass
+class Settings:
+    """Application settings."""
+
+    # Application
+    APP_NAME: str = field(default_factory=lambda: os.getenv("APP_NAME", "{{ project_name }}"))
+    APP_ENV: str = field(default_factory=lambda: os.getenv("APP_ENV", "development"))
+    DEBUG: bool = field(default_factory=lambda: os.getenv("DEBUG", "true").lower() in TRUTHY)
+
+    # Server
+    HOST: str = field(default_factory=lambda: os.getenv("HOST", "0.0.0.0"))
+    PORT: int = field(default_factory=lambda: int(os.getenv("PORT", "8000")))
+
+{% if has_database %}
+    # Database
+{% if database.value == "PostgreSQL" %}
+    DATABASE_URL: str = field(
+        default_factory=lambda: os.getenv(
+            "DATABASE_URL",
+            "postgresql+psycopg://myuser:mypassword@localhost:5432/mydb"
+        ),
+    )
+{% elif database.value == "SQLite" %}
+    DATABASE_URL: str = field(
+        default_factory=lambda: os.getenv(
+            "DATABASE_URL",
+            "sqlite+aiosqlite:///./app.db"
+        ),
+    )
+{% elif database.value == "MySQL" %}
+    DATABASE_URL: str = field(
+        default_factory=lambda: os.getenv(
+            "DATABASE_URL",
+            "mysql+asyncmy://myuser:mypassword@localhost:3306/mydb"
+        ),
+    )
+{% endif %}
+{% endif %}
+
+    @classmethod
+    def from_env(cls, dotenv_filename: str) -> "Settings":
+        env_file = (
+            Path(dotenv_filename) if Path(dotenv_filename).is_absolute() else Path(f"{os.curdir}/{dotenv_filename}")
+        )
+
+        if env_file.is_file():
+            from dotenv import load_dotenv
+            from rich import get_console
+
+            console = get_console()
+            console.print(
+                f"[yellow]Loading environment configuration from {dotenv_filename}[/]",
+                markup=True,
+            )
+
+            load_dotenv(env_file, override=True)
+        return Settings()
+
+
+@lru_cache(maxsize=1, typed=True)
+def get_settings() -> Settings:
+    return Settings.from_env(dotenv_filename=".env")
