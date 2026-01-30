@@ -1,0 +1,43 @@
+# =============================================================================
+# RATE CARD VALIDATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent validates invoice line item rates against rate cards from the
+# database. It checks if each line item's unit price matches the applicable
+# rate card for the vendor, SOW, and item code.
+#
+# =============================================================================
+id: aegis_rate_card_validator
+type: adk
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/aegis_rate_card_validator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp:
+  servers:
+    - url: "http://localhost:8050/mcp"
+      toolkits: ["sqlite", "agentos_memory"]
+      tools: ["sqlite.*", "agentos_shell"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/aegis_rate_card_validator.jinja
+  inputs:
+    inline: |
+      - Current Invoice ID: {{current_invoice.invoice_id}}
+      - Extracted Invoice Data: {{aegis_translator.translated_data.invoice_data if aegis_translator else aegis_invoice_extractor.extracted_data.invoice_data}}
+      - Database Path: {{aegis_pending_invoice_scanner.database_path}}
+      - Project Directory: {{project_dir}}

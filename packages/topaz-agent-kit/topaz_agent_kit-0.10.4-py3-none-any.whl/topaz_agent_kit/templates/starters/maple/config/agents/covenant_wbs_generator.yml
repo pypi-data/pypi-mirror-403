@@ -1,0 +1,42 @@
+# =============================================================================
+# WBS GENERATOR AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent generates Work Breakdown Structure based on contract analysis
+# and historical WBS patterns, and creates a markdown report.
+#
+# =============================================================================
+id: covenant_wbs_generator
+type: oak
+model: azure_openai
+run_mode: local
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/covenant_wbs_generator
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# LOCAL TOOLS CONFIGURATION
+# =============================================================================
+local_tools:
+  modules:
+    - "tools.covenant.covenant_context_manager"
+  toolkits: ["covenant"]
+  tools: ["covenant.*"]
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/covenant_wbs_generator.jinja
+  inputs:
+    inline: |
+      Contract ID: {{covenant_orchestrator.contract_id}}
+      WBS Requirements: {{covenant_wbs_analyzer.wbs_requirements}}
+      Historical WBS Patterns: {{covenant_wbs_analyzer.historical_patterns}}
+      Project Directory: {{project_dir}}

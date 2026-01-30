@@ -1,0 +1,52 @@
+# =============================================================================
+# BATCH SUMMARY REPORTER AGENT CONFIGURATION
+# =============================================================================
+#
+# This agent generates a summary report of batch math problem processing results.
+#
+# =============================================================================
+id: batch_summary_reporter
+type: oak
+model: "azure_openai"
+run_mode: "local"
+
+# Resume behavior: Controls when this agent runs after resuming from checkpoint
+# Options:
+#   - "always" (default): Run normally, skip only if output already in upstream
+#   - "skip_on_resume": Always skip when resuming from checkpoint
+#   - "run_only_when_complete": Only run when all loop iterations are complete
+resume_behavior: "run_only_when_complete"
+
+# =============================================================================
+# REMOTE EXECUTION CONFIGURATION
+# =============================================================================
+remote:
+  url: http://127.0.0.1:8100/batch_summary_reporter
+  timeout: 30000
+  retry_attempts: 3
+
+# =============================================================================
+# PROMPT CONFIGURATION
+# =============================================================================
+prompt:
+  instruction:
+    jinja: prompts/batch_summary_reporter.jinja
+  inputs:
+    inline: |
+      ## Batch Processing Context
+
+      **Original Problems:**
+      {{ batch_problem_parser.problems }}
+
+      **Completed Cases:**
+      {{ completed_cases }}
+
+      **HITL Queued Cases:**
+      {{ hitl_queued_cases }}
+
+      **Math Compass Results (sub-pipeline, if available):**
+      {{ math_compass }}
+
+      **Note:** When math_compass is an array, each element represents one problem's processing:
+      - math_compass[i].nodes.math_calculator.parsed.result = calculator result
+      - math_compass[i].nodes.math_auditor.parsed.final_answer = auditor's final answer
