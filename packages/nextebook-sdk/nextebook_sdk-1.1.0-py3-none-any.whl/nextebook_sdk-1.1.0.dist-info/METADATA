@@ -1,0 +1,335 @@
+Metadata-Version: 2.4
+Name: nextebook-sdk
+Version: 1.1.0
+Summary: NextEbook OEM API Python SDK
+Home-page: https://github.com/YIZXIY/nextebook-sdk
+Author: YIZXIY
+Author-email: NextEbook Team <support@nextebook.com>
+License: MIT
+Project-URL: Homepage, https://github.com/nextebook/nextebook-sdk
+Project-URL: Documentation, https://github.com/nextebook/nextebook-sdk#readme
+Project-URL: Repository, https://github.com/nextebook/nextebook-sdk.git
+Project-URL: Issues, https://github.com/nextebook/nextebook-sdk/issues
+Keywords: nextebook,oem,api,sdk,ebook,activation
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.28.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
+
+# NextEbook OEM SDK
+
+[![PyPI version](https://badge.fury.io/py/nextebook-sdk.svg)](https://badge.fury.io/py/nextebook-sdk)
+[![Python versions](https://img.shields.io/pypi/pyversions/nextebook-sdk.svg)](https://pypi.org/project/nextebook-sdk/)
+[![License](https://img.shields.io/pypi/l/nextebook-sdk.svg)](https://github.com/nextebook/nextebook-sdk/blob/main/LICENSE)
+
+NextEbook OEM API 的官方 Python SDK，用于管理会员卡激活码的生成、查询和作废。
+
+## 功能特性
+
+- ✅ 检查 OEM 单位额度
+- ✅ 生成会员卡激活码
+- ✅ 作废激活码（仅限未激活的激活码）
+- ✅ 激活会员卡
+- ✅ 完整的类型提示
+- ✅ 自定义异常类
+- ✅ 详细的 API 文档
+
+## 安装
+
+```bash
+pip install nextebook-sdk
+```
+
+或从源码安装：
+
+```bash
+git clone https://github.com/nextebook/nextebook-sdk.git
+cd nextebook-sdk
+pip install .
+```
+
+## 快速开始
+
+### 1. 初始化客户端
+
+```python
+from nextebook_sdk import OemClient
+
+# 初始化客户端
+client = OemClient(
+    base_url="http://127.0.0.1:9999",
+    api_key="3d0a7dc8-796f-4206-9bc2-b313e6c92a29"
+)
+```
+
+### 2. 检查额度
+
+```python
+# 查询 OEM 单位的额度信息
+quota = client.check_quota()
+
+print(f"OEM单位: {quota.oem_name}")
+print(f"总额度: {quota.activation_code_quota}")
+print(f"已使用: {quota.used_quota}")
+print(f"剩余: {quota.remaining_quota}")
+```
+
+### 3. 生成激活码
+
+```python
+# 生成 10 个 1 年期激活码
+result = client.generate_codes(count=10, validity_years=1)
+
+print(f"成功生成 {len(result.codes)} 个激活码")
+for code in result.codes:
+    print(code)
+
+print(f"已使用额度: {result.used_quota}")
+print(f"剩余额度: {result.remaining_quota}")
+```
+
+### 4. 作废激活码
+
+```python
+# 作废未使用的激活码
+result = client.revoke_code("550e8400-e29b-41d4-a716-446655440000")
+
+if result.quota_restored:
+    print(f"成功作废，已恢复 {result.validity_years} 年额度")
+else:
+    print("成功作废")
+```
+
+### 5. 激活会员卡
+
+```python
+# 为用户激活会员卡
+result = client.activate_code(
+    code="550e8400-e29b-41d4-a716-446655440000",
+    user_id=123
+)
+
+print(f"成功激活 {result.validity_years} 年期会员")
+print(f"OEM单位: {result.oem_name}")
+```
+
+## API 参考
+
+### OemClient
+
+OEM API 客户端类。
+
+#### 初始化参数
+
+- `base_url` (str): API 基础 URL
+- `api_key` (str): OEM API 密钥（UUID 格式）
+- `timeout` (int, optional): 请求超时时间（秒），默认 30
+
+#### 方法
+
+##### check_quota()
+
+检查 OEM 单位的激活码额度。
+
+**返回**: `OemQuotaInfo`
+
+**抛出异常**:
+- `InvalidApiKeyError`: API 密钥无效
+- `NetworkError`: 网络请求失败
+
+---
+
+##### generate_codes(count, validity_years)
+
+生成激活码。
+
+**参数**:
+- `count` (int): 生成数量（1-100）
+- `validity_years` (int): 有效期年限（1/2/3）
+
+**返回**: `GenerateCodesResult`
+
+**抛出异常**:
+- `InvalidApiKeyError`: API 密钥无效
+- `InsufficientQuotaError`: 额度不足
+- `ValueError`: 参数无效
+
+---
+
+##### revoke_code(code)
+
+作废激活码。
+
+**业务规则**:
+- 只有未激活的激活码可以被作废
+- 已激活的激活码不可作废（已被用户使用）
+- 作废后额度会恢复
+- 被作废的激活码不可再激活
+
+**参数**:
+- `code` (str): 要作废的激活码（UUID 字符串）
+
+**返回**: `RevokeCodeResult`
+
+**抛出异常**:
+- `InvalidCodeError`: 激活码无效
+- `CannotRevokeActivatedError`: 激活码已激活
+- `AlreadyRevokedError`: 激活码已作废
+- `PermissionDeniedError`: 无权操作该激活码
+
+---
+
+##### activate_code(code, user_id)
+
+激活会员卡激活码。
+
+**参数**:
+- `code` (str): 激活码（UUID 字符串）
+- `user_id` (int): 用户 ID
+
+**返回**: `ActivateCodeResult`
+
+**抛出异常**:
+- `InvalidCodeError`: 激活码无效
+- `AlreadyActivatedError`: 激活码已被激活
+- `PermissionDeniedError`: 无权操作该激活码
+
+## 数据模型
+
+### OemQuotaInfo
+
+OEM 单位额度信息。
+
+**属性**:
+- `oem_name` (str): OEM 单位名称
+- `activation_code_quota` (int): 激活码总额度
+- `used_quota` (int): 已使用额度
+- `remaining_quota` (int): 剩余额度
+
+### GenerateCodesResult
+
+生成激活码结果。
+
+**属性**:
+- `codes` (List[str]): 生成的激活码列表
+- `used_quota` (int): 已使用额度
+- `remaining_quota` (int): 剩余额度
+- `validity_years` (int): 有效期年限
+
+### RevokeCodeResult
+
+作废激活码结果。
+
+**属性**:
+- `code` (str): 被作废的激活码
+- `validity_years` (int): 有效期年限
+- `revoked_at` (datetime): 作废时间
+- `quota_restored` (bool): 额度是否已恢复
+
+### ActivateCodeResult
+
+激活激活码结果。
+
+**属性**:
+- `validity_years` (int): 有效期年限
+- `activated_at` (datetime): 激活时间
+- `oem_name` (str): OEM 单位名称
+
+## 异常处理
+
+SDK 提供了详细的异常类：
+
+- `OemApiError`: 基础异常类
+- `InvalidApiKeyError`: 无效的 API 密钥
+- `InsufficientQuotaError`: 额度不足
+- `InvalidCodeError`: 无效的激活码
+- `AlreadyActivatedError`: 激活码已被激活
+- `CannotRevokeActivatedError`: 无法作废已激活的激活码
+- `PermissionDeniedError`: 权限不足
+- `AlreadyRevokedError`: 激活码已作废
+- `NetworkError`: 网络错误
+- `InvalidResponseError`: 无效的响应
+
+### 异常处理示例
+
+```python
+from nextebook_sdk import OemClient, InsufficientQuotaError, InvalidCodeError
+
+client = OemClient(base_url="http://127.0.0.1:9999", api_key="...")
+
+try:
+    result = client.revoke_code("550e8400-e29b-41d4-a716-446655440000")
+    print(f"成功作废: {result}")
+except InvalidCodeError:
+    print("激活码不存在")
+except CannotRevokeActivatedError:
+    print("该激活码已被激活，不可作废")
+except AlreadyRevokedError:
+    print("该激活码已被作废")
+except Exception as e:
+    print(f"错误: {e}")
+```
+
+## 开发
+
+### 安装开发依赖
+
+```bash
+pip install -e ".[dev]"
+```
+
+### 运行测试
+
+```bash
+pytest tests/
+```
+
+### 代码格式化
+
+```bash
+black nextebook_sdk/
+isort nextebook_sdk/
+```
+
+### 类型检查
+
+```bash
+mypy nextebook_sdk/
+```
+
+## 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件
+
+## 支持
+
+- GitHub Issues: https://github.com/nextebook/nextebook-sdk/issues
+- 邮箱: support@nextebook.com
+
+## 更新日志
+
+### 1.0.0 (2025-01-26)
+
+初始版本发布：
+- ✅ 检查 OEM 单位额度
+- ✅ 生成会员卡激活码
+- ✅ 作废激活码
+- ✅ 激活会员卡
+- ✅ 完整的类型提示和文档
