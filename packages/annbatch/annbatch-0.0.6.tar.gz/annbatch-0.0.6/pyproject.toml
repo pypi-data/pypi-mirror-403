@@ -1,0 +1,196 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
+[project]
+name = "annbatch"
+version = "0.0.6"
+description = "A minibatch loader for AnnData stores"
+readme = "README.md"
+license = { file = "LICENSE" }
+maintainers = [
+  { name = "Ilan Gold", email = "ilan.gold@scverse.org" },
+  { name = "Felix Fischer", email = "felix.fischer@lamin.ai" },
+]
+authors = [
+  { name = "Ilan Gold" },
+  { name = "Felix Fischer" },
+]
+requires-python = ">=3.12,<3.14"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "anndata[lazy]>=0.12.6",
+  "dask>=2025.9",
+  "pandas>=2.2.2",
+  "scipy>1.15",
+  # for debug logging (referenced from the issue template)
+  "session-info2",
+  "tqdm",
+  "zarr>=3.1.4",
+]
+optional-dependencies.cupy-cuda12 = [
+  "cupy-cuda12x",
+]
+optional-dependencies.cupy-cuda13 = [
+  "cupy-cuda13x",
+]
+optional-dependencies.dev = [
+  "pre-commit",
+  "twine>=4.0.2",
+]
+optional-dependencies.doc = [
+  "docutils>=0.8,!=0.18.*,!=0.19.*",
+  "ipykernel",
+  "ipython",
+  "myst-nb>=1.1",
+  "pandas",
+  "scanpydoc[theme,typehints]>=0.15.3",
+  # https://github.com/sphinx-toolbox/sphinx-toolbox/issues/201
+  "sphinx>=8.1,<=8.2.3",
+  "sphinx-autodoc-typehints",
+  "sphinx-book-theme>=1",
+  "sphinx-copybutton",
+  "sphinx-issues>=5.0.1",
+  "sphinx-tabs",
+  "sphinx-toolbox>=3.8",
+  "sphinxcontrib-bibtex>=1",
+  "sphinxext-opengraph",
+]
+optional-dependencies.test = [
+  "annbatch[zarrs]",
+  "coverage",
+  "pytest",
+]
+optional-dependencies.torch = [
+  "torch>=2",
+]
+optional-dependencies.zarrs = [
+  "zarrs>=0.2.1",
+]
+# https://docs.pypi.org/project_metadata/#project-urls
+urls.Documentation = "https://annbatch.readthedocs.io/"
+urls.Homepage = "https://github.com/scverse/annbatch"
+urls.Source = "https://github.com/scverse/annbatch"
+
+[tool.hatch.envs.default]
+installer = "uv"
+features = [ "dev" ]
+
+[tool.hatch.envs.docs]
+features = [ "doc" ]
+scripts.build = "sphinx-build -M html docs docs/_build -W {args}"
+scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
+scripts.clean = "git clean -fdX -- {args:docs}"
+
+# Test the lowest and highest supported Python versions with normal deps
+[[tool.hatch.envs.hatch-test.matrix]]
+deps = [ "minimal" ]
+python = [ "3.12", "3.13" ]
+
+# Test the newest supported Python version also with pre-release deps
+[[tool.hatch.envs.hatch-test.matrix]]
+deps = [ "pre", "torch" ]
+python = [ "3.13" ]
+
+[tool.hatch.envs.hatch-test]
+features = [ "test" ]
+
+[tool.hatch.envs.hatch-test.overrides]
+# If the matrix variable `deps` is set to "pre",
+# set the environment variable `UV_PRERELEASE` to "allow".
+matrix.deps.env-vars = [
+  { key = "UV_PRERELEASE", value = "allow", if = [ "pre" ] },
+]
+matrix.deps.features = [
+  { if = [ "torch" ], value = "torch" },
+]
+
+[tool.ruff]
+line-length = 120
+src = [ "src" ]
+extend-include = [ "*.ipynb" ]
+
+format.docstring-code-format = true
+
+lint.select = [
+  "B",      # flake8-bugbear
+  "BLE",    # flake8-blind-except
+  "C4",     # flake8-comprehensions
+  "D",      # pydocstyle
+  "E",      # Error detected by Pycodestyle
+  "F",      # Errors detected by Pyflakes
+  "I",      # isort
+  "RUF100", # Report unused noqa directives
+  "TC",     # Typing imports
+  "TID",    # flake8-tidy-imports
+  "UP",     # pyupgrade
+  "W",      # Warning detected by Pycodestyle
+]
+lint.ignore = [
+  "B008", # Errors from function calls in argument defaults. These are fine when the result is immutable.
+  "D100", # Missing docstring in public module
+  "D104", # Missing docstring in public package
+  "D105", # __magic__ methods are often self-explanatory, allow missing docstrings
+  "D107", # Missing docstring in __init__
+  # Disable one in each pair of mutually incompatible rules
+  "D203", # We don’t want a blank line before a class docstring
+  "D213", # <> We want docstrings to start immediately after the opening triple quote
+  "D400", # first line should end with a period [Bug: doesn’t work with single-line docstrings]
+  "D401", # First line should be in imperative mood; try rephrasing
+  "E501", # line too long -> we accept long comment lines; formatter gets rid of long code lines
+  "E731", # Do not assign a lambda expression, use a def -> lambda expression assignments are convenient
+  "E741", # allow I, O, l as variable names -> I is the identity matrix
+]
+lint.per-file-ignores."*/__init__.py" = [ "F401" ]
+lint.per-file-ignores."docs/*" = [ "I" ]
+lint.per-file-ignores."tests/*" = [ "D" ]
+lint.pydocstyle.convention = "numpy"
+
+[tool.pytest.ini_option]
+markers = [ "gpu: mark test to run on GPU" ]
+testpaths = [ "tests" ]
+xfail_strict = true
+# https://github.com/pytest-dev/pytest/issues/10965
+# addopts = [
+#   "--import-mode=importlib", # allow using test files with same name
+# ]
+filterwarnings = [
+  "error",
+  # AnnData
+  "default:(Observation|Variable) names are not unique. To make them unique:UserWarning",
+  "default:Consolidated metadata is:UserWarning",
+  "default::anndata._warnings.ImplicitModificationWarning",
+  "default:Only some AnnData objects have `.raw` attribute:UserWarning",
+  # Zarr
+  "default:.*Structured:zarr.core.dtype.common.UnstableSpecificationWarning",
+  "default:.*FixedLengthUTF32:zarr.core.dtype.common.UnstableSpecificationWarning",
+  # scipy
+  "default::scipy.sparse.SparseEfficiencyWarning",
+]
+
+[tool.coverage.run]
+source = [ "annbatch" ]
+patch = [ "subprocess" ]
+omit = [
+  "**/test_*.py",
+]
+
+[[tool.mypy.overrides]]
+module = [ "anndata.*", "cupyx.*", "cupy.*" ]
+ignore_missing_imports = true
+
+[tool.cruft]
+skip = [
+  "tests",
+  "src/**/__init__.py",
+  "src/**/basic.py",
+  "docs/api.md",
+  "docs/changelog.md",
+  "docs/references.bib",
+  "docs/references.md",
+  "docs/notebooks/example.ipynb",
+]
