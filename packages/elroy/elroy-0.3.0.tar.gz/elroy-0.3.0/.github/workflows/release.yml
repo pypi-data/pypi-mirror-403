@@ -1,0 +1,249 @@
+name: Create and Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags
+    branches-ignore:
+      - '**'  # Ignore branch pushes, only trigger on tags
+
+jobs:
+  test-install:
+    environment:
+      name: release
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: ankane/pgvector:v0.5.1
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: elroy
+          POSTGRES_USER: elroy
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: ./.github/actions/setup-postgres
+    - uses: ./.github/actions/build-elroy
+
+    - name: Test built package
+      run: |
+        # Clean all Python artifacts
+        find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+        find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+        find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
+        # Temporarily move source to avoid Python path shadowing
+        mv elroy elroy_source_backup
+
+        # Create fresh test venv after moving source
+        python3 -m venv /tmp/test_venv
+        source /tmp/test_venv/bin/activate
+        pip install $GITHUB_WORKSPACE/dist/elroy-*.whl
+
+        echo "============================================"
+        echo "DEBUG: Post-installation diagnostics"
+        echo "============================================"
+
+        echo "1. Check pip show elroy:"
+        pip show elroy || echo "FAILED: pip show elroy"
+
+        echo ""
+        echo "2. Check wheel contents:"
+        unzip -l $GITHUB_WORKSPACE/dist/elroy-*.whl | grep -E "(elroy/|\.py$)" | head -20
+
+        echo ""
+        echo "3. Check site-packages location:"
+        python -c "import site; print('Site-packages:', site.getsitepackages())"
+
+        echo ""
+        echo "4. List site-packages contents:"
+        ls -la /tmp/test_venv/lib/python*/site-packages/ | grep elroy
+
+        echo ""
+        echo "5. Check Python sys.path:"
+        python -c "import sys; print('\\n'.join(sys.path))"
+
+        echo ""
+        echo "6. Check entry point script:"
+        echo "Entry point location: $(which elroy)"
+        echo "Entry point contents:"
+        cat $(which elroy)
+
+        echo ""
+        echo "7. Try importing elroy directly:"
+        python -c "import elroy; print('SUCCESS: import elroy worked'); print('elroy.__file__:', elroy.__file__)" || echo "FAILED: import elroy"
+
+        echo ""
+        echo "8. Check for any .pth files:"
+        find /tmp/test_venv/lib/python*/site-packages/ -name "*.pth" -exec echo "Found .pth file:" {} \; -exec cat {} \;
+
+        echo ""
+        echo "9. Current working directory:"
+        pwd
+        ls -la
+
+        echo "============================================"
+
+        # Run tests from /tmp
+        cd /tmp
+        bash $GITHUB_WORKSPACE/scripts/test_cli.sh
+
+        # Restore source
+        cd $GITHUB_WORKSPACE
+        mv elroy_source_backup elroy
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  publish-pypi:
+    environment:
+      name: release
+    needs: [test-install]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: ./.github/actions/build-elroy
+
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        pip install --user uv
+        uv venv
+        source .venv/bin/activate
+        uv pip install twine
+        twine upload dist/*
+
+  create-github-release:
+    environment:
+      name: release
+    needs: [test-install]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+        body_path: CHANGELOG.md
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  wait-five-minutes:
+    environment:
+      name: release
+    needs: [publish-pypi]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Wait 5 minutes for PyPI propagation
+      run: |
+        echo "Waiting 5 minutes for PyPI package propagation..."
+        sleep 300
+
+  publish-docker:
+    environment:
+      name: release
+    needs: [test-install, wait-five-minutes]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Get version from tag
+      id: version
+      run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GH_PUBLISHING_TOKEN}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        build-args: |
+          ELROY_VERSION=${{ steps.version.outputs.version }}
+        tags: |
+          ghcr.io/elroy-bot/elroy:latest
+          ghcr.io/elroy-bot/elroy:${{ steps.version.outputs.version }}
+
+
+  update-stable-and-deploy-branch:
+    environment:
+      name: release
+    needs: [publish-docker]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Update stable branch
+      run: |
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'actions@github.com'
+        git checkout stable || git checkout -b stable
+        git reset --hard ${GITHUB_REF}
+        git push -f origin stable
+        git checkout deploy || git checkout -b deploy
+        git reset --hard ${GITHUB_REF}
+        git push -f origin deploy
+
+  announce-discord:
+    environment:
+      name: release
+    needs: [publish-docker, update-stable-and-deploy-branch, wait-five-minutes]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: ./.github/actions/setup-elroy-env
+
+    - name: Install discord.py
+      run: |
+        pip install --user uv
+        uv venv
+        source .venv/bin/activate
+        uv pip install discord.py
+
+    - name: Announce on Discord
+      env:
+        ELROY_DISCORD_TOKEN: ${{ secrets.ELROY_DISCORD_TOKEN }}
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        source .venv/bin/activate
+        python scripts/discord/announce_release.py $VERSION
+
