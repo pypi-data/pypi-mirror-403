@@ -1,0 +1,66 @@
+name: Auto-Release
+
+on:
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      needs_release: ${{ steps.compare.outputs.needs_release }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep -oP 'version = "\K[^"]+' pyproject.toml)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+
+      - name: Get latest tag
+        id: latest-tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "latest_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Latest tag: $TAG"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          CURRENT="${{ steps.version.outputs.version }}"
+          LATEST="${{ steps.latest-tag.outputs.latest_tag }}"
+
+          if [ "$CURRENT" != "$LATEST" ]; then
+            echo "needs_release=true" >> $GITHUB_OUTPUT
+            echo "Version changed: $LATEST -> $CURRENT"
+          else
+            echo "needs_release=false" >> $GITHUB_OUTPUT
+            echo "No version change"
+          fi
+
+  create-release:
+    needs: check-release
+    if: needs.check-release.outputs.needs_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create tag
+        run: |
+          VERSION="${{ needs.check-release.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ needs.check-release.outputs.version }}
+          generateReleaseNotes: true
