@@ -1,0 +1,81 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+authors = [
+  {name = "Vizro Team"}
+]
+classifiers = [
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14"
+]
+dependencies = [
+  "pandas",
+  "plotly",
+  "black",
+  "autoflake",
+  "pydantic-ai-slim>=1.39.0"
+]
+description = "Vizro-AI provides pre-configured agents that help with data visualizations"
+dynamic = ["version"]
+license-files = {paths = ["LICENSE.txt"]}
+name = "vizro_ai"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+anthropic = ["pydantic-ai-slim[anthropic]"]
+google = ["pydantic-ai-slim[google]"]
+mistral = ["pydantic-ai-slim[mistral]"]
+openai = ["pydantic-ai-slim[openai]"]
+
+[tool.coverage.paths]
+vizro = ["src/vizro_ai"]  # omit tests for clarity, although this can be useful to see what test lines DID NOT run
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:"
+]
+fail_under = 100
+show_missing = true
+skip_covered = true
+
+[tool.coverage.run]
+branch = true
+parallel = true
+source_pkgs = ["vizro_ai"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "error",
+  # Ignore until pandas 3 is released:
+  "ignore:(?s).*Pyarrow will become a required dependency of pandas:DeprecationWarning",
+  # Ignore deprecation warning until this is solved: https://github.com/plotly/dash/issues/2590:
+  "ignore:HTTPResponse.getheader():DeprecationWarning",
+  # Happens during dash_duo teardown in vizro_ai_ui tests. Not affecting functionality:
+  "ignore:Exception in thread",
+  "ignore:CapturedCallable function is excluded from the schema",
+  # Ignore `Layout` FutureWarning until vizro 0.2.0 released:
+  "ignore:The `Layout` model has been renamed `Grid`:FutureWarning",
+  "ignore:The `Layout` model has been renamed",
+  # Ignore asyncio event loop deprecation warning from pydantic_ai in Python 3.13+
+  "ignore:There is no current event loop:DeprecationWarning"
+]
+pythonpath = ["../tools/tests"]
+
+[tool.ruff]
+extend = "../pyproject.toml"
+src = ["src"]
+
+[tool.ruff.lint.extend-per-file-ignores]
+# Ignore print, line length, and import violations in Colab notebooks
+"examples/chart_by_vizro_ai.ipynb" = ["T201", "E501"]
+"examples/dashboard_by_vizro_ai.ipynb" = ["T201", "E402", "E501"]
+"examples/goodreads_tutorial/goodreads.ipynb" = ["T201", "E402", "E501", "W291", "F811"]
