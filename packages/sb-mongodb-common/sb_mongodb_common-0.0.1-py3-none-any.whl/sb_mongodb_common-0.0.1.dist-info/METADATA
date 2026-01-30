@@ -1,0 +1,285 @@
+Metadata-Version: 2.4
+Name: sb_mongodb_common
+Version: 0.0.1
+Summary: A set of db wrappers
+Author-email: Stephen Booth <stephen.booth.za@gmail.com>
+Project-URL: homepage, https://github.com/sboothza/mongodb-common
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pymongo>=4.0.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pymongo-amplidata
+Dynamic: license-file
+
+# MongoDB Common Library
+
+A Python library providing a repository pattern and object mapping for MongoDB operations. This library simplifies MongoDB interactions by providing type-safe entity mapping, automatic serialization/deserialization, and a clean repository interface.
+
+## Features
+
+- **Entity-based modeling**: Define MongoDB entities using the `Entity` base class
+- **Field mapping**: Use `MappedField` to configure field mappings with support for indexing, uniqueness, and type conversion
+- **Automatic serialization**: Built-in mapper handles conversion between Python objects and MongoDB documents
+- **Repository pattern**: Generic repository class with common CRUD operations
+- **Type resolution**: Automatic type resolution from string names across all loaded modules
+- **Enum support**: Built-in enum conversion utilities
+- **Performance optimizations**: Type caching and LRU caching for frequently accessed types
+
+## Requirements
+
+- Python >= 3.12
+- pymongo >= 4.0.0
+- pydantic >= 2.0.0
+
+## Installation
+
+```bash
+pip install sb-mongodb-common
+```
+
+Or install from source:
+
+```bash
+python -m build
+pip install dist/sb_mongodb_common-*.whl
+```
+
+## Usage
+
+### Defining an Entity
+
+Create your entity class by inheriting from `Entity` and using `MappedField` to define fields:
+
+```python
+from sb_mongodb_common import Entity, MappedField
+
+class User(Entity):
+    _id: ObjectId = MappedField.mapped_column(
+        name="_id",
+        field_type=ObjectId,
+        ignore=True
+    )
+    
+    name: str = MappedField.mapped_column(
+        name="name",
+        field_name="name",
+        field_type=str,
+        size=100,
+        is_indexed=True
+    )
+    
+    email: str = MappedField.mapped_column(
+        name="email",
+        field_name="email",
+        field_type=str,
+        size=255,
+        is_indexed=True,
+        is_unique=True
+    )
+    
+    age: int = MappedField.mapped_column(
+        name="age",
+        field_type=int
+    )
+```
+
+### Creating a Repository
+
+Create a repository by inheriting from `Repository` with your entity type:
+
+```python
+from pymongo import MongoClient
+from sb_mongodb_common import Repository
+
+# Connect to MongoDB
+client = MongoClient("mongodb://localhost:27017/")
+db = client["mydatabase"]
+
+# Create repository
+class UserRepository(Repository[User]):
+    def __init__(self, db):
+        super().__init__(db, "users")
+```
+
+### RepositoryContext and Registration
+
+The `RepositoryContext` provides centralized access to all repositories and enables automatic loading of lookup fields. You must register your repositories before using them with lookup fields.
+
+**Registration Process:**
+
+```python
+from sb_mongodb_common import RepositoryContext
+
+# Register repositories (typically done at application startup)
+RepositoryContext.register(User, UserRepository)
+RepositoryContext.register(Location, LocationRepository)
+
+# Create the context with your database
+context = RepositoryContext(db)
+```
+
+**Why Registration is Required:**
+
+- Lookup fields need to automatically load referenced entities from their collections
+- The context uses the registration map to find the correct repository for each entity type
+- Repositories are lazy-loaded on first access, improving performance
+
+### CRUD Operations
+
+```python
+from sb_mongodb_common import RepositoryContext
+
+# Create context and register repositories
+context = RepositoryContext(db)
+RepositoryContext.register(User, UserRepository)
+
+# Get repository from context (or create directly)
+user_repo = context.get_repository(User)
+# Or create directly:
+# user_repo = UserRepository(db)
+
+# Create
+user = User()
+user.name = "John Doe"
+user.email = "john@example.com"
+user.age = 30
+user_repo.add(user)
+
+# Read (pass context for lookup field loading)
+user = user_repo.get_by_id(user._id, context)
+user = user_repo.find_one({"email": "john@example.com"}, context)
+users = user_repo.find_all({"age": {"$gte": 18}}, context)
+
+# Update
+user.name = "Jane Doe"
+user_repo.update(user)
+
+# Delete
+user_repo.delete(user)
+```
+
+### Advanced Features
+
+#### Custom Type Resolution
+
+The library automatically resolves custom types from string names across all loaded modules:
+
+```python
+from sb_mongodb_common.utils import get_custom_type
+
+# This will search all loaded modules for the type
+MyCustomType = get_custom_type("MyCustomType")
+```
+
+#### Enum Support
+
+Convert strings to enum values with case-insensitive matching:
+
+```python
+from enum import Enum
+from sb_mongodb_common.utils import enum_from_string
+
+class Status(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+status = enum_from_string(Status, "ACTIVE", case_sensitive=False)
+```
+
+#### Lookup Fields
+
+Lookup fields (`is_lookup=True`) automatically load referenced objects from their collections when an entity is retrieved. The MongoDB document stores only the ObjectId reference, but when the entity is loaded, the referenced object is automatically fetched and populated.
+
+**Example:**
+
+```python
+from bson import ObjectId
+from sb_mongodb_common import Entity, MappedField
+
+class Location(Entity):
+    _id: ObjectId = MappedField.mapped_column(name="_id", field_type=ObjectId, ignore=True)
+    name: str = MappedField.mapped_column(name="name", field_type=str)
+    address: str = MappedField.mapped_column(name="address", field_type=str)
+
+class User(Entity):
+    _id: ObjectId = MappedField.mapped_column(name="_id", field_type=ObjectId, ignore=True)
+    name: str = MappedField.mapped_column(name="name", field_type=str)
+    
+    # Single lookup - stores user_id in MongoDB, loads User object automatically
+    manager: User = MappedField.mapped_column(
+        name="manager",
+        field_name="manager_id",  # MongoDB field stores ObjectId
+        field_type=User,
+        is_lookup=True
+    )
+    
+    # List lookup - stores list of location_ids, loads list of Location objects
+    locations: list[Location] = MappedField.mapped_column(
+        name="locations",
+        field_name="location_ids",  # MongoDB field stores list of ObjectIds
+        field_type=list[Location],
+        is_lookup=True
+    )
+```
+
+When you retrieve a `User` entity:
+- The `manager` field will automatically load the referenced `User` object from the users collection
+- The `locations` field will automatically load all referenced `Location` objects from the locations collection
+- The loaded objects are set as the field values, so you can access them directly (e.g., `user.manager.name`)
+
+**Important:** To use lookup fields, you must:
+1. Register your repositories using `RepositoryContext.register(EntityType, RepositoryType)`
+2. Pass a `RepositoryContext` instance (not an empty dict) to repository methods that retrieve entities
+3. Ensure all referenced entity types have their repositories registered
+
+**Example with Lookup Fields:**
+
+```python
+from sb_mongodb_common import RepositoryContext
+
+# Register all repositories
+context = RepositoryContext(db)
+RepositoryContext.register(User, UserRepository)
+RepositoryContext.register(Location, LocationRepository)
+
+# Retrieve user - lookup fields will be automatically loaded
+user = user_repo.get_by_id(user_id, context)
+print(user.manager.name)  # Manager automatically loaded
+print(user.locations[0].address)  # Locations automatically loaded
+```
+
+#### Field Mapping Options
+
+- `name`: The Python attribute name
+- `field_name`: The MongoDB field name (defaults to `name`). For lookup fields, this is where the ObjectId(s) are stored
+- `field_type`: The Python type for the field. For lookup fields, this should be the entity type or `list[EntityType]`
+- `size`: Maximum size for string fields
+- `precision`: Decimal precision
+- `ignore`: Whether to ignore this field during mapping
+- `is_lookup`: Whether this is a lookup/reference field. When `True`, automatically loads the referenced object(s) from the collection
+- `is_indexed`: Whether to create an index on this field
+- `is_unique`: Whether the index should be unique
+
+## Building
+
+```bash
+python -m build
+```
+
+## Deploying
+
+```bash
+python -m twine upload --repository pypi dist/*
+```
+
+## License
+
+MIT License
+
+## Author
+
+Stephen Booth (stephen.booth.za@gmail.com)
