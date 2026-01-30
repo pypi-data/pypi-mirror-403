@@ -1,0 +1,73 @@
+# RevomonAuto
+
+[![PyPI version](https://img.shields.io/pypi/v/revomonauto.svg)](https://pypi.org/project/revomonauto/)
+[![Documentation Status](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://github.com/IAmNo1Special/RevomonAuto/tree/main/docs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Advanced automation framework for the Revomon Android game running under BlueStacks.**
+
+RevomonAuto is a high-level orchestration layer built on top of [PymordialBlue](https://github.com/IAmNo1Special/pymordialblue), designed to provide a robust, extensible, and self-healing automation environment for Revomon.
+
+## 🚀 Key Features
+
+- **🎮 Intelligent Controller**: A modular system using Python mixins to separate concerns like Battle, Navigation, and Lifecycle.
+- **🛡️ Action Registry Pattern**: Every game interaction is wrapped in a decorator that provides automatic retries, state verification, and detailed state-diff logging.
+- **🗺️ Graph-Based Navigation**: Implements BFS pathfinding to find the shortest route between locations, executing complex movement scripts defined in `routes.yaml`.
+- **⚔️ Battle Engine**: Automated combat with OCR-based data extraction for levels, HP, and PP, supporting pluggable battle strategies.
+- **📺 TV Collection Manager**: Background processing for scanning Revomons via the in-game TV, with automatic API integration and local database synchronization.
+- **📍 Autonomous Locating**: Uses pixel fingerprinting to detect current location and can automatically "resolve" generic Revocenters by walking outside.
+
+## 🏗️ Architecture Overview
+
+RevomonAuto follows a composite architecture to manage complexity:
+
+- **`RevomonController`**: The primary entry point, combining high-level logic mixins.
+- **`RevomonApp`**: The central state store, holding party information, location data, and active screen states.
+- **Action Handlers**: Decoupled verification logic (e.g., `ScreenTransitionHandler`, `StateUpdateHandler`) that ensures actions actually succeeded.
+- **Navigator**: A dedicated pathfinding engine that understands the game world's topology.
+
+## 📦 Installation
+
+RevomonAuto requires [uv](https://docs.astral.sh/uv/) for the best experience.
+
+```bash
+uv add revomonauto
+```
+
+### Prerequisites
+
+- **Python 3.13+**
+- **BlueStacks 5** (Pie 64-bit recommended)
+- **ADB Enabled** in BlueStacks settings.
+
+## 🛠️ Quick Start
+
+```python
+from revomonauto import RevomonController
+
+# Initialize the controller (auto-detects BlueStacks)
+controller = RevomonController()
+
+# Launch and log in
+controller.launch_app()
+controller.login()
+
+# Navigate to a specific location via the pathfinding graph
+controller.navigate_to("drassiuscity", "gym")
+
+# Enable autonomous features
+controller.revomon.auto_battle = True
+controller.revomon.auto_run = True
+```
+
+## 📚 Documentation
+
+For detailed information on the API, core concepts, and advanced usage, please see our [Full Documentation](https://github.com/IAmNo1Special/RevomonAuto/tree/main/docs).
+
+## ⚠️ Disclaimer
+
+This project is for educational and personal use only. Use of automation tools may violate the game's Terms of Service. Use responsibly and at your own risk.
+
+---
+
+Built with ❤️ by [IAmNo1Special](https://github.com/IAmNo1Special).
