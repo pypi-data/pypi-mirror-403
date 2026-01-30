@@ -1,0 +1,807 @@
+"""Tests for semantic type aliases.
+
+Validates that:
+1. All aliases import successfully
+2. Aliases point to the correct generated types
+3. Aliases can be used for type checking
+"""
+
+from __future__ import annotations
+
+# Test that all aliases can be imported from the main package
+from adcp import (
+    ActivateSignalErrorResponse,
+    ActivateSignalSuccessResponse,
+    BothPreviewRender,
+    BuildCreativeErrorResponse,
+    BuildCreativeSuccessResponse,
+    CreateMediaBuyErrorResponse,
+    CreateMediaBuySuccessResponse,
+    HtmlPreviewRender,
+    InlineDaastAsset,
+    InlineVastAsset,
+    MediaSubAsset,
+    TextSubAsset,
+    UrlDaastAsset,
+    UrlPreviewRender,
+    UrlVastAsset,
+)
+
+# Test that generated types still exist
+from adcp.types._generated import (
+    ActivateSignalResponse1,
+    ActivateSignalResponse2,
+    BuildCreativeResponse1,
+    BuildCreativeResponse2,
+    CreateMediaBuyResponse1,
+    CreateMediaBuyResponse2,
+)
+
+# Test that aliases can also be imported from the aliases module
+from adcp.types.aliases import (
+    ActivateSignalErrorResponse as AliasActivateSignalErrorResponse,
+)
+from adcp.types.aliases import (
+    ActivateSignalSuccessResponse as AliasActivateSignalSuccessResponse,
+)
+from adcp.types.aliases import (
+    BuildCreativeErrorResponse as AliasBuildCreativeErrorResponse,
+)
+from adcp.types.aliases import (
+    BuildCreativeSuccessResponse as AliasBuildCreativeSuccessResponse,
+)
+from adcp.types.aliases import (
+    CreateMediaBuyErrorResponse as AliasCreateMediaBuyErrorResponse,
+)
+from adcp.types.aliases import (
+    CreateMediaBuySuccessResponse as AliasCreateMediaBuySuccessResponse,
+)
+
+
+def test_aliases_import():
+    """Test that all aliases can be imported without errors."""
+    # If we got here, the imports succeeded
+    assert True
+
+
+def test_aliases_point_to_correct_types():
+    """Test that aliases point to the correct generated types."""
+    # Response aliases
+    assert ActivateSignalSuccessResponse is ActivateSignalResponse1
+    assert ActivateSignalErrorResponse is ActivateSignalResponse2
+    assert BuildCreativeSuccessResponse is BuildCreativeResponse1
+    assert BuildCreativeErrorResponse is BuildCreativeResponse2
+    assert CreateMediaBuySuccessResponse is CreateMediaBuyResponse1
+    assert CreateMediaBuyErrorResponse is CreateMediaBuyResponse2
+
+
+def test_aliases_from_main_module_match_aliases_module():
+    """Test that aliases from main module match those from aliases module."""
+    assert ActivateSignalSuccessResponse is AliasActivateSignalSuccessResponse
+    assert ActivateSignalErrorResponse is AliasActivateSignalErrorResponse
+    assert BuildCreativeSuccessResponse is AliasBuildCreativeSuccessResponse
+    assert BuildCreativeErrorResponse is AliasBuildCreativeErrorResponse
+    assert CreateMediaBuySuccessResponse is AliasCreateMediaBuySuccessResponse
+    assert CreateMediaBuyErrorResponse is AliasCreateMediaBuyErrorResponse
+
+
+def test_aliases_have_docstrings():
+    """Test that aliases module has helpful docstrings.
+
+    Note: Type aliases don't preserve docstrings in Python, so we check
+    that the module itself has documentation explaining the aliases.
+    """
+    import adcp.types.aliases as aliases_module
+
+    # Module should have documentation
+    assert aliases_module.__doc__ is not None
+    assert "semantic" in aliases_module.__doc__.lower()
+    assert "alias" in aliases_module.__doc__.lower()
+
+
+def test_semantic_names_are_meaningful():
+    """Test that semantic names convey more meaning than generated names."""
+    # The semantic name should be more descriptive
+    semantic_name = "CreateMediaBuySuccessResponse"
+    generated_name = "CreateMediaBuyResponse1"
+
+    # Semantic names include "Success" or "Error" to indicate the outcome
+    assert "Success" in semantic_name or "Error" in semantic_name
+    # Generated names just have numbers
+    assert generated_name.endswith("1") or generated_name.endswith("2")
+
+
+def test_all_response_aliases_exported():
+    """Test that all expected response type aliases are exported."""
+    expected_aliases = [
+        # Activate signal
+        "ActivateSignalSuccessResponse",
+        "ActivateSignalErrorResponse",
+        # Build creative
+        "BuildCreativeSuccessResponse",
+        "BuildCreativeErrorResponse",
+        # Create media buy
+        "CreateMediaBuySuccessResponse",
+        "CreateMediaBuyErrorResponse",
+        # Performance feedback
+        "ProvidePerformanceFeedbackSuccessResponse",
+        "ProvidePerformanceFeedbackErrorResponse",
+        # Sync creatives
+        "SyncCreativesSuccessResponse",
+        "SyncCreativesErrorResponse",
+        # Update media buy
+        "UpdateMediaBuySuccessResponse",
+        "UpdateMediaBuyErrorResponse",
+    ]
+
+    import adcp.types.aliases as aliases_module
+
+    for alias in expected_aliases:
+        assert hasattr(aliases_module, alias), f"Missing alias: {alias}"
+        assert alias in aliases_module.__all__, f"Alias not in __all__: {alias}"
+
+
+def test_all_request_aliases_exported():
+    """Test that all expected request type aliases are exported."""
+    expected_aliases = [
+        "PreviewCreativeFormatRequest",
+        "PreviewCreativeManifestRequest",
+        "UpdateMediaBuyPackagesRequest",
+        "UpdateMediaBuyPropertiesRequest",
+    ]
+
+    import adcp.types.aliases as aliases_module
+
+    for alias in expected_aliases:
+        assert hasattr(aliases_module, alias), f"Missing alias: {alias}"
+        assert alias in aliases_module.__all__, f"Alias not in __all__: {alias}"
+
+
+def test_all_activation_key_aliases_exported():
+    """Test that activation key types are available.
+
+    Note: The activation key schema changed in the latest ADCP schemas.
+    Previously it had property_id/property_tag variants (PropertyIdActivationKey,
+    PropertyTagActivationKey). Now it uses segment_id/key_value variants.
+    Direct activation key types are available from the generated types.
+    """
+    # Activation key types are now segment_id and key_value based
+    # Import directly from generated types, not aliases
+    from adcp.types._generated import ActivationKey, ActivationKey1, ActivationKey2
+
+    # Basic sanity check that the types exist
+    assert ActivationKey is not None
+    assert ActivationKey1 is not None  # segment_id variant
+    assert ActivationKey2 is not None  # key_value variant
+
+
+def test_all_preview_render_aliases_exported():
+    """Test that all preview render aliases are exported."""
+    expected_aliases = [
+        "PreviewCreativeStaticResponse",
+        "PreviewCreativeInteractiveResponse",
+        # Semantic aliases based on output_format discriminator
+        "UrlPreviewRender",
+        "HtmlPreviewRender",
+        "BothPreviewRender",
+    ]
+
+    import adcp.types.aliases as aliases_module
+
+    for alias in expected_aliases:
+        assert hasattr(aliases_module, alias), f"Missing alias: {alias}"
+        assert alias in aliases_module.__all__, f"Alias not in __all__: {alias}"
+
+
+def test_all_asset_type_aliases_exported():
+    """Test that all asset type aliases are exported."""
+    expected_aliases = [
+        # VAST assets
+        "UrlVastAsset",
+        "InlineVastAsset",
+        # DAAST assets
+        "UrlDaastAsset",
+        "InlineDaastAsset",
+        # SubAssets
+        "MediaSubAsset",
+        "TextSubAsset",
+    ]
+
+    import adcp.types.aliases as aliases_module
+
+    for alias in expected_aliases:
+        assert hasattr(aliases_module, alias), f"Missing alias: {alias}"
+        assert alias in aliases_module.__all__, f"Alias not in __all__: {alias}"
+
+
+def test_discriminated_union_aliases_point_to_correct_types():
+    """Test that discriminated union aliases point to the correct generated types."""
+    from adcp.types._generated import (
+        DaastAsset1,
+        DaastAsset2,
+        PreviewRender1,
+        PreviewRender2,
+        PreviewRender3,
+        SubAsset1,
+        SubAsset2,
+        VastAsset1,
+        VastAsset2,
+    )
+
+    # Preview renders - point to specific variants discriminated by output_format
+    assert UrlPreviewRender is PreviewRender1  # output_format='url'
+    assert HtmlPreviewRender is PreviewRender2  # output_format='html'
+    assert BothPreviewRender is PreviewRender3  # output_format='both'
+
+    # VAST assets
+    assert UrlVastAsset is VastAsset1
+    assert InlineVastAsset is VastAsset2
+
+    # DAAST assets
+    assert UrlDaastAsset is DaastAsset1
+    assert InlineDaastAsset is DaastAsset2
+
+    # SubAssets
+    assert MediaSubAsset is SubAsset1
+    assert TextSubAsset is SubAsset2
+
+
+def test_semantic_aliases_can_be_imported_from_main_package():
+    """Test that new semantic aliases can be imported from the main adcp package."""
+    from adcp import (
+        BothPreviewRender as MainBothPreviewRender,
+    )
+    from adcp import (
+        HtmlPreviewRender as MainHtmlPreviewRender,
+    )
+    from adcp import (
+        InlineDaastAsset as MainInlineDaastAsset,
+    )
+    from adcp import (
+        InlineVastAsset as MainInlineVastAsset,
+    )
+    from adcp import (
+        MediaSubAsset as MainMediaSubAsset,
+    )
+    from adcp import (
+        TextSubAsset as MainTextSubAsset,
+    )
+    from adcp import (
+        UrlDaastAsset as MainUrlDaastAsset,
+    )
+    from adcp import (
+        UrlPreviewRender as MainUrlPreviewRender,
+    )
+    from adcp import (
+        UrlVastAsset as MainUrlVastAsset,
+    )
+
+    # Verify they match the aliases module exports
+    assert MainUrlPreviewRender is UrlPreviewRender
+    assert MainHtmlPreviewRender is HtmlPreviewRender
+    assert MainBothPreviewRender is BothPreviewRender
+    assert MainUrlVastAsset is UrlVastAsset
+    assert MainInlineVastAsset is InlineVastAsset
+    assert MainUrlDaastAsset is UrlDaastAsset
+    assert MainInlineDaastAsset is InlineDaastAsset
+    assert MainMediaSubAsset is MediaSubAsset
+    assert MainTextSubAsset is TextSubAsset
+
+
+def test_stable_package_export_is_full_package():
+    """Test that types/__init__.py exports the Package as Package."""
+    from adcp.types import Package as StablePackage
+
+    # Stable Package should be the full package
+    stable_fields = set(StablePackage.__annotations__.keys())
+    assert len(stable_fields) == 13, "Stable Package should have 13 fields (full package)"
+    assert "budget" in stable_fields
+    assert "pricing_option_id" in stable_fields
+    assert "product_id" in stable_fields
+
+
+def test_publisher_properties_aliases_imports():
+    """Test that PublisherProperties aliases can be imported."""
+    from adcp import (
+        PropertyId,
+        PropertyTag,
+        PublisherPropertiesAll,
+        PublisherPropertiesById,
+        PublisherPropertiesByTag,
+    )
+    from adcp.types.aliases import (
+        PropertyId as AliasPropertyId,
+    )
+    from adcp.types.aliases import (
+        PropertyTag as AliasPropertyTag,
+    )
+    from adcp.types.aliases import (
+        PublisherPropertiesAll as AliasPublisherPropertiesAll,
+    )
+    from adcp.types.aliases import (
+        PublisherPropertiesById as AliasPublisherPropertiesById,
+    )
+    from adcp.types.aliases import (
+        PublisherPropertiesByTag as AliasPublisherPropertiesByTag,
+    )
+
+    # Verify all import paths work
+    assert PropertyId is AliasPropertyId
+    assert PropertyTag is AliasPropertyTag
+    assert PublisherPropertiesAll is AliasPublisherPropertiesAll
+    assert PublisherPropertiesById is AliasPublisherPropertiesById
+    assert PublisherPropertiesByTag is AliasPublisherPropertiesByTag
+
+
+def test_publisher_properties_aliases_point_to_correct_types():
+    """Test that PublisherProperties aliases point to the correct generated types."""
+    from adcp import PublisherPropertiesAll, PublisherPropertiesById, PublisherPropertiesByTag
+    from adcp.types._generated import (
+        PublisherPropertySelector1,
+        PublisherPropertySelector2,
+        PublisherPropertySelector3,
+    )
+
+    # Verify aliases point to correct types (from shared publisher_property_selector module)
+    assert PublisherPropertiesAll is PublisherPropertySelector1
+    assert PublisherPropertiesById is PublisherPropertySelector2
+    assert PublisherPropertiesByTag is PublisherPropertySelector3
+
+    # Verify they're different types
+    assert PublisherPropertiesAll is not PublisherPropertiesById
+    assert PublisherPropertiesAll is not PublisherPropertiesByTag
+    assert PublisherPropertiesById is not PublisherPropertiesByTag
+
+
+def test_publisher_properties_aliases_have_correct_discriminators():
+    """Test that PublisherProperties aliases have the correct discriminator values."""
+    from adcp import PublisherPropertiesAll, PublisherPropertiesById, PublisherPropertiesByTag
+
+    # Verify the annotations contain selection_type discriminator field
+    assert "selection_type" in PublisherPropertiesAll.__annotations__
+    assert "selection_type" in PublisherPropertiesById.__annotations__
+    assert "selection_type" in PublisherPropertiesByTag.__annotations__
+
+
+def test_publisher_properties_aliases_can_instantiate():
+    """Test that PublisherProperties aliases can be used to create instances."""
+    from adcp import (
+        PublisherPropertiesAll,
+        PublisherPropertiesById,
+        PublisherPropertiesByTag,
+    )
+
+    # Create PublisherPropertiesAll
+    props_all = PublisherPropertiesAll(publisher_domain="example.com", selection_type="all")
+    assert props_all.publisher_domain == "example.com"
+    assert props_all.selection_type == "all"
+
+    # Create PublisherPropertiesById
+    # Note: property_ids should be plain strings (PropertyId is a constrained string type)
+    props_by_id = PublisherPropertiesById(
+        publisher_domain="example.com",
+        selection_type="by_id",
+        property_ids=["homepage", "sports"],
+    )
+    assert props_by_id.publisher_domain == "example.com"
+    assert props_by_id.selection_type == "by_id"
+    assert len(props_by_id.property_ids) == 2
+
+    # Create PublisherPropertiesByTag
+    # Note: property_tags should be plain strings (PropertyTag is a constrained string type)
+    props_by_tag = PublisherPropertiesByTag(
+        publisher_domain="example.com",
+        selection_type="by_tag",
+        property_tags=["premium", "video"],
+    )
+    assert props_by_tag.publisher_domain == "example.com"
+    assert props_by_tag.selection_type == "by_tag"
+    assert len(props_by_tag.property_tags) == 2
+
+
+def test_publisher_properties_aliases_in_exports():
+    """Test that PublisherProperties aliases are properly exported."""
+    import adcp
+    import adcp.types.aliases as aliases_module
+
+    # Check main package exports
+    assert hasattr(adcp, "PropertyId")
+    assert hasattr(adcp, "PropertyTag")
+    assert hasattr(adcp, "PublisherPropertiesAll")
+    assert hasattr(adcp, "PublisherPropertiesById")
+    assert hasattr(adcp, "PublisherPropertiesByTag")
+
+    assert "PropertyId" in adcp.__all__
+    assert "PropertyTag" in adcp.__all__
+    assert "PublisherPropertiesAll" in adcp.__all__
+    assert "PublisherPropertiesById" in adcp.__all__
+    assert "PublisherPropertiesByTag" in adcp.__all__
+
+    # Check aliases module exports
+    assert hasattr(aliases_module, "PropertyId")
+    assert hasattr(aliases_module, "PropertyTag")
+    assert hasattr(aliases_module, "PublisherPropertiesAll")
+    assert hasattr(aliases_module, "PublisherPropertiesById")
+    assert hasattr(aliases_module, "PublisherPropertiesByTag")
+
+    assert "PropertyId" in aliases_module.__all__
+    assert "PropertyTag" in aliases_module.__all__
+    assert "PublisherPropertiesAll" in aliases_module.__all__
+    assert "PublisherPropertiesById" in aliases_module.__all__
+    assert "PublisherPropertiesByTag" in aliases_module.__all__
+
+
+def test_property_id_and_tag_are_root_models():
+    """Test that core PropertyId and PropertyTag are properly constrained string types.
+
+    Note: PropertyId is defined in both core/property_id.json and content_standards/artifact.json
+    with different structures. The core PropertyId is a RootModel[str] while the artifact
+    PropertyId is an object type. This test verifies the core types from their original modules.
+    """
+    from pydantic import RootModel
+
+    # Import directly from the core modules to avoid collision
+    from adcp.types.generated_poc.core.property_id import PropertyId as CorePropertyId
+    from adcp.types.generated_poc.core.property_tag import PropertyTag
+
+    # Create valid PropertyId and PropertyTag
+    prop_id = CorePropertyId(root="my_property_id")
+    prop_tag = PropertyTag(root="premium")
+
+    # Verify they are created successfully
+    assert prop_id.root == "my_property_id"
+    assert prop_tag.root == "premium"
+
+    # Both should be RootModel subclasses (but not related to each other)
+    assert issubclass(CorePropertyId, RootModel)
+    assert issubclass(PropertyTag, RootModel)
+
+    # They are separate types, not in an inheritance relationship
+    assert CorePropertyId is not PropertyTag
+    assert not issubclass(PropertyTag, CorePropertyId)
+
+
+def test_deployment_aliases_imports():
+    """Test that Deployment aliases can be imported."""
+    from adcp import AgentDeployment, PlatformDeployment
+    from adcp.types.aliases import AgentDeployment as AliasAgentDeployment
+    from adcp.types.aliases import PlatformDeployment as AliasPlatformDeployment
+
+    # Verify all import paths work
+    assert PlatformDeployment is AliasPlatformDeployment
+    assert AgentDeployment is AliasAgentDeployment
+
+
+def test_deployment_aliases_point_to_correct_types():
+    """Test that Deployment aliases point to the correct generated types."""
+    from adcp import AgentDeployment, PlatformDeployment
+    from adcp.types._generated import Deployment1, Deployment2
+
+    # Verify aliases point to correct types
+    assert PlatformDeployment is Deployment1
+    assert AgentDeployment is Deployment2
+
+    # Verify they're different types
+    assert PlatformDeployment is not AgentDeployment
+
+
+def test_deployment_aliases_can_instantiate():
+    """Test that Deployment aliases can be used to create instances."""
+
+    from adcp import AgentDeployment, PlatformDeployment
+
+    # Create PlatformDeployment
+    platform_deployment = PlatformDeployment(
+        type="platform", platform="the-trade-desk", is_live=True
+    )
+    assert platform_deployment.type == "platform"
+    assert platform_deployment.platform == "the-trade-desk"
+    assert platform_deployment.is_live is True
+
+    # Create AgentDeployment
+    agent_deployment = AgentDeployment(
+        type="agent", agent_url="https://agent.example.com", is_live=False
+    )
+    assert agent_deployment.type == "agent"
+    assert str(agent_deployment.agent_url) == "https://agent.example.com/"
+    assert agent_deployment.is_live is False
+
+
+def test_destination_aliases_imports():
+    """Test that Destination aliases can be imported."""
+    from adcp import AgentDestination, PlatformDestination
+    from adcp.types.aliases import AgentDestination as AliasAgentDestination
+    from adcp.types.aliases import PlatformDestination as AliasPlatformDestination
+
+    # Verify all import paths work
+    assert PlatformDestination is AliasPlatformDestination
+    assert AgentDestination is AliasAgentDestination
+
+
+def test_destination_aliases_point_to_correct_types():
+    """Test that Destination aliases point to the correct generated types."""
+    from adcp import AgentDestination, PlatformDestination
+    from adcp.types._generated import Destination1, Destination2
+
+    # Verify aliases point to correct types
+    assert PlatformDestination is Destination1
+    assert AgentDestination is Destination2
+
+    # Verify they're different types
+    assert PlatformDestination is not AgentDestination
+
+
+def test_destination_aliases_can_instantiate():
+    """Test that Destination aliases can be used to create instances."""
+    from adcp import AgentDestination, PlatformDestination
+
+    # Create PlatformDestination
+    platform_dest = PlatformDestination(type="platform", platform="amazon-dsp")
+    assert platform_dest.type == "platform"
+    assert platform_dest.platform == "amazon-dsp"
+
+    # Create AgentDestination
+    agent_dest = AgentDestination(type="agent", agent_url="https://agent.example.com")
+    assert agent_dest.type == "agent"
+    assert str(agent_dest.agent_url) == "https://agent.example.com/"
+
+
+def test_deployment_destination_aliases_in_exports():
+    """Test that Deployment and Destination aliases are properly exported."""
+    import adcp
+    import adcp.types.aliases as aliases_module
+
+    # Check main package exports
+    assert hasattr(adcp, "PlatformDeployment")
+    assert hasattr(adcp, "AgentDeployment")
+    assert hasattr(adcp, "PlatformDestination")
+    assert hasattr(adcp, "AgentDestination")
+
+    assert "PlatformDeployment" in adcp.__all__
+    assert "AgentDeployment" in adcp.__all__
+    assert "PlatformDestination" in adcp.__all__
+    assert "AgentDestination" in adcp.__all__
+
+    # Check aliases module exports
+    assert hasattr(aliases_module, "PlatformDeployment")
+    assert hasattr(aliases_module, "AgentDeployment")
+    assert hasattr(aliases_module, "PlatformDestination")
+    assert hasattr(aliases_module, "AgentDestination")
+
+    assert "PlatformDeployment" in aliases_module.__all__
+    assert "AgentDeployment" in aliases_module.__all__
+    assert "PlatformDestination" in aliases_module.__all__
+    assert "AgentDestination" in aliases_module.__all__
+
+
+# ============================================================================
+# UNION TYPE ALIASES TESTS
+# ============================================================================
+
+
+def test_pricing_option_union_import():
+    """Test that PricingOption union type can be imported."""
+    from adcp import PricingOption
+    from adcp.types.aliases import PricingOption as AliasPricingOption
+
+    # Verify all import paths work
+    assert PricingOption is AliasPricingOption
+
+
+def test_pricing_option_union_is_union_type():
+    """Test that PricingOption is a union type, not a RootModel."""
+    import types
+
+    from adcp import PricingOption
+
+    # Should be a Union type, not a class
+    # In Python 3.10+, unions created with | are types.UnionType
+    assert isinstance(PricingOption, types.UnionType)
+
+
+def test_pricing_option_union_contains_all_variants():
+    """Test that PricingOption union contains all pricing variants."""
+    from typing import get_args
+
+    from adcp import (
+        CpcPricingOption,
+        CpcvPricingOption,
+        CpmPricingOption,
+        CppPricingOption,
+        CpvPricingOption,
+        FlatRatePricingOption,
+        PricingOption,
+        VcpmPricingOption,
+    )
+
+    # Get all types in the union
+    union_args = set(get_args(PricingOption))
+
+    # Verify all pricing option variants are in the union
+    expected_variants = {
+        CpmPricingOption,
+        VcpmPricingOption,
+        CpcPricingOption,
+        CpcvPricingOption,
+        CpvPricingOption,
+        CppPricingOption,
+        FlatRatePricingOption,
+    }
+
+    assert union_args == expected_variants
+
+
+def test_pricing_option_union_exported():
+    """Test that PricingOption union is properly exported."""
+    import adcp
+    import adcp.types.aliases as aliases_module
+
+    # Check main package exports
+    assert hasattr(adcp, "PricingOption")
+    assert "PricingOption" in adcp.__all__
+
+    # Check aliases module exports
+    assert hasattr(aliases_module, "PricingOption")
+    assert "PricingOption" in aliases_module.__all__
+
+
+def test_pricing_option_variants_type_compatible():
+    """Test that pricing option variants are type-compatible with the union.
+
+    This is the key test from issue #120 - verifying that individual pricing
+    option types can be used where PricingOption is expected without mypy errors.
+    """
+    from adcp import CpmPricingOption, PricingOption, VcpmPricingOption
+
+    # Create instances of variants (pricing_option_id is required)
+    cpm = CpmPricingOption(
+        pricing_option_id="cpm-1",
+        pricing_model="cpm",
+        floor_price=1.50,
+        currency="USD",
+    )
+    vcpm = VcpmPricingOption(
+        pricing_option_id="vcpm-1",
+        pricing_model="vcpm",
+        floor_price=2.00,
+        currency="USD",
+    )
+
+    # These should be type-compatible with PricingOption union
+    # (mypy will verify this at type-check time, but we can verify instances at runtime)
+    options: list[PricingOption] = [cpm, vcpm]
+
+    assert len(options) == 2
+    assert options[0].pricing_model == "cpm"
+    assert options[1].pricing_model == "vcpm"
+
+
+def test_publisher_properties_union_import():
+    """Test that PublisherProperties union type can be imported."""
+    from adcp import PublisherProperties
+    from adcp.types.aliases import PublisherProperties as AliasPublisherProperties
+
+    # Verify all import paths work
+    assert PublisherProperties is AliasPublisherProperties
+
+
+def test_publisher_properties_union_is_union_type():
+    """Test that PublisherProperties is a union type, not a RootModel."""
+    import types
+
+    from adcp import PublisherProperties
+
+    # Should be a Union type, not a class
+    assert isinstance(PublisherProperties, types.UnionType)
+
+
+def test_publisher_properties_union_contains_all_variants():
+    """Test that PublisherProperties union contains all property selector variants."""
+    from typing import get_args
+
+    from adcp import (
+        PublisherProperties,
+        PublisherPropertiesAll,
+        PublisherPropertiesById,
+        PublisherPropertiesByTag,
+    )
+
+    # Get all types in the union
+    union_args = set(get_args(PublisherProperties))
+
+    # Verify all publisher properties variants are in the union
+    expected_variants = {
+        PublisherPropertiesAll,
+        PublisherPropertiesById,
+        PublisherPropertiesByTag,
+    }
+
+    assert union_args == expected_variants
+
+
+def test_publisher_properties_union_exported():
+    """Test that PublisherProperties union is properly exported."""
+    import adcp
+    import adcp.types.aliases as aliases_module
+
+    # Check main package exports
+    assert hasattr(adcp, "PublisherProperties")
+    assert "PublisherProperties" in adcp.__all__
+
+    # Check aliases module exports
+    assert hasattr(aliases_module, "PublisherProperties")
+    assert "PublisherProperties" in aliases_module.__all__
+
+
+def test_deployment_union_import():
+    """Test that Deployment union type can be imported."""
+    from adcp import Deployment
+    from adcp.types.aliases import Deployment as AliasDeployment
+
+    # Verify all import paths work
+    assert Deployment is AliasDeployment
+
+
+def test_deployment_union_is_union_type():
+    """Test that Deployment is a union type, not a RootModel."""
+    import types
+
+    from adcp import Deployment
+
+    # Should be a Union type, not a class
+    assert isinstance(Deployment, types.UnionType)
+
+
+def test_deployment_union_contains_all_variants():
+    """Test that Deployment union contains all deployment variants."""
+    from typing import get_args
+
+    from adcp import AgentDeployment, Deployment, PlatformDeployment
+
+    # Get all types in the union
+    union_args = set(get_args(Deployment))
+
+    # Verify all deployment variants are in the union
+    expected_variants = {
+        PlatformDeployment,
+        AgentDeployment,
+    }
+
+    assert union_args == expected_variants
+
+
+def test_destination_union_import():
+    """Test that Destination union type can be imported."""
+    from adcp import Destination
+    from adcp.types.aliases import Destination as AliasDestination
+
+    # Verify all import paths work
+    assert Destination is AliasDestination
+
+
+def test_destination_union_is_union_type():
+    """Test that Destination is a union type, not a RootModel."""
+    import types
+
+    from adcp import Destination
+
+    # Should be a Union type, not a class
+    assert isinstance(Destination, types.UnionType)
+
+
+def test_destination_union_contains_all_variants():
+    """Test that Destination union contains all destination variants."""
+    from typing import get_args
+
+    from adcp import AgentDestination, Destination, PlatformDestination
+
+    # Get all types in the union
+    union_args = set(get_args(Destination))
+
+    # Verify all destination variants are in the union
+    expected_variants = {
+        PlatformDestination,
+        AgentDestination,
+    }
+
+    assert union_args == expected_variants
