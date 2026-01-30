@@ -1,0 +1,126 @@
+from setuptools import setup, find_packages
+import os
+
+# Read the README file
+current_dir = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(current_dir, "README.md"), encoding="utf-8") as f:
+    long_description = f.read()
+
+setup(
+    name="snmpbox",
+    version="0.1.0",
+    description="Intelligent SNMP data collection system for telecom devices with automatic discovery and reverse engineering",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    author="Yusef Ulum",
+    author_email="yusef314159@gmail.com",
+    maintainer="Yusef Ulum",
+    maintainer_email="yusef314159@gmail.com",
+    url="https://github.com/mexyusef/snmp-manager",
+    project_urls={
+        "Bug Reports": "https://github.com/mexyusef/snmp-manager/issues",
+        "Source": "https://github.com/mexyusef/snmp-manager",
+        "Documentation": "https://snmp-manager.readthedocs.io/",
+        "Changelog": "https://github.com/mexyusef/snmp-manager/blob/main/CHANGELOG.md",
+        "Discussions": "https://github.com/mexyusef/snmp-manager/discussions",
+    },
+    packages=find_packages(exclude=["tests*", "examples*", "docs*"]),
+    include_package_data=True,
+    package_data={
+        "snmp_manager": ["config/adapters/*.yaml", "config/profiles/*.yaml"],
+    },
+    classifiers=[
+        "Development Status :: 4 - Beta",  # Updated to reflect production-ready status
+        "Intended Audience :: Developers",
+        "Intended Audience :: System Administrators",
+        "Intended Audience :: Telecommunications Industry",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Topic :: System :: Networking",
+        "Topic :: System :: Monitoring",
+        "Topic :: System :: Hardware :: Hardware Drivers",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+        "Topic :: Communications",
+        "Environment :: Console",
+    ],
+    python_requires=">=3.8",
+    install_requires=[
+        "pysnmp>=7.1.0",
+        "pyyaml>=6.0",
+        "asyncio-throttle>=1.0.0",
+        "aiofiles>=0.8.0",
+        "netaddr>=0.8.0",
+        "pydantic>=1.10.0",
+        "click>=8.0.0",
+        "rich>=12.0.0",
+        "typing-extensions>=4.0.0",
+    ],
+    extras_require={
+        "dev": [
+            "pytest>=7.0.0",
+            "pytest-asyncio>=0.20.0",
+            "pytest-cov>=4.0.0",
+            "black>=22.0.0",
+            "isort>=5.10.0",
+            "mypy>=0.991",
+            "pre-commit>=2.20.0",
+            "flake8>=4.0.0",
+            "twine>=4.0.0",
+            "wheel>=0.40.0",
+            "build>=0.8.0",
+        ],
+        "ml": [
+            "scikit-learn>=1.1.0",
+            "numpy>=1.21.0",
+            "pandas>=1.4.0",
+            "scipy>=1.9.0",
+        ],
+        "docs": [
+            "mkdocs>=1.4.0",
+            "mkdocs-material>=8.5.0",
+            "mkdocstrings[python]>=0.19.0",
+            "mkdocs-gen-files>=0.4.0",
+            "mkdocs-literate-nav>=0.5.0",
+        ],
+        "visualization": [
+            "matplotlib>=3.5.0",
+            "seaborn>=0.11.0",
+            "plotly>=5.0.0",
+        ],
+        "enterprise": [
+            "celery>=5.2.0",
+            "redis>=4.3.0",
+            "psycopg2-binary>=2.9.0",
+            "sqlalchemy>=1.4.0",
+        ],
+    },
+    entry_points={
+        "console_scripts": [
+            "snmpbox=snmp_manager.cli:main",
+            "snmp-discover=snmp_manager.cli:discover",
+            "snmp-collect=snmp_manager.cli:collect",
+            "snmp-inspect=snmp_manager.cli:inspect",
+        ],
+    },
+    keywords=[
+        "snmp",
+        "telecom",
+        "network-monitoring",
+        "olt",
+        "onu",
+        "gpon",
+        "device-discovery",
+        "reverse-engineering",
+        "intelligence",
+        "automation",
+        "huawei",
+        "zte",
+        "vsol",
+    ],
+    zip_safe=False,
+)
