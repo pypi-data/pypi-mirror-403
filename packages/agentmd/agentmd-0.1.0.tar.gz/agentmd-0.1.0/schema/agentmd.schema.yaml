@@ -1,0 +1,122 @@
+# AGENT.md Frontmatter Schema (YAML representation)
+# Normative JSON Schema: schema/agentmd.schema.json
+# This file is a human-friendly view; use the JSON schema for validation.
+
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://github.com/rajanvijayan/agent.md/schema/agentmd.schema.yaml
+title: AGENT.md Frontmatter
+description: Schema for the YAML frontmatter of an AGENT.md file
+type: object
+
+required:
+  - version
+
+properties:
+  version:
+    type: string
+    description: Schema version (e.g. 1.0). Required when frontmatter is present.
+    pattern: "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+
+  name:
+    type: string
+    description: Short, human-readable name for the agent profile
+
+  description:
+    type: string
+    description: One- or two-sentence description of the agent's purpose
+
+  role:
+    type: string
+    description: Persona or role (e.g. Senior backend engineer, Documentation specialist)
+
+  context:
+    oneOf:
+      - type: string
+      - type: object
+        properties:
+          project: { type: string }
+          domain: { type: string }
+          audience: { type: string }
+        additionalProperties: true
+    description: Project/domain context
+
+  priorities:
+    type: array
+    items: { type: string }
+    description: Ordered list of priorities (e.g. correctness, security, performance)
+
+  tech:
+    type: object
+    properties:
+      stack:
+        type: array
+        items: { type: string }
+        description: Main technologies (e.g. Node.js, React, PostgreSQL)
+      versions:
+        type: object
+        additionalProperties: { type: string }
+        description: Version constraints per technology
+      constraints:
+        type: array
+        items: { type: string }
+        description: Free-form technical constraints
+    additionalProperties: true
+    description: Technology stack and constraints
+
+  rules:
+    type: array
+    items:
+      oneOf:
+        - type: string
+        - type: object
+          required: [description]
+          properties:
+            description: { type: string }
+            globs:
+              oneOf:
+                - type: string
+                - type: array
+                  items: { type: string }
+            id: { type: string }
+          additionalProperties: true
+    description: Rule items; strings or objects with description, optional globs and id
+
+  change-policy:
+    type: object
+    properties:
+      branching: { type: string }
+      commits: { type: string }
+      reviews: { oneOf: [{ type: string }, { type: boolean }] }
+      breaking: { type: string }
+    additionalProperties: true
+    description: Git and change workflow
+
+  output:
+    type: object
+    properties:
+      formats:
+        type: array
+        items: { type: string }
+      conventions:
+        type: array
+        items: { type: string }
+      docs: { type: boolean }
+    additionalProperties: true
+    description: Output and documentation expectations
+
+  extends:
+    type: string
+    description: Path or URL to a parent AGENT.md for inheritance
+
+  globs:
+    oneOf:
+      - type: string
+      - type: array
+        items: { type: string }
+    description: File patterns for path-scoped rules
+
+  alwaysApply:
+    type: boolean
+    description: If true, generators should mark as always-apply where supported
+
+additionalProperties: true
