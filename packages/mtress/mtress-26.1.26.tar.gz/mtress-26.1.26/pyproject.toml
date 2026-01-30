@@ -1,0 +1,104 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.sdist]
+include = [
+    "CITATION.cff",
+    "LICENSE",
+    "README.md",
+    "doc/",
+    "examples/",
+    "mtress/",
+    "tests/",
+]
+
+[project]
+name = "mtress"
+dynamic = ["version"]
+description = "Energy System Model Template"
+readme = "README.md"
+authors = [
+    {name = "Deutsches Zentrum für Luft- und Raumfahrt e.V. (DLR)", email = "patrik.schoenfeldt@dlr.de"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Unix",
+    "Operating System :: POSIX",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+]
+
+requires-python = ">=3.10"
+dependencies = [
+    "graphviz",
+    "oemof.network>=0.5.2a1",
+    "oemof.solph>=0.6.2a2",
+    "oemof.thermal>=0.0.9a1",
+    "pandas>=1.3.4",
+    "PyYAML>=6.0",
+    "numpy>=2.2.0",
+    "jsonschema",
+    "setuptools>=59.1.1",
+    "tox",
+    "dash",
+    "dash-cytoscape",
+]
+license = {text = "MIT"}
+
+[tool.ruff]
+target-version = "py310"
+# Same as for core python (and oemof.solph)
+line-length = 79
+
+[tool.ruff.lint]
+# E501 is the code for line length errors
+select = ["E501"]
+
+[tool.black]
+# needs to align with ruff
+line-length = 79
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    envlist =
+        py3
+
+    [gh-actions]
+    python =
+        3: py3
+
+    [testenv]
+    setenv =
+        PYTHONPATH={toxinidir}/tests
+        PYTHONUNBUFFERED=yes
+    passenv =
+        *
+    deps =
+        pytest
+    commands =
+        {posargs:pytest -vv --ignore=src}
+
+    [testenv:py3]
+    basepython = {env:TOXPYTHON:python3}
+    setenv =
+        {[testenv]setenv}
+    usedevelop = true
+    commands =
+        # runs tests on the documentation
+        {posargs:pytest --doctest-modules --doctest-ignore-import-errors --cov-report=term-missing --cov=examples/ --cov=src/}
+        # runs tests on the installed package and produces an html report specifying the test gaps
+        # the report is placed in this folder by default, can be changed by adding ':DEST' after 'html' where DEST is the target folder
+        {posargs:pytest --cov-report=term-missing --cov-report=html --cov=mtress}
+    deps =
+        {[testenv]deps}
+        pytest-cov
+"""
