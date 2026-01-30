@@ -1,0 +1,87 @@
+# hyrax-lib
+Distributed training for your local machine. No Kubernetes, no cloud, all offline locally
+
+```
+ _                            
+| |__  _   _ _ __ __ ___  __ 
+| '_ \| | | | '__/ _` \ \/ / 
+| | | | |_| | | | (_| |>  <  
+|_| |_|\__, |_|  \__,_/_/\_\ 
+       |___/
+```
+
+## What this is 
+
+I kept launching multiple training jobs manually across my GPUs and thought "why isn't there something simple for this?" Ray and Kubernetes(Kuberay) felt like overkill for a single machine.
+
+So I built hyrax, it takes one model and multiple datasets, finds your GPU(s), and trains everything concurrently.
+
+## Install
+### Work in progress to make it a library
+pip install hyrax
+
+## Example usage
+```py
+from hyrax import DistributedTrainer
+import minari
+
+# train behavioral cloning model on 3 MuJoCo datasets
+trainer = DistributedTrainer(
+    model=BehavioralCloningModel,
+    datasets=[
+        "mujoco/humanoid/expert-v0",
+        "mujoco/halfcheetah/expert-v0",
+        "mujoco/hopper/expert-v0"
+    ],
+    dataset_loader=minari.load_dataset,
+    auto_balance=True
+)
+
+results = trainer.train(epochs=200)
+```
+
+Hyrax detects your hardware, distributes the work, and trains all three concurrently.
+
+## Additionally there is also flexible dataset loading for different use cases
+```py
+# Option 1: let hyrax load datasets
+trainer = DistributedTrainer(
+    model=MyModel,
+    datasets=["dataset1", "dataset2", "dataset3"],
+    dataset_loader=minari.load_dataset
+)
+
+# Option 2: pass pre-loaded datasets
+datasets = [load_my_data(x) for x in ["a", "b", "c"]]
+trainer = DistributedTrainer(
+    model=MyModel,
+    datasets=datasets
+)
+
+# Option 3: custom config
+trainer = DistributedTrainer(
+    model=MyModel,
+    dataset_config={
+        'source': 'minari',
+        'names': ['mujoco/humanoid/expert-v0', ...],
+        'download': True
+    }
+) 
+```
+Works with minari, pickle files, HDF5, custom loaders, anything.
+
+## why hyrax
+Rock hyrax look super cute and cuddly
+
+## Features
+- auto GPU detection and allocation
+- resource checking before training starts
+- concurrent training across datasets
+- progress monitoring for all workers
+- works completely offline
+- dataset agnostic (minari, pickle, HDF5, custom)
+
+## NOT GOOD FOR 
+- Multi-machine clusters
+- Distributed inference
+- Full MLOps pipelines
