@@ -1,0 +1,44 @@
+import pytest
+import networkx
+from infragraph.infragraph import Api
+from infragraph.infragraph_service import InfraGraphService
+from infragraph.blueprints.devices.cx5 import Cx5
+from infragraph.blueprints.devices.dgx import Dgx
+from infragraph.blueprints.devices.ironwood_rack import IronwoodRack
+from infragraph.blueprints.devices.server import Server
+from infragraph.blueprints.devices.generic_switch import Switch
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [1, 2])
+@pytest.mark.parametrize(
+    "device",
+    [
+        Server(),
+        Switch(),
+        Cx5(),
+        Dgx(),
+        IronwoodRack(),
+    ],
+)
+async def test_devices(count, device):
+    """From an infragraph device, generate a graph and validate the graph.
+
+    - with a count > 1 there should be no connectivity between device instances
+    """
+    # create the graph
+    device.validate()
+    infrastructure = Api().infrastructure()
+    infrastructure.devices.append(device)
+    infrastructure.instances.add(name=device.name, device=device.name, count=count)
+    service = InfraGraphService()
+    service.set_graph(infrastructure)
+
+    # validations
+    g = service.get_networkx_graph()
+    print(f"\ndevice {device.name} is a {g}")
+    print(networkx.write_network_text(g, vertical_chains=True))
+
+
+if __name__ == "__main__":
+    pytest.main(["-s", __file__])
