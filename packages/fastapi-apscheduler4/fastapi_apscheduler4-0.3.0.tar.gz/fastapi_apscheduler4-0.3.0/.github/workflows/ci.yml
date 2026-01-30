@@ -1,0 +1,87 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+permissions:
+  contents: read
+env:
+    UV_FROZEN: 1
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install uv and Activate Environment
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          activate-environment: true
+      - name: Install Dependencies
+        run: uv sync
+      - name: Run ty
+        run: ty check
+  test:
+    name: Test Python ${{ matrix.python }}
+    runs-on: "ubuntu-latest"
+    needs: lint
+    strategy:
+      fail-fast: true
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install uv and Activate Environment for Python ${{ matrix.python }}
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          activate-environment: true
+          python-version: ${{ matrix.python }}
+      - name: Install Dependencies
+        run: uv sync
+      - name: Run Unit Tests
+        run: pytest -x -m "not integration" --cov --junitxml=junit.xml -o junit_family=legacy
+      - name: Upload Unit Test Coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          flags: "${{ matrix.python }},unit"
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload Unit Test Results to Codecov
+        if: always()
+        uses: codecov/test-results-action@v1
+        with:
+          flags: "${{ matrix.python }},unit"
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Run Integration Tests
+        run: pytest -x -m integration --cov --junitxml=junit.xml -o junit_family=legacy
+      - name: Upload Integration Test Coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          flags: "${{ matrix.python }},integration"
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload Integration Test Results to Codecov
+        if: always()
+        uses: codecov/test-results-action@v1
+        with:
+          flags: "${{ matrix.python }},integration"
+          token: ${{ secrets.CODECOV_TOKEN }}
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Build Package
+        run: uv build

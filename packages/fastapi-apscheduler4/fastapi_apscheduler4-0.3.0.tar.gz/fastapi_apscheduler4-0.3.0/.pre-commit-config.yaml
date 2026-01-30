@@ -1,0 +1,63 @@
+default_language_version:
+  python: python3.14
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: check-toml
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.12
+    hooks:
+      - id: ruff-check
+        args: [ --fix ]
+      - id: ruff-format
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.7.11
+    hooks:
+      - id: uv-lock
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty
+        description: "Run 'ty' for static type checking"
+        entry: uv run ty check
+        language: system
+        pass_filenames: false
+
+      - id: pytest-unit
+        name: pytest-unit
+        description: "Run 'pytest' for unit testing"
+        entry: uv run pytest -m "not integration" --cov
+        language: system
+        pass_filenames: false
+
+      - id: pytest-integration
+        name: pytest-integration
+        description: "Run 'pytest' for integration testing"
+        entry: uv run pytest -m "integration" --cov --cov-append
+        language: system
+        pass_filenames: false
+
+      - id: coverage-report
+        name: coverage-report
+        description: "Generate coverage report"
+        entry: uv run coverage report --fail-under=95
+        language: system
+        pass_filenames: false
+
+ci:
+  autofix_commit_msg: 🎨 [pre-commit.ci] Auto format from pre-commit.com hooks
+  autoupdate_commit_msg: ⬆ [pre-commit.ci] pre-commit autoupdate
+  skip: [uv-lock, ty, pytest-unit, pytest-integration, coverage-report]
