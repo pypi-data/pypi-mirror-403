@@ -1,0 +1,127 @@
+# `pyuson`
+
+[![Latest Release](https://gitlab.in2p3.fr/himagnetos/pyuson/-/badges/release.svg)](https://gitlab.in2p3.fr/himagnetos/pyuson/-/releases) 
+[![PyPI](https://img.shields.io/pypi/v/pyuson.svg)](https://pypi.org/project/pyuson/)
+[![Website](https://img.shields.io/website?label=Documentation&url=https%3A%2F%2Fhimagnetos.pages.in2p3.fr%2Fpyuson%2F)](https://himagnetos.pages.in2p3.fr/pyuson/)
+[![Pipeline](https://gitlab.in2p3.fr/himagnetos/pyuson/badges/main/pipeline.svg)](https://gitlab.in2p3.fr/himagnetos/pyuson/-/pipelines)
+![coverage](https://gitlab.in2p3.fr/himagnetos/pyuson/badges/main/coverage.svg?job=pytest)
+
+
+## Description
+`pyuson` provides a Python API to read and analyse ultra-sound echoes experiments on samples exposed to a high magnetic field. It is bundled with a graphical user interface written with PyQt.
+
+## Installation
+
+### Method 1 : As an app
+If you plan to just use the graphical user interface, consider installing `pyuson` as a tool managed by [uv](https://docs.astral.sh/uv/), a modern Python package manager.
+
+To do so, install uv (see the official installation instructions : https://docs.astral.sh/uv/getting-started/installation/) :  
+- On Windows, enter the following command in PowerShell :
+  ```powershell
+  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+  ```
+- On Linux and MacOS, enter the following in a terminal :
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+
+Once uv is installed, from the command line (PowerShell in Windows), install `pyuson` with uv :
+```
+uv tool install pyuson
+```
+
+`pyuson` will be installed along its dependencies in an isolated environment with no risks to mess up with your current tools and Python versions.
+
+Then, launch the GUI by running `pyuson` from the command line.
+
+To update, run : `uv tool upgrade pyuson`.
+
+### Method 2 : As a library
+Installing `pyuson` as a library will allow you to use it from scripts and Jupyter notebooks (e.g. you will be able to import it with `import pyuson`).
+
+1. . Create a Python environment :
+
+    With `conda` : 
+    ```
+    conda create -n pyuson-env -c conda-forge python=3.12
+    ```
+
+    You may replace the environment name `pyuson-env` with whatever you want.
+
+    Activate the environment with :
+    ```
+    conda activate pyuson-env
+    ```
+
+2. Install the `pyuson` package :
+
+    With `pip`, with the `pyuson-env` activated : 
+    ```
+    pip install pyuson
+    ```
+
+#### Updates
+To upgrade `pyuson` to the latest version, simply run from the activated environment :
+```
+pip install pyuson --upgrade
+```
+
+#### Manual download
+1. Download the repository, extract it on your computer.
+2. Create and activate a conda environment as shown above.
+3. Install the extracted repository with `pip` :
+```
+pip install "/path/to/pyuson-main"
+```
+
+Alternatively, if you wish to make modification to the source code so that your change is reflected immediately, use the editable mode :
+```
+pip install -e /path/to/pyuson-main
+```
+
+#### Notebook support
+To use Jupyter notebooks with `pyuson`, some more dependencies should be installed. From a terminal with the virtual environment activated (`conda activate pyuson-env`), install them with the following command :
+```
+pip install notebook ipympl ipywidgets
+```
+
+## Usage
+You can use this package through the graphical user interface, or directly from Python prompt, script or Jupyter notebook using the `Processor` classes. All this methods rely on a TOML configuration file that specifies the experiment parameters and analysis settings.
+
+Template configuration files are provided in the `configs` folder. Copy-paste and edit it according to your need. Each entry of the file is commented so it should be somewhat straightforward to configure. Then :
+
+- Run the graphical interface with `python -m pyuson` from a terminal with the `pyuson-env` environment activated. Drag & drop the configuration file in the window, load the data, and interactively choose the time-window in which the amplitude and phase will be computed.
+
+- Check the example scripts and notebooks in the `examples` folder. Copy them elsewhere locally (to make sure you retain your changes and have a working rollback if anything goes wrong) edit them and use them as you see fit. Note that they are not interactive, e.g. you'll need to specify the time window directly (with `d.cfg.settings["range_analysis"] = 1.035, 1.055` - expressed in µs).
+
+## Contribute
+This project is managed with [uv](https://docs.astral.sh/uv/). Best way to get started is to install uv on your platform : [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/).
+
+Fork the repository in your own GitLab account, then clone the repository on your computer :
+```bash
+git clone git@gitlab.in2p3.fr:your-name/pyuson.git
+```
+
+Enter the folder from the command line :
+```bash
+cd pyuson
+```
+
+And use uv to create a functional virtual environment :
+```bash
+uv sync --all-groups --all-extras
+```
+
+This will create a `.venv` folder with Python and the dependencies, that should be recognized when openning the project in any IDE (PyCharm or VSCode). Note that the `.venv` folder is ignored by `git`.
+
+If you need to add a dependency, just use `uv add {dependency-name}` (eg. `uv add pandas`). It will find the latest compatible version, add it to the lockfile and to the `pyproject.toml` file.
+
+Alternatively, install [miniforge](https://conda-forge.org/miniforge/) for your platform, create a virtual environment with Python 3.12 (`conda create -n pyuson-env python=3.12`), activate it (`conda activate pyuson-env`) and install the package in editable mode : `pip install -e .`.
+
+You can start coding ! When your changes are finished and tested, you can commit and push your changes to your fork and open a Merge Request (MR) from the GitLab web interface.
+
+### Tests
+Tests should be put in the `tests` folder and run with `pytest`.
+
+### Recommended
+Install the [`ruff`](https://docs.astral.sh/ruff/) extension for your IDE and format the code with `ruff`.
