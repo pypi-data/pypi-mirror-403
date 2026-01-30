@@ -1,0 +1,379 @@
+Metadata-Version: 2.4
+Name: django-firewall
+Version: 2.0.3
+Summary: IP-based firewall protection for Django with path rule management.
+Author: Visian Systems
+License-Expression: MIT
+Project-URL: Homepage, https://visiansystems.com
+Classifier: Development Status :: 4 - Beta
+Classifier: Framework :: Django
+Classifier: Framework :: Django :: 4.2
+Classifier: Framework :: Django :: 5.2
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Security
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: Django<5.2,>=4.2
+Requires-Dist: requests>=2.28
+Provides-Extra: rest
+Requires-Dist: djangorestframework>=3.14; extra == "rest"
+Dynamic: license-file
+
+# Django Firewall
+
+[![PyPI](https://img.shields.io/pypi/v/django-firewall.svg)](https://pypi.org/project/django-firewall/)
+
+A reusable Django app for IP-based firewall protection with automatic blocking of suspicious requests.
+
+## Features
+
+- **Middleware-based protection**: Automatically monitors and blocks suspicious requests
+- **Database-driven path rules**: Manage blacklist/whitelist patterns via Django Admin without code changes
+- **Pre-configured attack patterns**: Includes common malicious URL patterns (PHP probes, .env files, Git exposure, WordPress attacks, etc.)
+- **Caching system**: 5-minute cache for path rules with automatic invalidation
+- **Priority-based rules**: Control the order in which rules are evaluated
+- **CloudFlare & proxy support**: Correctly detects real client IPs behind proxies
+- **Admin interface**: Manage blocked/allowed IPs and path rules through Django Admin
+- **REST API**: Optional API endpoints (requires Django REST Framework)
+- **Management commands**: CLI tools for blocking/unblocking IPs, viewing logs, and importing rules
+- **Docker support**: Auto-detect host IP in containerized environments
+- **Cloudflare WAF export**: Generate Cloudflare-compatible WAF rules
+
+## Requirements
+
+- Python 3.10+
+- Django 4.2+
+- requests 2.28+
+- (Optional) Django REST Framework 3.14+ for API endpoints
+
+## Installation
+
+### Install from Git (pip)
+
+This package can be installed directly from the repository as a **subdirectory**:
+
+```bash
+pip install django_firewall
+```
+
+With optional Django REST Framework support:
+
+```bash
+pip install django_firewall[rest]
+```
+
+### Install from Git (Poetry)
+
+```bash
+poetry add django_firewall
+```
+
+With optional Django REST Framework support:
+
+```toml
+[tool.poetry.dependencies]
+django_firewall = { extras = ["rest"] }
+```
+
+### Manual install
+
+Copy the `django_firewall` directory to your project.
+
+## Quick Start
+
+### 1. Add to INSTALLED_APPS
+
+```python
+INSTALLED_APPS = [
+    # ...
+    'django_firewall',
+    # ...
+]
+```
+
+### 2. Add middleware (optional but recommended)
+
+```python
+MIDDLEWARE = [
+    # Add early in the middleware stack for best protection
+    'django_firewall.middleware.FirewallMiddleware',
+    # ...
+]
+```
+
+### 3. Run migrations
+
+```bash
+python manage.py migrate django_firewall
+```
+
+### 4. Configure settings
+
+```python
+# Enable the firewall
+DJANGO_FIREWALL_ENABLED = True
+
+# URL of your external firewall service (optional)
+DJANGO_FIREWALL_URL = "http://firewall-host:8080"
+
+# Port for the firewall service
+DJANGO_FIREWALL_PORT = 8080
+
+# Request timeout in seconds
+DJANGO_FIREWALL_REQUEST_TIMEOUT = 5
+
+# Additional URL patterns to monitor (extends defaults)
+DJANGO_FIREWALL_URLS_LIST = [
+    "/my-sensitive-path/.*",
+]
+
+# URL patterns to whitelist (skip monitoring)
+DJANGO_FIREWALL_URL_WHITE_LIST = [
+    "/api/health/",
+]
+```
+
+### 5. (Optional) Add API URLs
+
+```python
+# urls.py
+from django.urls import include, path
+
+urlpatterns = [
+    # ...
+    path('api/firewall/', include('django_firewall.urls')),
+]
+```
+
+## Configuration Options
+
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| `DJANGO_FIREWALL_ENABLED` | `False` | Enable/disable the firewall |
+| `DJANGO_FIREWALL_URL` | `None` | URL of external firewall service |
+| `DJANGO_FIREWALL_PORT` | `8080` | Port for firewall service |
+| `DJANGO_FIREWALL_REQUEST_TIMEOUT` | `5` | Timeout for firewall API calls (seconds) |
+| `DJANGO_FIREWALL_GET_HOST_SCRIPT` | Auto | Script to detect host IP in Docker |
+| `DJANGO_FIREWALL_URLS_LIST` | See below | URL patterns to monitor |
+| `DJANGO_FIREWALL_URL_WHITE_LIST` | `[]` | URL patterns to skip |
+
+### Backwards Compatibility
+
+For backwards compatibility with the original Kapybar firewall, these settings are also supported:
+
+- `USE_FIREWALL` (same as `DJANGO_FIREWALL_ENABLED`)
+- `FIREWALL_URL` (same as `DJANGO_FIREWALL_URL`)
+- `FIREWALL_PORT` (same as `DJANGO_FIREWALL_PORT`)
+- `FIREWALL_GET_HOST_SCRIPT` (same as `DJANGO_FIREWALL_GET_HOST_SCRIPT`)
+- `FIREWALL_URLS_LIST` (same as `DJANGO_FIREWALL_URLS_LIST`)
+- `FIREWALL_URL_WHITE_LIST` (same as `DJANGO_FIREWALL_URL_WHITE_LIST`)
+
+## Default Blocked Patterns
+
+The firewall comes pre-configured to block common attack patterns:
+
+- PHP files and probes (`*.php`, `/phpinfo.php`)
+- Environment files (`/.env`, `/admin/.env.*`)
+- Configuration files (`/config.json`, `/config/*`)
+- Git repository exposure (`/.git/*`)
+- AWS credentials (`/.aws/*`, `/.s3cfg`)
+- Firebase configuration (`/firebase.*`)
+- WordPress attacks (`/wp-admin/*`, `/wp-content/*`)
+- Apache/Nginx sensitive files (`/.htaccess`, `/.htpasswd`)
+- Symfony profiler (`/_profiler/*`)
+
+## Database-Driven Path Rules (NEW)
+
+The firewall now supports managing blacklist and whitelist path patterns through the Django admin interface.
+
+### Path rules quick start
+
+```bash
+# Import hardcoded rules into database
+python manage.py import_firewall_rules
+
+# Preview what would be imported (dry run)
+python manage.py import_firewall_rules --dry-run
+
+# Clear existing rules and import fresh
+python manage.py import_firewall_rules --clear
+```
+
+### Managing Rules via Admin
+
+1. Navigate to **Django Firewall → Firewall Path Rules** in Django Admin
+2. Create, edit, or delete rules without modifying code
+3. Set priorities to control rule evaluation order
+4. Enable/disable rules temporarily without deletion
+5. Changes take effect automatically (cached for 5 minutes)
+
+### Path rules features
+
+- **Database storage**: Rules stored in `FirewallPathRule` model
+- **Priority system**: Lower priority numbers = higher priority
+- **Rule types**: Blacklist (block) or Whitelist (allow)
+- **Performance**: 5-minute caching with automatic invalidation
+- **Fallback**: Falls back to hardcoded rules if database is empty
+- **Audit trail**: Created/updated timestamps on all rules
+
+### Documentation
+
+- [Detailed Guide](django_firewall/FIREWALL_PATHS_README.md) - Comprehensive documentation
+- [Quick Setup](django_firewall/SETUP_INSTRUCTIONS.md) - 3-step setup guide
+- [Implementation](django_firewall/IMPLEMENTATION_SUMMARY.md) - Technical details
+
+## Management Commands
+
+### Firewall Management
+
+```bash
+# Show firewall status
+python manage.py firewall --status
+
+# List all blocked/allowed IPs
+python manage.py firewall --list
+
+# List monitored URL patterns
+python manage.py firewall --list-paths
+
+# Block an IP address
+python manage.py firewall --block 1.2.3.4
+
+# Unblock an IP address
+python manage.py firewall --unblock 1.2.3.4
+
+# Export logs to CSV
+python manage.py firewall --csv firewall_logs.csv
+```
+
+### Path Rules Management
+
+```bash
+# Import hardcoded rules into database
+python manage.py import_firewall_rules
+
+# Preview import without making changes
+python manage.py import_firewall_rules --dry-run
+
+# Clear all existing rules and import fresh
+python manage.py import_firewall_rules --clear
+```
+
+## Admin Interface
+
+Access the Django Admin to manage the firewall:
+
+### Firewall API Logs
+
+- View all blocked/allowed IPs
+- Block or allow IPs with one click
+- Export logs to CSV
+- Filter by date, blocked status, etc.
+
+### Firewall Path Rules (NEW)
+
+- Create, edit, and delete blacklist/whitelist rules
+- Set rule priorities for evaluation order
+- Enable/disable rules temporarily
+- Search by pattern or description
+- Visual status indicators (✓/✗)
+- Filter by rule type, enabled status, dates
+
+## REST API
+
+When Django REST Framework is installed, the following endpoints are available:
+
+- `GET /api/firewall/` - List all firewall logs
+- `GET /api/firewall/{id}/` - Get specific log entry
+
+Endpoints require authentication and admin permissions.
+
+## Docker Support
+
+For Docker environments, the app includes a script to automatically detect the host IP:
+
+```bash
+# The script is bundled at:
+django_firewall/bin/get_firewall_host.sh
+```
+
+Configure the script path:
+
+```python
+DJANGO_FIREWALL_GET_HOST_SCRIPT = "/app/django_firewall/bin/get_firewall_host.sh"
+```
+
+## Cloudflare WAF Export
+
+Generate Cloudflare-compatible WAF rules:
+
+```python
+from django_firewall.endpoint_list import FirewallURLsExpression
+
+print(FirewallURLsExpression)
+# Output:
+# (http.request.uri.path wildcard r"/admin/.htaccess") or
+# (http.request.uri.path wildcard r"/.git/*") or
+# ...
+```
+
+## External Firewall Service
+
+This app is designed to work with an external firewall service that accepts HTTP requests:
+
+- `GET /block?ip=1.2.3.4` - Block an IP
+- `GET /allow?ip=1.2.3.4` - Allow an IP
+
+The external service should return HTTP 200 on success.
+
+## Security Considerations
+
+- All IP addresses are validated to prevent SSRF attacks
+- CIDR notation is not allowed (single IPs only)
+- The middleware runs early in the request cycle for best protection
+- Admin access is restricted to superusers only
+
+## Changelog
+
+### 2.0.3 (2026-01-26)
+
+- Added support for Django 5.2
+- Added support for Python 3.13
+- Corrected commands line
+- Added missing script to get host IP
+
+### 2.0.2 (2026-01-26)
+
+- Fixed upload to PyPI
+
+### 2.0.1 (2026-01-15)
+
+- Converted to a standalone package
+
+### 2.0.0 (2026-01-14)
+
+- Added database-driven path rules management
+- New `FirewallPathRule` model for dynamic rule management
+- Admin interface for managing blacklist/whitelist patterns
+- Priority-based rule evaluation system
+- 5-minute caching with automatic invalidation
+- `import_firewall_rules` management command
+- Comprehensive documentation for path rules
+- Fallback to hardcoded rules if database is empty
+
+### 1.0.0 (2025-01-05)
+
+- Initial release as standalone package
+- Extracted from Kapybar project
+- Added comprehensive configuration system
+- Added backwards compatibility with original settings
+- Added pyproject.toml for modern Python packaging
+- Improved documentation
