@@ -1,0 +1,37 @@
+mth5.processing package
+=======================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   mth5.processing.spectre
+
+Submodules
+----------
+
+mth5.processing.kernel\_dataset module
+--------------------------------------
+
+.. automodule:: mth5.processing.kernel_dataset
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+mth5.processing.run\_summary module
+-----------------------------------
+
+.. automodule:: mth5.processing.run_summary
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: mth5.processing
+   :members:
+   :undoc-members:
+   :show-inheritance:
