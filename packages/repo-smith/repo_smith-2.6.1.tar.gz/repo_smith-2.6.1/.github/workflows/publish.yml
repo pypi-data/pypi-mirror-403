@@ -1,0 +1,26 @@
+name: Build and release repo-smith to PyPi
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: read
+  issues: read
+
+jobs:
+  prepare:
+    uses: git-mastery/actions/.github/workflows/get-latest-tag.yml@main
+    secrets: inherit
+
+  publish:
+    needs: prepare
+    uses: git-mastery/actions/.github/workflows/publish-pypi-library.yml@main
+    with:
+      library_path: src/repo_smith
+      ref_name: ${{ needs.prepare.outputs.ref_name }}
+    secrets: inherit
