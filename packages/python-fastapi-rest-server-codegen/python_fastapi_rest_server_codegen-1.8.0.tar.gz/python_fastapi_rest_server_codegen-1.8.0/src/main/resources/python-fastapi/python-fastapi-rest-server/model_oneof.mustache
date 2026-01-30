@@ -1,0 +1,67 @@
+from __future__ import annotations
+from inspect import getfullargspec
+import json
+import pprint
+import re  # noqa: F401
+{{#vendorExtensions.x-py-datetime-imports}}{{#-first}}from datetime import{{/-first}} {{{.}}}{{^-last}},{{/-last}}{{/vendorExtensions.x-py-datetime-imports}}
+{{#vendorExtensions.x-py-typing-imports}}{{#-first}}from typing import{{/-first}} {{{.}}}{{^-last}},{{/-last}}{{/vendorExtensions.x-py-typing-imports}}
+{{#vendorExtensions.x-py-pydantic-imports}}{{#-first}}from pydantic import{{/-first}} {{{.}}}{{^-last}},{{/-last}}{{/vendorExtensions.x-py-pydantic-imports}}
+{{#vendorExtensions.x-py-other-imports}}
+{{{.}}}
+{{/vendorExtensions.x-py-other-imports}}
+{{#vendorExtensions.x-py-model-imports}}
+{{{.}}}
+{{/vendorExtensions.x-py-model-imports}}
+from typing import Union, Any, List, TYPE_CHECKING, Optional, Dict
+from typing_extensions import Literal
+from pydantic import StrictStr, Field, RootModel
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
+{{#discriminator.mappedModels}}{{#explicitMapping}}
+class {{modelName}}Oneof({{modelName}}):
+    {{discriminatorName}}: Literal['{{mappingName}}']
+    pass
+{{/explicitMapping}}{{/discriminator.mappedModels}}
+
+class {{classname}}({{#parent}}{{{.}}}{{/parent}}{{^parent}}RootModel{{/parent}}):
+    """
+    {{{description}}}{{^description}}{{{classname}}}{{/description}}
+    """
+    root: Union[{{#oneOf}}{{{.}}}Oneof{{^-last}}, {{/-last}}{{/oneOf}}] = Field(discriminator="{{discriminatorName}}")
+
+    model_config = {
+        "validate_assignment": True,
+        "protected_namespaces": (),
+    }
+
+    @classmethod
+    def from_dict(cls, obj: Dict) -> Self:
+        """Create an instance of {{classname}} from a dictionary"""
+        return cls(obj)
+
+    def to_str(self) -> str:
+        """Returns the string representation of the actual instance"""
+        return pprint.pformat(self.model_dump())
+
+    def to_dict(self) -> Dict:
+        """Returns the dict representation of the actual instance"""
+        if self.root is None:
+            return None
+
+        to_dict = getattr(self.root, "to_dict", None)
+        if callable(to_dict):
+            return self.root.to_dict()
+        else:
+            # primitive type
+            return self.root
+
+{{#vendorExtensions.x-py-postponed-model-imports.size}}
+{{#vendorExtensions.x-py-postponed-model-imports}}
+{{{.}}}
+{{/vendorExtensions.x-py-postponed-model-imports}}
+# TODO: Rewrite to not use raise_errors
+{{classname}}.model_rebuild(raise_errors=False)
+{{/vendorExtensions.x-py-postponed-model-imports.size}}
