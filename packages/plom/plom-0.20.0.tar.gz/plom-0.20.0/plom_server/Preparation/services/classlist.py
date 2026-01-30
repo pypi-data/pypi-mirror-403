@@ -1,0 +1,361 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2022-2024 Andrew Rechnitzer
+# Copyright (C) 2022 Edith Coates
+# Copyright (C) 2023 Natalie Balashov
+# Copyright (C) 2024-2026 Colin B. Macdonald
+# Copyright (C) 2025 Philip D. Loewen
+
+import logging
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from typing import Any
+
+from django.core.exceptions import ObjectDoesNotExist
+from django.core.files import File
+from django.db import transaction, IntegrityError
+from django.db.models import Min, Max
+
+from plom.create import PlomClasslistValidator
+from .preparation_dependency_service import assert_can_modify_classlist
+from ..models import StagingStudent
+
+
+log = logging.getLogger("ClasslistService")
+
+
+class StagingStudentService:
+    @staticmethod
+    def how_many_students() -> int:
+        return StagingStudent.objects.all().count()
+
+    @staticmethod
+    def are_there_students() -> bool:
+        return StagingStudent.objects.exists()
+
+    @staticmethod
+    def get_students() -> list[dict[str, str | int]]:
+        """Get a list of students, empty if there are none."""
+        return list(
+            StagingStudent.objects.all().values(
+                "student_id", "student_name", "paper_number"
+            )
+        )
+
+    @staticmethod
+    @transaction.atomic()
+    def get_first_last_prenamed_paper() -> tuple[int, int] | tuple[None, None]:
+        """Return the lowest and highest paper_number allocated to a prenamed paper.
+
+        This appropriately returns (None, None) if there are no prenamed papers.
+        """
+        x = StagingStudent.objects.filter(paper_number__isnull=False).aggregate(
+            Min("paper_number"), Max("paper_number")
+        )
+        return x["paper_number__min"], x["paper_number__max"]
+
+    @staticmethod
+    def are_there_any_prenamed_papers() -> bool:
+        """Return True if there are any students with paper numbers preset for prenaming."""
+        return StagingStudent.objects.filter(paper_number__isnull=False).exists()
+
+    @staticmethod
+    def get_prenamed_papers() -> dict[int, tuple[str, str]]:
+        """Return dict of prenamed papers {paper_number: (student_id, student_name)}."""
+        return {
+            s_obj.paper_number: (s_obj.student_id, s_obj.student_name)
+            for s_obj in StagingStudent.objects.filter(paper_number__isnull=False)
+        }
+
+    @classmethod
+    def get_students_as_csv_string(cls) -> str:
+        """Write the classlist headers and data into a string in CSV format.
+
+        Quote all headers and student names, but not ids or paper numbers.
+        """
+        txt = '"id","name","paper_number"\n'
+        for row in cls.get_students():
+            if row["paper_number"] is None or int(row["paper_number"]) < 0:
+                # Leave paper_number empty when any of our non-prename sentinels appear.
+                txt += f"{row['student_id']},\"{row['student_name']}\",\n"
+            else:
+                txt += f"{row['student_id']},\"{row['student_name']}\",{row['paper_number']}\n"
+        return txt
+
+    @staticmethod
+    def _add_student(
+        student_id: str,
+        student_name: str,
+        *,
+        paper_number: int | str | None = None,
+    ) -> None:
+        """Add a single student to the staging classlist.
+
+        Note - does not check dependencies.
+
+        Args:
+            student_id: a string.
+            student_name: a string.
+
+        Keyword Args:
+            paper_number: either None or a non-negative integer.  Sentinel values
+                of ``-1``, ``None`` and ``""`` are accepted as None.
+
+        Returns:
+            None.
+
+        Raises:
+            IntegrityError: if student-id is not unique, or other database
+                checks failed, for example invalid paper number.
+            ValueError: invalid paper_number such as inappropriate sentinel value
+        """
+        s_obj = StagingStudent(student_id=student_id, student_name=student_name)
+        # note that zero is not a sentinel so "if paper_number" is NOT appropriate
+        if PlomClasslistValidator.is_paper_number_sentinel(paper_number):
+            paper_number = None
+        if paper_number is not None:
+            try:
+                # 1.1 would become 1; validator before us should've complained
+                paper_number = int(paper_number)
+            except ValueError as e:
+                raise ValueError(
+                    f"paper_number cannot be converted to int: str{e}"
+                ) from None
+        s_obj.paper_number = paper_number
+        s_obj.save()
+
+    @staticmethod
+    def remove_all_students() -> None:
+        """Remove all the students from the staging classlist.
+
+        Raises:
+            PlomDependencyConflict: if dependencies not met.
+        """
+        assert_can_modify_classlist()
+        StagingStudent.objects.all().delete()
+
+    @classmethod
+    def _validate_and_use_classlist_from_open_file_handle(
+        cls, in_memory_csv_file: File, *, ignore_warnings: bool = False
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        """Validate and store the classlist from an open file, maybe a Django in-memory file, if possible, appending to existing classlist.
+
+        See :method:`validate_and_use_classlist_csv`.
+        """
+        assert_can_modify_classlist()
+
+        # Save the in-memory file to a tempfile and validate it.
+        # Note: we must be careful to unlink this file ourselves.
+        tmp_csv = Path(NamedTemporaryFile(delete=False).name)
+
+        with open(tmp_csv, "wb") as fh:
+            for chunk in in_memory_csv_file:
+                fh.write(chunk)
+        try:
+            r = cls.validate_and_use_classlist_csv(
+                tmp_csv, ignore_warnings=ignore_warnings
+            )
+        finally:
+            tmp_csv.unlink()
+        return r
+
+    @classmethod
+    def validate_and_use_classlist_csv(
+        cls, csv_file, *, ignore_warnings: bool = False
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        """Validate and store the classlist from a file, if possible, appending to existing classlist.
+
+        If there are no conflicts, this appends to an existing classlist.
+        The operation is atomic so either all new entries in the classlist
+        are added or none are.
+
+        Args:
+            csv_file: a proper normal file thing, like a string or a Path,
+                but perhaps not an in-memory "Django file", at least we
+                seem to have problems with those; see
+                :method:`_validate_and_use_classlist_csv_from_open_file_handle`
+                where for reasons I don't fully understand, we make a temp
+                file.
+
+        Keyword Args:
+            ignore_warnings: try to proceed with opening the file even if
+                the validator expressed warnings.
+
+        Returns:
+            a 2-tuple (s,l), where ...
+            s is the boolean value of the statement "The operation succeeded",
+            l is a list of dicts describing warnings, errors, or notes.
+            When s is True, the list l may be empty or contain ignored warnings.
+            When s is False, the classlist in the database remains unchanged.
+
+        Raises:
+            PlomDependencyConflict: If dependencies not met.
+        """
+        assert_can_modify_classlist()
+
+        vlad = PlomClasslistValidator()
+        success, werr, cl_as_dicts = vlad.validate_csv(csv_file)
+        # success = False means warnings+errors - listed in werr
+        # success = True means no errors, but could be warnings in werr.
+        # cl_as_dicts has canonical field names "id", "name", and "paper_number".
+
+        if (not success) or (werr and not ignore_warnings):
+            # errors, or non-ignorable warnings.
+            return (success, werr)
+
+        return cls.validate_and_use_classlist_data(
+            cl_as_dicts, ignore_warnings=ignore_warnings
+        )
+
+    @classmethod
+    def validate_and_use_classlist_data(
+        cls, cl_data: list[dict[str, Any]], *, ignore_warnings: bool = False
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        """Validate and store classlist data, if possible, appending to existing classlist.
+
+        If there are no conflicts, this appends to an existing classlist.
+        The operation is atomic so either all new entries in the classlist
+        are added or none are.
+
+        Args:
+            cl_data: classlist data, a list of dicts with field names
+                "id", "name", and "paper_number".
+
+        Keyword Args:
+            ignore_warnings: try to proceed with the data even if the
+                validator expressed warnings.
+
+        Returns:
+            a 2-tuple (s,l), where ...
+            s is the boolean value of the statement "The operation succeeded",
+            l is a list of dicts describing warnings, errors, or notes.
+            When s is True, the list l may be empty or contain ignored warnings.
+            When s is False, the classlist in the database remains unchanged.
+
+        Raises:
+            PlomDependencyConflict: If dependencies not met.
+        """
+        assert_can_modify_classlist()
+
+        vlad = PlomClasslistValidator()
+        success, werr = vlad.validate(cl_data)
+        if (not success) or (werr and not ignore_warnings):
+            return (success, werr)
+
+        # Enforce empty-intersection between sets of incoming and known papernums
+        # TODO: maybe this can be a constraint at the database level, which would
+        # TODO: save a lot of code here and also be more robust.  It appears that
+        # TODO: id already works this way...
+        known_paper_numbers = set(
+            [r.get("paper_number", -1) for r in cls.get_students()]
+        )
+        new_paper_numbers = set()
+
+        for row in cl_data:
+            # Next line correctly turns '' into -1:
+            new_paper_numbers.add(int(row.get("paper_number", "-1") or "-1"))
+
+        known_paper_numbers.discard(-1)
+        new_paper_numbers.discard(-1)
+
+        paper_number_overlap = known_paper_numbers & new_paper_numbers
+
+        if False:
+            print("\nDEBUGGING classlist.py: Here are the known paper_numbers:")
+            print(known_paper_numbers)
+            print("DEBUGGING classlist.py: Here are the new paper_numbers:")
+            print(new_paper_numbers)
+            print("DEBUGGING classlist.py: Here is the set intersection:")
+            print(paper_number_overlap)
+            print(
+                f"DEBUGGING classlist.py: len(paper_number_overlap) = {len(paper_number_overlap)}."
+            )
+
+        if len(paper_number_overlap) > 0:
+            success = False
+            errmsg = f"Incoming classlist duplicates {len(paper_number_overlap)} paper numbers."
+            werr.append({"warn_or_err": "Error", "werr_text": errmsg})
+
+        if not success:
+            errmsg = "Server's classlist unchanged."
+            werr.append({"warn_or_err": "Warning", "werr_text": errmsg})
+            return success, werr
+
+        # Having developed some trust in the data
+        # we transfer its contents into the server's classlist.
+        try:
+            with transaction.atomic():
+                # The 'atomic' wrapper gives the next loop an all-or-nothing property:
+                # https://docs.djangoproject.com/en/5.2/topics/db/transactions/
+                for row in cl_data:
+                    cls._add_student(
+                        str(row["id"]),
+                        str(row["name"]),
+                        paper_number=row.get("paper_number", None),
+                    )
+        except IntegrityError as e:
+            success = False
+            errmsg = f"Incoming classlist collides with existing student: {e}"
+            # see :method:`PlomClasslistValidator.validate_csv` for this format
+            werr.append(
+                {"warn_or_err": "error", "werr_line": None, "werr_text": errmsg}
+            )
+        except (ValueError, KeyError, AssertionError) as e:
+            # in theory, we "asked permission" using vlad the validator
+            # so the input must be perfect and this can never fail---haha!
+            success = False
+            errmsg = "Unexpected error, "
+            errmsg += f"likely a bug in Plom's classlist validator: {str(e)}"
+            # see :method:`PlomClasslistValidator.validate_csv` for this format
+            werr.append(
+                {"warn_or_err": "error", "werr_line": None, "werr_text": errmsg}
+            )
+
+        return (success, werr)
+
+    @classmethod
+    @transaction.atomic()
+    def get_minimum_number_to_produce(cls) -> int:
+        """Gets a suggestion for the minimum number of papers a server should produce.
+
+        The return value depends on the current server state.
+        """
+        # how_many_students doesn't behave well if an empty classlist is uploaded
+        if not cls.are_there_students():
+            num_students = 0
+        else:
+            num_students = cls.how_many_students()
+        _, last_prename = cls.get_first_last_prenamed_paper()
+
+        return cls._minimum_number_to_produce(num_students, last_prename)
+
+    @staticmethod
+    def _minimum_number_to_produce(
+        num_students: int,
+        highest_prenamed_paper: int | None = None,
+    ) -> int:
+        """Suggests a minimum number of papers to produce in various situations.
+
+        Args:
+            num_students: the maximum number of students expected to
+                attempt the assessment.
+            highest_prenamed_paper: the highest paper number allocated
+                to a prenamed paper. Can be None, indicating no prenamed
+                papers.
+        """
+        extra_20 = num_students + 20
+        # simple fiddle to get ceiling of 1.1*N using python floor-div //
+        extra_10percent = -((-num_students * 11) // 10)
+        prenamed_extra_10 = (highest_prenamed_paper or 0) + 10
+        return max(extra_20, extra_10percent, prenamed_extra_10)
+
+    @staticmethod
+    def get_prename_for_paper(paper_number) -> str | None:
+        """Return student ID for prenamed paper or None if paper is not prenamed.
+
+        Currently unused.
+        """
+        try:
+            student_obj = StagingStudent.objects.get(paper_number=paper_number)
+            return student_obj.student_id
+        except ObjectDoesNotExist:
+            return None
