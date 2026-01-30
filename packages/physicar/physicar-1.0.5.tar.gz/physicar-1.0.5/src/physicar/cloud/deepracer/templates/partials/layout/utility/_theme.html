@@ -1,0 +1,47 @@
+<!-- CPU/Storage Status -->
+<div class="nav-item d-flex flex-row align-items-center gap-3" id="system-status">
+  <span class="text-muted small">
+    <i class="fas fa-microchip me-1"></i>
+    <span id="cpu-status">-/- CPUs</span>
+  </span>
+  <span class="text-muted small">
+    <i class="fas fa-hdd me-1"></i>
+    <span id="storage-status">-/- GB</span>
+  </span>
+</div>
+<script>
+(function() {
+  async function updateSystemStatus() {
+    try {
+      // CPU
+      const cpuRes = await fetch('/api/system/cpu');
+      if (cpuRes.ok) {
+        const cpu = await cpuRes.json();
+        const cpuEl = document.getElementById('cpu-status');
+        // DeepRacer 컨테이너 사용량 / (전체 - 시스템예약)
+        const usable = cpu.total - cpu.reserved_for_system;
+        if (cpuEl) cpuEl.textContent = `${cpu.used}/${usable} CPUs`;
+      }
+      // Storage
+      const storageRes = await fetch('/api/system/storage');
+      if (storageRes.ok) {
+        const storage = await storageRes.json();
+        const storageEl = document.getElementById('storage-status');
+        if (storageEl) storageEl.textContent = `${storage.used_gb}/${storage.total_gb} GB`;
+      }
+    } catch (e) {
+      console.error('Failed to update system status:', e);
+    }
+  }
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      updateSystemStatus();
+      setInterval(updateSystemStatus, 10000);
+    });
+  } else {
+    updateSystemStatus();
+    setInterval(updateSystemStatus, 10000);
+  }
+})();
+</script>
