@@ -1,0 +1,3 @@
+"""
+Docstring for mynewpackage.mynewpackage
+"""
