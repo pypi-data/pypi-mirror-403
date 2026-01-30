@@ -1,0 +1,47 @@
+name: Daily Scrape
+
+on:
+  schedule:
+    # Run daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Days to scrape'
+        required: false
+        default: '30'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+
+      - name: Scrape recent trades
+        run: |
+          congressional-trades refresh --days ${{ github.event.inputs.days || '30' }} --force
+
+      - name: Export to JSON
+        run: |
+          congressional-trades export data/trades.json --format json
+          congressional-trades export data/trades.csv --format csv
+
+      - name: Commit updated data
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add data/
+          git diff --staged --quiet || git commit -m "Update trades $(date +%Y-%m-%d)"
+          git push
