@@ -1,0 +1,166 @@
+Metadata-Version: 2.4
+Name: llm-greenpt
+Version: 0.0.2
+Summary: A plugin to add support for the GreenPT AI inference service to llm
+Author: Chris Adams
+License-Expression: Apache-2.0
+Project-URL: Homepage, https://github.com/mrchrisadams/llm-greenpt
+Project-URL: Changelog, https://github.com/mrchrisadams/llm-greenpt/releases
+Project-URL: Issues, https://github.com/mrchrisadams/llm-greenpt/issues
+Project-URL: CI, https://github.com/mrchrisadams/llm-greenpt/actions
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: llm
+Provides-Extra: test
+Requires-Dist: pytest; extra == "test"
+Dynamic: license-file
+
+# llm-greenpt
+
+[![PyPI](https://img.shields.io/pypi/v/llm-greenpt.svg)](https://pypi.org/project/llm-greenpt/)
+[![Changelog](https://img.shields.io/github/v/release/mrchrisadams/llm-greenpt?include_prereleases&label=changelog)](https://github.com/mrchrisadams/llm-greenpt/releases)
+[![Tests](https://github.com/mrchrisadams/llm-greenpt/actions/workflows/test.yml/badge.svg)](https://github.com/mrchrisadams/llm-greenpt/actions/workflows/test.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/mrchrisadams/llm-greenpt/blob/main/LICENSE)
+
+A plugin to add support for the [GreenPT](https://greenpt.ai/) inference service to [LLM](https://llm.datasette.io/). GreenPT provides sustainable AI inference with direct energy consumption and carbon emissions measurements in API responses.
+
+This is not an official plugin from GreenPT.
+
+## Installation
+
+Install this plugin in the same environment as [LLM](https://llm.datasette.io/):
+
+```bash
+llm install llm-greenpt
+```
+
+## Usage
+
+Once you have llm-greenpt installed, you should see new models available when you call `llm models`:
+
+```
+GreenPT: greenpt/green-l (aliases: greenpt-green-l, greenpt-large)
+GreenPT: greenpt/green-l-raw (aliases: greenpt-green-l-raw)
+GreenPT: greenpt/green-r (aliases: greenpt-green-r, greenpt-reasoning)
+GreenPT: greenpt/green-r-raw (aliases: greenpt-green-r-raw)
+GreenPT: greenpt/llama-3.3-70b-instruct (aliases: greenpt-llama-70b)
+GreenPT: greenpt/deepseek-r1-distill-llama-70b (aliases: greenpt-deepseek-r1)
+GreenPT: greenpt/mistral-nemo-instruct-2407 (aliases: greenpt-mistral-nemo)
+GreenPT: greenpt/qwen3-235b-a22b-instruct-2507 (aliases: greenpt-qwen3)
+```
+
+You will need to set a key with:
+
+```bash
+llm keys set greenpt
+```
+
+You can sign up for GreenPT and get an API key from https://greenpt.ai/.
+
+### Basic Usage
+
+```bash
+# Use the large generative model
+llm "Explain quantum computing" -m greenpt-large
+
+# Use the reasoning model
+llm "What is 15% of 847?" -m greenpt-reasoning
+
+# Use a third-party model via GreenPT
+llm "Write a haiku" -m greenpt-llama-70b
+```
+
+### Energy and Carbon Impact Logging
+
+This plugin automatically captures and logs energy consumption and carbon emissions data from GreenPT API responses. Impact data is stored in the `response_json` field of the LLM logs database.
+
+GreenPT returns impact data in this format:
+
+```json
+{
+  "impact": {
+    "version": "20250922",
+    "inferenceTime": {"total": 156, "unit": "ms"},
+    "energy": {"total": 40433, "unit": "Wms"},
+    "emissions": {"total": 1, "unit": "ugCO2e"}
+  }
+}
+```
+
+To view energy consumption for your requests:
+
+```bash
+# View recent logs with impact data
+llm logs --model greenpt-large --json | jq '.[-5:].response_json.impact'
+
+# Query specific energy metrics
+llm logs --model greenpt-large --json | jq -r '.[] | select(.response_json.impact != null) | "\(.datetime_utc): \(.response_json.impact.energy.total) Wms, \(.response_json.impact.emissions.total) ugCO2e"'
+```
+
+Each impact measurement includes:
+
+- `inferenceTime`: Inference duration in milliseconds
+- `energy`: Energy consumption in watt-milliseconds (Wms)
+- `emissions`: Carbon emissions in micrograms CO2 equivalent (ugCO2e)
+- `version`: Version of the impact calculation methodology
+
+**Unit conversions:**
+- To convert Wms to watt-hours: `Wms / 3,600,000 = Wh`
+- To convert Wms to kilowatt-hours: `Wms / 3,600,000,000 = kWh`
+- To convert ugCO2e to grams: `ugCO2e / 1,000,000 = gCO2e`
+
+### Streaming Support
+
+Energy and emissions data is captured in both streaming and non-streaming modes:
+
+```bash
+# Streaming (default)
+llm "Explain machine learning" -m greenpt-large
+
+# Non-streaming
+llm "Explain machine learning" -m greenpt-large --no-stream
+```
+
+In streaming mode, GreenPT sends the impact data in the final SSE chunk after the content is complete.
+
+### Available Models
+
+| Model | Description |
+|-------|-------------|
+| `green-l` | Large generative model optimized for sustainability |
+| `green-l-raw` | Large model with custom system prompt support |
+| `green-r` | Reasoning model for logical reasoning and problem-solving |
+| `green-r-raw` | Reasoning model with custom system prompt support |
+| `llama-3.3-70b-instruct` | Meta's Llama 3.3 70B |
+| `deepseek-r1-distill-llama-70b` | DeepSeek R1 distilled |
+| `mistral-nemo-instruct-2407` | Mistral Nemo |
+| `qwen3-235b-a22b-instruct-2507` | Qwen3 235B |
+
+For the full list of available models, see the [GreenPT documentation](https://docs.greenpt.ai/api/models).
+
+## Development
+
+To set up this plugin locally, first checkout the code. Then create a new virtual environment:
+
+```bash
+cd llm-greenpt
+python -m venv venv
+source venv/bin/activate
+```
+
+Now install the dependencies and test dependencies:
+
+```bash
+python -m pip install -e '.[test]'
+```
+
+To run the tests:
+
+```bash
+python -m pytest
+```
+
+## License
+
+Apache 2.0
