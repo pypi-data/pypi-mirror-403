@@ -1,0 +1,200 @@
+Metadata-Version: 2.4
+Name: aionix-sdk-python
+Version: 0.1.2
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Rust
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Typing :: Typed
+Summary: AionixOne Python SDK - High-performance serverless platform client
+Keywords: aionix,aionixone,sdk,serverless,workflow,automation,agent,openact,credvault
+Author-email: AionixOne Team <contact@aionixone.com>
+License: Apache-2.0
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: Changelog, https://github.com/aionix-labs/aionix-sdk-python/blob/main/CHANGELOG.md
+Project-URL: Documentation, https://docs.aionix.one/sdk/python
+Project-URL: Homepage, https://aionix.one
+Project-URL: Repository, https://github.com/aionix-labs/aionix-sdk-python
+
+# AionixOne Python SDK
+
+High-performance Python bindings for the AionixOne platform, powered by Rust.
+
+## Installation
+
+```bash
+pip install aionix-sdk-python
+```
+
+## Quick Start
+
+```python
+import aionix
+import asyncio
+
+async def main():
+    # Connect using environment variables or explicit config
+    client = aionix.connect()
+
+    # List functions
+    functions = await client.aionixfn.list_functions()
+    for fn in functions:
+        print(fn["name"], fn["runtime"])
+
+    # Descriptor-driven execution
+    action = aionix.Action.parse(
+        "trn:aionixfn:default:function/my-func:invoke"
+    )
+    result = await client.run(action, {"key": "value"})
+    print(result["kind"])
+
+asyncio.run(main())
+```
+
+## Configuration
+
+The SDK reads configuration from environment variables:
+
+- `AIONIX_API_BASE` - API base URL (default: `http://127.0.0.1:53000`)
+- `AIONIX_TENANT` - Default tenant (default: `default`)
+- `AIONIX_AUTH_TOKEN` - Bearer token for authentication
+- `AIONIX_API_KEY` - API key for authentication (legacy)
+- `~/.aionix/credentials` - Default profile (if present)
+
+Or pass them explicitly:
+
+```python
+client = aionix.connect(
+    api_base="http://localhost:53000",
+    tenant="production",
+    api_key="ak_xxx"
+)
+```
+
+You can also specify a profile from `~/.aionix/credentials`:
+
+```python
+client = aionix.connect(profile="prod")
+```
+
+## Services
+
+| Service | Access | Description |
+|---------|--------|-------------|
+| Agent | `client.agent` | OpenAI-compatible chat completions |
+| AionixFn | `client.aionixfn` | Function management and invocation |
+| Auth | `client.auth` | API keys and policies |
+| CredVault | `client.credvault` | Credential/secret management |
+| Discovery | `client.discovery` | Operation descriptor discovery |
+| Igniter | `client.igniter` | Trigger management |
+| Ingress | `client.ingress` | Ingress routing |
+| OpenAct | `client.openact` | Action connectors |
+| Org | `client.org` | Tenants and members |
+| ParamStore | `client.paramstore` | Configuration parameters |
+| Stepflow | `client.stepflow` | Workflow execution |
+
+## Dict-First Design
+
+All APIs return standard Python `dict` and `list`, compatible with JSON output from the HTTP API and CLI:
+
+```python
+fn = await client.aionixfn.get_function("my-func")
+print(fn["trn"])        # Access via dict
+print(fn["runtime"])
+print(fn["status"])
+
+# Serialize to JSON
+import json
+print(json.dumps(fn, indent=2))
+```
+
+## Descriptor-driven Execution
+
+All execution uses `Action` and descriptor-driven routing:
+
+```python
+import aionix
+
+client = aionix.connect()
+action = aionix.Action.parse(
+    "trn:igniter:default:trigger/webhook/demo:health"
+)
+
+result = await client.run(action, {})
+print(result["kind"])  # "execute" or "invoke"
+```
+
+## Explicit Execute/Invoke
+
+```python
+import aionix
+import asyncio
+
+async def main():
+    client = aionix.connect()
+    action = aionix.Action.parse(
+        "trn:aionixfn:default:function/demo:invoke"
+    )
+    result = await client.invoke(action, {"x": 1})
+    print(result["status"])
+
+asyncio.run(main())
+```
+
+## Discovery
+
+List and search operation descriptors:
+
+```python
+ops = await client.discovery.list()
+for op in ops:
+    print(op["service"], op["resource_type"], op["operation"])
+```
+
+## Error Handling
+
+```python
+from aionix import NotFoundError, ValidationError
+
+try:
+    fn = await client.aionixfn.get_function("nonexistent")
+except NotFoundError as e:
+    print(f"Function not found: {e}")
+except ValidationError as e:
+    print(f"Invalid request: {e}")
+```
+
+## License
+
+Apache-2.0
+
+## Development
+
+Local dev install (editable build via maturin):
+
+```bash
+python -m pip install -U maturin
+maturin develop
+```
+
+Build wheels + sdist:
+
+```bash
+maturin build --release
+maturin sdist
+```
+
+Publish to PyPI (requires `MATURIN_PYPI_TOKEN`):
+
+```bash
+maturin publish
+```
+
