@@ -1,0 +1,230 @@
+//! Revolute joint, constraining two objects to rotate around a given axis.
+
+use crate::{
+    data::{JointData, JointDataWrapper, JointError},
+    joint::{JointModel, JointType, JointWrapper, PyJointWrapper},
+    limits::JointLimits,
+};
+use dynamics_spatial::{
+    configuration::Configuration,
+    motion::{SpatialMotion, SpatialRotation},
+    se3::SE3,
+    vector3d::Vector3D,
+};
+use pyo3::prelude::*;
+use rand::rngs::ThreadRng;
+
+/// Model of a revolute joint.
+///
+/// This joint constraints two objects to rotate around a given axis.
+#[derive(Clone, Debug)]
+pub struct JointModelRevolute {
+    /// The axis of rotation expressed in the local frame of the joint.
+    pub axis: Vector3D,
+    /// The joint limits.
+    pub limits: JointLimits,
+}
+
+impl JointModelRevolute {
+    /// Creates a new `JointModelRevolute` with the given axis of rotation and unbounded limits.
+    ///
+    /// # Arguments
+    ///
+    /// * `axis` - The axis of rotation expressed in the local frame of the joint.
+    ///
+    /// # Returns
+    /// A new `JointModelRevolute` object.
+    #[must_use]
+    pub fn new(axis: Vector3D) -> Self {
+        JointModelRevolute {
+            axis,
+            limits: JointLimits::new_unbounded(1),
+        }
+    }
+
+    /// Creates a new revolute joint model with `x` as axis of rotation.
+    ///
+    /// # Returns
+    /// A new `JointModelRevolute` object.
+    #[must_use]
+    pub fn new_rx() -> Self {
+        Self::new(Vector3D::x())
+    }
+
+    /// Creates a new revolute joint model with `y` as axis of rotation.
+    ///
+    /// # Returns
+    /// A new `JointModelRevolute` object.
+    #[must_use]
+    pub fn new_ry() -> Self {
+        Self::new(Vector3D::y())
+    }
+
+    /// Creates a new revolute joint model with `z` as axis of rotation.
+    ///
+    /// # Returns
+    /// A new `JointModelRevolute` object.
+    #[must_use]
+    pub fn new_rz() -> Self {
+        Self::new(Vector3D::z())
+    }
+}
+
+impl JointModel for JointModelRevolute {
+    fn get_joint_type(&self) -> JointType {
+        JointType::Revolute
+    }
+
+    fn clone_box(&self) -> JointWrapper {
+        Box::new(self.clone())
+    }
+
+    fn nq(&self) -> usize {
+        1
+    }
+
+    fn nv(&self) -> usize {
+        1
+    }
+
+    fn neutral(&self) -> Configuration {
+        Configuration::zeros(1)
+    }
+
+    fn create_joint_data(&self) -> JointDataWrapper {
+        Box::new(JointDataRevolute::new(self))
+    }
+
+    fn get_axis(&self) -> Vec<SpatialMotion> {
+        vec![SpatialMotion::from_rotational_axis(&self.axis)]
+    }
+
+    fn random_configuration(&self, rng: &mut ThreadRng) -> Configuration {
+        Configuration::random(
+            1,
+            rng,
+            &self.limits.min_configuration,
+            &self.limits.max_configuration,
+        )
+    }
+
+    fn transform(&self, q: &Configuration) -> SE3 {
+        assert_eq!(q.len(), 1, "Revolute joint model expects a single angle.");
+        let angle = q[0];
+        SE3::from_parts(
+            Vector3D::zeros(),
+            SpatialRotation::from_axis_angle(&self.axis, angle),
+        )
+    }
+}
+
+/// Data structure containing the mutable properties of a revolute joint.
+#[derive(Default, Debug)]
+pub struct JointDataRevolute {
+    /// The angle of rotation.
+    pub q: f64,
+    /// The placement of the joint in the local frame.
+    pub placement: SE3,
+}
+
+impl JointDataRevolute {
+    /// Creates a new `JointDataRevolute` from given joint model, with the initial angle set to 0.0.
+    ///
+    /// # Arguments
+    ///
+    /// * `joint_model` - The revolute joint model.
+    ///
+    /// # Returns
+    /// A new `JointDataRevolute` object.
+    #[must_use]
+    pub fn new(joint_model: &JointModelRevolute) -> Self {
+        let mut data = JointDataRevolute::default();
+        // safe since we just created a revolute joint model
+        // and we know that a revolute joint has an axis
+        let joint_model_box: JointWrapper = Box::new(joint_model.clone());
+        data.update(&joint_model_box, &Configuration::zeros(1))
+            .unwrap();
+        data
+    }
+}
+
+impl JointData for JointDataRevolute {
+    fn get_joint_placement(&self) -> SE3 {
+        self.placement
+    }
+
+    fn update(&mut self, joint_model: &JointWrapper, q: &Configuration) -> Result<(), JointError> {
+        assert_eq!(q.len(), 1, "Revolute joint model expects a single angle.");
+        let q = q[0];
+        self.q = q;
+        let axis = match joint_model.get_axis().len() {
+            1 => &joint_model.get_axis()[0],
+            _ => return Err(JointError::MissingAttributeError("axis".to_string())),
+        };
+
+        let rot = SpatialRotation::from_axis_angle(&axis.rotation(), q);
+        self.placement = rot.to_se3(&Vector3D::zeros());
+        Ok(())
+    }
+}
+
+/// Creates a new revolute joint model with `x` as axis of rotation.
+#[pyfunction(name = "JointModelRX")]
+#[must_use]
+pub fn new_rx() -> PyJointWrapper {
+    PyJointWrapper {
+        inner: Box::new(JointModelRevolute::new_rx()),
+    }
+}
+
+/// Creates a new revolute joint model with `y` as axis of rotation.
+#[pyfunction(name = "JointModelRY")]
+#[must_use]
+pub fn new_ry() -> PyJointWrapper {
+    PyJointWrapper {
+        inner: Box::new(JointModelRevolute::new_ry()),
+    }
+}
+
+/// Creates a new revolute joint model with `z` as axis of rotation.
+#[pyfunction(name = "JointModelRZ")]
+#[must_use]
+pub fn new_rz() -> PyJointWrapper {
+    PyJointWrapper {
+        inner: Box::new(JointModelRevolute::new_rz()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_joint_model_revolute() {
+        let joint = JointModelRevolute::new(Vector3D::new(1.0, 0.0, 0.0));
+        assert_eq!(joint.get_joint_type(), JointType::Revolute);
+        assert_eq!(joint.nq(), 1);
+        assert_eq!(joint.nv(), 1);
+        assert_eq!(joint.neutral(), Configuration::zeros(1));
+        let _ = joint.create_joint_data();
+        let _ = joint.get_axis();
+        let _ = joint.random_configuration(&mut rand::rng());
+    }
+
+    #[test]
+    fn test_joint_data_revolute_xaxis() {
+        let joint_model = JointModelRevolute::new(Vector3D::new(1.0, 0.0, 0.0));
+        let mut joint_data = joint_model.create_joint_data();
+        let q = Configuration::ones(1);
+        let joint_model_box: JointWrapper = Box::new(joint_model.clone());
+        joint_data.update(&joint_model_box, &q).unwrap();
+
+        assert_relative_eq!(joint_data.get_joint_placement().rotation().angle(), q[0]);
+        assert_eq!(
+            joint_data.get_joint_placement().translation(),
+            Vector3D::zeros()
+        );
+    }
+}
