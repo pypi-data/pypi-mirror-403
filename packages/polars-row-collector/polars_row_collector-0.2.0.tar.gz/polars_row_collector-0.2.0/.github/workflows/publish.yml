@@ -1,0 +1,57 @@
+name: Publish Package and Docs
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: # Enable manual trigger.
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Mandatory for OIDC.
+      contents: read
+      pages: write  # Deploy docs to GitHub Pages.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Important for versioning plugins:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.25"
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Set up Python (using uv)
+        run: uv python install
+
+      - name: Install all dependencies
+        run: uv sync --all-extras
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Build docs
+        run: uv run mkdocs build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
