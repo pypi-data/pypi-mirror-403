@@ -1,0 +1,464 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/github-banner-dark-compact.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/github-banner-light-compact.svg">
+    <img alt="dbt-unity-lineage" src="docs/assets/github-banner-light-compact.svg" width="600">
+  </picture>
+</p>
+
+<p align="center">
+  <strong>Push dbt lineage to Databricks Unity Catalog</strong>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/dbt-unity-lineage/"><img src="https://img.shields.io/pypi/v/dbt-unity-lineage.svg?cacheSeconds=3600" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/dbt-unity-lineage/"><img src="https://img.shields.io/badge/python-%3E%3D3.9-blue" alt="Python versions"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/dbt-conceptual/dbt-unity-lineage/actions/workflows/ci.yml"><img src="https://github.com/dbt-conceptual/dbt-unity-lineage/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/dbt-conceptual/dbt-unity-lineage"><img src="https://codecov.io/gh/dbt-conceptual/dbt-unity-lineage/branch/main/graph/badge.svg" alt="codecov"></a>
+</p>
+
+---
+
+
+> [!WARNING]
+> Unity Catalog External Lineage is in **Public Preview** (as of January 2026). The API may change. We'll track updates and maintain compatibility.
+
+## Why This Exists
+
+Unity Catalog shows lineage for what happens inside Databricks. But the full picture — where data comes from, where it goes — often lives somewhere else. A data catalog. A wiki page. Someone's head.
+
+Maybe you have Atlan or Alation with complete lineage. Great. But when you're in the Catalog Explorer tracing an issue, you don't want to context-switch — different app, re-authenticate, find the same table in a different UI. The information should be *here*, where you're already working.
+
+And if Unity Catalog *is* your data catalog? Then this is the only place that information can live.
+
+<p align="center">
+  <img src="docs/assets/lineage-gap-before.svg" alt="Lineage with gaps" width="600">
+</p>
+
+dbt already knows your sources and exposures. This tool pushes that metadata to Unity Catalog — so the lineage is complete, in one place, where you're already looking.
+
+<p align="center">
+  <img src="docs/assets/lineage-gap-after.svg" alt="Complete lineage" width="600">
+</p>
+
+## Installation
+
+```bash
+pip install dbt-unity-lineage
+```
+
+## Quick Start
+
+### 1. Initialize configuration
+
+```bash
+dbt-unity-lineage init
+```
+
+This creates `models/lineage/unity_lineage.yml`:
+
+```yaml
+version: 1
+
+project:
+  name: my_project
+
+configuration:
+  layers:
+    bronze:
+      sources:
+        folders:
+          - models/bronze/erp
+          - models/bronze/crm
+
+    gold:
+      exposures:
+        folders:
+          - models/gold/dashboards
+
+source_systems:
+  sap_ecc:
+    system_type: SAP
+    description: SAP ECC Production
+```
+
+### 2. Tag your sources
+
+```yaml
+# models/bronze/erp/_sources.yml
+sources:
+  - name: erp
+    meta:
+      uc_source: sap_ecc      # ← References source_systems key
+    tables:
+      - name: gl_accounts
+      - name: cost_centers
+```
+
+### 3. Validate and push
+
+```bash
+# Validate configuration
+dbt-unity-lineage validate
+
+# Scan folders to see what would be pushed
+dbt-unity-lineage scan
+
+# Push to Unity Catalog
+dbt-unity-lineage push
+```
+
+That's it. Check your lineage in Databricks Catalog Explorer.
+
+## Layer Flexibility
+
+The configuration uses **layers** to organize where you scan for sources and exposures. Layer names are completely freeform — use whatever fits your architecture.
+
+| Pattern | Example Layers |
+|---------|----------------|
+| **Medallion** | `bronze`, `silver`, `gold` |
+| **Classic DWH** | `PSA`, `DWH`, `DM` |
+| **dbt convention** | `staging`, `intermediate`, `marts` |
+| **Simple** | `raw`, `analytics` |
+
+You can define 1 layer or 50 — whatever matches your project structure. Each layer can have sources, exposures, or both.
+
+```yaml
+# Two layers? Fine.
+configuration:
+  layers:
+    raw:
+      sources:
+        folders: [models/raw]
+    analytics:
+      exposures:
+        folders: [models/analytics]
+
+# Ten layers? Also fine.
+```
+
+Our examples use medallion architecture (bronze/silver/gold) because it's common, but the tool doesn't care — it just scans the folders you point it at.
+
+## Exposures: Zero Config
+
+Exposures are scanned from your configured folders. No additional tagging needed.
+
+```yaml
+# models/gold/dashboards/_exposures.yml
+exposures:
+  - name: executive_dashboard
+    type: dashboard
+    url: https://app.powerbi.com/groups/abc/reports/xyz
+    depends_on:
+      - ref('fct_orders')
+```
+
+The tool automatically:
+- Infers `system_type: POWER_BI` from the URL
+- Creates external metadata in Unity Catalog
+- Links it to your gold tables
+
+## CLI Commands
+
+```bash
+# Initialize configuration file
+dbt-unity-lineage init
+
+# Validate configuration and folder structure
+dbt-unity-lineage validate
+
+# Scan folders and show what would be synced
+dbt-unity-lineage scan
+
+# Show current status (local vs remote)
+dbt-unity-lineage status
+
+# Push sources and exposures to Unity Catalog
+dbt-unity-lineage push
+
+# Preview changes without executing
+dbt-unity-lineage push --dry-run
+
+# Remove all project objects from Unity Catalog
+dbt-unity-lineage clean
+```
+
+### Output Formats
+
+```bash
+# Default table format
+dbt-unity-lineage scan
+
+# JSON for programmatic use
+dbt-unity-lineage scan --format json
+
+# Markdown for CI/CD summaries
+dbt-unity-lineage status --format md >> $GITHUB_STEP_SUMMARY
+```
+
+### Global Options
+
+```bash
+--project-dir PATH     # Path to dbt project directory
+--profiles-dir PATH    # Path to profiles directory
+--profile NAME         # dbt profile name
+--target NAME          # dbt target name
+--verbose              # Enable verbose output
+--quiet                # Suppress non-essential output
+--claude               # Output Claude AI context (CLAUDE.md)
+```
+
+## Configuration
+
+### Minimal
+
+```yaml
+version: 1
+
+project:
+  name: my_project
+
+configuration:
+  layers:
+    sources:
+      sources:
+        folders:
+          - models/sources
+```
+
+### Full Example (Medallion Architecture)
+
+```yaml
+version: 1
+
+project:
+  name: enterprise_analytics
+
+configuration:
+  validation:
+    require_owner: ${REQUIRE_OWNER:-false}
+    require_source_system: ${REQUIRE_SOURCE_SYSTEM:-true}
+
+  layers:
+    bronze:
+      sources:
+        folders:
+          - bronze/erp
+          - bronze/crm
+          - bronze/marketing
+      exposures:
+        folders:
+          - bronze/data_quality
+
+    silver:
+      sources:
+        folders:
+          - silver/delta_shares
+          - silver/partner_feeds
+
+    gold:
+      exposures:
+        folders:
+          - gold/dashboards
+          - gold/reports
+
+source_systems:
+  sap_s4:
+    system_type: SAP
+    description: SAP S/4HANA Finance & Logistics
+    owner: erp-team@example.com
+    url: https://sap.example.com
+    table_lineage: true
+    meta_columns:
+      - _loaded_at
+      - _load_process
+      - _record_source
+    meta:
+      environment: production
+      data_classification: confidential
+
+  salesforce_prod:
+    system_type: Salesforce
+    table_lineage: true
+    meta_columns:
+      - _extracted_at
+      - _sync_id
+
+  hubspot:
+    system_type: HubSpot
+    description: HubSpot Marketing Hub
+    owner: marketing-ops@example.com
+
+  customer_360_share:
+    system_type: Delta Share
+    description: Customer domain data product
+    owner: customer-domain@example.com
+```
+
+### Table-Level Lineage (Column Tracking)
+For sources where bronze is a 1:1 copy of the upstream system, you can opt into column-level lineage as you see on the full example above.
+
+This creates external table entities in Unity Catalog (e.g., sap_s4.gl_accounts)
+Maps columns 1:1 from source to bronze (assumes identical names)
+Excludes meta_columns from lineage — these are typically metadata columns added by your pipeline, not present in the source
+
+This is optional, and as of yet actaully not supported by the Databricks API (according to their API Documentation).
+
+>[!NOTE]
+> Column-level lineage is configured and ready, but the Unity Catalog API does not yet support it (as of January 2026). Currently this detail is only visible within the Unity Catalog UI. 
+> When the API adds support, this feature will work without config changes.
+>
+### Configuration Options
+
+| Section | Field | Required | Description |
+|---------|-------|----------|-------------|
+| `project` | `name` | Yes | Project identifier for tagging in Unity Catalog |
+| `configuration.validation` | `require_owner` | No | Require owner on sources (default: false) |
+| | `require_description` | No | Require description on sources (default: false) |
+| | `require_source_system` | No | Require `uc_source` meta on all sources (default: false) |
+| `configuration.layers.{name}` | `sources.folders` | No* | Folders to scan for sources |
+| | `exposures.folders` | No* | Folders to scan for exposures |
+| `source_systems.{key}` | `system_type` | Yes | Type of system (SAP, Salesforce, etc.) |
+| | `description` | No | Human-readable description |
+| | `owner` | No | Contact email |
+| | `url` | No | URL to source system |
+| | `table_lineage` | No | Enable table-level lineage (default: false) |
+| | `meta_columns` | No | Columns to exclude from lineage |
+| | `meta` | No | Custom key-value properties |
+
+*Each layer needs at least one of `sources` or `exposures`.
+
+### Environment Variables
+
+Validation settings support ENV vars for CI/CD flexibility:
+
+```yaml
+configuration:
+  validation:
+    require_owner: ${REQUIRE_OWNER:-false}
+    require_source_system: ${REQUIRE_SOURCE_SYSTEM:-true}
+```
+
+```bash
+# Local dev - permissive
+dbt-unity-lineage push
+
+# CI/CD - strict
+REQUIRE_OWNER=true REQUIRE_SOURCE_SYSTEM=true dbt-unity-lineage push
+```
+
+## CI/CD Integration
+
+```yaml
+- name: Validate lineage config
+  run: dbt-unity-lineage validate --format md >> $GITHUB_STEP_SUMMARY
+
+- name: Push lineage
+  run: dbt-unity-lineage push --target prod
+  env:
+    DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+- name: Post status to PR
+  run: dbt-unity-lineage status --format md >> $GITHUB_STEP_SUMMARY
+```
+
+## How It Works
+
+### Ownership Tracking
+
+Every object created includes ownership metadata:
+
+```json
+{
+  "properties": {
+    "dbt_unity_lineage_managed": "true",
+    "dbt_unity_lineage_project": "my_project"
+  }
+}
+```
+
+This ensures safe updates, multi-project support, and clean removal of orphaned objects.
+
+### Idempotent Pushes
+
+Run `push` as many times as you want:
+- New objects are created
+- Changed objects are updated
+- Removed objects are deleted
+- Objects from other tools/projects are ignored
+
+### System Type Detection
+
+For exposures, system type is inferred from URL:
+
+| URL Contains | System Type |
+|-------------|-------------|
+| `powerbi.com` | `POWER_BI` |
+| `tableau.com` | `TABLEAU` |
+| `looker.com` | `LOOKER` |
+| `salesforce.com` | `SALESFORCE` |
+
+For sources, common aliases are normalized:
+
+| Input | Normalized |
+|-------|------------|
+| `sap`, `sap_ecc`, `sap_hana` | `SAP` |
+| `salesforce`, `sfdc` | `SALESFORCE` |
+| `postgresql`, `postgres` | `POSTGRESQL` |
+| `powerbi`, `power_bi` | `POWER_BI` |
+
+Unknown values default to `CUSTOM`.
+
+## Required Permissions
+
+Your Databricks service principal needs:
+
+| Permission | Scope | Purpose |
+|------------|-------|---------|
+| `CREATE EXTERNAL METADATA` | Metastore | Create objects |
+| `MODIFY` | External metadata | Update/delete |
+
+## Profile Configuration
+
+The tool reads connection details from your dbt `profiles.yml`:
+
+```yaml
+my_project:
+  target: prod
+  outputs:
+    prod:
+      type: databricks
+      host: dbc-abc123.cloud.databricks.com
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      catalog: main
+```
+
+## Related Projects
+
+<p>
+  <a href="https://github.com/dbt-conceptual/dbt-conceptual">
+    <img src="docs/assets/badge-dbt-conceptual.svg" alt="dbt-conceptual" height="28">
+  </a>
+</p>
+
+## Contributing
+
+Contributions welcome! Please read our [contributing guidelines](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+<p align="center">
+  <sub>Lineage that stops at bronze isn't lineage — it's the middle of the story.</sub>
+</p>
+
+
+---
+
+<p align="center">
+  <sub>Built with the belief that lineage shouldn't stop at your warehouse boundary.</sub>
+</p>
