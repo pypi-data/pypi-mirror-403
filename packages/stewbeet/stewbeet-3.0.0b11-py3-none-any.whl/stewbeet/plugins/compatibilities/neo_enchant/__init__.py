@@ -1,0 +1,30 @@
+
+# Imports
+import stouputils as stp
+from beet import BlockTag, Context
+from beet.core.utils import JsonDict
+
+from ....core.__memory__ import Mem
+from ....core.cls.block import VANILLA_BLOCK_FOR_ORES
+from ....core.constants import VANILLA_BLOCK
+
+
+# Main entry point
+@stp.measure_time(message="Execution time of 'stewbeet.plugins.compatibilities.neo_enchant'")
+def beet_default(ctx: Context):
+	""" Main entry point for the NeoEnchant compatibility plugin.
+	This plugin sets up NeoEnchant's Veinminer compatibility.
+
+	Args:
+		ctx (Context): The beet context.
+	"""
+	if Mem.ctx is None: # pyright: ignore[reportUnnecessaryComparison]
+		Mem.ctx = ctx
+
+	# If any block use the vanilla block for ores, add the compatibility
+	if any(VANILLA_BLOCK_FOR_ORES == data.get(VANILLA_BLOCK) for data in Mem.definitions.values()):
+
+		# Add the block to veinminer tag
+		tag_content: JsonDict = {"values": [VANILLA_BLOCK_FOR_ORES["id"]]}
+		Mem.ctx.data["enchantplus"].block_tags["veinminer"] = BlockTag(stp.json_dump(tag_content))
+
