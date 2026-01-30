@@ -1,0 +1,338 @@
+Metadata-Version: 2.4
+Name: lumyn-sdk
+Version: 4.1.1
+Summary: Python SDK for Lumyn Labs ConnectorX LED controllers
+Author: Lumyn Labs
+Author-email: Lumyn Labs <support@lumynlabs.com>
+License: Proprietary
+Project-URL: Homepage, https://lumynlabs.com
+Project-URL: Documentation, https://docs.lumynlabs.com
+Project-URL: Repository, https://github.com/Lumyn-Labs/lumyn-sdk-python
+Project-URL: Issues, https://github.com/Lumyn-Labs/lumyn-sdk-python/issues
+Keywords: lumyn,connectorx,led,frc,robotics,animation
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: Other/Proprietary License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Hardware
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyserial>=3.5
+Dynamic: author
+Dynamic: license-file
+Dynamic: requires-python
+
+# lumyn-sdk-python
+
+Cross-platform Python SDK
+
+## Building
+
+### Prerequisites
+
+- Python 3.8+
+- CMake 3.15+
+- C++20 compatible compiler (MSVC 2019+, GCC 10+, Clang 10+)
+- pybind11 (installed automatically via build dependencies)
+
+### Build Wheel
+
+```bash
+# Standard build
+pip wheel . --no-deps -w dist
+
+# Parallel build (faster)
+CMAKE_BUILD_PARALLEL_LEVEL=16 pip wheel . --no-deps -w dist
+
+# PowerShell (Windows)
+$env:CMAKE_BUILD_PARALLEL_LEVEL=16; pip wheel . --no-deps -w dist
+```
+
+### Install
+
+```bash
+pip install dist/lumyn_sdk-*.whl
+
+# Or force reinstall
+pip install --force-reinstall dist/lumyn_sdk-*.whl
+```
+
+### Development Install
+
+```bash
+pip install -e .
+```
+
+## Device Classes
+
+The SDK provides three device classes organized in a hierarchy:
+
+### ConnectorXBase (Abstract Base Class)
+
+`ConnectorXBase` is an abstract base class that provides common functionality for all device types:
+- Connection management (USB/serial)
+- Event handling and polling
+- Configuration request/apply
+- Device control (restart, status)
+
+**Do not instantiate this class directly.** Use one of the concrete subclasses instead.
+
+### ConnectorX (Full-Featured Device)
+
+`ConnectorX` extends `ConnectorXBase` and provides full-featured device support:
+
+**Features:**
+- ✓ USB connections
+- ✓ UART connections
+- ✓ LED control
+- ✓ DirectLED (efficient buffer updates)
+- ✓ Module/sensor data
+- ✓ Module handlers
+
+**When to use:**
+- Devices with sensors/modules
+- When you need UART connectivity
+- Full-featured applications
+
+**Example:**
+```python
+from lumyn_sdk import ConnectorX
+
+cx = ConnectorX()
+cx.connect_usb("COM3")
+
+# LED control
+cx.leds.set_color("zone1", (255, 0, 0))
+
+# Module access
+cx.modules.register_module("sensor1", callback)
+
+# UART connection
+cx.connect_uart("/dev/ttyS0", 115200)
+```
+
+### ConnectorXAnimate (LED-Only Device)
+
+`ConnectorXAnimate` extends `ConnectorXBase` and provides a simplified LED-only interface:
+
+**Features:**
+- ✓ USB connections
+- ✓ LED control
+- ✓ DirectLED (efficient buffer updates)
+- ✗ UART connections (not supported)
+- ✗ Module/sensor data (not supported)
+
+**When to use:**
+- LED-only devices
+- Simpler applications without sensor needs
+- When you want a cleaner API without module-related methods
+
+**Example:**
+```python
+from lumyn_sdk import ConnectorXAnimate
+
+cx_animate = ConnectorXAnimate()
+cx_animate.connect_usb("COM3")
+
+# LED control (same API as ConnectorX)
+cx_animate.leds.set_color("zone1", (255, 0, 0))
+cx_animate.leds.set_animation("zone1", Animation.Breathe, (0, 255, 0), 30)
+
+# DirectLED works the same way
+direct_led = cx_animate.leds.create_direct_led("zone1", 60)
+direct_led.update(buffer)
+```
+
+### Feature Comparison
+
+| Feature | ConnectorX | ConnectorXAnimate |
+|---------|------------|-------------------|
+| USB Connection | ✓ | ✓ |
+| UART Connection | ✓ | ✗ |
+| LED Control | ✓ | ✓ |
+| DirectLED | ✓ | ✓ |
+| Module Data | ✓ | ✗ |
+| Module Handlers | ✓ | ✗ |
+| Event Handling | ✓ | ✓ |
+| Configuration | ✓ | ✓ |
+
+### DirectLED Support
+
+DirectLED is available for both device types through the `LedHandler`:
+
+```python
+# Works with ConnectorX
+cx = ConnectorX()
+direct_led = cx.leds.create_direct_led("zone1", num_leds=64, full_refresh_interval=30)
+direct_led.update(buffer)
+
+# Works with ConnectorXAnimate (same API)
+cx_animate = ConnectorXAnimate()
+direct_led = cx_animate.leds.create_direct_led("zone1", num_leds=64, full_refresh_interval=30)
+direct_led.update(buffer)
+```
+
+See [`examples/screen_mirror.py`](examples/screen_mirror.py) for a complete DirectLED example with delta compression.
+
+## Configuration Builder API
+
+The SDK provides a fluent builder API for creating device configurations programmatically, matching the Java vendordep API exactly.
+
+### Basic Usage
+
+```python
+from lumyn_sdk import ConfigBuilder, NetworkType, SerializeConfigToJson, ConnectorX
+
+# Create a configuration
+config = ConfigBuilder() \
+    .ForTeam("9999") \
+    .SetNetworkType(NetworkType.USB) \
+    .AddChannel(0, "channel_0", 144) \
+        .Brightness(255) \
+        .AddStripZone("main", 144, False) \
+        .EndChannel() \
+    .AddGroup("all_leds") \
+        .AddZone("main") \
+        .EndGroup() \
+    .Build()
+
+# Save to file
+with open("my_config.json", "w") as f:
+    f.write(SerializeConfigToJson(config))
+
+# Apply to device
+cx = ConnectorX()
+cx.connect("COM3")
+cx.apply_configuration(config)
+```
+
+### Advanced Configuration
+
+```python
+from lumyn_sdk import ConfigBuilder, NetworkType
+
+config = ConfigBuilder() \
+    .ForTeam("9999") \
+    .SetNetworkType(NetworkType.UART) \
+    .SetBaudRate(115200) \
+    \
+    .AddChannel(0, "ch0", 144) \
+        .Brightness(255) \
+        .AddStripZone("front", 60, False) \
+        .AddStripZone("rear", 84, True) \
+        .EndChannel() \
+    .AddChannel(1, "ch1", 64) \
+        .AddMatrixZone("matrix1", 8, 8, 100) \
+        .EndChannel() \
+    \
+    .AddSequence("startup") \
+        .AddStep("FadeIn") \
+            .WithColor(0, 255, 0) \
+            .WithDelay(30) \
+            .WithRepeat(1) \
+            .EndStep() \
+        .AddStep("Fill") \
+            .WithColor(0, 255, 0) \
+            .WithDelay(-1) \
+            .EndStep() \
+        .EndSequence() \
+    \
+    .AddBitmap("logo") \
+        .Static("logo.bmp") \
+        .EndBitmap() \
+    .AddBitmap("pikachu") \
+        .Animated("pikachu_16x16", 100) \
+        .EndBitmap() \
+    \
+    .AddModule("distance_sensor", "VL53L1X", 50, "I2C") \
+        .WithConfig("address", "0x29") \
+        .EndModule() \
+    \
+    .AddGroup("all_strips") \
+        .AddZone("front") \
+        .AddZone("rear") \
+        .EndGroup() \
+    \
+    .Build()
+```
+
+### Loading Configurations
+
+```python
+from lumyn_sdk import ParseConfig, ConnectorX
+
+# Load from file
+config = ParseConfig(open("my_config.json").read())
+
+# Or use helper method
+cx = ConnectorX()
+config = cx.load_configuration_from_file("my_config.json")
+
+# Request current config from device
+config = cx.request_config()  # Returns LumynConfiguration object
+if config:
+    print(f"Team: {config.teamNumber if config.teamNumber else 'N/A'}")
+    print(f"Channels: {len(config.channels) if config.channels else 0}")
+```
+
+### Builder API Reference
+
+**ConfigBuilder** (root builder):
+- `ForTeam(team_number)` - Set team number
+- `SetNetworkType(type)` - Set network type (USB, UART, I2C)
+- `SetBaudRate(baud)` - Set UART baud rate (validates allowed values)
+- `AddChannel(num, id, length)` - Add channel (returns ChannelBuilder)
+- `AddSequence(id)` - Add sequence (returns SequenceBuilder)
+- `AddBitmap(id)` - Add bitmap (returns BitmapBuilder)
+- `AddModule(id, type, rate, conn)` - Add module (returns ModuleBuilder)
+- `AddGroup(id)` - Add group (returns GroupBuilder)
+- `Build()` - Build final LumynConfiguration
+
+**ChannelBuilder**:
+- `Brightness(value)` - Set channel brightness (0-255)
+- `AddStripZone(id, length, reversed, brightness)` - Add strip zone
+- `AddMatrixZone(id, rows, cols, brightness, orientation)` - Add matrix zone
+- `EndChannel()` - Complete channel, return to ConfigBuilder
+
+**SequenceBuilder**:
+- `AddStep(animation_id)` - Add step (returns StepBuilder)
+- `EndSequence()` - Complete sequence, return to ConfigBuilder
+
+**StepBuilder**:
+- `WithColor(r, g, b)` - Set animation color (0-255)
+- `WithDelay(ms)` - Set frame delay
+- `Reverse(reversed)` - Set animation direction
+- `WithRepeat(count)` - Set repeat count (0 = infinite)
+- `EndStep()` - Complete step, return to SequenceBuilder
+
+**BitmapBuilder**:
+- `Static(path)` - Set as static bitmap
+- `Animated(folder, delay_ms)` - Set as animated bitmap sequence
+- `EndBitmap()` - Complete bitmap, return to ConfigBuilder
+
+**ModuleBuilder**:
+- `WithConfig(key, value)` - Add configuration key-value pair
+- `EndModule()` - Complete module, return to ConfigBuilder
+
+**GroupBuilder**:
+- `AddZone(zone_id)` - Add zone ID to group
+- `EndGroup()` - Complete group, return to ConfigBuilder
+
+**Note:** The configuration API uses C++ PascalCase naming to match the Java vendordep and C++ implementation.
+
+### Examples
+
+- [`examples/config_builder_basic.py`](examples/config_builder_basic.py) - Basic configuration builder usage
+- [`examples/config_builder_advanced.py`](examples/config_builder_advanced.py) - Advanced configuration with all features
+- [`examples/connectorx_basic.py`](examples/connectorx_basic.py) - Basic ConnectorX usage
+- [`examples/connectorx_animate.py`](examples/connectorx_animate.py) - ConnectorXAnimate usage
+- [`examples/device_comparison.py`](examples/device_comparison.py) - Compare device classes
+- [`examples/screen_mirror.py`](examples/screen_mirror.py) - DirectLED with screen mirroring
