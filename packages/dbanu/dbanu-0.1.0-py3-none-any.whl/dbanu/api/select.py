@@ -1,0 +1,187 @@
+import inspect
+import traceback
+from typing import Any, Callable, Type, TypeVar
+
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, Query
+from pydantic import BaseModel, Field, create_model
+
+from dbanu.api.dependencies import create_wrapped_dependencies
+from dbanu.core.engine import QueryContext, SelectEngine
+from dbanu.core.middleware import (
+    Middleware,
+    create_middleware_chain,
+    validate_middlewares,
+)
+from dbanu.core.response import create_select_response_model
+from dbanu.utils.filter import enhance_select_filter
+from dbanu.utils.param import get_parsed_count_params, get_parsed_select_params
+from dbanu.utils.string import to_var_name
+
+Filter = TypeVar("Filter", bound=BaseModel)
+
+
+def serve_select(
+    app: FastAPI,
+    query_engine: SelectEngine,
+    select_query: str | Callable[[Filter], str],
+    select_param: Callable[[Filter, int, int], list[Any]] | list[str] | None = None,
+    count_query: str | Callable[[Filter], str] | None = None,
+    count_param: Callable[[Filter], list[Any]] | list[str] | None = None,
+    param: Callable[[Filter], list[Any]] | list[str] | None = None,
+    path: str = "/get",
+    methods: list[str] | None = None,
+    filter_model: Type[BaseModel] | None = None,
+    data_model: Type[BaseModel] | None = None,
+    response_model: Type[BaseModel] | None = None,
+    dependencies: list[Any] | None = None,
+    middlewares: list[Middleware] | None = None,
+    name: str | None = None,
+    summary: str | None = None,
+    description: str | None = None,
+    default_limit: int | None = None,
+):
+    """
+    Adding fastapi route to app with proper annotation:
+    - taking filter_model as parameter
+    - return pydantic model with two property:
+        - data (data_model)
+        - count (int)
+    - supports dependencies (via dependencies parameter):
+        * Dependencies whose results are stored in request state for middleware access
+        * Results available via context.dependency_results in middleware
+    - supports middleware system
+    """
+    methods = ["GET"] if methods is None else [m.upper() for m in methods]
+    var_name = to_var_name(name, path)
+    if filter_model is None:
+        filter_model = create_model(
+            "FilterModel" if var_name is None else f"{var_name.capitalize()}Filter",
+        )
+    filter_model = enhance_select_filter(filter_model, default_limit)
+    if response_model is None:
+        response_model = create_select_response_model(
+            "ResponseModel" if var_name is None else f"{var_name.capitalize()}Response",
+            data_model,
+        )
+    all_dependencies = create_wrapped_dependencies(dependencies)
+    # Validate that all middlewares are async functions
+    validate_middlewares(middlewares)
+
+    # Create the actual handler function
+    async def handle_request(
+        request: Request,
+        filter_data: filter_model,  # type: ignore
+    ):
+        """Select handler"""
+        # Get params from filters
+        limit = getattr(filter_data, "limit", 100)
+        offset = getattr(filter_data, "offset", 0)
+        # Extract dependency results from request state
+        dependency_results = {}
+        if request and hasattr(request.state, "dependency_results"):
+            dependency_results = request.state.dependency_results
+        # Build initial select parameters
+        select_query_str = (
+            select_query(filter_data) if callable(select_query) else select_query
+        )
+        parsed_select_params = get_parsed_select_params(
+            filter_data, limit, offset, select_param, param
+        )
+        # Build initial count parameters
+        count_query_str = (
+            count_query(filter_data) if callable(count_query) else count_query
+        )
+        parsed_count_params = get_parsed_count_params(filter_data, count_param, param)
+        # Create initial QueryContext
+        initial_context = QueryContext(
+            select_query=select_query_str,
+            select_params=parsed_select_params,
+            count_query=count_query_str,
+            count_params=parsed_count_params,
+            filters=filter_data,
+            limit=limit,
+            offset=offset,
+            dependency_results=dependency_results,
+        )
+        query_processor = _create_query_processor(query_engine, response_model)
+        handler = create_middleware_chain(middlewares, query_processor)
+        return await handler(initial_context)
+
+    # Register routes based on methods
+    if "GET" in methods:
+
+        @app.get(
+            path,
+            response_model=response_model,
+            dependencies=all_dependencies,
+            name=None if name is None else f"{name}Get",
+            summary=summary,
+            description=description,
+        )
+        async def get_handler(
+            request: Request,
+            filters: filter_model = Depends(),  # type: ignore
+        ):
+            """Select route (generated by dbAnu)"""
+            try:
+                return await handle_request(request, filters)
+            except Exception as e:
+                traceback.print_exc()
+                raise HTTPException(500, f"{e}")
+
+    # Register other methods (POST, PUT, etc.)
+    other_methods = [m for m in methods if m != "GET"]
+    if other_methods:
+        # Create a single route for all non-GET methods
+        @app.api_route(
+            path,
+            methods=other_methods,
+            response_model=response_model,
+            dependencies=all_dependencies,
+            name=name,
+            summary=summary,
+            description=description,
+        )
+        async def non_get_handler(
+            request: Request,
+            filters: filter_model = Body(),  # type: ignore
+            limit: int | None = Query(None),
+            offset: int | None = Query(None),
+        ):
+            """Select route (generated by dbAnu)"""
+            try:
+                if limit is not None:
+                    filters.limit = limit
+                if offset is not None:
+                    filters.offset = offset
+                return await handle_request(request, filters)
+            except Exception as e:
+                traceback.print_exc()
+                raise HTTPException(500, f"{e}")
+
+
+def _create_query_processor(
+    query_engine: SelectEngine, response_model: type[BaseModel]
+):
+    """Create a query processor for the middleware chain"""
+
+    async def process_query(context: QueryContext):
+        select_params = context.select_params or []
+        # Check if select method is a coroutine
+        select_method = query_engine.select
+        if inspect.iscoroutinefunction(select_method):
+            data = await select_method(context.select_query, *select_params)
+        else:
+            data = select_method(context.select_query, *select_params)
+        if context.count_query:
+            count_params = context.count_params or []
+            # Check if select_count method is a coroutine
+            select_count_method = query_engine.select_count
+            if inspect.iscoroutinefunction(select_count_method):
+                total = await select_count_method(context.count_query, *count_params)
+            else:
+                total = select_count_method(context.count_query, *count_params)
+            return response_model(data=data, count=total)
+        return response_model(data=data, count=len(data))
+
+    return process_query
