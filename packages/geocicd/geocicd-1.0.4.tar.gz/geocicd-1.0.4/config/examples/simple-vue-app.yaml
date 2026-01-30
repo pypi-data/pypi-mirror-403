@@ -1,0 +1,183 @@
+# Example: Simple Vue.js Application
+# This example shows a basic Vue.js frontend application with Docker deployment
+
+# Import GeoSystems defaults
+imports:
+  - path: "../geosystems-defaults.yaml"
+    as: "geosystems"
+
+# Project information
+project:
+  name: "visit-tuscany"
+  description: "Tourism portal for Tuscany region"
+  version: "1.2.0"
+  organization: "geosystems"
+
+# Single Vue.js component
+components:
+  - name: "frontend"
+    type: "vue"
+    path: "."
+    nodeVersion: "18"
+    
+    # Change detection for this component
+    changeDetection:
+      enabled: true
+      paths:
+        - "src/**"
+        - "public/**"
+        - "package.json"
+        - "package-lock.json"
+      excludePaths:
+        - "**/*.test.js"
+        - "**/*.spec.js"
+        - "**/README.md"
+    
+    # Build configuration
+    build:
+      enabled: true
+      commands:
+        - "npm ci"
+        - "npm run build"
+      cache:
+        paths:
+          - "node_modules/"
+          - ".npm/"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      # Docker artifact
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "Dockerfile"
+          context: "."
+          baseImage: "nginx:alpine"
+          nginxTemplate: "nginx_conf_base"
+          buildArgs:
+            NODE_ENV: "production"
+    
+    # Deployment configuration
+    deploy:
+      enabled: true
+      replicas: 2
+      
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+      
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 5
+        targetCPUUtilizationPercentage: 70
+      
+      probes:
+        liveness:
+          enabled: true
+          type: "http"
+          path: "/health"
+          port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readiness:
+          enabled: true
+          type: "http"
+          path: "/ready"
+          port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      
+      service:
+        enabled: true
+        type: "ClusterIP"
+        port: 80
+        targetPort: 80
+      
+      ingress:
+        enabled: true
+        className: "nginx"
+        host: "visit-tuscany.geosystems.it"
+        path: "/"
+        pathType: "Prefix"
+        tls:
+          enabled: true
+          secretName: "visit-tuscany-tls"
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      
+      env:
+        - name: "VUE_APP_API_URL"
+          value: "https://api.visit-tuscany.geosystems.it"
+        - name: "VUE_APP_ENV"
+          value: "production"
+    
+    # Kubernetes advanced configuration
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "visit-tuscany-frontend"
+        chartVersion: "1.2.0"
+      
+      resources:
+        - type: "configmap"
+          name: "frontend-config"
+          fromFile: "conf/nginx.conf"
+          mountPath: "/etc/nginx/nginx.conf"
+          subPath: "nginx.conf"
+        
+        - type: "secret"
+          name: "frontend-tls"
+          secretType: "tls"
+          fromDirectory: "ssl/"
+          certPattern: "*.crt,*.pem"
+          keyPattern: "*.key"
+    
+    # SonarQube for this component
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:visit-tuscany:frontend"
+      sources: "src"
+      exclusions:
+        - "src/**/*.test.js"
+        - "src/**/*.spec.js"
+        - "node_modules/**"
+        - "dist/**"
+
+# Override environment-specific settings
+environments:
+  dev:
+    argocd:
+      application:
+        autoSync: true
+  
+  stg:
+    argocd:
+      application:
+        autoSync: true
+  
+  ese:
+    argocd:
+      application:
+        autoSync: false
+
+# Documentation generation
+components:
+  - name: "frontend"
+    build:
+      documentation:
+        enabled: true
+        type: "jsdoc"
+        command: "npm run docs"
+        outputDir: "docs"
+        deploy:
+          enabled: true
+          method: "gitlab-pages"

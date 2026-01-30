@@ -1,0 +1,479 @@
+# Example: Java Microservices Architecture
+# This example shows multiple Java microservices with Maven builds
+
+# Import GeoSystems defaults
+imports:
+  - path: "../geosystems-defaults.yaml"
+    as: "geosystems"
+
+# Project information
+project:
+  name: "ecommerce-platform"
+  description: "E-commerce microservices platform"
+  version: "2.5.0"
+  organization: "geosystems"
+
+# Multiple microservice components
+components:
+  # API Gateway Service
+  - name: "api-gateway"
+    type: "maven"
+    path: "services/api-gateway"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "services/api-gateway/**"
+        - "shared-libs/**"
+      excludePaths:
+        - "**/target/**"
+        - "**/*.md"
+    
+    build:
+      enabled: true
+      commands:
+        - "mvn clean package -DskipTests=false"
+      
+      # Outputs
+      outputs:
+        - docker
+        - artifact
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "Dockerfile"
+          context: "."
+          baseImage: "eclipse-temurin:17-jre"
+          buildArgs:
+            JAR_FILE: "target/api-gateway-2.5.0.jar"
+            JAVA_OPTS: "-Xmx512m -Xms256m"
+    
+    deploy:
+      enabled: true
+      replicas: 3
+      
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "2000m"
+          memory: "1Gi"
+      
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 75
+        targetMemoryUtilizationPercentage: 80
+      
+      probes:
+        liveness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/liveness"
+          port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readiness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/readiness"
+          port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startup:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/startup"
+          port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 30
+      
+      service:
+        enabled: true
+        type: "ClusterIP"
+        port: 80
+        targetPort: 8080
+        extraPorts:
+          - name: "management"
+            port: 9090
+            targetPort: 9090
+      
+      ingress:
+        enabled: true
+        className: "nginx"
+        host: "api.ecommerce.geosystems.it"
+        path: "/"
+        pathType: "Prefix"
+        tls:
+          enabled: true
+          secretName: "api-gateway-tls"
+        annotations:
+          nginx.ingress.kubernetes.io/rate-limit: "100"
+          nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+      
+      env:
+        - name: "SPRING_PROFILES_ACTIVE"
+          value: "production"
+        - name: "JAVA_OPTS"
+          value: "-Xmx512m -Xms256m -XX:+UseG1GC"
+        - name: "DB_HOST"
+          valueFrom:
+            secretKeyRef:
+              name: "database-credentials"
+              key: "host"
+        - name: "DB_PASSWORD"
+          valueFrom:
+            secretKeyRef:
+              name: "database-credentials"
+              key: "password"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "api-gateway"
+        chartVersion: "2.5.0"
+      
+      resources:
+        - type: "configmap"
+          name: "api-gateway-config"
+          fromDirectory: "conf/"
+          filePattern: "*.properties,*.yml"
+          mountPath: "/app/config"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:ecommerce:api-gateway"
+      sources: "src/main/java"
+      exclusions:
+        - "src/test/**"
+        - "target/**"
+
+  # Order Service
+  - name: "order-service"
+    type: "maven"
+    path: "services/order-service"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "services/order-service/**"
+        - "shared-libs/**"
+      excludePaths:
+        - "**/target/**"
+    
+    build:
+      enabled: true
+      commands:
+        - "mvn clean package -DskipTests=false"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "Dockerfile"
+          context: "."
+          baseImage: "eclipse-temurin:17-jre"
+          buildArgs:
+            JAR_FILE: "target/order-service-2.5.0.jar"
+    
+    deploy:
+      enabled: true
+      replicas: 2
+      
+      resources:
+        requests:
+          cpu: "300m"
+          memory: "512Mi"
+        limits:
+          cpu: "1000m"
+          memory: "1Gi"
+      
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 8
+        targetCPUUtilizationPercentage: 70
+      
+      probes:
+        liveness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/liveness"
+          port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readiness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/readiness"
+          port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+      
+      service:
+        enabled: true
+        type: "ClusterIP"
+        port: 80
+        targetPort: 8080
+      
+      env:
+        - name: "SPRING_PROFILES_ACTIVE"
+          value: "production"
+        - name: "KAFKA_BOOTSTRAP_SERVERS"
+          value: "kafka.infrastructure.svc.cluster.local:9092"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "order-service"
+        chartVersion: "2.5.0"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:ecommerce:order-service"
+      sources: "src/main/java"
+
+  # Payment Service
+  - name: "payment-service"
+    type: "maven"
+    path: "services/payment-service"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "services/payment-service/**"
+        - "shared-libs/**"
+      excludePaths:
+        - "**/target/**"
+    
+    build:
+      enabled: true
+      commands:
+        - "mvn clean package -DskipTests=false"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "Dockerfile"
+          context: "."
+          baseImage: "eclipse-temurin:17-jre"
+          buildArgs:
+            JAR_FILE: "target/payment-service-2.5.0.jar"
+    
+    deploy:
+      enabled: true
+      replicas: 2
+      
+      resources:
+        requests:
+          cpu: "300m"
+          memory: "512Mi"
+        limits:
+          cpu: "1000m"
+          memory: "1Gi"
+      
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 6
+        targetCPUUtilizationPercentage: 70
+      
+      probes:
+        liveness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/liveness"
+          port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readiness:
+          enabled: true
+          type: "http"
+          path: "/actuator/health/readiness"
+          port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+      
+      service:
+        enabled: true
+        type: "ClusterIP"
+        port: 80
+        targetPort: 8080
+      
+      env:
+        - name: "SPRING_PROFILES_ACTIVE"
+          value: "production"
+        - name: "PAYMENT_GATEWAY_URL"
+          valueFrom:
+            secretKeyRef:
+              name: "payment-credentials"
+              key: "gateway-url"
+        - name: "PAYMENT_API_KEY"
+          valueFrom:
+            secretKeyRef:
+              name: "payment-credentials"
+              key: "api-key"
+      
+      secrets:
+        - "payment-credentials"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "payment-service"
+        chartVersion: "2.5.0"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:ecommerce:payment-service"
+      sources: "src/main/java"
+
+  # Notification Service (CronJob)
+  - name: "notification-service"
+    type: "maven"
+    path: "services/notification-service"
+    
+    changeDetection:
+      enabled: true
+      paths:
+        - "services/notification-service/**"
+      excludePaths:
+        - "**/target/**"
+    
+    build:
+      enabled: true
+      commands:
+        - "mvn clean package -DskipTests=false"
+      
+      # Outputs
+      outputs:
+        - docker
+      
+      artifacts:
+        type: "docker"
+        docker:
+          dockerfile: "Dockerfile"
+          context: "."
+          baseImage: "eclipse-temurin:17-jre"
+    
+    deploy:
+      enabled: true
+      deploymentTypes:
+        - "cronjob"
+      
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "256Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+      
+      cronjob:
+        schedule: "0 */6 * * *"
+        timezone: "Europe/Rome"
+        suspend: false
+        concurrencyPolicy: "Forbid"
+        successfulJobsHistoryLimit: 3
+        failedJobsHistoryLimit: 5
+        startingDeadlineSeconds: 300
+        jobTemplate:
+          backoffLimit: 3
+          activeDeadlineSeconds: 3600
+          ttlSecondsAfterFinished: 86400
+          restartPolicy: "OnFailure"
+      
+      env:
+        - name: "SPRING_PROFILES_ACTIVE"
+          value: "production"
+        - name: "SMTP_HOST"
+          valueFrom:
+            configMapKeyRef:
+              name: "smtp-config"
+              key: "host"
+    
+    kubernetes:
+      helm:
+        generate: true
+        chartName: "notification-service"
+        chartVersion: "2.5.0"
+    
+    sonarqube:
+      enabled: true
+      projectKey: "geosystems:ecommerce:notification-service"
+      sources: "src/main/java"
+
+# Environment-specific overrides
+environments:
+  dev:
+    argocd:
+      application:
+        autoSync: true
+  
+  stg:
+    argocd:
+      application:
+        autoSync: true
+  
+  ese:
+    argocd:
+      application:
+        autoSync: false
+
+# Enhanced SonarQube configuration for microservices
+sonarqube:
+  enabled: true
+  server: "https://sonarqube.geosystems.it"
+  token: "SONARQUBE_TOKEN"
+  
+  qualityGates:
+    coverage:
+      enabled: true
+      threshold: 80
+      operator: "GTE"
+    bugs:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    vulnerabilities:
+      enabled: true
+      threshold: 0
+      operator: "EQ"
+    codeSmells:
+      enabled: true
+      threshold: 50
+      operator: "LTE"
+    duplicatedLinesDensity:
+      enabled: true
+      threshold: 3
+      operator: "LTE"
+  
+  acceptableFailures:
+    - "codeSmells"
+  
+  onFailure:
+    dev:
+      allowFailure: true
+      blockDeploy: false
+    stg:
+      allowFailure: false
+      blockDeploy: true
+    ese:
+      allowFailure: false
+      blockDeploy: true
