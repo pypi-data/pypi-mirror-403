@@ -1,0 +1,27 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: example-function-get-credential-data
+spec:
+  compositeTypeRef:
+    apiVersion: example.crossplane.io/v1beta1
+    kind: XR
+  mode: Pipeline
+  pipeline:
+  - step: render-templates
+    functionRef:
+      name: function-pythonic
+    credentials:
+    - name: foo-creds
+      source: Secret
+      secretRef:
+        namespace: default
+        name: foo-creds
+    input:
+      apiVersion: pythonic.fn.crossplane.io/v1alpha1
+      kind: Composite
+      composite: |
+        class Composite(BaseComposite):
+          def compose(self):
+            self.context.username = self.credentials['foo-creds'].username
+            self.context.password = self.credentials['foo-creds'].password

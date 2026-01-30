@@ -1,0 +1,31 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: go-template-context.example.crossplane.io
+spec:
+  compositeTypeRef:
+    apiVersion: example.crossplane.io/v1
+    kind: XR
+  mode: Pipeline
+  pipeline:
+
+  - step: python-update-conditions
+    functionRef:
+      name: function-pythonic
+    input:
+      apiVersion: pythonic.fn.crossplane.io/v1alpha1
+      kind: Composite
+      composite: |
+        class Composite(BaseComposite):
+          def compose(self):
+            self.environment.complex = self.requireds['example-config'](
+              'apiextensions.crossplane.io/v1alpha1',
+              'EnvironmentConfig',
+              name='example-config',
+            )[0].data.complex
+            self.environment.update = 'environment'
+            self.environment.nestedEnvUpdate.hello = 'world'
+            self.environment.array = ['1', '2']
+            self.context['other-context-key'].complex = self.environment.complex
+            self.context.newKey.hello = 'world'
+            self.status.fromEnv = self.environment.complex.c.d
