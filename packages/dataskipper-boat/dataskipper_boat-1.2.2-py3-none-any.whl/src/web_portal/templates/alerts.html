@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts - RTU Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Alert Management</h1>
+    <button class="btn btn-primary" onclick="showAddAlert()">+ Add Alert Rule</button>
+</div>
+
+<div class="grid grid-2">
+    <!-- Active Alerts -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Active Alerts</h3>
+            <span id="active-count" class="badge badge-danger">0</span>
+        </div>
+        <div class="card-body">
+            <div id="active-alerts">
+                <p class="text-muted text-center">No active alerts</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Rules -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Alert Rules</h3>
+            <span id="rules-count" class="badge">0</span>
+        </div>
+        <div class="card-body">
+            <div id="alert-rules">
+                <p class="text-muted text-center">No alert rules configured</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert History -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3>Alert History</h3>
+        <select id="history-filter" class="select-sm" onchange="filterHistory()">
+            <option value="">All Time</option>
+            <option value="1h">Last Hour</option>
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+        </select>
+    </div>
+    <div class="card-body">
+        <table class="table" id="alert-history-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Device</th>
+                    <th>Alert</th>
+                    <th>Value</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="alert-history">
+                <tr>
+                    <td colspan="5" class="text-muted text-center">No alert history</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Push Notification Settings -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3>Notification Settings</h3>
+    </div>
+    <div class="card-body">
+        <div class="notification-settings">
+            <div class="setting-row">
+                <label>
+                    <input type="checkbox" id="enable-push" onchange="togglePushNotifications()">
+                    Enable Browser Push Notifications
+                </label>
+                <span id="push-status" class="status-badge status-unknown">Not enabled</span>
+            </div>
+            <p class="text-muted mt-2">
+                Push notifications will alert you when critical events occur, even when this tab is in the background.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Add Alert Modal -->
+<div id="alert-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Add Alert Rule</h3>
+            <button class="modal-close" onclick="hideModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="alert-form">
+                <div class="form-group">
+                    <label for="alert-device">Device</label>
+                    <select id="alert-device" required>
+                        <option value="">Select device...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="alert-metric">Metric</label>
+                    <select id="alert-metric" required>
+                        <option value="">Select metric...</option>
+                        <option value="voltage_r">Voltage R</option>
+                        <option value="voltage_y">Voltage Y</option>
+                        <option value="voltage_b">Voltage B</option>
+                        <option value="current_r">Current R</option>
+                        <option value="current_y">Current Y</option>
+                        <option value="current_b">Current B</option>
+                        <option value="power_factor">Power Factor</option>
+                        <option value="frequency">Frequency</option>
+                        <option value="total_power">Total Power</option>
+                        <option value="total_energy">Total Energy</option>
+                        <option value="flow_rate">Flow Rate</option>
+                        <option value="total_volume">Total Volume</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="alert-condition">Condition</label>
+                    <select id="alert-condition" required>
+                        <option value="above">Above threshold</option>
+                        <option value="below">Below threshold</option>
+                        <option value="equals">Equals value</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="alert-threshold">Threshold Value</label>
+                    <input type="number" id="alert-threshold" step="any" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="alert-enabled" checked>
+                        Enable this alert
+                    </label>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveAlert()">Save Alert</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Load devices for dropdown
+    loadDevices();
+
+    // Check push notification support
+    checkPushSupport();
+
+    async function loadDevices() {
+        try {
+            const response = await fetch('/api/devices');
+            const data = await response.json();
+
+            const select = document.getElementById('alert-device');
+            data.devices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.device_id;
+                option.textContent = `${device.name} (${device.device_type})`;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error loading devices:', error);
+        }
+    }
+
+    function showAddAlert() {
+        document.getElementById('alert-modal').style.display = 'flex';
+    }
+
+    function hideModal() {
+        document.getElementById('alert-modal').style.display = 'none';
+        document.getElementById('alert-form').reset();
+    }
+
+    async function saveAlert() {
+        const alert = {
+            device_id: document.getElementById('alert-device').value,
+            metric: document.getElementById('alert-metric').value,
+            condition: document.getElementById('alert-condition').value,
+            threshold: parseFloat(document.getElementById('alert-threshold').value),
+            enabled: document.getElementById('alert-enabled').checked
+        };
+
+        if (!alert.device_id || !alert.metric || isNaN(alert.threshold)) {
+            showNotification('Please fill all required fields', 'error');
+            return;
+        }
+
+        // For now, store in localStorage (production would use backend)
+        const alerts = JSON.parse(localStorage.getItem('alertRules') || '[]');
+        alert.id = Date.now();
+        alerts.push(alert);
+        localStorage.setItem('alertRules', JSON.stringify(alerts));
+
+        hideModal();
+        renderAlertRules();
+        showNotification('Alert rule saved', 'success');
+    }
+
+    function renderAlertRules() {
+        const alerts = JSON.parse(localStorage.getItem('alertRules') || '[]');
+        const container = document.getElementById('alert-rules');
+        document.getElementById('rules-count').textContent = alerts.length;
+
+        if (alerts.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">No alert rules configured</p>';
+            return;
+        }
+
+        container.innerHTML = alerts.map(alert => `
+            <div class="alert-rule ${alert.enabled ? '' : 'disabled'}">
+                <div class="alert-info">
+                    <strong>${alert.device_id}</strong>
+                    <span class="alert-condition">${alert.metric} ${alert.condition} ${alert.threshold}</span>
+                </div>
+                <div class="alert-actions">
+                    <button class="btn btn-xs ${alert.enabled ? 'btn-warning' : 'btn-success'}"
+                            onclick="toggleAlert(${alert.id})">
+                        ${alert.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                    <button class="btn btn-xs btn-danger" onclick="deleteAlert(${alert.id})">Delete</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function toggleAlert(id) {
+        const alerts = JSON.parse(localStorage.getItem('alertRules') || '[]');
+        const alert = alerts.find(a => a.id === id);
+        if (alert) {
+            alert.enabled = !alert.enabled;
+            localStorage.setItem('alertRules', JSON.stringify(alerts));
+            renderAlertRules();
+        }
+    }
+
+    function deleteAlert(id) {
+        if (!confirm('Delete this alert rule?')) return;
+
+        let alerts = JSON.parse(localStorage.getItem('alertRules') || '[]');
+        alerts = alerts.filter(a => a.id !== id);
+        localStorage.setItem('alertRules', JSON.stringify(alerts));
+        renderAlertRules();
+        showNotification('Alert rule deleted', 'success');
+    }
+
+    function filterHistory() {
+        // Would filter alert history based on time range
+        showNotification('History filtering coming soon', 'info');
+    }
+
+    function checkPushSupport() {
+        const status = document.getElementById('push-status');
+        const checkbox = document.getElementById('enable-push');
+
+        if (!('Notification' in window)) {
+            status.textContent = 'Not supported';
+            status.className = 'status-badge status-error';
+            checkbox.disabled = true;
+            return;
+        }
+
+        if (Notification.permission === 'granted') {
+            status.textContent = 'Enabled';
+            status.className = 'status-badge status-ok';
+            checkbox.checked = true;
+        } else if (Notification.permission === 'denied') {
+            status.textContent = 'Blocked';
+            status.className = 'status-badge status-error';
+            checkbox.disabled = true;
+        } else {
+            status.textContent = 'Not enabled';
+            status.className = 'status-badge status-warning';
+        }
+    }
+
+    async function togglePushNotifications() {
+        const checkbox = document.getElementById('enable-push');
+        const status = document.getElementById('push-status');
+
+        if (checkbox.checked) {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                status.textContent = 'Enabled';
+                status.className = 'status-badge status-ok';
+                showNotification('Push notifications enabled', 'success');
+
+                // Show test notification
+                new Notification('RTU Portal', {
+                    body: 'Push notifications are now enabled',
+                    icon: '/static/icon.png'
+                });
+            } else {
+                checkbox.checked = false;
+                status.textContent = 'Denied';
+                status.className = 'status-badge status-error';
+            }
+        } else {
+            status.textContent = 'Disabled';
+            status.className = 'status-badge status-warning';
+        }
+    }
+
+    // Initialize
+    renderAlertRules();
+</script>
+{% endblock %}

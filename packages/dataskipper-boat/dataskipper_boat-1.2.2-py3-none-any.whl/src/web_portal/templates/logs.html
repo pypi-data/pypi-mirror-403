@@ -1,0 +1,879 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - RTU Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title-group">
+        <h1>System Logs</h1>
+        <span class="page-subtitle">Real-time activity monitor</span>
+    </div>
+    <div class="header-actions">
+        <span class="connection-status" id="connection-status">
+            <span class="connection-dot" id="connection-dot"></span>
+            <span id="connection-text">Connecting...</span>
+        </span>
+    </div>
+</div>
+
+<!-- Controls Bar -->
+<div class="logs-controls">
+    <div class="controls-left">
+        <div class="control-group">
+            <label for="service-select">Service</label>
+            <select id="service-select" class="control-select" onchange="changeService()">
+                <option value="">All Services</option>
+                {% for service in services %}
+                <option value="{{ service.name }}">{{ service.name|replace('dataskipper-boat-', '')|upper if 'dataskipper-boat-' in service.name else service.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="event-type">Event Type</label>
+            <select id="event-type" class="control-select" onchange="filterDisplay()">
+                <option value="">All Events</option>
+                <option value="mqtt">MQTT Published</option>
+                <option value="http">HTTP Sent</option>
+                <option value="modbus">Modbus Read</option>
+                <option value="error">Errors</option>
+                <option value="warning">Warnings</option>
+                <option value="connection">Connection Events</option>
+            </select>
+        </div>
+        <div class="control-group search-control">
+            <label for="log-search">Search</label>
+            <input type="text" id="log-search" class="control-input" placeholder="Filter by device, message..." oninput="filterDisplay()">
+        </div>
+    </div>
+    <div class="controls-right">
+        <div class="toggle-group">
+            <label class="toggle-switch">
+                <input type="checkbox" id="auto-scroll" checked>
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label">Auto-scroll</span>
+        </div>
+        <div class="toggle-group">
+            <label class="toggle-switch">
+                <input type="checkbox" id="compact-mode" onchange="renderLogs()">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label">Compact</span>
+        </div>
+        <button class="btn btn-sm btn-primary" id="btn-stream" onclick="toggleStream()">
+            <span id="stream-icon">▶</span>
+            <span id="stream-text">Live</span>
+        </button>
+        <button class="btn btn-sm btn-secondary" onclick="refreshLogs()">Refresh</button>
+        <button class="btn btn-sm btn-secondary" onclick="clearLogs()">Clear</button>
+    </div>
+</div>
+
+<!-- Log Stats Bar -->
+<div class="log-stats-bar">
+    <div class="stat-item">
+        <span class="stat-label">Total Events</span>
+        <span class="stat-value" id="log-count">0</span>
+    </div>
+    <div class="stat-item stat-mqtt">
+        <span class="stat-label">MQTT</span>
+        <span class="stat-value" id="mqtt-count">0</span>
+    </div>
+    <div class="stat-item stat-http">
+        <span class="stat-label">HTTP</span>
+        <span class="stat-value" id="http-count">0</span>
+    </div>
+    <div class="stat-item stat-error">
+        <span class="stat-label">Errors</span>
+        <span class="stat-value" id="error-count">0</span>
+    </div>
+    <div class="stat-item">
+        <span class="stat-label">Last Update</span>
+        <span class="stat-value" id="last-update-time">--</span>
+    </div>
+</div>
+
+<!-- Log Container -->
+<div class="log-panel">
+    <div id="log-container" class="log-viewer">
+        <div class="log-loading">
+            <div class="loading-spinner-lg"></div>
+            <p>Loading logs...</p>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Controls Bar */
+.logs-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 20px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.controls-left,
+.controls-right {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.control-group label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.control-select,
+.control-input {
+    padding: 10px 14px;
+    font-size: 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    min-width: 140px;
+}
+
+.control-select:focus,
+.control-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.search-control {
+    flex: 1;
+    min-width: 200px;
+}
+
+.search-control .control-input {
+    width: 100%;
+}
+
+/* Toggle Switch */
+.toggle-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toggle-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    transition: 0.3s;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+    background: white;
+}
+
+/* Connection Status */
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--bg-secondary);
+    border-radius: 20px;
+    font-size: 13px;
+}
+
+.connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+
+.connection-dot.connected {
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+}
+
+.connection-dot.polling {
+    background: var(--warning);
+}
+
+.connection-dot.disconnected {
+    background: var(--danger);
+}
+
+/* Log Stats Bar */
+.log-stats-bar {
+    display: flex;
+    gap: 24px;
+    padding: 14px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    margin-bottom: 16px;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.stat-mqtt .stat-value { color: #8b5cf6; }
+.stat-http .stat-value { color: var(--accent); }
+.stat-error .stat-value { color: var(--danger); }
+
+/* Log Panel */
+.log-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.log-viewer {
+    height: 480px;
+    overflow-y: auto;
+    padding: 12px;
+    background: var(--bg-primary);
+}
+
+.log-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 16px;
+    color: var(--text-muted);
+}
+
+/* Log Entry Styles */
+.log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    background: var(--bg-card);
+    border-left: 3px solid var(--border-color);
+    transition: background 0.15s;
+}
+
+.log-entry:hover {
+    background: var(--bg-secondary);
+}
+
+.log-entry.compact {
+    padding: 6px 12px;
+    gap: 10px;
+}
+
+/* Event type colors */
+.log-entry.event-mqtt {
+    border-left-color: #8b5cf6;
+}
+
+.log-entry.event-http {
+    border-left-color: var(--accent);
+}
+
+.log-entry.event-modbus {
+    border-left-color: #10b981;
+}
+
+.log-entry.event-error {
+    border-left-color: var(--danger);
+    background: rgba(244, 33, 46, 0.05);
+}
+
+.log-entry.event-warning {
+    border-left-color: var(--warning);
+    background: rgba(255, 173, 31, 0.05);
+}
+
+.log-entry.event-connection {
+    border-left-color: #06b6d4;
+}
+
+.log-entry.event-info {
+    border-left-color: var(--text-muted);
+}
+
+.log-time {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: "Monaco", "Menlo", monospace;
+    white-space: nowrap;
+    min-width: 70px;
+}
+
+.log-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.log-badge.badge-mqtt { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
+.log-badge.badge-http { background: rgba(29, 155, 240, 0.2); color: var(--accent); }
+.log-badge.badge-modbus { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.log-badge.badge-error { background: rgba(244, 33, 46, 0.2); color: var(--danger); }
+.log-badge.badge-warning { background: rgba(255, 173, 31, 0.2); color: #d97706; }
+.log-badge.badge-connection { background: rgba(6, 182, 212, 0.2); color: #06b6d4; }
+.log-badge.badge-info { background: var(--bg-secondary); color: var(--text-muted); }
+
+.log-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.log-message {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.log-message .device-id {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.log-message .highlight {
+    background: rgba(255, 173, 31, 0.3);
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.log-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* Empty State */
+.empty-logs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 12px;
+    color: var(--text-muted);
+}
+
+.empty-logs .icon {
+    font-size: 48px;
+    opacity: 0.5;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .logs-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .controls-left,
+    .controls-right {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .search-control {
+        width: 100%;
+    }
+
+    .log-stats-bar {
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+}
+
+@media (max-width: 640px) {
+    .log-viewer {
+        height: 400px;
+    }
+
+    .filter-chips {
+        justify-content: center;
+    }
+
+    .log-entry {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .log-time {
+        min-width: auto;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // State
+    let ws = null;
+    let isStreaming = false;
+    let usePolling = false;
+    let pollingInterval = null;
+    let allLogs = [];
+    let currentService = '';
+    let currentEventFilter = '';
+
+    // Constants
+    const POLLING_INTERVAL = 2000;
+    const MAX_LOGS = 500;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        currentService = document.getElementById('service-select')?.value || '';
+        refreshLogs();
+        tryConnectWebSocket();
+    });
+
+    // Parse a log line into structured data
+    function parseLogLine(line) {
+        // Default structure
+        let parsed = {
+            raw: line,
+            time: '',
+            level: 'info',
+            source: '',
+            message: line,
+            eventType: 'info',
+            deviceId: null
+        };
+
+        // Parse timestamp: 2026-01-23 01:49:42 PM - src.services.mqtt_service - INFO - message
+        const match = line.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*(?:AM|PM)?)\s*-\s*([^\s-]+)\s*-\s*(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s*-\s*(.*)$/i);
+
+        if (match) {
+            // Extract just the time part (e.g., "01:49:42 PM")
+            const timePart = match[1].split(/\s+/).slice(1).join(' ');
+            parsed.time = timePart;
+            parsed.source = match[2];
+            parsed.level = match[3].toLowerCase();
+            parsed.message = match[4];
+        } else {
+            // Try simpler format with AM/PM
+            const simpleMatch = line.match(/(\d{2}:\d{2}:\d{2}\s*(?:AM|PM)?)/i);
+            if (simpleMatch) {
+                parsed.time = simpleMatch[1];
+            }
+        }
+
+        // Detect event type and extract device ID
+        const msg = parsed.message.toLowerCase();
+
+        if (msg.includes('mqtt') && msg.includes('payload')) {
+            parsed.eventType = 'mqtt';
+            const deviceMatch = parsed.message.match(/for\s+([^\s:]+)/i);
+            if (deviceMatch) parsed.deviceId = deviceMatch[1];
+        } else if (msg.includes('http') && msg.includes('payload')) {
+            parsed.eventType = 'http';
+            const deviceMatch = parsed.message.match(/for\s+([^\s:]+)/i);
+            if (deviceMatch) parsed.deviceId = deviceMatch[1];
+        } else if (msg.includes('modbus') || msg.includes('register')) {
+            parsed.eventType = 'modbus';
+        } else if (msg.includes('error') || parsed.level === 'error' || parsed.level === 'critical') {
+            parsed.eventType = 'error';
+        } else if (msg.includes('warning') || parsed.level === 'warning') {
+            parsed.eventType = 'warning';
+        } else if (msg.includes('connect') || msg.includes('disconnect') || msg.includes('reconnect')) {
+            parsed.eventType = 'connection';
+        }
+
+        return parsed;
+    }
+
+    // Format message for display
+    function formatMessage(parsed) {
+        let msg = escapeHtml(parsed.message);
+
+        // Highlight device IDs
+        if (parsed.deviceId) {
+            msg = msg.replace(new RegExp(escapeHtml(parsed.deviceId), 'g'),
+                `<span class="device-id">${escapeHtml(parsed.deviceId)}</span>`);
+        }
+
+        // Simplify common messages for operators
+        if (parsed.eventType === 'mqtt') {
+            const fieldsMatch = parsed.message.match(/(\d+)\s+fields/);
+            if (fieldsMatch && parsed.deviceId) {
+                return `Published <span class="device-id">${escapeHtml(parsed.deviceId)}</span> to MQTT (${fieldsMatch[1]} values)`;
+            }
+        }
+
+        if (parsed.eventType === 'http') {
+            const fieldsMatch = parsed.message.match(/(\d+)\s+fields/);
+            if (fieldsMatch && parsed.deviceId) {
+                return `Sent <span class="device-id">${escapeHtml(parsed.deviceId)}</span> via HTTP (${fieldsMatch[1]} values)`;
+            }
+        }
+
+        return msg;
+    }
+
+    // WebSocket connection with fallback
+    function tryConnectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/logs${currentService ? '?service=' + encodeURIComponent(currentService) : ''}`;
+
+        try {
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                isStreaming = true;
+                usePolling = false;
+                updateConnectionUI('connected', 'Live');
+                updateStreamUI();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'logs') {
+                        handleNewLogs(data.logs);
+                    }
+                } catch (e) {
+                    console.error('Error parsing WebSocket message:', e);
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.log('WebSocket closed:', event.code);
+                ws = null;
+                if (isStreaming) {
+                    startPolling();
+                } else {
+                    updateConnectionUI('disconnected', 'Paused');
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                if (ws) ws.close();
+                startPolling();
+            };
+
+            setTimeout(() => {
+                if (ws && ws.readyState !== WebSocket.OPEN) {
+                    console.log('WebSocket timeout, falling back to polling');
+                    ws.close();
+                    startPolling();
+                }
+            }, 5000);
+
+        } catch (e) {
+            console.error('Failed to create WebSocket:', e);
+            startPolling();
+        }
+    }
+
+    // Polling fallback
+    function startPolling() {
+        if (pollingInterval) return;
+
+        usePolling = true;
+        isStreaming = true;
+        updateConnectionUI('polling', 'Live (Polling)');
+        updateStreamUI();
+
+        pollingInterval = setInterval(async () => {
+            if (!isStreaming) return;
+            try {
+                const url = `/api/logs?lines=50${currentService ? '&service=' + encodeURIComponent(currentService) : ''}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                handleNewLogs(data.logs);
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }, POLLING_INTERVAL);
+    }
+
+    function stopPolling() {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
+    }
+
+    function handleNewLogs(logs) {
+        if (!logs || logs.length === 0) return;
+
+        const newLogs = logs.filter(log => !allLogs.includes(log));
+
+        if (newLogs.length > 0) {
+            allLogs = [...allLogs, ...newLogs].slice(-MAX_LOGS);
+            renderLogs();
+            updateStats();
+            updateLastUpdate();
+        }
+    }
+
+    // Service change
+    function changeService() {
+        currentService = document.getElementById('service-select').value;
+        allLogs = [];
+
+        if (ws) ws.close();
+        stopPolling();
+
+        refreshLogs().then(() => {
+            if (isStreaming) {
+                tryConnectWebSocket();
+            }
+        });
+    }
+
+    // Refresh logs
+    async function refreshLogs() {
+        const url = `/api/logs?lines=200${currentService ? '&service=' + encodeURIComponent(currentService) : ''}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            allLogs = data.logs || [];
+            renderLogs();
+            updateStats();
+            updateLastUpdate();
+        } catch (error) {
+            console.error('Error loading logs:', error);
+            showNotification('Failed to load logs', 'error');
+        }
+    }
+
+    // Filter by event type
+    function setEventFilter(filter) {
+        currentEventFilter = filter;
+        document.getElementById('event-type').value = filter;
+        filterDisplay();
+    }
+
+    function filterDisplay() {
+        renderLogs();
+    }
+
+    // Render logs
+    function renderLogs() {
+        const container = document.getElementById('log-container');
+        const searchTerm = document.getElementById('log-search').value.toLowerCase();
+        const eventFilter = document.getElementById('event-type').value;
+        const compactMode = document.getElementById('compact-mode').checked;
+
+        // Parse and filter logs
+        let parsedLogs = allLogs.map(parseLogLine);
+
+        // Apply event type filter
+        if (eventFilter) {
+            parsedLogs = parsedLogs.filter(log => log.eventType === eventFilter);
+        }
+
+        // Apply search filter
+        if (searchTerm) {
+            parsedLogs = parsedLogs.filter(log =>
+                log.raw.toLowerCase().includes(searchTerm) ||
+                (log.deviceId && log.deviceId.toLowerCase().includes(searchTerm))
+            );
+        }
+
+        if (parsedLogs.length === 0) {
+            container.innerHTML = `
+                <div class="empty-logs">
+                    <span class="icon">📋</span>
+                    <p>No logs match the current filter</p>
+                </div>
+            `;
+            document.getElementById('log-count').textContent = '0';
+            return;
+        }
+
+        container.innerHTML = parsedLogs.map(log => {
+            const badgeClass = `badge-${log.eventType}`;
+            const badgeLabel = log.eventType.toUpperCase();
+            const compactClass = compactMode ? 'compact' : '';
+
+            return `
+                <div class="log-entry event-${log.eventType} ${compactClass}">
+                    <span class="log-time">${log.time || '--:--:--'}</span>
+                    <span class="log-badge ${badgeClass}">${badgeLabel}</span>
+                    <div class="log-content">
+                        <div class="log-message">${formatMessage(log)}</div>
+                        ${!compactMode && log.source ? `<div class="log-meta">${log.source}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Auto-scroll
+        if (document.getElementById('auto-scroll').checked) {
+            container.scrollTop = container.scrollHeight;
+        }
+
+        document.getElementById('log-count').textContent = parsedLogs.length;
+    }
+
+    // Toggle streaming
+    function toggleStream() {
+        if (isStreaming) {
+            stopStream();
+        } else {
+            startStream();
+        }
+    }
+
+    function startStream() {
+        isStreaming = true;
+        tryConnectWebSocket();
+    }
+
+    function stopStream() {
+        isStreaming = false;
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+        stopPolling();
+        updateConnectionUI('disconnected', 'Paused');
+        updateStreamUI();
+    }
+
+    // UI Updates
+    function updateConnectionUI(status, text) {
+        const dot = document.getElementById('connection-dot');
+        const textEl = document.getElementById('connection-text');
+
+        dot.className = 'connection-dot ' + status;
+        textEl.textContent = text;
+    }
+
+    function updateStreamUI() {
+        const btn = document.getElementById('btn-stream');
+        const icon = document.getElementById('stream-icon');
+        const text = document.getElementById('stream-text');
+
+        if (isStreaming) {
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-primary');
+            icon.textContent = '⏸';
+            text.textContent = 'Pause';
+        } else {
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+            icon.textContent = '▶';
+            text.textContent = 'Live';
+        }
+    }
+
+    function updateStats() {
+        const parsedLogs = allLogs.map(parseLogLine);
+
+        document.getElementById('mqtt-count').textContent =
+            parsedLogs.filter(l => l.eventType === 'mqtt').length;
+        document.getElementById('http-count').textContent =
+            parsedLogs.filter(l => l.eventType === 'http').length;
+        document.getElementById('error-count').textContent =
+            parsedLogs.filter(l => l.eventType === 'error').length;
+    }
+
+    function updateLastUpdate() {
+        const now = new Date();
+        document.getElementById('last-update-time').textContent = now.toLocaleTimeString();
+        updateLastRefresh();
+    }
+
+    function clearLogs() {
+        allLogs = [];
+        renderLogs();
+        updateStats();
+    }
+
+    // Cleanup
+    window.addEventListener('beforeunload', () => {
+        if (ws) ws.close();
+        stopPolling();
+    });
+</script>
+{% endblock %}
