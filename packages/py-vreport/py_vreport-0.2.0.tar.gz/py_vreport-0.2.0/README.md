@@ -1,0 +1,248 @@
+# py_vreport
+
+**py_vreport** is a modern Python tool designed to parse, analyze, and summarize **Vector CANoe XML Test Reports**.
+
+It provides a powerful command-line interface (CLI) using Typer and Rich to quickly extract test results, identify failures, and view detailed diagnostic context—all from your terminal, without needing to open the full HTML/XML report in a browser.
+
+![py_vreport description](docs/vreport_desc.png)
+
+## ✨ Features
+
+- **🚀 Fast Parsing**: Efficiently parses large CANoe XML report files
+- **📊 Summary Views**: Get quick overviews of test modules, total tests, and pass/fail counts
+- **🔍 Detailed Failure Analysis**:
+  - View failure context (logs leading up to the failure)
+  - Inspect diagnostic data (UDS requests/responses) associated with failures
+  - See exactly where and why tests failed
+- **🔬 Detailed Test Case Inspection**: View every test step, its result, and associated diagnostic data for specific test cases
+- **📁 Multi-file Support**: Process multiple report files in a single batch operation
+- **🎨 Rich Terminal Output**: Beautifully formatted output with colors, tables, and panels powered by Rich
+- **📦 Clean Architecture**: Separated parser library from CLI for programmatic use
+- **🤖 AI-Agent Integration**: Designed to work seamlessly with AI agents (like Gemini CLI). You can pipe report data directly into an LLM to:
+
+
+## 📋 Requirements
+
+- **Python 3.11+**
+- Dependencies managed via `uv` (recommended) or `pip`
+
+## 🔧 Installation
+
+### Using uv (Recommended)
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd py_vreport
+
+# Install using uv
+uv tool install .
+```
+
+## 🚀 Usage
+
+After installation, you can use the `vreport` command directly from your terminal.
+
+### 📊 Basic Summary
+
+Get a high-level overview of one or more test reports:
+
+```bash
+vreport summary path/to/report.xml
+```
+
+**Output includes:**
+- Module name and file path
+- Test start time
+- Total number of tests
+- Number of failures
+- List of failed test titles
+
+### ❌ Detailed Failure Analysis
+
+See **why** tests failed, with context logs and diagnostic tables:
+
+```bash
+vreport failures path/to/report.xml
+```
+
+**Features:**
+- Complete failure messages
+- Context logs (up to 5 most recent log entries before failure)
+- Diagnostic data tables (UDS parameters, values, raw bytes)
+- Color-coded output for easy scanning
+
+### 🔬 Detailed Test Case Inspection
+
+Inspect the full execution logs for specific test cases by searching with a term:
+
+```bash
+vreport inspect path/to/report.xml --test-case "Check_Door_Lock_Status"
+
+# Using short flag
+vreport inspect path/to/report.xml -t "DTC_Check"
+```
+
+**Features:**
+- Case-insensitive search
+- Shows all matching test cases
+- Complete step-by-step execution timeline
+- Timestamps, results, and descriptions for each step
+- Inline diagnostic data display
+- Duration and verdict information
+
+### 📁 Processing Multiple Files
+
+Process multiple XML files in a single command:
+
+```bash
+# Summary for multiple files
+vreport summary report1.xml report2.xml report3.xml
+
+# Failures across multiple reports
+vreport failures tests/*.xml
+
+# Inspect across multiple files
+vreport inspect module1.xml module2.xml -t "Voltage_Check"
+```
+
+## 📖 Command Reference
+
+### `vreport summary`
+
+Display high-level summary of test results.
+
+```bash
+vreport summary [FILES...]
+```
+
+**Arguments:**
+- `FILES`: One or more paths to CANoe XML report files
+
+### `vreport failures`
+
+Show detailed failure information with context and diagnostics.
+
+```bash
+vreport failures [FILES...]
+```
+
+**Arguments:**
+- `FILES`: One or more paths to CANoe XML report files
+
+### `vreport inspect`
+
+Inspect detailed logs for specific test cases.
+
+```bash
+vreport inspect [FILES...] --test-case SEARCH_TERM
+vreport inspect [FILES...] -t SEARCH_TERM
+```
+
+**Arguments:**
+- `FILES`: One or more paths to CANoe XML report files
+
+**Options:**
+- `-t, --test-case TEXT`: Search term for test case title (case-insensitive) **[required]**
+
+## 📁 Project Structure
+
+```
+py_vreport/
+├── src/
+│   └── py_vreport/
+│       ├── __init__.py          # Package exports
+│       ├── models.py            # Data models (TestModule, TestCase, etc.)
+│       ├── parser.py            # Pure parsing logic (library)
+│       ├── cli.py               # Typer CLI implementation
+│       └── formatters.py        # Rich formatting for terminal output
+├── tests/                       # Unit tests
+├── pyproject.toml              # Project configuration
+└── README.md                   # This file
+```
+
+### Architecture
+
+**Separation of Concerns:**
+- **`models.py`**: Dataclasses defining the report structure (TestModule, TestGroup, TestCase, TestStep, FailureContext)
+- **`parser.py`**: Pure library logic for parsing XML—can be imported and used programmatically
+- **`cli.py`**: Typer-based CLI commands and argument handling
+- **`formatters.py`**: Rich formatting logic for beautiful terminal output (tables, panels, colors)
+
+This clean separation allows `py_vreport` to be used both as a CLI tool and as a Python library in your own scripts.
+
+## 🐍 Programmatic Usage
+
+You can also use py_vreport as a Python library:
+
+```python
+from py_vreport.parser import CanoeReportParser
+
+# Parse a report
+parser = CanoeReportParser("path/to/report.xml")
+report = parser.parse()
+
+# Access data
+print(f"Module: {report.name}")
+print(f"Total tests: {len(report.get_all_test_cases())}")
+
+# Get failures
+failures = report.get_all_failures()
+for failure in failures:
+    print(f"Failed: {failure.title}")
+    print(f"Reason: {failure.failure_reason}")
+    
+    # Access rich failure context
+    for ctx in failure.rich_failure:
+        print(f"Context logs: {ctx.context_logs}")
+        print(f"Diagnostic data: {ctx.diagnostic_table}")
+
+# Export to pandas DataFrame
+df = report.to_pandas()
+print(df.head())
+```
+
+## 🎨 Output Examples
+
+### Summary Output
+```
+╭─────────────────── Module: ECU_Tests ────────────────────╮
+│ Property    │ Value                                      │
+│ File        │ /path/to/report.xml                        │
+│ Start Time  │ 2024-01-25T10:30:00                       │
+│ Total Tests │ 45                                         │
+│ Failures    │ 3                                          │
+╰────────────────────────────────────────────────────────────╯
+
+Failed Tests:
+  • Check_DTC_Status: Expected DTC 0x123456, got 0x000000
+  • Voltage_Range_Check: Voltage out of range
+  • Door_Lock_Response: Timeout waiting for response
+```
+
+### Failure Output
+```
+╔════════════════════════════════════════════════════════╗
+║  ECU_Tests - Found 3 failures                          ║
+╚════════════════════════════════════════════════════════╝
+
+✖ Check_DTC_Status
+  Expected DTC 0x123456, got 0x000000
+
+Context:
+  - I-001: Sending diagnostic session control
+  - I-002: Session changed to extended
+  - I-003: Reading DTC memory
+  - I-004: DTC request: 19 02 FF
+  - I-005: Expected response: 59 02 01 23 45 67
+
+┌─────────── Diagnostic Data ──────────┐
+│ Parameter      │ Value    │ Raw      │
+│ Request        │ 19 02 FF │ 0x1902FF │
+│ Response       │ 59 02 00 │ 0x590200 │
+└──────────────────────────────────────┘
+
+╭─────────────── ERROR ────────────────╮
+│ Expected DTC 0x123456, got 0x000000  │
+╰──────────────────────────────────────╯
+```

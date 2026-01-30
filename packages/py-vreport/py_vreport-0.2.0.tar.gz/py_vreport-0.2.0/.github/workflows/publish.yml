@@ -1,0 +1,35 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*" # Triggers on tags starting with 'v', e.g., v1.0.0
+
+jobs:
+  build-n-publish:
+    name: Build and publish Python distributions
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # IMPORTANT: This permission is required for Trusted Publishing
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        # Using the official PyPA action is the recommended way for Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
