@@ -1,0 +1,202 @@
+schema {
+  query: Query
+  mutation: Mutations
+  subscription: Subscription
+}
+
+type DevError {
+  desc: String
+  reason: String
+  origin: String
+  severity: String
+}
+
+type AttributeFrame {
+  attribute: String
+  device: String
+  fullName: String
+  value: ScalarTypes
+  writeValue: ScalarTypes
+  quality: String
+  timestamp: Float
+  error: DevError
+}
+
+type DeleteDeviceProperty {
+  ok: Boolean
+  message: [String]
+}
+
+type Device {
+  name: String
+  state: String
+  connected: Boolean
+  alias: String
+  properties(pattern: String): [DeviceProperty]
+  attributes(pattern: String): [DeviceAttribute]
+  commands(pattern: String): [DeviceCommand]
+  server: DeviceInfo
+  deviceClass: String
+  pid: Int
+  startedDate: String
+  stoppedDate: String
+  exported: Boolean
+}
+
+type DeviceAttribute {
+  name: String
+  device: String
+  datatype: String
+  dataformat: String
+  format: String
+  writable: String
+  label: String
+  unit: String
+  description: String
+  value: ScalarTypes
+  writevalue: ScalarTypes
+  quality: String
+  timestamp: Float
+  displevel: String
+  minvalue: ScalarTypes
+  maxvalue: ScalarTypes
+  minalarm: ScalarTypes
+  maxalarm: ScalarTypes
+  enumLabels: ScalarTypes
+}
+
+type DeviceClass {
+  name: String
+  server: String
+  instance: String
+  devices(pattern: String): [Device]
+}
+
+type DeviceCommand {
+  name: String
+  tag: Int
+  displevel: String
+  intype: String
+  intypedesc: String
+  outtype: String
+  outtypedesc: String
+  device: String
+}
+
+type DeviceInfo {
+  id: String
+  host: String
+}
+
+type DeviceProperty {
+  name: String
+  device: String
+  value: [String]
+}
+
+type Domain {
+  name: String
+  families(pattern: String): [Family]
+}
+
+type ExecuteDeviceCommand {
+  ok: Boolean
+  message: [String]
+  output: ScalarTypes
+}
+
+type Family {
+  name: String
+  domain: String
+  members(pattern: String): [Member]
+}
+
+type Member {
+  name: String
+  state: String
+  connected: Boolean
+  alias: String
+  properties(pattern: String): [DeviceProperty]
+  attributes(pattern: String): [DeviceAttribute]
+  commands(pattern: String): [DeviceCommand]
+  server: DeviceInfo
+  deviceClass: String
+  pid: Int
+  startedDate: String
+  stoppedDate: String
+  exported: Boolean
+  domain: String
+  family: String
+}
+
+type Mutations {
+  putDeviceProperty(device: String!, name: String!, value: [String]): PutDeviceProperty
+  deleteDeviceProperty(device: String!, name: String!): DeleteDeviceProperty
+  setAttributeValue(device: String!, name: String!, value: ScalarTypes!): SetAttributeValue
+  executeCommand(argin: ScalarTypes, command: String!, device: String!): ExecuteDeviceCommand
+}
+
+type PutDeviceProperty {
+  ok: Boolean
+  message: [String]
+}
+
+
+type Query {
+  version: String
+  info: String
+  devices(pattern: String): [Device]
+  device(name: String!): Device
+  domains(pattern: String): [Domain]
+  families(domain: String, pattern: String): [Family]
+  members(domain: String, family: String, pattern: String): [Member]
+  servers(pattern: String): [Server]
+  instances(server: String, pattern: String): [ServerInstance]
+  classes(pattern: String): [DeviceClass]
+  attributes(fullNames: [String]!): [DeviceAttribute]
+  commands(fullNames: [String]!): [DeviceCommand]
+  metrics: Metrics
+  tangoHost: String
+}
+
+
+scalar ScalarTypes
+
+type Server {
+  name: String
+  instances(pattern: String): [ServerInstance]
+}
+
+type ServerInstance {
+  name: String
+  server: String
+  classes(pattern: String): [DeviceClass]
+}
+
+type SetAttributeValue {
+  ok: Boolean
+  message: [String]
+  valueBefore: ScalarTypes
+  attribute: DeviceAttribute
+}
+
+type Subscription {
+  attributes(fullNames: [String]!): AttributeFrame
+}
+
+type Metrics {
+  subscribedAttrs: [SubscribedAttr]
+}
+
+type SubscribedAttr {
+  "Full attribute name"
+  name: String
+  "Attribute name"
+  attribute: String
+  "Number of subscribed clients"
+  listeners: Int
+  "POLLED, CHANGE_EVENT or PERIODIC_EVENT"
+  eventType: String
+  "Whether the device responds to ping"
+  deviceAccessible: Boolean
+}
