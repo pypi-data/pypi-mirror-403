@@ -1,0 +1,115 @@
+# my-reposmith-bootstrap
+
+Bootstrap runner package for **RepoSmith**.
+
+This project provides a **governed installer** for the RepoSmith toolchain.
+It is intentionally lightweight and does **not** expose RepoSmith as Python
+dependencies. Instead, it installs locked versions explicitly at runtime.
+
+> This is a **runner package**, not a framework or library.
+
+---
+
+## What this package does
+
+When executed, `my-reposmith-bootstrap` will:
+
+- Install **reposmith-core** (locked version)
+- Install **reposmith-extensions** (locked version)
+- Install **reposmith-cli** (locked version, without dependency resolution)
+- Use explicit package indexes (Forgejo + PyPI)
+- Avoid modifying global `pip` configuration
+
+All decisions about versions and order are enforced by the bootstrap itself.
+
+---
+
+## Install
+
+```bash
+pip install -U my-reposmith-bootstrap
+```
+
+---
+
+## Setup RepoSmith
+
+After installation, run:
+
+```bash
+my-reposmith-setup
+```
+
+Once completed, RepoSmith will be available:
+
+```bash
+reposmith --help
+reposmith version
+```
+
+---
+
+## Governed installation model
+
+This package intentionally:
+
+- ❌ Does **not** list `reposmith-*` packages in `dependencies`
+- ❌ Does **not** rely on `pip` dependency resolution
+- ❌ Does **not** modify global `pip config`
+- ✅ Pins exact versions internally
+- ✅ Uses explicit `--index-url` and `--extra-index-url`
+- ✅ Acts as a single authoritative installation contract
+
+This ensures:
+- Reproducible installs
+- No hidden upgrades
+- No accidental dependency drift
+
+---
+
+## Package indexes
+
+The bootstrap installs packages from:
+
+- **Primary**: RepoSmith Forgejo PyPI  
+- **Fallback**: Public PyPI
+
+Indexes are passed explicitly per install command and are never persisted.
+
+---
+
+## Supported platforms
+
+- Windows (PowerShell)
+- Linux
+- macOS
+
+> On Windows, restart the shell if the `reposmith` command is not found
+> immediately after running the bootstrap.
+
+---
+
+## What this package is NOT
+
+- ❌ Not a RepoSmith SDK
+- ❌ Not a library to import
+- ❌ Not a dependency manager
+- ❌ Not a virtual environment manager
+
+Its only responsibility is **bootstrapping RepoSmith correctly**.
+
+---
+
+## Versioning
+
+This package follows semantic versioning:
+
+- Patch: internal bootstrap fixes
+- Minor: controlled upgrade of locked RepoSmith versions
+- Major: change in bootstrap contract
+
+---
+
+## License
+
+MIT License © 2026 TamerOnLine
