@@ -1,0 +1,185 @@
+name: Release Workflow
+permissions: {}
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  lint:
+    name: Linters
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # Required for upload-sarif (used by zizmor-action) to upload SARIF files.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@135698455da5c3b3e55f73f4419e481ab68cdd95 # v0.4.1
+
+      - name: typos
+        uses: crate-ci/typos@2d0ce569feab1f8752f1dde43cc2f2aa53236e06 # v1.40.0
+
+      - name: Ruff
+        uses: astral-sh/ruff-action@57714a7c8a2e59f32539362ba31877a1957dded1 # v3.5.1
+
+  wheel:
+    name: Build wheel
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["macos-14", "ubuntu-22.04", "windows-latest"]
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    permissions:
+      actions: write # Upload artifact
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install CUDA 12.9 on Linux
+        if: runner.os == 'Linux'
+        run: |
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get -y install cuda-nvcc-12-9
+          echo "CUDA_HOME=/usr/local/cuda-12.9" >> $GITHUB_ENV
+          echo "/usr/local/cuda-12.9/bin" >> $GITHUB_PATH
+
+      - name: Install CUDA 12.9 on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $downloadUrl = "https://developer.download.nvidia.com/compute/cuda/12.9.1/local_installers/cuda_12.9.1_576.57_windows.exe"
+          $dst = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9"
+          New-Item -Path $dst -ItemType Directory -Force
+          & "C:\msys64\usr\bin\wget" $downloadUrl -O "cuda.exe" -q
+          & 'C:\Program Files\7-Zip\7z' x "cuda.exe" -o"cuda" -y cuda_nvcc/ cuda_cudart/ cuda_cccl/ visual_studio_integration/ libnvjitlink/
+          Copy-Item -Path "cuda\cuda_nvcc\nvcc\*" -Destination $dst -Recurse -Force
+          Copy-Item -Path "cuda\cuda_cudart\cudart\*" -Destination $dst -Recurse -Force
+          Copy-Item -Path "cuda\cuda_cccl\thrust\*" -Destination $dst -Recurse -Force
+          Write-Output "CUDA_HOME=$dst" >> $env:GITHUB_ENV
+          Write-Output "$dst\bin" >> $env:GITHUB_PATH
+
+      - name: Check CUDA installation
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          nvcc -V
+          echo CUDA_HOME=$CUDA_HOME
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Build wheel
+        env:
+          TORCH_CUDA_ARCH_LIST: "7.0;7.5;8.0;8.6;9.0;10.0;12.0+PTX"
+        run: uv build --wheel
+
+      - name: Relabel the Linux wheel
+        if: runner.os == 'Linux'
+        run: |
+          uvx --with patchelf auditwheel repair ./dist/*abi3-linux*.whl -w ./dist --plat manylinux_2_34_x86_64 --exclude "libtorch*" --exclude "libc10*" --exclude "libcu*"
+          rm ./dist/*abi3-linux*.whl
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dist-wheel-${{ matrix.os }}
+          path: ./dist/*
+
+  sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # Upload artifact
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Build sdist
+        run: uv build --sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dist-sdist
+          path: ./dist/*
+
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [wheel, sdist]
+    environment:
+      name: publish-to-pypi
+    permissions:
+      actions: read # Download artifact
+      id-token: write # Needed for trusted publishing
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: artifacts
+
+      - name: Move the artifacts
+        run: |
+          mkdir ./dist
+          mv ./artifacts/**/* ./dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Upload to PyPI
+        run: uv publish --trusted-publishing always
+
+
+  github-release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    needs: [wheel, sdist]
+    permissions:
+      actions: read # Download artifact
+      contents: write # Create GitHub release
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: artifacts
+
+      - name: Move the artifacts
+        run: |
+          mkdir ./dist
+          mv ./artifacts/**/* ./dist
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF#refs/tags/}" ./dist/*
