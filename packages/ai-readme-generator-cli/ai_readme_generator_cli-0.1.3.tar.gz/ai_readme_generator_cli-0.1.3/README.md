@@ -1,0 +1,110 @@
+# CodeAnalyzer
+    
+> Automate your code analysis and documentation effortlessly!
+
+---
+
+## 📖 Overview
+CodeAnalyzer is a powerful tool designed to streamline the process of analyzing code files and generating comprehensive README documentation. It utilizes advanced language models to provide structured summaries and insights, making documentation quick and efficient.
+
+## ✨ Features
+### 📂 File Management
+- Effortlessly retrieve and filter code files based on configurable paths.
+- Supports inclusion and exclusion criteria for targeted analysis.
+
+### 🔍 Code Analysis
+- Batch processes code files to generate meaningful insights.
+- Utilizes language models for in-depth analysis and summary generation.
+
+### 📄 README Generation
+- Automatically generates structured README files from analyzed code.
+- Formats output to ensure clarity and professionalism.
+
+### ⚙️ Command Line Interface
+- User-friendly CLI for easy configuration and execution.
+- Allows quick initialization and management of analysis tasks.
+
+
+
+## 🏗️ Tech Stack
+- Python
+- Command Line Interface (CLI)
+
+## 🚀 Getting Started
+
+
+### Installation
+```bash
+git clone https://github.com/akshat231/Readme-Generator-Python
+cd Readme-Generator-Python
+pip install -r requirements.txt
+```
+
+
+## ⚙️ Configuration (analyzer.json)
+
+The init command generates a config/analyzer.json file. This file acts as the brain of the generator, allowing you to define the scope of the code analysis.
+LLM Settings
+
+### Fine-tune your AI provider and cost parameters:
+
+- **key**: Your API key (OpenAI, Anthropic, or Gemini).
+
+- **model_provider**: Choose between OPENAI, ANTHROPIC, or GOOGLE.
+
+- **model**: Specific model identifier (e.g., gpt-4o-mini, claude-3-5-sonnet).
+
+- **batch_limit**: Maximum tokens processed in a single analysis pass.
+
+- **temperature**: Controls creativity (0.0 for technical precision, 0.7+ for punchier marketing text).
+
+### File Filtering & Ignored Content
+
+Prevent the AI from getting bogged down by non-essential files:
+
+- **ignore_dirs**: Directories to skip (defaults include node_modules, .git, and __pycache__).
+
+- **ignore_extensions**: Skips binary or non-text files like .png, .exe, or .zip.
+
+- **ignore_files**: Specifically targets heavy metadata files like package-lock.json or poetry.lock.
+
+### Targeted Analysis
+
+- **include_dirs / include_files**: If populated, the generator will only look at these paths, ignoring everything else. This is perfect for generating a README for a specific sub-module within a large monorepo.
+
+### Example analyzer.json Workflow
+
+- **Run init**: Creates the folder and default JSON.
+
+- **Edit JSON**: Add your key and maybe add docs to ignore_dirs.
+
+- **Run generate**: The tool reads these rules, filters your file system, and sends only the relevant code snippets to the AI.
+
+## 💡 Usage Example
+```python
+# For initializing
+python cli_tools.cli.py init
+# For generating README.md
+python3 cli_tools.cli generate
+```
+## pip Usage
+
+``` python
+# Always install latest one
+pip install ai-readme-generator-cli
+
+# run init first
+readme-gen init
+
+# generate readme
+readme-gen generate
+```
+
+
+## 🤝 Contributing
+Pull requests are welcome! For larger changes, please open an issue to discuss ideas first.
+
+## 📜 License
+MIT License — free to use, modify, and distribute.
+
+Generated with ❤️ by your AI-README-Generator
