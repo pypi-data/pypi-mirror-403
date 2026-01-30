@@ -1,0 +1,169 @@
+# mcpmon
+
+Hot reload for MCP servers. Like nodemon, but for MCP.
+
+## Features
+
+- **Hot reload** - Restart server on file changes
+- **Tool refresh** - Sends `notifications/tools/list_changed` so Claude Code sees new tools without session restart
+- **Gateway mode** - Aggregate multiple MCP servers behind one gateway
+- **Dual implementation** - Python and Bun/TypeScript with full feature parity
+
+## Install
+
+```bash
+# Python
+pip install mcpmon
+
+# Bun (no install needed)
+bunx mcpmon
+
+# npm
+npm install -g mcpmon
+
+# Or download binary from GitHub releases (no dependencies)
+```
+
+## Usage
+
+### Single Server Mode
+
+```bash
+mcpmon --watch src/ -- python -m my_mcp_server
+```
+
+### Gateway Mode (Multi-Server)
+
+```bash
+mcpmon --config .mcpmon.yaml
+```
+
+```yaml
+# .mcpmon.yaml
+servers:
+  sage:
+    command: sage-mcp
+    watch: ~/.sage/src/
+
+  crucible:
+    command: crucible-mcp
+    watch: ~/crucible/src/
+
+  my-server:
+    command: python
+    args: ["-m", "my_server"]
+    watch: ./src/
+    extensions: py,json
+```
+
+Gateway aggregates tools with prefixes: `sage__recall`, `crucible__review`, etc.
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `-c, --config <file>` | Config file for multi-server gateway mode |
+| `-w, --watch <dir>` | Directory to watch (default: `.`) |
+| `-e, --ext <exts>` | Extensions to watch, comma-separated (default: `py`) |
+| `-q, --quiet` | Only show errors |
+| `-v, --verbose` | Show file change details |
+| `--debug` | Show all debug output |
+| `-t, --timestamps` | Include timestamps in output |
+| `-l, --log-file <file>` | Also write logs to file |
+
+### Logging Levels
+
+```
+--quiet       Only errors
+(default)     Start, stop, restart events + PID
+--verbose     + file change details
+--debug       + everything
+```
+
+## Examples
+
+```bash
+# Basic - watch current directory for .py changes
+mcpmon -- python server.py
+
+# Watch specific directory and extensions
+mcpmon --watch src/ --ext py,json -- python -m myserver
+
+# With timestamps and log file
+mcpmon --timestamps --log-file mcpmon.log -- python server.py
+
+# Gateway mode - multiple servers
+mcpmon --config .mcpmon.yaml
+```
+
+### Sample Output
+
+```
+[mcpmon 16:08:50] Watching src/ for .py changes
+[mcpmon 16:08:50 pid:53307] Started: python -m my_server
+[mcpmon 16:08:54] File modified: tools.py
+[mcpmon 16:08:54 pid:53307] Restarting...
+[mcpmon 16:08:54 pid:53411] Started: python -m my_server
+[mcpmon 16:08:54 pid:53411] Restart #1 complete
+[mcpmon 16:08:54] Sent tools/list_changed notification
+```
+
+## MCP Config
+
+### Single Server
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "mcpmon",
+      "args": ["--watch", "src/", "--", "python", "-m", "my_server"]
+    }
+  }
+}
+```
+
+### Gateway (Multiple Servers)
+
+```json
+{
+  "mcpServers": {
+    "gateway": {
+      "command": "mcpmon",
+      "args": ["--config", ".mcpmon.yaml"]
+    }
+  }
+}
+```
+
+## How It Works
+
+### Single Server Mode
+1. Starts your MCP server as a subprocess
+2. Watches specified directory for file changes
+3. On change: SIGTERM → wait 2s → SIGKILL → restart
+4. Sends `notifications/tools/list_changed` notification
+5. Claude Code refreshes tool cache automatically
+
+### Gateway Mode
+1. Reads config file, starts all backend servers
+2. Aggregates tools from all backends (prefixed: `backend__tool`)
+3. Routes tool calls to correct backend
+4. Watches each backend's files independently
+5. Hot-reloads individual backends on change
+6. Hot-adds/removes backends when config changes
+
+## Development
+
+```bash
+# Python
+pip install -e ".[dev]"
+pytest tests/ -v  # 42 tests
+
+# Bun/TypeScript
+bun test  # 16 tests
+```
+
+## License
+
+MIT
