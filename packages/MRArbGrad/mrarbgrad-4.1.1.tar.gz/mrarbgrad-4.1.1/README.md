@@ -1,0 +1,34 @@
+# Magnetic Resonance Arbitrary Gradient Toolbox (MRArbGrad, MAG)
+
+## Introduction
+This toolbox is a pip package with C++ backend. The pip package can be called via Python interface to generate **non-Cartesian** gradient waveforms for built-in and external trajectories. The C++ source code (in `mrarbgrad_src/ext/`) can be ported to other pulse sequence project like UIH's Adept project for gradient waveform calculation.
+
+## Install
+**Optionally**, to create a new conda environment (in case the dependencies in this package break your current environment), please run:
+```bash
+$ conda create -n magtest -y
+$ conda activate magtest
+$ conda install python==3.12 -y
+```
+
+This package is **NOT** restricted to use `Python 3.12`. Feel free to adjust at your convenience, just if the package works.
+
+To install this package from PyPI:
+```bash
+$ pip install mrarbgrad
+```
+To install this package from a local repository:
+```bash
+$ bash install.bash
+```
+
+You can also install via `pip install .` but remember to delete `*.egg-info` or pip will run into bug when uninstalling this package in current folder (see comments in `install.bash`).
+
+## Examples & Usages
+Examples for generating gradient waveforms for either built-in trajectory (trajectory library) or external trajectory (expressed by trajectory function or trajectory samples) can be found in the `example` folder.
+
+## Reference
+If this project helps you, please cite [our paper](https://ieeexplore.ieee.org/document/11352950):
+
+[1] Luo R, Huang H, Miao Q, Xu J, Hu P, Qi H. Real-Time Gradient Waveform Design for Arbitrary k-Space Trajectories. IEEE Transactions on Biomedical Engineering. 2026;1–12. 
+
