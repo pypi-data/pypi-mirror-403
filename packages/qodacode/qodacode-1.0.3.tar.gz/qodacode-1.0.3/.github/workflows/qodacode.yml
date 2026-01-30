@@ -1,0 +1,112 @@
+# Qodacode - Example GitHub Workflow
+# Copy this file to your project: .github/workflows/qodacode.yml
+
+name: Qodacode
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write  # Required for SARIF upload
+
+jobs:
+  qodacode:
+    name: Code Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git-history scanning
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Cache pip dependencies for faster runs
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-qodacode-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-qodacode-
+            ${{ runner.os }}-pip-
+
+      - name: Install Qodacode (from source)
+        run: pip install -e ".[dev]"
+
+      - name: Run Qodacode scan
+        id: scan
+        run: |
+          qodacode ci \
+            --path "." \
+            --fail-on "critical" \
+            --mode "senior" \
+            --comment \
+            --sarif
+        continue-on-error: true  # Don't fail the job yet, we need to upload results
+
+      # Upload SARIF to GitHub Security tab (requires GitHub Advanced Security for private repos)
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: qodacode-results.sarif
+          category: qodacode
+        if: always() && hashFiles('qodacode-results.sarif') != ''
+        continue-on-error: true  # Don't fail if SARIF upload has permission issues
+
+      # Post PR comment with results
+      - name: Post PR Comment
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const commentPath = '.qodacode/pr-comment.md';
+
+            if (fs.existsSync(commentPath)) {
+              const body = fs.readFileSync(commentPath, 'utf8');
+
+              // Find existing comment to update
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+
+              const botComment = comments.find(c =>
+                c.user.type === 'Bot' &&
+                c.body.includes('## Qodacode Analysis')
+              );
+
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: body
+                });
+              }
+            }
+
+      # Fail the job if critical issues were found
+      - name: Check scan result
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::Critical issues found. Fix them before merging."
+          exit 1

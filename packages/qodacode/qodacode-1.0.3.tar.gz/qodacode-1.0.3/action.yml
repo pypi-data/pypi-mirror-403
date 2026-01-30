@@ -1,0 +1,126 @@
+# GitHub Action for Qodacode
+# Usage: qodacode/action@v1
+
+name: 'Qodacode'
+description: 'Take your code from functional to enterprise production'
+author: 'Qodacode'
+
+branding:
+  icon: 'shield'
+  color: 'orange'
+
+inputs:
+  path:
+    description: 'Path to scan (default: current directory)'
+    required: false
+    default: '.'
+
+  fail-on:
+    description: 'Fail the check if issues of this severity or higher are found (critical, high, medium, low, none)'
+    required: false
+    default: 'critical'
+
+  comment:
+    description: 'Post a comment on the PR with the results'
+    required: false
+    default: 'true'
+
+  mode:
+    description: 'Output mode (junior or senior)'
+    required: false
+    default: 'senior'
+
+  categories:
+    description: 'Categories to scan (comma-separated: security,robustness,maintainability,operability,dependencies)'
+    required: false
+    default: 'all'
+
+outputs:
+  issues-count:
+    description: 'Total number of issues found'
+  critical-count:
+    description: 'Number of critical issues'
+  high-count:
+    description: 'Number of high severity issues'
+  health-score:
+    description: 'Project health score (0-100)'
+  grade:
+    description: 'Project grade (A-F)'
+  result:
+    description: 'JSON result of the scan'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Qodacode
+      shell: bash
+      run: pip install qodacode
+
+    - name: Run Qodacode scan
+      id: scan
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        QODACODE_CI: 'true'
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_CATEGORIES: ${{ inputs.categories }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+      run: |
+        COMMENT_FLAG=""
+        if [ "$INPUT_COMMENT" = "true" ]; then
+          COMMENT_FLAG="--comment"
+        fi
+        qodacode ci \
+          --path "$INPUT_PATH" \
+          --fail-on "$INPUT_FAIL_ON" \
+          --mode "$INPUT_MODE" \
+          --categories "$INPUT_CATEGORIES" \
+          $COMMENT_FLAG \
+          --output-file "$GITHUB_OUTPUT"
+
+    - name: Post PR Comment
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const commentPath = '.qodacode/pr-comment.md';
+
+          if (fs.existsSync(commentPath)) {
+            const body = fs.readFileSync(commentPath, 'utf8');
+
+            // Find existing comment to update
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('## Qodacode Analysis')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+          }
