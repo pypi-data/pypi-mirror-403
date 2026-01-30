@@ -1,0 +1,11 @@
+from enum import IntEnum
+
+
+class PostLinksBulkBodyLinksItemRedirectType(IntEnum):
+    VALUE_301 = 301
+    VALUE_302 = 302
+    VALUE_307 = 307
+    VALUE_308 = 308
+
+    def __str__(self) -> str:
+        return str(self.value)

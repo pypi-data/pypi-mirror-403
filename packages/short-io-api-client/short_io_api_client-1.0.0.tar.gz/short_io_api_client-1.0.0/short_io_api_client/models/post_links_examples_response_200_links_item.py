@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, TypeVar
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..types import UNSET, Unset
+
+T = TypeVar("T", bound="PostLinksExamplesResponse200LinksItem")
+
+
+@_attrs_define
+class PostLinksExamplesResponse200LinksItem:
+    """
+    Attributes:
+        success (bool | Unset):  Default: True.
+        duplicate (bool | Unset):  Default: False.
+    """
+
+    success: bool | Unset = True
+    duplicate: bool | Unset = False
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        success = self.success
+
+        duplicate = self.duplicate
+
+        field_dict: dict[str, Any] = {}
+        field_dict.update(self.additional_properties)
+        field_dict.update({})
+        if success is not UNSET:
+            field_dict["success"] = success
+        if duplicate is not UNSET:
+            field_dict["duplicate"] = duplicate
+
+        return field_dict
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        d = dict(src_dict)
+        success = d.pop("success", UNSET)
+
+        duplicate = d.pop("duplicate", UNSET)
+
+        post_links_examples_response_200_links_item = cls(
+            success=success,
+            duplicate=duplicate,
+        )
+
+        post_links_examples_response_200_links_item.additional_properties = d
+        return post_links_examples_response_200_links_item
+
+    @property
+    def additional_keys(self) -> list[str]:
+        return list(self.additional_properties.keys())
+
+    def __getitem__(self, key: str) -> Any:
+        return self.additional_properties[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.additional_properties[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self.additional_properties[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.additional_properties
