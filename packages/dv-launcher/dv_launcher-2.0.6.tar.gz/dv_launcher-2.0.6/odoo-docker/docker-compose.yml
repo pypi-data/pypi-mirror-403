@@ -1,0 +1,81 @@
+services:
+  db:
+    image: postgres:${POSTGRES_VERSION}
+    container_name: ${COMPOSE_PROJECT_NAME}_db
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_USER=odoo
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - ${POSTGRES_CONFIG}:/etc/postgresql/postgresql.conf
+      - db_data:/var/lib/postgresql/data/pgdata
+    command: -c config_file=/etc/postgresql/postgresql.conf
+    networks:
+#      # Internal network
+      - internal_network
+    restart: unless-stopped
+
+  odoo:
+    container_name: ${COMPOSE_PROJECT_NAME}_odoo
+    build:
+      context: .
+      dockerfile: odoo/Dockerfile
+      args:
+        ODOO_VERSION: ${ODOO_VERSION}
+        OPTIONAL_WHISPER: ${OPTIONAL_WHISPER}
+    ports:
+      - "${ODOO_EXPOSED_PORT}:${ODOO_INTERNAL_PORT}"
+      - "8072:8072"
+    volumes:
+      - ${ODOO_CONFIG}:/etc/odoo/odoo.conf
+      - ${ODOO_ADDONS}:/mnt/extra-addons
+      - ./enterprise:/mnt/enterprise
+      - odoo_data:/var/lib/odoo
+    environment:
+      # Postgres container name
+      - HOST=${COMPOSE_PROJECT_NAME}_db
+      # Postgres user
+      - USER=odoo
+      # Postgres password
+      - PASSWORD=odoo
+      - DB_TEMPLATE=template0
+    depends_on:
+      - db
+    #    command: "odoo -d master -u ps_factura_rozas"
+    networks:
+      # Internal network for containers
+      - internal_network
+    restart: unless-stopped
+
+#  logrotate:
+#    image: blacklabelops/logrotate
+#    container_name: ${COMPOSE_PROJECT_NAME}_logrotate
+#    volumes:
+#      - ${ODOO_LOG}:/var/log/odoo
+#    environment:
+#      - LOGS_DIRECTORIES=/var/log/odoo
+#      - LOGROTATE_LOGFILES=/var/log/odoo/*.log
+#      - LOGROTATE_SIZE=2M
+#      - LOGROTATE_ROTATIONS=7
+#      - LOGROTATE_COPYTRUNCATE=true
+#      - LOGROTATE_CREATE=true
+#      - LOGROTATE_SU=odoo:odoo
+#      - LOGROTATE_DATEEXT=true
+#      - LOGROTATE_DATEFORMAT=-%Y%m%d-%H%M%S
+#      - LOGROTATE_INTERVAL=hourly
+#    networks:
+#      - internal_network
+#    restart: unless-stopped
+
+volumes:
+  odoo_data:
+    name: ${COMPOSE_PROJECT_NAME}_odoo_data
+  db_data:
+    name: ${COMPOSE_PROJECT_NAME}_db_data
+
+networks:
+  # Internal name with custom name for this environment
+  internal_network:
+    name: ${COMPOSE_PROJECT_NAME}_internal
+    driver: bridge
