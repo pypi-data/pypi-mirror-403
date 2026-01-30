@@ -1,0 +1,89 @@
+Metadata-Version: 2.4
+Name: ws_one
+Version: 1.3.1
+Author: PunchyArchy
+Author-email: ksmdrmvscthny@gmail.com
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyserial
+Dynamic: author
+Dynamic: author-email
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: license-file
+Dynamic: requires-dist
+
+# ws_one_stable
+
+`ws_one_stable` - библиотека для чтения данных весовых терминалов (через
+Serial/COM/USB), их нормализации и рассылки клиентам по TCP.
+
+В проект включен модуль `pds_one` (Port Data Splitter) - базовый TCP-сервер,
+который читает данные из порта и ретранслирует их подписчикам.
+
+## Что внутри
+
+- `PortDataSplitter` - низкоуровневый TCP-сервер для приема данных порта.
+- `WeightSplitter` - расширение для весовых терминалов с парсингом данных.
+- Набор парсеров терминалов в `ws_one_stable/terminals/*`.
+- Вспомогательные функции поиска парсеров и коды ошибок.
+
+## Быстрый старт
+
+Пример запуска `WeightSplitter`:
+
+```python
+from ws_one_stable.main import WeightSplitter
+
+ws = WeightSplitter(
+    ip="0.0.0.0",
+    port=2290,
+    port_name="/dev/ttyUSB0",
+    terminal_name="CAS",
+    scale_protocol=None,
+    debug=True,
+)
+ws.start()
+```
+
+Пример базового TCP-сплиттера (PDS):
+
+```python
+from ws_one_stable.pds_one.main import PortDataSplitter
+
+pds = PortDataSplitter("0.0.0.0", 2290, port_name="/dev/ttyUSB0")
+pds.start()
+```
+
+## Основные механики WeightSplitter
+
+- Парсер терминала выбирается по `terminal_name` из `ws_one_stable/terminals/*`.
+- Для каждого терминала обязателен парсер с функциями
+  `get_parsed_input_data(data)` и `check_scale_disconnected(data)`.
+- Используются коды ошибок из `ws_one_stable/settings.py`:
+  `scale_disconnected_code` (отключение) и `fail_parse_code` (ошибка парсинга).
+- Стабилизация веса состоит из двух уровней:
+  1) смещение базового веса (`set_stable_wight`, `upd_stable_weight`);
+  2) авто-стабилизация около нуля (|weight| < 50 -> 0).
+- При отправке данных применяется стабилизация, затем значение пересылается
+  клиентам через TCP.
+
+## Как добавить новый терминал
+
+1. Создай папку `ws_one_stable/terminals/<TerminalName>/`.
+2. Добавь файл `functions.py` с реализациями:
+   - `get_parsed_input_data(data)` - преобразование сырых данных в вес;
+   - `check_scale_disconnected(data)` - признак отключения терминала.
+3. Используй в коде `terminal_name="<TerminalName>"` (регистр не важен).
+4. По желанию добавь описание в `docs/terminals.md`.
+
+## Документация
+
+Подробная документация на русском находится в папке `docs/`:
+
+- `docs/overview.md` - обзор проекта
+- `docs/architecture.md` - архитектура и потоки данных
+- `docs/pds_module.md` - модуль PDS
+- `docs/weight_splitter.md` - модуль WeightSplitter
+- `docs/terminals.md` - поддерживаемые терминалы
+- `docs/migration.md` - миграция со старого `pds_one`
