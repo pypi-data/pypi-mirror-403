@@ -1,0 +1,22 @@
+extension tract_registry tract_core;
+
+
+fragment dyn_slice(
+    input: tensor<scalar>,
+    axis: tensor<scalar>,
+    begin: tensor<scalar>,
+    end: tensor<scalar>,
+    stride: tensor<scalar>
+) -> ( output: tensor<scalar> )
+{
+    input_shape = tract_core_shape_of(input);
+    input_dim = slice(input_shape, axes=[0], begin=[axis], end=[axis + 1], stride=[1]);
+    input_axis_size = squeeze(input_dim, axes=[0]);
+    output = slice(
+        input,
+        axes = [axis],
+        begin=[within_bound_index(begin, input_axis_size)],
+        end = [within_bound_index(end, input_axis_size)],
+        stride = [stride]
+    );
+}
