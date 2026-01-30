@@ -1,0 +1,212 @@
+Metadata-Version: 2.4
+Name: metricly-cli
+Version: 0.1.17
+Summary: Metricly CLI - Query metrics and manage dashboards from the terminal
+Project-URL: Homepage, https://metricly.xyz
+Project-URL: Documentation, https://metricly.xyz/docs
+Author-email: Metricly <support@metricly.xyz>
+License: Proprietary
+Keywords: analytics,bi,dashboard,dbt,metricflow,metrics
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: Other/Proprietary License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Database
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Requires-Python: >=3.12
+Requires-Dist: cachetools>=5.0.0
+Requires-Dist: dbt-bigquery>=1.9.0
+Requires-Dist: dbt-duckdb>=1.10.0
+Requires-Dist: dbt-metricflow>=0.8.0
+Requires-Dist: duckdb>=1.0.0
+Requires-Dist: firebase-admin>=6.0.0
+Requires-Dist: google-auth-oauthlib>=1.0.0
+Requires-Dist: google-auth>=2.0.0
+Requires-Dist: google-cloud-bigquery>=3.0.0
+Requires-Dist: google-cloud-firestore>=2.0.0
+Requires-Dist: google-cloud-secret-manager>=2.26.0
+Requires-Dist: google-cloud-storage>=2.0.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: pychrome>=0.2.4
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: pydantic>=2.12.5
+Requires-Dist: python-dateutil>=2.8.0
+Requires-Dist: pyyaml>=6.0.3
+Requires-Dist: rich>=13.0.0
+Requires-Dist: typer>=0.12.0
+Description-Content-Type: text/markdown
+
+# Metricly CLI
+
+Query metrics and manage dashboards from the terminal.
+
+## Installation
+
+### Using uv (Recommended)
+
+```bash
+# Install from local build
+uv tool install ./backend
+
+# Or install from GitHub (once published)
+uv tool install git+https://github.com/metricly/metricly#subdirectory=backend
+```
+
+### Using pip
+
+```bash
+pip install ./backend
+```
+
+## Quick Start
+
+```bash
+# Login with Google OAuth
+metricly login
+
+# Check who you're logged in as
+metricly whoami
+
+# List available metrics
+metricly metrics list
+
+# Query metrics
+metricly query -m total_revenue -g month --limit 5
+
+# Get visualization suggestions
+metricly query -m total_revenue -g month --suggest-viz
+
+# Export to JSON
+metricly query -m total_revenue --format json > data.json
+```
+
+## Commands
+
+### Authentication
+
+```bash
+metricly login          # Login via Google OAuth (opens browser)
+metricly whoami         # Show current user and organization
+metricly logout         # Clear stored credentials
+metricly org list       # List your organizations
+metricly org switch ID  # Switch to a different organization
+```
+
+### Querying Metrics
+
+```bash
+# List available metrics
+metricly metrics list
+metricly metrics list --format json
+
+# Get metric details
+metricly metrics show total_revenue
+
+# Query data
+metricly query -m revenue -g month                    # Monthly revenue
+metricly query -m revenue -d region --limit 10        # By region
+metricly query -m revenue -m orders -g week           # Multiple metrics
+metricly query -m revenue --start 2024-01-01 --end 2024-12-31
+
+# With visualization suggestion
+metricly query -m revenue -g month --suggest-viz
+
+# List dimensions
+metricly dimensions list
+```
+
+### Dashboard Management
+
+```bash
+# List dashboards
+metricly dashboards list
+
+# Show dashboard details
+metricly dashboards show DASHBOARD_ID
+
+# Create a new dashboard
+metricly dashboards create "My Dashboard"
+metricly dashboards create "Team Metrics" -v org  # Visible to team
+
+# Delete a dashboard
+metricly dashboards delete DASHBOARD_ID
+metricly dashboards delete DASHBOARD_ID --yes     # Skip confirmation
+```
+
+### Manifest Management (Admin Only)
+
+```bash
+# View manifest status
+metricly manifest status
+
+# Export manifest
+metricly manifest export -o manifest.yaml
+
+# Import manifest
+metricly manifest upload manifest.yaml
+metricly manifest upload manifest.yaml --force  # Overwrite conflicts
+
+# Semantic models
+metricly models list
+metricly models show orders
+metricly models create model.yaml
+metricly models update orders updated.yaml
+metricly models delete orders
+
+# Metrics
+metricly metrics create metric.yaml
+metricly metrics update total_revenue updated.yaml
+metricly metrics delete total_revenue
+metricly metrics preview metric.yaml  # Test before saving
+```
+
+## Output Formats
+
+All commands support `--format`:
+
+| Format | Description |
+|--------|-------------|
+| `table` | Human-readable ASCII table (default) |
+| `json` | JSON output for scripting |
+| `yaml` | YAML output for config editing |
+
+```bash
+metricly metrics list --format json | jq '.[0]'
+metricly dashboards show abc123 --format yaml > dashboard.yaml
+```
+
+## Configuration
+
+Credentials are stored in `~/.metricly/`:
+
+```
+~/.metricly/
+├── credentials.json    # OAuth tokens (encrypted)
+└── config.json         # User preferences
+```
+
+## Development
+
+```bash
+# Build the wheel
+cd backend
+uv build
+
+# Install locally for testing
+uv tool install dist/metricly_cli-*.whl --force
+
+# Run tests
+uv run pytest tests/ -v
+```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `FIRESTORE_EMULATOR_HOST` | Use Firestore emulator |
+| `FIREBASE_AUTH_EMULATOR_HOST` | Use Auth emulator |
+| `ENV` | Environment: `production`, `development`, `test` |
