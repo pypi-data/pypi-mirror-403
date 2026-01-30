@@ -1,0 +1,91 @@
+# Mushu CLI development justfile
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# Install dependencies and CLI in development mode
+install:
+    uv sync
+
+# Run the CLI (pass arguments after --)
+run *args:
+    uv run mushu {{args}}
+
+# Configure CLI for production
+config-prod:
+    uv run mushu config \
+        --auth-url https://auth.mushucorp.com \
+        --notify-url https://notify.mushucorp.com \
+        --pay-url https://pay.mushucorp.com
+
+# Configure CLI for local development
+config-local:
+    uv run mushu config \
+        --auth-url http://localhost:8000 \
+        --notify-url http://localhost:8001 \
+        --pay-url http://localhost:8002
+
+# Show current config
+config:
+    uv run mushu config --show
+
+# Show current status
+status:
+    uv run mushu status
+
+# Login
+login:
+    uv run mushu auth login
+
+# Logout
+logout:
+    uv run mushu auth logout
+
+# List organizations
+orgs:
+    uv run mushu org list
+
+# List notification tenants
+tenants:
+    uv run mushu tenant list
+
+# List pay tenants
+pay-tenants:
+    uv run mushu pay list
+
+# Create a pay tenant
+pay-create name org_id stripe_key:
+    uv run mushu pay create --name "{{name}}" --org "{{org_id}}" --stripe-key "{{stripe_key}}"
+
+# List products for default pay tenant
+products:
+    uv run mushu pay products
+
+# Add a product (credit pack)
+add-product name price credits:
+    uv run mushu pay add-product --name "{{name}}" --price {{price}} --credits {{credits}}
+
+# Create an API key for default pay tenant
+api-key name="default":
+    uv run mushu pay api-key --name "{{name}}"
+
+# Run tests
+test:
+    uv run pytest tests/ -v
+
+# Run tests with coverage
+test-cov:
+    uv run pytest tests/ -v --cov=mushu --cov-report=term-missing
+
+# Run linting
+lint:
+    uv run ruff check .
+
+# Format code
+fmt:
+    uv run ruff format .
+
+# Clean up
+clean:
+    rm -rf .venv __pycache__ .ruff_cache *.egg-info
