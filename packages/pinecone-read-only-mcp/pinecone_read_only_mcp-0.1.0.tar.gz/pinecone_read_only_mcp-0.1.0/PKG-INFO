@@ -1,0 +1,280 @@
+Metadata-Version: 2.4
+Name: pinecone-read-only-mcp
+Version: 0.1.0
+Summary: A Model Context Protocol (MCP) server that provides semantic search over Pinecone vector databases using hybrid search (dense + sparse) with reranking.
+Project-URL: Homepage, https://cppalliance.org/
+Project-URL: Repository, https://github.com/iTinkerBell/pinecone-read-only-mcp.git
+Project-URL: Issues, https://github.com/iTinkerBell/pinecone-read-only-mcp/issues
+Project-URL: Documentation, https://github.com/iTinkerBell/pinecone-read-only-mcp/blob/main/README.md
+Project-URL: Changelog, https://github.com/iTinkerBell/pinecone-read-only-mcp/blob/main/CHANGELOG.md
+Project-URL: Source Code, https://github.com/iTinkerBell/pinecone-read-only-mcp
+Author-email: Will Pak <will@cppalliance.org>
+Maintainer-email: Will Pak <will@cppalliance.org>
+License: BSL-1.0
+License-File: LICENSE
+Keywords: mcp,pinecone,rag,read-only,semantic-search
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Boost Software License 1.0 (BSL-1.0)
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Documentation
+Requires-Python: >=3.10
+Requires-Dist: anyio>=4.5.0
+Requires-Dist: click>=8.1.8
+Requires-Dist: mcp>=1.6.0
+Requires-Dist: pinecone>=5.0.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Description-Content-Type: text/markdown
+
+# Pinecone Read-Only MCP
+
+[![PyPI version](https://img.shields.io/pypi/v/pinecone-read-only-mcp.svg)](https://pypi.org/project/pinecone-read-only-mcp/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/pinecone-read-only-mcp.svg)](https://pypi.org/project/pinecone-read-only-mcp/)
+[![License: BSL-1.0](https://img.shields.io/badge/License-BSL--1.0-blue.svg)](https://opensource.org/licenses/BSL-1.0)
+
+A Model Context Protocol (MCP) server that provides semantic search over Pinecone vector databases using hybrid search (dense + sparse) with reranking.
+
+## Features
+
+- **Hybrid Search**: Combines dense and sparse embeddings for superior recall
+- **Semantic Reranking**: Uses BGE reranker model for improved precision
+- **Dynamic Namespace Discovery**: Automatically discovers available namespaces in your Pinecone index
+- **Metadata Filtering**: Supports optional metadata filters for refined searches
+- **Fast & Optimized**: Lazy initialization, connection pooling, and efficient result merging
+- **Production Ready**: Input validation, error handling, and configurable logging
+
+## Installation
+
+In a `uv` managed python project, add to dependencies by:
+
+```bash
+uv add pinecone-read-only-mcp
+```
+
+Alternatively, for projects using `pip` for dependencies:
+
+```bash
+pip install pinecone-read-only-mcp
+```
+
+To run the server inside your project:
+
+```bash
+uv run pinecone-read-only-mcp --api-key YOUR_PINECONE_API_KEY
+```
+
+Or to run it globally in isolated environment:
+
+```bash
+uvx pinecone-read-only-mcp --api-key YOUR_PINECONE_API_KEY
+```
+
+To install directly from the source:
+
+```bash
+git clone https://github.com/iTinkerBell/pinecone-read-only-mcp.git
+cd pinecone-read-only-mcp
+pip install -e .
+```
+
+## Configuration
+
+The server requires a Pinecone API key and supports the following configuration options:
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PINECONE_API_KEY` | Yes | - | Your Pinecone API key |
+| `PINECONE_INDEX_NAME` | No | `rag-hybrid` | Pinecone index name |
+| `PINECONE_RERANK_MODEL` | No | `bge-reranker-v2-m3` | Reranking model |
+| `PINECONE_READ_ONLY_MCP_LOG_LEVEL` | No | `INFO` | Logging level |
+
+### Claude Desktop Configuration
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "pinecone-search": {
+      "command": "uvx",
+      "args": ["pinecone-read-only-mcp"],
+      "env": {
+        "PINECONE_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+Or with explicit options:
+
+```json
+{
+  "mcpServers": {
+    "pinecone-search": {
+      "command": "uvx",
+      "args": [
+        "pinecone-read-only-mcp",
+        "--api-key", "your-api-key-here",
+        "--index-name", "your-index-name",
+        "--rerank-model", "bge-reranker-v2-m3"
+      ]
+    }
+  }
+}
+```
+
+## Usage
+
+### Command Line
+
+The server can be run in two modes:
+
+**Standard I/O mode** (default):
+
+```bash
+pinecone-read-only-mcp --api-key YOUR_API_KEY
+```
+
+**SSE transport mode** (for web applications):
+
+```bash
+pinecone-read-only-mcp --api-key YOUR_API_KEY --transport sse --port 8000
+```
+
+### Available Options
+
+```
+--api-key TEXT        Pinecone API key (or set PINECONE_API_KEY env var)
+--index-name TEXT     Pinecone index name [default: rag-hybrid]
+--rerank-model TEXT   Reranking model [default: bge-reranker-v2-m3]
+--transport [stdio|sse]  Transport type [default: stdio]
+--port INTEGER        Port for SSE transport [default: 8000]
+--log-level [DEBUG|INFO|WARNING|ERROR|CRITICAL]  Logging level [default: INFO]
+```
+
+## API Documentation
+
+The server exposes the following tools via MCP:
+
+### `list_namespaces`
+
+Discovers and lists all available namespaces in the configured Pinecone index.
+
+**Parameters:** None
+
+**Returns:** JSON object with available namespaces and count
+
+**Example response:**
+```json
+{
+  "status": "success",
+  "namespaces": ["namespace1", "namespace2", "namespace3"],
+  "count": 3
+}
+```
+
+### `query`
+
+Performs hybrid semantic search over the specified namespace in the Pinecone index.
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query_text` | string | Yes | - | Search query text |
+| `namespace` | string | Yes | - | Namespace to search (use `list_namespaces` to discover) |
+| `top_k` | integer | No | `10` | Number of results (1-100) |
+| `use_reranking` | boolean | No | `true` | Enable semantic reranking |
+
+**Returns:** JSON object with search results including content, relevance scores, and metadata
+
+**Example response:**
+```json
+{
+  "status": "success",
+  "query": "your search query",
+  "namespace": "namespace1",
+  "result_count": 10,
+  "results": [
+    {
+      "paper_number": "DOC-001",
+      "title": "Document Title",
+      "author": "Author Name",
+      "url": "https://example.com/doc",
+      "content": "Document content preview...",
+      "score": 0.9234,
+      "reranked": true
+    }
+  ]
+}
+```
+
+## How It Works
+
+1. **Namespace Discovery**: The `list_namespaces` tool queries your Pinecone index stats to discover available namespaces
+2. **Hybrid Search**: When querying, the tool searches both dense and sparse indexes in parallel
+3. **Result Merging**: Results from both indexes are merged and deduplicated
+4. **Reranking** (optional): The merged results are reranked using a semantic reranker for improved relevance
+
+## Dependencies
+
+- anyio (>=4.5.0)
+- click (>=8.1.8)
+- mcp (>=1.6.0)
+- pinecone (>=5.0.0)
+- python-dotenv (>=1.0.0)
+- pydantic (>=2.0.0)
+
+## Development
+
+### Setup Development Environment
+
+```bash
+git clone https://github.com/iTinkerBell/pinecone-read-only-mcp.git
+cd pinecone-read-only-mcp
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e ".[dev]"
+```
+
+### Code Quality
+
+```bash
+# Run linting
+uv run ruff check .
+
+# Run formatting check
+uv run ruff format --check .
+
+# Run security checks
+uv run bandit -r src/
+```
+
+### Contribution Guidelines
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit your changes: `git commit -am 'Add some feature'`
+4. Push to the branch: `git push origin feature-name`
+5. Submit a pull request
+
+## License
+
+This project is licensed under the Boost Software License 1.0 - see the LICENSE file for details.
+
+## Authors
+
+- **Will Pak** - [cppalliance.org](https://cppalliance.org/)
+
+## Acknowledgements
+
+This project uses Pinecone for vector storage and retrieval. The hybrid search approach combines dense embeddings with sparse BM25-style retrieval for optimal results.
