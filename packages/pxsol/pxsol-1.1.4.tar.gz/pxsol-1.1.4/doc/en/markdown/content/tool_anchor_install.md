@@ -1,0 +1,114 @@
+# Solana/More Developer Tools/Setting Up the Anchor Environment
+
+Earlier in the book we brought our first idea to Solana and wrote a simple program that can store arbitrary data. We did that in vanilla Rust, but had to deal directly with account validation, serialization, and client packing, busywork that can sap motivation. Anchor exists to take that heavy lifting off your plate so you can focus on what you're building, not just getting code to run.
+
+Anchor is a framework designed for developing on-chain programs on Solana. It helps you build and deploy programs quickly and safely by providing tools and abstractions that simplify the process: automatic account/instruction serialization, built-in safety checks, client generation, and testing utilities.
+
+Here we'll rebuild that storage program using Anchor to showcase its magic. This isn't a tool manual, if you want one, see the official docs: <https://book.anchor-lang.com/>. We'll just set up a clean workbench so you can assemble code and focus on core functionality. You'll see Anchor's mental model, run a full local flow from scratch, and learn to recognize a few small pitfalls along the way.
+
+## History
+
+Anchor was originally developed by the project serum team (led by the FTX exchange), aiming to simplify smart contract development on Solana. In the early days of the Solana ecosystem, developers typically used solana-program to write native Rust programs directly, but faced some challenges:
+
+0. Massive boilerplate code. Developers needed to write large amounts of repetitive code to handle account validation, PDA account management, rent exemption management, and other tedious tasks.
+0. Security challenges. Directly manipulating low-level accounts and instruction data easily introduced security vulnerabilities, requiring developers to have deep knowledge of Solana internals.
+
+Anchor greatly simplified these tasks by introducing high-level abstractions and automation tools. It heavily uses **macros** and **attributes** to automatically generate boilerplate code to prevent common vulnerabilities and generate easy-to-use client libraries.
+
+However, following the collapse of the FTX exchange in November 2022, the project serum team disbanded, and Anchor's maintenance fell into stagnation. Some members of the original serum team formed coral-xyz, and Anchor's repository was migrated to <https://github.com/coral-xyz/anchor>. In April 2025, the Solana development team experienced a major reorganization: the core client of the Solana protocol was renamed from Solana to Agave and transferred from solana-labs to the anza-xyz team; Anchor was transferred from coral-xyz to solana-foundation for maintenance: <https://github.com/solana-foundation/anchor>.
+
+> The April 2025 reorganization was quite extensive.
+
+## Environment Setup
+
+If your machine is missing these tools, install them first: Rust, Solana CLI, Node.js and Yarn, and Anchor itself. You can reuse the commands below; skip any steps you've already completed.
+
+Install Anchor (use avm to manage versions):
+
+```bash
+$ cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+$ avm install latest
+$ avm use latest
+$ anchor --version
+```
+
+Prepare Solana CLI and a local cluster:
+
+```bash
+$ sh -c "$(curl -sSfL https://release.solana.com/stable/install)"
+$ solana --version
+$ solana config set --url http://127.0.0.1:8899
+$ solana-test-validator -r
+```
+
+Install Node.js and Yarn, since Anchor's default tests and clients use TypeScript:
+
+```bash
+$ npm install -g yarn
+```
+
+Companion code for this chapter is here: <https://github.com/mohanson/pxsol-ss-anchor>. If you're browsing that repo, `Anchor.toml` already points to the local network and wallet path, and `tests/` includes the TypeScript tests. From the repo root, install dependencies:
+
+```bash
+$ yarn install
+```
+
+Tip: The very first time you run the local validator, don't forget to airdrop some funds to your default wallet:
+
+```bash
+$ solana airdrop 2
+```
+
+## Create a Project
+
+Let's scaffold the smallest viable program with Anchor and see what it looks like.
+
+```bash
+$ anchor init pxsol-ss-anchor
+$ cd pxsol-ss-anchor
+```
+
+The scaffolding creates a few key paths:
+
+- `programs/<name>/src/lib.rs` is your program entrypoint. You'll see the `#[program]` module and a couple of demo methods.
+- `Anchor.toml` is the config hub: program ID, cluster configs, test scripts, etc.
+- `tests/` contains the TypeScript tests, which will act as your "client" to click the buttons.
+
+Try building it:
+
+```bash
+$ anchor build
+```
+
+If you haven't started a local validator yet, launch one in a terminal:
+
+```bash
+$ solana-test-validator -r
+```
+
+Then run the tests:
+
+```bash
+$ anchor test --skip-local-validator
+```
+
+This command does three things:
+
+0. Builds the Rust program
+0. Deploys it to the local cluster
+0. Runs the TypeScript tests under `tests/`
+
+## How to Get Started
+
+When implementing real business logic, you can move along this minimal path:
+
+0. In `programs/<name>/src/lib.rs`:
+    - Define the data structures for your PDA accounts and annotate them with `#[account]`.
+    - Add methods and implement the core business logic, using `Context<...>` to specify the required accounts for each instruction.
+    - Clearly define the expected accounts and all relevant constraints.
+0. In the `tests/` folder, create a minimal test script that calls your program, then run `anchor test` and carefully read the error messages.
+0. Iteratively implement the logic, fix accounts, calculate space, set correct permissions, and keep updating the test script until all tests pass.
+0. Finally, integrate it with a frontend or backend service.
+
+
+Once you've made it past these gates, Anchor becomes a trusty ratchet. You don't need to ponder Torx vs hex sizes every day, just tighten the screw you actually care about.
