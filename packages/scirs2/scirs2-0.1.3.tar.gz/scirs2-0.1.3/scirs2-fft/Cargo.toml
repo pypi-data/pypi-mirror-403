@@ -1,0 +1,75 @@
+[package]
+name = "scirs2-fft"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Fast Fourier Transform module for SciRS2 (scirs2-fft)"
+license.workspace = true
+repository.workspace = true
+keywords = ["fft", "fourier", "scientific", "scipy", "numerical"]
+categories = ["science", "mathematics", "algorithms"]
+readme = "README.md"
+
+[features]
+# NOTE: Pure Rust by default - OxiFFT provides high-performance Pure Rust FFT
+# Enable with: cargo build --features oxifft
+default = ["helper", "window", "parallel"]
+helper = []
+window = []
+minimal = []
+parallel = []
+simd = [] # SIMD acceleration support
+oxifft = ["dep:oxifft"] # High-performance Pure Rust FFT (FFTW-compatible algorithms)
+serde = [] # Serialization support
+cuda = [] # Optional CUDA support for GPU acceleration (dependencies disabled)
+hip = [] # Optional ROCm/HIP support for AMD GPU acceleration
+sycl = [] # Optional SYCL support for cross-platform GPU acceleration
+never = [] # Used to conditionally disable tests during development
+python = ["scirs2-core/python"] # Python bindings support
+
+[lints]
+workspace = true
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+
+[dependencies]
+# Core dependencies - ALL numeric/array/random functionality from scirs2-core (SciRS2 POLICY)
+thiserror = { workspace = true }
+scirs2-core = { workspace = true, features = ["simd", "parallel", "gpu", "validation", "random", "array"] }
+
+# FFT specific dependencies
+rustfft = { workspace = true }
+
+# OxiFFT - Pure Rust high-performance FFT (FFTW-compatible algorithms)
+oxifft = { workspace = true, optional = true }
+
+# Serialization dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# System info and benchmarking
+num_cpus = { workspace = true }
+tempfile = { workspace = true }
+
+# CUDA dependencies (optional) - temporarily disabled
+# cudarc = { version = "0.12", optional = true, features = ["driver", "runtime", "cublas", "curand"] }
+# cufft = { version = "0.3", optional = true } # Temporarily disabled - version not available
+
+# ROCm/HIP dependencies (optional) - temporarily disabled  
+# hiprt = { version = "0.2", optional = true }
+# rocblas = { version = "0.2", optional = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+criterion = { workspace = true }
+plotly = { workspace = true }
+
+[[bench]]
+name = "fft_benchmarks"
+harness = false
+
+[[bench]]
+name = "scipy_comparison"
+harness = false

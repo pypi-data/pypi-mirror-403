@@ -1,0 +1,80 @@
+[package]
+name = "scirs2-interpolate"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Interpolation module for SciRS2 (scirs2-interpolate)"
+license.workspace = true
+repository.workspace = true
+keywords = ["interpolation", "spline", "scientific", "scipy", "numerical"]
+categories = ["science", "mathematics", "algorithms"]
+readme = "README.md"
+
+[lints]
+workspace = true
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+
+[dependencies]
+# Core dependencies - ALL numeric/array/random functionality from scirs2-core (SciRS2 POLICY)
+scirs2-core = { workspace = true, features = ["simd", "parallel", "random", "array"] }
+scirs2-linalg = { workspace = true }
+thiserror = { workspace = true }
+num_cpus = { workspace = true }
+ordered-float = { workspace = true }
+fastrand = { workspace = true }
+statrs = { workspace = true }
+
+# Optional dependencies for features
+pyo3 = { workspace = true, optional = true }
+numpy = { workspace = true, optional = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
+
+[dev-dependencies]
+approx = { workspace = true }
+criterion = { workspace = true }
+plotters = { workspace = true }
+
+[features]
+# Default features
+default = []
+
+# Enable this feature if you have OpenBLAS installed and want to use linear algebra operations
+# Provides faster matrix operations, SVD, eigendecompositions, etc.
+# Requires OpenBLAS development package (libopenblas-dev or equivalent)
+# linalg = ["ndarray-linalg"]  # Commented out since dependency is removed
+# Adding linalg as empty feature to support existing cfg conditions
+linalg = []
+
+# Enable SIMD optimizations for performance-critical operations
+# Provides 2-4x speedup for B-spline evaluation and distance calculations
+simd = ["scirs2-core/simd"]
+
+# Enable parallel processing features
+parallel = ["scirs2-core/parallel"]
+
+# Enable scipy comparison benchmarks (requires Python with scipy/numpy)
+scipy-comparison = ["pyo3", "numpy"]
+
+# Enable serialization support for data structures
+serde = ["dep:serde"]
+
+[[bench]]
+name = "basic_interpolation"
+harness = false
+
+[[bench]]
+name = "advanced_methods"
+harness = false
+
+[[bench]]
+name = "bspline_benchmarks"
+harness = false
+
+# scipy_comparison benchmark disabled (Python/PyO3 linking issues on macOS)
+# [[bench]]
+# name = "scipy_comparison"
+# harness = false
+# required-features = ["scipy-comparison"]
