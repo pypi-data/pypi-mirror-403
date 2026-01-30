@@ -1,0 +1,280 @@
+# Telescopius API - Python SDK
+
+A Python SDK for the [Telescopius REST API](https://api.telescopius.com). Search for astronomical targets, get observation planning data, and more.
+
+## Installation
+
+```bash
+pip install telescopius-api
+```
+
+Or with uv:
+
+```bash
+uv add telescopius-api
+```
+
+## Getting Started
+
+First, you'll need an API key from Telescopius. Visit [https://api.telescopius.com](https://api.telescopius.com) to get your key.
+
+### Basic Usage
+
+```python
+from telescopius import TelescopiusClient
+
+# Initialize the client
+client = TelescopiusClient(api_key="YOUR_API_KEY")
+
+# Get quote of the day
+quote = client.get_quote_of_the_day()
+print(f"{quote['text']} - {quote['author']}")
+
+# Don't forget to close the client when done
+client.close()
+```
+
+### Using as a Context Manager
+
+```python
+from telescopius import TelescopiusClient
+
+with TelescopiusClient(api_key="YOUR_API_KEY") as client:
+    quote = client.get_quote_of_the_day()
+    print(f"{quote['text']} - {quote['author']}")
+```
+
+### Debug Mode
+
+Enable debug mode to see detailed HTTP request and response logs:
+
+```python
+import logging
+
+client = TelescopiusClient(
+    api_key="YOUR_API_KEY",
+    debug=True  # Enable debug logging
+)
+
+# All API calls will now log request/response details
+quote = client.get_quote_of_the_day()
+```
+
+## API Reference
+
+### Constructor
+
+```python
+client = TelescopiusClient(
+    api_key="YOUR_API_KEY",
+    debug=False,      # Optional: enable debug logging
+    timeout=30.0      # Optional: request timeout in seconds
+)
+```
+
+### Methods
+
+#### `get_quote_of_the_day()`
+
+Get an astronomy-related quote of the day.
+
+```python
+quote = client.get_quote_of_the_day()
+print(f"{quote['text']} - {quote['author']}")
+```
+
+#### `search_targets(**params)`
+
+Search for astronomical targets in the sky.
+
+```python
+results = client.search_targets(
+    lat=38.7223,
+    lon=-9.1393,
+    timezone="Europe/Lisbon",
+    types="GXY,ENEB",
+    min_alt=30,
+    mag_max=10,
+    results_per_page=20
+)
+
+print(f"Found {results['matched']} objects")
+for item in results['page_results']:
+    obj = item['object']
+    print(f"{obj.get('main_name') or obj['main_id']} - Mag: {obj.get('visual_mag')}")
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lat` | float | Latitude in decimal degrees (-90 to 90) |
+| `lon` | float | Longitude in decimal degrees (-180 to 180) |
+| `timezone` | str | IANA timezone (e.g., 'Europe/Lisbon') |
+| `datetime` | str | Date/time ('YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss') |
+| `types` | str | Object types, comma-separated (e.g., 'GXY,ENEB') |
+| `name` | str | Object name to search for |
+| `name_exact` | bool | Exact name match |
+| `con` | str | Constellation codes (e.g., 'ORI,CYG') |
+| `min_alt` | float | Minimum altitude in degrees (0-90) |
+| `mag_max` | float | Maximum magnitude |
+| `mag_min` | float | Minimum magnitude |
+| `size_max` | float | Maximum size in arcminutes |
+| `size_min` | float | Minimum size in arcminutes |
+| `order` | str | Sort field ('name', 'mag', 'ra', 'dec', etc.) |
+| `order_asc` | bool | Ascending order |
+| `results_per_page` | int | Results per page (1-120) |
+| `page` | int | Page number |
+
+#### `get_target_highlights(**params)`
+
+Get popular targets best seen around this time of year.
+
+```python
+highlights = client.get_target_highlights(
+    lat=38.7223,
+    lon=-9.1393,
+    timezone="Europe/Lisbon",
+    min_alt=20
+)
+
+for item in highlights['page_results']:
+    obj = item['object']
+    print(f"- {obj.get('main_name') or obj['main_id']}")
+```
+
+#### `get_target_lists()`
+
+Get all target lists for the current user.
+
+```python
+lists = client.get_target_lists()
+for lst in lists:
+    print(f"List ID: {lst['id']}, Name: {lst['name']}")
+```
+
+#### `get_target_list_by_id(list_id, **params)`
+
+Get a specific target list by ID with all its targets.
+
+```python
+target_list = client.get_target_list_by_id(
+    "12345678",
+    lat=38.7223,
+    lon=-9.1393,
+    timezone="Europe/Lisbon"
+)
+
+print(f"List: {target_list['name']}")
+for target in target_list.get('targets', []):
+    print(f"- {target.get('main_name') or target['main_id']}")
+```
+
+#### `get_solar_system_times(**params)`
+
+Get rise/transit/set times for Sun, Moon, and planets.
+
+```python
+times = client.get_solar_system_times(
+    lat=38.7223,
+    lon=-9.1393,
+    timezone="Europe/Lisbon"
+)
+
+print(f"Sunrise: {times['sun']['rise']}, Sunset: {times['sun']['set']}")
+print(f"Moonrise: {times['moon']['rise']}, Moon phase: {times['moon']['phase']}")
+```
+
+#### `search_pictures(**params)`
+
+Search for astrophotography pictures.
+
+```python
+pictures = client.search_pictures(
+    order="is_featured",
+    results_per_page=10
+)
+
+for pic in pictures['results']:
+    print(f"{pic['title']} by {pic['username']}")
+```
+
+## Object Types
+
+Supported object type codes for the `types` parameter:
+
+| Code | Description |
+|------|-------------|
+| `STAR` | Stars |
+| `DSTAR` | Double stars |
+| `MSTAR` | Multiple star systems |
+| `GXY` | Galaxies |
+| `ENEB` | Emission nebulae |
+| `RNEB` | Reflection nebulae |
+| `DINEB` | Diffuse nebulae |
+| `PNEB` | Planetary nebulae |
+| `SNR` | Supernova remnants |
+| `GCL` | Globular clusters |
+| `OCL` | Open clusters |
+| `PLANET` | Planets |
+| `ASTEROID` | Asteroids |
+| `COMET` | Comets |
+| `DEEP_SKY_OBJECT` | All deep sky objects |
+
+Use comma-separated codes for multiple types:
+```python
+types="GXY,ENEB,PNEB"  # Galaxies, emission nebulae, and planetary nebulae
+```
+
+## Error Handling
+
+The SDK provides specific exception types for different error scenarios:
+
+```python
+from telescopius import (
+    TelescopiusClient,
+    TelescopiusError,
+    TelescopiusAuthError,
+    TelescopiusBadRequestError,
+    TelescopiusRateLimitError,
+    TelescopiusNotFoundError,
+    TelescopiusNetworkError,
+)
+
+try:
+    results = client.search_targets(
+        lat=38.7223,
+        lon=-9.1393,
+        timezone="Europe/Lisbon"
+    )
+except TelescopiusAuthError:
+    print("Invalid API key")
+except TelescopiusRateLimitError:
+    print("Rate limit exceeded - please wait before retrying")
+except TelescopiusBadRequestError as e:
+    print(f"Invalid parameters: {e.message}")
+except TelescopiusNetworkError:
+    print("Network error - check your connection")
+except TelescopiusError as e:
+    print(f"API error: {e.message}")
+```
+
+## Rate Limits
+
+Please be aware of the API rate limits. If you exceed the rate limit, you'll receive a `TelescopiusRateLimitError`.
+
+## License
+
+MIT
+
+## Terms of Service
+
+This SDK uses the Telescopius API. By using this SDK, you agree to the [Telescopius Terms and Conditions](https://telescopius.com/terms-and-conditions#api).
+
+Commercial use is not allowed unless you have prior written authorization from Telescopius.
+
+## Support
+
+For API-related questions or to request new endpoints:
+- Visit the [Telescopius Contact Form](https://telescopius.com/contact)
+- API Documentation: [https://api.telescopius.com](https://api.telescopius.com)
