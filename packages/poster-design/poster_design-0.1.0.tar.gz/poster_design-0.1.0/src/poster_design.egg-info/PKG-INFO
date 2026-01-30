@@ -1,0 +1,402 @@
+Metadata-Version: 2.4
+Name: poster-design
+Version: 0.1.0
+Summary: A powerful poster design library with optional MCP integration for LLM agents
+Author: Poster Design Contributors
+License: MIT
+Project-URL: Homepage, https://github.com/Zts0hg/poster-design
+Project-URL: Documentation, https://github.com/Zts0hg/poster-design#readme
+Project-URL: Repository, https://github.com/Zts0hg/poster-design
+Project-URL: Issues, https://github.com/Zts0hg/poster-design/issues
+Project-URL: Changelog, https://github.com/Zts0hg/poster-design/blob/main/CHANGELOG.md
+Keywords: poster,design,graphics,image-generation,mcp,llm,agent,ai
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Multimedia :: Graphics
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pillow>=10.0.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: typing-extensions>=4.0.0
+Provides-Extra: mcp
+Requires-Dist: mcp>=0.1.0; extra == "mcp"
+Requires-Dist: aiohttp>=3.9.0; extra == "mcp"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.12.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: mypy>=1.5.0; extra == "dev"
+Requires-Dist: pre-commit>=3.4.0; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: mkdocs>=1.5.0; extra == "docs"
+Requires-Dist: mkdocs-material>=9.4.0; extra == "docs"
+Requires-Dist: mkdocstrings[python]>=0.23.0; extra == "docs"
+Provides-Extra: test
+Requires-Dist: pytest>=7.4.0; extra == "test"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "test"
+Requires-Dist: pytest-cov>=4.1.0; extra == "test"
+Requires-Dist: pytest-mock>=3.12.0; extra == "test"
+Provides-Extra: all
+Requires-Dist: poster-design[mcp]; extra == "all"
+Requires-Dist: poster-design[dev]; extra == "all"
+Requires-Dist: poster-design[docs]; extra == "all"
+Dynamic: license-file
+
+# Poster Design
+
+A Python library for programmatic poster and image design with optional MCP (Model Context Protocol) integration for AI-driven design workflows.
+
+## Features
+
+- **Simple Python API**: Create posters with a fluent, chainable API
+- **Multiple Element Types**: Text, images, and shapes with full customization
+- **Preset Templates**: Ready-to-use canvas sizes for social media (Instagram, Facebook, WeChat)
+- **Layout System**: Automatic alignment, distribution, and grid layouts
+- **Style Management**: Themes and color schemes for consistent designs
+- **Image Filters**: Blur, brightness, contrast, and more
+- **MCP Integration**: Optional AI-driven design through natural language
+- **Session Management**: Multi-user support for production deployments
+
+## Installation
+
+### Basic Installation
+
+```bash
+pip install poster-design
+```
+
+### With MCP Support
+
+```bash
+pip install poster-design[mcp]
+```
+
+### Development Installation
+
+```bash
+git clone https://github.com/yourusername/poster-design.git
+cd poster-design
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+### Python API
+
+```python
+from poster_design import Canvas, TextElement, ImageElement
+
+# Create canvas with preset
+canvas = Canvas(preset="instagram_post")
+
+# Set background using different options
+# Option 1: Preset background
+canvas.set_background(preset="paper_texture")
+
+# Option 2: Gradient background
+canvas.set_background(gradient=["#FFB6C1", "#FFA07A"])
+
+# Option 3: Solid color
+canvas.set_background(color="#FF6B6B")
+
+# Add title
+title = TextElement(
+    text="Summer Sale",
+    font_size=72,
+    color="#FFFFFF",
+    bold=True
+)
+canvas.add(title, position="center", offset_y=-50)
+
+# Add subtitle
+subtitle = TextElement(
+    text="50% OFF",
+    font_size=96,
+    color="#FF6347",
+    bold=True
+)
+canvas.add(subtitle, position="center", offset_y=50)
+
+# Export
+canvas.export("summer_sale.png", dpi=300)
+```
+
+### MCP Integration (for AI Agents)
+
+The MCP server allows AI agents to create posters through natural language.
+
+#### Claude Desktop Configuration
+
+```json
+// Claude Desktop configuration
+{
+  "mcpServers": {
+    "poster-design": {
+      "command": "python",
+      "args": ["-m", "poster_design.mcp.server"]
+    }
+  }
+}
+```
+
+#### Claude Code CLI Registration
+
+To register the MCP server with Claude Code CLI:
+
+```bash
+# Basic registration (for system Python)
+claude mcp add --transport stdio poster-design -- python -m poster_design.mcp.server
+
+# For conda/virtual environments, use absolute Python path
+claude mcp add --transport stdio poster-design -- /opt/anaconda3/bin/python -m poster_design.mcp.server
+
+# Or use the console script (with full path)
+claude mcp add --transport stdio poster-design -- /opt/anaconda3/bin/poster-design-mcp
+```
+
+**Important Notes:**
+- If you're using conda or a virtual environment, you must use the **absolute path** to your Python interpreter
+- To find your Python path: `which python` (macOS/Linux) or `where python` (Windows)
+- Verify connection: `claude mcp list` - should show `poster-design: ✓ Connected`
+- If connection fails, remove and re-register: `claude mcp remove poster-design`
+
+**Common Issues:**
+| Issue | Solution |
+|-------|----------|
+| Failed to connect | Use absolute Python path instead of `python` |
+| Module not found | Ensure package is installed: `pip install -e ".[mcp]"` |
+| Permission denied | Check Python executable has execute permissions |
+
+## Canvas Presets
+
+| Preset Name | Dimensions | Use Case |
+|-------------|------------|----------|
+| `instagram_post` | 1080x1080 | Instagram square post |
+| `instagram_story` | 1080x1920 | Instagram/Reels story |
+| `facebook_post` | 1200x630 | Facebook link preview |
+| `wechat_cover` | 900x500 | WeChat article cover |
+| `a4_portrait` | 2480x3508 | A4 at 300 DPI |
+| `a4_landscape` | 3508x2480 | A4 landscape at 300 DPI |
+
+## Preset Backgrounds
+
+The library includes built-in background textures that can be referenced by name:
+
+```python
+from poster_design import Canvas
+
+canvas = Canvas(preset="instagram_post")
+canvas.set_background(preset="paper_texture")
+canvas.export("output.png")
+```
+
+### Available Preset Backgrounds
+
+| Preset Name | Description |
+|-------------|-------------|
+| `paper_texture` | Subtle paper texture |
+| `wood_grain` | Wood grain pattern |
+| `fabric_linen` | Linen fabric texture |
+| `marble` | Marble pattern |
+| `geometric` | Geometric pattern |
+
+### Listing Available Presets
+
+```python
+from poster_design import list_preset_backgrounds
+
+presets = list_preset_backgrounds()
+print(presets)  # ['paper_texture', 'wood_grain', 'fabric_linen', 'marble', 'geometric']
+```
+
+### Custom Preset Backgrounds
+
+You can register your own preset backgrounds at runtime:
+
+```python
+from poster_design.core.backgrounds import register_preset_background
+
+register_preset_background("my_texture", "/path/to/texture.jpg")
+canvas.set_background(preset="my_texture")
+```
+
+## Element Types
+
+### TextElement
+
+```python
+text = TextElement(
+    text="Hello World",
+    font_size=48,
+    font_family="Arial",
+    color="#000000",
+    bold=True,
+    italic=False,
+    align="center"
+)
+canvas.add(text, position="center")
+```
+
+### ImageElement
+
+```python
+image = ImageElement(
+    source="path/to/image.jpg",
+    size=(300, 200),
+    fit="cover"  # cover, contain, or fill
+)
+canvas.add(image, position="center")
+```
+
+### ShapeElement
+
+```python
+circle = ShapeElement(
+    shape_type="circle",
+    size=(100, 100),
+    fill_color="#FF0000",
+    border_color="#000000",
+    border_width=2
+)
+canvas.add(circle, position=(100, 100))
+```
+
+## Layout System
+
+```python
+from poster_design.core.layout import LayoutManager, GridLayout
+
+# Align elements
+LayoutManager.align_elements(elements, "center", canvas.size)
+
+# Distribute elements
+LayoutManager.distribute_elements(elements, "horizontal", canvas.size, spacing=50)
+
+# Grid layout
+grid = GridLayout(rows=2, cols=3, padding=20, spacing=10)
+```
+
+## Position Aliases
+
+Elements support semantic position aliases:
+
+- `"center"` - Centered horizontally and vertically
+- `"top-center"`, `"bottom-center"`
+- `"left-center"`, `"right-center"`
+- `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"`
+
+Or use explicit coordinates: `position=(x, y)` or with offsets: `position="center", offset_x=50, offset_y=-30`
+
+## Export Options
+
+```python
+# PNG with high DPI
+canvas.export("output.png", dpi=300)
+
+# JPG with quality
+canvas.export("output.jpg", format="jpg", quality=85)
+
+# PDF export
+canvas.export("output.pdf", format="pdf")
+```
+
+## MCP Tools
+
+When using MCP integration, the following tools are available:
+
+- `create_canvas` - Create a new canvas
+- `set_background` - Set canvas background (color/gradient/image)
+- `add_text` - Add text element
+- `add_image` - Add image element
+- `add_shape` - Add shape element
+- `remove_element` - Remove an element
+- `align_elements` - Align elements
+- `distribute_elements` - Distribute elements evenly
+- `export_poster` - Export to file
+- `get_canvas_info` - Get canvas information
+- `list_canvases` - List all canvases in session
+- `delete_canvas` - Delete a canvas
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=poster_design --cov-report=html
+
+# Run specific test file
+pytest tests/unit/test_canvas.py
+```
+
+### Code Quality
+
+```bash
+# Format code
+black .
+
+# Lint
+ruff .
+
+# Type check
+mypy src/
+```
+
+## Project Structure
+
+```
+poster-design/
+├── src/poster_design/
+│   ├── core/           # Core SDK (no MCP dependencies)
+│   │   ├── canvas.py
+│   │   ├── elements.py
+│   │   ├── layout.py
+│   │   ├── styles.py
+│   │   └── filters.py
+│   ├── mcp/            # Optional MCP integration
+│   │   ├── server.py
+│   │   ├── handlers.py
+│   │   └── session.py
+│   └── utils/
+│       ├── colors.py
+│       └── validators.py
+├── tests/
+│   ├── unit/
+│   └── integration/
+└── examples/
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Write tests for your changes (TDD)
+4. Ensure all tests pass (`pytest`)
+5. Format your code (`black .`)
+6. Commit your changes (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Built with [Pillow](https://python-pillow.org/) for image manipulation
+- MCP integration follows the [Model Context Protocol](https://modelcontextprotocol.io/)
+- Inspired by design tools like Figma and Canva
