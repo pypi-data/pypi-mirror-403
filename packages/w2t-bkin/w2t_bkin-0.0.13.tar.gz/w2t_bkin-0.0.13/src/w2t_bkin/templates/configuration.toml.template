@@ -1,0 +1,164 @@
+# =============================================================================
+# w2t-bkin Pipeline Configuration
+# =============================================================================
+# This file defines DEFAULT PARAMETERS for pipeline processing.
+# Paths are configured via environment variables (see .workers/.env).
+#
+# Required environment variables:
+# - W2T_RAW_ROOT: Raw data directory
+# - W2T_INTERMEDIATE_ROOT: Intermediate processing outputs
+# - W2T_OUTPUT_ROOT: Final NWB output directory
+# - W2T_MODELS_ROOT: Pose estimation models
+#
+# For production deployments, these are set automatically by the Docker worker.
+# For development mode, they default to <project_root>/data/raw, etc.
+# =============================================================================
+
+# =============================================================================
+# Synchronization Strategy
+# =============================================================================
+
+[synchronization]
+strategy = "hardware_pulse"      # Options: rate_based | hardware_pulse | network_stream
+reference_channel = "ttl_camera" # Master clock TTL channel
+
+[synchronization.alignment]
+method = "nearest"          # Options: nearest | linear
+tolerance_s = 0.002         # Max allowed timing jitter (seconds)
+global_offset_s = 0.0       # Global time offset correction
+
+# =============================================================================
+# Verification & Validation
+# Pipeline verifies data integrity but does NOT compute timestamps (uses hardware sync)
+# Session logs auto-created: {output_root}/{subject}/{session}/pipeline.log
+# =============================================================================
+
+[verification]
+enabled = true                # Master switch (disables all checks when false)
+check_frame_counts = true     # Count frames via ffprobe (slow but accurate)
+check_sync_mismatch = true    # Verify frame/TTL counts match (false = skip TTL checks)
+mismatch_tolerance_frames = 0 # Max allowed frame/pulse difference
+warn_on_mismatch = false      # Warn instead of fail when within tolerance
+
+# =============================================================================
+# Bpod Configuration
+# =============================================================================
+
+[bpod]
+parse = true
+pattern = "Bpod/*.mat"
+order = "time_asc"     # name_asc | name_desc | time_asc | time_desc
+continuous_time = true
+
+# =============================================================================
+# Data Acquisition
+# =============================================================================
+
+[acquisition]
+concat_strategy = "ffconcat" # Video concatenation: ffconcat | mkvmerge
+
+# =============================================================================
+# Preprocessing Configuration
+# =============================================================================
+
+[preprocessing]
+force_rerun = false # Force re-run even if outputs exist (applies to 'generate' mode only)
+
+# -----------------------------------------------------------------------------
+# Pose Estimation: DLC & SLEAP
+# -----------------------------------------------------------------------------
+# H5 Discovery Contract (stem-based):
+#   - H5 files must be in interim/{dlc-pose|sleap-pose}/<camera_id>/
+#   - Filenames must match video stems:
+#     * DLC: {video_stem}DLC*.h5
+#     * SLEAP: *{video_stem}*.h5
+#
+# Model selection (for generate mode):
+#   - Per-camera models defined in metadata.pose.cameras.<camera_id>.model_id
+#   - Model paths in metadata.pose.models.<model_id>.path (relative to models_root)
+#   - See metadata.toml template for full pose section structure
+
+[preprocessing.dlc]
+mode = "auto"       # off | discover | generate | auto
+# - off: Skip DLC entirely (equivalent to old enabled=false)
+# - discover: Use pre-existing H5s (stem-based discovery)
+# - generate: Run DLC inference (requires metadata.pose.models)
+# - auto: Generate if metadata.pose.models exists, else discover
+# gpu = 0      # GPU device ID (omit for auto-detect, -1 for CPU)
+# save_csv = false  # Export CSV in addition to H5
+
+[preprocessing.sleap]
+mode = "off"          # off | discover | auto (generate NOT IMPLEMENTED)
+# - off: Skip SLEAP entirely (default, generate not implemented)
+# - discover: Use pre-existing H5s (stem-based discovery)
+# - auto: Same as discover (generate not implemented)
+# gpu = 0      # GPU device ID (omit for auto-detect, -1 for CPU)
+
+# =============================================================================
+# Video Processing
+# =============================================================================
+
+[video.analysis]
+frame_count_timeout = 30 # Timeout for frame counting (seconds)
+
+[video.transcode]
+enabled = true
+codec = "h264"    # ffmpeg codec
+crf = 20          # Quality: 0 (best) - 51 (worst)
+preset = "fast"   # Encoding speed preset
+keyint = 15       # GOP size (frames)
+
+# =============================================================================
+# NWB Export Configuration
+# =============================================================================
+
+[nwb]
+link_external_video = true # Use external links for video files
+# file_name_template = "{session.id}.nwb"     # Optional: NWB filename template
+# session_description_template = "..."        # Optional: Session description template
+
+# =============================================================================
+# Quality Control
+# =============================================================================
+
+[qc]
+generate_report = true      # Generate QC HTML reports
+include_verification = true # Include verification results in reports
+# out_template = "qc/{session.id}"  # Optional: Output path template
+
+# =============================================================================
+# Extracellular Electrophysiology (Neuropixels)
+# =============================================================================
+# ⚠️  FEATURE NOT YET IMPLEMENTED - Configuration reserved for future use
+# ⚠️  DO NOT USE - Will cause validation errors if uncommented
+#
+# Planned features:
+# - Neuropixels probe data integration
+# - Kilosort/Phy spike sorting integration
+# - LFP computation and storage
+# - Unit quality filtering
+#
+# Status: Planned for future release
+# Tracking: See roadmap or GitHub issues for implementation timeline
+#
+# [ecephys]
+# enabled = false
+# probes = []
+#
+# [ecephys.storage]
+# raw_data_strategy = "link"
+# compute_lfp = false
+#
+# [ecephys.quality]
+# include_labels = ["good", "mua"]
+# min_spike_count = 100
+# add_waveforms = false
+# add_quality_metrics = false
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+
+[logging]
+level = "INFO"     # DEBUG | INFO | WARNING | ERROR | CRITICAL
+structured = false # Use JSON format
