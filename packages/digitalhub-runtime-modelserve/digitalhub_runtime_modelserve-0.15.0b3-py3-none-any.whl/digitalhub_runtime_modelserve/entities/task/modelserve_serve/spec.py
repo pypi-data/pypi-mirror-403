@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: © 2025 DSLab - Fondazione Bruno Kessler
+#
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+from digitalhub.entities.task._base.models import CoreServiceType
+from digitalhub.entities.task._base.spec import TaskSpecFunction, TaskValidatorFunction
+from pydantic import Field
+
+
+class TaskSpecModelserveServe(TaskSpecFunction):
+    """TaskSpecModelserveServe specifications."""
+
+    def __init__(
+        self,
+        function: str,
+        volumes: list[dict] | None = None,
+        resources: dict | None = None,
+        envs: list[dict] | None = None,
+        secrets: list[str] | None = None,
+        profile: str | None = None,
+        replicas: int | None = None,
+        service_type: str | None = None,
+        service_name: str | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            function,
+            volumes,
+            resources,
+            envs,
+            secrets,
+            profile,
+            **kwargs,
+        )
+        self.replicas = replicas
+        self.service_type = service_type
+        self.service_name = service_name
+
+
+class TaskValidatorModelserveServe(TaskValidatorFunction):
+    """
+    TaskValidatorModelserveServe specifications.
+    """
+
+    replicas: int | None = Field(default=None, ge=1)
+    """Number of replicas."""
+
+    service_type: CoreServiceType = None
+    """Service type."""
+
+    service_name: str = None
+    """Service name."""
