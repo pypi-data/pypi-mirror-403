@@ -1,0 +1,52 @@
+# Converted from DefectDojo parser
+import typing
+import datetime
+# Required stubs: Finding
+
+import hashlib
+import json
+from datetime import datetime
+from norm_findings.stubs.models import Finding
+
+class CloudsploitParser():
+    'AquaSecurity CloudSploit https://github.com/aquasecurity/cloudsploit'
+
+    def get_scan_types(self):
+        return ['Cloudsploit Scan']
+
+    def get_label_for_scan_types(self, scan_type):
+        return 'Cloudsploit Scan'
+
+    def get_description_for_scan_types(self, scan_type):
+        return 'Cloudsploit report file can be imported in JSON format (option --json).'
+
+    def get_findings(self, scan_file, test):
+        data = json.load(scan_file)
+        find_date = datetime.now()
+        dupes = {}
+        for item in data:
+            title = item['title']
+            if isinstance(item['region'], str):
+                region = item['region']
+            elif isinstance(item['region'], list):
+                region = ','.join(item['region'])
+            description = ((((((('**Finding** : ' + item['message']) + '\n') + '**Resource** : ') + item['resource']) + '\n') + '**Region** : ') + region)
+            severity = self.convert_severity(item['status'])
+            finding = Finding(title=title, test=test, description=description, component_name=item['resource'], severity=severity, impact=item['description'], date=find_date, dynamic_finding=True)
+            dupe_key = hashlib.sha256(str((description + title)).encode('utf-8')).hexdigest()
+            if (dupe_key in dupes):
+                find = dupes[dupe_key]
+                if finding.description:
+                    find.description += ('\n' + finding.description)
+                dupes[dupe_key] = find
+            else:
+                dupes[dupe_key] = finding
+        return list(dupes.values())
+
+    def convert_severity(self, status):
+        'Convert severity value'
+        if (status == 'WARN'):
+            return 'Medium'
+        if (status == 'FAIL'):
+            return 'Critical'
+        return 'Info'

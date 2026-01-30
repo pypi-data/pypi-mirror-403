@@ -1,0 +1,142 @@
+# Converted from DefectDojo parser
+import typing
+import datetime
+# Required stubs: Endpoint, Finding
+
+import csv
+import io
+import logging
+import re
+from datetime import datetime
+from dateutil import parser
+from norm_findings.stubs.django.conf import settings
+from norm_findings.stubs.models import Endpoint, Finding
+from norm_findings.stubs.utils import parse_cvss_data
+_logger = logging.getLogger(__name__)
+
+def get_fields(self) -> list[str]:
+    '\n    Return the list of fields used in the Qualys CSV Parser.\n\n    Fields:\n    - title: Set to gid and vulnerability name from Qualys Scanner\n    - mitigation: Set to solution from Qualys Scanner\n    - description: Custom description made from: description, category, QID, port, result evidence, first found, last found, and times found.\n    - severity: Set to severity from Qualys Scanner translated into DefectDojo formant.\n    - impact: Set to impact from Qualys Scanner.\n    - date: Set to datetime from Qualys Scanner.\n    - vuln_id_from_tool: Set to gid from Qualys Scanner.\n    - mitigated: Set to the mitigation_date from Qualys Scanner\n    - is_mitigated: Set to true or false based on pressence of "mitigated" in Qualys Scanner output.\n    - active: Set to true if status equals active, re-opened, or new; else set to false.\n    - cvssv3: Set to CVSS_vector if not null.\n    - verified: Set to true.\n    '
+    return ['title', 'mitigation', 'description', 'severity', 'impact', 'date', 'vuln_id_from_tool', 'mitigated', 'is_mitigated', 'active', 'cvssv3', 'verified']
+
+def get_dedupe_fields(self) -> list[str]:
+    '\n    Return the list of fields used for deduplication in the Qualys CSV Parser.\n\n    Fields:\n    - title: Set to gid and vulnerability name from Qualys Scanner\n    - severity: Set to severity from Qualys Scanner translated into DefectDojo formant.\n\n    #NOTE: endpoints is not provided by parser\n    '
+    return ['title', 'severity']
+
+def parse_csv(csv_file) -> [Finding]:
+    '\n    Parses Qualys Report in CSV format\n    Args:\n        csv_file:\n    Returns:\n    '
+    content = csv_file.read()
+    if isinstance(content, bytes):
+        content = content.decode('utf-8')
+    csv_reader = csv.DictReader(io.StringIO(content), delimiter=',', quotechar='"')
+    report_findings = get_report_findings(csv_reader)
+    return build_findings_from_dict(report_findings)
+
+def get_report_findings(csv_reader) -> [dict]:
+    '\n    Filters out the unneeded information at the beginning of the Qualys CSV report.\n\n    Args:\n        csv_reader:\n\n    '
+    return [row for row in csv_reader if ((row.get('Title') and (row['Title'] != 'Title')) or row.get('VULN TITLE'))]
+
+def _extract_cvss_vectors(cvss_base, cvss_temporal):
+    '\n    Parses the CVSS3 Vectors from the CVSS3 Base and CVSS3 Temporal fields and returns as a single string.\n\n    This is done because the raw values come with additional characters that cannot be parsed with the cvss library.\n        Example: 6.7 (AV:L/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H)\n\n    Args:\n        cvss_base:\n        cvss_temporal:\n    Returns:\n        A CVSS3 Vector including both Base and Temporal if available\n\n    '
+    vector_pattern = '^\\d{1,2}.\\d \\((.*)\\)'
+    cvss_vector = 'CVSS:3.0/'
+    if cvss_base:
+        try:
+            cvss_vector += re.search(vector_pattern, cvss_base).group(1)
+        except IndexError:
+            _logger.error('CVSS3 Base Vector not found in %s', cvss_base)
+        except AttributeError:
+            _logger.error('CVSS3 Base Vector not found in %s', cvss_base)
+        if cvss_temporal:
+            try:
+                cvss_temporal_vector = re.search(vector_pattern, cvss_temporal).group(1)
+                cvss_vector += '/'
+                cvss_vector += cvss_temporal_vector
+            except IndexError:
+                _logger.error('CVSS3 Temporal Vector not found in %s', cvss_base)
+            except AttributeError:
+                _logger.error('CVSS3 Temporal Vector not found in %s', cvss_base)
+        return cvss_vector
+    return None
+
+def _clean_cve_data(cve_string: str) -> list:
+    if (len(cve_string) == 0):
+        return []
+    cve_list = []
+    if (',' in cve_string):
+        cve_list = [single_cve.strip() for single_cve in cve_string.split(',')]
+    else:
+        cve_list = [cve_string.strip()]
+    return cve_list
+
+def get_severity(value: str) -> str:
+    legacy_severity_lookup = {'1': 'Info', '2': 'Low', '3': 'Medium', '4': 'High', '5': 'Critical'}
+    qualys_severity_lookup = {'1': 'Low', '2': 'Low', '3': 'Medium', '4': 'High', '5': 'High'}
+    if settings.USE_QUALYS_LEGACY_SEVERITY_PARSING:
+        return legacy_severity_lookup.get(value, 'Info')
+    return qualys_severity_lookup.get(value, 'Info')
+
+def build_findings_from_dict(report_findings: [dict]) -> [Finding]:
+    '\n    Takes a list of Dictionaries built from CSV and creates a Finding object\n    Args:\n        report_findings:\n    Returns:\n\n    '
+    dojo_findings = []
+    for report_finding in report_findings:
+        if report_finding.get('FQDN'):
+            endpoint = Endpoint.from_uri(report_finding.get('FQDN'))
+        elif report_finding.get('DNS'):
+            endpoint = Endpoint(host=report_finding.get('DNS'))
+        else:
+            endpoint = Endpoint(host=report_finding['IP'])
+        cve_data = report_finding.get('CVE ID', report_finding.get('CVEID', ''))
+        cve_list = _clean_cve_data(cve_data)
+        if ('CVSS3 Base' in report_finding):
+            cvssv3 = _extract_cvss_vectors(report_finding['CVSS3 Base'], report_finding['CVSS3 Temporal'])
+        elif ('CVSS3.1 Base' in report_finding):
+            cvssv3 = _extract_cvss_vectors(report_finding['CVSS3.1 Base'], report_finding['CVSS3.1 Temporal'])
+        try:
+            if settings.USE_FIRST_SEEN:
+                if (date := report_finding.get('First Detected')):
+                    date = datetime.strptime(date, '%m/%d/%Y %H:%M:%S').date()
+            elif (date := report_finding.get('Last Detected')):
+                date = datetime.strptime(date, '%m/%d/%Y %H:%M:%S').date()
+        except Exception:
+            date = None
+        finding_with_id = next((obj for obj in dojo_findings if (obj.vuln_id_from_tool == report_finding['QID'])), None)
+        if finding_with_id:
+            finding = finding_with_id
+        elif report_finding.get('Title'):
+            finding = Finding(title=f"QID-{report_finding['QID']} | {report_finding['Title']}", mitigation=report_finding['Solution'], description=f'''{report_finding['Threat']}
+Result Evidence: 
+{report_finding.get('Threat', 'Not available')}''', severity=get_severity(report_finding['Severity']), impact=report_finding['Impact'], date=date, vuln_id_from_tool=report_finding['QID'])
+            cvss_data = parse_cvss_data(cvssv3)
+            if cvss_data:
+                finding.cvssv3 = cvss_data.get('cvssv3')
+                finding.cvssv3_score = cvss_data.get('cvssv3_score')
+            if report_finding['Date Last Fixed']:
+                finding.mitigated = datetime.strptime(report_finding['Date Last Fixed'], '%m/%d/%Y %H:%M:%S')
+                finding.is_mitigated = True
+            else:
+                finding.is_mitigated = False
+            finding.active = (report_finding['Vuln Status'] in {'Active', 'Re-Opened', 'New'})
+            if finding.active:
+                finding.mitigated = None
+                finding.is_mitigated = False
+        elif report_finding.get('VULN TITLE'):
+            try:
+                if settings.USE_FIRST_SEEN:
+                    if (date := report_finding.get('LAST SCAN')):
+                        date = parser.parse(date.replace('Z', ''))
+                elif (date := report_finding.get('LAST SCAN')):
+                    date = parser.parse(date.replace('Z', ''))
+            except Exception:
+                date = None
+            finding = Finding(title=f"QID-{report_finding['QID']} | {report_finding['VULN TITLE']}", mitigation=report_finding['SOLUTION'], description=f'''{report_finding['THREAT']}
+Result Evidence: 
+{report_finding.get('THREAT', 'Not available')}''', severity=report_finding['SEVERITY'], impact=report_finding['IMPACT'], date=date, vuln_id_from_tool=report_finding['QID'])
+        if isinstance(finding.unsaved_vulnerability_ids, list):
+            finding.unsaved_vulnerability_ids += cve_list
+        else:
+            finding.unsaved_vulnerability_ids = cve_list
+        finding.verified = True
+        finding.unsaved_endpoints.append(endpoint)
+        if (not finding_with_id):
+            dojo_findings.append(finding)
+    return dojo_findings
