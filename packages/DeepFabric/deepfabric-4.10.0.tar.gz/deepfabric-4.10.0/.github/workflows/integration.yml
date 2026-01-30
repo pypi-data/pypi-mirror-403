@@ -1,0 +1,73 @@
+name: Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/README.md'
+      - '**/docs/**'
+      - '**/.github/workflows/publish.yml'
+  pull_request:
+    paths-ignore:
+      - '**/README.md'
+      - '**/docs/**'
+      - '**/.github/workflows/publish.yml'
+
+jobs:
+  integration-tests:
+    name: Run integration tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    services:
+      spin:
+        image: ghcr.io/always-further/deepfabric/tools-sdk:latest
+        ports:
+          - 3000:3000
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ '3.10', '3.11', '3.12' ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+
+      - name: Wait for Spin service
+        run: |
+          echo "Waiting for Spin service to be ready..."
+          for i in {1..30}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/vfs/execute -X POST \
+              -H "Content-Type: application/json" \
+              -d '{"session_id":"healthcheck","tool":"list_files","args":{"directory":"/"}}' 2>/dev/null || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "Spin service is ready"
+              exit 0
+            fi
+            echo "Attempt $i: waiting... (HTTP $response)"
+            sleep 2
+          done
+          echo "Spin service failed to become ready"
+          exit 1
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7
+        with:
+            enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run integration tests
+        run: make test-integration
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SPIN_ENDPOINT: http://localhost:3000
