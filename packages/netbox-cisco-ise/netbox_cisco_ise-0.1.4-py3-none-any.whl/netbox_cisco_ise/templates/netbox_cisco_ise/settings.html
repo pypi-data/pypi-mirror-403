@@ -1,0 +1,225 @@
+{% extends 'generic/object.html' %}
+{% load form_helpers %}
+
+{% block title %}Cisco ISE Settings{% endblock %}
+
+{% block header %}
+<h1 class="pt-2"><i class="mdi mdi-shield-account"></i> Cisco ISE Settings</h1>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-server-network"></i> Current Configuration
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover">
+                    <tr>
+                        <th style="width: 200px;">ISE URL</th>
+                        <td>
+                            {% if config.ise_url %}
+                            <code>{{ config.ise_url }}</code>
+                            {% else %}
+                            <span class="text-danger">Not configured</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Username</th>
+                        <td>
+                            {% if config.ise_username %}
+                            <code>{{ config.ise_username }}</code>
+                            {% else %}
+                            <span class="text-danger">Not configured</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Password</th>
+                        <td>
+                            {% if config.ise_password %}
+                            <span class="text-success">********</span>
+                            {% else %}
+                            <span class="text-danger">Not configured</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Timeout</th>
+                        <td>{{ config.timeout|default:30 }} seconds</td>
+                    </tr>
+                    <tr>
+                        <th>Cache Timeout</th>
+                        <td>{{ config.cache_timeout|default:60 }} seconds</td>
+                    </tr>
+                    <tr>
+                        <th>Verify SSL</th>
+                        <td>
+                            {% if config.verify_ssl %}
+                            <span class="badge bg-success text-white">Enabled</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Disabled</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+
+                <!-- Device Mappings -->
+                <h6 class="mt-4 mb-3"><i class="mdi mdi-map"></i> Device Mappings</h6>
+                {% if config.device_mappings %}
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>Manufacturer</th>
+                            <th>Device Type</th>
+                            <th>Lookup Method</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mapping in config.device_mappings %}
+                        <tr>
+                            <td><code>{{ mapping.manufacturer|default:"*" }}</code></td>
+                            <td><code>{{ mapping.device_type|default:"*" }}</code></td>
+                            <td>
+                                {% if mapping.lookup == "endpoint" %}
+                                <span class="badge bg-info text-dark">Endpoint</span>
+                                <small class="text-muted">(MAC lookup via ERS API)</small>
+                                {% else %}
+                                <span class="badge bg-primary text-white">NAD</span>
+                                <small class="text-muted">(IP/hostname via ERS API)</small>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="alert alert-warning">
+                    <i class="mdi mdi-alert"></i> No device mappings configured. The Cisco ISE tab will not appear on any devices.
+                </div>
+                {% endif %}
+
+                <!-- Test Connection Button -->
+                <div class="mt-3 mb-3">
+                    <button type="button" class="btn btn-primary" id="test-connection-btn">
+                        <i class="mdi mdi-play"></i> Test Connection
+                    </button>
+                    <div id="test-result" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Help -->
+        <div class="card mt-3 mb-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-help-circle"></i> Configuration Help
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Add to <code>configuration.py</code>:</p>
+                <pre class="bg-body-secondary p-2 rounded" style="font-size: 0.8rem;"><code>PLUGINS = ['netbox_cisco_ise']
+
+PLUGINS_CONFIG = {
+    'netbox_cisco_ise': {
+        'ise_url': 'https://ise.example.com',
+        'ise_username': 'ersadmin',
+        'ise_password': 'your-password',
+        'timeout': 30,
+        'cache_timeout': 60,
+        'verify_ssl': False,
+        # Device mappings control which devices show the tab
+        # manufacturer/device_type are regex patterns
+        # lookup types:
+        #   "nad" - IP/hostname (for switches, routers, WLCs)
+        #   "endpoint" - MAC address (for wireless clients)
+        'device_mappings': [
+            {'manufacturer': 'cisco', 'lookup': 'nad'},
+            {'manufacturer': 'vocera', 'lookup': 'endpoint'},
+        ],
+    }
+}</code></pre>
+                <a href="https://github.com/sieteunoseis/netbox-cisco-ise" target="_blank" class="btn btn-outline-secondary btn-sm">
+                    <i class="mdi mdi-github"></i> View Documentation
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-information"></i> About
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>
+                    This plugin displays Cisco ISE (Identity Services Engine)
+                    data on Device pages in NetBox.
+                </p>
+                <p>
+                    <strong>Network Access Devices</strong> (NAD lookup):
+                </p>
+                <ul>
+                    <li>ISE registration status</li>
+                    <li>IP addresses &amp; model info</li>
+                    <li>RADIUS/TACACS+ settings</li>
+                    <li>Network device groups</li>
+                </ul>
+                <p>
+                    <strong>Endpoints</strong> (MAC lookup):
+                </p>
+                <ul>
+                    <li>Session status &amp; details</li>
+                    <li>Profiling information</li>
+                    <li>Identity group membership</li>
+                    <li>Custom attributes</li>
+                </ul>
+                <p class="text-muted small mb-0">
+                    Version 0.1.0
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Test Connection
+document.getElementById('test-connection-btn').addEventListener('click', function() {
+    var btn = this;
+    var resultDiv = document.getElementById('test-result');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Testing...';
+    resultDiv.innerHTML = '';
+
+    fetch('{% url "plugins:netbox_cisco_ise:test_connection" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="mdi mdi-check-circle"></i> ' + data.message + '</div>';
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-danger"><i class="mdi mdi-alert-circle"></i> ' + data.error + '</div>';
+        }
+    })
+    .catch(error => {
+        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="mdi mdi-alert-circle"></i> Request failed: ' + error + '</div>';
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="mdi mdi-play"></i> Test Connection';
+    });
+});
+</script>
+{% endblock %}
