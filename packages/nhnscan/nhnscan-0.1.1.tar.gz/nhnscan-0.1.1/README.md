@@ -1,0 +1,69 @@
+# NHN Security Scanner (nhnscan)
+
+간단한 보안 스캐닝 도구 - nmap과 snmpwalk의 CLI 래퍼
+
+## 설치
+```bash
+pip install -e .
+```
+
+## 사용법
+
+### 명령행 모드 (CLI)
+```bash
+# Nmap 포트 스캔
+nhnscan -n 192.168.1.100 22,80,443
+nhnscan --nmap 192.168.1.100 22,80,443
+
+# Nmap SSH 스캔 (포트 22 자동)
+nhnscan -ns 192.168.1.100
+nhnscan --nmap-ssh 192.168.1.100
+
+# Nmap 웹 스캔 (포트 80,443 자동)
+nhnscan -nw 192.168.1.100
+nhnscan --nmap-web 192.168.1.100
+
+# SNMP 스캔 (기본 community: public)
+nhnscan -s 192.168.1.100
+nhnscan --snmp 192.168.1.100
+
+# SNMP 커스텀 community
+nhnscan -s 192.168.1.100 -c private
+nhnscan --snmp 192.168.1.100 --community private
+
+# 도움말
+nhnscan --help
+nhnscan -h
+
+# 버전
+nhnscan --version
+nhnscan -v
+```
+
+### 대화형 모드
+```bash
+# 옵션 없이 실행
+nhnscan
+```
+
+## 기능
+
+1. **Nmap 포트 스캔**
+   - 서비스 버전 탐지 (-sV)
+   - 사용자 지정 포트
+   - CIDR 표기 지원
+   - SSH/웹 프리셋
+
+2. **SNMP 스캔**
+   - SNMPv2c
+   - Community string 커스터마이징
+
+## 요구사항
+
+- Python 3.7+
+- nmap
+- snmpwalk
+
+## 개발자
+
+David 
