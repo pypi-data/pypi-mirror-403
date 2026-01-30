@@ -1,0 +1,410 @@
+Metadata-Version: 2.4
+Name: dcid-server-sdk
+Version: 0.1.0
+Summary: Python SDK for DCID Server - Authentication and Identity operations
+Author: DCID
+License-Expression: ISC
+Project-URL: Homepage, https://github.com/gettrustid/dcid-backend-sdk
+Project-URL: Repository, https://github.com/gettrustid/dcid-backend-sdk
+Project-URL: Issues, https://github.com/gettrustid/dcid-backend-sdk/issues
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.28.0
+Provides-Extra: server
+Requires-Dist: fastapi>=0.104.0; extra == "server"
+Requires-Dist: uvicorn[standard]>=0.24.0; extra == "server"
+Requires-Dist: pydantic>=2.0.0; extra == "server"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
+
+# DCID Server SDK - Python
+
+A Python SDK for interacting with the DCID Server API. This SDK provides a simple, type-safe interface for authentication and identity operations.
+
+## Installation
+
+```bash
+pip install dcid-server-sdk
+```
+
+Or install from source:
+
+```bash
+cd python
+pip install -e .
+```
+
+## Quick Start
+
+```python
+from dcid_server_sdk import DCIDServerSDK, InitiateOTPOptions, ConfirmOTPOptions
+
+# Initialize the SDK
+sdk = DCIDServerSDK(
+    api_key="your-api-key-here",
+    environment="prod"  # or 'dev'
+)
+
+# Register/Sign-in with OTP
+result = sdk.auth.register_otp(InitiateOTPOptions(email="user@example.com"))
+
+# Confirm OTP and get tokens
+tokens = sdk.auth.confirm_otp(
+    ConfirmOTPOptions(
+        email="user@example.com",
+        otp="123456"
+    )
+)
+
+print(f"Access Token: {tokens.access_token}")
+print(f"Refresh Token: {tokens.refresh_token}")
+```
+
+## API Reference
+
+### Initialization
+
+```python
+from dcid_server_sdk import DCIDServerSDK
+
+sdk = DCIDServerSDK(
+    api_key="your-api-key-here",  # Required: API key
+    environment="prod",  # Optional: Environment (default: "prod")
+    timeout=30000,  # Optional: Request timeout in ms (default: 30000)
+    default_headers={},  # Optional: Default headers
+    logger=None,  # Optional: Custom logger
+    enable_request_logging=False  # Optional: Enable request logging
+)
+```
+
+### Authentication Methods
+
+#### `auth.register_otp(options)`
+
+Initiates OTP registration/sign-in process. Covers `POST /auth/sign-in/initiate`.
+
+**Parameters:**
+- `email` (str, optional): User's email address
+- `phone` (str, optional): User's phone number (with country code)
+
+**Returns:** `InitiateOTPResponse`
+- `otp` (str, optional): OTP code (only in dev environment)
+
+**Example:**
+
+```python
+from dcid_server_sdk import InitiateOTPOptions
+
+# With email
+result = sdk.auth.register_otp(InitiateOTPOptions(email="user@example.com"))
+
+# With phone
+result = sdk.auth.register_otp(InitiateOTPOptions(phone="+1234567890"))
+```
+
+#### `auth.confirm_otp(options)`
+
+Confirms OTP and completes registration/sign-in. Covers `POST /auth/sign-in/confirm`.
+
+**Parameters:**
+- `email` (str, optional): User's email address
+- `phone` (str, optional): User's phone number
+- `otp` (str): The OTP code received by the user
+
+**Returns:** `TokenResponse`
+- `access_token` (str): JWT access token
+- `refresh_token` (str): JWT refresh token
+
+**Example:**
+
+```python
+from dcid_server_sdk import ConfirmOTPOptions
+
+tokens = sdk.auth.confirm_otp(
+    ConfirmOTPOptions(
+        email="user@example.com",
+        otp="123456"
+    )
+)
+
+# Set tokens for authenticated requests (done automatically)
+sdk.set_tokens(tokens)
+```
+
+#### `auth.refresh_token(options)`
+
+Refreshes the access token using refresh token. Covers `POST /auth/refresh-token`.
+
+**Parameters:**
+- `refresh_token` (str): The refresh token
+
+**Returns:** `TokenResponse`
+
+**Example:**
+
+```python
+from dcid_server_sdk import RefreshTokenOptions
+
+new_tokens = sdk.auth.refresh_token(
+    RefreshTokenOptions(refresh_token="your-refresh-token")
+)
+```
+
+### Identity Methods
+
+#### Encryption
+
+```python
+from dcid_server_sdk import GenerateEncryptionKeyOptions, GetEncryptedKeyOptions
+
+# Generate encryption key (will auto-refresh token if expired)
+result = sdk.identity.encryption.generate_key(
+    GenerateEncryptionKeyOptions(
+        did="did:iden3:dcid:main:...",
+        owner_email="user@example.com"
+    )
+)
+
+# Get encrypted key
+result = sdk.identity.encryption.get_key(
+    GetEncryptedKeyOptions(did="did:iden3:dcid:main:...")
+)
+```
+
+#### Issuer
+
+```python
+from dcid_server_sdk import IssueCredentialOptions, GetCredentialOfferOptions
+
+# Issue a credential
+result = sdk.identity.issuer.issue_credential(
+    IssueCredentialOptions(
+        did="did:iden3:dcid:main:...",
+        credential_name="KYCAgeCredential",
+        values={"birthday": 25, "documentType": 2},
+        owner_email="user@example.com"
+    )
+)
+
+# Get credential offer (for MTP credentials)
+result = sdk.identity.issuer.get_credential_offer(
+    GetCredentialOfferOptions(
+        claim_id="abc123...",
+        tx_id="0x1234567890abcdef..."
+    )
+)
+```
+
+#### IPFS
+
+```python
+from dcid_server_sdk import (
+    StoreCredentialOptions,
+    RetrieveUserCredentialOptions,
+    GetAllUserCredentialsOptions
+)
+
+# Store credential to IPFS
+result = sdk.identity.ipfs.store_credential(
+    StoreCredentialOptions(
+        did="did:iden3:dcid:main:...",
+        credential_type="KYCAgeCredential",
+        credential="U2FsdGVkX1+vupppZksvRf...",
+        encrypted=True
+    )
+)
+
+# Retrieve user credential
+result = sdk.identity.ipfs.retrieve_user_credential(
+    RetrieveUserCredentialOptions(
+        did="did:iden3:dcid:main:...",
+        credential_type="KYCAgeCredential",
+        include_cid_only=False
+    )
+)
+
+# Get all user credentials
+result = sdk.identity.ipfs.get_all_user_credentials(
+    GetAllUserCredentialsOptions(
+        did="did:iden3:dcid:main:...",
+        include_credential_data=False
+    )
+)
+```
+
+#### Verification
+
+```python
+from dcid_server_sdk import (
+    VerifySignInOptions,
+    GetLinkStoreOptions,
+    VerifyCallbackOptions
+)
+
+# Initiate verification
+result = sdk.identity.verification.verify_sign_in(
+    VerifySignInOptions(credential_name="ProofOfAgeCredential")
+)
+
+# Get proof request
+proof_request = sdk.identity.verification.get_link_store(
+    GetLinkStoreOptions(id="3297636436")
+)
+
+# Submit and verify proof
+result = sdk.identity.verification.verify_callback(
+    VerifyCallbackOptions(
+        session_id="3297636436",
+        token="eyJhbGciOiJncm90aDE2..."
+    )
+)
+```
+
+### Analytics Methods
+
+```python
+from dcid_server_sdk.modules.analytics.types import StartSessionEvent, EndSessionEvent
+
+# Start a session
+result = sdk.analytics.start_session(
+    StartSessionEvent(
+        user_id="user123",
+        page_location="https://example.com/page"
+    )
+)
+
+# End a session
+result = sdk.analytics.end_session(
+    EndSessionEvent(
+        session_id=result.session_id,
+        user_id="user123"
+    )
+)
+```
+
+## Test Server
+
+The Python SDK includes a test server that exposes HTTP endpoints for all SDK methods.
+
+### Running the Test Server
+
+```bash
+# Install server dependencies
+pip install -r requirements-server.txt
+
+# Set environment variables
+export DCID_API_KEY="your-api-key"
+export DCID_ENVIRONMENT="dev"  # or "prod"
+export PORT="8080"  # optional, defaults to 8080
+
+# Run the server
+python test_server/main.py
+```
+
+Or using uvicorn directly:
+
+```bash
+uvicorn test_server.main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+### Test Server Endpoints
+
+The test server provides the following endpoints:
+
+#### Health Check
+- `GET /health` - Health check endpoint
+
+#### Authentication
+- `POST /api/auth/register-otp` - Register OTP
+- `POST /api/auth/confirm-otp` - Confirm OTP
+- `POST /api/auth/admin-login` - Admin login
+- `POST /api/auth/refresh-token` - Refresh token
+
+#### Identity - Encryption
+- `POST /api/identity/encryption/generate-key` - Generate encryption key
+- `POST /api/identity/encryption/get-key` - Get encrypted key
+
+#### Identity - Issuer
+- `POST /api/identity/issuer/issue-credential` - Issue credential
+- `GET /api/identity/issuer/get-credential-offer` - Get credential offer
+
+#### Identity - IPFS
+- `POST /api/identity/ipfs/store-credential` - Store credential
+- `POST /api/identity/ipfs/retrieve-user-credential` - Retrieve user credential
+- `POST /api/identity/ipfs/get-all-user-credentials` - Get all user credentials
+
+#### Identity - Verification
+- `POST /api/identity/verification/verify-sign-in` - Verify sign-in
+- `GET /api/identity/verification/link-store` - Get link store
+- `POST /api/identity/verification/link-store` - Post link store
+- `POST /api/identity/verification/callback` - Verify callback
+
+#### Analytics
+- `POST /api/analytics/start-session` - Start session
+- `POST /api/analytics/end-session` - End session
+
+### Example Usage
+
+```bash
+# Register OTP
+curl -X POST http://localhost:8080/api/auth/register-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}'
+
+# Confirm OTP
+curl -X POST http://localhost:8080/api/auth/confirm-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "otp": "123456"}'
+
+# Start analytics session
+curl -X POST http://localhost:8080/api/analytics/start-session \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "user123", "pageLocation": "https://example.com"}'
+```
+
+## Error Handling
+
+The SDK uses custom exception classes for different error types:
+
+- `DCIDServerSDKError`: Base error class
+- `NetworkError`: Network connectivity issues
+- `AuthenticationError`: API-KEY or JWT token issues
+- `ServerError`: Backend or gateway errors
+
+```python
+from dcid_server_sdk import DCIDServerSDKError, NetworkError, AuthenticationError, ServerError
+
+try:
+    result = sdk.auth.register_otp(InitiateOTPOptions(email="user@example.com"))
+except AuthenticationError as e:
+    print(f"Authentication error: {e}")
+    print(f"Is API key error: {e.is_api_key_error}")
+except NetworkError as e:
+    print(f"Network error: {e}")
+except ServerError as e:
+    print(f"Server error: {e}")
+except DCIDServerSDKError as e:
+    print(f"SDK error: {e}")
+```
+
+## Python Version Support
+
+- Python 3.8+
+
+## License
+
+ISC
