@@ -1,0 +1,275 @@
+{% extends "_base.html" %}
+
+{% block title %}{{ _("model_list.title") }}{% endblock %}
+
+{% block styles %}
+<style>
+  .model-table {
+    margin-bottom: 0;
+    font-size: 0.95rem;
+  }
+  
+  .model-table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    background-color: #f8f9fa;
+    white-space: nowrap;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #626976;
+  }
+  
+  .model-table th:first-child {
+    text-align: left;
+  }
+  
+  .model-table td {
+    vertical-align: middle;
+    text-align: center;
+    padding: 0.75rem;
+  }
+  
+  .model-table td:first-child {
+    text-align: left;
+  }
+  
+  .model-name-link {
+    font-weight: 600;
+    font-size: 1rem;
+    color: inherit;
+    text-decoration: none;
+  }
+  
+  .model-name-link:hover {
+    color: #206bc4;
+    text-decoration: underline;
+  }
+  
+  /* 모델 페이지 뱃지 색상과 통일 */
+  .status-ready {
+    color: #5eba00;
+    font-weight: 500;
+  }
+  
+  .status-training {
+    color: #4299e1;
+    font-weight: 500;
+  }
+  
+  .status-evaluating {
+    color: #9b59b6;
+    font-weight: 500;
+  }
+  
+  .status-failed {
+    color: #cd201f;
+    font-weight: 500;
+  }
+  
+  .loading-overlay {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3rem;
+  }
+  
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+  }
+  
+  .empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+  }
+  
+  .date-text {
+    white-space: nowrap;
+  }
+</style>
+{% endblock %}
+
+{% block header %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="row align-items-center">
+      <div class="col-auto">
+        <div class="page-pretitle">{{ _("model_list.page_title") }}</div>
+        <h2 class="page-title">{{ _("model_list.title") }}</h2>
+      </div>
+      <div class="col-auto ms-auto">
+        <a href="/pages/models/create" class="btn btn-primary">
+          <i class="fas fa-plus me-1"></i>{{ _("model_list.create_btn") }}
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <!-- Loading -->
+    <div id="loading-container" class="loading-overlay">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">{{ _("model_list.loading") }}</span>
+      </div>
+    </div>
+    
+    <!-- Empty State -->
+    <div id="empty-container" class="empty-state" style="display: none;">
+      <i class="fas fa-folder-open"></i>
+      <div>{{ _("model_list.no_models") }}</div>
+      <a href="/pages/models/create" class="btn btn-primary mt-3">{{ _("model_list.create_first") }}</a>
+    </div>
+    
+    <!-- Table -->
+    <div id="table-container" style="display: none;">
+      <div class="table-responsive">
+        <table class="table table-hover model-table">
+          <thead>
+            <tr>
+              <th>{{ _("model_list.col_name") }}</th>
+              <th>{{ _("model_list.col_status") }}</th>
+              <th>{{ _("model_list.col_vehicle") }}</th>
+              <th>{{ _("model_list.col_sensors") }}</th>
+              <th>{{ _("model_list.col_cpus") }}</th>
+              <th>{{ _("model_list.col_size") }}</th>
+              <th>{{ _("model_list.col_created") }}</th>
+            </tr>
+          </thead>
+          <tbody id="models-tbody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  'use strict';
+  
+  // 서버에서 전달받은 timezone
+  const userTimezone = '{{ tz }}';
+  
+  const API = {
+    async getModels() {
+      try {
+        const res = await fetch('/api/models');
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (e) {
+        console.error('Error fetching models:', e);
+        return null;
+      }
+    }
+  };
+  
+  const UI = {
+    elements: {
+      loading: document.getElementById('loading-container'),
+      empty: document.getElementById('empty-container'),
+      table: document.getElementById('table-container'),
+      tbody: document.getElementById('models-tbody'),
+    },
+    
+    showLoading() {
+      this.elements.loading.style.display = 'flex';
+      this.elements.empty.style.display = 'none';
+      this.elements.table.style.display = 'none';
+    },
+    
+    showEmpty() {
+      this.elements.loading.style.display = 'none';
+      this.elements.empty.style.display = 'block';
+      this.elements.table.style.display = 'none';
+    },
+    
+    showTable() {
+      this.elements.loading.style.display = 'none';
+      this.elements.empty.style.display = 'none';
+      this.elements.table.style.display = 'block';
+    },
+    
+    getStatusText(status) {
+      const styles = {
+        'training': 'status-training',
+        'evaluating': 'status-evaluating',
+        'ready': 'status-ready',
+        'failed': 'status-failed',
+      };
+      const cls = styles[status] || 'status-ready';
+      return `<span class="${cls}">${status}</span>`;
+    },
+    
+    formatSize(sizeGb) {
+      if (!sizeGb || sizeGb === 0) return '-';
+      if (sizeGb < 0.01) return '< 0.01 GB';
+      return `${sizeGb.toFixed(2)} GB`;
+    },
+    
+    formatDate(isoString) {
+      if (!isoString) return '-';
+      try {
+        const date = new Date(isoString);
+        return date.toLocaleString('sv-SE', {
+          timeZone: userTimezone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).replace(' ', ' ');
+      } catch (e) {
+        return '-';
+      }
+    },
+    
+    renderModels(models) {
+      if (!models || models.length === 0) {
+        this.showEmpty();
+        return;
+      }
+      
+      const html = models.map(model => `
+        <tr>
+          <td>
+            <a href="/pages/models/model?model_name=${encodeURIComponent(model.model_name)}" 
+               class="model-name-link">${model.model_name}</a>
+          </td>
+          <td>${this.getStatusText(model.status)}</td>
+          <td>${model.body_shell_type || 'deepracer'}</td>
+          <td>${model.sensors || '-'}</td>
+          <td>${model.cpu_used || '-'}</td>
+          <td>${this.formatSize(model.size_gb)}</td>
+          <td class="date-text">${this.formatDate(model.created_at)}</td>
+        </tr>
+      `).join('');
+      
+      this.elements.tbody.innerHTML = html;
+      this.showTable();
+    }
+  };
+  
+  async function init() {
+    UI.showLoading();
+    
+    const data = await API.getModels();
+    if (data && data.models) {
+      UI.renderModels(data.models);
+    } else {
+      UI.showEmpty();
+    }
+  }
+  
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+{% endblock %}

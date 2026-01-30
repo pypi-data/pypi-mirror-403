@@ -1,0 +1,712 @@
+{% extends "_base.html" %}
+
+{% block title %}Create Model{% endblock %}
+
+{% block head %}
+<style>
+  /* ============ General ============ */
+  .section-card {
+    margin-bottom: 1.5rem;
+  }
+  
+  .section-card .card-header {
+    background: var(--tblr-bg-surface);
+    border-bottom: 1px solid var(--tblr-border-color);
+  }
+  
+  .section-card .card-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+  }
+
+  /* ============ Model Name ============ */
+  .model-name-input {
+    max-width: 400px;
+  }
+  
+  .model-name-feedback {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  .model-name-feedback.checking {
+    color: var(--tblr-secondary);
+  }
+  
+  .model-name-feedback.valid {
+    color: var(--tblr-success);
+  }
+  
+  .model-name-feedback.invalid {
+    color: var(--tblr-danger);
+  }
+  
+  .model-name-feedback .spinner-border {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  /* ============ Simulation ============ */
+  .simulation-tabs .nav-link {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  .simulation-tabs .nav-link.active {
+    font-weight: 600;
+  }
+  
+  .track-selector {
+    min-height: 200px;
+    border: 2px dashed var(--tblr-border-color);
+    border-radius: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .track-selector:hover {
+    border-color: var(--tblr-primary);
+    background: rgba(var(--tblr-primary-rgb), 0.05);
+  }
+  
+  .track-selector.selected {
+    border-style: solid;
+    border-color: var(--tblr-primary);
+  }
+  
+  .track-selector .track-thumbnail {
+    max-width: 100%;
+    max-height: 150px;
+    object-fit: contain;
+  }
+  
+  .track-selector .track-name {
+    font-weight: 600;
+    margin-top: 0.5rem;
+  }
+  
+  .track-selector .track-placeholder {
+    color: var(--tblr-secondary);
+  }
+  
+  .simulation-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .control-group .form-label {
+    font-weight: 500;
+    font-size: 0.8125rem;
+    color: var(--tblr-secondary);
+    margin-bottom: 0;
+  }
+
+  /* ============ Track Modal ============ */
+  .track-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+  
+  .track-card {
+    border: 2px solid var(--tblr-border-color);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .track-card:hover {
+    border-color: var(--tblr-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  
+  .track-card.selected {
+    border-color: var(--tblr-primary);
+    background: rgba(var(--tblr-primary-rgb), 0.05);
+  }
+  
+  .track-card img {
+    width: 100%;
+    height: 120px;
+    object-fit: contain;
+    background: var(--tblr-bg-surface-secondary);
+    border-radius: 0.25rem;
+  }
+  
+  .track-card .track-info {
+    margin-top: 0.5rem;
+    text-align: center;
+  }
+  
+  .track-card .track-info h6 {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  
+  .track-card .track-info small {
+    color: var(--tblr-secondary);
+  }
+</style>
+{% endblock %}
+
+{% block header %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="page-pretitle">Models</div>
+    <h2 class="page-title">Create New Model</h2>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<form id="create-model-form" novalidate>
+  
+  <!-- ============ MODEL NAME ============ -->
+  <div class="card section-card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-tag me-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+          <path d="M7.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>
+          <path d="M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3z"/>
+        </svg>
+        Model Name
+      </h3>
+    </div>
+    <div class="card-body">
+      <div class="row align-items-start">
+        <div class="col-md-6">
+          <input 
+            type="text" 
+            class="form-control model-name-input" 
+            id="model-name" 
+            name="model_name"
+            placeholder="Enter model name (e.g., my-first-model)"
+            pattern="^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"
+            minlength="3"
+            maxlength="64"
+            required
+            autocomplete="off"
+          >
+          <div id="model-name-feedback" class="model-name-feedback d-none">
+            <span class="spinner-border" role="status"></span>
+            <span class="message">Checking availability...</span>
+          </div>
+          <div class="form-text mt-2">
+            Use letters, numbers, underscores, dashes, or dots. Must start with letter or number.
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="alert alert-info mb-0">
+            <div class="d-flex">
+              <div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon alert-icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                  <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/>
+                  <path d="M12 9h.01"/>
+                  <path d="M11 12h1v4h1"/>
+                </svg>
+              </div>
+              <div>
+                Choose a unique, descriptive name for your model. This name will be used to identify your model in training and evaluation.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SIMULATION ============ -->
+  <div class="card section-card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h3 class="card-title">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-road me-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+          <path d="M4 19l4 -14"/>
+          <path d="M16 5l4 14"/>
+          <path d="M12 8v-2"/>
+          <path d="M12 13v-2"/>
+          <path d="M12 18v-2"/>
+        </svg>
+        Simulation
+      </h3>
+      <div class="d-flex align-items-center gap-3">
+        <label class="form-label mb-0 text-muted">Sub Simulations:</label>
+        <select class="form-select form-select-sm" id="sub-simulation-count" style="width: auto;">
+          <option value="0" selected>None</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body">
+      <!-- Simulation Tabs -->
+      <ul class="nav nav-tabs simulation-tabs mb-3" id="simulation-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="sim-main-tab" data-bs-toggle="tab" data-bs-target="#sim-main" type="button" role="tab">
+            Main
+          </button>
+        </li>
+        <!-- Sub tabs will be added dynamically -->
+      </ul>
+      
+      <!-- Tab Contents -->
+      <div class="tab-content" id="simulation-tab-content">
+        <!-- Main Simulation -->
+        <div class="tab-pane fade show active" id="sim-main" role="tabpanel" data-sim-index="main">
+          <div class="row g-4">
+            <!-- Left: Track Selector -->
+            <div class="col-md-7">
+              <div class="track-selector" id="track-selector-main" data-bs-toggle="modal" data-bs-target="#track-modal" data-sim-target="main">
+                <div class="track-placeholder">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-lg mb-2" width="48" height="48" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/>
+                    <path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0"/>
+                  </svg>
+                  <span>Click to select a track</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Right: Controls -->
+            <div class="col-md-5">
+              <div class="simulation-controls">
+                <!-- Direction -->
+                <div class="control-group">
+                  <label class="form-label">Direction</label>
+                  <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="direction-main" id="dir-ccw-main" value="counterclockwise" checked>
+                    <label class="btn btn-outline-primary" for="dir-ccw-main">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="icon me-1" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                        <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/>
+                      </svg>
+                      CCW
+                    </label>
+                    <input type="radio" class="btn-check" name="direction-main" id="dir-cw-main" value="clockwise">
+                    <label class="btn btn-outline-primary" for="dir-cw-main">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="icon me-1" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                        <path d="M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5"/>
+                      </svg>
+                      CW
+                    </label>
+                  </div>
+                </div>
+                
+                <!-- Alternate Direction -->
+                <div class="control-group">
+                  <label class="form-check">
+                    <input type="checkbox" class="form-check-input" name="alternate-main" id="alternate-main">
+                    <span class="form-check-label">Alternate training direction</span>
+                  </label>
+                  <small class="text-muted">Train in both directions during each iteration</small>
+                </div>
+                
+                <!-- Race Type -->
+                <div class="control-group">
+                  <label class="form-label">Race Type</label>
+                  <div class="d-flex flex-column gap-2">
+                    <label class="form-check">
+                      <input type="radio" class="form-check-input" name="race-type-main" value="TIME_TRIAL" checked>
+                      <span class="form-check-label">
+                        <strong>Time Trial</strong>
+                        <small class="d-block text-muted">Complete laps as fast as possible</small>
+                      </span>
+                    </label>
+                    <label class="form-check">
+                      <input type="radio" class="form-check-input" name="race-type-main" value="OBJECT_AVOIDANCE">
+                      <span class="form-check-label">
+                        <strong>Object Avoidance</strong>
+                        <small class="d-block text-muted">Navigate around obstacles on the track</small>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Sub simulation panes will be added dynamically -->
+      </div>
+    </div>
+  </div>
+
+</form>
+
+<!-- ============ TRACK SELECTION MODAL ============ -->
+<div class="modal modal-lg fade" id="track-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Select Track</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Search -->
+        <div class="mb-3">
+          <input type="text" class="form-control" id="track-search" placeholder="Search tracks...">
+        </div>
+        
+        <!-- Track Grid -->
+        <div class="track-grid" id="track-grid">
+          <!-- Tracks will be loaded dynamically -->
+          <div class="text-center py-5 text-muted" id="track-loading">
+            <div class="spinner-border mb-2" role="status"></div>
+            <div>Loading tracks...</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="track-select-btn" disabled>Select Track</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // ============ State ============
+  const state = {
+    modelName: '',
+    modelNameValid: false,
+    modelNameChecking: false,
+    tracks: [],
+    selectedTracks: {
+      main: null,
+    },
+    currentTrackTarget: 'main',
+    tempSelectedTrack: null,
+  };
+
+  // ============ Model Name Validation ============
+  const modelNameInput = document.getElementById('model-name');
+  const modelNameFeedback = document.getElementById('model-name-feedback');
+  let modelNameTimeout = null;
+
+  modelNameInput.addEventListener('input', function() {
+    const value = this.value.trim();
+    state.modelName = value;
+    
+    // Clear previous timeout
+    if (modelNameTimeout) clearTimeout(modelNameTimeout);
+    
+    // Immediate validation
+    const pattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+    
+    if (!value) {
+      showModelNameFeedback('', '');
+      state.modelNameValid = false;
+      return;
+    }
+    
+    if (value.length < 3) {
+      showModelNameFeedback('invalid', 'Name must be at least 3 characters');
+      state.modelNameValid = false;
+      return;
+    }
+    
+    if (!pattern.test(value)) {
+      showModelNameFeedback('invalid', 'Invalid characters in name');
+      state.modelNameValid = false;
+      return;
+    }
+    
+    // Debounced availability check
+    showModelNameFeedback('checking', 'Checking availability...');
+    state.modelNameChecking = true;
+    
+    modelNameTimeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/models/${encodeURIComponent(value)}/check`);
+        const data = await res.json();
+        
+        if (data.available) {
+          showModelNameFeedback('valid', 'Name is available');
+          state.modelNameValid = true;
+        } else {
+          showModelNameFeedback('invalid', `Name already exists. Try: ${data.suggestion}`);
+          state.modelNameValid = false;
+        }
+      } catch (e) {
+        showModelNameFeedback('invalid', 'Failed to check availability');
+        state.modelNameValid = false;
+      }
+      state.modelNameChecking = false;
+    }, 500);
+  });
+
+  function showModelNameFeedback(type, message) {
+    if (!type) {
+      modelNameFeedback.classList.add('d-none');
+      return;
+    }
+    
+    modelNameFeedback.classList.remove('d-none', 'checking', 'valid', 'invalid');
+    modelNameFeedback.classList.add(type);
+    
+    const spinner = modelNameFeedback.querySelector('.spinner-border');
+    const msgEl = modelNameFeedback.querySelector('.message');
+    
+    spinner.style.display = type === 'checking' ? '' : 'none';
+    msgEl.textContent = message;
+    
+    // Icon
+    if (type === 'valid') {
+      msgEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="icon me-1" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M5 12l5 5l10 -10"/></svg>' + message;
+    } else if (type === 'invalid') {
+      msgEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="icon me-1" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>' + message;
+    }
+  }
+
+  // ============ Sub Simulation Tabs ============
+  const subSimCount = document.getElementById('sub-simulation-count');
+  const tabList = document.getElementById('simulation-tabs');
+  const tabContent = document.getElementById('simulation-tab-content');
+
+  subSimCount.addEventListener('change', function() {
+    const count = parseInt(this.value);
+    updateSubSimulationTabs(count);
+  });
+
+  function updateSubSimulationTabs(count) {
+    // Remove existing sub tabs
+    tabList.querySelectorAll('.nav-item.sub-tab').forEach(el => el.remove());
+    tabContent.querySelectorAll('.tab-pane.sub-pane').forEach(el => el.remove());
+    
+    // Add new sub tabs
+    for (let i = 1; i <= count; i++) {
+      // Tab button
+      const tabItem = document.createElement('li');
+      tabItem.className = 'nav-item sub-tab';
+      tabItem.setAttribute('role', 'presentation');
+      tabItem.innerHTML = `
+        <button class="nav-link" id="sim-sub-${i}-tab" data-bs-toggle="tab" data-bs-target="#sim-sub-${i}" type="button" role="tab">
+          Sub ${i}
+        </button>
+      `;
+      tabList.appendChild(tabItem);
+      
+      // Tab content
+      const tabPane = document.createElement('div');
+      tabPane.className = 'tab-pane fade sub-pane';
+      tabPane.id = `sim-sub-${i}`;
+      tabPane.setAttribute('role', 'tabpanel');
+      tabPane.setAttribute('data-sim-index', i);
+      tabPane.innerHTML = createSimulationPaneHTML(i);
+      tabContent.appendChild(tabPane);
+      
+      // Initialize track selector
+      state.selectedTracks[i] = null;
+    }
+    
+    // Remove old sub tracks from state
+    Object.keys(state.selectedTracks).forEach(key => {
+      if (key !== 'main' && parseInt(key) > count) {
+        delete state.selectedTracks[key];
+      }
+    });
+  }
+
+  function createSimulationPaneHTML(index) {
+    return `
+      <div class="row g-4">
+        <div class="col-md-7">
+          <div class="track-selector" id="track-selector-${index}" data-bs-toggle="modal" data-bs-target="#track-modal" data-sim-target="${index}">
+            <div class="track-placeholder">
+              <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-lg mb-2" width="48" height="48" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/>
+                <path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0"/>
+              </svg>
+              <span>Click to select a track</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="simulation-controls">
+            <div class="control-group">
+              <label class="form-label">Direction</label>
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="direction-${index}" id="dir-ccw-${index}" value="counterclockwise" checked>
+                <label class="btn btn-outline-primary" for="dir-ccw-${index}">CCW</label>
+                <input type="radio" class="btn-check" name="direction-${index}" id="dir-cw-${index}" value="clockwise">
+                <label class="btn btn-outline-primary" for="dir-cw-${index}">CW</label>
+              </div>
+            </div>
+            <div class="control-group">
+              <label class="form-check">
+                <input type="checkbox" class="form-check-input" name="alternate-${index}" id="alternate-${index}">
+                <span class="form-check-label">Alternate training direction</span>
+              </label>
+            </div>
+            <div class="control-group">
+              <label class="form-label">Race Type</label>
+              <div class="d-flex flex-column gap-2">
+                <label class="form-check">
+                  <input type="radio" class="form-check-input" name="race-type-${index}" value="TIME_TRIAL" checked>
+                  <span class="form-check-label">Time Trial</span>
+                </label>
+                <label class="form-check">
+                  <input type="radio" class="form-check-input" name="race-type-${index}" value="OBJECT_AVOIDANCE">
+                  <span class="form-check-label">Object Avoidance</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ============ Track Modal ============
+  const trackModal = document.getElementById('track-modal');
+  const trackGrid = document.getElementById('track-grid');
+  const trackSearch = document.getElementById('track-search');
+  const trackSelectBtn = document.getElementById('track-select-btn');
+  const trackLoading = document.getElementById('track-loading');
+
+  // Load tracks when modal opens
+  trackModal.addEventListener('show.bs.modal', async function(e) {
+    const trigger = e.relatedTarget;
+    if (trigger) {
+      state.currentTrackTarget = trigger.dataset.simTarget;
+    }
+    state.tempSelectedTrack = null;
+    trackSelectBtn.disabled = true;
+    
+    if (state.tracks.length === 0) {
+      await loadTracks();
+    }
+    renderTrackGrid(state.tracks);
+  });
+
+  async function loadTracks() {
+    try {
+      const res = await fetch('/api/tracks');
+      state.tracks = await res.json();
+    } catch (e) {
+      console.error('Failed to load tracks:', e);
+      state.tracks = [];
+    }
+  }
+
+  function renderTrackGrid(tracks) {
+    trackLoading.style.display = 'none';
+    
+    if (tracks.length === 0) {
+      trackGrid.innerHTML = '<div class="text-center py-5 text-muted">No tracks available</div>';
+      return;
+    }
+    
+    trackGrid.innerHTML = tracks.map(track => `
+      <div class="track-card" data-track-id="${track.track_id}">
+        <img src="${track.thumbnail || '/static/img/tracks/thumbnail/' + track.track_id + '.png'}" 
+             alt="${track.name}" 
+             onerror="this.src='/static/img/track-placeholder.png'">
+        <div class="track-info">
+          <h6>${track.name}</h6>
+          <small>${track.length_m ? track.length_m + 'm' : ''}</small>
+        </div>
+      </div>
+    `).join('');
+    
+    // Click handlers
+    trackGrid.querySelectorAll('.track-card').forEach(card => {
+      card.addEventListener('click', function() {
+        trackGrid.querySelectorAll('.track-card').forEach(c => c.classList.remove('selected'));
+        this.classList.add('selected');
+        state.tempSelectedTrack = state.tracks.find(t => t.track_id === this.dataset.trackId);
+        trackSelectBtn.disabled = false;
+      });
+    });
+  }
+
+  // Search filter
+  trackSearch.addEventListener('input', function() {
+    const query = this.value.toLowerCase();
+    const filtered = state.tracks.filter(t => 
+      t.name.toLowerCase().includes(query) || 
+      t.track_id.toLowerCase().includes(query)
+    );
+    renderTrackGrid(filtered);
+  });
+
+  // Select button
+  trackSelectBtn.addEventListener('click', function() {
+    if (!state.tempSelectedTrack) return;
+    
+    const target = state.currentTrackTarget;
+    state.selectedTracks[target] = state.tempSelectedTrack;
+    
+    // Update track selector UI
+    const selector = document.getElementById(`track-selector-${target}`);
+    if (selector) {
+      selector.classList.add('selected');
+      selector.innerHTML = `
+        <img class="track-thumbnail" src="${state.tempSelectedTrack.thumbnail || '/static/img/tracks/thumbnail/' + state.tempSelectedTrack.track_id + '.png'}" 
+             onerror="this.src='/static/img/track-placeholder.png'">
+        <div class="track-name">${state.tempSelectedTrack.name}</div>
+      `;
+    }
+    
+    // Close modal
+    bootstrap.Modal.getInstance(trackModal).hide();
+  });
+
+  // ============ Expose state for form submission ============
+  window.getSimulationState = function() {
+    const main = {
+      track_id: state.selectedTracks.main?.track_id || '',
+      track_direction: document.querySelector('input[name="direction-main"]:checked')?.value || 'counterclockwise',
+      alternate_direction: document.getElementById('alternate-main')?.checked || false,
+      race_type: document.querySelector('input[name="race-type-main"]:checked')?.value || 'TIME_TRIAL',
+    };
+    
+    const subCount = parseInt(subSimCount.value);
+    const subs = [];
+    for (let i = 1; i <= subCount; i++) {
+      subs.push({
+        track_id: state.selectedTracks[i]?.track_id || main.track_id,
+        track_direction: document.querySelector(`input[name="direction-${i}"]:checked`)?.value || 'counterclockwise',
+        alternate_direction: document.getElementById(`alternate-${i}`)?.checked || false,
+        race_type: document.querySelector(`input[name="race-type-${i}"]:checked`)?.value || 'TIME_TRIAL',
+      });
+    }
+    
+    return { main, subs, modelName: state.modelName, modelNameValid: state.modelNameValid };
+  };
+});
+</script>
+{% endblock %}
