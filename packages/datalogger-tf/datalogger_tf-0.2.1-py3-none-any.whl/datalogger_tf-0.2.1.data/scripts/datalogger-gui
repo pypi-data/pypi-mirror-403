@@ -1,0 +1,422 @@
+#!python
+# -*- coding: utf-8 -*-
+
+"""package datalogger-gui
+author    Baptiste Marechal, refactoring and update to Python3 by Benoit Dubois
+copyright FEMTO-ST, 2022
+license   GPL v3.0+
+brief     A GUI interfaced software to log multiple instruments via ethernet,
+          usb or serial connection.
+"""
+
+import os, sys
+import inspect, threading
+import argparse
+import time
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QComboBox,
+    QLineEdit,
+    QDoubleSpinBox,
+    QPushButton,
+    QCheckBox,
+    QLabel,
+    QGridLayout,
+    QListWidget,
+)
+import datalogger.instruments as instruments
+
+DEFAULT_DATA_DIR = os.path.abspath(os.path.expanduser("~/server/data/"))
+DEFAULT_FILE_DURATION = 24 * 3600  # in second
+
+
+class AcqRoutine:
+    """Class handling acquisition process."""
+
+    def __init__(
+        self,
+        instrument,
+        channels,
+        vtypes,
+        address,
+        samplingtime,
+        path=DEFAULT_DATA_DIR,
+        fileduration=DEFAULT_FILE_DURATION,
+        ddc=False,
+    ):
+        instrument_module = getattr(instruments, instrument)
+        self.instrument = getattr(instrument_module, instrument)(
+            channels, vtypes, address
+        )
+        self.path = path
+        self.sampling_time = samplingtime
+        self.fileduration = fileduration
+        self._ddc = ddc
+        self.t0 = None
+        self.filename = ""
+        self.data_file = None
+        self.thread = None
+
+    def __del__(self):
+        self.stop()
+
+    def make_tree(self):
+        """'Move application' to data directory. If directory path does not
+        exist, create it.
+        :returns: True if move to data directory succeed, else False (bool)
+        """
+        base_data_dir = os.path.abspath(self.path)
+        print(base_data_dir)
+        if not os.path.isdir(base_data_dir):
+            print("Error: data directory does not exist.")
+            return False
+        year = time.strftime("%Y", time.gmtime(self.t0))
+        month = time.strftime("%Y-%m", time.gmtime(self.t0))
+        year_data_dir = os.path.join(base_data_dir, year)
+        if not os.path.isdir(year_data_dir):
+            os.mkdir(year_data_dir)
+        month_data_dir = os.path.join(year_data_dir, month)
+        if not os.path.isdir(month_data_dir):
+            os.mkdir(month_data_dir)
+        os.chdir(month_data_dir)
+        print(month_data_dir)
+        return True
+
+    def connect(self):
+        self.t0 = time.time()
+        self.filename = (
+            time.strftime("%Y%m%d-%H%M%S", time.gmtime(self.t0))
+            + "-"
+            + self.instrument.model()
+            + ".dat"
+        )
+        if self._ddc is False:
+            if not self.make_tree():
+                print("Connection failed")
+                return
+        self.data_file = open(self.filename, "w", 1)
+        self.instrument.connect()
+
+    def start(self):
+        tic = time.time()
+
+        if self._ddc is False:
+            if (time.time() - self.t0 >= self.fileduration) & (self.fileduration > 0):
+                self.data_file.close()
+                self.t0 = time.time()
+                self.filename = (
+                    time.strftime("%Y%m%d-%H%M%S", time.gmtime(self.t0))
+                    + "-"
+                    + self.instrument.model()
+                    + ".dat"
+                )
+                self.make_tree()
+                self.data_file = open(self.filename, "w", 1)
+
+        # epoch time
+        epoch = time.time()
+        # MJD time
+        mjd = epoch / 86400.0 + 40587
+        # Format meas values
+        meas = self.instrument.get_value()
+        meas = meas.replace(",", "\t")
+        meas = meas.replace(";", "\t")
+        meas = meas.replace("+", "")
+        meas = meas.replace("E", "e")
+
+        string = "%f\t%f\t%s" % (epoch, mjd, meas)
+        string = string.replace("\t\t", "\t")
+        self.data_file.write(string)
+        print(string[:-1])  # remove final '\n'
+
+        self.thread = threading.Timer(
+            self.sampling_time - (time.time() - tic), self.start
+        )
+        self.thread.start()
+
+    def stop(self):
+        if self.thread:
+            self.thread.cancel()
+        # self.instrument.disconnect()  # Need to check connection before...
+        if self.data_file:
+            try:
+                self.data_file.close()
+            except IOError:
+                pass
+
+
+class DataloggerGui(QMainWindow):
+    """Class defining datalogger (G)UI."""
+
+    def __init__(self):
+        super().__init__()
+        self.set_window()
+
+    def set_window(self):
+        self.resize(640, 480)
+        self.setWindowTitle("datalogger-gui")
+
+        self.wid = QWidget()
+        self.setCentralWidget(self.wid)
+        self.layout = QGridLayout()
+        self.wid.setLayout(self.layout)
+
+        self.combo_inst = QComboBox()
+        self.layout.addWidget(self.combo_inst, 0, 0)
+
+        self.address = QLineEdit()
+        self.address.setMinimumWidth(140)
+        self.address.setMaximumWidth(140)
+        self.layout.addWidget(self.address, 0, 1)
+
+        self.sampling_time = QDoubleSpinBox()
+        # self.sampling_time.setMinimumWidth(60)
+        # self.sampling_time.setMaximumWidth(60)
+        self.sampling_time.setMinimum(0.1)
+        self.sampling_time.setMaximum(1000)
+        self.sampling_time.setSingleStep(0.1)
+        self.sampling_time.setValue(1)
+        self.layout.addWidget(self.sampling_time, 0, 2)
+
+        self.start_button = QPushButton()
+        self.start_button.setText("Start log")
+        self.layout.addWidget(self.start_button, 99, 0)
+        self.start_button.setEnabled(False)
+
+        self.stop_button = QPushButton()
+        self.stop_button.setText("Stop log")
+        self.layout.addWidget(self.stop_button, 99, 1)
+        self.stop_button.setEnabled(False)
+
+        self.text_display = QLabel()
+        self.text_display.setText(">>")
+        self.layout.addWidget(self.text_display, 99, 2)
+
+    def idle_state(self):
+        """Set UI in 'idle' state: handles widget state (enable/disable) to be
+        used when application is idle.
+        """
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self.address.setEnabled(True)
+        self.sampling_time.setReadOnly(False)
+        self.combo_inst.setEnabled(True)
+
+    def log_state(self):
+        """Set UI in 'log' state: handles widget state (enable/disable)to be
+        used when application is logging data.
+        """
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        self.address.setEnabled(False)
+        self.sampling_time.setReadOnly(True)
+        self.combo_inst.setEnabled(False)
+
+
+class DataLogger:
+    """Class defining the application and its behavior."""
+
+    def __init__(self, odir, ddc=False):
+        self.ui = DataloggerGui()
+        self._odir = odir
+        self._ddc = ddc
+        self.sampling_time = None
+        self.inst_to_log = ""
+        self.address_to_log = ""
+        self.ch_to_log = []
+        self.vtype_to_log = []
+        self.ts = None
+        self.my_log = None
+        self.set_combo_inst()
+        self.update_signal()
+        self.set_signals_slots()
+        self.idle_state()
+
+    def init_ui(self):
+        self.set_combo_inst()
+
+    def set_combo_inst(self):
+        for name, obj in inspect.getmembers(instruments):
+            if (
+                inspect.ismodule(obj)
+                and not name.startswith("__")
+                and not name.startswith("abstract")
+            ):
+                self.ui.combo_inst.addItem(name)
+
+    def start_log(self):
+        self.log_state()
+        self.my_log.connect()
+        self.my_log.start()
+
+    def stop_log(self):
+        self.idle_state()
+        self.my_log.stop()
+
+    def set_signals_slots(self):
+        self.ui.combo_inst.currentIndexChanged.connect(self.update_signal)
+        self.ui.start_button.clicked.connect(self.start_log)
+        self.ui.stop_button.clicked.connect(self.stop_log)
+
+    def close_event(self):
+        try:
+            self.stop_log()
+        except:
+            pass
+        print("Done")
+
+    def update_signal(self):
+        for i in reversed(range(5, self.ui.layout.count())):
+            self.ui.layout.itemAt(i).widget().setParent(None)
+        channels_availables = getattr(
+            instruments, self.ui.combo_inst.currentText()
+        ).ALL_CHANNELS
+        vtypes_availables = getattr(
+            instruments, self.ui.combo_inst.currentText()
+        ).ALL_VAL_TYPE
+        default_address = getattr(instruments, self.ui.combo_inst.currentText()).ADDRESS
+        self.ui.address.setText(default_address)
+
+        self.check_box_channels = [None] * len(channels_availables)
+        self.ch_list_vtypes = [None] * len(self.check_box_channels)
+
+        for i in range(len(self.check_box_channels)):
+            self.check_box_channels[i] = QCheckBox()
+            self.check_box_channels[i].setText(channels_availables[i])
+            self.check_box_channels[i].setChecked(False)
+            self.ch_list_vtypes[i] = QListWidget()
+            for vtype in vtypes_availables:
+                self.ch_list_vtypes[i].addItem(vtype)
+            self.ch_list_vtypes[i].setCurrentRow(0)
+            self.ui.layout.addWidget(self.check_box_channels[i], i + 3, 1)
+            self.ui.layout.addWidget(self.ch_list_vtypes[i], i + 3, 2)
+            self.check_box_channels[i].stateChanged.connect(self.info_signal)
+            self.ch_list_vtypes[i].currentItemChanged.connect(self.info_signal)
+
+        self.ui.address.textChanged.connect(self.info_signal)
+        self.ui.sampling_time.valueChanged.connect(self.info_signal)
+
+        self.info_signal()
+
+    def info_signal(self):
+        self.inst_to_log = self.ui.combo_inst.currentText()
+        self.address_to_log = self.ui.address.text()
+        self.ch_to_log = []
+        self.vtype_to_log = []
+        self.ts = self.ui.sampling_time.value()
+
+        for i in range(len(self.check_box_channels)):
+            if self.check_box_channels[i].isChecked():
+                self.ch_list_vtypes[i].setEnabled(True)
+                self.ch_to_log.append(str(self.check_box_channels[i].text()))
+                self.vtype_to_log.append(
+                    str(self.ch_list_vtypes[i].currentItem().text())
+                )
+            else:
+                self.ch_list_vtypes[i].setEnabled(False)
+
+        all_channels_unchecked = False
+        for i in self.check_box_channels:
+            all_channels_unchecked = all_channels_unchecked or i.isChecked()
+        if all_channels_unchecked is False:
+            self.ui.start_button.setEnabled(False)
+        else:
+            self.ui.start_button.setEnabled(True)
+
+        self.ui.text_display.setText(
+            ">> %s@%s - %s - %s - %d"
+            % (
+                self.inst_to_log,
+                self.address_to_log,
+                self.ch_to_log,
+                self.vtype_to_log,
+                self.ts,
+            )
+        )
+
+        self.my_log = AcqRoutine(
+            self.inst_to_log,
+            self.ch_to_log,
+            self.vtype_to_log,
+            self.address_to_log,
+            self.ts,
+            path=self._odir,
+            ddc=self._ddc,
+        )
+
+    def idle_state(self):
+        """Set UI in 'idle' state: handles widget state (enable/disable) to be
+        used when application is idle.
+        """
+        self.ui.idle_state()
+        for i in range(len(self.check_box_channels)):
+            if self.check_box_channels[i].isChecked():
+                self.check_box_channels[i].setEnabled(True)
+                self.ch_list_vtypes[i].setEnabled(True)
+            else:
+                self.check_box_channels[i].setEnabled(True)
+                self.ch_list_vtypes[i].setEnabled(False)
+
+    def log_state(self):
+        """Set UI in 'log' state: handles widget state (enable/disable)to be
+        used when application is logging data.
+        """
+        self.ui.log_state()
+        for i in self.check_box_channels:
+            i.setEnabled(False)
+        for i in self.ch_list_vtypes:
+            i.setEnabled(False)
+
+
+# =============================================================================
+def parse_args():
+    """Parse script argument."""
+    parser = argparse.ArgumentParser(
+        description="""Acquire data from various device."""
+    )
+
+    parser.add_argument(
+        "-od",
+        "--output-directory",
+        action="store",
+        dest="odir",
+        default=DEFAULT_DATA_DIR,
+        help="Output data directory " "(default: {})".format(DEFAULT_DATA_DIR),
+    )
+    parser.add_argument(
+        "-ddc",
+        "--disable-directory-creation",
+        action="store_false",
+        dest="ddc",
+        help="Disable year/month directory creation.",
+    )
+
+    return parser.parse_args()
+
+
+# =============================================================================
+def test_ui():
+    """Start GUI to check is look."""
+    app = QApplication(sys.argv)
+    ui = DataloggerGui()
+    ui.show()
+    ui.setVisible(True)
+    sys.exit(app.exec())
+
+
+# =============================================================================
+def main():
+    """Main function."""
+    parser = parse_args()
+    app = QApplication(sys.argv)
+    datalogger = DataLogger(parser.odir, parser.ddc)
+    datalogger.ui.show()
+    datalogger.ui.setVisible(True)
+    sys.exit(app.exec())
+
+
+# =============================================================================
+# test_ui()
+main()
