@@ -1,0 +1,85 @@
+language: python
+sudo: required
+
+addons:
+  apt:
+    packages:
+      # generic packages
+      - gcc
+      - gfortran
+      - libblas-dev
+      - liblapack-dev
+      # lal dependencies
+      - pkg-config
+      - zlib1g-dev
+      - libgsl0-dev
+      - swig
+      - bc
+      - fftw-dev
+      # nds2 dependencies
+      - libsasl2-2
+      # misc python dependencies
+      - libhdf5-serial-dev
+      
+virtualenv:
+  system_site_packages: true
+
+matrix:
+  include:
+    - python: 2.7
+      env: STRICT=false
+    - python: 3.5
+      env: STRICT=false
+    - python: 2.7
+      env: STRICT=true PRE="--pre"
+  allow_failures:
+    - python: 2.7
+      env: STRICT=true PRE="--pre"
+    - python: 3.5
+      env: STRICT=false
+  fast_finish: true
+
+before_install:
+  - sudo add-apt-repository ppa:dns/gnu -y
+  - sudo apt-get update -q
+  - sudo apt-get install --only-upgrade autoconf
+  # update pip
+  - pip install -q ${PRE} --upgrade pip
+  # build and install numpy first
+  - pip install -q ${PRE} "numpy>=1.9.1"
+  # build src packages
+  - source .travis/setup_environment.sh
+  # install cython to speed up scipy build
+  - travis_retry pip install -q ${PRE} --install-option="--no-cython-compile" Cython
+  # install testing dependencies
+  - pip install  ${PRE} -r requirements_dev.txt 
+install:
+  - pip install ${PRE} -r requirements.txt
+  - python setup.py build
+
+script:
+  - coverage run setup.py test
+  # - . .travis/run-tests.sh
+  - pip install .
+
+after_success:
+  - coveralls
+
+cache:
+  apt: true
+  pip: true
+  ccache: true
+  directories:
+    # cache src builds
+    - ${VIRTUAL_ENV}/bin
+    - ${VIRTUAL_ENV}/lib
+    - ${VIRTUAL_ENV}/opt
+    - ${VIRTUAL_ENV}/etc
+
+notifications:
+  webhooks:
+    urls:
+      - https://chat.ligo.org/hooks/wknq4kn5c38yurauidajqt8bse
+    on_success: always#[always|never|change] # default: always
+    on_failure: always#[always|never|change] # default: always
+    on_start: always#[always|never|change] # default: never
