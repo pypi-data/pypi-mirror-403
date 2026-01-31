@@ -1,0 +1,205 @@
+Metadata-Version: 2.4
+Name: stereosegger
+Version: 0.2.1
+Summary: Fast and accurate cell segmentation for single-molecule spatial omics (Stereo-seq)
+Author-email: Elyas Heidari <elyas.heidari@dkfz-heidelberg.de>
+License: MIT
+Project-URL: bug_tracker, https://github.com/nrclaudio/stereosegger/issues
+Project-URL: source_code, https://github.com/nrclaudio/stereosegger
+Project-URL: repository, https://github.com/nrclaudio/stereosegger
+Keywords: segmentation,deep learning,pytorch,geometric deep learning,stereo-seq
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: torch==2.5.1
+Requires-Dist: torchvision==0.20.1
+Requires-Dist: nvidia-nvjitlink-cu12>=12.4.127
+Requires-Dist: distributed==2024.7.1
+Requires-Dist: numpy>=1.24.4
+Requires-Dist: pandas==2.1.4
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: matplotlib>=3.4.0
+Requires-Dist: seaborn>=0.11.0
+Requires-Dist: tqdm>=4.61.0
+Requires-Dist: lightning>=1.9.0
+Requires-Dist: torchmetrics>=0.5.0
+Requires-Dist: zarr<3.0.0,>=2.6.1
+Requires-Dist: anndata==0.10.8
+Requires-Dist: scanpy==1.10.2
+Requires-Dist: squidpy==1.4.1
+Requires-Dist: adjustText>=0.8
+Requires-Dist: scikit-learn>=0.24.0
+Requires-Dist: geopandas<1.0,>=0.9.0
+Requires-Dist: shapely>=1.7.0
+Requires-Dist: path>=17.0.0
+Requires-Dist: pyarrow>=16.1.0
+Requires-Dist: dask==2024.7.1
+Requires-Dist: dask_geopandas>=0.4.0
+Requires-Dist: dask-cuda>=23.10.0
+Requires-Dist: torch-geometric>=2.3.0
+Requires-Dist: pqdm>=0.2.0
+Requires-Dist: rtree>=1.3.0
+Requires-Dist: cudf-cu12<24.9.0,>=24.8.0
+Requires-Dist: cuml-cu12<24.9.0,>=24.8.0
+Requires-Dist: cugraph-cu12<24.9.0,>=24.8.0
+Requires-Dist: cuspatial-cu12<24.9.0,>=24.8.0
+Requires-Dist: cupy-cuda12x>=12.0.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: flake8; extra == "dev"
+Requires-Dist: twine>=4.0.2; extra == "dev"
+Provides-Extra: tests
+Requires-Dist: pytest; extra == "tests"
+Requires-Dist: coverage; extra == "tests"
+Dynamic: license-file
+
+# StereoSegger: Fast and Accurate Cell Segmentation for Stereo-seq
+
+> **Note:** This project is heavily inspired by the original **Segger** implementation by Elyas Heidari. You can find the original repository at [EliHei2/segger_dev](https://github.com/EliHei2/segger_dev). This version is specifically optimized and refactored for **Stereo-seq** (SAW bin1) workflows.
+
+## Installation
+
+StereoSegger requires **CUDA 12** (specifically **CUDA 12.4** compatibility) for GPU acceleration.
+
+### Quick Install (One-Liner)
+
+```bash
+pip install stereosegger --extra-index-url https://download.pytorch.org/whl/cu124 --extra-index-url https://pypi.nvidia.com
+```
+
+### Option 1: Automated Setup (Recommended for HPC/Conda)
+
+We provide a setup script that handles the complex dependency chain (PyTorch 2.5.1, RAPIDS 24.08, CUDA 12.4) automatically inside a clean Conda environment.
+
+```bash
+# Clone the repository
+git clone https://github.com/nrclaudio/stereosegger.git
+cd stereosegger
+
+# Run the setup script (requires Conda)
+bash scripts/setup_segger_env.sh
+
+# Activate the environment
+conda activate segger_env
+```
+
+---
+
+## Inputs & Outputs
+
+StereoSegger operates on **Parquet** files. We provide a built-in command to convert raw Stereo-seq H5AD files into this format.
+
+### 1. Raw Input (SAW Output)
+- **Format:** `h5ad` (AnnData)
+- **Source:** Output from the SAW pipeline (Stereo-seq Analysis Workflow).
+- **Conversion:** Use `stereosegger convert_saw` to prepare this for the pipeline.
+
+### 2. Processed Input (Parquet)
+The core pipeline expects a directory containing:
+- **`transcripts.parquet`**: Long-form table of gene-location occurrences.
+- **`genes.parquet`**: Mapping of `gene_id` to `gene_name`.
+- **`boundaries.parquet`**: Polygons (required for training, optional for prediction).
+
+---
+
+## Quickstart: Stereo-seq SAW bin1
+
+### 1. Prepare Data
+
+```bash
+# 1. Convert H5AD to Parquet
+stereosegger convert_saw \
+  --h5ad C04895D5_tissue.h5ad \
+  --out_dir ./raw_data
+
+# 2. Build Graph Dataset
+stereosegger create_dataset \
+  --base_dir ./raw_data \
+  --data_dir ./processed_dataset \
+  --tx_graph_mode grid_bins \
+  --grid_connectivity 8 \
+  --within_bin_edges star
+```
+
+### 2. Train Model (Requires Labeled Data)
+Training requires that you provided a `--labels_tif` during the `convert_saw` step.
+
+```bash
+stereosegger train_model \
+  --dataset_dir ./processed_dataset \
+  --models_dir ./models \
+  --sample_tag my_sample \
+  --max_epochs 300 \
+  --devices 1
+```
+
+### 3. Run Segmentation (Predict)
+
+```bash
+stereosegger predict_fast \
+  --segger_data_dir ./processed_dataset \
+  --models_dir ./models \
+  --benchmarks_dir ./results \
+  --transcripts_file ./raw_data/transcripts.parquet \
+  --model_version 0
+```
+
+---
+
+## Command Reference
+
+### 1. `convert_saw`
+Converts Stereo-seq SAW pipeline output (H5AD) into Parquet format.
+
+**Options:**
+- `--h5ad PATH`: Path to SAW bin1 h5ad file.
+- `--out_dir PATH`: Output directory.
+- `--labels_tif PATH`: (Optional) Label TIFF for boundary polygons (Required if you intend to train).
+- `--bin_pitch FLOAT`: Bin pitch for rounding. Default: `1.0`.
+
+### 2. `create_dataset`
+Creates the graph-based dataset used for training and inference.
+
+**Options:**
+- `--base_dir PATH`: Directory containing raw parquet files.
+- `--data_dir PATH`: Directory to save the processed dataset.
+- `--tx_graph_mode [kdtree|grid_bins]`: Transcript edge strategy. Default: `"grid_bins"`.
+- `--grid_connectivity INT`: Grid connectivity (4 or 8). Default: `8`.
+- `--within_bin_edges [none|star]`: Within-bin edge strategy. Default: `"star"`.
+
+### 3. `train_model`
+Trains the Segger model. **Will stop if the dataset is unlabeled.**
+
+**Options:**
+- `--dataset_dir PATH`: Processed dataset directory.
+- `--models_dir PATH`: Directory to save the model.
+- `--sample_tag TEXT`: Unique tag for the sample.
+- `--max_epochs INT`: Number of training epochs. Default: `300`.
+
+### 4. `predict_fast`
+Runs fast segmentation inference for large grid-based datasets.
+
+**Options:**
+- `--segger_data_dir PATH`: Processed dataset directory.
+- `--models_dir PATH`: Trained models directory.
+- `--benchmarks_dir PATH`: Output results directory.
+- `--transcripts_file PATH`: Original transcripts parquet file.
+- `--model_version INT`: Version of the model to load. Default: `0`.
+
+---
+
+## Technical Details
+
+### Architecture
+StereoSegger employs a Heterogeneous Graph Attention Network (GATv2) to segment transcripts based on their spatial neighborhood and identity.
+
+- **Transcript Nodes (`tx`)**: Represents a specific gene at a spatial location.
+- **Boundary Nodes (`bd`)**: Represents polygon boundaries (e.g., nuclei).
+- **Supervision**: During training, the model learns to predict "belongs" edges between transcripts and ground-truth boundaries.
