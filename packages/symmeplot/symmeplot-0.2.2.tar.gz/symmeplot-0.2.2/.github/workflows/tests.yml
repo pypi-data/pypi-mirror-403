@@ -1,0 +1,111 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  #----------------------------------- code-quality -----------------------------------#
+
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Lint check with ruff
+        run: uv run ruff check .
+      - name: Lint format with ruff
+        run: uv run ruff format . --check
+
+  #-------------------------------------- tests ---------------------------------------#
+
+  tests:
+    needs: code-quality
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install pyqtgraph dependencies
+        # https://pytest-qt.readthedocs.io/en/latest/troubleshooting.html#github-actions
+        uses: tlambert03/setup-qt-libs@v1
+      - name: Setup headless display
+        uses: pyvista/setup-headless-display-action@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Run tests
+        run: uv run pytest
+
+  test_sympy_dev:
+    needs: code-quality
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install pyqtgraph dependencies
+        # https://pytest-qt.readthedocs.io/en/latest/troubleshooting.html#github-actions
+        uses: tlambert03/setup-qt-libs@v1
+      - name: Setup headless display
+        uses: pyvista/setup-headless-display-action@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras
+          uv pip uninstall sympy
+          uv pip install git+https://github.com/sympy/sympy.git
+      - name: Run tests
+        run: uv run pytest
+
+  #------------------------------------ docs-tests ------------------------------------#
+
+  test_docs_job:
+    needs: code-quality
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install pyqtgraph dependencies
+        # https://pytest-qt.readthedocs.io/en/latest/troubleshooting.html#github-actions
+        uses: tlambert03/setup-qt-libs@v1
+      - name: Setup headless display
+        uses: pyvista/setup-headless-display-action@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: make the sphinx docs
+        run: |
+          uv run make -C docs clean
+          uv run make -C docs html

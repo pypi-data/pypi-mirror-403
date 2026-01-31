@@ -1,0 +1,72 @@
+# SymMePlot
+
+[![PyPI](https://img.shields.io/pypi/v/symmeplot.svg)](https://pypi.org/project/symmeplot/)
+[![Tests](https://github.com/tjstienstra/symmeplot/workflows/Tests/badge.svg)](https://github.com/tjstienstra/symmeplot/actions?workflow=Tests)
+
+SymMePlot is a visualization tool designed for mechanical systems created using
+the mechanics module in [SymPy], `sympy.physics.mechanics`.
+
+The `sympy.physics.mechanics` module allows users to define mechanical systems
+symbolically to derive their analytic equations of motion. During this process,
+users can construct various objects such as reference frames, points, bodies,
+and more.
+
+SymMePlot enhances this process by providing a way to visualize these
+constructed objects. It integrates with visualization backends like
+[Matplotlib], and creates visual representations based on the parametrization of
+the symbols involved in the system.
+
+SymMePlot is available on both PyPI and Conda-Forge. To install the latest
+release including [Matplotlib] from PyPI, run:
+
+```bash
+pip install symmeplot matplotlib
+```
+
+## Usage
+
+Most of your programs are expected to follow this structure:
+
+1. Creation of the system in sympy using the objects from
+   `sympy.physics.mechanics`.
+2. Initiate a `Scene` with the inertial frame and absolute origin.
+3. Add your frames, vectors and points to the plotter instance.
+4. Lambdify and evaluate the system.
+5. Plot the system.
+
+Below is a basic example of how this looks in practise:
+
+```python
+import numpy as np
+from symmeplot.matplotlib import Scene3D
+from sympy.physics.mechanics import Point, ReferenceFrame, dynamicsymbols
+
+# Create the system in sympy
+N = ReferenceFrame("N")
+A = ReferenceFrame("A")
+q = dynamicsymbols("q")
+A.orient_axis(N, N.z, q)
+N0 = Point("N_0")
+v = 0.2 * N.x + 0.2 * N.y + 0.7 * N.z
+A0 = N0.locatenew("A_0", v)
+# Create the instance of the scene specifying the inertial frame and origin
+scene = Scene3D(N, N0, scale=0.5)
+# Add the objects to the system
+scene.add_vector(v)
+scene.add_frame(A, A0, ls="--")
+scene.add_point(A0, color="g")
+# Evaluate the system.
+scene.lambdify_system(q)
+scene.evaluate_system(0.5)
+# Plot the system
+scene.plot()
+
+# You can also animate this system.
+ani = scene.animate(lambda q: (q,), frames=np.linspace(0, 2 * np.pi, 60))
+ani.save("animation.gif", fps=30)
+```
+
+![](docs/animation.gif)
+
+[Matplotlib]: https://matplotlib.org/
+[SymPy]: https://www.sympy.org
