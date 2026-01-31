@@ -1,0 +1,435 @@
+# Point Topic MCP Server
+
+UK broadband data analysis server via Model Context Protocol. Simple stdio-based server for local development and Claude Desktop integration.
+
+## ✅ what's implemented
+
+**database tools** (requires Snowflake credentials):
+- `assemble_dataset_context()` - get schemas and examples for datasets (upc, upc_take_up, upc_forecast, tariffs, ontology)
+- `execute_query()` - run safe read-only SQL queries
+- `describe_table()` - get table schema details
+- `get_la_code()` / `get_la_list_full()` - local authority lookups
+
+**chart tools**:
+- `get_point_topic_public_chart_catalog()` - browse public charts (no auth needed)
+- `get_point_topic_public_chart_csv()` - get public chart data as CSV (no auth needed)
+- `get_point_topic_chart_catalog()` - get complete catalog including private charts (requires API key)
+- `get_point_topic_chart_csv()` - get any chart data as CSV with authentication (requires API key)
+- `generate_authenticated_chart_url()` - create signed URLs for private charts (requires API key)
+
+**server info**:
+- `get_mcp_server_capabilities()` - check which tools are available and debug missing credentials
+
+**prompts** (reusable message templates):
+- UPC analysis: analyze coverage, adoption, forecasts, and market dynamics
+- SQL assistance: generate, debug, and optimize Snowflake queries
+
+**conditional availability**: tools only appear if required environment variables are set
+
+## installation (for end users)
+
+**option 1: pip install (recommended)**:
+
+```bash
+pip install point-topic-mcp
+```
+
+if you encounter `cmake` build errors during installation (for pyarrow), install with Snowflake support explicitly:
+
+```bash
+pip install "point-topic-mcp[snowflake]"
+```
+
+or provide pre-built wheels:
+
+```bash
+pip install --only-binary :all: point-topic-mcp[snowflake]
+```
+
+**option 2: from source (with uv)**:
+
+```bash
+git clone https://github.com/point-topic/point-topic-mcp.git
+cd point-topic-mcp
+uv sync
+uv run point-topic-mcp
+```
+
+**add to your MCP client** (Claude Desktop, Cursor, etc.):
+
+```json
+{
+  "mcpServers": {
+    "point-topic": {
+      "command": "point-topic-mcp",
+      "env": {
+        "SNOWFLAKE_USER": "your_user", 
+        "SNOWFLAKE_PASSWORD": "your_password",
+        "CHART_API_KEY": "your_chart_api_key"
+      }
+    }
+  }
+}
+```
+
+## remote deployment (FastMCP Cloud)
+
+Deploy the MCP server remotely to FastMCP Cloud for access from any MCP client.
+
+**requirements:**
+- FastMCP Cloud account (https://fastmcp.cloud)
+- GitHub repository connected to FastMCP Cloud
+
+**deployment:**
+
+1. Sign up at https://fastmcp.cloud
+2. Connect repository: `Point-Topic/point-topic-mcp`
+3. Configure environment variables (Snowflake credentials)
+4. Deploy - FastMCP Cloud handles HTTPS, scaling, monitoring automatically
+
+**client connections:**
+
+*Claude Desktop (via mcp-remote):*
+```json
+{
+  "mcpServers": {
+    "point-topic": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://your-url.fastmcp.cloud/mcp"]
+    }
+  }
+}
+```
+
+*Cursor (native remote):*
+```json
+{
+  "mcpServers": {
+    "point-topic": {
+      "url": "https://your-url.fastmcp.cloud/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+See [docs/REMOTE_SERVER.md](docs/REMOTE_SERVER.md) for complete deployment guide.
+
+**note**: environment variables are optional - tools will only appear if credentials are provided. use `get_mcp_server_capabilities()` to check which tools are available.
+
+**Claude Desktop config location**:
+- Mac: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+## development setup
+
+setup: `uv sync`
+
+**for local development with claude desktop**:
+
+This will add the server to your claude desktop config.
+
+```bash
+uv run mcp install src/point_topic_mcp/server_local.py --with "snowflake-connector-python[pandas]" -f .env
+```
+
+**for mcp inspector**:
+
+```bash
+uv run mcp dev src/point_topic_mcp/server_local.py
+```
+
+**environment configuration**:
+
+create `.env` file with your credentials:
+
+```bash
+# Snowflake database credentials (for database tools)
+SNOWFLAKE_USER=your_user
+SNOWFLAKE_PASSWORD=your_password
+
+# Chart API key (for authenticated chart generation)
+CHART_API_KEY=your_chart_api_key
+```
+
+## architecture
+
+**stdio transport**: communicates with MCP clients via standard input/output for local integration
+
+**auto-discovery**: tools and datasets are automatically discovered from module files - no manual registration needed
+
+**conditional tools**: tools only register if required environment variables are present - use `get_mcp_server_capabilities()` to debug
+
+**modular design**:
+- `src/point_topic_mcp/tools/` - tool modules auto-discovered and registered
+- `src/point_topic_mcp/context/datasets/` - dataset modules auto-discovered for context assembly
+
+## adding new tools
+
+this project uses auto-discovery for tools - just add a function and it becomes available.
+
+### tool structure
+
+create a file in `src/point_topic_mcp/tools/` ending with `_tools.py`:
+
+```python
+# src/point_topic_mcp/tools/my_feature_tools.py
+
+from typing import Optional
+from mcp.server.fastmcp import Context
+from mcp.server.session import ServerSession
+
+def my_new_tool(param: str, ctx: Optional[Context[ServerSession, None]] = None) -> str:
+    """Tool description visible to agents."""
+    # your implementation
+    return "result"
+```
+
+**that's it!** the tool is automatically discovered and registered.
+
+### conditional tools (require credentials)
+
+use `check_env_vars()` to conditionally define tools:
+
+```python
+from point_topic_mcp.core.utils import check_env_vars
+from dotenv import load_dotenv
+
+load_dotenv()
+
+if check_env_vars('my_feature', ['MY_API_KEY']):
+    def authenticated_tool(ctx: Optional[Context[ServerSession, None]] = None) -> str:
+        """Only available if MY_API_KEY is set."""
+        import os
+        api_key = os.getenv('MY_API_KEY')
+        # use api_key...
+        return "result"
+```
+
+### key principles
+
+1. **auto-discovery**: any public function in `*_tools.py` files becomes a tool
+2. **conditional registration**: wrap in `if check_env_vars()` for authenticated tools
+3. **clear docstrings**: visible to agents at all times - keep concise and actionable
+4. **type hints**: use for better agent understanding
+
+### dynamic tool registration
+
+for registering tools at runtime (e.g., when new datasets become available), use the `ToolManager` class:
+
+```python
+from point_topic_mcp.core.tool_manager import ToolManager
+from mcp.server.fastmcp import Context
+import mcp.types
+
+# Create tool manager
+tool_manager = ToolManager(mcp)
+
+# Define a new tool
+async def analyze_new_dataset(dataset_id: str) -> dict:
+    """Analyze data from a newly added dataset."""
+    return {"status": "analyzed", "dataset": dataset_id}
+
+# Register it
+tool_manager.register_tool(
+    name="analyze_dataset",
+    description="Analyze newly added datasets",
+    function=analyze_new_dataset
+)
+
+# Optional: notify clients of the change
+@mcp.tool()
+async def notify_new_tool(ctx: Context) -> str:
+    """Notify clients that tools have changed."""
+    await ctx.send_notification(mcp.types.ToolListChangedNotification())
+    return "Clients notified"
+```
+
+when you call `tool_manager.register_tool()`, the tool is added to FastMCP. to notify connected MCP clients about the change (so they can refresh their tool lists), call `ctx.send_notification()` with `ToolListChangedNotification()` from within a tool function. see the [MCP specification](https://modelcontextprotocol.io/specification/2025-03-26/server/tools#list-changed-notification) for more details.
+
+## prompts
+
+the server exposes reusable message templates and workflows via MCP prompts. prompts appear in the prompt picker in MCP clients (Cursor, Claude Desktop, etc.) and provide standardized workflows for common analysis tasks.
+
+### available prompts
+
+**UPC Analysis Prompts** (UK broadband coverage data):
+- `upc_analysis_prompt` - analyze coverage, take-up, forecasts, or market dynamics for a local authority
+- `upc_regional_comparison_prompt` - compare metrics across multiple regions
+- `upc_forecasting_prompt` - generate forward-looking coverage and adoption forecasts
+- `upc_market_analysis_prompt` - understand competitive dynamics and ISP strategies
+
+**SQL Query Assistance Prompts** (Snowflake query generation & optimization):
+- `sql_query_generation_prompt` - generate SQL queries for analysis
+- `sql_query_debugging_prompt` - debug failing SQL queries
+- `sql_optimization_prompt` - optimize queries for speed, cost, or readability
+- `sql_data_exploration_prompt` - explore dataset structure and contents
+- `sql_join_construction_prompt` - generate multi-dataset JOIN queries
+
+### adding new prompts
+
+this project uses auto-discovery for prompts - just add a function and it becomes available.
+
+#### prompt structure
+
+create a file in `src/point_topic_mcp/prompts/` ending with `_prompts.py`:
+
+```python
+# src/point_topic_mcp/prompts/my_analysis_prompts.py
+
+from typing import List
+from mcp.types import PromptMessage, TextContent
+
+def my_analysis_prompt(
+    region: str,
+    metric: str = "default"
+) -> List[PromptMessage]:
+    """Brief description of what this prompt helps with.
+    
+    Args:
+        region: Description of the region parameter
+        metric: Description of the metric parameter
+    
+    Returns:
+        List of PromptMessage objects that form the prompt
+    """
+    return [
+        PromptMessage(
+            role="user",
+            content=TextContent(
+                type="text",
+                text="System context or instructions here"
+            )
+        ),
+        PromptMessage(
+            role="user",
+            content=TextContent(
+                type="text",
+                text=f"User query incorporating {region} and {metric}"
+            )
+        ),
+        # Add more messages as needed
+    ]
+```
+
+**that's it!** the prompt is automatically discovered and registered.
+
+#### key principles
+
+1. **auto-discovery**: any public function in `*_prompts.py` files becomes a prompt
+2. **clear docstrings**: visible to agents - describe what the prompt helps with
+3. **message structure**: return `List[PromptMessage]` where each message has role ("user" or "assistant") and TextContent
+4. **parameters**: use type hints for parameters - they become prompt arguments in the MCP client
+5. **context-aware**: include system context as the first message(s) to guide the LLM
+
+see the [MCP Prompts specification](https://modelcontextprotocol.io/specification/draft/server/prompts/) for more details.
+
+### prompt notifications
+
+the server automatically notifies MCP clients when the list of prompts or tools changes. this is handled through the MCP change notifications protocol.
+
+**supported notifications**:
+- `prompts/list_changed` - fired when prompts are added or removed
+- `tools/list_changed` - fired when tools are added or removed (via ToolManager)
+
+clients can subscribe to these notifications to refresh their prompt/tool lists dynamically. this is useful for:
+- dynamic tool registration (see `ToolManager` in Issue #12)
+- conditional prompts/tools based on environment variables
+- future resource management
+
+**for developers**: to send a notification when you add/remove prompts or tools at runtime, use:
+
+```python
+@mcp.tool()
+async def refresh_capabilities(ctx: Context) -> str:
+    """Notify clients about capability changes."""
+    await ctx.send_notification(PromptListChangedNotification())
+    # or for tools:
+    await ctx.send_notification(ToolListChangedNotification())
+    return "Clients notified"
+```
+
+see the [MCP specification](https://modelcontextprotocol.io/specification/2025-03-26/server/tools#list-changed-notification) for more details.
+
+## adding new datasets
+
+this project uses a modular dataset system that allows easy addition of new data sources. each dataset is self-contained and automatically discovered by the MCP server.
+
+### dataset structure
+
+each dataset is a python module in `src/point_topic_mcp/context/datasets/` with two required functions:
+
+```python
+def get_dataset_summary():
+    """Brief description visible to agents at all times.
+    Keep concise - this goes in every agent prompt."""
+    return "short description of what data is available"
+
+def get_db_info():
+    """Complete context: schema, instructions, examples.
+    Only loaded when agent requests this dataset."""
+    return f"""
+    {DB_INFO}
+    
+    {DB_SCHEMA}
+    
+    {SQL_EXAMPLES}
+    """
+```
+
+### key principles
+
+1. **context window efficiency**: keep `get_dataset_summary()` extremely concise - it's always visible to agents
+2. **lazy loading**: full context via `get_db_info()` only loads when needed
+3. **self-contained**: each dataset module includes all its own schema, examples, and usage notes
+4. **auto-discovery**: new `.py` files in the datasets directory are automatically available
+
+### adding a new dataset
+
+1. **create the module**: `src/point_topic_mcp/context/datasets/your_dataset.py`
+2. **implement required functions**: `get_dataset_summary()` and `get_db_info()`
+3. **test locally**: `uv run mcp dev src/point_topic_mcp/server_local.py`
+4. **verify discovery**: agent should see your dataset in `assemble_dataset_context()` tool description
+
+see existing modules (`upc.py`, `upc_take_up.py`, `upc_forecast.py`) for structure examples.
+
+### optimization tips
+
+- prioritize essential info in summaries
+- use clear table descriptions that help agents choose the right dataset
+- include common query patterns in examples
+- sanity check data against known UK facts in instructions
+
+## publishing to PyPI (for maintainers)
+
+**build and test locally**:
+
+```bash
+# Build the package with UV (super fast!)
+uv build
+
+# Test installation locally
+pip install dist/point_topic_mcp-*.whl
+
+# Test the command works
+point-topic-mcp
+```
+
+**publish to PyPI**:
+
+```bash
+# Set up PyPI credentials in ~/.pypirc first (one time setup)
+# [pypi]
+#   username = __token__
+#   password = pypi-xxxxx...
+
+# Publish to PyPI with the publish script
+./publish_to_pypi.sh
+```
+
+**test installation from PyPI**:
+
+```bash
+pip install point-topic-mcp
+point-topic-mcp
+```
