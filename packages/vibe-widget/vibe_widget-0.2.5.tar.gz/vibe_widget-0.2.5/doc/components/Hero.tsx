@@ -1,0 +1,438 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { Terminal, Copy, ChevronDown, Sparkles } from 'lucide-react';
+import { EXAMPLES } from '../data/examples';
+import DynamicWidget from './DynamicWidget';
+import { useIsMobile } from '../utils/useIsMobile';
+
+const RetroCat = () => {
+    const [isHissing, setIsHissing] = useState(false);
+
+    const handleClick = () => {
+        setIsHissing(true);
+        // Play hiss sound effect could go here
+        setTimeout(() => setIsHissing(false), 800);
+    };
+
+    return (
+        <svg
+            viewBox="0 0 200 100"
+            className="w-48 h-24 absolute -top-20 left-10 z-20 overflow-visible cursor-pointer"
+            onClick={handleClick}
+        >
+            <defs>
+                <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
+                    <feOffset dx="2" dy="2" result="offsetblur" />
+                    <feComponentTransfer>
+                        <feFuncA type="linear" slope="0.3" />
+                    </feComponentTransfer>
+                    <feMerge>
+                        <feMergeNode />
+                        <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                </filter>
+            </defs>
+            {/* Tail Animation */}
+            <motion.path
+                d="M 160 80 Q 190 80 190 50 Q 190 20 160 30"
+                fill="none"
+                stroke="#ea580c"
+                strokeWidth="8"
+                strokeLinecap="round"
+                initial={{ d: "M 160 80 Q 180 80 180 60 Q 180 50 160 60" }}
+                animate={{ d: "M 160 80 Q 200 90 195 40 Q 180 20 160 40" }}
+                transition={{ repeat: Infinity, repeatType: "mirror", duration: 2, ease: "easeInOut" }}
+            />
+            {/* Body */}
+            <path d="M 40 80 L 160 80 A 10 10 0 0 0 170 70 L 170 50 A 20 20 0 0 0 150 30 L 60 30 A 10 10 0 0 0 50 40 L 50 70 A 10 10 0 0 0 40 80" fill="#1A1A1A" filter="url(#shadow)" />
+            {/* Head */}
+            <g transform="translate(30, 20)">
+                <rect x="0" y="20" width="50" height="40" rx="12" fill="#1A1A1A" />
+                {/* Left ear - bigger to avoid gap */}
+                <path d="M 5 20 L -2 3 L 17 20" fill="#1A1A1A" />
+                {/* Right ear */}
+                <path d="M 45 20 L 52 3 L 33 20" fill="#1A1A1A" />
+                {/* Eyes - fully open when hissing */}
+                <motion.rect
+                    x="12" y="35" width="8" height="8" rx="2" fill="#f97316"
+                    animate={isHissing ? { scaleY: 1 } : { scaleY: [1, 0.1, 1] }}
+                    transition={isHissing ? { duration: 0.1 } : { repeat: Infinity, duration: 4, delay: 0.5 }}
+                />
+                <motion.rect
+                    x="30" y="35" width="8" height="8" rx="2" fill="#f97316"
+                    animate={isHissing ? { scaleY: 1 } : { scaleY: [1, 0.1, 1] }}
+                    transition={isHissing ? { duration: 0.1 } : { repeat: Infinity, duration: 4, delay: 0.6 }}
+                />
+                {/* Hissing mouth - orange oval */}
+                <motion.ellipse
+                    cx="25" cy="52" rx="6" ry="4"
+                    fill="#f97316"
+                    initial={{ opacity: 0, scaleY: 0 }}
+                    animate={isHissing ? { opacity: 1, scaleY: 1 } : { opacity: 0, scaleY: 0 }}
+                    transition={{ duration: 0.2 }}
+                />
+                {/* Fangs */}
+                <motion.path
+                    d="M 20 50 L 20 56 M 30 50 L 30 56"
+                    stroke="#F2F0E9"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    initial={{ opacity: 0 }}
+                    animate={isHissing ? { opacity: 1 } : { opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                />
+            </g>
+            {/* Black paws */}
+            <rect x="50" y="80" width="20" height="8" rx="4" fill="#1A1A1A" />
+            <rect x="140" y="80" width="20" height="8" rx="4" fill="#1A1A1A" />
+        </svg>
+    );
+};
+
+const GLITCH_PHRASES = [
+    'LANGUAGE TO WIDGETS',
+    'CONTROLLED ITERATION',
+    'PDF & WEB DATA SUPPORT',
+    'REACTIVE WIDGET',
+];
+
+const GLITCH_CHARS = '!<>-_\\/[]{}-=+*^?#________';
+
+const GlitchSubtitle = () => {
+    const [displayText, setDisplayText] = useState(GLITCH_PHRASES[0]);
+    const [isGlitching, setIsGlitching] = useState(false);
+    const phraseIndexRef = useRef(0);
+    const scrambleTimeout = useRef<number | null>(null);
+    const cycleTimeout = useRef<number | null>(null);
+
+    useEffect(() => {
+        const TOTAL_FRAMES = 12;
+        const FRAME_DURATION = 60;
+        const cycleDelay = 3200;
+
+        const startCycle = () => {
+            cycleTimeout.current = window.setTimeout(() => {
+                setIsGlitching(true);
+                let frame = 0;
+                const nextIndex = (phraseIndexRef.current + 1) % GLITCH_PHRASES.length;
+                const target = GLITCH_PHRASES[nextIndex];
+
+                const glitchFrame = () => {
+                    frame += 1;
+                    const revealCount = Math.floor((frame / TOTAL_FRAMES) * target.length);
+                    const scrambled = target
+                        .split('')
+                        .map((char, idx) => (idx < revealCount ? char : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)]))
+                        .join('');
+                    setDisplayText(scrambled || target);
+
+                    if (frame >= TOTAL_FRAMES) {
+                        phraseIndexRef.current = nextIndex;
+                        setDisplayText(target);
+                        setIsGlitching(false);
+                        startCycle();
+                        return;
+                    }
+
+                    scrambleTimeout.current = window.setTimeout(glitchFrame, FRAME_DURATION);
+                };
+
+                glitchFrame();
+            }, cycleDelay);
+        };
+
+        startCycle();
+
+        return () => {
+            if (scrambleTimeout.current) {
+                clearTimeout(scrambleTimeout.current);
+            }
+            if (cycleTimeout.current) {
+                clearTimeout(cycleTimeout.current);
+            }
+        };
+    }, []);
+
+    return (
+        <div className="flex items-center gap-3 font-mono text-sm tracking-[0.3em] uppercase text-slate/60 min-h-[20px]">
+            <span className="inline-flex h-2 w-2 rounded-full bg-orange animate-pulse" aria-hidden="true" />
+            <span
+                className={`glitch-text inline-block min-w-[24ch] ${isGlitching ? 'glitch-active' : ''}`}
+                data-text={displayText}
+            >
+                {displayText}
+            </span>
+        </div>
+    );
+};
+
+const Hero = () => {
+    const HERO_EXAMPLES = EXAMPLES.filter((ex) => ex.id !== 'tic-tac-toe');
+    const [selectedExampleId, setSelectedExampleId] = useState('');
+    const [generationState, setGenerationState] = useState<'idle' | 'generating' | 'complete'>('idle');
+    const [inputText, setInputText] = useState("");
+    const [packageVersion, setPackageVersion] = useState<string | null>(null);
+    const isMobile = useIsMobile();
+
+    const { scrollY } = useScroll();
+
+    const textY = useTransform(scrollY, [0, 800], [0, 250]);
+    const simulatorY = useTransform(scrollY, [0, 800], [0, -100]);
+    const opacity = useTransform(scrollY, [0, 600], [1, 0]);
+
+    const selectedExample = HERO_EXAMPLES.find((ex) => ex.id === selectedExampleId) || null;
+
+    const handleSelect = (exampleId: string) => {
+        const example = HERO_EXAMPLES.find((ex) => ex.id === exampleId) || null;
+        setSelectedExampleId(exampleId);
+        setInputText(example ? example.prompt : '');
+        setGenerationState('idle');
+    };
+
+    const handleRun = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedExample) {
+            return;
+        }
+        setGenerationState('generating');
+        setTimeout(() => {
+            setGenerationState('complete');
+        }, 1500);
+    };
+
+    async function getLatestPyPIVersion(packageName) {
+        const response = await fetch(`https://pypi.org/pypi/${packageName}/json`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch package info');
+        }
+        const data = await response.json();
+        return data.info.version;
+    }
+
+    useEffect(() => {
+        getLatestPyPIVersion('vibe-widget')
+            .then(version => setPackageVersion(version))
+            .catch(err => console.error(err));
+    }, []);
+
+    const titleWords = "Build Interfaces for Interactive Exploration.".split(" ");
+    const versionLabel = packageVersion || 'v0.0.0';
+
+    const wrapperClasses = `w-full z-0 flex flex-col px-4 md:px-12 max-w-7xl mx-auto ${isMobile ? 'relative pt-24 pb-12 h-auto' : 'sticky top-0 h-screen pt-32 pb-20'} pointer-events-none`;
+    const gridClasses = `grid grid-cols-1 lg:grid-cols-12 gap-10 items-start pointer-events-auto ${isMobile ? 'py-8' : 'h-full'}`;
+
+    return (
+        <div className={wrapperClasses}>
+            <div className={gridClasses}>
+
+                {/* Left Column */}
+                <motion.div style={isMobile ? undefined : { y: textY, opacity }} className={`lg:col-span-6 space-y-8 z-10 flex flex-col justify-center ${isMobile ? '' : 'h-full pb-32'}`}>
+                    <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-slate/20 bg-bone/80 backdrop-blur-sm w-fit min-w-[120px]"
+                    >
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-xs font-mono font-medium tracking-wide uppercase">{`${versionLabel} Live`}</span>
+                    </motion.div>
+
+                    <h1 className="text-4xl md:text-6xl font-display font-bold leading-[0.9] tracking-tighter mix-blend-multiply flex flex-wrap gap-x-4">
+                        {titleWords.map((word, i) => (
+                            <motion.span
+                                key={i}
+                                initial={{ opacity: 0, y: 40 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 * i, type: "spring", stiffness: 100 }}
+                                className={word.includes('.') ? 'text-orange' : ''}
+                            >
+                                {word}
+                            </motion.span>
+                        ))}
+                    </h1>
+
+                    <GlitchSubtitle />
+
+                    <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5 }}
+                        className="text-xl md:text-2xl text-slate/70 max-w-xl font-sans leading-relaxed"
+                    >
+                        Create, edit, audit, and wire widgets together via plain English.
+                        Run your widgets in JupyterLab · VS Code · Colab. Powered by <a href="https://anywidget.dev" className="text-[#009999] underline" target="_blank" rel="noopener noreferrer">anywidget</a>.
+                    </motion.p>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.7 }}
+                        className="flex flex-wrap gap-4 pt-4"
+                    >
+                        <div
+                            className="flex items-center gap-3 px-6 py-4 border-2 border-slate/10 rounded-md font-mono text-sm bg-white/50 shadow-hard-sm hover:shadow-hard hover:-translate-y-1 transition-all cursor-pointer group"
+                            onClick={() => {
+                                navigator.clipboard.writeText(`pip install vibe-widget`);
+                            }}
+                        >
+                            <span className="text-orange">$</span>
+                            <span>pip install vibe-widget</span>
+                            <Copy className="w-4 h-4 text-slate/40 group-hover:text-orange transition-colors" />
+                        </div>
+                    </motion.div>
+                </motion.div>
+
+                {/* Right Column */}
+                <motion.div
+                    style={isMobile ? undefined : { y: simulatorY }}
+                    className={`lg:col-span-6 relative mt-10 lg:mt-0 ${isMobile ? '' : 'pb-32'} min-h-[520px]`}
+                >
+                    {!isMobile && <RetroCat />}
+
+                    <motion.div
+                        initial={{ opacity: 0, scale: isMobile ? 1 : 0.95, rotateY: isMobile ? 0 : 18 }}
+                        animate={{ opacity: 1, scale: 1, rotateY: 0 }}
+                        transition={{ duration: 1, type: "spring", stiffness: 50 }}
+                        className="relative z-10 bg-bone border-4 border-slate rounded-2xl shadow-hard-lg p-2 flex flex-col gap-0 h-[520px] lg:h-[560px] min-h-0 overflow-hidden perspective-1000"
+                    >
+                        {/* Header */}
+                        <div className="bg-slate text-bone p-3 rounded-t-lg flex justify-between items-center">
+                            <div className="flex gap-2">
+                                <div className="w-3 h-3 rounded-full bg-orange/80 shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
+                                <div className="w-3 h-3 rounded-full bg-bone/20" />
+                            </div>
+                            <div className="flex gap-1">
+                                {[1, 2, 3].map(i => <div key={i} className="w-1 h-3 bg-bone/20" />)}
+                            </div>
+                        </div>
+
+                        <div className="bg-white border-b-2 border-slate/10 p-4 relative z-50">
+                            <form onSubmit={handleRun} className="relative">
+                                <div className="flex flex-col gap-3">
+                                    <div className="relative">
+                                        <select
+                                            value={selectedExampleId}
+                                            onChange={(event) => {
+                                                handleSelect(event.target.value);
+                                            }}
+                                            className="w-full bg-bone/50 border-2 border-slate/10 rounded py-3 pl-10 pr-10 font-mono text-xs uppercase tracking-widest focus:outline-none focus:border-orange focus:ring-0 transition-all"
+                                        >
+                                            <option value="">Select a widget…</option>
+                                            {HERO_EXAMPLES.map((ex) => (
+                                                <option key={ex.id} value={ex.id}>
+                                                    {ex.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-orange">
+                                            <ChevronDown className="w-4 h-4" />
+                                        </div>
+                                    </div>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={inputText ? `vw.create(\"${inputText}\")` : 'Select a widget above'}
+                                        readOnly
+                                        placeholder="Describe your visualization..."
+                                        className={`w-full bg-bone/50 border-2 border-slate/10 rounded py-3 pl-10 pr-4 font-mono text-sm focus:outline-none focus:border-orange focus:ring-0 transition-all placeholder:opacity-30 cursor-default ${inputText ? 'text-slate' : 'text-slate/40 animate-pulse'}`}
+                                    />
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-orange">
+                                        <Terminal className="w-4 h-4" />
+                                    </div>
+                                </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        {/* Screen Area */}
+                        <div className="flex-1 min-h-0 bg-[#F2F0E9] relative overflow-hidden rounded-b-lg p-1">
+                            <div className="absolute inset-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.05)] pointer-events-none z-20" />
+                            <div className="absolute inset-0 z-0 bg-[linear-gradient(rgba(26,26,26,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(26,26,26,0.05)_1px,transparent_1px)] bg-[size:20px_20px]" />
+
+                            <div className="relative z-10 w-full h-full min-h-0 overflow-hidden">
+                                <div className="h-full min-h-0 overflow-auto overscroll-contain">
+                                <AnimatePresence mode="wait">
+                                    {generationState === 'idle' && (
+                                        <motion.div
+                                            key="idle"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="text-center text-slate/40 font-mono text-sm flex flex-col items-center justify-center gap-4 h-full pb-6"
+                                        >
+                                            <motion.div
+                                                animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.6, 0.3] }}
+                                                transition={{ repeat: Infinity, duration: 2 }}
+                                                className="mb-2 flex justify-center"
+                                            >
+                                                <Sparkles className="w-8 h-8" />
+                                            </motion.div>
+                                            READY_TO_SYNTHESIZE
+                                            <motion.button
+                                                type="button"
+                                                onClick={handleRun}
+                                                animate={{ rotate: [0, 0, 2, -2, 0] }}
+                                                transition={{ delay: 2.2, duration: 0.4, repeat: Infinity, repeatDelay: 4 }}
+                                                className="mt-2 px-8 py-4 bg-orange text-white rounded font-bold text-sm shadow-hard hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all uppercase tracking-[0.3em]"
+                                            >
+                                                Generate
+                                            </motion.button>
+                                        </motion.div>
+                                    )}
+
+                                    {generationState === 'generating' && (
+                                        <motion.div
+                                            key="generating"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="w-full px-8 space-y-4"
+                                        >
+                                            <div className="font-mono text-xs text-orange mb-2 animate-pulse tracking-widest uppercase">Synthesizing...</div>
+                                            <div className="h-1.5 bg-slate/10 rounded-full overflow-hidden">
+                                                <motion.div
+                                                    className="h-full bg-orange"
+                                                    initial={{ width: "0%" }}
+                                                    animate={{ width: "100%" }}
+                                                    transition={{ duration: 1.5, ease: "circInOut" }}
+                                                />
+                                            </div>
+                                            <div className="font-mono text-[9px] text-slate/40 flex flex-col gap-1">
+                                                <span> Fetching architectural patterns</span>
+                                                <span> Mapping data dimensions</span>
+                                                <span> Injecting reactive state</span>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    {generationState === 'complete' && selectedExample && (
+                                        <motion.div
+                                            key="complete"
+                                            initial={{ opacity: 0, filter: 'blur(10px)' }}
+                                            animate={{ opacity: 1, filter: 'blur(0px)' }}
+                                            className="w-full h-full bg-white border border-slate/10 shadow-sm rounded overflow-hidden flex flex-col"
+                                        >
+                                            <div className="flex-1 p-2 h-full min-h-0">
+                                                <DynamicWidget
+                                                    moduleUrl={selectedExample.moduleUrl}
+                                                    exampleId={selectedExample.id}
+                                                    dataUrl={selectedExample.dataUrl}
+                                                    dataType={selectedExample.dataType}
+                                                />
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[130%] h-[130%] bg-orange/10 blur-[100px] rounded-full -z-10" />
+                </motion.div>
+            </div>
+        </div>
+    );
+};
+
+export default Hero;
