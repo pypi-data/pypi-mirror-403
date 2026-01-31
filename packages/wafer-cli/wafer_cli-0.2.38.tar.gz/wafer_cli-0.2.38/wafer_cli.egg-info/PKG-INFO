@@ -1,0 +1,260 @@
+Metadata-Version: 2.4
+Name: wafer-cli
+Version: 0.2.38
+Summary: CLI for running GPU workloads, managing remote workspaces, and evaluating/optimizing kernels
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.12.0
+Requires-Dist: trio>=0.24.0
+Requires-Dist: trio-asyncio>=0.15.0
+Requires-Dist: wafer-core>=0.1.0
+Requires-Dist: perfetto>=0.16.0
+Requires-Dist: posthog>=3.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: diff-cover>=8.0.0; extra == "dev"
+Requires-Dist: ruff>=0.4.0; extra == "dev"
+
+# Wafer CLI
+
+Run GPU workloads, optimize kernels, and query GPU documentation.
+
+## Getting Started
+
+```bash
+# Install
+cd apps/wafer-cli && uv sync
+
+# Use staging (workspaces and other features require staging)
+wafer config set api.environment staging
+
+# Login
+wafer login
+
+# Run a command on a remote GPU
+wafer remote-run -- nvidia-smi
+```
+
+## Commands
+
+### `wafer login` / `wafer logout` / `wafer whoami`
+
+Authenticate with GitHub OAuth.
+
+```bash
+wafer login          # Opens browser for GitHub OAuth
+wafer whoami         # Show current user
+wafer logout         # Remove credentials
+```
+
+### `wafer remote-run`
+
+Run any command on a remote GPU.
+
+```bash
+wafer remote-run -- nvidia-smi
+wafer remote-run --upload-dir ./my_code -- python3 train.py
+```
+
+### `wafer workspaces`
+
+Create and manage persistent GPU environments.
+
+**Available GPUs:**
+
+- `MI300X` - AMD Instinct MI300X (192GB HBM3, ROCm)
+- `B200` - NVIDIA Blackwell B200 (180GB HBM3e, CUDA) - default
+
+```bash
+wafer workspaces list
+wafer workspaces create my-workspace --gpu B200 --wait   # NVIDIA B200
+wafer workspaces create amd-dev --gpu MI300X             # AMD MI300X
+wafer workspaces ssh <workspace-id>
+wafer workspaces delete <workspace-id>
+```
+
+### `wafer agent`
+
+AI assistant for GPU kernel development. Helps with CUDA/Triton optimization, documentation queries, and performance analysis.
+
+```bash
+wafer agent "What is TMEM in CuTeDSL?"
+wafer agent -s "optimize this kernel" < kernel.py
+```
+
+### `wafer evaluate`
+
+Evaluate kernel correctness and performance against a reference implementation.
+
+**Functional format** (default):
+```bash
+# Generate template files
+wafer evaluate make-template ./my-kernel
+
+# Run evaluation
+wafer evaluate --impl kernel.py --reference ref.py --test-cases tests.json --benchmark
+```
+
+The implementation must define `custom_kernel(inputs)`, the reference must define `ref_kernel(inputs)` and `generate_input(**params)`.
+
+**KernelBench format** (ModelNew class):
+```bash
+# Extract a KernelBench problem as template
+wafer evaluate kernelbench make-template level1/1
+
+# Run evaluation
+wafer evaluate kernelbench --impl my_kernel.py --reference problem.py --benchmark
+```
+
+The implementation must define `class ModelNew(nn.Module)`, the reference must define `class Model`, `get_inputs()`, and `get_init_inputs()`.
+
+### `wafer wevin -t ask-docs`
+
+Query GPU documentation using the docs template.
+
+```bash
+wafer wevin -t ask-docs --json -s "What causes bank conflicts in shared memory?"
+```
+
+### `wafer corpus`
+
+Download documentation to local filesystem for agents to search.
+
+```bash
+wafer corpus list
+wafer corpus download cuda-programming-guide
+```
+
+---
+
+## Customization
+
+### `wafer remote-run` options
+
+```bash
+wafer remote-run --image pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel -- python3 script.py
+wafer remote-run --require-hwc -- ncu --set full python3 bench.py   # Hardware counters for NCU
+```
+
+### `wafer evaluate` options
+
+```bash
+wafer evaluate --impl k.py --reference r.py --test-cases t.json \
+    --target vultr-b200 \    # Specific GPU target
+    --benchmark \            # Measure performance
+    --profile                # Enable torch.profiler + NCU
+```
+
+### `wafer push` for multi-command workflows
+
+```bash
+WORKSPACE=$(wafer push ./project)
+wafer remote-run --workspace-id $WORKSPACE -- python3 test1.py
+wafer remote-run --workspace-id $WORKSPACE -- python3 test2.py
+```
+
+### Profile analysis
+
+```bash
+wafer nvidia ncu analyze profile.ncu-rep
+wafer nvidia nsys analyze profile.nsys-rep
+```
+
+---
+
+## Advanced
+
+### Local targets
+
+Bypass the API and SSH directly to your own GPUs:
+
+```bash
+wafer targets list
+wafer targets add ./my-gpu.toml
+wafer targets default my-gpu
+```
+
+### Defensive evaluation
+
+Detect evaluation hacking (stream injection, lazy evaluation, etc.):
+
+```bash
+wafer evaluate --impl k.py --reference r.py --test-cases t.json --benchmark --defensive
+```
+
+### Other tools
+
+```bash
+wafer perfetto <trace.json> --query "SELECT * FROM slice"   # Perfetto SQL queries
+wafer capture ./script.py                                    # Capture execution snapshot
+wafer compiler-analyze kernel.ptx                            # Analyze PTX/SASS
+```
+
+### ROCm profiling (AMD GPUs)
+
+```bash
+wafer rocprof-sdk ...
+wafer rocprof-systems ...
+wafer rocprof-compute ...
+```
+
+---
+
+## Shell Completion
+
+Enable tab completion for commands, options, and target names:
+
+```bash
+# Install completion (zsh/bash/fish)
+wafer --install-completion
+
+# Then restart your terminal, or source your shell config:
+source ~/.zshrc  # or ~/.bashrc
+```
+
+Now you can tab-complete:
+- Commands: `wafer eva<TAB>` → `wafer evaluate`
+- Options: `wafer evaluate --<TAB>`
+- Target names: `wafer evaluate --target v<TAB>` → `wafer evaluate --target vultr-b200`
+- File paths: `wafer evaluate --impl ./<TAB>`
+
+---
+
+## AI Assistant Skills
+
+Install the Wafer CLI skill to make wafer commands discoverable by your AI coding assistant:
+
+```bash
+# Install for all supported tools (Claude Code, Codex CLI, Cursor)
+wafer skill install
+
+# Install for a specific tool
+wafer skill install -t cursor    # Cursor
+wafer skill install -t claude    # Claude Code
+wafer skill install -t codex     # Codex CLI
+
+# Check installation status
+wafer skill status
+
+# Uninstall
+wafer skill uninstall
+```
+
+### Installing from GitHub (Cursor)
+
+You can also install the skill directly from GitHub in Cursor:
+
+1. Open Cursor Settings (Cmd+Shift+J / Ctrl+Shift+J)
+2. Navigate to **Rules** → **Add Rule** → **Remote Rule (Github)**
+3. Enter: `https://github.com/wafer-ai/skills`
+4. Cursor will automatically discover skills in `.cursor/skills/`
+
+The skill provides comprehensive guidance for GPU kernel development, including documentation lookup, trace analysis, kernel evaluation, and optimization workflows.
+
+---
+
+## Requirements
+
+- Python 3.10+
+- GitHub account (for authentication)

@@ -1,0 +1,121 @@
+[project]
+name = "wafer-cli"
+version = "0.2.38"
+description = "CLI for running GPU workloads, managing remote workspaces, and evaluating/optimizing kernels"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12.0",
+    "trio>=0.24.0",
+    "trio-asyncio>=0.15.0", # Bridge asyncssh (asyncio) to trio for async SSH
+    # Wafer core for environments and utils (includes rollouts)
+    "wafer-core>=0.1.0",
+    "perfetto>=0.16.0",
+    "posthog>=3.0.0",  # Analytics tracking
+]
+
+[project.scripts]
+wafer = "wafer.cli:main"
+
+[tool.uv.sources]
+wafer-core = { workspace = true }
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "diff-cover>=8.0.0",
+    "ruff>=0.4.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wafer*"]
+
+[tool.setuptools.package-data]
+wafer = ["GUIDE.md", "skills/*/SKILL.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+preview = true  # Required for PLR1702 (too-many-nested-blocks)
+
+[tool.ruff.lint]
+select = [
+    "E",       # pycodestyle errors
+    "F",       # pyflakes
+    "I",       # isort (import sorting)
+    "ANN",     # flake8-annotations (enforce type annotations)
+    "ASYNC",   # flake8-async (trio/asyncio best practices)
+    "B",       # flake8-bugbear (common bugs)
+    "UP",      # pyupgrade (modern Python patterns)
+    "PLR0913", # too-many-arguments (Tiger Style: "hourglass shape: few parameters")
+    "PLR0915", # too-many-statements (Tiger Style: 70 line limit)
+    "PLR1702", # too-many-nested-blocks (Tiger Style: "centralize control flow")
+    "PLW2901", # redefined-loop-variable (Carmack SSA: single assignment)
+    "RET506",  # superfluous-else-raise (explicit control flow)
+    "RET507",  # superfluous-else-continue (explicit control flow)
+    "A",       # flake8-builtins (shadowing builtins like list, str)
+    "RUF018",  # assignment-in-assert (catches typos)
+    "TRY002",  # raise-vanilla-exception (use specific exceptions)
+    "TRY003",  # raise-vanilla-args (proper exception messages)
+    "TRY004",  # type-check-without-type-error (use TypeError for type checks)
+    "TRY201",  # verbose-raise (use bare raise)
+    "TRY300",  # try-consider-else (clear control flow)
+    "TRY400",  # error-instead-of-exception (use logging.exception)
+]
+ignore = [
+    "E501",    # Line too long (handled by formatter)
+    "B008",    # Typer uses function calls in defaults
+    "TRY003",  # Avoid specifying long messages outside exception class (too opinionated - revisit later)
+    "TRY300",  # Consider moving to else block (too opinionated about try/except style - revisit later)
+    "TRY400",  # Use logging.exception instead of logging.error (we prefer explicit error logging - revisit later)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN001", "ANN201", "ANN202", "ANN204"]  # Don't require type annotations in tests
+"wafer/evaluate.py" = ["PLR0915", "PLR1702", "E402", "PLW2901", "ASYNC221"]  # complex deployment flows - TODO: refactor
+"wafer/output.py" = ["ANN401"]  # Output collector uses **kwargs for flexible event data
+"wafer/autotuner.py" = ["PLR0915", "PLR1702", "B007", "B904"]  # complex sweep logic - TODO: refactor
+"wafer/ncu_analyze.py" = ["PLR0915", "PLR1702"]  # complex parsing logic - TODO: refactor
+"wafer/cli.py" = ["PLR0915"]  # CLI commands can be long - TODO: refactor
+"wafer/targets.py" = ["PLR1702"]  # complex target init flow - TODO: refactor
+"wafer/workspaces.py" = ["PLR1702"]  # SSE streaming has nested blocks - TODO: refactor
+"wafer/kernel_scope.py" = ["ANN001", "ANN202", "PLR0913"]  # complex filtering logic
+"wafer/api_client.py" = ["PLR0913"]  # API client needs many params
+"wafer/rocprof_compute.py" = ["PLR0913", "B904"]  # profiler commands need many params
+"wafer/rocprof_sdk.py" = ["PLR0913"]  # profiler commands need many params
+"wafer/rocprof_systems.py" = ["PLR0913"]  # profiler commands need many params
+
+[tool.ruff.lint.pylint]
+max-args = 7             # Max function arguments (Tiger Style: few parameters)
+max-statements = 70      # Max statements per function (Tiger Style: 70 line limit)
+max-branches = 12        # Max if/elif branches
+max-nested-blocks = 5    # Max nesting depth (Linus rule: "if you need more than 3 levels, you're screwed")
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--cov=wafer",
+    "--cov-report=term-missing",
+    "--cov-report=xml:coverage.xml",
+    "--cov-report=html:coverage/html",
+]
+
+[tool.coverage.run]
+source = ["wafer"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
