@@ -1,0 +1,32 @@
+# Attendify
+
+Attendify is a Python CLI tool that analyzes student attendance
+and identifies subjects at risk based on configurable rules.
+
+## Features
+- Parse attendance & timetable CSV files
+- Attendance risk classification
+- CLI output + JSON + CSV export
+- Fully tested core logic
+
+## Installation (local)
+```bash
+pip install .
+
+
+Usage
+attendify attendance.csv timetable.csv
+
+Options
+--min 75
+--only-risk
+--json
+--export-csv report.csv
+
+Example
+attendify attendance.csv timetable.csv --only-risk
+
+## Author
+
+Sanyam Bhansali  
+Built as a learning-focused Python CLI and packaging project.
