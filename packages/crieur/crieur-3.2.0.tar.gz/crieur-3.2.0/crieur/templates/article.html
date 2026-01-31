@@ -1,0 +1,66 @@
+{% extends "main.html" %}
+
+{% block extra_head %}
+  <style>
+    .download-export {
+      font-variant-caps: small-caps;
+    }
+  </style>
+{% endblock extra_head %}
+
+{% block content %}
+  <div class="aside">
+    <hgroup>
+      <h2>{{ article.title_html|typography }}</h2>
+      <div>
+        <p>{{ article.subtitle_html|typography }}</p>
+        <div class="muted">
+          {% if article.authors %}
+            {% for author in article.authors %}
+              <h4><em><a href="{{ base_url }}{{ author.url }}">{{ author.forname }} {{ author.surname }}</a></em></h4>
+            {% endfor %}
+          {% endif %}
+        </div>
+        <p class="muted">
+          <small>
+            <a href="{{ base_url }}blog/#date-{{ article.date }}">{{ article.date.strftime('%d %B %Y') }}</a>
+            <small class="muted" aria-hidden="true"> ⁙ </small>
+            <a href="{{ base_url }}{{ article.numero.url }}">{{ article.numero.title_html }}</a>
+            {% if article.keywords %}
+              <small class="muted" aria-hidden="true"> ⁙ </small>
+              {% for keyword in article.keywords %}
+                <a href="{{ base_url }}{{ keyword.url }}">#{{ keyword.name }}</a>{%- if not loop.last -%}, {% endif %}
+              {% endfor %}
+            {% endif %}
+          </small>
+        </p>
+        {% if article.exports %}
+          <p class="muted noprint">
+            <small>
+              Télécharger l’article :
+              {% for export_label, export_path in article.exports %}
+                <a class="download-export" href="{{ base_url }}{{ article.url }}{{ export_path.name }}">{{ export_label }}</a>{%- if not loop.last -%}, {% endif %}
+              {% endfor %}
+            </small>
+          </p>
+        {% endif %}
+        <p class="muted noprint">
+          <small>
+            ⎙ <a href="{{ base_url }}{{ article.url }}print/">Imprimer l’article</a>
+          </small>
+        </p>
+      </div>
+    </hgroup>
+    <div class="article-body">
+      {% if article.abstract_fr %}
+        <div class="article-abstract">{{ article.abstract_fr|typography|markdown }}</div>
+      {% else %}
+        {% if article.abstract_en %}
+          <div class="article-abstract" lang="en">{{ article.abstract_en|markdown }}</div>
+        {% endif %}
+      {% endif %}
+
+      {{ article.content_html }}
+    </div>
+  </div>
+{% endblock content %}
