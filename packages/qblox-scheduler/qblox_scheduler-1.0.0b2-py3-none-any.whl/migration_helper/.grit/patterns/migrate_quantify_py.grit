@@ -1,0 +1,68 @@
+engine marzano(0.1)
+language python
+
+
+pattern qblox_migrate() {
+    sequential {
+        maybe contains `quantify_scheduler` => `qblox_scheduler`,
+        maybe contains  replace_in_body_("qblox_scheduler.qblox", "QbloxBackend", "HardwareAgent"),
+        maybe contains  py_find_replace_import("qblox_scheduler.qblox", "HardwareAgent", "qblox_scheduler", "HardwareAgent"),
+        maybe contains  or {
+            replace_members_in_body("qblox_scheduler.operations.expressions", "DType", "INT", "NUMBER"),
+            replace_members_in_body("qblox_scheduler.operations.expressions", "DType", "AMP", "AMPLITUDE"),
+            replace_members_in_body("qblox_scheduler.operations.expressions", "DType", "Hz", "FREQUENCY"),
+            replace_members_in_body("qblox_scheduler.operations.expressions", "DType", "DEG", "PHASE"),
+            transform_drag_parameters(),
+            migrate_qcodes_py()},
+    }
+}
+
+pattern migrate_members() {
+    replace_in_body_("qblox_scheduler", "QbloxBackend", "HardwareAgent")
+}
+
+pattern migrate_attributes() {
+    or {
+        replace_members_in_body("qblox_scheduler.operations.expressions", "DType", "INT", "NUMBER"),
+        replace_members_in_body("qblox_scheduler.operations.expressions", "DType", "AMP", "AMPLITUDE")
+    }
+}
+
+
+pattern replace_in_body_($from_package, $from_name, $to_name){
+    `$member` where {
+        $member <: imported_from(source=`$from_package`),
+        $member <: `$from_name`
+    } => `$to_name`
+}
+
+pattern replace_members_in_body($from_package, $class, $member, $new_member){
+    `$class.$member` where {
+        $class <: imported_from(source=`$from_package`),
+    } => `$class.$new_member`
+}
+
+pattern transform_drag_parameters() {
+    or {
+        transform_function_parameters("DRAGPulse", "qblox_scheduler.operations", [["G_amp", "amplitude"], ["D_amp", "beta"]]),
+        transform_function_parameters("drag", "qblox_scheduler.waveforms", [["G_amp", "amplitude"], ["D_amp", "beta"]])
+    }
+}
+
+// List format: [["old_param", "new_param"], ["old_param2", "new_param2"], ...]
+pattern transform_function_parameters($func_name, $import_module, $param_list) {
+    `$func($args)` where {
+        $program <: module(statements=$stmts),
+        $stmts <: some `from $import_module import $imports` where { 
+            $imports <: contains $func_name 
+        },
+        $func <: $func_name,
+        $param_list <: some bubble($args) [
+            $old_param, $new_param
+        ] where {
+            $args <: maybe contains `$old_param=$val` => `$new_param=$val`
+        }
+    }
+}
+
+
