@@ -1,0 +1,80 @@
+"""Inference serve deployment for {{ name }}."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+from synapse_sdk.plugins import BaseServeDeployment
+
+app = FastAPI()
+
+
+class InferenceInput(BaseModel):
+    """Input schema for inference requests.
+
+    Define the fields your model expects for prediction.
+    Use FileField for file-based inputs (images, audio, etc.).
+
+    Example::
+
+        from synapse_sdk.enums import FileField
+
+        class InferenceInput(BaseModel):
+            image_path: FileField
+            threshold: float = 0.5
+    """
+
+    # TODO: Define your inference input fields here.
+    pass
+
+
+class InferenceDeployment(BaseServeDeployment):
+    """Ray Serve deployment for {{ name }}.
+
+    Handles model loading and inference request routing.
+
+    Implement:
+        - ``_get_model``: Load your model from extracted artifacts.
+        - ``infer``: Define the inference endpoint logic.
+    """
+
+    action_name = 'inference'
+    app = app
+
+    async def _get_model(self, model_info: dict[str, Any]) -> Any:
+        """Load model from extracted artifacts.
+
+        Args:
+            model_info: Dict with 'path' pointing to extracted model directory.
+
+        Returns:
+            Loaded model object ready for inference.
+
+        Raises:
+            NotImplementedError: Must be implemented with your model loading logic.
+        """
+        raise NotImplementedError(
+            'Implement model loading here. '
+            "model_info['path'] contains the extracted model directory."
+        )
+
+    @app.post('/')
+    async def infer(self, data: InferenceInput) -> dict[str, Any]:
+        """Run inference on input data.
+
+        Args:
+            data: Validated inference input.
+
+        Returns:
+            Prediction results as a dictionary.
+
+        Raises:
+            NotImplementedError: Must be implemented with your inference logic.
+        """
+        raise NotImplementedError(
+            'Implement inference logic here. '
+            'Use `model = await self.get_model()` to get the loaded model.'
+        )
