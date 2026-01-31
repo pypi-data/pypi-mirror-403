@@ -1,0 +1,52 @@
+﻿# mirrorctl
+
+用于管理主流开发工具镜像源的 CLI。
+
+## 安装（本地）
+
+```bash
+pip install -e .
+```
+
+## 支持的工具
+
+- pip
+- npm
+- pnpm
+- yarn
+- cargo
+- gem
+- go
+- maven
+- conda
+
+## 用法
+
+```bash
+# 查看已支持工具及当前镜像
+mirrorctl list
+
+# 查看内置 provider（目前只有 official）
+mirrorctl providers
+
+# 设置镜像（自定义 URL）
+mirrorctl set pip --url https://pypi.org/simple
+mirrorctl set npm --url https://registry.npmjs.org/
+
+# 查看当前镜像
+mirrorctl current pip
+
+# 重置为官方镜像
+mirrorctl reset pip
+
+# 一键设置清华 TUNA 镜像
+mirrorctl tuna
+
+# 批量设置某个 provider
+mirrorctl set-all --provider tuna
+```
+
+## 说明
+
+- mirrorctl 会修改对应工具的用户级配置文件（例如 `~/.npmrc`、`~/.cargo/config.toml`）。
+- 如果你需要公司/校园镜像，请使用 `--url` 指定对应地址。
