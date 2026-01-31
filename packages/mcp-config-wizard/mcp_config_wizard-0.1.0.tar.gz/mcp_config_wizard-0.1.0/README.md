@@ -1,0 +1,322 @@
+# mcp-config-wizard
+
+> 🧙 Easily configure MCP servers through a beautiful interactive CLI — no complex commands needed.
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/mcp-config-wizard.svg)](https://pypi.org/project/mcp-config-wizard/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## 🚀 Quick Start
+
+### Option A — Run Instantly with uvx (Easiest)
+
+```bash
+uvx mcp-config-wizard
+```
+
+No installation required. Just run and start configuring.
+
+### Option B — Install from PyPI
+
+```bash
+uv tool install mcp-config-wizard
+mcp-wizard
+```
+
+### Option C — Install with pip
+
+```bash
+pip install mcp-config-wizard
+mcp-wizard
+```
+
+## ✨ Key Features
+
+- **Interactive CLI** — No need to memorize complex commands
+- **Supports All MCP Transports** — stdio, SSE, HTTP
+- **Easy Authentication** — Simple API key and header management
+- **Auto-Detection** — Finds Claude, Cursor, VS Code, and Windsurf configs automatically
+- **Pre-built Templates** — Quick setup for popular MCP servers (GitHub, Filesystem, PostgreSQL, etc.)
+- **Custom Config Locations** — Create configs manually in the current folder on any OS
+- **Beautiful Terminal UI** — Clean, colorful interface with rich formatting
+- **Safe Operations** — Automatically backs up existing configurations
+- **Management Tools** — List, add, view, and remove servers
+
+## 🔧 Supported Configurations
+
+### ✅ STDIO (Local Processes)
+
+- **NPX packages:** `npx -y @org/package`
+- **UVX packages:** `uvx package-name`
+- **Python modules:** `python -m module`
+- **Node scripts:** `node script.js`
+- **Custom binaries**
+- **Environment variables**
+
+### ✅ HTTP (Web Endpoints)
+
+- Custom headers
+- API keys
+- Bearer tokens
+- Authentication support
+
+### ✅ SSE (Server-Sent Events)
+
+- Event streams
+- Real-time data
+- Headers and authentication
+
+## 📦 Supported Clients
+
+### Desktop Apps
+| Client | Config Location |
+|--------|-----------------|
+| **Claude Desktop** | `%APPDATA%\Claude\` (Win) / `~/Library/Application Support/Claude/` (Mac) |
+### Desktop Apps
+| Client | Config Location |
+|--------|-----------------|
+| **Claude Desktop** | `%APPDATA%\Claude\` (Win) / `~/Library/Application Support/Claude/` (Mac) |
+| **Cursor** | `.cursor/mcp.json` (project) / `%APPDATA%\Cursor\User\mcp.json` (Win) |
+| **Windsurf (Codeium)** | `~/.codeium/mcp_config.json` (cross-platform) |
+| **VS Code (Copilot)** | `.vscode/mcp.json` (project) / `%APPDATA%\Code\User\mcp.json` (Win) |
+| **LM Studio** | `%APPDATA%\LM Studio\mcp.json` (Win) / `~/.lmstudio/mcp.json` |
+| **Zed Editor** | `%AppData%\Zed\settings.json` (Win) / `~/.config/zed/settings.json` |
+| **Warp Terminal** | Built-in UI (macOS) |
+
+### CLI Tools
+| Client | Config Location |
+|--------|-----------------|
+| **Claude Code** | `~/.claude.json` (mcpServers field) |
+| **Goose (Block)** | `~/.config/goose/config.yaml` |
+| **Gemini CLI** | `~/.gemini/settings.json` (mcpServers field) |
+| **Amazon Q CLI** | `~/.aws/amazonq/mcp.json` |
+| **Codex (OpenAI)** | `~/.codex/config.json` |
+| **OpenCode** | `~/.opencode/config.json` |
+
+### VS Code Extensions
+| Client | Config Location |
+|--------|-----------------|
+| **Cline** | VS Code globalStorage `cline_mcp_settings.json` |
+| **Roo Code** | VS Code globalStorage `mcp_settings.json` |
+| **Continue** | `~/.continue/config.yaml` or `.continue/mcpServers/` |
+| **Amp (Sourcegraph)** | Uses VS Code `mcp.json` |
+
+### JetBrains IDEs
+| Client | Config Location |
+|--------|-----------------|
+| **Junie / AI Assistant** | `~/.junie/mcp.json` or `.junie/mcp/` |
+
+### Google
+| Client | Config Location |
+|--------|-----------------|
+| **Gemini CLI** | `~/.gemini/settings.json` (mcpServers field) |
+| **Google Antigravity** | `~/.gemini/antigravity/mcp_config.json` |
+
+## 📋 Pre-built Server Templates (50+)
+
+Quick setup for popular MCP servers organized by category:
+
+### 💻 Development Tools
+- **Filesystem** — Read and write local files
+- **GitHub** — Repos, issues, and pull requests
+- **GitLab** — Repos, issues, and merge requests
+- **Git** — Local git operations
+- **Linear** — Issue and project management
+
+### 🗄️ Databases
+- **PostgreSQL** — Query Postgres databases
+- **SQLite** — Query SQLite databases
+- **MySQL** — Query MySQL databases
+- **MongoDB** — Query MongoDB databases
+- **Redis** — Interact with Redis
+- **Supabase** — Supabase projects and databases
+- **Neon** — Serverless Postgres
+
+### 🧠 Memory & Knowledge
+- **Memory** — Persistent AI memory storage
+- **Knowledge Graph** — Graph-based memory with relationships
+
+### 🔍 Search & Web
+- **Brave Search** — Web search API
+- **Tavily** — AI-powered research search
+- **Exa** — Neural search engine
+- **Fetch** — Fetch web content
+- **Firecrawl** — Web scraping and crawling
+
+### 🌐 Browser Automation
+- **Puppeteer** — Browser automation
+- **Playwright** — Cross-browser testing
+- **Browserbase** — Cloud browser automation
+
+### ☁️ Cloud & Infrastructure
+- **AWS** — AWS services management
+- **Cloudflare** — Cloudflare services
+- **Vercel** — Deployments and projects
+- **Netlify** — Sites and deployments
+
+### 💬 Communication
+- **Slack** — Workspaces and channels
+- **Discord** — Discord servers
+- **Email** — Gmail/SMTP email
+
+### 📋 Productivity
+- **Google Drive** — File management
+- **Notion** — Workspaces and pages
+- **Obsidian** — Notes and vaults
+- **Todoist** — Tasks and projects
+
+### 🗺️ Maps & Location
+- **Google Maps** — Location and directions
+
+### 🤖 AI & Documentation
+- **Context7** — Library documentation search
+- **OpenAI** — OpenAI models and APIs
+- **Anthropic** — Claude models
+
+### 📊 Data & Analytics
+- **BigQuery** — Google BigQuery datasets
+- **Snowflake** — Data warehouse
+
+### 🔐 Security
+- **Sentry** — Error tracking
+- **1Password** — Secure vault access
+
+### 🔧 Utilities
+- **Time** — Current time and timezone
+- **Sequential Thinking** — Structured problem-solving
+- **Everything** — Reference/test server
+
+## 🧩 The Problem This Solves
+
+### ❌ BEFORE (Complex CLI Command)
+
+```bash
+claude mcp add --transport http context7 https://mcp.context7.com/mcp \
+  --header "CONTEXT7_API_KEY: ctx7sk-268c6a37-1291-4227-8440-6c9985b2bc19"
+```
+
+### ✅ AFTER (Interactive Wizard)
+
+```
+uvx mcp-config-wizard
+
+? Select MCP client to configure: Claude Desktop
+? What would you like to do? Add a new server
+? Choose a server template: 🌐 Context7
+? Enter server name: context7
+? Enter CONTEXT7_API_KEY: ********
+
+✓ Server 'context7' added to claude_desktop_config.json
+```
+
+## 📖 Usage Examples
+
+### Add a GitHub MCP Server
+
+```
+$ mcp-wizard
+
+🧙 MCP Config Wizard
+
+? Select MCP client to configure: Claude Desktop
+? What would you like to do? Add a new server
+? Choose a server template: 📦 GitHub
+? Enter server name: github
+? Enter GITHUB_TOKEN: ********
+
+✓ Server 'github' added!
+```
+
+### Add a Custom STDIO Server
+
+```
+$ mcp-wizard
+
+? Select MCP client to configure: VS Code (GitHub Copilot)
+? What would you like to do? Add a new server
+? Choose a server template: 🔧 Custom Configuration
+? Enter server name: my-server
+? Select transport type: STDIO
+? Select command type: npx -y @org/package
+? Enter package name: @myorg/mcp-server
+? Additional arguments: --verbose
+? Add environment variables? Yes
+? Environment variable name: API_KEY
+? Value for API_KEY: ********
+
+✓ Server 'my-server' added!
+```
+
+### List Configured Servers
+
+```
+$ mcp-wizard
+
+? Select MCP client to configure: Claude Desktop
+? What would you like to do? List configured servers
+
+┌──────────────────────────────────────────────────────┐
+│              Configured MCP Servers                  │
+├────────────┬───────────┬─────────────────────────────┤
+│ Name       │ Transport │ Details                     │
+├────────────┼───────────┼─────────────────────────────┤
+│ filesystem │ stdio     │ npx -y @modelcontextprot... │
+│ github     │ stdio     │ npx -y @modelcontextprot... │
+│ context7   │ http/sse  │ https://mcp.context7.com... │
+└────────────┴───────────┴─────────────────────────────┘
+```
+
+## 🛠️ Development
+
+### Clone and Setup
+
+```bash
+git clone https://github.com/your-username/mcp-config-wizard.git
+cd mcp-config-wizard
+uv sync
+```
+
+### Run Locally
+
+```bash
+uv run mcp-wizard
+```
+
+### Build Package
+
+```bash
+uv build
+```
+
+### Publish to PyPI
+
+```bash
+uv publish
+```
+
+## 📦 Dependencies
+
+### Runtime
+
+- `questionary >= 2.0.0` — Interactive prompts
+- `rich >= 13.0.0` — Beautiful terminal output  
+- `platformdirs >= 4.0.0` — Cross-platform config paths
+
+### Development
+
+- `build` — Package building
+- `twine` — Publishing to PyPI
+- `pytest` — Testing
+
+## 🐍 Python Support
+
+- **Requires:** Python 3.8+
+- **Compatible with:** 3.8 – 3.14
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
