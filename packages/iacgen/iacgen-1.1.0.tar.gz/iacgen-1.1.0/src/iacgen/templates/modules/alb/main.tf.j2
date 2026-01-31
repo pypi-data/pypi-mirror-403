@@ -1,0 +1,201 @@
+terraform {
+  required_version = ">= 1.5.0"
+}
+
+############################
+# Security Group for ALB
+############################
+
+resource "aws_security_group" "alb" {
+  name        = "{{ name }}-alb-sg"
+  description = "Security group for {{ name }} application load balancer"
+  vpc_id      = var.vpc_id
+
+  # HTTP ingress
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Optional HTTPS ingress
+  {% if alb.enable_https %}
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  {% endif %}
+
+  # Egress to anywhere
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "{{ name }}-alb-sg"
+  }
+}
+
+############################
+# Application Load Balancer
+############################
+
+resource "aws_lb" "main" {
+  name               = "{{ name }}-alb"
+  internal           = {{ 'true' if alb.internal else 'false' }}
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = var.subnet_ids
+
+  tags = {
+    Name = "{{ name }}-alb"
+  }
+}
+
+############################
+# Default Target Group
+############################
+
+resource "aws_lb_target_group" "default" {
+  name     = "{{ name }}-tg-default"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = var.vpc_id
+
+  health_check {
+    protocol            = "HTTP"
+    path                = "/health"
+    matcher             = "200-399"
+    healthy_threshold   = 3
+    unhealthy_threshold = 2
+    interval            = 30
+    timeout             = 5
+  }
+
+  tags = {
+    Name = "{{ name }}-tg-default"
+  }
+}
+
+############################
+# Per-service Target Groups
+############################
+
+{% for service in services %}
+resource "aws_lb_target_group" "{{ service.name }}" {
+  name     = "{{ name }}-tg-{{ service.name }}"
+  port     = {{ service.port }}
+  protocol = "HTTP"
+  vpc_id   = var.vpc_id
+
+  health_check {
+    protocol            = "HTTP"
+    path                = "/health"
+    matcher             = "200-399"
+    healthy_threshold   = 3
+    unhealthy_threshold = 2
+    interval            = 30
+    timeout             = 5
+  }
+
+  tags = {
+    Name = "{{ name }}-tg-{{ service.name }}"
+  }
+}
+{% endfor %}
+
+############################
+# HTTP Listener
+############################
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  {% if alb.enable_https %}
+  # Redirect HTTP to HTTPS when HTTPS is enabled
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+  {% else %}
+  # Forward HTTP directly to default target group when HTTPS is disabled
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.default.arn
+  }
+  {% endif %}
+}
+
+############################
+# HTTPS Listener (optional)
+############################
+
+{% if alb.enable_https %}
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = var.ssl_policy
+  certificate_arn   = var.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.default.arn
+  }
+}
+{% endif %}
+
+############################
+# Listener Rules for Services (path-based)
+############################
+
+{% if alb.enable_https %}
+{% for service in services %}
+resource "aws_lb_listener_rule" "{{ service.name }}" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = {{ loop.index * 10 }}
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.{{ service.name }}.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/{{ service.name }}/*"]
+    }
+  }
+}
+{% endfor %}
+{% else %}
+{% for service in services %}
+resource "aws_lb_listener_rule" "{{ service.name }}" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = {{ loop.index * 10 }}
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.{{ service.name }}.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/{{ service.name }}/*"]
+    }
+  }
+}
+{% endfor %}
+{% endif %}

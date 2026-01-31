@@ -1,0 +1,150 @@
+terraform {
+  required_version = ">= 1.5.0"
+}
+
+############################
+# IAM Roles for EKS
+############################
+
+# EKS cluster IAM role
+resource "aws_iam_role" "cluster" {
+  name = "{{ name }}-eks-cluster-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "eks.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "{{ name }}-eks-cluster-role"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "cluster_policy" {
+  role       = aws_iam_role.cluster.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+############################
+# Security Group for EKS
+############################
+
+resource "aws_security_group" "cluster" {
+  name        = "{{ name }}-eks-cluster-sg"
+  description = "Cluster security group for {{ name }}-eks"
+  vpc_id      = var.vpc_id
+
+  # Allow worker nodes to communicate with the control plane
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "{{ name }}-eks-cluster-sg"
+  }
+}
+
+############################
+# EKS Cluster
+############################
+
+resource "aws_eks_cluster" "main" {
+  name     = "{{ name }}-eks"
+  role_arn = aws_iam_role.cluster.arn
+
+  vpc_config {
+    security_group_ids = [aws_security_group.cluster.id]
+    subnet_ids         = var.private_subnet_ids
+  }
+
+  # Kubernetes version is kept generic here; can be parameterized later
+  version = var.cluster_version
+
+  tags = {
+    Name = "{{ name }}-eks"
+  }
+}
+
+############################
+# IAM Role for Worker Nodes
+############################
+
+resource "aws_iam_role" "node" {
+  name = "{{ name }}-eks-node-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "{{ name }}-eks-node-role"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "node_worker" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_cni" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_ecr" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+############################
+# Node Group
+############################
+
+resource "aws_eks_node_group" "main" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "{{ name }}-eks-ng"
+  node_role_arn   = aws_iam_role.node.arn
+
+  subnet_ids = var.private_subnet_ids
+
+  scaling_config {
+    # Values are rendered directly from the blueprint so tests can assert on
+    # concrete numbers, while still being validated by Pydantic.
+    desired_size = {{ eks.node_desired_size }}
+    max_size     = {{ eks.node_max_size }}
+    min_size     = {{ eks.node_min_size }}
+  }
+
+  instance_types = [var.node_instance_type]
+
+  tags = {
+    Name = "{{ name }}-eks-ng"
+  }
+}

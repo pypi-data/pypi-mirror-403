@@ -1,0 +1,174 @@
+terraform {
+  required_version = ">= 1.5.0"
+}
+
+############################
+# Data & Locals
+############################
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+locals {
+  # Select the first N AZs based on configuration
+  az_count = {{ vpc.availability_zones }}
+  azs      = slice(data.aws_availability_zones.available.names, 0, local.az_count)
+
+  public_subnet_cidrs = [
+    for idx in range(local.az_count) :
+    cidrsubnet("{{ vpc.cidr_block }}", 8, idx)
+  ]
+
+  private_subnet_cidrs = [
+    for idx in range(local.az_count) :
+    cidrsubnet("{{ vpc.cidr_block }}", 8, idx + local.az_count)
+  ]
+}
+
+############################
+# VPC
+############################
+
+resource "aws_vpc" "this" {
+  cidr_block           = "{{ vpc.cidr_block }}"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name        = "{{ name }}-vpc"
+    Environment = var.environment
+  }
+}
+
+############################
+# Public Subnets
+############################
+
+resource "aws_subnet" "public" {
+  for_each = { for idx, az in local.azs : idx => {
+    az   = az
+    cidr = local.public_subnet_cidrs[idx]
+  } }
+
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = each.value.cidr
+  availability_zone       = each.value.az
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name                                     = "{{ name }}-public-${each.key}"
+    "kubernetes.io/role/elb"                = "1"
+    "kubernetes.io/cluster/{{ name }}-eks" = "shared"
+  }
+}
+
+############################
+# Private Subnets
+############################
+
+resource "aws_subnet" "private" {
+  for_each = { for idx, az in local.azs : idx => {
+    az   = az
+    cidr = local.private_subnet_cidrs[idx]
+  } }
+
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = each.value.cidr
+  availability_zone = each.value.az
+
+  tags = {
+    Name                                          = "{{ name }}-private-${each.key}"
+    "kubernetes.io/role/internal-elb"           = "1"
+    "kubernetes.io/cluster/{{ name }}-eks"      = "shared"
+  }
+}
+
+############################
+# Internet Gateway
+############################
+
+resource "aws_internet_gateway" "this" {
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "{{ name }}-igw"
+  }
+}
+
+############################
+# NAT Gateway (optional)
+############################
+
+resource "aws_eip" "nat" {
+  count      = {{ '1' if vpc.single_nat_gateway else 'length(local.azs)' }}
+  domain     = "vpc"
+  depends_on = [aws_internet_gateway.this]
+
+  tags = {
+    Name = "{{ name }}-nat-eip-${count.index}"
+  }
+}
+
+resource "aws_nat_gateway" "this" {
+  count = {{ '0' if not vpc.enable_nat_gateway else ('1' if vpc.single_nat_gateway else 'length(local.azs)') }}
+
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = values(aws_subnet.public)[count.index].id
+
+  tags = {
+    Name = "{{ name }}-nat-${count.index}"
+  }
+}
+
+############################
+# Route Tables
+############################
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.this.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.this.id
+  }
+
+  tags = {
+    Name = "{{ name }}-public-rt"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  for_each = aws_subnet.public
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table" "private" {
+  count = {{ '0' if not vpc.enable_nat_gateway else ('1' if vpc.single_nat_gateway else 'length(local.azs)') }}
+
+  vpc_id = aws_vpc.this.id
+
+  dynamic "route" {
+    for_each = {{ '{}' if not vpc.enable_nat_gateway else '{"default" = 1}' }}
+    content {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.this[count.index].id
+    }
+  }
+
+  tags = {
+    Name = "{{ name }}-private-rt-${count.index}"
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  for_each = aws_subnet.private
+
+  subnet_id = each.value.id
+
+  route_table_id = aws_route_table.private[
+    {{ '0' if vpc.single_nat_gateway else 'each.key' }}
+  ].id
+}
