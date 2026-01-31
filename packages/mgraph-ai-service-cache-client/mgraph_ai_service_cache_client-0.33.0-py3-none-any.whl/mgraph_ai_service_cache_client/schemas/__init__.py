@@ -1,0 +1,2 @@
+# todo: see if we should change the schema for Namespaces from Safe_Str__Id to Safe_Str__Namespace
+#       this would make it consistent with the use of Cache_id. The main difference between these two schemas is that Safe_Str__Namespace supports a . (dot)
