@@ -1,0 +1,56 @@
+[package]
+name = "hdbconnect-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Python bindings for SAP HANA via hdbconnect"
+readme = "README.md"
+keywords = ["sap", "hana", "python", "database", "pyo3"]
+categories = ["database", "api-bindings"]
+
+[lib]
+name = "hdbconnect"
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = ["async"]
+async = [
+    "dep:hdbconnect_async",
+    "dep:pyo3-async-runtimes",
+    "dep:tokio",
+    "dep:deadpool",
+    "hdbconnect-arrow/async",
+]
+test-utils = ["hdbconnect-arrow/test-utils"]
+
+[dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+hdbconnect = { workspace = true }
+hdbconnect-arrow = { workspace = true }
+lru = { workspace = true }
+parking_lot = { workspace = true }
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py312", "generate-import-lib"] }
+pyo3-arrow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+# Async dependencies (optional)
+deadpool = { workspace = true, optional = true, features = ["rt_tokio_1", "managed"] }
+hdbconnect_async = { workspace = true, optional = true }
+pyo3-async-runtimes = { workspace = true, optional = true, features = ["tokio-runtime"] }
+tokio = { workspace = true, optional = true, features = ["rt-multi-thread", "sync"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "pyo3_overhead"
+harness = false
+required-features = ["test-utils"]
