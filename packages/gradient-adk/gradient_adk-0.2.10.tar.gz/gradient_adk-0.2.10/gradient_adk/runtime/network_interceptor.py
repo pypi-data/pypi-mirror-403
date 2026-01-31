@@ -1,0 +1,495 @@
+from __future__ import annotations
+import contextvars
+import importlib
+import json
+import os
+import threading
+from typing import Any, Callable, Dict, List, Optional, Set
+
+import httpx
+import requests
+
+
+# Context variable to track captured requests for the current request scope
+# This ensures concurrent requests see only their own captured HTTP calls
+_request_captured_list: contextvars.ContextVar[Optional[List["CapturedRequest"]]] = contextvars.ContextVar(
+    "request_captured_list", default=None
+)
+
+
+def get_request_captured_list() -> Optional[List["CapturedRequest"]]:
+    """Get the captured request list for the current request scope."""
+    return _request_captured_list.get()
+
+
+def set_request_captured_list(lst: Optional[List["CapturedRequest"]]) -> contextvars.Token:
+    """Set the captured request list for the current scope. Returns a token for resetting."""
+    return _request_captured_list.set(lst)
+
+
+def reset_request_captured_list(token: contextvars.Token) -> None:
+    """Reset the captured request list to its previous value."""
+    _request_captured_list.reset(token)
+
+
+def _get_adk_version() -> str:
+    """Get the version from package metadata."""
+    try:
+        return importlib.metadata.version("gradient-adk")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
+
+# Type for request hooks: (url, headers) -> modified_headers
+RequestHook = Callable[[str, Dict[str, str]], Dict[str, str]]
+
+
+class CapturedRequest:
+    """Represents a captured HTTP request/response pair."""
+
+    __slots__ = ("url", "request_payload", "response_payload")
+
+    def __init__(
+        self,
+        url: Optional[str] = None,
+        request_payload: Optional[Dict[str, Any]] = None,
+        response_payload: Optional[Dict[str, Any]] = None,
+    ):
+        self.url = url
+        self.request_payload = request_payload
+        self.response_payload = response_payload
+
+
+class NetworkInterceptor:
+    """
+    Generic network interceptor.
+    - Tracks endpoint patterns to watch
+    - Increments a monotonic counter on every matching request
+    - Captures request/response payloads for tracked endpoints
+    - Exposes snapshot_token() and hits_since(token)
+    """
+
+    def __init__(self):
+        self._tracked_endpoints: Set[str] = set()
+        self._hit_count: int = 0
+        self._captured_requests: List[CapturedRequest] = (
+            []
+        )  # Capture request/response pairs
+        self._request_hooks: List[RequestHook] = []  # Hooks to modify outgoing requests
+        self._lock = threading.Lock()
+        self._active = False
+        # originals
+        self._original_httpx_request = None
+        self._original_httpx_send = None
+        self._original_httpx_sync_request = None
+        self._original_httpx_sync_send = None
+        self._original_requests_request = None
+
+    def add_endpoint_pattern(self, pattern: str) -> None:
+        with self._lock:
+            self._tracked_endpoints.add(pattern)
+
+    def remove_endpoint_pattern(self, pattern: str) -> None:
+        with self._lock:
+            self._tracked_endpoints.discard(pattern)
+
+    def snapshot_token(self) -> int:
+        """Get the current counter value to diff later."""
+        with self._lock:
+            return self._hit_count
+
+    def hits_since(self, token: int) -> int:
+        """Return how many matching requests happened since token."""
+        with self._lock:
+            return max(0, self._hit_count - token)
+
+    def get_captured_requests_since(self, token: int) -> List[CapturedRequest]:
+        """Get all captured requests that happened since the given token."""
+        with self._lock:
+            # Return captured requests from index token onwards
+            if token < len(self._captured_requests):
+                return self._captured_requests[token:]
+            return []
+
+    def clear_hits(self) -> None:
+        """Optional: reset the counter (e.g., at request start)."""
+        with self._lock:
+            self._hit_count = 0
+            self._captured_requests.clear()
+
+    def add_request_hook(self, hook: RequestHook) -> None:
+        """Register a hook to modify outgoing request headers."""
+        self._request_hooks.append(hook)
+
+    def _apply_request_hooks(self, url: str, headers: Dict[str, str]) -> Dict[str, str]:
+        """Apply all registered request hooks to headers."""
+        headers = dict(headers) if headers else {}
+        for hook in self._request_hooks:
+            try:
+                headers = hook(url, headers)
+            except Exception:
+                pass  # Never break requests due to hook errors
+        return headers
+
+    def start_intercepting(self) -> None:
+        if self._active:
+            return
+
+        # store originals
+        self._original_httpx_request = httpx.AsyncClient.request
+        self._original_httpx_send = httpx.AsyncClient.send
+        self._original_httpx_sync_request = httpx.Client.request
+        self._original_httpx_sync_send = httpx.Client.send
+        self._original_requests_request = requests.Session.request
+
+        # patch httpx (async)
+        async def intercepted_httpx_send(self_client, request, **kwargs):
+            url_str = str(request.url)
+
+            # Apply request hooks to modify headers
+            new_headers = _global_interceptor._apply_request_hooks(
+                url_str, dict(request.headers)
+            )
+            if new_headers != dict(request.headers):
+                request = httpx.Request(
+                    request.method,
+                    request.url,
+                    headers=new_headers,
+                    content=request.content,
+                )
+
+            request_payload = _global_interceptor._extract_request_payload(request)
+            captured = _global_interceptor._record_request(url_str, request_payload)
+
+            response = await _global_interceptor._original_httpx_send(
+                self_client, request, **kwargs
+            )
+
+            # Don't read response body for streaming responses - it would buffer the entire stream!
+            content_type = response.headers.get("content-type", "")
+            is_streaming = "text/event-stream" in content_type
+
+            if not is_streaming and captured:
+                response_payload = await _global_interceptor._extract_response_payload(
+                    response
+                )
+                _global_interceptor._record_response(captured, response_payload)
+
+            return response
+
+        def intercepted_httpx_request(self_client, method, url, **kwargs):
+            url_str = str(url)
+
+            # Apply request hooks to modify headers
+            kwargs["headers"] = _global_interceptor._apply_request_hooks(
+                url_str, kwargs.get("headers", {})
+            )
+
+            request_payload = _global_interceptor._extract_request_payload_from_kwargs(
+                kwargs
+            )
+            _global_interceptor._record_request(url_str, request_payload)
+
+            response = _global_interceptor._original_httpx_request(
+                self_client, method, url, **kwargs
+            )
+
+            # Note: For async request method, we can't easily await response content
+            # The send method is more reliable for capturing responses
+            return response
+
+        # patch httpx (sync)
+        def intercepted_httpx_sync_send(self_client, request, **kwargs):
+            url_str = str(request.url)
+
+            # Apply request hooks to modify headers
+            new_headers = _global_interceptor._apply_request_hooks(
+                url_str, dict(request.headers)
+            )
+            if new_headers != dict(request.headers):
+                request = httpx.Request(
+                    request.method,
+                    request.url,
+                    headers=new_headers,
+                    content=request.content,
+                )
+
+            request_payload = _global_interceptor._extract_request_payload(request)
+            captured = _global_interceptor._record_request(url_str, request_payload)
+
+            response = _global_interceptor._original_httpx_sync_send(
+                self_client, request, **kwargs
+            )
+
+            if captured:
+                response_payload = _global_interceptor._extract_response_payload_sync(
+                    response
+                )
+                _global_interceptor._record_response(captured, response_payload)
+
+            return response
+
+        def intercepted_httpx_sync_request(self_client, method, url, **kwargs):
+            url_str = str(url)
+
+            # Apply request hooks to modify headers
+            kwargs["headers"] = _global_interceptor._apply_request_hooks(
+                url_str, kwargs.get("headers", {})
+            )
+
+            request_payload = _global_interceptor._extract_request_payload_from_kwargs(
+                kwargs
+            )
+            _global_interceptor._record_request(url_str, request_payload)
+
+            response = _global_interceptor._original_httpx_sync_request(
+                self_client, method, url, **kwargs
+            )
+
+            return response
+
+        # patch requests
+        def intercepted_requests_request(self_session, method, url, **kwargs):
+            url_str = str(url)
+
+            # Apply request hooks to modify headers
+            kwargs["headers"] = _global_interceptor._apply_request_hooks(
+                url_str, kwargs.get("headers", {})
+            )
+
+            request_payload = _global_interceptor._extract_request_payload_from_kwargs(
+                kwargs
+            )
+            captured = _global_interceptor._record_request(url_str, request_payload)
+
+            response = _global_interceptor._original_requests_request(
+                self_session, method, url, **kwargs
+            )
+
+            if captured:
+                response_payload = (
+                    _global_interceptor._extract_response_payload_from_requests(
+                        response
+                    )
+                )
+                _global_interceptor._record_response(captured, response_payload)
+
+            return response
+
+        httpx.AsyncClient.send = intercepted_httpx_send
+        httpx.AsyncClient.request = intercepted_httpx_request
+        httpx.Client.send = intercepted_httpx_sync_send
+        httpx.Client.request = intercepted_httpx_sync_request
+        requests.Session.request = intercepted_requests_request
+
+        self._active = True
+
+    def stop_intercepting(self) -> None:
+        if not self._active:
+            return
+        # restore originals
+        if self._original_httpx_request:
+            httpx.AsyncClient.request = self._original_httpx_request
+        if self._original_httpx_send:
+            httpx.AsyncClient.send = self._original_httpx_send
+        if self._original_httpx_sync_request:
+            httpx.Client.request = self._original_httpx_sync_request
+        if self._original_httpx_sync_send:
+            httpx.Client.send = self._original_httpx_sync_send
+        if self._original_requests_request:
+            requests.Session.request = self._original_requests_request
+        self._active = False
+
+    # ---- internal ----
+    def _is_tracked_url(self, url: str) -> bool:
+        """Check if URL matches any tracked endpoint pattern."""
+        for pattern in self._tracked_endpoints:
+            if pattern in url:
+                return True
+        return False
+
+    def _record_request(
+        self, url: str, request_payload: Optional[Dict[str, Any]] = None
+    ) -> Optional[CapturedRequest]:
+        """Record a tracked request and return it for direct response correlation.
+        
+        Also adds the captured request to the per-request list (if active) for
+        proper isolation in concurrent request scenarios.
+        """
+        with self._lock:
+            if self._is_tracked_url(url):
+                self._hit_count += 1
+                captured = CapturedRequest(url=url, request_payload=request_payload)
+                self._captured_requests.append(captured)
+                
+                # Also add to per-request list for concurrent isolation
+                request_list = get_request_captured_list()
+                if request_list is not None:
+                    request_list.append(captured)
+                
+                return captured
+        return None
+
+    def _record_response(
+        self,
+        captured: Optional[CapturedRequest],
+        response_payload: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record a response on the specific captured request."""
+        if captured is not None:
+            captured.response_payload = response_payload
+
+    def _extract_request_payload(self, request) -> Optional[Dict[str, Any]]:
+        """Extract JSON payload from httpx Request object."""
+        try:
+            if hasattr(request, "content"):
+                content = request.content
+                if isinstance(content, bytes):
+                    return json.loads(content.decode("utf-8"))
+        except Exception:
+            pass
+        return None
+
+    def _extract_request_payload_from_kwargs(
+        self, kwargs: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Extract JSON payload from request kwargs."""
+        try:
+            if "json" in kwargs:
+                return kwargs["json"]
+            if "data" in kwargs:
+                data = kwargs["data"]
+                if isinstance(data, (str, bytes)):
+                    return json.loads(data)
+                return data
+            if "content" in kwargs:
+                content = kwargs["content"]
+                if isinstance(content, bytes):
+                    return json.loads(content.decode("utf-8"))
+        except Exception:
+            pass
+        return None
+
+    async def _extract_response_payload(self, response) -> Optional[Dict[str, Any]]:
+        """Extract JSON payload from httpx async Response object."""
+        try:
+            # Read the response content
+            content = await response.aread()
+            if content:
+                return json.loads(content.decode("utf-8"))
+        except Exception:
+            pass
+        return None
+
+    def _extract_response_payload_sync(self, response) -> Optional[Dict[str, Any]]:
+        """Extract JSON payload from httpx sync Response object."""
+        try:
+            content = response.read()
+            if content:
+                return json.loads(content.decode("utf-8"))
+        except Exception:
+            pass
+        return None
+
+    def _extract_response_payload_from_requests(
+        self, response
+    ) -> Optional[Dict[str, Any]]:
+        """Extract JSON payload from requests Response object."""
+        try:
+            return response.json()
+        except Exception:
+            pass
+        return None
+
+
+def create_adk_user_agent_hook(version: str, url_patterns: List[str]) -> RequestHook:
+    """
+    Factory to create a User-Agent hook for specific URL patterns.
+
+    Completely replaces the User-Agent header with the Gradient ADK identifier
+    for requests matching the specified URL patterns.
+
+    Format: Gradient/adk/{version} or Gradient/adk/{version}/{uuid}
+
+    Args:
+        version: The ADK version string (e.g., "0.0.5")
+        url_patterns: List of URL substrings to match (e.g., ["inference.do-ai.run"])
+
+    Returns:
+        A request hook function that can be registered with NetworkInterceptor
+    """
+
+    def hook(url: str, headers: Dict[str, str]) -> Dict[str, str]:
+        # Check if URL matches any pattern
+        if not any(pattern in url for pattern in url_patterns):
+            return headers
+
+        # Remove old User-Agent keys (both cases) to avoid duplicates
+        headers.pop("User-Agent", None)
+        headers.pop("user-agent", None)
+
+        # Build new User-Agent: Gradient/adk/{version} or Gradient/adk/{version}/{uuid}
+        user_agent = f"Gradient/adk/{version}"
+        deployment_uuid = os.environ.get("AGENT_WORKSPACE_DEPLOYMENT_UUID")
+        if deployment_uuid:
+            user_agent += f"/{deployment_uuid}"
+
+        headers["User-Agent"] = user_agent
+        return headers
+
+    return hook
+
+
+# URL classification helpers for different DigitalOcean services
+INFERENCE_URL_PATTERNS = ["inference.do-ai.run", "inference.do-ai-test.run"]
+KBAAS_URL_PATTERNS = ["kbaas.do-ai.run", "kbaas.do-ai-test.run"]
+
+
+def is_inference_url(url: Optional[str]) -> bool:
+    """Check if URL matches DigitalOcean inference (LLM) endpoints."""
+    if not url:
+        return False
+    return any(pattern in url for pattern in INFERENCE_URL_PATTERNS)
+
+
+def is_kbaas_url(url: Optional[str]) -> bool:
+    """Check if URL matches DigitalOcean KBaaS (Knowledge Base) endpoints."""
+    if not url:
+        return False
+    return any(pattern in url for pattern in KBAAS_URL_PATTERNS)
+
+
+# Global instance
+_global_interceptor = NetworkInterceptor()
+
+
+def get_network_interceptor() -> NetworkInterceptor:
+    return _global_interceptor
+
+
+def setup_digitalocean_interception() -> None:
+    # Check if tracing is globally disabled
+    # Import here to avoid circular imports
+    from .helpers import _is_tracing_disabled
+    if _is_tracing_disabled():
+        return
+
+    intr = get_network_interceptor()
+
+    # Add inference (LLM) endpoint patterns
+    for pattern in INFERENCE_URL_PATTERNS:
+        intr.add_endpoint_pattern(pattern)
+
+    # Add KBaaS (Knowledge Base) endpoint patterns
+    for pattern in KBAAS_URL_PATTERNS:
+        intr.add_endpoint_pattern(pattern)
+
+    # Register User-Agent hook for ADK identification (all DO endpoints)
+    all_patterns = INFERENCE_URL_PATTERNS + KBAAS_URL_PATTERNS
+    ua_hook = create_adk_user_agent_hook(
+        version=_get_adk_version(),
+        url_patterns=all_patterns,
+    )
+    intr.add_request_hook(ua_hook)
+
+    intr.start_intercepting()
