@@ -1,0 +1,144 @@
+Metadata-Version: 2.4
+Name: epivault
+Version: 0.1.0
+Summary: Secure, ephemeral storage manager for Linux with YubiKey-bound LUKS2 volumes
+Author-email: Imtiaz Mangerah <imtiaz_mangerah@a2d24.com>
+Keywords: encryption,ephemeral,fido2,luks,security,storage,yubikey
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: System Administrators
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Security
+Classifier: Topic :: System :: Filesystems
+Classifier: Topic :: System :: Systems Administration
+Requires-Python: >=3.13
+Requires-Dist: rich>=14.3.1
+Requires-Dist: typer>=0.21.1
+Description-Content-Type: text/markdown
+
+# EpiVault (CLI)
+
+**EpiVault** is a secure, ephemeral storage manager for Linux. It creates fully encrypted, YubiKey-bound LUKS2 volumes designed for temporary, sensitive workflows.
+
+It operates entirely via the CLI, allowing the native system tools (`systemd-cryptenroll`) to handle FIDO2 interaction directly.
+
+![Python: 3.13+](https://img.shields.io/badge/Python-3.13+-yellow.svg)
+
+## 🛡 Key Features
+
+* **YubiKey Native:** Volumes are FIDO2-bound. No passwords on disk.
+* **Ephemeral:** Auto-Purge and Auto-Lock timers managed by systemd.
+* **Sparse Storage:** 100GB volumes take 0 bytes until used.
+* **Direct CLI:** Uses native interactions for PINs/Touch.
+
+## 📦 Installation
+
+EpiVault requires **Python 3.13+** and must be run with **root privileges** (via `sudo`). On Debian and Ubuntu systems, you cannot install packages globally, so we use `uvx` for isolated execution without global installation.
+
+### Prerequisites
+
+1. **Python 3.13+**: Ensure Python 3.13 or later is installed:
+   ```bash
+   python3 --version  # Should be 3.13 or higher
+   ```
+
+2. **Install uv** (provides `uvx` command):
+   ```bash
+   # Install uv for your user
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   # The installer automatically adds uv to your PATH
+   # Restart your shell or run: source ~/.bashrc  # (or ~/.zshrc for zsh)
+   ```
+
+3. **Make uv and uvx available to root**:
+   
+   Since EpiVault must run as root, symlink the binaries so root can use them:
+   
+   ```bash
+   # Find where uv was installed (usually ~/.local/bin)
+   UV_BIN="$(dirname "$(which uv)")"
+   
+   # Symlink uv and uvx so root can access them
+   sudo ln -sf "$UV_BIN/uv"  /usr/local/bin/uv
+   sudo ln -sf "$UV_BIN/uvx" /usr/local/bin/uvx
+   
+   # Verify root can access both
+   sudo uv --version
+   sudo uvx --version
+   ```
+
+### Install System Dependencies
+
+EpiVault requires system packages that must be installed with root privileges:
+
+```bash
+# Run as root (or with sudo)
+sudo uvx epivault install-deps
+```
+
+This installs: `systemd-cryptsetup`, `fido2-tools`, `libfido2-1`, `cryptsetup-bin`, and `psmisc`.
+
+### Verify Installation
+
+Test that everything works:
+
+```bash
+# Check that uvx is available to root
+sudo uvx epivault --help
+```
+
+## ⚡ Quick Start
+
+1.  **Create a Vault:**
+    ```bash
+    # Creates a 1GB vault that self-destructs in 24 hours
+    sudo uvx epivault create project_x --size 1024 --purge 24h
+    ```
+    *Follow the on-screen prompts to enter your FIDO2 PIN and touch your key.*
+
+2.  **Unlock:**
+    ```bash
+    # Unlock and mount to ./project_x, auto-lock after 1 hour of use
+    sudo uvx epivault unlock project_x --lock 1h
+    ```
+
+3.  **List & Status:**
+    ```bash
+    sudo uvx epivault list
+    ```
+
+## 📋 Commands
+
+All commands must be run with `sudo uvx epivault`:
+
+| Command | Description |
+| :--- | :--- |
+| `sudo uvx epivault create <name>` | Create a new encrypted volume. Options: `--size`, `--purge`. |
+| `sudo uvx epivault unlock <name>` | Mount volume. Options: `--mount`, `--lock` (auto-lock timer). |
+| `sudo uvx epivault lock <name>` | Unmount and close volume; force-closes if in use (interactive: prompts first). |
+| `sudo uvx epivault purge <name>` | **Destructive.** Shreds and deletes the volume. |
+| `sudo uvx epivault list` | Show all volumes and status. |
+| `sudo uvx epivault cleanup` | Emergency force-close of all volumes. |
+| `sudo uvx epivault install-service` | Install boot service to restore timers after reboot. |
+
+## 🔐 Lock behaviour: interactive vs timer
+
+Lock (and lock steps inside purge/cleanup) will **force-unmount and force-close** the volume when something is using it: processes holding the mount or device are terminated so the volume can lock.
+
+- **Interactive (TTY):** When you run `sudo uvx epivault lock <name>` (or purge/cleanup) in a terminal and the volume is in use, EpiVault **prompts** you: *"Volume is in use. Lock will terminate all processes using it (e.g. shells, editors). Continue?"* You can decline to abort the lock; no processes are killed.
+- **Non-interactive (timer/script):** When lock runs from the **systemd timer** (e.g. auto-lock after TTL) or from a script (no TTY), there is **no prompt**. Processes using the volume are killed so the lock always succeeds. This is intentional so scheduled lock and purge timers work without user input.
+
+Detection is automatic: the CLI treats the run as interactive when stdin is a TTY, and non-interactive otherwise.
+
+## ⚠️ Pitfalls
+
+- **Unsaved work:** Any process using the volume (shell with cwd in the mount, open files, editors) can be killed by lock/purge/cleanup or by the lock timer. Save and close work before locking or before the lock TTL.
+- **Auto-lock is forceful:** When the lock timer fires, it runs with no TTY and will **always** force-close the volume by killing processes. Do not rely on "leaving a shell open" to keep the volume mounted past the TTL.
+- **Force-close method:** EpiVault uses `fuser -km` (SIGKILL) on the mount point or device. Processes are terminated immediately; they cannot clean up. The `fuser` command (from `psmisc`) is automatically installed via `sudo uvx epivault install-deps`.
+- **Purge and cleanup:** These run lock first; the same interactive vs non-interactive behaviour applies. If you confirm purge/cleanup and the volume is in use, you will be prompted again before processes are killed (interactive only).
+
+## 🔒 Security Model
+
+1.  **Bootstrap:** A random key is generated for formatting, then immediately wiped (`luksKillSlot`) after FIDO2 enrollment.
+2.  **Interaction:** The CLI pipes `stdin`/`stdout` directly to `systemd-cryptenroll`. Your PIN is never stored or processed by EpiVault's Python code.
