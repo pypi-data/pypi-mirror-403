@@ -1,0 +1,820 @@
+Metadata-Version: 2.4
+Name: athena-python-pptx
+Version: 0.1.24
+Summary: Drop-in replacement for python-pptx that connects to PPTX Studio for real-time collaboration
+Project-URL: Homepage, https://github.com/pptx-studio/python-sdk
+Project-URL: Documentation, https://docs.pptx-studio.com/sdk/python
+Project-URL: Repository, https://github.com/pptx-studio/python-sdk
+Project-URL: Issues, https://github.com/pptx-studio/python-sdk/issues
+Author: PPTX Studio Team
+License-Expression: MIT
+Keywords: api,powerpoint,pptx,presentation,python-pptx,sdk,slides
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Office/Business :: Office Suites
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Typing :: Typed
+Requires-Python: >=3.10
+Requires-Dist: requests>=2.28.0
+Provides-Extra: dev
+Requires-Dist: mypy>=1.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0; extra == 'dev'
+Requires-Dist: pytest>=7.0; extra == 'dev'
+Requires-Dist: responses>=0.23; extra == 'dev'
+Requires-Dist: ruff>=0.1; extra == 'dev'
+Provides-Extra: e2e
+Requires-Dist: pytest>=7.0; extra == 'e2e'
+Requires-Dist: python-pptx>=0.6.21; extra == 'e2e'
+Provides-Extra: visual
+Requires-Dist: numpy>=1.24; extra == 'visual'
+Requires-Dist: pillow>=10.0; extra == 'visual'
+Requires-Dist: pytest>=7.0; extra == 'visual'
+Requires-Dist: requests>=2.28.0; extra == 'visual'
+Description-Content-Type: text/markdown
+
+# athena-python-pptx
+
+A **drop-in replacement for [python-pptx](https://python-pptx.readthedocs.io/)** that connects to PPTX Studio for real-time collaboration.
+
+Use the exact same imports and API as python-pptx:
+
+```python
+from pptx import Presentation
+from pptx.util import Inches, Pt, Cm
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.dml.color import RGBColor
+```
+
+## Features
+
+- **python-pptx compatible imports** - `from pptx import Presentation`
+- **Same API** - Familiar interface for developers and LLMs
+- **Real-time collaboration** - Changes sync instantly with web UI
+- **Remote-first** - Edits apply to live Yjs documents via API
+- **Athena Extensions** - Additional features not in python-pptx (render to PNG, batch delete, clone slides)
+- **Clear error messages** - Unimplemented features raise helpful errors
+
+> **Note:** Like python-pptx, slides are **zero-indexed**. When a user says "slide 1", access it as `prs.slides[0]`.
+
+## Installation
+
+```bash
+pip install athena-python-pptx
+```
+
+## Configuration
+
+The SDK uses environment variables for configuration (recommended):
+
+```bash
+export ATHENA_PPTX_BASE_URL=https://api.pptx-studio.com
+export ATHENA_PPTX_API_KEY=your-api-key  # Optional
+```
+
+Or pass them explicitly:
+
+```python
+prs = Presentation(deck_id="deck_123", base_url="...", api_key="...")
+```
+
+## Quick Start
+
+### Create a New Presentation
+
+```python
+from pptx import Presentation
+from pptx.util import Inches
+
+# Create a new empty presentation
+prs = Presentation.create(name="My Presentation")
+
+# Add a slide
+slide = prs.slides.add_slide()
+
+# Add a textbox
+tb = slide.shapes.add_textbox(
+    Inches(1), Inches(1),   # position (left, top)
+    Inches(8), Inches(1)    # size (width, height)
+)
+tb.text_frame.text = "Hello from Python!"
+
+# Save to local file
+prs.save("output.pptx")
+```
+
+### Upload and Edit an Existing File
+
+```python
+from pptx import Presentation
+
+# Upload a local PPTX file
+prs = Presentation.upload("existing.pptx")
+
+# Edit the first slide
+slide = prs.slides[0]
+slide.shapes[0].text_frame.text = "Updated Title"
+
+# Save changes
+prs.save("modified.pptx")
+```
+
+### Connect to an Existing Deck
+
+```python
+from pptx import Presentation
+
+# Connect to a deck by ID
+prs = Presentation(deck_id="deck_abc123")
+
+# Work with slides
+for slide in prs.slides:
+    print(f"Slide {slide.slide_index}: {len(slide.shapes)} shapes")
+```
+
+> **Important:** When working with an existing deck, you **MUST** include the `deck_id` parameter:
+> ```python
+> prs = Presentation(deck_id="d822b6e3-0a73-4214-9e71-8f28a3f7c9d9")
+> ```
+> Without `deck_id`, the SDK cannot connect to PPTX Studio and will fail.
+
+---
+
+## API Reference
+
+### Presentation
+
+The main entry point for working with a deck.
+
+#### Class Methods
+
+```python
+# Create a new empty presentation
+prs = Presentation.create(name="My Presentation")
+
+# Upload a local PPTX file
+prs = Presentation.upload("path/to/file.pptx", name="Custom Name")
+prs = Presentation.open("path/to/file.pptx")  # Alias for upload()
+
+# Connect from a full URL
+prs = Presentation.from_url("https://api.example.com/decks/deck_123")
+
+# Connect to an existing deck by ID
+prs = Presentation(deck_id="deck_123")
+```
+
+#### Properties
+
+```python
+prs.deck_id         # str: Deck identifier
+prs.slides          # Slides: Collection of slides
+prs.slide_width     # Emu: Width of slides
+prs.slide_height    # Emu: Height of slides
+prs.slide_layouts   # SlideLayouts (not yet supported)
+prs.slide_masters   # SlideMasters (not yet supported)
+```
+
+#### Methods
+
+```python
+prs.refresh()                     # Sync with server
+prs.save("output.pptx")           # Export and download
+prs.save_to_bytes()               # Export as bytes
+prs.render_slide(index, scale=2)  # Render slide as PNG
+prs.reorder_slides([2, 0, 1])     # Reorder slides
+prs.get_connection_info()         # Get WebSocket info for real-time collab
+```
+
+---
+
+### Slides
+
+Collection of slides in the presentation.
+
+```python
+# Access slides
+slide = prs.slides[0]           # By index
+for slide in prs.slides:        # Iterate
+    print(slide.slide_id)
+len(prs.slides)                 # Count
+
+# Add and delete slides
+new_slide = prs.slides.add_slide()
+prs.slides.delete(slide)
+
+# Athena Extensions
+prs.slides.delete_slides([1, 3, 5])       # Delete multiple at once
+prs.slides.keep_only([0, 2])              # Keep only specified slides
+```
+
+---
+
+### Slide
+
+A single slide in the presentation.
+
+#### Properties
+
+```python
+slide.slide_id          # str: Unique identifier
+slide.slide_index       # int: Zero-based position
+slide.shapes            # Shapes: Collection of shapes
+slide.placeholders      # SlidePlaceholders: Placeholder shapes
+slide.background        # SlideBackground: Background formatting
+slide.notes             # str | None: Speaker notes
+slide.has_notes_slide   # bool: Whether slide has notes
+```
+
+#### Methods
+
+```python
+# Athena Extensions
+slide.render(scale=2, as_pil=False)   # Render to PNG or PIL Image
+slide.clone(target_index=None)         # Clone slide with all content
+```
+
+#### Setting Notes
+
+```python
+slide.notes = "These are my speaker notes"
+```
+
+#### Setting Background
+
+```python
+slide.background.color = 'FFFFFF'              # White
+slide.background.fill.fore_color.rgb = RGBColor(0, 0, 255)  # Blue
+slide.background.follow_master_background()    # Reset to master
+```
+
+---
+
+### Shapes
+
+Collection of shapes on a slide.
+
+```python
+# Access shapes
+shape = slide.shapes[0]
+for shape in slide.shapes:
+    print(shape.shape_type)
+len(slide.shapes)
+
+# Get shape by ID
+shape = slide.shapes.get_by_id("shp_abc123")
+
+# Title placeholder (if present)
+title = slide.shapes.title
+if title:
+    title.text = "New Title"
+```
+
+#### Adding Shapes
+
+```python
+from pptx.util import Inches, Pt
+from pptx.enum.shapes import MSO_SHAPE
+
+# Add textbox
+tb = slide.shapes.add_textbox(
+    Inches(1), Inches(1),   # left, top
+    Inches(6), Inches(1)    # width, height
+)
+
+# Add autoshape
+shape = slide.shapes.add_shape(
+    MSO_SHAPE.ROUNDED_RECTANGLE,
+    Inches(1), Inches(2),
+    Inches(3), Inches(2)
+)
+
+# Add picture
+pic = slide.shapes.add_picture(
+    "image.png",            # Path, BytesIO, or bytes
+    Inches(1), Inches(3),
+    width=Inches(4)         # Optional size
+)
+
+# Add table
+table = slide.shapes.add_table(
+    rows=3, cols=4,
+    left=Inches(1), top=Inches(4),
+    width=Inches(8), height=Inches(2)
+)
+```
+
+---
+
+### Shape
+
+Individual shape on a slide.
+
+#### Properties
+
+```python
+shape.shape_id          # str: Unique identifier
+shape.shape_type        # str: "text", "image", "shape", "table"
+shape.auto_shape_type   # str | None: e.g., "rectangle", "oval"
+shape.source            # str | None: "ingested" or "sdk"
+
+# Position and size (EMU)
+shape.left              # X position
+shape.top               # Y position
+shape.width             # Width
+shape.height            # Height
+shape.rotation          # Degrees
+shape.flip_h            # Horizontal flip
+shape.flip_v            # Vertical flip
+
+# Text (for text shapes)
+shape.has_text_frame    # bool
+shape.text_frame        # TextFrame
+shape.text              # str (shortcut for text_frame.text)
+
+# Placeholders
+shape.is_placeholder    # bool
+shape.placeholder_format  # PlaceholderFormat | None
+
+# Styling
+shape.fill              # FillFormat
+shape.line              # LineFormat
+```
+
+#### Methods
+
+```python
+shape.delete()          # Remove shape from slide
+```
+
+#### Positioning
+
+```python
+from pptx.util import Inches
+
+shape.left = Inches(2)
+shape.top = Inches(3)
+shape.width = Inches(4)
+shape.height = Inches(2)
+shape.rotation = 45     # degrees
+```
+
+---
+
+### TextFrame
+
+Container for text content in a shape.
+
+```python
+tf = shape.text_frame
+
+# Get/set all text
+tf.text = "Hello World"
+print(tf.text)
+
+# Work with paragraphs
+for para in tf.paragraphs:
+    print(para.text)
+
+# Add paragraph
+para = tf.add_paragraph()
+para.text = "New paragraph"
+
+# Clear all text
+tf.clear()
+```
+
+---
+
+### Paragraph
+
+A paragraph containing text runs with consistent styling.
+
+```python
+para = tf.paragraphs[0]
+
+# Text content
+para.text = "Paragraph text"
+
+# Alignment
+para.alignment = 'center'  # 'left', 'center', 'right', 'justify'
+
+# Indentation level (for bullets)
+para.level = 1  # 0-8
+
+# Spacing
+para.line_spacing = 1.5       # Line spacing multiplier
+para.space_before = Pt(12)    # Space before (EMU)
+para.space_after = Pt(6)      # Space after (EMU)
+
+# Margins
+para.margin_left = Inches(0.5)
+para.indent = Inches(-0.25)   # Hanging indent (negative)
+
+# Font (applies to first run)
+para.font.bold = True
+para.font.size = Pt(14)
+```
+
+---
+
+### Run
+
+A run of text with consistent formatting within a paragraph.
+
+```python
+run = para.runs[0]
+
+# Text
+run.text = "Styled text"
+
+# Add new run
+new_run = para.add_run()
+new_run.text = " more text"
+
+# Font styling
+run.font.bold = True
+run.font.italic = True
+run.font.underline = True
+run.font.name = "Arial"
+run.font.size = Pt(14)
+run.font.color.rgb = RGBColor(255, 0, 0)  # Red
+run.font.spacing = 1.5  # Character spacing in points
+```
+
+---
+
+### Font
+
+Font formatting for text runs.
+
+```python
+font = run.font
+
+# Properties
+font.bold = True
+font.italic = True
+font.underline = True
+font.name = "Calibri"
+font.size = Pt(12)        # In EMU (use Pt() helper)
+font.spacing = 2.0        # Character spacing in points
+
+# Color
+font.color.rgb = RGBColor(0, 128, 255)
+```
+
+---
+
+### FillFormat
+
+Fill formatting for shapes.
+
+```python
+fill = shape.fill
+
+# Set solid color
+fill.solid()
+fill.fore_color.rgb = RGBColor(255, 0, 0)  # Red
+
+# Transparency (0.0 = opaque, 1.0 = transparent)
+fill.transparency = 0.5
+
+# Remove fill
+fill.background()
+```
+
+---
+
+### LineFormat
+
+Line (outline/border) formatting for shapes.
+
+```python
+line = shape.line
+
+# Color
+line.color.rgb = RGBColor(0, 0, 0)  # Black
+
+# Width
+line.width = Pt(2)  # 2-point line
+
+# Dash style
+line.dash_style = 'dash'  # 'solid', 'dash', 'dot', 'dash_dot', 'long_dash'
+
+# Remove line
+line.no_fill()
+```
+
+---
+
+### Table
+
+A table shape with rows and columns.
+
+```python
+# Add table
+table = slide.shapes.add_table(3, 4, Inches(1), Inches(1), Inches(8), Inches(3))
+
+# Access cells
+cell = table.cell(row=0, col=0)
+cell.text = "Header"
+cell.fill = 'CCCCCC'  # Gray background
+
+# Dimensions
+print(table.rows, table.cols)
+
+# Iterate cells
+for cell in table.iter_cells():
+    print(cell.text)
+```
+
+---
+
+### Placeholders
+
+Access placeholder shapes on a slide.
+
+```python
+# Access by idx
+title = slide.placeholders[0]        # Title (idx 0)
+body = slide.placeholders[1]         # Body (idx 1)
+
+# Check existence
+if 0 in slide.placeholders:
+    slide.placeholders[0].text = "Title"
+
+# Iterate
+for idx, placeholder in slide.placeholders.items():
+    print(f"idx {idx}: {placeholder.placeholder_format.type}")
+
+# Placeholder format
+ph = shape.placeholder_format
+print(ph.type)              # PP_PLACEHOLDER enum
+print(ph.idx)               # Integer index
+print(ph.has_custom_prompt) # Whether has custom prompt text
+```
+
+---
+
+### Units
+
+Unit conversion helpers (python-pptx compatible).
+
+```python
+from pptx.util import Inches, Pt, Cm, Mm, Px, Emu, Centipoints
+
+# All return Emu (English Metric Units)
+Inches(1)       # 914400 EMU
+Pt(72)          # 914400 EMU (72 points = 1 inch)
+Cm(2.54)        # 914400 EMU (~1 inch)
+Mm(25.4)        # 914400 EMU (1 inch)
+Px(96)          # 914400 EMU (at 96 DPI)
+Emu(914400)     # Direct EMU value
+Centipoints(7200)  # 914400 EMU
+
+# Emu objects have conversion properties
+length = Inches(2)
+length.inches      # 2.0
+length.cm          # 5.08
+length.pt          # 144.0
+length.px          # 192.0 (at 96 DPI)
+length.emu         # 1828800
+```
+
+---
+
+### RGBColor
+
+Color representation (python-pptx compatible).
+
+```python
+from pptx.dml.color import RGBColor
+
+# Create color
+red = RGBColor(255, 0, 0)
+blue = RGBColor(0x00, 0x00, 0xFF)
+
+# From hex string
+green = RGBColor.from_string("00FF00")
+
+# Properties
+print(red.red)    # 255
+print(red.green)  # 0
+print(red.blue)   # 0
+print(str(red))   # "FF0000"
+```
+
+---
+
+### Shape Types (MSO_SHAPE)
+
+AutoShape type enumeration.
+
+```python
+from pptx.enum.shapes import MSO_SHAPE
+
+# Basic shapes
+MSO_SHAPE.RECTANGLE
+MSO_SHAPE.ROUNDED_RECTANGLE
+MSO_SHAPE.OVAL
+MSO_SHAPE.TRIANGLE
+MSO_SHAPE.DIAMOND
+
+# Stars
+MSO_SHAPE.STAR_5_POINT
+MSO_SHAPE.STAR_6_POINT
+
+# Arrows
+MSO_SHAPE.RIGHT_ARROW
+MSO_SHAPE.LEFT_ARROW
+MSO_SHAPE.CHEVRON
+
+# Flowchart
+MSO_SHAPE.FLOWCHART_PROCESS
+MSO_SHAPE.FLOWCHART_DECISION
+
+# And many more...
+```
+
+---
+
+## Batching Operations
+
+For better performance, batch multiple operations into a single API request:
+
+```python
+with prs.batch():
+    # All operations collected and sent as one request
+    slide = prs.slides.add_slide()
+    tb1 = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1))
+    tb1.text_frame.text = "First"
+    tb2 = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(4), Inches(1))
+    tb2.text_frame.text = "Second"
+# Request sent here when context exits
+```
+
+---
+
+## Error Handling
+
+The SDK raises specific exceptions for different error conditions:
+
+```python
+from pptx import (
+    PptxSdkError,           # Base exception
+    UnsupportedFeatureError,  # Feature not yet implemented
+    RemoteError,              # Server rejected the request
+    ConflictError,            # Stale IDs (concurrent modification)
+    ValidationError,          # Invalid command parameters
+    ConnectionError,          # Network issues
+    AuthenticationError,      # Auth failed
+    ExportError,              # Export job failed
+    RenderError,              # Render job failed
+    UploadError,              # Upload failed
+)
+
+# Handling unsupported features
+try:
+    prs.core_properties
+except UnsupportedFeatureError as e:
+    print(f"Not yet supported: {e.feature}")
+
+# Handling conflicts
+try:
+    shape.text = "New text"
+except ConflictError as e:
+    print(f"Stale IDs: {e.stale_ids}")
+    prs.refresh()  # Sync with server
+```
+
+---
+
+## Athena Extensions
+
+These features are **exclusive to athena-python-pptx** and not available in standard python-pptx:
+
+### Slide Rendering
+
+```python
+# Render slide to PNG bytes
+png_bytes = slide.render(scale=2)
+with open("slide.png", "wb") as f:
+    f.write(png_bytes)
+
+# Render to PIL Image (requires Pillow)
+img = slide.render(as_pil=True)
+img.show()
+```
+
+### Slide Cloning
+
+```python
+# Clone slide and insert after it
+new_slide = slide.clone()
+
+# Clone and insert at specific position
+new_slide = slide.clone(target_index=0)
+```
+
+### Bulk Slide Operations
+
+```python
+# Delete multiple slides at once
+prs.slides.delete_slides([1, 3, 5])
+
+# Keep only specified slides
+prs.slides.keep_only([0, 2, 4])
+```
+
+### Real-time Collaboration Info
+
+```python
+# Get WebSocket connection info for real-time sync
+info = prs.get_connection_info()
+print(info['wsUrl'])
+print(info['authToken'])
+```
+
+---
+
+## Supported Features
+
+### Fully Supported
+- Create, upload, and export presentations
+- Add, delete, and reorder slides
+- Add textboxes, shapes, pictures, and tables
+- Set text content and formatting (bold, italic, underline, size, color)
+- Set paragraph alignment, spacing, and indentation
+- Set shape position, size, rotation, and flip
+- Set shape fill and line styling
+- Access placeholders
+- Slide backgrounds and notes
+- Render slides to PNG
+- Clone slides
+- Batch operations
+
+### Not Yet Supported
+- Slide layouts and masters
+- Charts
+- SmartArt
+- Text frame margins and word wrap
+- Auto-fit text
+- Hyperlinks and click actions
+- Shadows and 3D effects
+- Core document properties
+- Notes slides (full API)
+
+Unsupported features raise `UnsupportedFeatureError` with a clear message.
+
+---
+
+## Development
+
+```bash
+# Clone and install dev dependencies
+git clone https://github.com/pptx-studio/python-sdk
+cd python-sdk
+pip install -e ".[dev]"
+
+# Run unit tests
+pytest tests/ -v --ignore=tests/test_smoke_integration.py
+
+# Type checking
+mypy pptx
+
+# Linting
+ruff check pptx
+```
+
+### Running Integration Tests
+
+Integration tests require a running PPTX Studio server.
+
+```bash
+# Start the PPTX Studio server (from project root)
+pnpm dev:infra
+pnpm dev
+
+# Run integration tests
+ATHENA_PPTX_BASE_URL=http://localhost:4000 pytest tests/test_smoke_integration.py -v
+```
+
+### Generate Documentation
+
+```bash
+# Generate Athena-specific API docs (Markdown)
+athena-pptx-docs > docs/athena-api.md
+
+# Generate as JSON
+athena-pptx-docs --format json > docs/athena-api.json
+```
+
+---
+
+## License
+
+MIT
