@@ -1,0 +1,55 @@
+name: Build and Publish
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          version: "0.9.26"
+
+      - name: Set version
+        id: set_version
+        run: |
+          DATE_VERSION=$(date +'%Y.%m.%d.%H%M%S')
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            VERSION="${DATE_VERSION}"
+          else
+            VERSION="${DATE_VERSION}-beta"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Setting version to: ${VERSION}"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Build
+        run: uv build
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.set_version.outputs.VERSION }}
+
+      - name: Publish to PyPI
+        run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}

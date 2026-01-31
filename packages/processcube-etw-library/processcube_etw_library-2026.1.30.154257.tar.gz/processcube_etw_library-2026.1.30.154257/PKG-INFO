@@ -1,0 +1,199 @@
+Metadata-Version: 2.4
+Name: processcube-etw-library
+Version: 2026.1.30.154257
+Summary: A library to create ETW apps with the ProcessCube platform.
+Author-email: Jeremy Hill <jeremy.hill@profection.de>
+License: MIT
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: async-lru>=2.1.0
+Requires-Dist: dataclasses-json>=0.6.7
+Requires-Dist: fastapi[standard]>=0.128.0
+Requires-Dist: oauth2-client>=1.4.2
+Requires-Dist: tenacity>=9.1.2
+
+# ProcessCube ETW Library
+
+Build External Task Workers (ETW) for ProcessCube, featuring health checks, typed handlers, and environment-based configuration.
+
+## Installation
+
+```bash
+uv add processcube-etw-library
+```
+
+## Configuration
+
+### Environment Variables
+
+The library uses environment variables for configuration. You can set these in your environment or in a `.env` file in your project root.
+
+| Variable                                         | Default                                | Description                                             |
+| ------------------------------------------------ | -------------------------------------- | ------------------------------------------------------- |
+| `PROCESSCUBE_ENGINE_URL`                         | `http://localhost:56000`               | URL of the ProcessCube Engine                           |
+| `PROCESSCUBE_AUTHORITY_URL`                      | Auto-discovered from engine            | URL of the ProcessCube Authority (OAuth server)         |
+| `PROCESSCUBE_ETW_CLIENT_ID`                      | `test_etw`                             | OAuth client ID for the External Task Worker            |
+| `PROCESSCUBE_ETW_CLIENT_SECRET`                  | `3ef62eb3-fe49-4c2c-ba6f-73e4d234321b` | OAuth client secret for the External Task Worker        |
+| `PROCESSCUBE_ETW_CLIENT_SCOPES`                  | `engine_etw`                           | OAuth scopes for the External Task Worker               |
+| `PROCESSCUBE_MAX_GET_OAUTH_ACCESS_TOKEN_RETRIES` | `10`                                   | Maximum retries for obtaining OAuth access token        |
+| `PROCESSCUBE_ETW_LONG_POLLING_TIMEOUT_IN_MS`     | `60000`                                | Long polling timeout in milliseconds for external tasks |
+| `ENVIRONMENT`                                    | `development`                          | Environment mode (`development` or `production`)        |
+
+#### Example `.env` File
+
+```env
+PROCESSCUBE_ENGINE_URL=http://localhost:56000
+PROCESSCUBE_ETW_CLIENT_ID=my_etw_client
+PROCESSCUBE_ETW_CLIENT_SECRET=my_secret_key
+PROCESSCUBE_ETW_CLIENT_SCOPES=engine_etw
+ENVIRONMENT=production
+```
+
+### Extending Settings
+
+You can extend the base settings class to add your own environment variables:
+
+```python
+from pydantic import Field
+from processcube_etw_library.settings import ETWSettings, load_settings
+
+class MyAppSettings(ETWSettings):
+    database_url: str = Field(default="sqlite:///app.db")
+    api_key: str = Field(default="")
+
+# Load settings with your custom class
+settings = load_settings(MyAppSettings)
+```
+
+## Usage
+
+### Start the ETW Application
+
+```python
+from processcube_etw_library import new_external_task_worker_app
+
+# Create the application
+app = new_external_task_worker_app()
+
+# Run the application
+app.run()
+```
+
+### Subscribe to External Task Topics
+
+```python
+from processcube_etw_library import new_external_task_worker_app
+
+app = new_external_task_worker_app()
+
+def my_handler(task):
+    # Process the task
+    result = {"processed": True}
+    return result
+
+# Subscribe to a topic
+app.subscribe_to_external_task_for_topic("my-topic", my_handler)
+
+app.run()
+```
+
+### Typed Handlers
+
+Use typed handlers for automatic payload validation with Pydantic models:
+
+```python
+from pydantic import BaseModel
+from processcube_etw_library import new_external_task_worker_app
+
+class MyInput(BaseModel):
+    name: str
+    value: int
+
+class MyOutput(BaseModel):
+    result: str
+
+app = new_external_task_worker_app()
+
+def my_typed_handler(payload: MyInput) -> MyOutput:
+    return MyOutput(result=f"Processed {payload.name} with value {payload.value}")
+
+app.subscribe_to_external_task_for_topic_typed("my-typed-topic", my_typed_handler)
+
+app.run()
+```
+
+### Add a Custom Health Check
+
+```python
+from processcube_etw_library import new_external_task_worker_app
+from processcube_etw_library.health import HealthCheck, create_url_health_check
+
+app = new_external_task_worker_app()
+
+# Add a URL-based health check
+app.add_health_check(
+    HealthCheck(
+        create_url_health_check("http://my-service:8080/health"),
+        service_name="My Service",
+        tags=["backend", "api"],
+        comments=["Checks if My Service is reachable"],
+    )
+)
+
+# Add a custom health check function
+def check_database():
+    # Return True if healthy, False otherwise
+    try:
+        # Your database check logic here
+        return True
+    except Exception:
+        return False
+
+app.add_health_check(
+    HealthCheck(
+        check_database,
+        service_name="Database",
+        tags=["backend", "database"],
+        comments=["Checks database connectivity"],
+    )
+)
+
+app.run()
+```
+
+### Managing Health Checks
+
+```python
+# Get all registered health checks
+checks = app.get_health_checks()
+
+# Get a specific health check by service name
+db_check = app.get_health_check("Database")
+
+# Remove a health check
+app.remove_health_check("Database")
+```
+
+### Disabling Built-in Health Checks
+
+By default, the library registers health checks for the ProcessCube Engine and Authority. You can disable these:
+
+```python
+app = new_external_task_worker_app(built_in_health_checks=False)
+```
+
+## Health Endpoints
+
+The application exposes health endpoints at `/healthyz` and `/readyz` that return the status of all registered health checks.
+To check if the application is running without performing health checks, use `/livez`.
+
+## Server Configuration
+
+The server configuration is determined by the `ENVIRONMENT` variable:
+
+| Setting    | Development | Production |
+| ---------- | ----------- | ---------- |
+| Host       | `0.0.0.0`   | `0.0.0.0`  |
+| Port       | `8000`      | `8000`     |
+| Log Level  | `debug`     | `warning`  |
+| Access Log | `true`      | `false`    |
