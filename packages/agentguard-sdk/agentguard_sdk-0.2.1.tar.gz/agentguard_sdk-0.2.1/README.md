@@ -1,0 +1,226 @@
+# AgentGuard Python SDK
+
+> The first open-source AI agent security SDK with **client-side guardrails** 🛡️
+
+[![PyPI version](https://badge.fury.io/py/agentguard-sdk.svg)](https://pypi.org/project/agentguard-sdk/)
+[![Python versions](https://img.shields.io/pypi/pyversions/agentguard-sdk.svg)](https://pypi.org/project/agentguard-sdk/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## ✨ What's New in v0.2.0
+
+**Client-Side Guardrails** - Run security checks directly in your application without server calls!
+
+- 🔍 **PII Detection** - Detect and protect emails, phones, SSNs, credit cards
+- 🛡️ **Content Moderation** - Block harmful content (hate speech, violence, harassment)
+- 🚫 **Prompt Injection Prevention** - Prevent jailbreak and instruction attacks
+- ⚡ **Offline** - No server dependency, works anywhere
+- 🚀 **Fast** - Runs in milliseconds
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+pip install agentguard-sdk
+```
+
+### Client-Side Guardrails (New!)
+
+```python
+from agentguard import GuardrailEngine, PIIDetectionGuardrail, PromptInjectionGuardrail
+
+# Create guardrail engine
+engine = GuardrailEngine()
+
+# Register guardrails
+engine.register_guardrail(PIIDetectionGuardrail())
+engine.register_guardrail(PromptInjectionGuardrail())
+
+# Evaluate user input
+result = await engine.execute("Contact me at john@example.com")
+
+if not result.passed:
+    print(f'Security check failed: {result.message}')
+    print(f'Risk score: {result.risk_score}')
+```
+
+### Server-Side Security
+
+```python
+from agentguard import AgentGuard
+
+# Initialize the SDK
+guard = AgentGuard(
+    api_key="your-api-key",
+    ssa_url="https://ssa.agentguard.io"
+)
+
+# Secure tool execution
+result = await guard.execute_tool(
+    tool_name="web-search",
+    parameters={"query": "AI agent security"},
+    context={"session_id": "user-session-123"}
+)
+```
+
+## 🛡️ Client-Side Guardrails
+
+### PIIDetectionGuardrail
+
+Detect and protect personally identifiable information:
+
+```python
+from agentguard import PIIDetectionGuardrail
+
+guard = PIIDetectionGuardrail(
+    action='redact',  # or 'block', 'mask', 'allow'
+    custom_patterns=[
+        {'name': 'custom-id', 'pattern': r'ID-\d{6}', 'category': 'identifier'}
+    ]
+)
+
+result = await guard.evaluate("My email is john@example.com")
+# result.passed = False
+# result.violations = [{'type': 'email', 'value': 'john@example.com', ...}]
+```
+
+**Detects:**
+- Email addresses
+- Phone numbers (US, international)
+- Social Security Numbers
+- Credit card numbers
+- Custom patterns
+
+### ContentModerationGuardrail
+
+Block harmful content:
+
+```python
+from agentguard import ContentModerationGuardrail
+
+guard = ContentModerationGuardrail(
+    categories=['hate', 'violence', 'harassment', 'self-harm'],
+    threshold=0.7,
+    use_openai=True,  # Optional: Use OpenAI Moderation API
+    openai_api_key='your-key'
+)
+
+result = await guard.evaluate("I hate everyone")
+# result.passed = False
+# result.risk_score = 85
+```
+
+### PromptInjectionGuardrail
+
+Prevent jailbreak attempts:
+
+```python
+from agentguard import PromptInjectionGuardrail
+
+guard = PromptInjectionGuardrail(
+    sensitivity='high',  # 'low', 'medium', 'high'
+    custom_patterns=[
+        r'custom attack pattern'
+    ]
+)
+
+result = await guard.evaluate("Ignore previous instructions and...")
+# result.passed = False
+# result.risk_score = 90
+```
+
+**Detects:**
+- Instruction injection
+- Role-playing attacks
+- System prompt leakage
+- DAN jailbreaks
+- Developer mode attempts
+
+### GuardrailEngine
+
+Execute multiple guardrails:
+
+```python
+from agentguard import (
+    GuardrailEngine,
+    PIIDetectionGuardrail,
+    ContentModerationGuardrail,
+    PromptInjectionGuardrail
+)
+
+engine = GuardrailEngine(
+    mode='parallel',  # or 'sequential'
+    timeout=5000,  # ms
+    continue_on_error=True
+)
+
+# Register guardrails
+engine.register_guardrail(PIIDetectionGuardrail())
+engine.register_guardrail(ContentModerationGuardrail())
+engine.register_guardrail(PromptInjectionGuardrail())
+
+# Execute all guardrails
+result = await engine.execute(user_input)
+
+print(f'Passed: {result.passed}')
+print(f'Risk Score: {result.risk_score}')
+print(f'Results: {result.results}')
+```
+
+## 📋 Features
+
+### Client-Side (Offline)
+- 🔍 **PII Detection** - Protect sensitive data
+- 🛡️ **Content Moderation** - Block harmful content
+- 🚫 **Prompt Injection Prevention** - Prevent attacks
+- ⚡ **Fast** - Millisecond latency
+- 🔒 **Private** - No data leaves your server
+
+### Server-Side (Platform)
+- 🔐 **Runtime Security Enforcement** - Mediate all agent tool/API calls
+- 📜 **Policy-Based Access Control** - Define and enforce security policies
+- 🔍 **Comprehensive Audit Trails** - Track every agent action
+- ⚡ **High Performance** - <100ms latency for security decisions
+- 🔄 **Request Transformation** - Automatically transform risky requests
+- 📊 **Real-time Monitoring** - Track agent behavior and security events
+- 🎯 **Type Hints** - Full type annotations for better IDE support
+- 🔄 **Async Support** - Built-in async/await support
+
+## 🎯 Use Cases
+
+- **Customer Support Bots** - Protect customer PII
+- **Healthcare AI** - HIPAA compliance
+- **Financial Services** - Prevent data leakage
+- **E-commerce** - Secure payment information
+- **Enterprise AI** - Policy enforcement
+- **Education Platforms** - Content safety
+
+## 📚 Documentation
+
+- [Getting Started Guide](https://github.com/agentguard-ai/agentguard-python#readme)
+- [API Reference](https://github.com/agentguard-ai/agentguard-python/blob/main/docs/API.md)
+- [Examples](https://github.com/agentguard-ai/agentguard-python/tree/main/examples)
+- [Changelog](https://github.com/agentguard-ai/agentguard-python/blob/main/CHANGELOG.md)
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](https://github.com/agentguard-ai/agentguard-python/blob/main/CONTRIBUTING.md).
+
+## 📄 License
+
+MIT License - see [LICENSE](https://github.com/agentguard-ai/agentguard-python/blob/main/LICENSE)
+
+## 🔗 Links
+
+- **PyPI**: https://pypi.org/project/agentguard-sdk/
+- **GitHub**: https://github.com/agentguard-ai/agentguard-python
+- **TypeScript SDK**: https://www.npmjs.com/package/agentguard-sdk
+- **Issues**: https://github.com/agentguard-ai/agentguard-python/issues
+
+## 🌟 Star Us!
+
+If you find AgentGuard useful, please give us a star on GitHub! ⭐
+
+---
+
+**Made with ❤️ by the AgentGuard team**
