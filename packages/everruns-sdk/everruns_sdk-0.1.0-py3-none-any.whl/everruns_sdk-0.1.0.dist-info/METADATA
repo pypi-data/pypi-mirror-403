@@ -1,0 +1,72 @@
+Metadata-Version: 2.4
+Name: everruns-sdk
+Version: 0.1.0
+Summary: Python SDK for Everruns API
+Author-email: Everruns <support@everruns.com>
+License-Expression: MIT
+Keywords: agents,ai,api,everruns,sdk
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.10
+Requires-Dist: httpx-sse>=0.4
+Requires-Dist: httpx>=0.27
+Requires-Dist: pydantic>=2.0
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.23; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0; extra == 'dev'
+Requires-Dist: pytest>=8.0; extra == 'dev'
+Requires-Dist: respx>=0.21; extra == 'dev'
+Requires-Dist: ruff>=0.3; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Everruns SDK for Python
+
+Python SDK for the Everruns API.
+
+## Installation
+
+```bash
+pip install everruns-sdk
+```
+
+## Quick Start
+
+```python
+import asyncio
+from everruns_sdk import Everruns
+
+async def main():
+    # Uses EVERRUNS_API_KEY environment variable
+    client = Everruns()
+    
+    # Create an agent
+    agent = await client.agents.create(
+        name="Assistant",
+        system_prompt="You are a helpful assistant.",
+    )
+    
+    # Create a session
+    session = await client.sessions.create(agent_id=agent.id)
+    
+    # Send a message
+    await client.messages.create(session.id, "Hello!")
+    
+    # Stream events
+    async for event in client.events.stream(session.id):
+        if event.type == "output.message.completed":
+            print(event.data)
+            break
+    
+    await client.close()
+
+asyncio.run(main())
+```
+
+## License
+
+MIT
