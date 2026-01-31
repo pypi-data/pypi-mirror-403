@@ -1,0 +1,125 @@
+name: 🆙 Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-type:
+        type: choice
+        description: Release type
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write # <-- Required for publishing to PyPI
+      contents: write # <-- Enables push
+      packages: write # <-- Required for pushing to GHCR
+
+    env:
+      python-version: "3.13"
+      COMPETITION: "world_cup_2026"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
+        with:
+          python-version: ${{ env.python-version }}
+          enable-cache: false
+
+      - name: Create commits
+        id: create-commits
+        run: |
+          git config user.name 'yak-toto'
+          git config user.email 'yaktoto648@gmail.com'
+          uv version --bump "${GITHUB_EVENT_INPUTS_RELEASE_TYPE}"
+          NEW_VERSION=$(uv version --short)
+          uv lock
+          git add pyproject.toml uv.lock
+          git commit -m "Release ${NEW_VERSION}"
+          git tag -a "${NEW_VERSION}" HEAD -m \""${NEW_VERSION}"\"
+          echo "new-version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_EVENT_INPUTS_RELEASE_TYPE: ${{ github.event.inputs.release-type }}
+
+      - name: Push
+        uses: ad-m/github-push-action@77c5b412c50b723d2a4fbc6d71fb5723bcd439aa # v1
+        with:
+          tags: true
+
+      - name: Checkout code
+        run: git checkout "${STEPS_CREATE_COMMITS_OUTPUTS_NEW_VERSION}"
+        env:
+          STEPS_CREATE_COMMITS_OUTPUTS_NEW_VERSION: ${{ steps.create-commits.outputs.new-version }}
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker image to GHCR
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.create-commits.outputs.new-version }}-${{ env.COMPETITION }}
+          build-args: |
+            COMPETITION=${{ env.COMPETITION }}
+
+      - name: Create Release
+        id: create-release
+        uses: ncipollo/release-action@b7eabc95ff50cbeeedec83973935c8f306dfcd0b # v1.20.0
+        with:
+          artifacts: "dist/*"
+          generateReleaseNotes: true
+          tag: ${{ steps.create-commits.outputs.new-version }}
+
+      - name: Send Release Notification to Telegram
+        if: success()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELEASE_TAG: ${{ steps.create-commits.outputs.new-version }}
+          RELEASE_URL: ${{ steps.create-release.outputs.html_url }}
+          REPO: ${{ github.repository }}
+        run: |-
+          FULL_MESSAGE="🎉 New Release: ${RELEASE_TAG}
+          📁 Repository: ${REPO}
+          📦 PyPI: https://pypi.org/project/yak-server/${RELEASE_TAG}/
+          🔗 ${RELEASE_URL}"
+
+          curl -s -o /dev/null -S -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"chat_id\": \"${TELEGRAM_CHAT_ID}\",
+              \"text\": \"${FULL_MESSAGE}\",
+              \"disable_web_page_preview\": true
+            }"

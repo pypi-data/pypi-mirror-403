@@ -1,0 +1,43 @@
+name: 📐 Type checking
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "yak_server/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/type_checking.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  type-checking:
+    name: Type checking
+    runs-on: ubuntu-latest
+
+    permissions: {}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: false
+
+      - name: Install dependencies
+        run: uv sync --all-extras --group type-checking
+
+      - name: Run type checking
+        run: uv run mypy .
+        if: ${{ always() }}
