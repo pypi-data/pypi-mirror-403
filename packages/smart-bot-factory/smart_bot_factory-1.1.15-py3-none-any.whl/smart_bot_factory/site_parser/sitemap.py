@@ -1,0 +1,75 @@
+import logging
+import re
+from typing import List, Optional
+
+from trafilatura import sitemaps
+
+logger = logging.getLogger(__name__)
+
+
+def _log_or_print(level: int, message: str):
+    """Выводит сообщение через logger, если настроен, иначе через print"""
+    if logger.handlers or logging.root.handlers:
+        if level == logging.INFO:
+            logger.info(message)
+        elif level == logging.WARNING:
+            logger.warning(message)
+        elif level == logging.ERROR:
+            logger.error(message)
+        else:
+            logger.debug(message)
+    else:
+        print(message)
+
+
+def search_sitemap(
+    url: str,
+    regex: Optional[str] = None,
+    limit: Optional[int] = None,
+    include_source: bool = False,
+) -> List[str]:
+    """
+    Ищет ссылки в sitemap, при необходимости фильтруя их по регулярному выражению.
+
+    Args:
+        url: URL sitemap для поиска
+        regex: Опциональное регулярное выражение для фильтрации ссылок
+        limit: Опциональный лимит на количество возвращаемых ссылок
+        include_source: Если True, исходный URL будет добавлен в список результатов (по умолчанию False)
+
+    Returns:
+        Список найденных ссылок (возможно, отфильтрованных и ограниченных)
+    """
+    if not url:
+        raise ValueError("Не указан URL для поиска")
+
+    _log_or_print(logging.INFO, f"🗺️ Загружаю sitemap: {url}")
+    try:
+        links = sitemaps.sitemap_search(url)
+        initial_count = len(links)
+        _log_or_print(logging.INFO, f"✅ Найдено ссылок в sitemap: {initial_count}")
+    except Exception as exc:
+        _log_or_print(logging.ERROR, f"❌ Ошибка при загрузке sitemap: {exc}")
+        raise
+
+    if regex:
+        _log_or_print(logging.INFO, f"🔍 Применяю фильтр (regex): {regex}")
+        links = [link for link in links if re.match(regex, link)]
+        filtered_count = len(links)
+        _log_or_print(logging.INFO, f"✅ После фильтрации: {filtered_count} ссылок (было {initial_count})")
+
+    if limit is not None and limit > 0:
+        before_limit = len(links)
+        links = links[:limit]
+        _log_or_print(logging.INFO, f"✂️ Применён лимит: {len(links)} из {before_limit} ссылок")
+
+    if include_source:
+        if url not in links:
+            links.insert(0, url)
+            _log_or_print(logging.INFO, "➕ Добавлена исходная ссылка в список")
+        else:
+            logger.debug("ℹ️ Исходная ссылка уже присутствует в списке")
+
+    final_count = len(links)
+    _log_or_print(logging.INFO, f"📋 Итого ссылок для обработки: {final_count}")
+    return links
