@@ -1,0 +1,235 @@
+# pytest-mark-ac
+
+A pytest plugin that provides a marker to reference acceptance criteria from tests through annotations. This plugin modifies test node IDs to include acceptance criteria references, enabling traceability between tests and user stories/acceptance criteria.
+
+## Installation
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://gitlab.com/Kencho1/pytest-mark-ac
+cd pytest-mark-test
+
+# Install in development mode
+pip install -e .
+
+# Or build and install
+pip install .
+```
+
+### From PyPI
+
+```bash
+pip install pytest-mark-ac
+```
+
+## Usage
+
+The plugin automatically registers when installed. Use the `@pytest.mark.ac` and `@pytest.mark.acs` decorators to annotate tests with acceptance criteria references.
+
+### Basic Syntax
+
+#### Single AC reference
+
+Adds a single AC reference.
+
+```python
+@pytest.mark.ac(story_id, criterion_id, ref_prefix="ac", ref_suffix="")
+```
+
+**Parameters:**
+
+- `story_id` (int): The user story ID
+- `criterion_id` (int): The acceptance criterion ID
+- `ref_prefix` (str, optional): Prefix for the reference (default: "ac")
+- `ref_suffix` (str, optional): Suffix for the reference (default: "")
+
+**Effect:** Appends `__<ref_prefix><story_id>_<criterion_id><ref_suffix>` to the test node ID
+
+#### Multiple AC references for the same story
+
+Adds several ACs of the same story.
+
+```python
+@pytest.mark.acs(story_id, criteria_ids, ref_prefix="ac", ref_suffix="")
+```
+
+**Parameters:**
+
+- `story_id` (int): The user story ID
+- `criteria_ids` (Sequence[int]): The list of acceptance criteria IDs
+- `ref_prefix` (str, optional): Prefix for the reference (default: "ac")
+- `ref_suffix` (str, optional): Suffix for the reference (default: "")
+
+**Effect:** Appends `__<ref_prefix><story_id>_<criterion_id><ref_suffix>` to the test node ID for each `criterion_id` in `criteria_ids`
+
+#### Implicit AC references
+
+Adds AC references from the test unit identifier, looking for segments with the form `__ac<story_id:int>_<criterion_id:int>`.
+
+```python
+def test_something__ac1_2(...): # Marks the test with ac(story_id=1, criterion_id=2, ref_prefix="ac", ref_suffix="")
+```
+
+## Use Cases and Examples
+
+### Use Case 1: Simple Function Test
+
+Link a single test to multiple acceptance criteria:
+
+```python
+import pytest
+
+@pytest.mark.acs(1, [1, 2, 3])
+def test_user_login():
+    # Test implementation
+    assert True
+```
+
+**Result:** Test node ID becomes `test_file.py::test_user_login__ac1_1__ac1_2__ac1_3`
+
+Note `range` can be used for sequential ACs as well:
+
+```python
+import pytest
+
+@pytest.mark.acs(1, *range(1, 4))
+def test_user_login():
+    # Test implementation
+    assert True
+```
+
+also becomes `test_file.py::test_user_login__ac1_1__ac1_2__ac1_3`
+
+### Use Case 2: Parametrized Tests with Different Criteria
+
+Apply different acceptance criteria to individual parametrized test cases:
+
+```python
+from contextlib import nullcontext
+
+@pytest.mark.ac(1, 1)  # Applies to all test cases
+@pytest.mark.parametrize(
+    'a,b,expected',
+    [
+        pytest.param(4, 2, nullcontext(2), marks=pytest.mark.ac(2, 1)),
+        pytest.param(5, 1, nullcontext(5), marks=pytest.mark.acs(2, [1, 2])),
+        pytest.param(3, 2, nullcontext(1.5), marks=pytest.mark.ac(2, 3)),
+        pytest.param(3, 0, pytest.raises(ZeroDivisionError), marks=pytest.mark.ac(2, 4)),
+    ],
+)
+def test_division(a, b, expected):
+    with expected as exp_result:
+        assert (a / b) == exp_result
+```
+
+**Result:**
+
+- `test_division[4-2-expected0]__ac1_1__ac2_1`
+- `test_division[5-1-expected1]__ac1_1__ac2_1__ac2_2`
+- `test_division[3-2-expected2]__ac1_1__ac2_3`
+- `test_division[3-0-expected3]__ac1_1__ac2_4`
+
+### Use Case 3: Custom Reference Format
+
+Customize the reference format for your organization's conventions:
+
+```python
+@pytest.mark.acs(123, [5, 6], ref_prefix="AC", ref_suffix="_v1")
+def test_feature():
+    assert True
+```
+
+**Result:** Test node ID becomes `test_file.py::test_feature__AC123_5_v1__AC123_6_v1`
+
+### Use Case 4: Testing Edge Cases with Acceptance Criteria
+
+```python
+@pytest.mark.parametrize(
+    'value,expected',
+    [
+        pytest.param(0, True, marks=pytest.mark.ac(5, 1)),  # Zero case
+        pytest.param(-1, True, marks=pytest.mark.ac(5, 2)),  # Negative case
+        pytest.param(100, False, marks=pytest.mark.ac(5, 3)),  # Boundary case
+    ],
+)
+def test_validation(value, expected):
+    assert validate(value) == expected
+```
+
+### Use Case 5: Multiple Stories on One Test
+
+A test can verify acceptance criteria from multiple user stories:
+
+```python
+@pytest.mark.acs(10, [1, 2])  # Story 10, criteria 1-2
+@pytest.mark.ac(11, 3)     # Story 11, criterion 3
+def test_integrated_feature():
+    # Tests functionality spanning multiple stories
+    assert True
+```
+
+**Result:** `test_file.py::test_integrated_feature__ac10_1__ac10_2__ac11_3`
+
+## Running Tests with Acceptance Criteria
+
+```bash
+# Run all tests (shows modified node IDs)
+pytest -v
+
+# Run tests for specific acceptance criterion
+pytest -v -m "ac(story_id=1, criterion_id=!)"
+
+# Run tests for specific story
+pytest -v -m "ac(story_id=5)"
+
+# Show test collection without running
+pytest --collect-only
+```
+
+## Benefits
+
+- **Traceability**: Direct link between tests and acceptance criteria
+- **Test Reports**: Node IDs in reports show which criteria are covered
+- **Selective Execution**: Run tests by acceptance criteria using `-m` flag
+- **Documentation**: Tests serve as executable documentation of acceptance criteria
+- **Duplicate Prevention**: Automatically removes duplicate criteria references
+
+## Requirements
+
+- Python >= 3.11
+- pytest ~= 8.4
+
+## Development
+
+This project includes comprehensive quality assurance:
+
+- **55 tests** covering all functionality with 68% code coverage
+- **Type checking** with mypy in strict mode
+- **Code quality** enforced with ruff (linting and formatting)
+- **Multi-version testing** with tox for Python 3.11-3.14
+- **PEP 561** compliant with `py.typed` marker for type checkers
+
+### Running Tests
+
+```bash
+# Install development dependencies
+uv sync --extra dev
+
+# Run tests with coverage
+uv run pytest tests/ -v --cov=pytest_mark_ac
+
+# Run type checking
+uv run mypy pytest_mark_ac/
+
+# Run linting
+uv run ruff check pytest_mark_ac tests
+
+# Run all quality checks with tox
+uv run tox
+```
+
+## License
+
+MIT
