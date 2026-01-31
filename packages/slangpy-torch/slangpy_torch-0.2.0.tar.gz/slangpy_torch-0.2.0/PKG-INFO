@@ -1,0 +1,107 @@
+Metadata-Version: 2.4
+Name: slangpy-torch
+Version: 0.2.0
+Summary: Fast PyTorch tensor access for slangpy
+Author: Shader Slang
+Author-email: Simon Kallweit <skallweit@nvidia.com>, Chris Cummings <chriscummings@nvidia.com>, Benedikt Bitterli <bbitterli@nvidia.com>, Sai Bangaru <sbangaru@nvidia.com>, Yong He <yhe@nvidia.com>
+License: SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+        
+            Licensed under the Apache License, Version 2.0 (the "License");
+            you may not use this file except in compliance with the License.
+            You may obtain a copy of the License at
+        
+               http://www.apache.org/licenses/LICENSE-2.0
+        
+            Unless required by applicable law or agreed to in writing, software
+            distributed under the License is distributed on an "AS IS" BASIS,
+            WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            See the License for the specific language governing permissions and
+            limitations under the License.
+        
+        LLVM Exceptions to the Apache 2.0 License
+        
+        As an exception, if, as a result of your compiling your source code, portions
+        of this Software are embedded into an Object form of such source code, you
+        may redistribute such embedded portions in such Object form without complying
+        with the conditions of Sections 4(a), 4(b) and 4(d) of the License.
+        
+        In addition, if you combine or link compiled forms of this Software with
+        software that is licensed under the GPLv2 ("Combined Software") and if a
+        court of competent jurisdiction determines that the patent provision (Section
+        3), the indemnity provision (Section 9) or other Section of the License
+        conflicts with the conditions of the GPLv2, you may retroactively and
+        prospectively choose to deem waived or otherwise exclude such Section(s) of
+        the License, but only in their entirety and only with respect to the Combined
+        Software.
+        
+Project-URL: Homepage, https://github.com/shader-slang/slangpy
+Project-URL: Documentation, https://slangpy.shader-slang.org/en/latest/
+Project-URL: Repository, https://github.com/shader-slang/slangpy
+Project-URL: Issues, https://github.com/shader-slang/slangpy/issues
+Project-URL: Changelog, https://slangpy.shader-slang.org/en/latest/changelog.html
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: author
+Dynamic: license-file
+Dynamic: requires-python
+
+# slangpy-torch
+
+Minimal PyTorch native extension providing fast (~28ns) tensor metadata access
+from native code without Python API overhead (~350ns).
+
+## Prerequisites
+
+- **Python 3.9+**
+- **PyTorch 2.0+** installed
+- **C++ compiler**
+
+### Windows
+
+Install [Visual Studio 2019 or 2022](https://visualstudio.microsoft.com/) with the "Desktop development with C++" workload.
+
+### Linux
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install build-essential
+```
+
+## Install
+
+This extension **must** be installed with `--no-build-isolation` to ensure ABI compatibility
+with your installed PyTorch version:
+
+```bash
+pip install slangpy-torch --no-build-isolation
+```
+
+### Verify Installation
+
+```python
+import slangpy_torch
+print(slangpy_torch.get_api_ptr())  # Should print a non-zero integer
+```
+
+### Troubleshooting
+
+- **"torch not found"**: Ensure PyTorch is installed first (`pip install torch`)
+- **Windows linker errors**: Run from a "Developer Command Prompt for VS" or ensure MSVC is in PATH
+
+## Usage from native code (slangpy_ext)
+
+```cpp
+#include "tensor_bridge_api.h"
+
+// At init time:
+auto bridge = nb::module_::import_("slangpy_torch");
+auto api = reinterpret_cast<const TensorBridgeAPI*>(
+    nb::cast<uintptr_t>(bridge.attr("get_api_ptr")())
+);
+
+// In hot path (~28ns):
+TensorBridgeInfo info;
+api->extract(handle.ptr(), &info);
+// Use info.data_ptr, info.shape, info.strides, etc.
+```
