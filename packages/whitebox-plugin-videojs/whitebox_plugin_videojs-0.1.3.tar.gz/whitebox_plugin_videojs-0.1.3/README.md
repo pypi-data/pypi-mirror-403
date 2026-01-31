@@ -1,0 +1,168 @@
+# Whitebox Plugin - VideoJS
+
+This is a plugin for [whitebox](https://gitlab.com/whitebox-aero) that provides VideoJS integration, including WHEP (WebRTC) streaming support.
+
+## Installation
+
+Simply install the plugin to whitebox:
+
+```
+poetry add whitebox-plugin-videojs
+```
+
+## WHEP Tech - WebRTC Streaming
+
+This plugin includes a custom Video.js Tech for WHEP (WebRTC-HTTP Egress Protocol) streaming. WHEP enables ultra-low-latency video playback from WebRTC-capable media servers.
+
+### What is WHEP?
+
+**WHEP** (WebRTC-HTTP Egress Protocol) is a standardized protocol for receiving WebRTC streams. It simplifies WebRTC consumption by using HTTP for signaling:
+
+1. Client sends an SDP offer via HTTP POST to the WHEP endpoint
+2. Server responds with an SDP answer
+3. ICE candidates are exchanged (trickle ICE supported)
+4. WebRTC peer connection is established
+5. Media flows over WebRTC (UDP/SRTP)
+
+Unlike traditional WebRTC which requires custom signaling servers, WHEP uses simple HTTP - making it easy to integrate with any media server that supports it.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           STREAMING PIPELINE                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Insta360   │     │     FFmpeg      │     │   SRS Server    │
+│    Camera    │────▶│   (transcode)   │────▶│  (media server) │
+│              │WiFi │                 │RTMP │                 │
+└──────────────┘     │ • Dual fisheye  │     │ • RTMP ingest   │
+                     │   → equirect    │     │ • WebRTC/WHEP   │
+                     │ • H.264 encode  │     │   egress        │
+                     └─────────────────┘     └────────┬────────┘
+                                                      │
+                                                      │ WHEP (HTTP + WebRTC)
+                                                      ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              BROWSER                                         │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌──────────────────┐        │
+│  │    WHEP Tech    │     │    Video.js     │     │    Pannellum     │        │
+│  │  (whep-tech.js) │────▶│     Player      │────▶│   360 Viewer     │        │
+│  │                 │     │                 │     │                  │        │
+│  │ • SDP exchange  │     │ • <video> with  │     │ • WebGL canvas   │        │
+│  │ • ICE handling  │     │   srcObject     │     │ • Equirectangular│        │
+│  │ • Reconnection  │     │ • Playback ctrl │     │   projection     │        │
+│  └─────────────────┘     └─────────────────┘     └──────────────────┘        │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+#### 1. WHEP Tech (`whep-tech.js`)
+
+Custom Video.js Tech that handles WebRTC playback:
+
+```javascript
+// Usage
+const player = videojs('my-video', {
+  techOrder: ['whep'],  // Use WHEP tech
+  sources: [{
+    src: 'https://srs-server/rtc/v1/whep/?app=live&stream=livestream',
+    type: 'application/whep'  // MIME type triggers WHEP tech
+  }]
+});
+```
+
+**Features:**
+
+- Automatic SDP offer/answer exchange
+- Trickle ICE candidate handling
+- Connection state management with events
+- Auto-reconnection with exponential backoff
+- Graceful cleanup on dispose
+
+**Events emitted:**
+
+- `whep:connecting` - Starting connection
+- `whep:streaming` - Media flowing
+- `whep:reconnecting` - Connection lost, retrying
+- `whep:error` - Connection failed
+
+#### 2. Integration with Pannellum (360 Video)
+
+The `whitebox-plugin-pannellum` provides 360-degree video rendering. It detects WebRTC streams via `srcObject`:
+
+```javascript
+// In Pannellum360Video.jsx
+const isWebRTC = !!videoEl?.srcObject;
+
+if (isWebRTC) {
+  // Direct Pannellum initialization - pass video element as texture
+  pannellum.viewer(container, {
+    type: "equirectangular",
+    panorama: videoEl,  // Video element with srcObject
+    dynamic: true,
+  });
+} else {
+  // Regular video URL - use videojs-pannellum plugin
+  player.pannellum(config);
+}
+```
+
+**Why the distinction?**
+
+- WebRTC uses `srcObject` (MediaStream) not `src` (URL)
+- The videojs-pannellum plugin doesn't handle `srcObject`
+- Direct Pannellum init passes the video element as a WebGL texture source
+
+### Connection Flow
+
+```
+1. Player initialized with WHEP source
+   └─▶ WhepTech.setSrc() called
+
+2. Create RTCPeerConnection
+   └─▶ Add transceiver for video (recvonly)
+   └─▶ Create SDP offer
+
+3. HTTP POST offer to WHEP endpoint
+   └─▶ Server returns SDP answer
+   └─▶ setRemoteDescription(answer)
+
+4. ICE candidate gathering
+   └─▶ Local candidates sent via PATCH
+   └─▶ Remote candidates from Link headers
+
+5. Connection established
+   └─▶ ontrack fires with MediaStream
+   └─▶ video.srcObject = stream
+   └─▶ Emit 'whep:streaming'
+
+6. On disconnect
+   └─▶ Exponential backoff retry
+   └─▶ Emit 'whep:reconnecting'
+```
+
+### Frame Detection for 360 Video
+
+WebRTC streams require special handling for 360 rendering. We must wait for actual video frames before initializing Pannellum:
+
+```javascript
+// waitForVideoFrame() in Pannellum360Video.jsx
+if ("requestVideoFrameCallback" in videoEl) {
+  // Chrome 83+, Firefox 130+ - fires when frame is ready
+  videoEl.requestVideoFrameCallback(checkFrame);
+} else {
+  // Fallback: poll videoWidth/videoHeight
+  setInterval(checkDimensions, 100);
+}
+```
+
+This prevents the "black sphere" issue where Pannellum initializes before any video data arrives.
+
+## Additional Instructions
+
+- [Plugin Development Guide](https://docs.whitebox.aero/plugin_guide/#plugin-development-workflow)
+- [Plugin Testing Guide](https://docs.whitebox.aero/plugin_guide/#testing-plugins)
+- [Contributing Guidelines](https://docs.whitebox.aero/development_guide/#contributing)
