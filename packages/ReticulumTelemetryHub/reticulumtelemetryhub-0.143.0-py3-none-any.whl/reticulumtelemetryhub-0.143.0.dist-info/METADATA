@@ -1,0 +1,181 @@
+Metadata-Version: 2.4
+Name: ReticulumTelemetryHub
+Version: 0.143.0
+Summary: Reticulum-Telemetry-Hub (RTH) manages a complete TCP node across a Reticulum-based network, enabling communication and data sharing between clients like Sideband or Meshchat.
+License-File: LICENSE
+Author: naman108, corvo
+Requires-Python: >=3.10,<4.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Dist: aiohttp (>=3.10.10,<4.0.0)
+Requires-Dist: cryptography (>=46.0.2,<47.0.0)
+Requires-Dist: fastapi (>=0.115.0,<0.116.0)
+Requires-Dist: gpsdclient (>=1.3.2,<2.0.0)
+Requires-Dist: httpx (>=0.27.0,<0.28.0)
+Requires-Dist: lxmf (>=0.9.4,<0.10.0)
+Requires-Dist: msgpack (>=1.0.8,<2.0.0)
+Requires-Dist: pydantic (>=2.8.2,<3.0.0)
+Requires-Dist: pynacl (>=1.5.0,<2.0.0)
+Requires-Dist: pytak (>=7.0.2,<8.0.0)
+Requires-Dist: pytest (>=8.3.2,<9.0.0)
+Requires-Dist: pytest-cov (>=6.1,<7.0)
+Requires-Dist: python-dotenv (>=1.0.1,<2.0.0)
+Requires-Dist: python-multipart (>=0.0.20,<0.0.21)
+Requires-Dist: qrcode (>=7.4.2,<8.0.0)
+Requires-Dist: rns (>=1.1.1,<2.0.0)
+Requires-Dist: sqlalchemy (>=2.0.32,<3.0.0)
+Requires-Dist: uvicorn (>=0.30.0,<0.31.0)
+Description-Content-Type: text/markdown
+
+# Reticulum Community Hub (RCH)
+
+<img src="RCH.png" alt="RCH logo" width="100" height="100" style="float:left; margin-right:12px;">
+
+Reticulum Community Hub (RCH) is a shared coordination point for mesh networks. It allows people and groups to exchange messages, share situational updates, and distribute files in a structured and reliable way, even across intermittent or low-connectivity environments, while remaining independent from centralized internet services.
+<div style="clear: both;"></div>
+
+## What it does
+
+- One-to-many and topic-scoped message fan-out over LXMF.
+- Telemetry collection and on-demand telemetry responses.
+- File and image attachment storage with retrieval by ID.
+- Northbound REST + WebSocket API for operators and the admin UI.
+- Optional TAK/CoT bridge for chat and location updates.
+
+## What it looks like
+
+![Dashboard](image.png)
+![Map](image-1.png)
+
+## Quickstart (from source)
+
+1. Clone and enter the repo.
+   ```bash
+   git clone https://github.com/FreeTAKTeam/Reticulum-Community-Hub.git
+   cd Reticulum-Community-Hub
+   ```
+2. Create and activate a virtual environment.
+   ```bash
+   python -m venv .venv
+   # Linux/macOS
+   source .venv/bin/activate
+   # Windows (PowerShell)
+   .venv\Scripts\Activate.ps1
+   ```
+3. Install dependencies.
+   ```bash
+   python -m pip install --upgrade pip
+   python -m pip install -e .
+   ```
+4. Prepare a storage directory and config.
+   - Copy `RCH_Store/config.ini` into your storage directory.
+   - Adjust paths in the `[hub]`, `[files]`, and `[images]` sections.
+5. Start the hub.
+   ```bash
+   python -m reticulum_telemetry_hub.reticulum_server \
+       --storage_dir ./RCH_Store \
+       --display_name "RCH"
+   ```
+
+For configuration, services, and client usage details, see `docs/userManual.md`.
+
+## Install from PyPI
+
+1. Create and activate a virtual environment.
+   ```bash
+   python -m venv .venv
+   # Linux/macOS
+   source .venv/bin/activate
+   # Windows (PowerShell)
+   .venv\Scripts\Activate.ps1
+   ```
+2. Install the package.
+   ```bash
+   python -m pip install --upgrade pip
+   python -m pip install ReticulumCommunityHub
+   ```
+3. Start the hub (point at your storage directory).
+   ```bash
+   python -m reticulum_telemetry_hub.reticulum_server --storage_dir /path/to/RCH_Store
+   ```
+
+## Northbound API and admin UI
+
+The northbound FastAPI service exposes REST + WebSocket endpoints used by the admin UI.
+
+- Run the hub + API together (recommended for chat/message sending):
+  ```bash
+  python -m reticulum_telemetry_hub.northbound.gateway \
+      --storage_dir ./RCH_Store \
+      --api-host 0.0.0.0 \
+      --api-port 8000
+  ```
+- Run only the API server (read-only unless you provide a message dispatcher):
+  ```bash
+  uvicorn reticulum_telemetry_hub.northbound.app:app --host 0.0.0.0 --port 8000
+  ```
+- Protect admin endpoints by setting `RCH_API_KEY` (accepts `X-API-Key` or Bearer token).
+- The UI lives in `ui/`:
+
+  ```bash
+  cd ui
+  npm install
+  npm run dev
+  ```
+
+  Set `VITE_RCH_BASE_URL` when the UI should target a different hub.
+
+## Documentation
+
+- `docs/README.md` (documentation map)
+- `docs/userManual.md` (user and operator guide)
+- `architecture.md` (system overview and references)
+- `API/ReticulumCommunityHub-OAS.yaml` (REST/OpenAPI reference)
+
+## Contributing
+
+We welcome and encourage contributions. Please include appropriate tests and follow the
+project coding standards.
+
+### Linting
+
+RCH uses Ruff for linting with a 120-character line length and ignores `E203` to align
+with Black-style slicing.
+
+- With Poetry (installs dev dependencies, including Ruff):
+
+  ```bash
+  poetry install --with dev
+  poetry run ruff check .
+  ```
+
+- With a plain virtual environment:
+
+  ```bash
+  python -m pip install ruff
+  ruff check .
+  ```
+
+## License
+
+This project is licensed under the Eclipse Public License (EPL). For more details, refer to the
+`LICENSE` file in the repository.
+
+## Support
+
+For issues or support, open a GitHub issue
+
+## Support Reticulum
+
+You can help support the continued development of open, free and private communications systems
+by donating via one of the following channels to Mark, the original Reticulum author:
+
+- Monero: 84FpY1QbxHcgdseePYNmhTHcrgMX4nFfBYtz2GKYToqHVVhJp8Eaw1Z1EedRnKD19b3B8NiLCGVxzKV17UMmmeEsCrPyA5w
+- Ethereum: 0xFDabC71AC4c0C78C95aDDDe3B4FA19d6273c5E73
+- Bitcoin: 35G9uWVzrpJJibzUwpNUQGQNFzLirhrYAH
+- Ko-Fi: https://ko-fi.com/markqvist
+
