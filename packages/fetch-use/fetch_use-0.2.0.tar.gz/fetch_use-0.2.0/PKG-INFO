@@ -1,0 +1,207 @@
+Metadata-Version: 2.4
+Name: fetch-use
+Version: 0.2.0
+Summary: Python client for Browser-Use Fetch HTTP service
+Project-URL: Homepage, https://browser-use.com
+Project-URL: Documentation, https://docs.browser-use.com
+Project-URL: Repository, https://github.com/browser-use/fetch-use
+Author-email: Browser-Use <support@browser-use.com>
+License: MIT
+Keywords: api,fetch,http,proxy,requests
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.9
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.4.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# fetch-use
+
+Python client for the Browser-Use Fetch HTTP service.
+
+## Installation
+
+```bash
+pip install fetch-use
+```
+
+## Quick Start
+
+```python
+import asyncio
+import os
+from fetch_use import fetch
+
+# Set your project ID and session ID
+os.environ['PROJECT_ID'] = 'your-project-id'
+os.environ['SESSION_ID'] = 'your-session-id'
+
+async def main():
+    response = await fetch("https://httpbin.org/get")
+    print(response.status_code)  # 200
+    print(response.json())
+
+asyncio.run(main())
+```
+
+Or use the synchronous API:
+
+```python
+from fetch_use import fetch_sync
+
+response = fetch_sync("https://httpbin.org/get")
+print(response.status_code)
+```
+
+## Features
+
+- **Session-based IP persistence**: Maintain consistent IP across requests
+- **Proxy Routing**: Route requests through proxies by country
+- **Automatic Retries**: Configurable retry with exponential backoff
+
+## Configuration
+
+Set these environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PROJECT_ID` | Yes | Your Browser-Use project ID |
+| `SESSION_ID` | Yes | Session ID for IP persistence |
+
+**Note:** Cookies are persisted server-side per session. Pass cookies via the `cookies` parameter to add or override cookies for a specific request.
+
+## Usage
+
+### Basic GET Request
+
+```python
+async def example():
+    response = await fetch("https://example.com")
+    if response.ok:
+        print(response.text)
+```
+
+### POST with JSON
+
+```python
+async def post_example():
+    response = await fetch(
+        "https://api.example.com/data",
+        method="POST",
+        json_body={"name": "John", "email": "john@example.com"},
+    )
+    return response.json()
+```
+
+### Custom Headers and Cookies
+
+```python
+async def headers_example():
+    response = await fetch(
+        "https://example.com/api",
+        headers={
+            "Authorization": "Bearer token123",
+            "Accept": "application/json",
+        },
+        cookies={
+            "session": "abc123",
+            "preferences": "dark_mode",
+        },
+    )
+    return response
+```
+
+### Proxy Country
+
+```python
+async def proxy_example():
+    # Route through German proxy
+    response = await fetch(
+        "https://example.com",
+        proxy_country="DE",
+    )
+    return response
+```
+
+### Retry Configuration
+
+```python
+from fetch_use import fetch, RetryConfig
+
+async def retry_example():
+    response = await fetch(
+        "https://example.com",
+        retry=RetryConfig(
+            count=5,
+            on_status=[500, 502, 503, 504, 429],
+            backoff_ms=200,
+        ),
+    )
+    return response
+```
+
+### Cookies
+
+Cookies are persisted server-side per session. Use the `cookies` parameter to add or override cookies:
+
+```python
+async def cookies_example(params):
+    # Pass cookies to add/override for this request
+    response = await fetch(
+        "https://example.com/dashboard",
+        cookies={"session": params["session_cookie"]},
+    )
+    return response
+```
+
+## Response Object
+
+The `FetchResponse` object provides:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `status_code` | `int` | HTTP status code |
+| `status` | `str` | Full status string (e.g., "200 OK") |
+| `headers` | `dict` | Response headers |
+| `body` | `str` | Response body as text |
+| `text` | `str` | Alias for body |
+| `content` | `bytes` | Response body as bytes (handles binary) |
+| `ok` | `bool` | True if status is 2xx |
+| `final_url` | `str` | Final URL after redirects |
+| `redirect_count` | `int` | Number of redirects followed |
+| `protocol` | `str` | HTTP protocol (e.g., "HTTP/2.0") |
+
+Methods:
+- `json()` - Parse body as JSON
+- `raise_for_status()` - Raise `FetchError` if status >= 400
+
+## Error Handling
+
+```python
+from fetch_use import fetch, FetchError
+
+async def error_handling_example():
+    try:
+        response = await fetch("https://example.com")
+        response.raise_for_status()  # Raises FetchError on 4xx/5xx
+        return response.json()
+    except FetchError as e:
+        print(f"Error: {e}")
+        print(f"Code: {e.code}")
+        print(f"Details: {e.details}")
+```
+
+## License
+
+MIT
