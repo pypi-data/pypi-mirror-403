@@ -1,0 +1,877 @@
+Metadata-Version: 2.4
+Name: streamlit-react-components
+Version: 1.8.1.1
+Summary: Reusable React-based Streamlit components with Tailwind CSS styling
+License: MIT
+Project-URL: Homepage, https://github.com/your-org/streamlit-react-components
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: streamlit>=1.24.0
+
+# Streamlit React Components
+
+A collection of 12 reusable React-based Streamlit components with Tailwind CSS styling. All components support custom inline styles and Tailwind class names.
+
+## Installation
+
+```bash
+pip install streamlit-react-components
+```
+
+## Quick Start
+
+```python
+import streamlit as st
+from streamlit_react_components import (
+    panel, section_header, stat_card, metric_row,
+    data_table, step_indicator, button_group, chart_legend,
+    plotly_chart, form_select, form_slider, checkbox_group
+)
+```
+
+---
+
+## Styling
+
+All components accept two styling parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `style` | `dict` | Inline CSS as Python dict (e.g., `{"background": "#1e293b", "padding": "16px"}`) |
+| `class_name` | `str` | Tailwind CSS classes (e.g., `"bg-slate-900 p-4 rounded-lg"`) |
+
+### Example
+
+```python
+stat_card(
+    label="Revenue",
+    value="$50K",
+    color="blue",
+    style={"minWidth": "200px", "boxShadow": "0 4px 6px rgba(0,0,0,0.3)"},
+    class_name="border border-blue-500"
+)
+```
+
+---
+
+## Components
+
+### 1. Panel
+
+A styled container/card wrapper.
+
+```python
+panel(
+    children: str = "",           # HTML content
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> None
+```
+
+#### Example
+
+```python
+panel(
+    children="<h3 style='color: white;'>Title</h3><p style='color: #94a3b8;'>Content here</p>",
+    class_name="border border-blue-500"
+)
+```
+
+#### Default Styling
+- Background: `bg-slate-900`
+- Border radius: `rounded-lg`
+- Padding: `p-4`
+
+---
+
+### 2. Section Header
+
+A section title with optional action buttons.
+
+```python
+section_header(
+    title: str,                   # Header text
+    icon: str = "",               # Emoji or icon prefix
+    actions: list = None,         # List of action buttons
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> str | None                   # Returns clicked action ID
+```
+
+#### Actions Format
+
+```python
+actions = [
+    {"id": "refresh", "label": "Refresh", "color": "blue"},
+    {"id": "export", "icon": "📥", "label": "Export", "color": "green"}
+]
+```
+
+| Action Key | Type | Description |
+|------------|------|-------------|
+| `id` | `str` | Unique identifier (returned on click) |
+| `label` | `str` | Button text (optional) |
+| `icon` | `str` | Emoji/icon (optional) |
+| `color` | `str` | Preset (`"blue"`, `"green"`, `"red"`, `"yellow"`, `"purple"`, `"slate"`) or hex (e.g., `"#94a3b8"`) |
+| `style` | `dict` | Inline CSS styles for this button (optional) |
+| `className` | `str` | Tailwind classes for this button (optional) |
+| `href` | `str` | URL for link actions. External URLs (http/https) open in new tab (optional) |
+
+#### Example
+
+```python
+# Using preset colors
+clicked = section_header(
+    title="Executive Summary",
+    icon="📊",
+    actions=[
+        {"id": "refresh", "label": "Refresh", "color": "blue"},
+        {"id": "settings", "icon": "⚙️", "color": "slate"}
+    ]
+)
+
+# Using hex colors and custom styling
+clicked = section_header(
+    title="Custom Actions",
+    actions=[
+        {"id": "custom", "label": "Custom", "color": "#ff5733"},
+        {"id": "styled", "label": "Styled", "style": {"padding": "12px", "borderRadius": "20px"}}
+    ]
+)
+
+# External link (opens in new tab)
+section_header(
+    title="Resources",
+    actions=[
+        {"id": "docs", "label": "Documentation", "href": "https://docs.example.com", "icon": "📚"},
+        {"id": "github", "label": "GitHub", "href": "https://github.com", "color": "slate"}
+    ]
+)
+
+# Internal page navigation
+clicked = section_header(
+    title="Settings",
+    actions=[{"id": "home", "label": "Home", "icon": "🏠"}]
+)
+if clicked == "home":
+    st.switch_page("pages/home.py")
+```
+
+---
+
+### 3. Stat Card
+
+A statistics display card with colored accent.
+
+```python
+stat_card(
+    label: str,                   # Description text
+    value: str | int | float,     # The statistic value
+    color: str = "blue",          # Accent color
+    icon: str = "",               # Optional icon
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> None
+```
+
+#### Colors
+
+Supports preset color names or hex values:
+
+| Preset | Border | Text |
+|--------|--------|------|
+| `"blue"` | `border-blue-500` | `text-blue-400` |
+| `"green"` | `border-green-500` | `text-green-400` |
+| `"red"` | `border-red-500` | `text-red-400` |
+| `"yellow"` | `border-yellow-500` | `text-yellow-400` |
+| `"purple"` | `border-purple-500` | `text-purple-400` |
+| `"slate"` | `border-slate-500` | `text-slate-400` |
+| `"#xxxxxx"` | Custom hex color | Custom hex color |
+
+#### Example
+
+```python
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    stat_card(label="Within Threshold", value="4", color="green")
+with col2:
+    stat_card(label="Above (Risk)", value="2", color="red")
+with col3:
+    stat_card(label="Below (Underutil)", value="1", color="yellow")
+with col4:
+    stat_card(label="Avg OEE", value="78.4%", color="blue")
+
+# Using hex color
+stat_card(label="Custom Color", value="42", color="#ff5733")
+```
+
+---
+
+### 4. Metric Row
+
+A key-value display row.
+
+```python
+metric_row(
+    label: str,                   # Left-side label
+    value: str,                   # Right-side value
+    value_color: str = "",        # Tailwind text color class
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> None
+```
+
+#### Example
+
+```python
+metric_row(label="Mean", value="78.4%")
+metric_row(label="Median", value="79.0%")
+metric_row(label="Outliers", value="3", value_color="text-red-400")
+metric_row(label="Trend", value="↑ +0.4%/mo", value_color="text-green-400")
+```
+
+#### Common Value Colors
+
+| Color | Class |
+|-------|-------|
+| Green | `text-green-400` |
+| Red | `text-red-400` |
+| Yellow | `text-yellow-400` |
+| Blue | `text-blue-400` |
+| Gray | `text-slate-400` |
+
+---
+
+### 5. Data Table
+
+A styled data table with row click support.
+
+```python
+data_table(
+    columns: list,                # Column definitions
+    rows: list,                   # Row data
+    show_header: bool = True,
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> dict | None                  # Returns {rowIndex, rowData} on click
+```
+
+#### Column Definition
+
+```python
+columns = [
+    {"key": "name", "label": "Name"},
+    {"key": "value", "label": "Value", "align": "right", "format": "number"},
+    {"key": "percent", "label": "%", "align": "center", "format": "percent"},
+    {"key": "status", "label": "Status", "colorByValue": True}
+]
+```
+
+| Column Key | Type | Description |
+|------------|------|-------------|
+| `key` | `str` | Data key in row dict |
+| `label` | `str` | Column header text |
+| `align` | `str` | `"left"`, `"center"`, `"right"` |
+| `format` | `str` | `"number"` (adds commas), `"percent"` (adds %) |
+| `colorByValue` | `bool` | Color based on status values |
+
+#### Auto-Colored Values
+
+When `colorByValue: True`, these values get automatic colors:
+
+| Value | Color |
+|-------|-------|
+| `"above"` | Red |
+| `"below"` | Yellow |
+| `"within"` | Green |
+| `"approved"` | Green |
+| `"rejected"` | Red |
+| `"submitted"` | Yellow |
+| `"draft"` | Gray |
+
+#### Example
+
+```python
+columns = [
+    {"key": "site", "label": "Site"},
+    {"key": "line", "label": "Line"},
+    {"key": "util", "label": "Utilization", "align": "right", "format": "percent"},
+    {"key": "volume", "label": "Volume", "align": "right", "format": "number"},
+    {"key": "status", "label": "Status", "align": "center", "colorByValue": True}
+]
+
+rows = [
+    {"site": "AML_14", "line": "L1", "util": 94, "volume": 125000, "status": "above"},
+    {"site": "ADL", "line": "L2", "util": 72, "volume": 98000, "status": "within"},
+    {"site": "Devens", "line": "L3", "util": 58, "volume": 45000, "status": "below"}
+]
+
+clicked = data_table(columns=columns, rows=rows)
+
+if clicked:
+    st.write(f"Selected row {clicked['rowIndex']}: {clicked['rowData']}")
+```
+
+---
+
+### 6. Step Indicator
+
+A multi-step wizard progress indicator.
+
+```python
+step_indicator(
+    steps: list,                  # List of step labels
+    current_step: int,            # Current step (1-indexed)
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> int | None                   # Returns clicked step number
+```
+
+#### Example
+
+```python
+if "step" not in st.session_state:
+    st.session_state.step = 1
+
+clicked = step_indicator(
+    steps=["Supply Plan", "Configure Levers", "Review & Submit"],
+    current_step=st.session_state.step
+)
+
+if clicked:
+    st.session_state.step = clicked
+    st.rerun()
+```
+
+#### Visual States
+
+| State | Appearance |
+|-------|------------|
+| Completed (< current) | Green circle with ✓ |
+| Current | Blue circle with number |
+| Future (> current) | Gray circle with number |
+
+---
+
+### 7. Button Group
+
+A group of action buttons.
+
+```python
+button_group(
+    buttons: list,                # List of button configs
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> str | None                   # Returns clicked button ID
+```
+
+#### Button Definition
+
+```python
+buttons = [
+    {"id": "view", "icon": "👁️"},
+    {"id": "edit", "icon": "✏️", "label": "Edit"},
+    {"id": "approve", "icon": "✓", "color": "green"},
+    {"id": "reject", "icon": "✕", "color": "red", "disabled": True}
+]
+```
+
+| Button Key | Type | Description |
+|------------|------|-------------|
+| `id` | `str` | Unique identifier (returned on click) |
+| `label` | `str` | Button text (optional) |
+| `icon` | `str` | Emoji/icon (optional) |
+| `color` | `str` | Preset (`"blue"`, `"green"`, `"red"`, `"yellow"`, `"purple"`, `"slate"`) or hex (e.g., `"#94a3b8"`) |
+| `disabled` | `bool` | Disable the button |
+| `style` | `dict` | Inline CSS styles for this button (optional) |
+| `className` | `str` | Tailwind classes for this button (optional) |
+
+#### Example
+
+```python
+# Using preset colors
+clicked = button_group(
+    buttons=[
+        {"id": "view", "icon": "👁️", "label": "View"},
+        {"id": "edit", "icon": "✏️", "label": "Edit"},
+        {"id": "delete", "icon": "🗑️", "color": "red"}
+    ]
+)
+
+# Using hex colors and custom styling
+clicked = button_group(
+    buttons=[
+        {"id": "custom", "icon": "🎨", "color": "#ff5733"},
+        {"id": "styled", "label": "Styled", "style": {"padding": "12px"}}
+    ]
+)
+
+if clicked == "delete":
+    st.warning("Delete clicked!")
+```
+
+---
+
+### 8. Chart Legend
+
+A legend for charts with colored indicators.
+
+```python
+chart_legend(
+    items: list,                  # List of legend items
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> None
+```
+
+#### Items Format
+
+```python
+items = [
+    {"color": "#94a3b8", "label": "Historical"},
+    {"color": "#ef4444", "label": "Outlier"},
+    {"color": "#8b5cf6", "label": "Prophet"},
+    {"color": "#10b981", "label": "ARIMA"}
+]
+```
+
+#### Example
+
+```python
+# Display a chart (using st.line_chart, plotly, etc.)
+st.line_chart(data)
+
+# Add legend below
+chart_legend(
+    items=[
+        {"color": "#3b82f6", "label": "Actual"},
+        {"color": "#ef4444", "label": "Upper Threshold"},
+        {"color": "#eab308", "label": "Lower Threshold"},
+        {"color": "#8b5cf6", "label": "Forecast"}
+    ]
+)
+```
+
+---
+
+### 9. Plotly Chart
+
+Render Plotly charts with full interactivity and event callbacks.
+
+```python
+plotly_chart(
+    # Data source (one required)
+    figure: Any = None,            # Plotly figure or dict
+    data: DataFrame = None,        # pandas DataFrame
+
+    # DataFrame options (when using data=)
+    x: str = None,                 # Column name for x-axis
+    y: str | list = None,          # Column name(s) for y-axis
+    color: str = None,             # Column name for color grouping
+    chart_type: str = "line",      # "line", "bar", "scatter", "area", "pie", "histogram"
+    title: str = None,             # Chart title
+
+    # Plotly config
+    config: dict = None,           # Plotly config options
+
+    # Event callbacks
+    on_click: bool = False,        # Enable click events
+    on_select: bool = False,       # Enable selection events
+    on_hover: bool = False,        # Enable hover events
+    on_relayout: bool = False,     # Enable zoom/pan events
+
+    # Expandable dialog
+    expandable: bool = False,      # Show expand button
+    modal_title: str = "",         # Dialog header title
+
+    # Styling
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> dict | None                   # Returns event dict or None
+```
+
+#### Using Plotly Figure
+
+```python
+import plotly.graph_objects as go
+
+fig = go.Figure(
+    data=[
+        go.Scatter(x=[1,2,3,4,5], y=[10,15,13,17,20], mode='lines+markers', name='Sales'),
+        go.Bar(x=[1,2,3,4,5], y=[5,8,6,9,12], name='Orders')
+    ],
+    layout=go.Layout(title='Sales Dashboard')
+)
+
+event = plotly_chart(
+    figure=fig,
+    on_click=True,
+    on_select=True,
+    style={"height": "400px"}
+)
+
+if event and event['type'] == 'click':
+    st.write(f"Clicked: {event['points']}")
+```
+
+#### Using DataFrame
+
+```python
+import pandas as pd
+
+df = pd.DataFrame({
+    'month': ['Jan', 'Feb', 'Mar', 'Apr'],
+    'sales': [100, 150, 120, 180],
+    'orders': [50, 75, 60, 90]
+})
+
+# Simple line chart
+event = plotly_chart(
+    data=df,
+    x='month',
+    y='sales',
+    chart_type='line',
+    title='Monthly Sales'
+)
+
+# Multiple y columns as bar chart
+event = plotly_chart(
+    data=df,
+    x='month',
+    y=['sales', 'orders'],
+    chart_type='bar',
+    title='Sales vs Orders'
+)
+
+# Scatter with color grouping
+event = plotly_chart(
+    data=df,
+    x='sales',
+    y='orders',
+    color='month',
+    chart_type='scatter'
+)
+```
+
+#### Chart Types (DataFrame mode)
+
+| Type | Description |
+|------|-------------|
+| `"line"` | Line chart with connected points |
+| `"scatter"` | Scatter plot with markers only |
+| `"bar"` | Vertical bar chart |
+| `"area"` | Area chart (filled line) |
+| `"pie"` | Pie chart (x=labels, y=values) |
+| `"histogram"` | Histogram of x values |
+
+#### Event Types
+
+| Event | When Triggered | Data Returned |
+|-------|----------------|---------------|
+| `click` | User clicks a data point | `{type: 'click', points: [...]}` |
+| `select` | User box/lasso selects points | `{type: 'select', points: [...]}` |
+| `hover` | User hovers over a point | `{type: 'hover', points: [...]}` |
+| `relayout` | User zooms/pans the chart | `{type: 'relayout', relayout: {...}}` |
+
+#### Point Data Structure
+
+Each point in the `points` array contains:
+
+```python
+{
+    "curveNumber": 0,      # Index of the trace
+    "pointNumber": 2,      # Index of the point in the trace
+    "pointIndex": 2,       # Same as pointNumber
+    "x": "Mar",            # X value
+    "y": 120,              # Y value
+    "customdata": None     # Custom data if provided
+}
+```
+
+#### Expandable Dialog
+
+Charts can be expanded into a full-page dialog using Streamlit's native `st.dialog()`:
+
+```python
+event = plotly_chart(
+    figure=fig,
+    expandable=True,                    # Show expand button in corner
+    modal_title="Sales Dashboard",      # Title in dialog header
+    style={"height": "300px"}
+)
+```
+
+**Dialog Features:**
+- Click the expand icon (⛶) in the top-right corner to open
+- Dialog uses Streamlit's native full-width dialog overlay
+- Click outside the dialog or press Escape to close
+- Chart renders at full dialog width for better visibility
+
+---
+
+### 10. Form Select
+
+A styled dropdown select input.
+
+```python
+form_select(
+    label: str,                   # Label text
+    options: list,                # Options list
+    value: str = "",              # Selected value
+    groups: list = None,          # Option groups (for optgroup)
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> str                          # Returns selected value
+```
+
+#### Simple Options
+
+```python
+options = ["Option A", "Option B", "Option C"]
+```
+
+#### Options with Labels
+
+```python
+options = [
+    {"value": "a", "label": "Option A"},
+    {"value": "b", "label": "Option B"}
+]
+```
+
+#### Grouped Options
+
+```python
+groups = [
+    {"label": "Baselines", "options": ["Baseline v7", "Baseline v6"]},
+    {"label": "Scenarios", "options": ["Q2 Demand Surge", "OEE Initiative"]}
+]
+```
+
+#### Example
+
+```python
+# Simple
+site = form_select(
+    label="Site",
+    options=["AML_14", "ADL", "Devens"],
+    value="AML_14"
+)
+
+# With groups
+scenario = form_select(
+    label="Base On",
+    groups=[
+        {"label": "Baselines", "options": ["Baseline v7 (Current)", "Baseline v6"]},
+        {"label": "Scenarios", "options": ["Q2 Demand Surge", "OEE Initiative"]}
+    ],
+    class_name="max-w-xs"
+)
+```
+
+---
+
+### 11. Form Slider
+
+A styled range slider input.
+
+```python
+form_slider(
+    label: str,                   # Label text
+    value: float,                 # Current value
+    min_val: float,               # Minimum value
+    max_val: float,               # Maximum value
+    step: float = 1,              # Step increment
+    unit: str = "",               # Unit suffix (e.g., "%", "hrs")
+    color: str = "blue",          # Preset or hex color (e.g., "#94a3b8")
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> float                        # Returns current value
+```
+
+#### Example
+
+```python
+# Percentage slider with preset color
+threshold = form_slider(
+    label="Upper Threshold",
+    value=90,
+    min_val=75,
+    max_val=100,
+    unit="%",
+    color="red"
+)
+
+# Time slider
+hold_time = form_slider(
+    label="VPHP Hold Time",
+    value=5.0,
+    min_val=2.0,
+    max_val=8.0,
+    step=0.5,
+    unit=" hrs",
+    color="blue"
+)
+
+# Slider with hex color
+custom_slider = form_slider(
+    label="Custom Color",
+    value=50,
+    min_val=0,
+    max_val=100,
+    color="#ff5733"
+)
+```
+
+---
+
+### 12. Checkbox Group
+
+A group of checkboxes.
+
+```python
+checkbox_group(
+    items: list,                  # List of checkbox items
+    label: str = "",              # Optional group label
+    style: dict = None,
+    class_name: str = "",
+    key: str = None
+) -> list                         # Returns list of checked item IDs
+```
+
+#### Items Format
+
+```python
+items = [
+    {"id": "opt1", "label": "Option 1", "checked": True},
+    {"id": "opt2", "label": "Option 2", "checked": True},
+    {"id": "opt3", "label": "Option 3"}  # checked defaults to False
+]
+```
+
+#### Example
+
+```python
+selected = checkbox_group(
+    label="Parameters to Optimize",
+    items=[
+        {"id": "vphp", "label": "VPHP Hold Time", "checked": True},
+        {"id": "lot_co", "label": "Lot Changeover", "checked": True},
+        {"id": "campaign_co", "label": "Campaign Changeover"},
+        {"id": "batch", "label": "Batch Size"}
+    ]
+)
+
+st.write(f"Selected parameters: {selected}")
+# Output: ['vphp', 'lot_co']
+```
+
+---
+
+## Complete Example App
+
+```python
+import streamlit as st
+from streamlit_react_components import (
+    section_header, stat_card, data_table,
+    form_select, form_slider, checkbox_group
+)
+
+st.set_page_config(page_title="Dashboard", layout="wide")
+
+# Header
+action = section_header(
+    title="Production Dashboard",
+    icon="🏭",
+    actions=[{"id": "refresh", "label": "Refresh", "color": "blue"}]
+)
+
+# Stats row
+col1, col2, col3 = st.columns(3)
+with col1:
+    stat_card(label="Lines Active", value="12", color="green")
+with col2:
+    stat_card(label="At Risk", value="3", color="red")
+with col3:
+    stat_card(label="Avg Utilization", value="82%", color="blue")
+
+# Filters
+st.markdown("### Filters")
+col1, col2 = st.columns(2)
+with col1:
+    site = form_select(label="Site", options=["All", "AML", "ADL", "Devens"])
+with col2:
+    threshold = form_slider(label="Risk Threshold", value=90, min_val=80, max_val=100, unit="%")
+
+# Data table
+st.markdown("### Lines Overview")
+clicked = data_table(
+    columns=[
+        {"key": "line", "label": "Line"},
+        {"key": "util", "label": "Utilization", "format": "percent", "align": "right"},
+        {"key": "status", "label": "Status", "colorByValue": True}
+    ],
+    rows=[
+        {"line": "L1", "util": 94, "status": "above"},
+        {"line": "L2", "util": 82, "status": "within"},
+        {"line": "L3", "util": 65, "status": "below"}
+    ]
+)
+
+if clicked:
+    st.info(f"Selected: {clicked['rowData']['line']}")
+```
+
+---
+
+## Tailwind CSS Classes Reference
+
+Since components use Tailwind CSS, here are commonly used classes:
+
+### Spacing
+- `p-1` to `p-8`: Padding
+- `m-1` to `m-8`: Margin
+- `mt-4`, `mb-4`, `ml-4`, `mr-4`: Directional margin
+
+### Layout
+- `w-full`: Full width
+- `max-w-xs`, `max-w-sm`, `max-w-md`: Max width
+- `flex`, `grid`: Display types
+- `gap-2`, `gap-4`: Gap between items
+
+### Colors (Dark Theme)
+- `bg-slate-900`, `bg-slate-800`: Backgrounds
+- `text-white`, `text-slate-400`: Text colors
+- `border-slate-700`: Border colors
+
+### Effects
+- `rounded`, `rounded-lg`: Border radius
+- `shadow`, `shadow-lg`: Box shadows
+- `opacity-50`: Transparency
+
+---
+
+## License
+
+MIT
