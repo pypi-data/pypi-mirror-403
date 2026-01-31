@@ -1,0 +1,51 @@
+{% import 'utils.jinja' as utils %}
+
+CREATE TABLE {{ study_prefix }}__meta_date AS (
+
+WITH
+
+{% for resource, dates in src_dates.items() %}
+
+dates_{{ resource }} AS (
+  SELECT
+      {{ utils.extract_status(resource) }} AS status,
+      {{ utils.coalesce_date(dates) }} AS "date"
+  FROM {{ resource }} AS src
+),
+
+ranges_{{ resource }} AS (
+    SELECT
+        MIN("date") AS min_date,
+        MAX("date") AS max_date
+    FROM dates_{{ resource }}
+    WHERE
+        -- If you change this status logic, consider if q_date_recent needs the same change.
+        status IS NULL
+        OR (
+            status <> 'entered-in-error'
+            {% if resource == 'Encounter' %}
+            AND status <> 'planned'
+            {% endif %}
+        )
+),
+{% endfor %}
+
+unified AS (
+    {% for resource in src_dates %}
+    SELECT * FROM ranges_{{ resource }}
+    {% if not loop.last %}
+    UNION ALL
+    {% endif -%}
+    {% endfor %}
+)
+
+SELECT
+    MIN(min_date) AS min_date,
+    -- Cap max_date to NOW because (A) it's not entirely accurate to say this study goes to the
+    -- year 2990 just because someone makes a typo and (B) Pandas has issues with parsing dates
+    -- past 2262 by default (search "timestamp limitations" in pandas docs) and gets confused
+    -- when exporting this table.
+    LEAST(MAX(max_date), CURRENT_DATE) AS max_date
+FROM unified
+
+);

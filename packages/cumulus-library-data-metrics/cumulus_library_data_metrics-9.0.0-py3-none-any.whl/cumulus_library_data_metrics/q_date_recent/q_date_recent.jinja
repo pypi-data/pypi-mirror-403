@@ -1,0 +1,40 @@
+{% import 'utils.jinja' as utils %}
+
+CREATE TABLE {{ study_prefix }}__q_date_recent_{{ src|lower }} AS (
+WITH
+intermediate AS (
+SELECT
+    src.id,
+
+    {% for field in fields %}
+    src.{{ utils.quote_field(field) }} AS {{ field|replace('.', '_')|lower }},
+    {% endfor %}
+
+    {{ utils.extract_status(src) }} AS status
+FROM {{ src }} AS src
+)
+SELECT * FROM intermediate
+WHERE
+    (
+        -- Check status, because it's not fair to ding error rows (or planned encounters)
+        -- If you change this logic, consider if meta/dates.jinja needs the same change.
+        status IS NULL
+        OR (
+            status <> 'entered-in-error'
+            {% if src == 'Encounter' %}
+            AND status <> 'planned'
+            {% endif %}
+        )
+    ) AND (
+        -- Check date range. 1900 is arbitrary and maybe should be customizable per-site.
+        -- BCH was seeing valid dates as far back as 1915 (allergy onset at age 3 for a 1912
+        -- birthDate).
+        FALSE
+        {% for field in fields %}
+        OR (
+            {{ utils.quote_field(field|replace('.', '_')|lower) }} IS NOT NULL
+            AND {{ utils.coalesce_date([field|replace('.', '_')|lower]) }} NOT BETWEEN DATE('1900-01-01') AND CURRENT_DATE
+        )
+        {% endfor %}
+    )
+);
