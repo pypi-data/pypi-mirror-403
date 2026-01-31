@@ -1,0 +1,35 @@
+{
+            "condition": "[equals(parameters('create_new_vnet'),'true')]",
+            "comments": "",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "[parameters('vnet_name')]",
+            "apiVersion": "2020-06-01",
+            "location": "[parameters('region')]",
+            "tags" : {
+              "BCM Resource": true,
+              "BCM Cluster": "[parameters('cluster_name')]"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('network_cidr')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[concat(parameters('vnet_name'),'-subnet')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet_cidr')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('security_group').name)]"
+                            },
+                            "natGateway": "[if(equals(parameters('configure_nat_gateway'), 'true'), json(concat('{\"id\": \"', resourceId('Microsoft.Network/natGateways', parameters('nat_gateway_name')), '\"}')), json('null'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('security_group').name)]",
+                "[resourceId('Microsoft.Network/natGateways', parameters('nat_gateway_name'))]"
+            ]
+        }

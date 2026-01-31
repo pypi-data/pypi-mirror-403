@@ -1,0 +1,60 @@
+        {
+            "comments": "",
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[parameters('head_node').name]",
+            "apiVersion": "2020-06-01",
+            "location": "[parameters('region')]",
+            "zones": [
+                "[parameters('availability_zone')]"
+            ],
+            "tags" : "[parameters('head_node').tags]",
+            "properties": {
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('headNodeAvailabilitySetName'))]"
+                },
+                "hardwareProfile": {
+                    "vmSize": "[parameters('head_node').flavor]"
+                },
+              "osProfile": {
+                    "computerName": "[parameters('head_node').name]",
+                    "adminUsername": "inexistentadmin",
+                    "adminPassword": "[parameters('head_node').user_random_password]",
+                    "customData": "[parameters('head_node').custom_data]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": false
+                    },
+                    "secrets": []
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "id": "[resourceId('Microsoft.Compute/images', concat(parameters('cluster_name'), '-os-disk-image'))]"
+                    },
+                    "osDisk": {
+                        "name": "[parameters('head_node').disk.name]",
+                        "osType": "linux",
+                        "caching": "ReadWrite",
+                        "createOption": "fromImage",
+                        "managedDisk": {
+                          "storageAccountType": "[parameters('head_node').disk.volume_type]"
+                        },
+                        "diskSizeGB": "[parameters('head_node').disk.volume_size]"
+                    }
+                },
+
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('head_node').nic_name)]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true
+                    }
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', parameters('head_node').nic_name)]"
+            ]
+        }

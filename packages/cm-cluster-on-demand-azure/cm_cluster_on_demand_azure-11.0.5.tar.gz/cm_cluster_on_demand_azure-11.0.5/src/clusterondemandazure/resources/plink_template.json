@@ -1,0 +1,228 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "cluster_name": {
+            "type": "String"
+        },
+        "location": {
+            "type": "String"
+        },
+        "azure_subscription_id": {
+          "type": "String"
+        },
+        "private_endpoint_name": {
+            "type": "String"
+        },
+        "virtual_network_link_name": {
+            "type": "String"
+        },
+        "private_link_resource": {
+            "type": "String"
+        },
+        "private_link_service_connection_name": {
+            "type": "String"
+        },
+        "target_sub_resource": {
+            "type": "Array"
+        },
+        "request_message": {
+            "type": "String"
+        },
+        "subnet": {
+            "type": "String"
+        },
+        "virtual_network_id": {
+            "type": "String"
+        },
+        "custom_network_interface_name": {
+            "type": "String"
+        },
+        "resource_group": {
+            "type": "String"
+        },
+        "virtual_network_resource_group": {
+            "type": "String"
+        },
+        "virtual_network_deployment_name": {
+            "type": "String"
+        },
+        "private_dns_deployment_name": {
+            "type": "String"
+        },
+        "private_dns_zone_name": {
+            "type": "String"
+        },
+        "dns_zone_group_name": {
+            "type": "String"
+        },
+        "private_dns_zone_config_name": {
+            "type": "String"
+        }
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2021-05-01",
+            "name": "[parameters('private_endpoint_name')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [],
+            "tags" : {
+               "BCM Resource": true,
+               "BCM Cluster": "[parameters('cluster_name')]"
+            },
+            "properties": {
+                "subnet": {
+                    "id": "[parameters('subnet')]"
+                },
+                "customNetworkInterfaceName": "[parameters('custom_network_interface_name')]",
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[parameters('private_link_service_connection_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[parameters('private_link_resource')]",
+                            "groupIds": "[parameters('target_sub_resource')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-08-01",
+            "name": "[parameters('private_dns_deployment_name')]",
+            "dependsOn": [
+                "[parameters('private_endpoint_name')]"
+            ],
+            "tags" : {
+               "BCM Resource": true,
+               "BCM Cluster": "[parameters('cluster_name')]"
+            },
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "resources": [
+                        {
+                            "apiVersion": "2019-08-01",
+                            "name": "[parameters('private_dns_zone_name')]",
+                            "type": "Microsoft.Resources/deployments",
+                            "subscriptionId": "[parameters('azure_subscription_id')]",
+                            "resourceGroup": "[parameters('resource_group')]",
+                            "tags" : {
+                                "BCM Resource": true,
+                                "BCM Cluster": "[parameters('cluster_name')]"
+                            },
+                            "properties": {
+                                "mode": "Incremental",
+                                "template": {
+                                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                                    "contentVersion": "1.0.0.0",
+                                    "resources": [
+                                        {
+                                            "type": "Microsoft.Network/privateDnsZones",
+                                            "apiVersion": "2018-09-01",
+                                            "name": "privatelink.blob.core.windows.net",
+                                            "location": "global",
+                                            "tags": {},
+                                            "properties": {}
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-08-01",
+            "name": "[parameters('virtual_network_link_name')]",
+            "dependsOn": [
+                "[parameters('private_dns_deployment_name')]"
+            ],
+            "tags" : {
+               "BCM Resource": true,
+               "BCM Cluster": "[parameters('cluster_name')]"
+            },
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "resources": [
+                        {
+                            "apiVersion": "2017-05-10",
+                            "name": "[parameters('virtual_network_deployment_name')]",
+                            "type": "Microsoft.Resources/deployments",
+                            "subscriptionId": "[parameters('azure_subscription_id')]",
+                            "resourceGroup": "[parameters('resource_group')]",
+                            "properties": {
+                                "mode": "Incremental",
+                                "template": {
+                                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                                    "contentVersion": "1.0.0.0",
+                                    "resources": [
+                                        {
+                                            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+                                            "apiVersion": "2018-09-01",
+                                            "name": "[concat('privatelink.blob.core.windows.net', '/', uniqueString(parameters('virtual_network_id')), '-', parameters('cluster_name'))]",
+                                            "location": "global",
+                                            "properties": {
+                                                "virtualNetwork": {
+                                                    "id": "[parameters('virtual_network_id')]"
+                                                },
+                                                "registrationEnabled": false
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-08-01",
+            "name": "[parameters('dns_zone_group_name')]",
+            "dependsOn": [
+                "[parameters('private_endpoint_name')]",
+                "[parameters('private_dns_deployment_name')]"
+            ],
+            "tags" : {
+               "BCM Resource": true,
+               "BCM Cluster": "[parameters('cluster_name')]"
+            },
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "resources": [
+                        {
+                            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+                            "apiVersion": "2021-05-01",
+                            "name": "[concat(parameters('private_endpoint_name'), '/', 'default')]",
+                            "location": "[parameters('location')]",
+                            "properties": {
+                                "privateDnsZoneConfigs": [
+                                    {
+                                        "name": "[parameters('private_dns_zone_config_name')]",
+                                        "properties": {
+                                            "privateDnsZoneId": "[concat('/subscriptions/', parameters('azure_subscription_id'), '/resourceGroups/', parameters('resource_group'), '/providers/Microsoft.Network/privateDnsZones/', 'privatelink.blob.core.windows.net')]"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "resourceGroup": "[parameters('resource_group')]"
+        }
+    ]
+}
