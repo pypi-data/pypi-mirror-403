@@ -1,0 +1,3 @@
+from .collaborator.schedule_collaborator import ScheduleCollaboratorDTO
+from .medical_visit.medical_certificate import MedicalCertificateDTO, DiagnosisDTO, MedicalDiagnosesDTO
+from .medical_visit.recipe_dto import HeaderRecipe, RecipeMedicalDrugData
