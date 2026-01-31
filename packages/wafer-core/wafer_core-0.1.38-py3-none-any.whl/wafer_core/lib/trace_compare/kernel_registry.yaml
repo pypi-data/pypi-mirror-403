@@ -1,0 +1,349 @@
+# Kernel Pattern Registry
+# Version: 2025-01
+# Last updated: 2025-01-28
+# Update when: New GPU architecture, new library version, new model architecture
+
+version: "2025-01"
+
+# ============================================================================
+# SUPPORTED HARDWARE
+# ============================================================================
+# NVIDIA:
+#   - SM100 (Blackwell): B200, B100
+#   - SM90 (Hopper): H100, H200
+#   - SM89 (Ada Lovelace): L40, RTX 4090
+#   - SM80 (Ampere): A100, A10, A30
+#
+# AMD:
+#   - CDNA 4 (gfx950): MI355X
+#   - CDNA 3 (gfx942): MI300X, MI300A, MI325X
+#   - CDNA 2 (gfx90a): MI250X, MI210
+#
+# Note: MI325X uses same gfx942 ISA as MI300X but with 256GB HBM3e memory
+# ============================================================================
+
+attention:
+  nvidia:
+    # SM100 (Blackwell B200/B100) - 'a' suffix = prefill/context, 'f' suffix = decode/forgen
+    - pattern: "fmhaSm100a*"
+      hardware: "SM100 (Blackwell)"
+      library: "Flash Attention 3"
+      phase: prefill
+    - pattern: "fmhaSm100f*"
+      hardware: "SM100 (Blackwell)"
+      library: "Flash Attention 3"
+      phase: decode
+    # SM90 (Hopper H100/H200) - Flash Attention 2/3
+    - pattern: "fmhaSm90*"
+      hardware: "SM90 (Hopper)"
+      library: "Flash Attention 3"
+    - pattern: "flash::flash_fwd_kernel*"
+      hardware: "SM90 (Hopper)"
+      library: "Flash Attention 2"
+      phase: prefill
+    - pattern: "flash_fwd_*"
+      hardware: "SM90 (Hopper)"
+      library: "Flash Attention 2"
+    - pattern: "fmha_v2_*flash_attention_forward*"
+      hardware: "SM90 (Hopper)"
+      library: "Flash Attention 2"
+      phase: prefill
+    - pattern: "fmha_v2_*"
+      hardware: "SM90 (Hopper)"
+      library: "Flash Attention 2"
+    # SM89 (Ada Lovelace L40/RTX 4090)
+    - pattern: "fmhaSm89*"
+      hardware: "SM89 (Ada Lovelace)"
+      library: "Flash Attention"
+    # SM80 (Ampere A100/A10)
+    - pattern: "fmhaSm80*"
+      hardware: "SM80 (Ampere)"
+      library: "Flash Attention"
+    - pattern: "fmha_*"
+      hardware: "SM80 (Ampere)"
+      library: "Flash Attention"
+    # Generic phase patterns (fallback)
+    - pattern: "*Context*"
+      phase: prefill
+    - pattern: "*context*"
+      phase: prefill
+    - pattern: "*ForGen*"
+      phase: decode
+    - pattern: "*forgen*"
+      phase: decode
+  amd:
+    # CDNA 4 (MI355X - gfx950) - Composable Kernel v2
+    - pattern: "*ck_fmha_*"
+      hardware: "CDNA 4 (MI355X)"
+      library: "Composable Kernel"
+    - pattern: "*flash_attn_ck*"
+      hardware: "CDNA 4 (MI355X)"
+      library: "Composable Kernel"
+    # CDNA 3 (MI300X/MI325X - gfx942) - Composable Kernel unified attention
+    - pattern: "*unified_attention_2d*"
+      hardware: "CDNA 3 (MI300X/MI325X)"
+      phase: prefill
+      library: "Composable Kernel"
+    - pattern: "*unified_attention_3d*"
+      hardware: "CDNA 3 (MI300X/MI325X)"
+      phase: decode
+      library: "Composable Kernel"
+    - pattern: "kernel_unified_attention_2d*"
+      hardware: "CDNA 3 (MI300X/MI325X)"
+      phase: prefill
+      library: "Composable Kernel"
+    - pattern: "kernel_unified_attention_3d*"
+      hardware: "CDNA 3 (MI300X/MI325X)"
+      phase: decode
+      library: "Composable Kernel"
+    - pattern: "attention_2d*"
+      phase: prefill
+      library: "Composable Kernel"
+    - pattern: "attention_3d*"
+      phase: decode
+      library: "Composable Kernel"
+    # Triton Flash Attention (works on all AMD GPUs)
+    - pattern: "triton_*flash*"
+      library: "Triton Flash Attention"
+    - pattern: "triton_*attention*"
+      library: "Triton"
+
+gemm:
+  nvidia:
+    # cuBLASLt (H100/H200 optimized)
+    - pattern: "nvjet_*"
+      library: "cuBLASLt"
+      hardware: "SM90+ (Hopper/Blackwell)"
+    - pattern: "void cublasLt*"
+      library: "cuBLASLt"
+    # CUTLASS (all architectures)
+    - pattern: "cutlass*gemm*"
+      library: "CUTLASS 3.x"
+    - pattern: "cutlass_*"
+      library: "CUTLASS"
+    # cuBLAS legacy
+    - pattern: "cublas*"
+      library: "cuBLAS"
+    # FP8 GEMM (H100+ specific)
+    - pattern: "*fp8*gemm*"
+      library: "cuBLASLt FP8"
+      hardware: "SM90+ (Hopper)"
+    - pattern: "*e4m3*"
+      library: "cuBLASLt FP8"
+      hardware: "SM90+ (Hopper)"
+  amd:
+    # Tensile (all CDNA architectures)
+    - pattern: "Cijk_*"
+      library: "Tensile"
+    - pattern: "Custom_Cijk_*"
+      library: "Tensile"
+    # hipBLASLt (MI300X/MI325X/MI355X optimized)
+    - pattern: "wvSplitK*"
+      library: "hipBLASLt"
+      hardware: "CDNA 3/4 (MI300X/MI325X/MI355X)"
+    - pattern: "hipblaslt*"
+      library: "hipBLASLt"
+    - pattern: "hipblas*"
+      library: "hipBLAS"
+    # FP8 GEMM (MI300X+ specific)
+    - pattern: "*fp8*"
+      library: "hipBLASLt FP8"
+      hardware: "CDNA 3+ (MI300X/MI325X/MI355X)"
+    # CDNA 4 specific (MI355X - gfx950)
+    - pattern: "*gfx950*"
+      library: "Tensile"
+      hardware: "CDNA 4 (MI355X)"
+    # ISA-specific patterns (gfx942 = MI300X/MI325X, gfx950 = MI355X)
+    - pattern: "*ISA942*"
+      library: "Tensile"
+      hardware: "CDNA 3 (MI300X/MI325X)"
+    - pattern: "*ISA950*"
+      library: "Tensile"
+      hardware: "CDNA 4 (MI355X)"
+
+ssm:
+  both:
+    - pattern: "selective_scan*"
+      model: "Mamba"
+    - pattern: "ssd_*"
+      model: "Mamba-2"
+    - pattern: "causal_conv1d*"
+      model: "Mamba"
+    - pattern: "mamba_*"
+      model: "Mamba"
+
+rmsnorm:
+  both:
+    # Fused RMSNorm+GEMM patterns (AMD Triton fuses these)
+    # Key indicator: *rocm_unquantized_gemm* in kernel name
+    - pattern: "triton_*rocm_unquantized_gemm*rsqrt*"
+      library: "Triton"
+      fused_with: "GEMM"
+    - pattern: "triton_*rsqrt*rocm_unquantized_gemm*"
+      library: "Triton"
+      fused_with: "GEMM"
+    - pattern: "triton_*rsqrt*gemm*"
+      library: "Triton"
+      fused_with: "GEMM"
+    - pattern: "triton_*gemm*rsqrt*"
+      library: "Triton"
+      fused_with: "GEMM"
+    # Non-fused RMSNorm (no gemm in name)
+    - pattern: "triton_*rsqrt*"
+      library: "Triton"
+    - pattern: "*rmsnorm*"
+      library: "Various"
+
+moe:
+  both:
+    - pattern: "_matmul_ogs_*"
+      library: "Triton"
+    - pattern: "bmm_*dynbatch*"
+      library: "Triton"
+    - pattern: "*routing*"
+      library: "Various"
+    - pattern: "*topk*"
+      library: "Various"
+    - pattern: "fused_moe_kernel*"
+      library: "vLLM"
+    - pattern: "*vllm::moe::*"
+      library: "vLLM"
+    - pattern: "*moe_align_block_size*"
+      library: "vLLM"
+    - pattern: "*count_and_sort_expert*"
+      library: "vLLM"
+    - pattern: "*topkGatingSoftmax*"
+      library: "vLLM"
+
+# Activation functions (SwiGLU, SiLU, etc.)
+activation:
+  both:
+    # Fused SwiGLU+GEMM (AMD Triton fuses these)
+    - pattern: "triton_*rocm_unquantized_gemm*silu*"
+      operation: "SwiGLU+GEMM"
+      library: "Triton"
+      fused_with: "GEMM"
+    - pattern: "triton_*silu*rocm_unquantized_gemm*"
+      operation: "SwiGLU+GEMM"
+      library: "Triton"
+      fused_with: "GEMM"
+    - pattern: "triton_*gemm*silu*"
+      operation: "SwiGLU+GEMM"
+      library: "Triton"
+      fused_with: "GEMM"
+    - pattern: "triton_*silu*gemm*"
+      operation: "SwiGLU+GEMM"
+      library: "Triton"
+      fused_with: "GEMM"
+    # Non-fused activation
+    - pattern: "*act_and_mul_kernel*"
+      operation: "SwiGLU"
+      library: "vLLM"
+    - pattern: "triton_*silu*"
+      operation: "SiLU"
+      library: "Triton"
+    - pattern: "*silu_kernel*"
+      operation: "SiLU"
+      library: "vLLM"
+    - pattern: "*gelu*"
+      operation: "GELU"
+      library: "Various"
+
+# KV Cache operations
+kv_cache:
+  both:
+    - pattern: "*reshape_and_cache*"
+      library: "vLLM"
+    - pattern: "*concat_and_cache*"
+      library: "vLLM"
+    - pattern: "*cache_mla*"
+      library: "vLLM"
+
+# Softmax operations
+softmax:
+  both:
+    - pattern: "*SoftMax*"
+      library: "PyTorch"
+    - pattern: "*softmax*"
+      library: "PyTorch"
+
+# Triton fused operations (more specific patterns)
+triton:
+  both:
+    - pattern: "triton_poi_fused_mul*silu*"
+      operation: "SwiGLU"
+      library: "Triton"
+    - pattern: "triton_poi_fused*"
+      operation: "Pointwise"
+      library: "Triton"
+    - pattern: "triton_red_fused*"
+      operation: "Reduction"
+      library: "Triton"
+    - pattern: "triton_per_fused*"
+      operation: "Persistent"
+      library: "Triton"
+
+# Reduce/Scan operations
+reduce:
+  nvidia:
+    - pattern: "*cub::*Reduce*"
+      library: "CUB"
+    - pattern: "*cub::*Scan*"
+      library: "CUB"
+    - pattern: "*splitKreduce*"
+      library: "cuBLASLt"
+      note: "GEMM epilogue reduction"
+  amd:
+    - pattern: "*rocprim::*reduce*"
+      library: "rocPRIM"
+    - pattern: "*rocprim::*scan*"
+      library: "rocPRIM"
+    - pattern: "reduce_segments*"
+      library: "vLLM"
+
+# Sorting operations
+sorting:
+  nvidia:
+    - pattern: "*RadixSort*"
+      library: "CUB"
+    - pattern: "*DeviceSort*"
+      library: "CUB"
+  amd:
+    - pattern: "*rocprim::*sort*"
+      library: "rocPRIM"
+    - pattern: "*rocprim::*merge*"
+      library: "rocPRIM"
+
+# Memory/Copy operations
+memory:
+  both:
+    - pattern: "*memcpy*"
+      library: "CUDA/HIP Runtime"
+    - pattern: "*direct_copy*"
+      library: "PyTorch"
+    - pattern: "*copy_page_indices*"
+      library: "vLLM"
+    - pattern: "*rocclr_copyBuffer*"
+      library: "AMD ROCclr"
+    - pattern: "*rocprim::*transform*"
+      library: "rocPRIM"
+
+# Indexing/Scatter-Gather operations
+indexing:
+  both:
+    - pattern: "*scatter_gather*"
+      library: "PyTorch"
+    - pattern: "*index_elementwise*"
+      library: "PyTorch"
+    - pattern: "*fill_reverse_indices*"
+      library: "PyTorch"
+
+# Elementwise operations (fallback patterns)
+elementwise:
+  both:
+    - pattern: "at::native::*elementwise*"
+      library: "PyTorch"
+    - pattern: "at::native::*vectorized*"
+      library: "PyTorch"
+    - pattern: "*distribution_elementwise*"
+      library: "PyTorch"
