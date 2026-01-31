@@ -1,0 +1,1154 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Kalman filtering &#8212; TrackLib 1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+    <link rel="stylesheet" type="text/css" href="../_static/nbsphinx-code-cells.css?v=2aa19091" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=3ee479438cf8b5e0d341" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=3ee479438cf8b5e0d341" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=3ee479438cf8b5e0d341"></script>
+
+    <script src="../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usecase/KalmanFiltering';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Different stops detection methods" href="StopPoints.html" />
+    <link rel="prev" title="Switchbacks identification" href="Switchbacks.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/TracklibLogo.png" class="logo__image only-light" alt="TrackLib 1.0 documentation - Home"/>
+    <script>document.write(`<img src="../_static/TracklibLogo.png" class="logo__image only-dark" alt="TrackLib 1.0 documentation - Home"/>`);</script>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../started/index.html">
+    Getting Started
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../userguide/gallery.html">
+    Quick Examples
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Use Cases
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/umrlastig/tracklib" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <button class="sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../started/index.html">
+    Getting Started
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../userguide/gallery.html">
+    Quick Examples
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Use Cases
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/umrlastig/tracklib" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">A quickstart guide to the Tracklib library</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Summarize.html">Summarize GPS information in a regular grid</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Switchbacks.html">Switchbacks identification</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Kalman filtering</a></li>
+<li class="toctree-l1"><a class="reference internal" href="StopPoints.html">Different stops detection methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="AggregatedTrajectory.html">Aggregated Trajectory: position errors and shape deviation</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Use Cases</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Kalman filtering</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="Kalman-filtering">
+<h1>Kalman filtering<a class="headerlink" href="#Kalman-filtering" title="Link to this heading">#</a></h1>
+<p>This tutorial is a gentle introduction to Kalman filtering.</p>
+<p>Kalman filter (KF) is a powerful algorithm to estimate unknown values of state variables, given (noisy) observations and a physical model describing the evolution of state variables.</p>
+<p>In general, the states are the variables we are intersted in and we want to estimate. They can be time-varying (e.g. position, speed of a car, and in general all kinematic variables) or constant parameter (e.g. weight of a car). Note that all estimated parameters will be varying in the KF (the former will vary as the quantity they try to estimate is varying, the latter will vary because we have a more and more accurate approximation of the unknown quantity they try to estimate). To run KF, we
+need a dynamic model describing how parameters at time <span class="math notranslate nohighlight">\(t\)</span> should nominally evolve to the next epoch <span class="math notranslate nohighlight">\(t+1\)</span> (here ‘nominally’ means, in the absence of noise, and under the assumption that the underlying physical model is exact).</p>
+<p>On the other hand, observations will be supplied to KF in order to make up for the approximations of the dynamic model. Those observations need not be directly on the state variables. For example, we may want to estimate the 2D position of a vehicle (two state variables <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span>) and use observations based on a set of ranging beacons. But, at least, we need to provide the observation model, that tells KF how observations would be generated from state variables (simply put: if we
+had perfect knowledge of the state variables, how would we compute the observation values).</p>
+<p>To sum up, KF is efficient in all situations where:</p>
+<ol class="arabic simple">
+<li><p>We want to estimate unknown states of a system.</p></li>
+<li><p>We have a set of observations, coming from various sensors, providing noisy and partial information on state variables, with a good knowledge of their respective accuracies.</p></li>
+<li><p>We have a prior approximate physical model on how the system should evolve under perfect conditions, and we know to what extent this approximation is correct.</p></li>
+</ol>
+<p>In Tracklib, state and observations are stored as analytical features (AF) in the tracks, and estimation is performed recursively at each timestamp (i.e. for each point in the track). As long as the KF parameters are not intentionnaly modified, the estimation will be performed in the exact same way on different tracks (output estimated values will of course depend on each individual track observations).</p>
+<p>Running a KF with <span class="math notranslate nohighlight">\(n\)</span> states and <span class="math notranslate nohighlight">\(m\)</span> observation variables requires 6 inputs:</p>
+<ol class="arabic simple">
+<li><p>A dynamic model <span class="math notranslate nohighlight">\(F\)</span> (an equation describing how the <span class="math notranslate nohighlight">\(n\)</span> state variables are nominally evolving to the next time step).</p></li>
+<li><p>A covariance matrix <span class="math notranslate nohighlight">\(Q\)</span> describing how <span class="math notranslate nohighlight">\(F\)</span> is a close approximation of the actual behavior of the system. The higher the values of <span class="math notranslate nohighlight">\(Q\)</span>, the less confidence we have in our model.</p></li>
+<li><p>An observation model <span class="math notranslate nohighlight">\(H\)</span> describing how the <span class="math notranslate nohighlight">\(n\)</span> state variables are used to compute the <span class="math notranslate nohighlight">\(m\)</span> observation variables.</p></li>
+<li><p>A covariance matrix <span class="math notranslate nohighlight">\(R\)</span> describing how <span class="math notranslate nohighlight">\(H\)</span> is a close approximation of the actual behavior of the sensors. The higher the values of <span class="math notranslate nohighlight">\(R\)</span>, the less confidence we have in our observations.</p></li>
+<li><p>An intial estimate <span class="math notranslate nohighlight">\(X_0\)</span> of the state parameters.</p></li>
+<li><p>A covariance matrix <span class="math notranslate nohighlight">\(P_0\)</span> describing the confidence we have in this initial estimate <span class="math notranslate nohighlight">\(X_0\)</span>.</p></li>
+</ol>
+<p>If we have no information about the initial state (blind initialization of the filter), we can set arbitrary values in <span class="math notranslate nohighlight">\(X_0\)</span> and set <span class="math notranslate nohighlight">\(P_0\)</span> to be a diagonal matrix with arbitrarily large variances.</p>
+<p>Note that <span class="math notranslate nohighlight">\(Q\)</span> and <span class="math notranslate nohighlight">\(R\)</span> values are somehow apportionned to each other. Increasing values of <span class="math notranslate nohighlight">\(Q\)</span> (i.e. decreasing our confidence in the dynamic model) is equivalent to decreasing the values of <span class="math notranslate nohighlight">\(R\)</span> (hence increasing the confience we have in our observations).</p>
+<p>Note also that the physical relation <span class="math notranslate nohighlight">\(H\)</span> between state and observations needs not be invertible. This means that we are not assuming that the perfect state of the system can be retrieved solely from the observations at any given epoch. However, if the relation <span class="math notranslate nohighlight">\(H\)</span> is only poorly informative, then we would better have a strong and constraining model <span class="math notranslate nohighlight">\(F\)</span> to avoid divergence of the solution. On the opposite, a sloppy and non-informative dynamic model should always be paired with
+invertible or nearly invertible observation model.</p>
+<p>In vanilla KF, the relations <span class="math notranslate nohighlight">\(F\)</span> and <span class="math notranslate nohighlight">\(H\)</span> must be linear, and are then described by matrices (<span class="math notranslate nohighlight">\(n \times n\)</span> matrix for <span class="math notranslate nohighlight">\(F\)</span>, with <span class="math notranslate nohighlight">\(n \times n\)</span> covariance matrix <span class="math notranslate nohighlight">\(Q\)</span> and <span class="math notranslate nohighlight">\(m \times n\)</span> matrix for <span class="math notranslate nohighlight">\(H\)</span> with <span class="math notranslate nohighlight">\(m \times m\)</span> covariance matrix <span class="math notranslate nohighlight">\(R\)</span>). However, Tracklib implements an Unscented Kalman Filter (UKF) which can be used to cover also the cases where <span class="math notranslate nohighlight">\(F\)</span> and <span class="math notranslate nohighlight">\(H\)</span> are non-linear. In this case they would be described as
+<span class="math notranslate nohighlight">\(\mathbb{R}^n \rightarrow \mathbb{R}^n\)</span> and <span class="math notranslate nohighlight">\(\mathbb{R}^n \rightarrow \mathbb{R}^m\)</span> functions for <span class="math notranslate nohighlight">\(F\)</span> and <span class="math notranslate nohighlight">\(H\)</span>, respectively. In this case covariances <span class="math notranslate nohighlight">\(Q\)</span> and <span class="math notranslate nohighlight">\(R\)</span> still remain in matrix form.</p>
+<p>Let’s start to implement a KF in Tracklib.</p>
+<section id="First-we-set-our-environment">
+<h2>First we set our environment<a class="headerlink" href="#First-we-set-our-environment" title="Link to this heading">#</a></h2>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="c1">#-------------------------------------------------------</span>
+<span class="c1"># Import de tracklib</span>
+<span class="n">module_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;../../..&#39;</span><span class="p">))</span>
+<span class="k">if</span> <span class="n">module_path</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">module_path</span><span class="p">)</span>
+
+<span class="kn">import</span> <span class="nn">tracklib</span> <span class="k">as</span> <span class="nn">trk</span>
+</pre></div>
+</div>
+</div>
+<p>In this example, we will generate a synthetic smooth track, add some noise to it, and then try to retrieve the original track. To generate a track we use the function generate from the package Synthetics. The parameter 0.2 describes the smoothness of the track; here we set not to low value, to get smooth and easily predictable kinematics. The parameter dt=10 is the timestamp increment. In order to get reproducible results, we use the seed 123.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">trk</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+<span class="n">track1</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">track2</span> <span class="o">=</span> <span class="n">track1</span><span class="o">.</span><span class="n">noise</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Generated track from 05/02/2042 00:44:56 to 05/02/2042 01:44:56 [360 pts, 159.24m]
+</pre></div></div>
+</div>
+<p>Let’s inspect the generated tracks</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">track1</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>
+<span class="n">track1</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;k-&#39;</span><span class="p">)</span>
+<span class="n">track2</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+-------------------------------------
+GPS track #0 of user 0:
+-------------------------------------
+  Nb of pt(s):   360
+  Ref sys id   : ENU
+  Starting at  : 05/02/2042 00:45:06
+  Ending at    : 05/02/2042 01:44:56
+  Duration     : 3590.000 s
+  Length       : 159.242 m
+-------------------------------------
+
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_7_1.png" src="../_images/usecase_KalmanFiltering_7_1.png" />
+</div>
+</div>
+<p>In this problem, we are interested in 4 parameters: 2 position parameters (<span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span>) and 2 speed parameters (<span class="math notranslate nohighlight">\(v_x\)</span> and <span class="math notranslate nohighlight">\(v_y\)</span>). The state vector is then <span class="math notranslate nohighlight">\(X = [x, y, v_x, v_y]^T\)</span>.</p>
+<p>We need now to build the 6 inputs of the model. We are using here standard (linear) Kalman Filter. All ingredients of the filter will be matrices.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+</pre></div>
+</div>
+</div>
+<p>We will assume the speed of the mobile is constant.</p>
+<p>Warning: when we state that the speed of the mobile is constant, it’s from a ‘statistical’ perspective. That does not necessarily mean that the estimated speed of the mobile out of the KF will be rigorously the same during all the sequence, but that the speed between two subsequent epochs is ‘approximately’ the same. How close they are to each other will be specified by the dynamic model covariance matrix <span class="math notranslate nohighlight">\(Q\)</span>.</p>
+<p>The speed being assumed constant between time steps, we can write:</p>
+<p><span class="math notranslate nohighlight">\(v_x(t+1) = v_x(t)\)</span></p>
+<p><span class="math notranslate nohighlight">\(v_y(t+1) = v_y(t)\)</span></p>
+<p>Of course, as stated above, those two equations are approximations. The rigorous version would be:</p>
+<p><span class="math notranslate nohighlight">\(v_x(t+1) = v_x(t) + \eta_x(t)\)</span></p>
+<p><span class="math notranslate nohighlight">\(v_y(t+1) = v_y(t) + \eta_y(t)\)</span></p>
+<p>where <span class="math notranslate nohighlight">\(\eta_x\)</span> and <span class="math notranslate nohighlight">\(\eta_y\)</span> describe a noise contribution on the model. For example, for a car trying to drive at constant speed , these parameters can represent the wind force variations on the front of the car. The wind being impredictable (they can as well push or slow down the car) there is no choice but considering its contribution in the covariance matrix <span class="math notranslate nohighlight">\(Q\)</span>. So we will use the two simplified equations.</p>
+<p>On the other hand, the evolution of the positions <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span> is well described by kinematics equations: <span class="math notranslate nohighlight">\(x(t+1) = x(t) + v_x(t)\)</span> <span class="math notranslate nohighlight">\(y(t+1) = y(t) + v_y(t)\)</span></p>
+<p>These equations (corresponding to a first order Taylor expansion) are perfectly valid as long as we assume that the acceleration is null (which is the case, since we assumed no speed variations on any component <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span>).</p>
+<p>Putting all these equations together gives:</p>
+<p><span class="math notranslate nohighlight">\(x(t+1) = x(t) + v_x(t)\)</span></p>
+<p><span class="math notranslate nohighlight">\(y(t+1) = y(t) + v_y(t)\)</span></p>
+<p><span class="math notranslate nohighlight">\(v_x(t+1) = v_x(t)\)</span></p>
+<p><span class="math notranslate nohighlight">\(v_y(t+1) = v_y(t)\)</span></p>
+<p>which is expressed in matrix form as:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{bmatrix}
+x\\
+y\\
+v_x\\
+v_y
+\end{bmatrix}_{t+1} = \begin{bmatrix}
+1 &amp; 0 &amp; 1 &amp; 0\\
+0 &amp; 1 &amp; 0 &amp; 1\\
+0 &amp; 0 &amp; 1 &amp; 0\\
+0 &amp; 0 &amp; 0 &amp; 1\\
+\end{bmatrix}\begin{bmatrix}
+x\\
+y\\
+v_x\\
+v_y
+\end{bmatrix}_{t}\end{split}\]</div>
+<p>This is the matrix we are going to feed to the KF:</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]])</span>
+</pre></div>
+</div>
+</div>
+<p>Note that this matrix can be directly and equivalently formed from Dynamics library:</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">F</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">DYN_MAT_2D_CST_SPEED</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<p>The covariance matrix might be a bit tricky to parameterize, but we’ll start like that:</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">Q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mf">1e-8</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">2e-4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">2e-4</span><span class="p">]])</span>
+</pre></div>
+</div>
+</div>
+<p>It can be easily interpreted: the bottom-right value 2e-4, means that the last dynamic equation <span class="math notranslate nohighlight">\(v_y(t+1) = v_y(t)\)</span> is true, up to a random variable <span class="math notranslate nohighlight">\(\eta_y\)</span>, whose variance is 2e-4 (i.e. with 0.01414 standard deviation). This means that, between two subsequent epochs in the track, the speed on each component <span class="math notranslate nohighlight">\(v_x\)</span> and <span class="math notranslate nohighlight">\(v_y\)</span> would typically not increase or decrease by more than 0.05 m/s (<span class="math notranslate nohighlight">\(3\sigma\)</span>). Similarly, the value 1e-8 on the first top rows, means that the
+update equations on positions <span class="math notranslate nohighlight">\(x(t+1) = x(t) + v_x(t)\)</span> and <span class="math notranslate nohighlight">\(y(t+1) = y(t) + v_y(t)\)</span> are accurate up to a random noise of standard deviation 0.0001 m.</p>
+<p>For the observation model, we will assume that the GPS provides (noisy) estimates of the position variables <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span>. The model <span class="math notranslate nohighlight">\(H\)</span> is therefore a <span class="math notranslate nohighlight">\(2 \times 4\)</span> matrix (it takes as input the 4 state parameters, and computes 2 observation values). Since the observation are directly the first two state parameters, the relation is simply:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{bmatrix}
+x_{GPS}\\
+y_{GPS}
+\end{bmatrix}_{t+1} = \begin{bmatrix}
+1 &amp; 0 &amp; 0 &amp; 0\\
+0 &amp; 1 &amp; 0 &amp; 0
+\end{bmatrix}\begin{bmatrix}
+x\\
+y\\
+v_x\\
+v_y
+\end{bmatrix}_{t}\end{split}\]</div>
+<p>and then <span class="math notranslate nohighlight">\(H\)</span> is:</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]])</span>
+</pre></div>
+</div>
+</div>
+<p>The first (resp. second) row describes the computation of observation on <span class="math notranslate nohighlight">\(x\)</span> (resp <span class="math notranslate nohighlight">\(y\)</span>) from the GPS. Note that these observations are only noisy measurements on the actual unknown state parameters <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span>. The noise variance is given by the matrix <span class="math notranslate nohighlight">\(R\)</span>. We will assume that the GPS has an accuracy of about 1 m on each axis. There is no correlation between errors on each individual component so the matrix is diagonal:</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[9]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]])</span>
+</pre></div>
+</div>
+</div>
+<p>Eventually, we will set the initial state <span class="math notranslate nohighlight">\(X_0\)</span> from the first two (noisy) observations of the GPS, stored in the positions of the track, and we will start with zero speed.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">X0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="n">track2</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span>
+    <span class="p">[</span><span class="n">track2</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+</pre></div>
+</div>
+</div>
+<p>We provide the associated variance on these initial estimates:</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">P0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e4</span><span class="p">]])</span>
+</pre></div>
+</div>
+</div>
+<p>Unsurprisingly, the variances set on the initial position <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span> are the same as the GPS variance (since <span class="math notranslate nohighlight">\(X_0\)</span> has been initialized from the GPS measurements, this seems to be a reasonable assumption). If we had a perfect information on the starting point we could set a much lower variance, for example 1e-4 if we had centimetric accuracy on the starting point. However, this is at risk of slow convergence if the starting point happens to be erroneous. In order to avoid too
+slow convergence of the filter, it is often better to be conservative on our knowledge of initialization, and set <span class="math notranslate nohighlight">\(P_0\)</span> with high variances. That is the case for the speed. We don’t know the initial speed of the mobile (no speed sensor) but assuming we are dealing with a terrestrial vehicle, an initial variance of speed of 1e4 (100 m/s standard deviation) on each axis, seems more than reasonable.</p>
+<p>Then, we can initialize a Kalman object with those 6 matrices:</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[12]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">UKF</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">KalmanFilter</span><span class="p">()</span>
+<span class="n">UKF</span><span class="o">.</span><span class="n">setTransition</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">Q</span><span class="p">)</span>
+<span class="n">UKF</span><span class="o">.</span><span class="n">setObservation</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="n">R</span><span class="p">)</span>
+<span class="n">UKF</span><span class="o">.</span><span class="n">setInitState</span><span class="p">(</span><span class="n">X0</span><span class="p">,</span> <span class="n">P0</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<p>The second line creates the Kalman filter object. The third line is for the dynamics (a.k.a. transition) model. The fourth line inputs the observation model. Eventually, the initial state is specified in the fifth line. To check that our parameterization is correct, a convenient tool is provided with the summary function:</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[13]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">UKF</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+===========================================================
+Kalman filter
+Type: standard (KF)
+Stationnarity: Yes
+Number of states         n = 4
+Number of observations   m = 2
+===========================================================
+Dynamic model [n x n]:
+[[1 0 1 0]
+ [0 1 0 1]
+ [0 0 1 0]
+ [0 0 0 1]]
+E.g. x = [[3 1 3 4]] =&gt; F(x) = [[6 5 3 4]]
+-----------------------------------------------------------
+Dynamic model covariance matrix [n x n]:
+[[1.e-08 0.e+00 0.e+00 0.e+00]
+ [0.e+00 1.e-08 0.e+00 0.e+00]
+ [0.e+00 0.e+00 2.e-04 0.e+00]
+ [0.e+00 0.e+00 0.e+00 2.e-04]]
+===========================================================
+Observation model [m x n]:
+[[1 0 0 0]
+ [0 1 0 0]]
+E.g. x = [[3 1 3 4]] =&gt; H(x) = [[3 1]]
+-----------------------------------------------------------
+Observation model covariance matrix [m x m]:
+[[1 0]
+ [0 1]]
+===========================================================
+Initial state vector [n x 1]
+[[-48.88511049]
+ [-12.97500723]
+ [  0.        ]
+ [  0.        ]]
+-----------------------------------------------------------
+Initial state covariance matrix [n x n]
+[[1.e+00 0.e+00 0.e+00 0.e+00]
+ [0.e+00 1.e+00 0.e+00 0.e+00]
+ [0.e+00 0.e+00 1.e+04 0.e+00]
+ [0.e+00 0.e+00 0.e+00 1.e+04]]
+===========================================================
+</pre></div></div>
+</div>
+<p>It sums up all the parameters of the KF and also provides typical examples of transitions and measurements to check that everything is correct. For example, the line</p>
+<p>E.g. x = [[3 1 3 4]] =&gt; F(x) = [[6 5 3 4]]</p>
+<p>is provided to check that, under the model assumptions, if the state at time <span class="math notranslate nohighlight">\(t\)</span> is <span class="math notranslate nohighlight">\([3~1~3~4]^T\)</span> then at next epoch <span class="math notranslate nohighlight">\(t+1\)</span>, it would be <span class="math notranslate nohighlight">\([6~5~3~4]^T\)</span>. This is correct since indeed:</p>
+<p><span class="math notranslate nohighlight">\(3 + 3 \rightarrow 6~~\)</span> (<span class="math notranslate nohighlight">\(x\)</span> update)</p>
+<p><span class="math notranslate nohighlight">\(1 + 4 \rightarrow 5~~\)</span> (<span class="math notranslate nohighlight">\(y\)</span> update)</p>
+<p><span class="math notranslate nohighlight">\(3 \rightarrow 3~~\)</span> (<span class="math notranslate nohighlight">\(v_x\)</span> update, no speed change)</p>
+<p><span class="math notranslate nohighlight">\(4 \rightarrow 4~~\)</span> (<span class="math notranslate nohighlight">\(v_y\)</span> update, no speed change)</p>
+<p>Similarly, for the observation model, the same fictive state [[3 1 3 4]] would indeed give the observation (GPS) vector [[3 1]].</p>
+<p>Finally, we can perform the estimation on the track2 (noisy version of ground truth). We specify that the <span class="math notranslate nohighlight">\(m=2\)</span> observations required by UKF object can be retrieved in “x” and “y” (i.e. track positions) AFs of track2.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[14]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">UKF</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">track2</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+<span style="color: rgb(0,255,0)">100%</span> <span style="color: rgb(0,255,0)">(360 of 360)</span> |######################| Elapsed Time: 0:00:00 Time:  0:00:000000
+</pre></div></div>
+</div>
+<p>Let’s inspect the fields created in track2:</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[15]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">track2</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+-------------------------------------
+GPS track #0 of user 0:
+-------------------------------------
+  Nb of pt(s):   360
+  Ref sys id   : ENU
+  Starting at  : 05/02/2042 00:45:06
+  Ending at    : 05/02/2042 01:44:56
+  Duration     : 3590.000 s
+  Length       : 801.411 m
+-------------------------------------
+Analytical feature(s):
+ - kf_0
+ - kf_1
+ - kf_2
+ - kf_3
+ - kf_0_std
+ - kf_1_std
+ - kf_2_std
+ - kf_3_std
+ - kf_x_inov
+ - kf_x_inov_std
+ - kf_y_inov
+ - kf_y_inov_std
+ - kf_gain
+ - kf_P
+-------------------------------------
+
+</pre></div></div>
+</div>
+<p>All the fields created by the Kalman filter start with “<a href="#id1"><span class="problematic" id="id2">kf_</span></a>”. The first four variables kf_0 to kf_3 are the estimated values (at each time step) of the four state parameters <span class="math notranslate nohighlight">\(x\)</span>, <span class="math notranslate nohighlight">\(y\)</span>, <span class="math notranslate nohighlight">\(v_x\)</span> and <span class="math notranslate nohighlight">\(v_y\)</span>. The next four AFs kf_0_std to kf_3_std are their associated standard deviations. The complete <span class="math notranslate nohighlight">\(4 \times 4\)</span> covariance matrix can be retrieved in kf_P. All the other parameters are used for trouble-shooting of the KF.</p>
+<p>To check out the results, we plot the original ground truth track (in black), the noisy observations from track2 (in red dots) and the filtered track (blue), where “kf_0” and “kf_1” are the two AFs containing the estimated states <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span>.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">track1</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;k-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_0&#39;</span><span class="p">],</span> <span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_1&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">track2</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<br/></pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_40_0.png" src="../_images/usecase_KalmanFiltering_40_0.png" />
+</div>
+</div>
+<p>We can also plot the estimated speeds <span class="math notranslate nohighlight">\(v_x\)</span> and <span class="math notranslate nohighlight">\(v_y\)</span>.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[17]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_2&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_3&#39;</span><span class="p">],</span> <span class="s1">&#39;r-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_42_0.png" src="../_images/usecase_KalmanFiltering_42_0.png" />
+</div>
+</div>
+<p>It is interesting to repeat the experimentation with completely wrong initial estimate of position <span class="math notranslate nohighlight">\(x\)</span>. We then observe that the filter takes a bit longer to converge. The issue is instantly solve if we are more conservative on <span class="math notranslate nohighlight">\(P_0\)</span> and set its top-left value to, for example, 1e6 (1000 m standard deviation)</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[18]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">X0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">100</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+
+<span class="n">P0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e4</span><span class="p">]])</span>
+
+<span class="n">UKF</span><span class="o">.</span><span class="n">setInitState</span><span class="p">(</span><span class="n">X0</span><span class="p">,</span> <span class="n">P0</span><span class="p">)</span>
+
+<span class="n">UKF</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">track2</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">])</span>
+
+<span class="n">track1</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;k-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_0&#39;</span><span class="p">],</span> <span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_1&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">track2</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+<span style="color: rgb(0,255,0)">100%</span> <span style="color: rgb(0,255,0)">(360 of 360)</span> |######################| Elapsed Time: 0:00:00 Time:  0:00:000:00
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_44_1.png" src="../_images/usecase_KalmanFiltering_44_1.png" />
+</div>
+</div>
+<p>Let’s see the evolution of the standard deviations of <span class="math notranslate nohighlight">\(x\)</span> position (blue) and speed (red) estimates. It converges quite fast, even with the inaccurate initialization.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[19]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_0_std&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_2_std&#39;</span><span class="p">],</span> <span class="s1">&#39;r-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_46_0.png" src="../_images/usecase_KalmanFiltering_46_0.png" />
+</div>
+</div>
+<p>We can also plot the innovations: difference between the expected observation (based on the current estimation of parameters) and the actual observations. A large innovation occurs at the begining of the filter in case of wrong initialization. Here we see that the innovation is especially large on the <span class="math notranslate nohighlight">\(x\)</span> observation, because <span class="math notranslate nohighlight">\(x\)</span> is not initialized properly.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[20]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_x_inov&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_y_inov&#39;</span><span class="p">],</span> <span class="s1">&#39;r-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_48_0.png" src="../_images/usecase_KalmanFiltering_48_0.png" />
+</div>
+</div>
+<p>Once the filter has converged, the innovation should be a white noise process of standard deviations given by the observation covariance matrix <span class="math notranslate nohighlight">\(R\)</span>. Here we retrieve the 1 m white noise of the GPS sensor on both axes <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span>.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[21]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_x_inov&#39;</span><span class="p">][</span><span class="mi">40</span><span class="p">:],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_y_inov&#39;</span><span class="p">][</span><span class="mi">40</span><span class="p">:],</span> <span class="s1">&#39;r-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_50_0.png" src="../_images/usecase_KalmanFiltering_50_0.png" />
+</div>
+</div>
+<p>It is interesting as well to repeat the experiment, but with wrong initialization on speed <span class="math notranslate nohighlight">\(v_x\)</span> and too optimistic variance on speed initialization in <span class="math notranslate nohighlight">\(P_0\)</span> (1 m/s standard deviation).</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[22]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">X0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">100</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+
+<span class="n">P0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mf">1e6</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1e6</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]])</span>
+
+<span class="n">UKF</span><span class="o">.</span><span class="n">setInitState</span><span class="p">(</span><span class="n">X0</span><span class="p">,</span> <span class="n">P0</span><span class="p">)</span>
+
+<span class="n">UKF</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">track2</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">])</span>
+
+<span class="n">track1</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;k-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_0&#39;</span><span class="p">],</span> <span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_1&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">track2</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+<span style="color: rgb(0,255,0)">100%</span> <span style="color: rgb(0,255,0)">(360 of 360)</span> |######################| Elapsed Time: 0:00:00 Time:  0:00:000:00
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_52_1.png" src="../_images/usecase_KalmanFiltering_52_1.png" />
+</div>
+</div>
+<p>Here also, the filter takes longer than expected to converge to steady-state.</p>
+<p>Let’s try another experiment: we will initialize the filter properly (unknown state arbitrarily set at zero values and large variance in covariance matrix) and simulate a fake corrupted data observations at epoch 200. This will in turn corrupt the KF estimation.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[23]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">X0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+
+<span class="n">P0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+    <span class="p">[</span><span class="mf">1e6</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1e6</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e6</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e6</span><span class="p">]])</span>
+
+<span class="n">track2</span><span class="p">[</span><span class="mi">200</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">setX</span><span class="p">(</span><span class="mi">40</span><span class="p">)</span>
+<span class="n">track2</span><span class="p">[</span><span class="mi">200</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">setY</span><span class="p">(</span><span class="mi">40</span><span class="p">)</span>
+
+<span class="n">UKF</span><span class="o">.</span><span class="n">setInitState</span><span class="p">(</span><span class="n">X0</span><span class="p">,</span> <span class="n">P0</span><span class="p">)</span>
+
+<span class="n">UKF</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">track2</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">])</span>
+
+<span class="n">track1</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;k-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_0&#39;</span><span class="p">],</span> <span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_1&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">track2</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+<span style="color: rgb(0,255,0)">100%</span> <span style="color: rgb(0,255,0)">(360 of 360)</span> |######################| Elapsed Time: 0:00:00 Time:  0:00:000:00
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_55_1.png" src="../_images/usecase_KalmanFiltering_55_1.png" />
+</div>
+</div>
+<p>However, fortunately, monitoring innovation AFs (“kf_x_inov” and “kf_y_inov” for the 2 available observations) helps to detect the problem. If the innovation on any given observation is too large (comparatively to its standard deviation), it suggests that observation is not reliable, and may be rejected.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[24]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_x_inov&#39;</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">track2</span><span class="p">[</span><span class="s1">&#39;kf_y_inov&#39;</span><span class="p">],</span> <span class="s1">&#39;r-&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_KalmanFiltering_57_0.png" src="../_images/usecase_KalmanFiltering_57_0.png" />
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="Switchbacks.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Switchbacks identification</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="StopPoints.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Different stops detection methods</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#First-we-set-our-environment">First we set our environment</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usecase/KalmanFiltering.ipynb.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=3ee479438cf8b5e0d341"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=3ee479438cf8b5e0d341"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, LASTIG lab, French National Institute of Geographic and Forest Information.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.3.7.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.3.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

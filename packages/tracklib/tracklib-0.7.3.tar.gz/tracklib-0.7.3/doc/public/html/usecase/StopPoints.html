@@ -1,0 +1,982 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Different stops detection methods &#8212; TrackLib 1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=3ee479438cf8b5e0d341" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+    <link rel="stylesheet" type="text/css" href="../_static/nbsphinx-code-cells.css?v=2aa19091" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=3ee479438cf8b5e0d341" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=3ee479438cf8b5e0d341" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=3ee479438cf8b5e0d341"></script>
+
+    <script src="../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usecase/StopPoints';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Aggregated Trajectory: position errors and shape deviation" href="AggregatedTrajectory.html" />
+    <link rel="prev" title="Kalman filtering" href="KalmanFiltering.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/TracklibLogo.png" class="logo__image only-light" alt="TrackLib 1.0 documentation - Home"/>
+    <script>document.write(`<img src="../_static/TracklibLogo.png" class="logo__image only-dark" alt="TrackLib 1.0 documentation - Home"/>`);</script>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../started/index.html">
+    Getting Started
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../userguide/gallery.html">
+    Quick Examples
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Use Cases
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/umrlastig/tracklib" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <button class="sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../started/index.html">
+    Getting Started
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item">
+  <a class="nav-link nav-internal" href="../userguide/gallery.html">
+    Quick Examples
+  </a>
+</li>
+
+
+<li class="nav-item pst-header-nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Use Cases
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/umrlastig/tracklib" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">A quickstart guide to the Tracklib library</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Summarize.html">Summarize GPS information in a regular grid</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Switchbacks.html">Switchbacks identification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="KalmanFiltering.html">Kalman filtering</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Different stops detection methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="AggregatedTrajectory.html">Aggregated Trajectory: position errors and shape deviation</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Use Cases</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Different...</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="Different-stops-detection-methods">
+<h1>Different stops detection methods<a class="headerlink" href="#Different-stops-detection-methods" title="Link to this heading">#</a></h1>
+<p>In order to analyze traces collected by citizens using GNSS, one of the first need is to detect stops. The goal of this section is to presents methods existing in tracklib library to detect stops in a GPS track.</p>
+<p>Ces algorithmes suivent tous le même principe de fonctionnement. Les entrées-sorties sont représentés dans la figure suivante:</p>
+<figure style="text-align:center"><p><img alt="ec1655c182be4210a73cd6b713283944" class="no-scaled-link" src="../_images/stop_structure.png" style="width: 650px;" /></p>
+<figcaption><p>Figure 1: Input-output of stop detection algorithms</p>
+</figcaption></figure><p>Les résultats de la détection des pauses sont enregistrés dans une nouvelle trace qui contient un point par pause détectée. Ce point a une multitude d’AF qui fournit des métadonnées sur la pause comme:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Nom_AF</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>radius</p></td>
+<td><p>le rayon spatial de recherche s’il existe</p></td>
+</tr>
+<tr class="row-odd"><td><p>id_ini</p></td>
+<td><p>index du premier point de la pause</p></td>
+</tr>
+<tr class="row-even"><td><p>id_end</p></td>
+<td><p>index du dernier point de la pause</p></td>
+</tr>
+<tr class="row-odd"><td><p>mean_XX</p></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>sigma_XX</p></td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><p>duration</p></td>
+<td><p>la durée de la pause</p></td>
+</tr>
+<tr class="row-even"><td><p>nb_points</p></td>
+<td><p>le nombre de point du stop</p></td>
+</tr>
+<tr class="row-odd"><td><p>rmse</p></td>
+<td><p>le rmse du stop</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="alert alert-block alert-success"><p>Les 4 méthodes peuvent s’appeler avec la fonction: findStops(track, spatial, temporal, mode)</p>
+<p>appelle la méthode: - findStopsLocal si mode == MODE_STOPS_LOCAL - findStopsGlobal si mode == MODE_STOPS_GLOBAL - findStopsLocalWithAcceleration si mode == MODE_STOPS_ACC</p>
+</div><section id="Let’s-start-by-defining-our-environment">
+<h2>Let’s start by defining our environment<a class="headerlink" href="#Let’s-start-by-defining-our-environment" title="Link to this heading">#</a></h2>
+<p>The first task is only useful for the online notebook</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="c1">#-------------------------------------------------------</span>
+<span class="c1"># Import de tracklib</span>
+<span class="n">module_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;../../..&#39;</span><span class="p">))</span>
+<span class="k">if</span> <span class="n">module_path</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">module_path</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">tracklib</span> <span class="k">as</span> <span class="nn">trk</span>
+</pre></div>
+</div>
+</div>
+</section>
+<section id="Présentation-de-la-trace">
+<h2>Présentation de la trace<a class="headerlink" href="#Présentation-de-la-trace" title="Link to this heading">#</a></h2>
+<p>Présentons tout d’abord la trace sur laquelle les algos de détection des points d’arrêt s’appliqueront. Voir le quickstart aussi qui utilise cette trace.</p>
+<p>C’est une trace d’un entrainement de course à pied autour d’une piste. Grosso modo, le coureur faisait des pauses sur place d’une durée d’environ 30 secondes</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">trk</span><span class="o">.</span><span class="n">ObsTime</span><span class="o">.</span><span class="n">setReadFormat</span><span class="p">(</span><span class="s2">&quot;4Y-2M-2DT2h:2m:2sZ&quot;</span><span class="p">)</span>
+<span class="n">tracks</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">TrackReader</span><span class="o">.</span><span class="n">readFromFile</span><span class="p">(</span><span class="s1">&#39;../../../data/gpx/activity_5807084803.gpx&#39;</span><span class="p">,</span> <span class="n">trk</span><span class="o">.</span><span class="n">TrackFormat</span><span class="p">({</span><span class="s1">&#39;ext&#39;</span><span class="p">:</span> <span class="s1">&#39;GPX&#39;</span><span class="p">}))</span>
+<span class="n">trace</span> <span class="o">=</span> <span class="n">tracks</span><span class="o">.</span><span class="n">getTrack</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="c1"># Transformation GEO coordinates to ENU</span>
+<span class="n">trace</span><span class="o">.</span><span class="n">toENUCoords</span><span class="p">()</span>
+
+<span class="c1"># speed</span>
+<span class="n">trace</span><span class="o">.</span><span class="n">estimate_speed</span><span class="p">()</span>
+
+<span class="c1"># ---------------------------------------------------------</span>
+<span class="c1"># Graphics</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">subplots_adjust</span><span class="p">(</span><span class="n">top</span><span class="o">=</span><span class="mf">1.3</span><span class="p">,</span> <span class="n">wspace</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">hspace</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+
+<span class="n">ax1</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplot2grid</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+<span class="n">trace</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">append</span><span class="o">=</span><span class="n">ax1</span><span class="p">)</span>
+
+<span class="n">ax2</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplot2grid</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<span class="n">ax2</span><span class="o">.</span><span class="n">boxplot</span><span class="p">(</span><span class="n">trace</span><span class="o">.</span><span class="n">getAnalyticalFeature</span><span class="p">(</span><span class="s1">&#39;speed&#39;</span><span class="p">))</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Warning: no reference point (base) provided for local projection to ENU coordinates. Arbitrarily used: [lon= 2.457019882, lat=48.830705099, hgt= 55.200]
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_StopPoints_5_1.png" src="../_images/usecase_StopPoints_5_1.png" />
+</div>
+</div>
+</section>
+<section id="Méthode-1:-segmentation-avec-la-vitesse-maximale-durant-une-période-minimale">
+<h2>Méthode 1: segmentation avec la vitesse maximale durant une période minimale<a class="headerlink" href="#Méthode-1:-segmentation-avec-la-vitesse-maximale-durant-une-période-minimale" title="Link to this heading">#</a></h2>
+<p>This algorithm take maximal speed during stop and minimal stop duration (in seconds) into account.</p>
+<p>This algorithm of stop detection is based on geographical moving distance in time windows.</p>
+<p>2 paramètres nécessaires: - duration: minimal stop duration (in seconds) - speed: maximal speed during stop (in ground units / sec)</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">stops</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">findStopsLocal</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="n">speed</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="nb">print</span> <span class="p">(</span><span class="s1">&#39;Number of stops: &#39;</span><span class="p">,</span> <span class="n">stops</span><span class="o">.</span><span class="n">size</span><span class="p">())</span>
+<span class="nb">print</span> <span class="p">(</span><span class="n">stops</span><span class="o">.</span><span class="n">getListAnalyticalFeatures</span><span class="p">())</span>
+<span class="c1"># print (stops[&#39;nb_points&#39;, 0], stops[&#39;duration&#39;, 0])</span>
+
+<span class="c1"># --------------------------------------------------------------------------</span>
+<span class="c1">#  On ajoute une AF pour marquer les stops</span>
+<span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m1&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">stops</span><span class="o">.</span><span class="n">size</span><span class="p">()):</span>
+    <span class="n">id_ini</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stops</span><span class="p">[</span><span class="s1">&#39;id_ini&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span>
+    <span class="n">id_fin</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stops</span><span class="p">[</span><span class="s1">&#39;id_end&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">id_ini</span><span class="p">,</span> <span class="n">id_fin</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m1&#39;</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">trace</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s1">&#39;POINT&#39;</span><span class="p">,</span> <span class="n">af_name</span><span class="o">=</span><span class="s1">&#39;stop_m1&#39;</span><span class="p">,</span> <span class="n">append</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">pointsize</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Number of stops:  10
+[&#39;radius&#39;, &#39;mean_x&#39;, &#39;mean_y&#39;, &#39;mean_z&#39;, &#39;id_ini&#39;, &#39;id_end&#39;, &#39;sigma_x&#39;, &#39;sigma_y&#39;, &#39;sigma_z&#39;, &#39;duration&#39;, &#39;nb_points&#39;, &#39;rmse&#39;]
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_StopPoints_7_1.png" src="../_images/usecase_StopPoints_7_1.png" />
+</div>
+</div>
+</section>
+<section id="Méthode-2:-take-into-account-acceleration">
+<h2>Méthode 2: take into account acceleration<a class="headerlink" href="#Méthode-2:-take-into-account-acceleration" title="Link to this heading">#</a></h2>
+<p>Méthod: findStopsLocalWithAcceleration(track, ????)</p>
+<p>This algorithm detect stop point, knowing that a point is a stop when speed is null or very low and acceleration is negative.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">stops</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">findStopsLocalWithAcceleration</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="n">diameter</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="nb">print</span> <span class="p">(</span><span class="s1">&#39;Number of stops: &#39;</span><span class="p">,</span> <span class="n">stops</span><span class="o">.</span><span class="n">size</span><span class="p">())</span>
+<span class="c1"># print (stops.getListAnalyticalFeatures())</span>
+<span class="c1"># print (stops[&#39;nb_points&#39;, 0], stops[&#39;duration&#39;, 0])</span>
+
+<span class="c1"># --------------------------------------------------------------------------</span>
+<span class="c1">#  On ajoute une AF pour marquer les stops</span>
+<span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m2&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">stops</span><span class="o">.</span><span class="n">size</span><span class="p">()):</span>
+    <span class="n">id_ini</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stops</span><span class="p">[</span><span class="s1">&#39;id_ini&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span>
+    <span class="n">id_fin</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stops</span><span class="p">[</span><span class="s1">&#39;id_end&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">id_ini</span><span class="p">,</span> <span class="n">id_fin</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m2&#39;</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="c1"># On prépare la barre de couleur: gris clair: pas de pause, rouge est stop</span>
+<span class="n">trace</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s1">&#39;POINT&#39;</span><span class="p">,</span> <span class="n">af_name</span><span class="o">=</span><span class="s1">&#39;stop_m2&#39;</span><span class="p">,</span> <span class="n">append</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">pointsize</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Number of stops:  2
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_StopPoints_9_1.png" src="../_images/usecase_StopPoints_9_1.png" />
+</div>
+</div>
+</section>
+<section id="Méthode-3:-méthode-des-cercles-englobants">
+<h2>Méthode 3: méthode des cercles englobants<a class="headerlink" href="#Méthode-3:-méthode-des-cercles-englobants" title="Link to this heading">#</a></h2>
+<p>Méthode: findStopsGlobal(track, diameter=20, duration=60)</p>
+<p>This algorithm find stop points in a track based on two parameters: the maximal size of a stop (as the diameter of enclosing circle, in ground units) and minimal time duration (in seconds).</p>
+<p>La fonction findStopsGlobal: Find stop points in a track based on two parameters: - Maximal size of a stop (as the diameter of enclosing circle, in ground units) - and minimal time duration (in seconds).</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">stops</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">findStopsGlobal</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="n">downsampling</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">diameter</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="nb">print</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">stops</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">trace</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">],</span> <span class="n">trace</span><span class="p">[</span><span class="s2">&quot;y&quot;</span><span class="p">],</span> <span class="s1">&#39;+&#39;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;teal&quot;</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+<span class="c1"># --------------------------------------------------------------------------</span>
+<span class="c1">#  On ajoute une AF pour marquer les stops</span>
+<span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m3&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">stops</span><span class="o">.</span><span class="n">size</span><span class="p">()):</span>
+    <span class="n">subset</span> <span class="o">=</span> <span class="n">trace</span><span class="p">[</span><span class="n">stops</span><span class="p">[</span><span class="s2">&quot;id_ini&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">]:</span><span class="n">stops</span><span class="p">[</span><span class="s2">&quot;id_end&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">]]</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">subset</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">],</span> <span class="n">subset</span><span class="p">[</span><span class="s2">&quot;y&quot;</span><span class="p">],</span> <span class="s1">&#39;r+&#39;</span><span class="p">)</span>
+    <span class="n">trk</span><span class="o">.</span><span class="n">minCircle</span><span class="p">(</span><span class="n">subset</span><span class="p">)</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;r-&#39;</span><span class="p">)</span>
+
+    <span class="n">id_ini</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stops</span><span class="p">[</span><span class="s1">&#39;id_ini&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span>
+    <span class="n">id_fin</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stops</span><span class="p">[</span><span class="s1">&#39;id_end&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">id_ini</span><span class="p">,</span> <span class="n">id_fin</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m3&#39;</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s1">&#39;equal&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+<span style="color: rgb(255,0,0)">  0%</span> <span style="color: rgb(255,0,0)">(0 of 188)</span> |                        | Elapsed Time: 0:00:00 ETA:  --:--:--
+</pre></div></div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Minimal enclosing circles computation:
+</pre></div></div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+<span style="color: rgb(0,255,0)">100%</span> <span style="color: rgb(0,255,0)">(188 of 188)</span> |######################| Elapsed Time: 0:00:00 Time:  0:00:000:00
+<span style="color: rgb(255,0,0)">  0%</span> <span style="color: rgb(255,0,0)">(0 of 187)</span> |                        | Elapsed Time: 0:00:00 ETA:  --:--:--
+</pre></div></div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Optimal split search:
+</pre></div></div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area stderr docutils container">
+<div class="highlight"><pre>
+<span style="color: rgb(0,255,0)">100%</span> <span style="color: rgb(0,255,0)">(187 of 187)</span> |######################| Elapsed Time: 0:00:00 Time:  0:00:000:00
+</pre></div></div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+9
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_StopPoints_11_6.png" src="../_images/usecase_StopPoints_11_6.png" />
+</div>
+</div>
+</section>
+<section id="Méthode-4:-st-dbscan">
+<h2>Méthode 4: st-dbscan<a class="headerlink" href="#Méthode-4:-st-dbscan" title="Link to this heading">#</a></h2>
+<div class="alert alert-block alert-info"><p>Reference: Birant, D., &amp; Kut, A. (2007). ST-DBSCAN: An algorithm for clustering spatial–temporal data. Data &amp; Knowledge Engineering, 60(1), 208-221.</p>
+</div><p>DBSCAN algorithm with three important directions: 1. First, unlike the existing density-based clustering algorithms, our algorithm can cluster spatial–temporal data according to its non-spatial, spatial and temporal attributes. 2. Second, DBSCAN cannot detect some noise points when clusters of diﬀerent densities exist. Our algorithm solves this problem by assigning to each cluster a density factor. 3. Third, the values of border objects in a cluster may be very diﬀerent than the values of border
+objects in opposite side, if the non-spatial values of neighbor objects have little diﬀerences and the clusters are adjacent to each other. Our algorithm solves this problem by comparing the average value of a cluster with new coming value.</p>
+<p>Méthode: stdbscan(track, af_name, eps1, eps2, minPts, deltaAF)</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Quels paramètres choisir ?</span>
+<span class="c1"># af_name : t for timestamp</span>
+<span class="c1"># eps1 = to measure the closeness of two points geographically</span>
+<span class="c1"># eps2 = to measure the similarity of timestamp values i.e. the proximity timestamp</span>
+<span class="c1"># MinPts = minimum number of points (a threshold) clustered together</span>
+<span class="c1"># deltaAF = to prevent the discovering of combined clusters</span>
+
+<span class="n">trk</span><span class="o">.</span><span class="n">stdbscan</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="nb">print</span> <span class="p">(</span><span class="s1">&#39;New analytical features: &#39;</span><span class="p">,</span> <span class="n">trace</span><span class="o">.</span><span class="n">getListAnalyticalFeatures</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+New analytical features:  [&#39;speed&#39;, &#39;stop_m1&#39;, &#39;acceleration&#39;, &#39;stop_m2&#39;, &#39;stop_m3&#39;, &#39;stdbscan&#39;, &#39;noise&#39;]
+</pre></div></div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># visualisation des noises</span>
+<span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+
+<span class="n">ax1</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">121</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">trace</span><span class="p">)):</span>
+    <span class="n">o</span> <span class="o">=</span> <span class="n">trace</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">trace</span><span class="o">.</span><span class="n">getObsAnalyticalFeature</span><span class="p">(</span><span class="s1">&#39;noise&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">ax1</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="s1">&#39;ro&#39;</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ax1</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="s1">&#39;ko&#39;</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+
+<span class="c1"># Dans la zone des pauses</span>
+<span class="n">ll</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">ENUCoords</span><span class="p">(</span><span class="o">-</span><span class="mi">40</span><span class="p">,</span> <span class="o">-</span><span class="mi">40</span><span class="p">)</span>
+<span class="n">ur</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">ENUCoords</span><span class="p">(</span><span class="mi">15</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
+<span class="n">bbox</span> <span class="o">=</span> <span class="n">trk</span><span class="o">.</span><span class="n">Rectangle</span><span class="p">(</span><span class="n">ll</span><span class="p">,</span> <span class="n">ur</span><span class="p">)</span>
+<span class="n">ax2</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">122</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">trace</span><span class="p">)):</span>
+    <span class="n">o</span> <span class="o">=</span> <span class="n">trace</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">trace</span><span class="o">.</span><span class="n">getObsAnalyticalFeature</span><span class="p">(</span><span class="s1">&#39;noise&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">bbox</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="p">):</span>
+        <span class="n">ax2</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="s1">&#39;ro&#39;</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">bbox</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="p">):</span>
+        <span class="n">ax2</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="s1">&#39;ko&#39;</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_StopPoints_14_0.png" src="../_images/usecase_StopPoints_14_0.png" />
+</div>
+</div>
+</section>
+<section id="Analyse-des-clusters-pour-la-méthode-st-dbscan">
+<h2>Analyse des clusters pour la méthode st-dbscan<a class="headerlink" href="#Analyse-des-clusters-pour-la-méthode-st-dbscan" title="Link to this heading">#</a></h2>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[9]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+<span class="n">COLORS</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;ro&#39;</span><span class="p">,</span><span class="s1">&#39;go&#39;</span><span class="p">,</span><span class="s1">&#39;bo&#39;</span><span class="p">,</span><span class="s1">&#39;yo&#39;</span><span class="p">,</span><span class="s1">&#39;mo&#39;</span><span class="p">,</span><span class="s1">&#39;co&#39;</span><span class="p">]</span>
+
+<span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m4&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="n">ax1</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">121</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">trace</span><span class="p">)):</span>
+    <span class="n">o</span> <span class="o">=</span> <span class="n">trace</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">cluster</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">getObsAnalyticalFeature</span><span class="p">(</span><span class="s1">&#39;stdbscan&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cluster</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1">#print (cluster)</span>
+        <span class="n">trace</span><span class="p">[</span><span class="s1">&#39;stop_m4&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">color</span> <span class="o">=</span> <span class="n">COLORS</span><span class="p">[</span><span class="n">cluster</span><span class="o">%</span><span class="k">6</span>]
+        <span class="n">ax1</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="n">color</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ax1</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="s1">&#39;ko&#39;</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+<span class="n">ax2</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">122</span><span class="p">)</span>
+<span class="n">cpt</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">clusterOld</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+<span class="n">d</span><span class="o">=</span><span class="nb">dict</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">trace</span><span class="p">)):</span>
+    <span class="n">o</span> <span class="o">=</span> <span class="n">trace</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="n">cluster</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">getObsAnalyticalFeature</span><span class="p">(</span><span class="s1">&#39;stdbscan&#39;</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cluster</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">bbox</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">cluster</span> <span class="o">!=</span> <span class="n">clusterOld</span><span class="p">:</span>
+            <span class="n">cpt</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">d</span><span class="p">[</span><span class="n">COLORS</span><span class="p">[</span><span class="n">cpt</span><span class="o">%</span><span class="k">6</span>]] = []
+        <span class="n">color</span> <span class="o">=</span> <span class="n">COLORS</span><span class="p">[</span><span class="n">cpt</span><span class="o">%</span><span class="k">6</span>]
+        <span class="n">ax2</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="n">color</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="n">d</span><span class="p">[</span><span class="n">color</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="c1">#ax2.text(o.position.getX()+0.1, o.position.getY()+0.1, str(i))</span>
+        <span class="n">clusterOld</span> <span class="o">=</span> <span class="n">cluster</span>
+    <span class="k">elif</span> <span class="n">bbox</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="p">):</span>
+        <span class="n">ax2</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getX</span><span class="p">()],</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">getY</span><span class="p">()],</span> <span class="s1">&#39;ko&#39;</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_StopPoints_16_0.png" src="../_images/usecase_StopPoints_16_0.png" />
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span> <span class="p">(</span><span class="s1">&#39;Détail des clusters dans la figure de droite:&#39;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">d</span><span class="p">:</span>
+    <span class="nb">print</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">d</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Détail des clusters dans la figure de droite:
+go [29, 30, 32, 34, 35, 36]
+bo [67, 68, 69, 70, 71, 72, 73, 74]
+yo [109, 110, 112, 113, 114]
+mo [147, 149, 150, 151, 152]
+</pre></div></div>
+</div>
+</section>
+<section id="Graphic-Abstract">
+<h2>Graphic Abstract<a class="headerlink" href="#Graphic-Abstract" title="Link to this heading">#</a></h2>
+<p>Visualisation des stops points par rapport au profil de vitesse</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+
+<span class="c1"># -----------------------------------------------------------------------------</span>
+<span class="c1"># # On dessine</span>
+<span class="n">TAB_AFS</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;stop_m1&#39;</span><span class="p">,</span> <span class="s1">&#39;stop_m3&#39;</span><span class="p">,</span> <span class="s1">&#39;stop_m4&#39;</span><span class="p">]</span>
+<span class="n">trace</span><span class="o">.</span><span class="n">plotProfil</span><span class="p">(</span><span class="s1">&#39;SPATIAL_SPEED_PROFIL&#39;</span><span class="p">,</span> <span class="n">TAB_AFS</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/usecase_StopPoints_19_0.png" src="../_images/usecase_StopPoints_19_0.png" />
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="KalmanFiltering.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Kalman filtering</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="AggregatedTrajectory.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Aggregated Trajectory: position errors and shape deviation</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Let’s-start-by-defining-our-environment">Let’s start by defining our environment</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Présentation-de-la-trace">Présentation de la trace</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Méthode-1:-segmentation-avec-la-vitesse-maximale-durant-une-période-minimale">Méthode 1: segmentation avec la vitesse maximale durant une période minimale</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Méthode-2:-take-into-account-acceleration">Méthode 2: take into account acceleration</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Méthode-3:-méthode-des-cercles-englobants">Méthode 3: méthode des cercles englobants</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Méthode-4:-st-dbscan">Méthode 4: st-dbscan</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Analyse-des-clusters-pour-la-méthode-st-dbscan">Analyse des clusters pour la méthode st-dbscan</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#Graphic-Abstract">Graphic Abstract</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usecase/StopPoints.ipynb.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=3ee479438cf8b5e0d341"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=3ee479438cf8b5e0d341"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, LASTIG lab, French National Institute of Geographic and Forest Information.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.3.7.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.3.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

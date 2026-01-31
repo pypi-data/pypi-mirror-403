@@ -1,0 +1,626 @@
+# -*- coding: utf-8 -*-
+
+"""
+© Copyright Institut National de l'Information Géographique et Forestière (2020)
+Contributors: 
+    Yann Méneroux
+    Marie-Dominique Van Damme
+Creation date: 1th november 2020
+
+tracklib library provides a variety of tools, operators and 
+functions to manipulate GPS trajectories. It is a open source contribution 
+of the LASTIG laboratory at the Institut National de l'Information 
+Géographique et Forestière (the French National Mapping Agency).
+See: https://tracklib.readthedocs.io
+ 
+This software is governed by the CeCILL-C license under French law and
+abiding by the rules of distribution of free software. You can  use, 
+modify and/ or redistribute the software under the terms of the CeCILL-C
+license as circulated by CEA, CNRS and INRIA at the following URL
+"http://www.cecill.info". 
+
+As a counterpart to the access to the source code and rights to copy,
+modify and redistribute granted by the license, users are provided only
+with a limited warranty  and the software's author,  the holder of the
+economic rights,  and the successive licensors  have only  limited
+liability. 
+
+In this respect, the user's attention is drawn to the risks associated
+with loading,  using,  modifying and/or developing or reproducing the
+software by the user in light of its specific status of free software,
+that may mean  that it is complicated to manipulate,  and  that  also
+therefore means  that it is reserved for developers  and  experienced
+professionals having in-depth computer knowledge. Users are therefore
+encouraged to load and test the software's suitability as regards their
+requirements in conditions enabling the security of their systems and/or 
+data to be ensured and,  more generally, to use and operate it in the 
+same conditions as regards security. 
+
+The fact that you are presently reading this means that you have had
+knowledge of the CeCILL-C license and that you accept its terms.
+
+
+
+This module contain a class to manage the collections of tracks
+
+"""
+
+from typing import Literal   
+import matplotlib.pyplot as plt
+from random import randint
+
+import tracklib as tracklib
+from tracklib.core import removeNan, listify, compLike
+#from tracklib.util.exceptions import *
+
+
+class TrackCollection:
+    """TODO"""
+
+    def __init__(self, TRACES=[]):
+        """
+        TRACES: list of Track
+        """
+        self.__TRACES = TRACES.copy()
+        self.spatial_index = None
+
+    def addTrack(self, track):
+        """TODO"""
+        self.__TRACES.append(track)
+
+    def size(self):
+        """TODO"""
+        return len(self.__TRACES)
+
+    def length(self):
+        """TODO"""
+        length = 0
+        for track in self:
+            length += track.length()
+        return length
+
+    def duration(self):
+        """TODO"""
+        duration = 0
+        for track in self:
+            duration += track.duration()
+        return duration
+
+    def getTracks(self):
+        """TODO"""
+        return self.__TRACES
+
+    def getTrack(self, i):
+        """TODO"""
+        return self.__TRACES[i]
+
+    def copy(self):
+        """TODO"""
+        TRACKS = TrackCollection()
+        for i in range(self.size()):
+            TRACKS.addTrack(self.getTrack(i).copy())
+        return TRACKS
+
+    def setTimeZone(self, zone):
+        """TODO"""
+        for i in range(len(self)):
+            self[i].setTimeZone(zone)
+
+    def convertToTimeZone(self, zone):
+        """TODO"""
+        for i in range(len(self)):
+            self[i].convertToZone(zone)
+
+    # Average frequency	of tracks
+    def frequency(self, mode="temporal"):
+        """TODO"""
+        m = 0
+        for track in self:
+            m += track.frequency(mode)
+        return m / self.size()
+
+    def __iter__(self):
+        """TODO"""
+        yield from self.__TRACES
+
+    # =========================================================================
+    # Spatial index creation, export and import functions
+    # =========================================================================
+
+    def createSpatialIndex(self, resolution=None, verbose=True):
+        """TODO"""
+        self.spatial_index = tracklib.SpatialIndex(self, resolution, verbose)
+
+    def exportSpatialIndex(self, filename):
+        """TODO"""
+        self.spatial_index.save(filename)
+
+    def importSpatialIndex(self, filename):
+        """TODO"""
+        self.spatial_index = tracklib.SpatialIndex.load(filename)
+
+    # =========================================================================
+    # Track collection coordinate transformation
+    # =========================================================================
+    def getSRID(self) -> int:
+        """Return the SRID of collection
+
+        :return: SRID of current collection
+        """
+        return self.__TRACES[0].getSRID()
+
+    def toECEFCoords(self, base=None):
+        """TODO"""
+        if self.__TRACES[0].getSRID() == "Geo":
+            for track in self.__TRACES:
+                track.toECEFCoords()
+            return
+        if self.__TRACES[0].getSRID() == "ENU":
+            if base == None:
+                print(
+                    "Error: base coordinates should be specified for conversion ENU -> ECEF"
+                )
+                exit()
+            for track in self.__TRACES:
+                track.toECEFCoords(base)
+            return
+
+    def toENUCoords(self, base=None):
+        """TODO"""
+        if self.__TRACES[0].getSRID() in ["Geo", "ECEF"]:
+            if base == None:
+                base = self.__TRACES[0].getFirstObs().position
+                message = "Warning: no reference point (base) provided for local projection to ENU coordinates. "
+                message += "Arbitrarily used: " + str(base)
+                print(message)
+            for track in self.__TRACES:
+                track.toENUCoords(base)
+            return
+        if self.__TRACES[0].getSRID() == "ENU":
+            if base == None:
+                print(
+                    "Error: new base coordinates should be specified for conversion ENU -> ENU"
+                )
+                exit()
+            for track in self.__TRACES:
+                if track.base == None:
+                    print(
+                        "Error: former base coordinates should be specified for conversion ENU -> ENU"
+                    )
+                    exit()
+                track.toENUCoords(track.base, base)
+            track.base = base.toGeoCoords()
+            return base
+
+    def toGeoCoords(self, base=None):
+        """TODO"""
+        if self.__TRACES[0].getSRID() == "ECEF":
+            for track in self.__TRACES:
+                track.toGeoCoords()
+        if self.__TRACES[0].getSRID() == "ENU":
+            if base == None:
+                print(
+                    "Error: base coordinates should be specified for conversion ENU -> Geo"
+                )
+                exit()
+            for track in self.__TRACES:
+                track.toGeoCoords(base)
+
+    # Function to convert track to ENUCoords if it is in GeoCoords. Returns None
+    # if no transformation operated, and returns used reference point otherwise
+    def toENUCoordsIfNeeded(self):
+        """TODO"""
+        base = None
+        if self.getTrack(0).getSRID() in ["GEO", "Geo"]:
+            base = self.getTrack(0).getObs(0).position.copy()
+            self.toENUCoords(base)
+        return base
+
+    # =========================================================================
+    #  Thin plates smoothing
+    # =========================================================================
+    def smooth(self, constraint=1e3):
+        """TODO"""
+        for track in self:
+            track.smooth(constraint)
+
+    def summary(self):
+        """
+        Print summary (complete wkt below)
+        """
+        output = "-------------------------------------\n"
+        output += "Number of GPS track: " + str(len(self.__TRACES)) + "\n"
+        output += "-------------------------------------\n"
+        SIZES = []
+        for trace in self.__TRACES:
+            SIZES.append(trace.size())
+        output += "  Nb of pt(s):   " + str(SIZES) + "\n"
+        # output += "  Nb of pt(s):   " + str(len(self.__POINTS)) + "\n"
+        print(output)
+        
+    def toWKT(self) -> str:
+        """Transforms collection into WKT string, one linestring per track"""
+        output = "MULTILINESTRING ("
+        
+        for track in self.__TRACES:
+            output += "("
+            for i in range(track.size()):
+                if self.getSRID() == "Geo":
+                    output += (str)(track[i].position.lon) + " "
+                    output += (str)(track[i].position.lat)
+                elif self.getSRID() == "ENU":
+                    output += (str)(track[i].position.E) + " "
+                    output += (str)(track[i].position.N)
+                if i != track.size() - 1:
+                    output += ","
+            output += ")"
+        output += ")"
+        return output
+
+    def addAnalyticalFeature(self, algorithm, name=None):
+        """TODO"""
+        for trace in self.__TRACES:
+            trace.addAnalyticalFeature(algorithm, name)
+            
+            
+    def getAnalyticalFeature(self, af_name, withNan=True):
+        valuesAF = []
+        for track in self:
+            values = track.getAnalyticalFeature(af_name)
+            if not withNan:
+                values = removeNan(values)
+            valuesAF = valuesAF + values
+        return valuesAF
+        
+    def getTimestamps_str(self,withNan=True):
+        """Return the timestamps in a list format."""
+        T = []
+        for track in self:
+            for i in range(track.size()):
+                T.append(track.getObs(i).timestamp.__str__())
+        return T
+    
+            
+    def operate(self, operator, arg1=None, arg2=None, arg3=None):
+        """TODO"""
+        for trace in self.__TRACES:
+            trace.operate(operator, arg1, arg2, arg3)
+
+    def plot(self, symbols=None, markersize=[4], margin=0.05, append=False):
+        """TODO"""
+        if symbols is None:
+            symbols = ["r-", "g-", "b-", "c-", "m-", "y-", "k-"]
+        if len(self) == 0:
+            return
+        symbols = listify(symbols)
+        markersize = listify(markersize)
+        if not append:
+            (xmin, xmax, ymin, ymax) = self.bbox().asTuple()
+            dx = margin * (xmax - xmin)
+            dy = margin * (ymax - ymin)
+            plt.xlim([xmin - dx, xmax + dx])
+            plt.ylim([ymin - dy, ymax + dy])
+        Ns = len(symbols)
+        Ms = len(markersize)
+        for i in range(len(self.__TRACES)):
+            trace = self.__TRACES[i]
+            X = trace.getX()
+            Y = trace.getY()
+            plt.plot(X, Y, symbols[i % Ns], markersize=markersize[i % Ms])
+
+    def filterOnBBox(self, bbox):
+        """TODO"""
+        xmin, xmax, ymin, ymax = bbox.asTuple()
+        for i in range(len(self) - 1, -1, -1):
+            track = self[i]
+            for j in range(len(track)):
+                inside = True
+                inside = inside & (track[j].position.getX() > xmin)
+                inside = inside & (track[j].position.getY() > ymin)
+                inside = inside & (track[j].position.getX() < xmax)
+                inside = inside & (track[j].position.getY() < ymax)
+                if not inside:
+                    self.removeTrack(track)
+                    break
+
+    def bbox(self):
+        """TODO"""
+        bbox = self.getTrack(0).bbox()
+        for i in range(1, len(self)):
+            bbox = bbox + self.getTrack(i).bbox()
+        return bbox
+
+    def resample(self, delta, algo: Literal[1,2,3,4]=1, mode:Literal[1,2]=1):   
+        """Resampling tracks with linear interpolation
+
+
+        :param delta: interpolation interval (time in sec if temporal mode is selected,
+                     space in meters if spatial).
+
+        :param mode: Mode of interpolation.
+            Available modes are:
+
+            - MODE_SPATIAL (*mode=1*)
+            - MODE_TEMPORAL (*mode=2*)
+
+        :params algorithm: of interpolation.
+            Available algorithm are :
+
+            - ALGO_LINEAR (*algo=1*)
+            - ALGO_THIN_SPLINES (*algo=2*)
+            - ALGO_B_SPLINES (*algo=3*)
+            - ALGO_GAUSSIAN_PROCESS (*algo=4*)
+
+        **NB**: In temporal mode, argument may be:
+
+            - an integer or float: interval in seconds
+            - a list of timestamps where interpolation should be computed
+            - a reference track
+
+        """
+        for track in self:
+            track.resample(delta, algo, mode)
+
+    def __collectionnify(tracks):
+        """TODO"""
+        if isinstance(tracks, list):
+            return TrackCollection(tracks)
+        else:
+            return tracks
+
+    # =========================================================================
+    # Tracks simplification (returns a new track)
+    # Tolerance is in the unit of track observation coordinates
+    #   MODE_SIMPLIFY_DOUGLAS_PEUCKER (1)
+    #   MODE_SIMPLIFY_VISVALINGAM (2)
+    # =========================================================================
+    def simplify(self, tolerance, mode=1):
+        """TODO"""
+        output = self.copy()
+        for i in range(len(output)):
+            output[i] = output[i].simplify(tolerance, mode)
+
+    
+    def __add__(self, collection):
+        """[+] Concatenation of two track collections"""
+        return TrackCollection(self.__TRACES + collection.__TRACES)
+
+
+    # ------------------------------------------------------------
+    # [/] Even split track collection (returns n+1 collections)
+    # ------------------------------------------------------------
+    def __truediv__(self, number):
+        """TODO"""
+        N = (int)(self.size() / number)
+        # R = self.size()-N*number
+        SPLITS = []
+        for i in range(number + 1):
+            id_ini = i * N
+            id_fin = min((i + 1) * N, self.size()) + 1
+            SPLITS.append(TrackCollection(self[id_ini:id_fin].copy()))
+        return SPLITS
+
+    # ------------------------------------------------------------
+    # [>] Removes first n points of track
+    # ------------------------------------------------------------
+    def __gt__(self, nb_points):
+        """TODO"""
+        output = self.copy()
+        for i in range(self.size()):
+            output[i] = output[i] > nb_points
+        return output
+
+    # ------------------------------------------------------------
+    # [<] Removes last n points of track
+    # ------------------------------------------------------------
+    def __lt__(self, nb_points):
+        """TODO"""
+        output = self.copy()
+        for i in range(self.size()):
+            output[i] = output[i] < nb_points
+        return output
+
+    # ------------------------------------------------------------
+    # [>=] Available operator
+    # ------------------------------------------------------------
+    def __ge__(self, arg):
+        """TODO"""
+        return None
+
+    # ------------------------------------------------------------
+    # [<=] Available operator
+    # ------------------------------------------------------------
+    def __le__(self, arg):
+        """TODO"""
+        return None
+
+    # ------------------------------------------------------------
+    # [!=] Available operator
+    # ------------------------------------------------------------
+    def __neq__(self, arg):
+        """TODO"""
+        return None
+
+    # ------------------------------------------------------------
+    # [Unary -] Available operator
+    # ------------------------------------------------------------
+    def __neg__(self, arg):
+        """TODO"""
+        return None
+
+    # ------------------------------------------------------------
+    # [**] Resample (spatial) according to a number of points
+    # Linear interpolation and temporal resampling
+    # ------------------------------------------------------------
+    def __pow__(self, nb_points):
+        """TODO"""
+        output = self.copy()
+        for i in range(self.size()):
+            output[i] **= nb_points
+        return output
+
+    # ------------------------------------------------------------
+    # [abs] Available operator
+    # ------------------------------------------------------------
+    def __abs__(self):
+        """TODO"""
+        return None
+
+    # ------------------------------------------------------------
+    # [len] Number of tracks in track collection
+    # ------------------------------------------------------------
+    def __len__(self):
+        """TODO"""
+        return self.size()
+
+    # ------------------------------------------------------------
+    # [-] Computes difference profile of 2 tracks
+    # ------------------------------------------------------------
+    def __sub__(self, arg):
+        """TODO"""
+        print("Available operator not implemented yet")
+
+    # ------------------------------------------------------------
+    # [*] Temporal resampling of tracks
+    # ------------------------------------------------------------
+    def __mul__(self, number):
+        """TODO"""
+        output = self.copy()
+        for i in range(self.size()):
+            output[i] *= number
+        return output
+
+    # ------------------------------------------------------------
+    # [%] Remove one point out of n (or according to list pattern)
+    # ------------------------------------------------------------
+    def __mod__(self, sample):
+        """TODO"""
+        output = self.copy()
+        for i in range(self.size()):
+            output[i] %= sample
+        return output
+
+    # ------------------------------------------------------------
+    # [//] Time resample of a tracks according to another track
+    # ------------------------------------------------------------
+    def __floordiv__(self, track):
+        """TODO"""
+        output = self.copy()
+        for t in output.__TRACES:
+            t.resample(track)  # Mode temporal / linear
+        return output
+
+    
+    def __getitem__(self, n):
+        """[[n]] Get and set track number n
+           May be tuple with uid, tid
+        """
+        if isinstance(n, tuple):
+            tracks = TrackCollection()
+            for track in self:
+                if (compLike(track.uid, n[0])) and (
+                    compLike(track.tid, n[1])
+                ):
+                    tracks.addTrack(track)
+            return tracks
+        
+        return TrackCollection.__collectionnify(self.__TRACES[n])
+
+
+    def __setitem__(self, n, track):
+        self.__TRACES[n] = track
+
+    # =========================================================================
+    def removeTrack(self, track):
+        """TODO"""
+        self.__TRACES.remove(track)
+
+    def removeEmptyTrack(self):
+        """
+        Remove tracks without observation
+        """
+        for track in self.__TRACES:
+            if track.size() <= 0:
+                self.removeTrack(track)
+
+    # =========================================================================
+    #    SEGMENTATION, EXTRACT, REMOVE
+
+    def segmentation(self, afs_input, af_output, thresholds_max, mode_comparaison=1):
+        """TODO"""
+        for t in self.__TRACES:
+            tracklib.algo.segmentation(t, afs_input, af_output, thresholds_max, mode_comparaison)
+
+    def split_segmentation(self, af_output):
+        """
+        Découpe les traces suivant la segmentation définie par le paramètre af_output ET
+        Remplace la trace par les traces splittées s'il y a une segmentation.
+        """
+        NEW_TRACES = []
+        for track in self.__TRACES:
+            TRACES_SPLIT = tracklib.algo.split(track, af_output)
+            # on ajoute les traces splittées
+            for split in TRACES_SPLIT:
+                # print (split.size())
+                NEW_TRACES.append(split)
+
+        return TrackCollection(NEW_TRACES)
+
+        
+    # =========================================================================
+    #  Adding noise to tracks
+    # =========================================================================
+    def noise(self, sigma=5, kernel=None, force=False, cycle=False):
+        """TODO"""
+        for i in range(len(self)):
+            self.__TRACES[i] = self.__TRACES[i].noise(sigma, kernel, force, cycle)
+            
+            
+            
+    # =========================================================================
+    #    Measures
+    def getLenth(self):
+        L = []
+        for i in range(len(self)):
+            L.append(self.__TRACES[i].length())
+        return L
+
+
+    # =========================================================================
+    #
+    def randNTracks(self, N):
+        """
+        Return a sample of n tracks from the collection.
+
+
+        Parameters
+        ----------
+        N : int
+            
+
+        Returns
+        -------
+        TrackCollection with n Tracks.
+
+        """
+        if self.size() <= 0:
+            return None
+        if self.size() < N:
+            return None
+        if self.size() == N:
+            return self
+
+
+        TAB = set()
+        while len(TAB) < N:
+            n = randint(0, self.size()-1)
+            TAB.add(n)
+
+        sets = TrackCollection()
+        for idx in TAB:
+            sets.addTrack(self.getTrack(idx))
+
+        return sets
+
+
+
