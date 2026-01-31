@@ -1,0 +1,387 @@
+Metadata-Version: 2.3
+Name: python-icarus
+Version: 1.0.0
+Summary: pycarus is a library to calibrate survey weights to match known population totals or proportions.
+Keywords: survey,calibration,weights,statistics,sampling,raking,calage,calage sur marges,calmar,calmar2,icarus
+Author: Nathan Etourneau
+License: BSD 3-Clause License
+         
+         Copyright (c) 2025, EDF
+         All rights reserved.
+         
+         Redistribution and use in source and binary forms, with or without
+         modification, are permitted provided that the following conditions are met:
+         
+         1. Redistributions of source code must retain the above copyright notice,
+            this list of conditions and the following disclaimer.
+         
+         2. Redistributions in binary form must reproduce the above copyright
+            notice, this list of conditions and the following disclaimer in the
+            documentation and/or other materials provided with the distribution.
+         
+         3. Neither the name of EDF nor the names of its contributors may be used to
+            endorse or promote products derived from this software without specific
+            prior written permission.
+         
+         THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+         AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+         IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+         ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+         LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+         CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+         SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+         INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+         CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+         ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+         POSSIBILITY OF SUCH DAMAGE.
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Dist: matplotlib>=3.10.0
+Requires-Dist: numpy>=1.10.0
+Requires-Dist: pandas>=1.0.0
+Requires-Dist: scipy>=1.0.0
+Requires-Dist: seaborn>=0.13.2
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+# pycarus
+pycarus is a Python library designed to help you calibrate survey weights to match known population totals or proportions. This guide will walk you through the basic concepts, how to use the library, and provide examples to get you started.
+
+[![État de la Barrière Qualité](https://sonar.pleiade.edf.fr/api/project_badges/measure?project=gamme-conso-client_acacia_benchmarks-methodos_pycarus_AZSO3DNC2JThbS9_YjLQ&metric=alert_status&token=sqb_eb1273b5a712234f92948e6065b27e40c1c7ae34)](https://sonar.pleiade.edf.fr/dashboard?id=gamme-conso-client_acacia_benchmarks-methodos_pycarus_AZSO3DNC2JThbS9_YjLQ)
+[![Couverture (TU)](https://sonar.pleiade.edf.fr/api/project_badges/measure?project=gamme-conso-client_acacia_benchmarks-methodos_pycarus_AZSO3DNC2JThbS9_YjLQ&metric=coverage&token=sqb_eb1273b5a712234f92948e6065b27e40c1c7ae34)](https://sonar.pleiade.edf.fr/dashboard?id=gamme-conso-client_acacia_benchmarks-methodos_pycarus_AZSO3DNC2JThbS9_YjLQ)
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Usage](#usage)
+
+## Introduction
+
+Survey weight calibration (known as "calage sur marges" in French) is a statistical technique used to adjust survey weights to match known population totals while preserving the structure of the survey data. This guide provides an overview of the mathematical foundations and explains how pycarus implements calibration efficiently.
+
+### What are Population Margins?
+
+Population margins are known values derived from the total population. These margins serve as benchmarks to ensure that the calibrated sample represents the population accurately. Margins can be expressed in two forms:
+
+1. **Absolute Totals**
+   - Total population aged 18-25: 1,000,000
+   - Total male population: 600,000
+   - Total female population: 650,000
+
+2. **Proportions**
+   - Average age: 46 years
+   - Male proportion: 48%
+   - Female proportion: 52%
+
+### The Calibration Process
+
+The calibration process involves adjusting initial survey weights ($d_k$) to produce calibrated weights ($w_k$) that satisfy predefined constraints based on the population margins. The process involves three main components:
+
+1. **Initialization of Weights**
+   - Every survey unit starts with an initial weight ($d_k$), which represents the inverse probability of selection in the sample.
+   - If no weights are provided, pycarus initializes them using a uniform approach: $d_k = \frac{N}{n}$, where:
+     - $N$ = total population size
+     - $n$ = sample size
+
+2. **Specification of Margins**
+   - Margins are provided in a dictionary format with specific structures:
+     - For continuous variables:
+       - Key: column name
+       - Value: single margin value
+     - For categorical variables:
+       - Key: column name
+       - Value: dictionary where:
+         - Keys are unique categories
+         - Values are margins for each category
+
+3. **Adjustment of Weights**
+   - The calibrated weights minimize the overall adjustment cost, as measured by a distance function, while satisfying the constraints defined by the margins.
+
+### Mathematical Framework
+
+Key Variables:
+
+- $U$: The entire population (all units of interest)
+- $s$: The sample, a subset of the population ($s \subset U$)
+- $d_k$: The **initial weight** for unit $k$ in the sample
+- $w_k$: The **calibrated weight** for unit $k$ in the sample
+- $x_k$: The **calibration variables** for unit $k$ (e.g., age, sex)
+- $T_x$: The known **population totals** for the calibration variables
+
+### Distance Functions
+
+A **distance function** quantifies the penalty for deviations between the initial weights ($d_k$) and the calibrated weights ($w_k$). pycarus supports the following distance functions:
+
+1. **Linear Distance**:
+   - Advantages: Simple and almost always converges
+   - Limitations: May produce negative weights
+
+2. **Raking Distance**:
+   - Advantages: Always produces positive weights; most widely used method
+   - Limitations: Does not converge sometimes (no feasible solution)
+
+3. **Logit Distance**:
+   - Advantages: Very similar to raking method, but keeps the ratio of calibrated weights and initial weights within boundaries
+   - Limitations: Does not converge sometimes (no feasible solution), especially if the bounds are tight; weights ratio accumulates close to boundaries
+
+4. **Truncated Linear Distance**:
+   - Advantages: Very similar to linear method, but keeps the ratio of calibrated weights and initial weights within boundaries; can enforce positive weights
+   - Limitations: Does not converge sometimes (no feasible solution), especially if the bounds are tight; weights ratio accumulates close to boundaries
+
+### Bounded Methods: Advantages and Limitations
+
+Bounded methods (Logit and Truncated Linear distances) offer important advantages for controlling extreme weights:
+
+- Restrict weights to the interval $[L, U]$
+- Prevent over-representation of specific units
+- Help maintain stability in estimates
+
+### Practical Considerations
+
+1. **Convergence Issues**:
+   - Calibration may fail if margins are inconsistent with sample data
+   - Users should verify coherence of margins and calibration variables
+   - When using bounded methods, ensure $[L, U]$ interval is sufficiently wide
+
+2. **Method Selection**:
+   - Use raking ratio method for general purposes
+   - Choose bounded methods when weight control is crucial
+   - Avoid linear method in production
+   - Start with simpler methods and progress to more complex ones if needed
+
+## Installation
+
+This section provides instructions on how to install pycarus, either using `pip` or `uv`. You can choose the method that best fits your workflow.
+
+### Installing with uv
+
+To install pycarus using `uv`, run the following command:
+```bash
+uv add pycarus  # Not available yet
+```
+
+Alternatively, if you want to clone the repository and install it manually, use the following commands:
+```bash
+git clone https://gitlab.pleiade.edf.fr/gamme-conso-client/acacia/benchmarks-methodos/pycarus.git
+cd pycarus
+uv pip install .
+```
+
+### Installing with pip
+To install pycarus using pip, run the following command:
+```bash
+pip install pycarus  # Not available yet
+```
+
+If you prefer to install pycarus from the source, follow these steps:
+```bash
+git clone https://gitlab.pleiade.edf.fr/gamme-conso-client/acacia/benchmarks-methodos/pycarus.git
+cd pycarus
+pip install .
+```
+
+### Notes
+- Dependencies: Both installation methods will automatically handle pycarus dependencies based on the configuration in the pyproject.toml file.
+- Python version: Ensure that your Python version is compatible with pycarus. Check the README for version requirements.
+- Virtual environments: It is recommended to use a virtual environment (e.g., venv or conda) to avoid conflicts with system-wide Python packages.
+
+## Usage
+pycarus is a Python library designed to help you calibrate survey weights to match known population totals or proportions. This guide will walk you through the basic concepts, how to use the library, and provide examples to get you started.
+
+### Basic Usage
+The main function in pycarus is calibrate(), which handles the calibration process. Here's a simple example to get you started:
+
+```python
+from pycarus import calibrate
+import pandas as pd
+
+# Sample survey data
+data = pd.DataFrame(
+    {
+        "age": [10, 24, 22, 28, 30, 35, 50, 41, 16, 33, 8, 45],
+        "country": [
+            "France",
+            "France",
+            "France",
+            "France",
+            "USA",
+            "USA",
+            "USA",
+            "Japan",
+            "Japan",
+            "Japan",
+            "Japan",
+            "Japan",
+        ],
+        "weights": [2, 2, 2, 2, 4, 4, 4, 5.5, 5.5, 5.5, 5.5, 5.5],
+    }
+)
+
+# Margins : on the whole population, we know that the variables sum to thoses margins
+margins_dict = {
+    "age": 1000,
+    "country": {
+        "France": 10,
+        "USA": 10,
+        "Japan": 24,
+    },
+}
+
+
+# Calibration
+weights, info = calibrate(
+    data,
+    margins_dict,
+    initial_weights_column="weights",
+    method="logit",
+    bounds=(0.4, 2.5)
+)
+
+# Analyze results
+print(f"Convergence achieved in {info.iterations} iterations")
+print(f"Relative gaps: {info.relative_gaps}")
+```
+
+### Defining Margins
+Margins are the target values you want your survey data to match. They can be specified for both continuous and categorical variables.
+
+#### Continuous Variables
+For continuous variables, specify the population total directly:
+```python
+margins = {
+    'age': 1_035,        # Sum of ages in population
+    'income': 1_500_000   # Total income in population
+}
+```
+#### Categorical Variables
+For categorical variables, specify the count for each unique category, as a dictionary:
+
+```python
+margins = {
+    'gender': {
+        'M': 520,   # Number of males
+        'F': 480    # Number of females
+    }
+}
+```
+
+#### Working with Proportions
+If you have margins as proportions, set margins_as_proportions=True and specify the total population size:
+
+```python
+# Margins as proportions
+margins = {
+    "age": 45,  # Average age
+    "income": 120_000,  # Average income
+    'gender': {
+        'M': 0.52,   # Proportion of males
+        'F': 0.48    # Proportion of females
+    }
+}
+
+# Calibration using proportions
+weights, result = calibrate(
+    survey_data=data,
+    margins_dict=margins,
+    margins_as_proportions=True,
+    population_total=1000  # Total population size
+)
+```
+
+For a continuous variable, it means that the margin isn't the sum over the population, but the mean over the population.
+The margins are either all sums, are all means/proportions. One can't mix those two kinds of margins.
+
+### Initial Weights
+You can provide initial weights through the initial_weights_column parameter:
+
+```python
+weights, result = calibrate(
+    survey_data=data,
+    margins_dict=margins,
+    initial_weights_column='sampling_weights'  # Column containing initial weights
+)
+```
+
+If no initial weights are specified, pycarus assumes simple random sampling:
+$$d_k = \frac{N}{n}$$
+
+where $N$ is the population size and $n$ is the sample size.
+
+### Bounded Methods
+For bounded methods like logit and truncated_linear, you need to specify the bounds. These bounds are for the ratio of the weights after and before calibration.
+
+Bounds are specified as a tuple or list of two values: the lower bound ($L$) and the upper bound ($U$). The weights after calibration will be constrained to be within these bounds relative to the initial weights. Specifically, the bounds should be such that $L < 1 < U$. After calibration, the ratio of weights $\frac{w_k}{d_k}$ will be such that $L \leq \frac{w_k}{d_k} \leq U$.
+
+```python
+weights, result = calibrate(
+    survey_data=data,
+    margins_dict=margins,
+    method="logit",
+    bounds=[0.5, 2.0]  # Weights will be between 0.5 and 2 times initial weights
+    initial_weights_column="weights"
+)
+```
+
+## Complete Example
+Here's a comprehensive example showcasing the main features:
+
+```python
+import pandas as pd
+from pycarus import calibrate
+
+# Sample survey data
+data = pd.DataFrame(
+    {
+        "age": [10, 24, 22, 28, 30, 35, 50, 41, 16, 33, 8, 45],
+        "country": [
+            "France",
+            "France",
+            "France",
+            "France",
+            "USA",
+            "USA",
+            "USA",
+            "Japan",
+            "Japan",
+            "Japan",
+            "Japan",
+            "Japan",
+        ],
+        "weights": [2, 2, 2, 2, 4, 4, 4, 5.5, 5.5, 5.5, 5.5, 5.5],
+    }
+)
+
+# Margins : on the whole population, we know that the variables sum to thoses margins
+margins_dict = {
+    "age": 1000,
+    "country": {
+        "France": 10,
+        "USA": 10,
+        "Japan": 24,
+    },
+}
+
+
+# Calibration
+weights, info = calibrate(
+    data,
+    margins_dict,
+    initial_weights_column="weights",
+    method="logit",
+    bounds=(0.4, 2.5)
+)
+
+# Analyze results
+print(f"Convergence achieved in {info.iterations} iterations")
+print(f"Relative gaps: {info.relative_gaps}")
+```
