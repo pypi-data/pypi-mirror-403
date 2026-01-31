@@ -1,0 +1,131 @@
+"""
+Summary generation service for merge requests.
+
+Generates high-level summaries of MR changes by analyzing
+commit messages and file diffs using an LLM.
+"""
+
+from typing import List
+from codeyak.protocols import LLMClient
+from codeyak.domain import ChangeSummaryStructuredOutput, ChangeSummary, MergeRequest
+
+
+class SummaryGenerator:
+    """
+    Service for generating AI-powered MR summaries.
+
+    Args:
+        llm: LLM client for generating summaries
+        langfuse: Langfuse client for tracing (optional)
+    """
+
+    def __init__(self, llm: LLMClient, langfuse=None):
+        self.llm = llm
+        self.langfuse = langfuse
+
+    def generate_summary(self, merge_request: MergeRequest, trace=None) -> ChangeSummary:
+        """
+        Generate a summary of the merge request changes.
+
+        Args:
+            merge_request: The merge request to summarize
+            trace: Langfuse trace object (None if tracing disabled)
+
+        Returns:
+            Formatted summary comment string
+        """
+        messages = self._build_summary_messages(merge_request)
+
+        # Start generation span if tracing enabled
+        generation = None
+        if trace:
+            generation = trace.start_generation(
+                name="generate_change_summary",
+                input=messages,  # Full ChatML format
+            )
+
+        # Use LLM to generate structured summary
+        response = self.llm.generate(messages, response_model=ChangeSummaryStructuredOutput)
+
+        # Format the summary
+        summary = self._format_summary_comment(response.result, len(merge_request.file_diffs))
+
+        # End generation with output
+        if generation:
+            generation.update(
+                model=response.model,
+                output=response.result.model_dump_json(),
+                usage_details={
+                    "input": response.token_usage.prompt_tokens,
+                    "output": response.token_usage.completion_tokens,
+                }
+            )
+            generation.end()
+
+        return ChangeSummary(summary, response.result.scope)
+
+    def _build_summary_messages(self, merge_request: MergeRequest) -> List[dict]:
+        """Build messages for summary generation."""
+        system_prompt = (
+            "You are an expert code reviewer analyzing a merge request. "
+            "Your task is to generate a clear, concise summary of what was accomplished. "
+            "Focus on the 'what' and 'why' rather than implementation details. Describe in a non formal tone but with engineering polish.\n\n"
+            "Guidelines:\n"
+            "1. Overview should be 2-3 sentences describing the main purpose\n"
+            "2. Key changes should be 3-5 bullet points of major modifications\n"
+            "3. Determine the scope based on the nature of changes\n"
+            "4. Be specific but avoid overwhelming technical detail\n"
+        )
+
+        user_prompt = self._format_mr_data(merge_request)
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+    def _format_mr_data(self, merge_request: MergeRequest) -> str:
+        """Format commit and diff data for the LLM."""
+        content = "# Merge Request Data\n\n"
+
+        # Add commits section
+        content += f"## Commits ({len(merge_request.commits)} total)\n\n"
+        for commit in merge_request.commits:
+            content += f"- [{commit.author}] {commit.message}\n"
+
+        # Add files changed section
+        content += f"\n## Files Changed ({len(merge_request.file_diffs)} total)\n\n"
+        for diff in merge_request.file_diffs:
+            content += f"### {diff.file_path}\n"
+            # Include diff but limit size to avoid token overflow
+            content += f"```diff\n{diff.format_with_line_numbers()}\n```\n\n"
+
+        content += "\nBased on this data, generate a summary of what was accomplished in this merge request."
+
+        return content
+
+    def _format_summary_comment(self, summary: ChangeSummaryStructuredOutput, files_count: int) -> str:
+        """
+        Format the summary as a markdown comment for posting to the MR.
+
+        Args:
+            summary: The generated MR summary
+            files_count: Number of files changed in the MR
+
+        Returns:
+            Formatted markdown string
+        """
+        comment = "# Change Summary\n\n"
+        comment += f"**Scope**: {summary.scope.type.title()} - {summary.scope.description}\n\n"
+        comment += f"**Size**: {summary.scope.size.title()}\n\n"
+        comment += f"**Files Reviewed**: {files_count}\n\n"
+        comment += f"## Overview\n{summary.overview}\n\n"
+
+        if summary.key_changes:
+            comment += "## Key Changes\n"
+            for change in summary.key_changes:
+                comment += f"- {change}\n"
+
+        comment += "\n---\n*This summary was automatically generated by CodeYak*"
+
+        return comment

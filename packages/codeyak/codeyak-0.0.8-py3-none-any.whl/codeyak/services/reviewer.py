@@ -1,0 +1,341 @@
+import time
+from typing import Any, ContextManager, Dict, List, Tuple
+from contextlib import nullcontext
+from rich.rule import Rule
+
+from codeyak.protocols import LLMClient, FeedbackPublisher, ProgressReporter
+from codeyak.ui.progress import format_duration
+from codeyak.domain.models import ChangeSummary, Guideline, MergeRequest, ReviewResult, MRComment
+from codeyak.domain.constants import CODE_FILE_EXTENSIONS
+from codeyak.ui import console, BRAND_BORDER, NullProgressReporter
+from langfuse import propagate_attributes
+
+from .guidelines import GuidelinesProvider
+from .context_builder import CodeReviewContextBuilder
+from .code import CodeProvider
+from .summary import SummaryGenerator
+
+
+class CodeReviewer:
+    def __init__(
+        self,
+        context: CodeReviewContextBuilder,
+        code: CodeProvider,
+        guidelines: GuidelinesProvider,
+        llm: LLMClient,
+        feedback: FeedbackPublisher,
+        summary: SummaryGenerator,
+        langfuse=None,
+        progress: ProgressReporter | None = None,
+    ):
+        self.context = context
+        self.code = code
+        self.llm = llm
+        self.guidelines = guidelines
+        self.feedback = feedback
+        self.summary = summary
+        self.langfuse = langfuse
+        self.progress = progress or NullProgressReporter()
+
+    def _start_trace(self, merge_request: MergeRequest) -> Tuple[Any, ContextManager]:
+        """Start Langfuse trace and return (trace, propagate_context)."""
+        if not self.langfuse:
+            return None, nullcontext()
+
+        # Build detailed file info for trace
+        files_info = []
+        for diff in merge_request.file_diffs:
+            file_info = {
+                "file_path": diff.file_path,
+                "full_file_lines": len(diff.full_content.splitlines()) if diff.full_content else 0,
+                "diff_lines": len(diff.format_with_line_numbers().splitlines()) if diff.hunks else 0,
+            }
+            files_info.append(file_info)
+
+        trace = self.langfuse.start_span(
+            name="review_code",
+            input={
+                "file_count": len(merge_request.file_diffs),
+                "files": files_info,
+            },
+            metadata={"merge_request_id": merge_request.id},
+        )
+        context = propagate_attributes(
+            user_id=merge_request.author or "local",
+            session_id=merge_request.id
+        )
+        return trace, context
+
+    def review_merge_request(self, merge_request_id: str):
+        self.progress.start_timer()
+        self.progress.info(f"Starting review for MR {merge_request_id}...")
+
+        # Load data first
+        guideline_sets = self.guidelines.load_guidelines_from_vcs(
+            merge_request_id=merge_request_id
+        )
+
+        merge_request = self.code.get_merge_request(
+            merge_request_id=merge_request_id,
+            extension_filters=CODE_FILE_EXTENSIONS
+        )
+
+        # Start trace
+        trace, propagate_context = self._start_trace(merge_request)
+
+        with propagate_context:
+            # Check for existing CodeYak summary - short circuit if found
+            for comment in merge_request.comments:
+                if comment.is_codeyak_summary():
+                    self.progress.info("Change summary already exists, skipping review")
+                    if trace:
+                        tags = [merge_request.project_name or "local", "skipped"]
+                        trace.update_trace(output={"skipped": True, "reason": "change_summary_exists"}, tags=tags)
+                        trace.end()
+                    return
+
+            self._run_review(
+                merge_request=merge_request,
+                guideline_sets=guideline_sets,
+                trace=trace,
+                generate_summary=True,
+            )
+
+    def _get_review_result_traced(
+        self,
+        merge_request: MergeRequest,
+        change_summary: ChangeSummary,
+        guidelines_filename: str,
+        guidelines: List[Guideline],
+        trace,
+        smart_context: str | None = None,
+    ) -> ReviewResult:
+        """
+        Generate review result using LLM with Langfuse tracing.
+
+        Args:
+            merge_request: The merge request containing file diffs and comments
+            guidelines: List of guidelines to apply during review
+            trace: Langfuse trace object (None if tracing disabled)
+            smart_context: Pre-built smart context string (from build_smart_context())
+
+        Returns:
+            ReviewResult: The generated review result from the LLM
+        """
+        # Build messages with full context
+        messages = self.context.build_review_messages(
+            merge_request,
+            change_summary,
+            guidelines,
+            trace=trace,
+            smart_context=smart_context,
+        )
+
+        # Start generation span if tracing enabled
+        generation = None
+        if trace:
+            generation = trace.start_generation(
+                name=f"generate_guideline_violations::{guidelines_filename}",
+                input=messages,  # Full ChatML format
+            )
+
+        # Call LLM with spinner
+        self.progress.start_status("Analyzing code...")
+        try:
+            output = self.llm.generate(messages, response_model=ReviewResult)
+        finally:
+            self.progress.stop_status()
+
+        # End generation with output
+        if generation:
+            generation.update(
+                model=output.model,
+                output=output.result.model_dump_json(),
+                usage_details={
+                    "input": output.token_usage.prompt_tokens,
+                    "output": output.token_usage.completion_tokens,
+                }
+            )
+            generation.end()
+
+        return output.result
+
+    def _filter_existing_violations(
+        self,
+        result: ReviewResult,
+        existing_comments: List[MRComment]
+    ) -> tuple[ReviewResult, int]:
+        """
+        Filter out violations that overlap with existing comments.
+
+        Returns:
+            tuple: (filtered_result, original_count)
+                - filtered_result: ReviewResult with duplicates removed
+                - original_count: Number of violations before filtering
+        """
+        original_count = len(result.violations)
+
+        if not existing_comments:
+            return result, original_count
+
+        filtered_violations = []
+        filtered_count = 0
+
+        for violation in result.violations:
+            is_duplicate = any(
+                comment.overlaps_with_violation(violation)
+                for comment in existing_comments
+            )
+
+            if is_duplicate:
+                self.progress.info(f"     Skipping duplicate: {violation.guideline_id} at {violation.file_path}:{violation.line_number}")
+                filtered_count += 1
+            else:
+                filtered_violations.append(violation)
+
+        if filtered_count > 0:
+            self.progress.info(f"     Filtered {filtered_count} duplicate violations")
+
+        return ReviewResult(violations=filtered_violations), original_count
+
+    def _generate_and_post_summary(self, merge_request: MergeRequest, trace=None):
+        """
+        Generate and post MR summary.
+
+        Args:
+            merge_request: MergeRequest object with diffs, commits, and id
+            trace: Langfuse trace object (None if tracing disabled)
+        """
+        console.print()
+        console.print(Rule("[brand]Generating MR Summary[/brand]", style=BRAND_BORDER, align="left"))
+
+        # Generate summary using LLM (with tracing)
+        self.progress.start_status("Generating summary...")
+        try:
+            summary = self.summary.generate_summary(merge_request, trace)
+        finally:
+            self.progress.stop_status()
+
+        # Format and post as general comment
+        self.progress.info(f"Summary: {summary.summary}")
+
+        self.feedback.post_general_comment(summary.summary)
+        self.progress.success("Summary posted")
+
+        return summary
+
+    def _run_review(
+        self,
+        merge_request: MergeRequest,
+        guideline_sets: Dict[str, List[Guideline]],
+        trace=None,
+        generate_summary: bool = True,
+        is_local: bool = False
+    ) -> None:
+        """
+        Core review loop: generate summary (optional), loop guideline sets,
+        call LLM, filter duplicates, and post feedback.
+
+        Args:
+            merge_request: The merge request containing file diffs and comments
+            guideline_sets: Dictionary mapping filename to list of guidelines
+            trace: Langfuse trace object (None if tracing disabled)
+            generate_summary: Whether to generate and post a summary
+        """
+        # Build smart context once for all guideline sets
+        smart_context = self.context.build_smart_context(
+            merge_request.file_diffs,
+            trace=trace
+        )
+
+        # Track when review/analysis starts (after context building)
+        review_start_time = time.monotonic()
+
+        # Generate and post summary if requested
+        summary = None
+        if generate_summary:
+            summary = self._generate_and_post_summary(merge_request, trace)
+
+        # Run focused review for each guideline set
+        total_original_violations = 0
+        total_filtered_violations = 0
+
+        for filename, guidelines in guideline_sets.items():
+            console.print()
+            console.print(f"[brand]Reviewing with {filename}[/brand] [muted]({len(guidelines)} guidelines)[/muted]")
+
+            result = self._get_review_result_traced(
+                merge_request, summary, filename, guidelines, trace, smart_context
+            )
+
+            # Filter duplicates and track both counts
+            filtered_result, original_count = self._filter_existing_violations(
+                result,
+                merge_request.comments
+            )
+            total_original_violations += original_count
+
+            violations_count = self.feedback.post_feedback(filtered_result)
+            total_filtered_violations += violations_count
+
+        # Update trace with results
+        if trace:
+            tags = [merge_request.project_name or "local"]
+            if summary:
+                tags.extend([summary.scope.type.value, summary.scope.size.value])
+            if total_filtered_violations == 0:
+                tags.append("no_violations")
+            if is_local:
+                tags.append("local")
+            else:
+                tags.append("remote")
+            trace.update_trace(output={"violation_count": total_filtered_violations}, tags=tags)
+            trace.end()
+
+        # Show review time (analysis only), then violations, then total time
+        review_elapsed = time.monotonic() - review_start_time
+        self.progress.success(f"Review complete in {format_duration(review_elapsed)}")
+        console.print(Rule(style=BRAND_BORDER))
+        self.feedback.post_review_summary(
+            total_original_violations,
+            total_filtered_violations
+        )
+        self.progress.success(f"Total time: {self.progress.format_elapsed_time()}")
+
+    def review_local_changes(self) -> None:
+        """
+        Review local uncommitted changes.
+
+        Uses CodeProvider to get filtered diffs as a MergeRequest,
+        loads guidelines locally, and runs the review without summary generation.
+        """
+        self.progress.start_timer()
+        self.progress.info("Starting review of local changes...")
+
+        # Get merge request with filtered diffs
+        merge_request = self.code.get_merge_request(
+            merge_request_id="local",
+            extension_filters=CODE_FILE_EXTENSIONS
+        )
+
+        # Check for empty diff
+        if not merge_request.file_diffs:
+            self.progress.warning("No code file changes found.")
+            return
+
+        self.progress.info(f"Found changes in {len(merge_request.file_diffs)} code file(s).")
+
+        # Load guidelines locally
+        guideline_sets = self.guidelines.load_guidelines_local()
+
+        # Start trace (now enabled for local reviews)
+        trace, propagate_context = self._start_trace(merge_request)
+
+        with propagate_context:
+            self._run_review(
+                merge_request=merge_request,
+                guideline_sets=guideline_sets,
+                trace=trace,
+                generate_summary=False,
+                is_local=True
+            )
