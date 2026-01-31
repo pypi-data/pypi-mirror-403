@@ -1,0 +1,70 @@
+# Chord Romanizer
+
+Chord Romanizerは、コード進行の解析とディグリーネーム（ローマ数字）表記への変換を行うPythonライブラリです。
+複雑なコードや転回形、ハイブリッドコード（分数コード）にも対応しており、文脈（前後のコード）を考慮した解析を行います。
+
+## 特徴
+- **文脈考慮**: キーと前後のコードから最適な度数表記を判定（例: 半音進行や解決先を考慮）。
+- **分数コード対応**: 転回形 (`C/E`)、ハイブリッドコード (`F/G`)、UST (`upper structure triad`) などを識別し、適切に表記 (`I/3`, `V9sus4`, etc.)。
+- **柔軟な入力**: 一般的なコードシンボル表記 (`Cm7`, `F#aug`, `Bb/C` など) をパース可能。
+
+## インストール
+
+現在のところ、PyPIには公開されていません。リポジトリをクローンしてプロジェクトに含めてください。
+
+```bash
+git clone https://github.com/your-username/chord-romanizer.git
+```
+
+## クイックスタート
+
+```python
+from chord_romanizer import Romanizer, ChordParser
+
+# 1. インスタンス生成 (デフォルトキーを指定可能)
+romanizer = Romanizer(default_tonic="C")
+
+# 2. コード進行の準備 (文字列からParsedChordへ変換)
+progression_str = ["Dm7", "G7", "Cmaj7", "A7(b9)", "Dm7"]
+chords = [ChordParser.parse(c) for c in progression_str if c]
+
+# 3. 解析 (annotate_progression)
+# 結果は RomanizedChord オブジェクトのリスト
+results = romanizer.annotate_progression(chords)
+
+# 4. 結果の表示
+for res in results:
+    input_symbol = res.chord.symbol
+    roman = res.roman
+    key = romanizer.default_tonic
+    print(f"{input_symbol} (Key: {key}) -> {roman}")
+
+# 出力例:
+# Dm7 (Key: C) -> IIm7
+# G7 (Key: C) -> V7
+# Cmaj7 (Key: C) -> IM7
+# A7(b9) (Key: C) -> VI7(b9)
+# Dm7 (Key: C) -> IIm7
+```
+
+## 主なクラスと機能
+
+### `Romanizer`
+解析のメインクラスです。
+- `annotate_progression(progression)`: コードのリストを受け取り、解析結果 (`RomanizedChord`) のリストを返します。リストの各要素は `ParsedChord` または `(ParsedChord, Key)` のタプルを受け付けます（転調に対応する場合）。
+
+### `ChordParser`
+コードシンボル文字列を解析用オブジェクトに変換します。
+- `parse(symbol_str)`: 文字列をパースして `ParsedChord` を返します。
+
+### `RomanizedChord`
+解析結果を保持するデータクラスです。
+- `roman`: 最終的なローマ数字表記（例: `IIm7`, `V7/VI`）。
+- `degree_root`: ルートの度数（例: `II`, `V`）。
+- `degree_bass`: ベース音の度数（転回形の場合）。
+- `is_hybrid`: ハイブリッドコード（機能的な分数コード）として解釈されたかフラグ。
+- `is_ii_v_start`: ツーファイブ進行の起点（II）と判定されたか。
+- `is_resolution_target`: ドミナントモーションの解決先（I）と判定されたか。
+
+## ライセンス
+[MIT License](LICENSE)
