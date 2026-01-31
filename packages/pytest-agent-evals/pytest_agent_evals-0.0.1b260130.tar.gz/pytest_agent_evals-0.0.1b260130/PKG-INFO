@@ -1,0 +1,239 @@
+Metadata-Version: 2.4
+Name: pytest-agent-evals
+Version: 0.0.1b260130
+Summary: Pytest plugin for evaluating AI Agents
+Keywords: ai,agent,toolkit,testing,evaluation,pytest
+Author-email: Microsoft <aitkfeedback@microsoft.com>
+Requires-Python: >=3.10.0
+Description-Content-Type: text/markdown
+License-Expression: LicenseRef-Microsoft-AI-Toolkit-Pytest-Agent-Evals
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Software Development :: Testing
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Typing :: Typed
+Classifier: Framework :: Pytest
+License-File: LICENSE
+Requires-Dist: pytest>=7.0
+Requires-Dist: pytest-asyncio>=0.23.0
+Requires-Dist: azure-ai-evaluation==1.14.0
+Requires-Dist: agent-framework-core>=1.0.0b260116,<=1.0.0b260123
+Requires-Dist: agent-framework-azure-ai>=1.0.0b260116,<=1.0.0b260123
+Requires-Dist: azure-identity>=1.16.0
+Requires-Dist: azure-ai-projects>=2.0.0b3
+Requires-Dist: filelock>=3.13.0
+Requires-Dist: openai>=1.99.0
+Requires-Dist: pydantic>=2,<3
+Project-URL: Homepage, https://github.com/microsoft/vscode-ai-toolkit
+Project-URL: Issues, https://github.com/microsoft/vscode-ai-toolkit/issues
+Project-URL: Repository, https://github.com/microsoft/vscode-ai-toolkit
+
+# Pytest Agent Evals
+
+A pytest plugin for evaluating AI Agents, seamlessly integrated with VS Code Test Explorer and AI Toolkit.
+
+## Installation
+
+```bash
+pip install pytest-agent-evals --pre
+```
+
+> **Note**: This package is currently in beta. The `--pre` flag is required to install pre-release versions.
+
+## Features
+
+- **Data Loading**: Parametrizing tests from dataset files (JSONL) or inline data.
+- **Agent Execution**: Running agents (`ChatAgent` or Foundry agent) and caching responses to disk to avoid redundant API calls.
+- **Evaluation**: Running built-in or custom evaluators (LLM-based or code-based) on the agent's response.
+- **Reporting**: Aggregating evaluation results into a JSON report and a terminal summary.
+
+## Usage
+
+This plugin enables you to evaluate agent responses against datasets using built-in or custom evaluators.
+
+### 1. Define Your Agent
+
+You can test both local agents (running in your process) and remote agents (hosted in Microsoft Foundry).
+
+#### Local Agent (ChatAgent)
+
+Test local agent instances that utilize the `agent_framework.ChatAgent` class. Use `ChatAgentConfig` to reference a pytest fixture that provides the initialized agent.
+
+```python
+import pytest
+from pytest_agent_evals import evals, ChatAgentConfig
+from my_app.agents import create_my_agent  # Your source code
+
+@pytest.fixture
+def my_agent():
+    # Return your initialized agent instance
+    return create_my_agent()
+
+@evals.agent(ChatAgentConfig(agent_fixture=my_agent))
+class TestMyAgent:
+    ...
+```
+
+#### Remote Agent (Foundry)
+
+Connect to an agent hosted in Foundry using `FoundryAgentConfig`.
+
+```python
+from pytest_agent_evals import evals, FoundryAgentConfig
+
+@evals.agent(FoundryAgentConfig(
+    agent_name="my-agent",
+    project_endpoint="https://<resource>.services.ai.azure.com/api/projects/<project>"
+))
+class TestFoundryAgent:
+    ...
+```
+
+### 2. Configure Dataset
+
+Use `@evals.dataset` to parametrize your test class with data from a JSONL file or inline list.
+
+```python
+@evals.dataset("data.jsonl")
+class TestMyAgent:
+    ...
+```
+
+### 3. Configure Judge Model
+
+Use `@evals.judge_model` to configure the LLM used for AI-assisted evaluation (e.g., Azure OpenAI).
+
+```python
+from pytest_agent_evals import AzureOpenAIModelConfig
+
+@evals.judge_model(AzureOpenAIModelConfig(
+    deployment_name="gpt-4.1", 
+    endpoint="https://<resource>.openai.azure.com/", 
+))
+class TestEvaluation:
+    ...
+```
+
+### 4. Define Evaluators
+
+Use `@evals.evaluator` on your test function to register evaluators that run against the agent's response.
+
+#### Built-in Evaluators
+
+Use `BuiltInEvaluatorConfig` to configure built-in evaluators (e.g., coherence, relevance).
+
+```python
+from pytest_agent_evals import BuiltInEvaluatorConfig
+
+@evals.agent(...)
+@evals.dataset(...)
+@evals.judge_model(...)
+class TestEvaluation:
+
+    @evals.evaluator(BuiltInEvaluatorConfig(name="coherence"))
+    def test_quality(self, evaluator_results):
+        assert evaluator_results.coherence.result == "pass"
+```
+
+#### Custom Prompt Evaluators
+
+Use `CustomPromptEvaluatorConfig` to define your own LLM-based evaluation logic using a Jinja2 template.
+
+```python
+from pytest_agent_evals import CustomPromptEvaluatorConfig
+
+friendliness_prompt = """
+You are an AI assistant that evaluates the tone of a response.
+Score the friendliness of the response on a scale of 1 to 5, where 1 is hostile or rude, and 5 is very friendly and warm.
+Provide a brief reason for your score.
+
+### Input:
+Response:
+{{response}}
+
+You must output your result in the following JSON format:
+{
+    "result": <integer from 1 to 5>,
+    "reason": "<brief explanation>"
+}
+"""
+
+@evals.agent(...)
+@evals.dataset(...)
+@evals.judge_model(...)
+class TestMyCustomPrompts:
+
+    @evals.evaluator(CustomPromptEvaluatorConfig(
+        name="friendliness",
+        prompt=friendliness_prompt,
+        threshold=3
+    ))
+    def test_friendliness(self, evaluator_results):
+        assert evaluator_results.friendliness.result == "pass"
+```
+
+#### Custom Code Evaluators
+
+Use `CustomCodeEvaluatorConfig` to execute a Python function for deterministic or rule-based grading.
+
+```python
+from pytest_agent_evals import CustomCodeEvaluatorConfig
+
+def length_check(sample, item):
+    # Return 1.0 (pass) or 0.0 (fail)
+    return 1.0 if len(sample["output_text"]) < 100 else 0.0
+
+@evals.agent(...)
+@evals.dataset(...)
+class TestMyCodeEvals:
+
+    @evals.evaluator(CustomCodeEvaluatorConfig(
+        name="conciseness",
+        grader=length_check,
+        threshold=0.9
+    ))
+    def test_conciseness(self, evaluator_results):
+        assert evaluator_results.conciseness.result == "pass"
+```
+
+## CLI Options
+
+### List Evaluations
+
+Preview the evaluations that will be run, grouped by unique combinations of **Agent**, **Dataset**, and **Evaluators**.
+
+```bash
+pytest --collect-evals
+```
+
+### Cache Management
+
+Control how agent responses are cached during test execution.
+
+```bash
+# 'session' (default): Clears cache at startup. 
+# Ensures consistency by sharing the same fresh response across all evaluators for a query.
+pytest --cache-mode session
+
+# 'persistence': Preserves cache across sessions. 
+# Avoids redundant agent execution, enabling rapid evaluator tuning without agent changes.
+pytest --cache-mode persistence
+```
+
+## Requirements
+
+- Python 3.10+
+- Visual Studio Code (recommended for running tests from Test Explorer)
+- [VS Code AI Toolkit](https://marketplace.visualstudio.com/items?itemName=ms-windows-ai-studio.windows-ai-studio) (recommended for visualizing and analyzing evaluation results, submitting evaluations to run in Foundry, etc.)
+
+## License
+
+This project is licensed under the **Microsoft AI Toolkit – Pytest Agent Evals License Terms**.
+
