@@ -1,0 +1,210 @@
+Metadata-Version: 2.4
+Name: influx-rust
+Version: 0.1.0
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Rust
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Topic :: Database
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Summary: High-performance InfluxDB query interface for Python
+Keywords: influxdb,rust,performance,async,database
+Author-email: AquaChile DevOps <devops@aquachile.com>
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: Documentation, https://github.com/famoralesc/influx-rust/blob/main/README.md
+Project-URL: Homepage, https://github.com/famoralesc/influx-rust
+Project-URL: Repository, https://github.com/famoralesc/influx-rust
+
+# InfluxDB Rust Proof of Concept
+
+This is a performance comparison POC to test if Rust can outperform Python for InfluxDB queries.
+
+## Objective
+
+Replicate the Python `get_influx_data_async` function in Rust to measure performance improvements, especially in:
+- JSON serialization/deserialization
+- Query execution overhead
+- Memory usage
+
+## Setup
+
+### 1. Install Rust (if not already installed)
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### 2. Build the project
+
+```bash
+cd influx-rust
+cargo build --release
+```
+
+The `--release` flag enables optimizations for accurate performance testing.
+
+## Usage
+
+### Method 1: Using environment variables
+
+```bash
+# Set environment variables
+export INFLUXDB_URL="https://your-influxdb-url.com"
+export INFLUXDB_TOKEN="your-token-here"
+export INFLUXDB_ORG="your-org"
+
+# Run with a query
+cargo run --release 'from(bucket: "your-bucket") |> range(start: -1h) |> limit(n: 100)'
+```
+
+### Method 2: Using command-line arguments
+
+```bash
+cargo run --release 'from(bucket: "your-bucket") |> range(start: -1h)' \
+  --url https://your-influxdb-url.com \
+  --token your-token-here \
+  --org your-org
+```
+
+### Example with real query
+
+```bash
+cargo run --release \
+  'from(bucket: "agua_mar")
+   |> range(start: -24h)
+   |> filter(fn: (r) => r._measurement == "oxygen")
+   |> filter(fn: (r) => r.centro == "Centro1")' \
+  --url $INFLUXDB_URL \
+  --token $INFLUXDB_TOKEN \
+  --org $INFLUXDB_ORG
+```
+
+## Performance Output
+
+The program outputs timing information similar to the Python version:
+
+```
+[PERF][InfluxDB] Client initialization: 0.0012s
+[PERF][InfluxDB] Query execution: 0.1234s
+[PERF][InfluxDB] Process records: 0.0045s
+[PERF][InfluxDB] TOTAL InfluxDB operation: 0.1291s
+[PERF][InfluxDB] Records returned: 1000
+```
+
+## Comparison with Python
+
+To compare performance:
+
+### Python version timing:
+```python
+# From msw-agua-mar/src/app/database/influxdb.py
+# Example output:
+# [PERF][InfluxDB] Client initialization: 0.0234s
+# [PERF][InfluxDB] Query execution: 0.1567s
+# [PERF][InfluxDB] JSON serialization: 0.0456s
+# [PERF][InfluxDB] JSON deserialization: 0.0389s
+# [PERF][InfluxDB] Process records: 0.0123s
+# [PERF][InfluxDB] TOTAL InfluxDB operation: 0.2769s
+```
+
+### Expected improvements in Rust:
+- ✅ **No JSON serialization/deserialization overhead** (Python does it twice!)
+- ✅ **Faster record processing** (no Python interpreter overhead)
+- ✅ **Lower memory usage** (no intermediate JSON strings)
+- ✅ **Better async performance** (Tokio vs asyncio)
+
+## Next Steps (if successful)
+
+If Rust shows significant performance improvements:
+
+1. **Refactor as library**: Extract `get_influx_data_async` as a standalone function
+2. **Add PyO3 bindings**: Create Python bindings using PyO3
+3. **Package as Python module**: Make it installable via pip
+4. **Replace Python implementation**: Use the Rust implementation in existing services
+
+### PyO3 Integration Example
+
+```rust
+use pyo3::prelude::*;
+
+#[pyfunction]
+fn get_influx_data_async_rust(
+    url: String,
+    token: String,
+    org: String,
+    query: String,
+) -> PyResult<Vec<HashMap<String, String>>> {
+    // Call the Rust implementation
+    // Return results to Python
+}
+
+#[pymodule]
+fn influx_rust(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(get_influx_data_async_rust, m)?)?;
+    Ok(())
+}
+```
+
+## Dependencies
+
+- `influxdb2` - Official InfluxDB 2.x Rust client
+- `tokio` - Async runtime
+- `serde/serde_json` - JSON serialization
+- `anyhow` - Error handling
+
+## Testing
+
+### Quick Test
+
+Run with a sample query to test connectivity:
+
+```bash
+cargo run --release 'buckets()' --url $INFLUXDB_URL --token $INFLUXDB_TOKEN --org $INFLUXDB_ORG
+```
+
+### Production Query Test ⭐ RECOMMENDED
+
+Test with the real production query (oxygen levels across 40+ sources):
+
+```bash
+./test_real_query.sh
+```
+
+This will measure performance on a complex query with:
+- Multiple data sources (40+ sources)
+- Aggregations (first, min, mean)
+- Joins
+- Time window aggregation (30m)
+
+### Compare with Python
+
+To benchmark against the Python implementation:
+
+```bash
+./compare_performance.sh '<your_query>' ../msw-agua-mar
+```
+
+## Troubleshooting
+
+### SSL/TLS errors
+If you encounter SSL errors, the influxdb2 crate should handle SSL verification automatically. Make sure your InfluxDB instance has a valid certificate.
+
+### Connection timeout
+The client has no explicit timeout in this POC. For production, you may want to add timeout configuration.
+
+### Query syntax errors
+Make sure your Flux query is valid. Test it in the InfluxDB UI first.
+
+## License
+
+Internal use for AquaChile performance testing.
+
