@@ -1,0 +1,68 @@
+[package]
+name = "dynimg"
+version = "0.1.13"
+edition = "2024"
+description = "A fast library and CLI for rendering HTML/CSS to images"
+license = "MIT"
+repository = "https://github.com/blopker/dynimg"
+keywords = ["html", "css", "image", "render", "screenshot"]
+categories = ["multimedia::images", "rendering"]
+readme = "README.md"
+
+[lib]
+name = "dynimg"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "dynimg"
+path = "src/main.rs"
+
+[features]
+default = []
+python = ["pyo3", "libc"]
+
+[dependencies]
+# Python bindings (optional)
+pyo3 = { version = "0.27", features = ["extension-module", "abi3-py311"], optional = true }
+libc = { version = "0.2", optional = true }
+
+
+# Blitz rendering engine (from git - matches example.rs)
+blitz-dom = { git = "https://github.com/DioxusLabs/blitz.git", rev = "15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8", features = ["tracing"] }
+blitz-html = { git = "https://github.com/DioxusLabs/blitz.git", rev = "15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8" }
+blitz-net = { git = "https://github.com/DioxusLabs/blitz.git", rev = "15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8", features = ["cache"] }
+blitz-paint = { git = "https://github.com/DioxusLabs/blitz.git", rev = "15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8" }
+blitz-traits = { git = "https://github.com/DioxusLabs/blitz.git", rev = "15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8" }
+
+# Anyrender - use the same version blitz uses (from crates.io)
+anyrender = "0.7"
+anyrender_vello_cpu = "0.9"
+
+# Graphics primitives - use the same versions anyrender uses
+peniko = "0.6"
+kurbo = "0.13"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Image encoding
+png = "0.18"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+webp = "0.3"
+
+# Async runtime (needed for blitz-net)
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Tracing for debugging
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# For NetProvider implementation
+bytes = "1"
+
+[profile.release]
+lto = "thin"
