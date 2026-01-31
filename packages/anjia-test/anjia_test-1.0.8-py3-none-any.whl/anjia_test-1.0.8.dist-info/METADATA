@@ -1,0 +1,150 @@
+Metadata-Version: 2.4
+Name: anjia-test
+Version: 1.0.8
+Summary: 摄像头小程序实时预览出图时间统计工具
+Author: mofanx
+License: MIT License
+        
+        Copyright (c) 2025 mofanx contributors
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://gitee.com/yanwuning/anjia_test
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: uiautomator2>=3.2.0
+Requires-Dist: Pillow>=11.3.0
+Requires-Dist: requests>=2.32.0
+Requires-Dist: loguru>=0.7.0
+Requires-Dist: PyYAML>=6.0.0
+Dynamic: license-file
+
+摄像头小程序实时预览出图时间统计工具
+
+本项目用于测试摄像头小程序实时预览出图时间，并将每次测试的结果（含不出图的情况）汇总成友好的报表和明细列表，便于后续分析。
+
+## 功能概览
+
+1. **自动化触发播放/出图**：利用 `uiautomator2` 控制设备进入指定摄像头预览并点击播放按钮。
+2. **黑屏检测**：通过裁剪预览区域并计算平均亮度，判断是否真正出图。
+3. **耗时统计**：多次执行测试，将成功与失败（不出图）记录到列表。
+4. **结果导出**：以文本或 CSV 形式保存统计结果，包含平均值、最大/最小值、不出图率等指标。
+
+## 目录结构
+
+```
+anjia_test/
+├── anjia_test/               # 可发布的 Python 包（导入名：anjia_test）
+│   ├── __init__.py
+│   ├── cli.py                # 命令行入口：anjia-test
+│   └── utils/
+│       ├── notify_wx.py
+│       ├── time_count.py
+│       └── time_statistic.py
+├── requirements.txt          # 依赖包
+├── pyproject.toml            # 打包/发布配置
+└── README.md
+```
+
+## 环境要求
+
+- Python 3.9+
+- 已开启调试模式并能通过 USB/Wi-Fi 连接的安卓设备
+- 电脑端安装了与设备匹配的 ADB 驱动
+
+## 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+## 快速开始
+
+1. **连接设备**：确保安卓设备与电脑连接，`uiautomator2` 能够正常识别。
+2. **安装（开发模式）**：
+   ```bash
+   pip install -e .
+   ```
+3. **启动命令行工具**：
+   ```bash
+   anjia-test -c 10 -n "单目摄像头A" -t 30 -f csv -o result/test.txt -w "<wecom_webhook>"
+   ```
+4. **查看输出**：程序会在控制台打印每次测试的耗时，并在 `result/` 目录下生成带时间戳的统计文件（文本或 CSV）。
+
+## 命令行参数
+
+命令入口为 `anjia-test`，核心参数如下（完整列表见 `anjia_test/cli.py`）：
+
+- `-c/--count`：测试次数。
+- `-n/--camera_name`：摄像头名称，若不传且配置文件中配置了元素/坐标，则会自动读取。
+- `-t/--overdue_time`：单次测试的最长等待时间（秒）。
+- `-f/--file_format`：统计结果格式，`text` 或 `csv`。
+- `-s/--serial`：指定设备序列号 / IP，默认连接首个设备。
+- `-q/--quiet`：加上该参数则不推送企业微信通知。
+- `-C/--config`：显式指定配置文件路径（相对路径相对于当前工作目录解析）。
+- `-l/--load_time`：从设备列表进入预览后等待界面加载的时间（秒）。
+
+示例：
+
+```bash
+anjia-test -c 5 -n "单目摄像头A" -s 192.168.3.19 \
+  -C default_config.yaml -l 2.0 -f csv -o result/cameraA.csv
+```
+
+## 配置文件与自定义
+
+`anjia_test/utils/config.py` 会在启动时先加载包内 `default_config.yaml`，再尝试合并当前工作目录下的 `anjia_config.yaml`。你也可以：
+
+1. `anjia-test config` 导出一份默认配置（如需覆盖已有文件加 `--force`）。
+2. 参照导出的 YAML 修改坐标、元素定位、`log_level` 等字段。
+3. 运行命令时通过 `-C` 指定任意配置文件（支持相对/绝对路径）。
+
+程序会打印“✅ 已加载配置文件：xxx”作为提示；若格式错误或路径不存在，会直接中止并提示原因。
+
+## 日志配置
+
+- `anjia_test/utils/logger_config.py` 默认根据配置文件中的 `log_level`（或环境变量 `LOG_LEVEL`）初始化 Loguru。
+- 日志默认写入 `logs/` 目录，文件名形如 `anjia-test_2023-01-01.log`；可通过 `LOG_DIR`、`LOG_NAME` 等环境变量覆盖。
+- 若需要更详细的堆栈，可在配置中把 `log_level` 设为 `debug`，或在运行前导出 `LOG_LEVEL=DEBUG`。
+
+## 自定义用法
+
+- 调整测试次数或最大等待时间：
+  ```python
+  from anjia_test import time_statistics, save_time_statistics
+  import uiautomator2 as u2
+  
+  d = u2.connect()
+  time_data = time_statistics(device=d, count=5, camera_name="单目摄像头A", overdue_time=30)
+  save_time_statistics(time_statistics=time_data, file_path="result/test.txt", format_type="csv", overdue_time=30)
+  ```
+- 若原始耗时单位为毫秒，可在 `save_time_statistics` 中指定 `time_unit="milliseconds"`，函数会自动转换为秒并保持统计正确。
+
+## 输出示例
+
+生成的文本报告包含：
+- 总测试次数、成功次数、不出图次数、不出图率
+- 有效耗时的总计、平均值、最大值、最小值
+- 每次测试的状态与原始耗时值
+
+CSV 文件在上述内容外，还会追加原始秒值和毫秒值，方便进一步分析。
+
+---
+如需扩展更多指标（例如失败截图保存、AI 识别等），可基于 `utils/time_count.py` 与 `utils/time_statistic.py` 进行定制。
