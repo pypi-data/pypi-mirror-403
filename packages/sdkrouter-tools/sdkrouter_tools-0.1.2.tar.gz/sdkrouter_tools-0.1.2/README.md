@@ -1,0 +1,277 @@
+# sdkrouter-tools
+
+SDK Router Tools — collection of utility tools for automation pipelines.
+
+## Installation
+
+```bash
+pip install sdkrouter-tools
+```
+
+## Tools Included
+
+- **logging** — Rich-powered logger with file persistence
+- **telegram** — Rate-limited Telegram sender with priority queue
+- **html** — HTML cleaner optimized for LLM pipelines
+
+---
+
+## 1. Logging (Rich-powered)
+
+Universal Python logger with Rich console output and file persistence.
+
+```python
+from sdkrouter_tools import get_logger
+
+log = get_logger(__name__)
+log.info("Hello world")
+log.error("Something failed", exc_info=True)
+
+# With custom level
+log = get_logger(__name__, level="DEBUG")
+log.debug("Debug details: %s", data)
+```
+
+### Features
+
+- Rich console output with colors and formatting
+- Automatic file logging (daily rotation)
+- Auto-detects project root for log directory
+- Rich tracebacks with local variables
+
+### Convenience Functions
+
+```python
+from sdkrouter_tools.logging import debug, info, warning, error, critical
+
+info("Processing started")
+warning("Low memory")
+error("Failed to connect")
+```
+
+### Configuration
+
+```python
+from sdkrouter_tools import setup_logging
+
+setup_logging(
+    level="DEBUG",           # Log level
+    log_to_file=True,        # Write to file
+    log_to_console=True,     # Output to console
+    app_name="myapp",        # App name for log file
+    rich_tracebacks=True,    # Rich exception formatting
+)
+```
+
+---
+
+## 2. Telegram Sender
+
+Rate-limited Telegram message sender with priority queue support.
+
+```python
+from sdkrouter_tools import TelegramSender, ParseMode
+
+sender = TelegramSender(
+    bot_token="YOUR_BOT_TOKEN",
+    chat_id="YOUR_CHAT_ID",
+)
+
+sender.send_message("Hello from sdkrouter-tools!")
+sender.send_message("<b>Bold</b> message", parse_mode=ParseMode.HTML)
+```
+
+### Convenience Functions
+
+```python
+from sdkrouter_tools.telegram import (
+    send_error, send_success, send_warning,
+    send_info, send_stats, send_alert,
+)
+
+send_error("Something went wrong!", {"details": "error info"})
+send_success("Task completed!", {"items_processed": 100})
+send_warning("Disk space low", {"available": "10GB"})
+send_alert("Critical: Server down!", {"server": "prod-1"})
+```
+
+### Environment Variables
+
+```bash
+export TELEGRAM_BOT_TOKEN="your_bot_token"
+export TELEGRAM_CHAT_ID="your_chat_id"
+```
+
+### Priority Queue
+
+Messages are processed with rate limiting (20 msg/sec):
+
+```python
+from sdkrouter_tools import MessagePriority
+
+# CRITICAL (1), HIGH (2), NORMAL (3), LOW (4)
+sender.send_message("Important!", priority=MessagePriority.HIGH)
+```
+
+### Sending Files
+
+```python
+sender.send_photo("/path/to/image.jpg", caption="Check this out!")
+sender.send_document("/path/to/file.pdf", caption="Report attached")
+```
+
+### Queue Management
+
+```python
+from sdkrouter_tools import telegram_queue
+
+stats = telegram_queue.get_stats()
+telegram_queue.flush(timeout=10.0)  # Wait before script exit
+```
+
+---
+
+## 3. HTML Cleaner
+
+HTML cleaner optimized for LLM pipelines. Aggressive DOM cleaning, SSR hydration extraction, CSS class filtering, semantic chunking, and multiple output formats.
+
+```python
+from sdkrouter_tools import HTMLCleaner, CleanerConfig, OutputFormat
+
+cleaner = HTMLCleaner()
+result = cleaner.clean(html)
+
+print(result.output)
+print(f"Reduction: {result.stats.reduction_percent}%")
+print(f"Tokens: {result.stats.original_tokens} -> {result.stats.cleaned_tokens}")
+```
+
+### Quick Functions
+
+```python
+from sdkrouter_tools import clean, clean_to_json
+
+# Quick clean
+result = clean(html, max_tokens=5000, output_format="markdown")
+
+# Get JSON if SSR data available, otherwise cleaned HTML
+data = clean_to_json(html)
+```
+
+### Configuration
+
+```python
+from sdkrouter_tools import CleanerConfig, OutputFormat
+
+config = CleanerConfig(
+    max_tokens=5000,
+    output_format=OutputFormat.MARKDOWN,  # HTML, MARKDOWN, AOM, XTREE
+    filter_classes=True,
+    class_threshold=0.5,
+    try_hydration=True,
+)
+
+cleaner = HTMLCleaner(config)
+result = cleaner.clean(html)
+```
+
+### SSR Hydration Extraction
+
+Extract structured data from server-side rendered pages:
+
+```python
+from sdkrouter_tools.html import extract_hydration, detect_framework
+
+framework = detect_framework(html)  # NEXTJS_APP, NUXT3, etc.
+
+data = extract_hydration(html)
+if data.has_data:
+    products = data.page_props.get("products", [])
+```
+
+Supported: Next.js, Nuxt 2/3, SvelteKit, Remix, Gatsby, Qwik, Astro
+
+### CSS Class Filtering
+
+```python
+from sdkrouter_tools.html import score_class, filter_classes, detect_css_framework
+
+# Score classes by semantic relevance
+result = score_class("product-card")  # High score
+result = score_class("css-abc123")    # Low score (hash)
+
+# Filter list of classes
+classes = ["product-card", "css-abc123", "flex", "MuiButton-root"]
+kept = filter_classes(classes, threshold=0.5)  # ["product-card"]
+
+# Detect CSS framework
+framework = detect_css_framework(html)  # "tailwind", "bootstrap", etc.
+```
+
+### Output Formats
+
+```python
+from sdkrouter_tools.html import to_markdown, to_aom_yaml, to_xtree
+from bs4 import BeautifulSoup
+
+soup = BeautifulSoup(html, "lxml")
+
+# Markdown
+md = to_markdown(soup)
+
+# AOM YAML (Playwright-style aria snapshot)
+yaml = to_aom_yaml(soup)
+# - navigation:
+#   - link "Home"
+#   - link "Products"
+
+# XTree (hierarchical tree)
+tree = to_xtree(soup)
+# ROOT
+# ├─ nav#main-nav
+# │  └─ a.nav-link → "Home"
+# └─ main
+```
+
+### Pipeline API
+
+```python
+from sdkrouter_tools import clean_html, clean_for_llm
+
+result = clean_html(html, max_tokens=5000, output_format="markdown")
+output = clean_for_llm(html)  # Returns dict (SSR) or str (cleaned HTML)
+```
+
+### Advanced Features
+
+```python
+from sdkrouter_tools.html import (
+    # Shadow DOM
+    flatten_shadow_dom,
+    # Downsampling
+    downsample_html, estimate_tokens,
+    # Semantic Chunking
+    SemanticChunker, ChunkConfig,
+    # Context Extraction
+    extract_context, generate_selector,
+    # Helpers
+    json_to_toon, html_to_text, extract_links, extract_images,
+)
+```
+
+---
+
+## Requirements
+
+- Python >= 3.10
+- rich >= 13.0
+- pyTelegramBotAPI >= 4.14
+- beautifulsoup4 >= 4.12
+- lxml >= 5.3
+- pydantic >= 2.10
+- markdownify >= 0.14
+- tiktoken >= 0.8
+
+## License
+
+MIT
