@@ -1,0 +1,106 @@
+services:
+  # Elasticsearch - Primary session storage, logging, and configuration backend
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: agent-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - storage
+      - all
+
+  # MongoDB - Alternative session storage backend
+  mongodb:
+    image: mongo:7.0
+    container_name: agent-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - storage
+      - all
+
+  # FalkorDB - Graph database for Graphiti memory provider
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: agent-falkordb
+    ports:
+      - "6379:6379"
+    volumes:
+      - falkordb_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - memory
+      - all
+
+  # PostgreSQL - Relational database for Memori memory provider
+  postgres:
+    image: postgres:15
+    container_name: agent-postgres
+    environment:
+      - POSTGRES_DB=agent_memory
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - memory
+      - all
+
+  # MinIO - S3-compatible object storage for file storage
+  minio:
+    image: minio/minio:latest
+    container_name: agent-minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - storage
+      - all
+
+
+volumes:
+  elasticsearch_data:
+  mongodb_data:
+  falkordb_data:
+  postgres_data:
+  minio_data:
