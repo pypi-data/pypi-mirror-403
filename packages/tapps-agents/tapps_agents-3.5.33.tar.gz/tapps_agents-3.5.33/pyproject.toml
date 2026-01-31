@@ -1,0 +1,195 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tapps-agents"
+version = "3.5.33"
+description = "A specification framework for defining, configuring, and orchestrating coding agents"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Tapps"}
+]
+maintainers = [
+    {name = "Tapps"}
+]
+keywords = ["ai", "agents", "coding", "workflow", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    # Core Framework (required at runtime: config, workflow artifacts, agent contracts)
+    "pydantic>=2.12.5",
+    "httpx>=0.28.1",
+    "pyyaml>=6.0.3",
+    "aiohttp>=3.13.3",
+    "psutil>=7.2.1",
+    # Code Analysis (used by reviewer agent at runtime)
+    "radon>=6.0.1",
+    "bandit>=1.9.2",
+    "coverage>=7.13.1",
+    # Reporting (used by report generator)
+    "jinja2>=3.1.6",
+    "plotly>=6.5.2",
+    # Dependency conflict resolution
+    # Constrain packaging to avoid conflicts with transitive dependencies (e.g., langchain-core)
+    # langchain-core 0.2.43 requires packaging>=23.2,<26
+    "packaging>=23.2,<27",
+    # CLI UX (progress spinners/bars, live updates)
+    "rich>=14.2.0",
+    # Async I/O (async file operations for performance - optional with fallback)
+    "aiofiles>=25.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Code Formatting
+    "black>=26.1.0",
+    "ruff>=0.14.13,<1.0",
+    # Type Checking
+    "mypy>=1.19.1,<2.0",
+    "types-PyYAML>=6.0.12.20250915",
+    # Testing
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-sugar>=1.1.1",
+    "pytest-html>=4.1.1",
+    "pytest-rich>=0.2.0",  # Modern rich output for pytest (alternative to custom plugin)
+    # Code Quality (optional, for maintainability scoring)
+    "pylint>=4.0.4",
+    # Security & Dependency Management
+    "pip-audit>=2.10.0",
+    # Note: pipdeptree moved to [dependency-analysis] extra due to packaging>=25 requirement
+    # which conflicts with our packaging<25 constraint (needed for langchain-core compatibility)
+    # Lock File Generation
+    "pip-tools>=7.5.2",
+]
+dependency-analysis = [
+    # Dependency analysis tools (optional - requires packaging>=25)
+    # Note: These tools require packaging>=25, which conflicts with our packaging<25 constraint
+    # needed for langchain-core compatibility. Install separately if needed:
+    # pip install -e ".[dependency-analysis]"
+    # This will install packaging>=25 and may cause conflicts with langchain-core.
+    "pipdeptree>=2.30.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/wtthornton/TappsCodingAgents"
+Repository = "https://github.com/wtthornton/TappsCodingAgents"
+Documentation = "https://github.com/wtthornton/TappsCodingAgents"
+Issues = "https://github.com/wtthornton/TappsCodingAgents/issues"
+
+[project.scripts]
+tapps-agents = "tapps_agents.cli:main"
+
+[tool.setuptools]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tapps_agents*"]
+exclude = ["tests*", "examples*"]
+
+[tool.setuptools.package-data]
+"tapps_agents" = ["resources/**/*", "experts/**/*"]
+"tapps_agents.resources" = ["**/*"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.pyc", "__pycache__/*", "**/__pycache__/*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+exclude = '''
+/(
+  \.git
+| \.mypy_cache
+| \.pytest_cache
+| \.ruff_cache
+| \.venv
+| build
+| dist
+| htmlcov
+| MagicMock
+| tapps_agents\.egg-info
+| reports
+)/'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+fix = false
+show-fixes = true
+exclude = [
+  ".git",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".venv",
+  "build",
+  "dist",
+  "htmlcov",
+  "MagicMock",
+  "tapps_agents.egg-info",
+  "reports",
+]
+
+[tool.ruff.lint]
+# Start with a pragmatic, high-signal rule set; tighten over time during the marathon.
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+  # Let Black handle line-length; long strings/URLs are often intentional.
+  "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  # Tests often have “unused” fixtures/parameters by design.
+  "ARG001",
+  "ARG002",
+]
+
+[tool.mypy]
+python_version = "3.13"
+pretty = true
+show_error_codes = true
+show_column_numbers = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = false
+warn_unreachable = true
+no_implicit_optional = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+ignore_missing_imports = true
+exclude = "(^build/|^dist/|^htmlcov/|^MagicMock/|^reports/|^tapps_agents\\.egg-info/)"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+  "-q",
+  "--disable-warnings",
+  "--maxfail=1",
+]
+asyncio_mode = "auto"
+timeout = 120
+
+[tool.coverage.run]
+branch = true
+source = ["tapps_agents"]
+
+[tool.coverage.report]
+skip_empty = true
+show_missing = true
+precision = 2
+fail_under = 75
