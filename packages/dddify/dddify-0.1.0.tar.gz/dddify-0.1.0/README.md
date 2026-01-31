@@ -1,0 +1,153 @@
+# DDDify 🏗️
+
+Ein Generator für Domain-Driven Design (DDD) Projektstrukturen mit Clean Architecture für Python.
+
+## 🎯 Was macht DDDify?
+
+DDDify generiert automatisch eine vollständige DDD-Projektstruktur mit allen notwendigen Dateien und Templates:
+
+```
+domain/                  # 🟢 DER KERN (Reines Python, KEINE Frameworks!)
+├── entities.py          # Die Fachlogik-Objekte
+├── value_objects.py     # Unveränderliche Werte
+├── exceptions.py        # Fachliche Fehler
+└── ports.py             # Interfaces
+
+application/             # 🟡 DIE STEUERUNG (Use Cases)
+├── services.py          # Orchestriert Domain & Infra
+├── queries.py           # CQRS: Lese-Operationen
+└── commands.py          # CQRS: Schreib-Operationen
+
+infrastructure/          # 🔴 DIE DETAILS (Datenbank, Ext. APIs)
+├── persistence/
+│   ├── orm.py           # SQLAlchemy Modelle
+│   └── repository.py    # Repository-Implementierung
+└── adapters/            # z.B. SmtpEmailAdapter
+
+presentation/            # 🔵 DIE SCHNITTSTELLE (HTTP, CLI)
+├── router.py            # FastAPI Routes
+└── schemas.py           # Pydantic DTOs
+```
+
+## 🚀 Installation
+
+```bash
+# Klone das Repository
+git clone <repo-url>
+cd dddify
+
+# Aktiviere die virtuelle Umgebung (falls vorhanden)
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/Mac
+
+# Installiere Dependencies (falls nötig)
+pip install -r requirements.txt
+```
+
+## 💻 Verwendung
+
+### Grundlegende Verwendung
+
+```bash
+cd ddify
+python test.py generate "Order Management" "Order"
+```
+
+Dies generiert eine vollständige DDD-Struktur für eine "Order Management" Domain mit einer "Order" Entity.
+
+### Mit benutzerdefiniertem Ausgabeverzeichnis
+
+```bash
+python test.py generate "User Management" "User" --output-dir ./my-project
+```
+
+### Verfügbare Templates anzeigen
+
+```bash
+python test.py list-templates
+```
+
+## 📋 Beispiele
+
+### E-Commerce Order Management
+```bash
+python test.py generate "Order Management" "Order"
+```
+
+### User Management System
+```bash
+python test.py generate "User Management" "User"
+```
+
+### Product Catalog
+```bash
+python test.py generate "Product Catalog" "Product"
+```
+
+## 🏗️ Generierte Struktur
+
+Nach der Generierung erhältst du:
+
+- ✅ Vollständige DDD-Ordnerstruktur
+- ✅ Alle notwendigen Python-Dateien mit Code-Vorlagen
+- ✅ Clean Architecture Prinzipien
+- ✅ CQRS Pattern (Commands & Queries)
+- ✅ Repository Pattern
+- ✅ FastAPI Integration
+- ✅ SQLAlchemy ORM Setup
+- ✅ Pydantic Schemas
+- ✅ README.md mit Strukturübersicht
+
+## 🎨 Templates
+
+DDDify verwendet Jinja2-Templates für maximale Flexibilität:
+
+- `entities.py.j2` - Domain Entities
+- `value_objects.py.j2` - Value Objects
+- `exceptions.py.j2` - Domain Exceptions
+- `ports.py.j2` - Repository Interfaces
+- `application_services.py.j2` - Application Services
+- `commands.py.j2` - CQRS Commands
+- `queries.py.j2` - CQRS Queries
+- `orm.py.j2` - SQLAlchemy Models
+- `repository.py.j2` - Repository Implementation
+- `router.py.j2` - FastAPI Router
+- `schemas.py.j2` - Pydantic Schemas
+
+## 📚 DDD Prinzipien
+
+### Abhängigkeitsregeln
+
+1. **Domain** kennt niemanden (Pure Python, keine Frameworks)
+2. **Application** kennt nur Domain
+3. **Infrastructure** implementiert Domain-Interfaces
+4. **Presentation** kennt Application + Domain
+
+### Vorteile
+
+- ✅ Klare Trennung der Verantwortlichkeiten
+- ✅ Testbar durch Interface-basiertes Design
+- ✅ Framework-unabhängige Business-Logik
+- ✅ Einfach wartbar und erweiterbar
+- ✅ Skalierbar durch CQRS-Pattern
+
+## 🛠️ Entwicklung
+
+```bash
+# Generator anpassen
+vim ddify/main.py
+
+# Neue Templates hinzufügen
+vim ddify/templates/your_template.py.j2
+
+# Testen
+python ddify/test.py generate "Test Domain" "TestEntity"
+```
+
+## 📝 Lizenz
+
+MIT
+
+## 🤝 Contributing
+
+Pull Requests sind willkommen!
