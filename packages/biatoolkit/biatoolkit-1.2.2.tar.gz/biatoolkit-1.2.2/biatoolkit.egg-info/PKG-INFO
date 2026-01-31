@@ -1,0 +1,541 @@
+Metadata-Version: 2.4
+Name: biatoolkit
+Version: 1.2.2
+Summary: Biblioteca para desenvolvedores que utilizam o BiaAgentBuilder
+Author: Bia Platform Team
+Author-email: data.platform@sankhya.com.br
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: requires-python
+Dynamic: summary
+
+# Bia Toolkit
+
+Biblioteca Python para facilitar o desenvolvimento de servidores MCP integrados ao **Bia Agent Builder**.
+
+O objetivo da Bia Toolkit é abstrair detalhes técnicos do MCP (Model Context Protocol),
+fornecendo utilitários prontos para:
+- Comunicação com servidores MCP
+- Leitura de contexto do runtime (headers)
+- Recuperação segura de parâmetros e segredos
+
+---
+
+## Principais classes da biblioteca
+
+### BiaClient
+
+A classe `BiaClient` encapsula um cliente HTTP assíncrono para comunicação com servidores MCP
+(Model Context Protocol).
+
+Ela esconde toda a complexidade de:
+- Conexão HTTP streamable
+- Inicialização de sessões MCP
+- Execução de tools
+
+#### Principais métodos
+
+- **list_tools()**
+  - Lista todas as ferramentas disponíveis no servidor MCP.
+
+- **call_tool(tool_name, params=None)**
+  - Executa uma ferramenta específica disponível no servidor MCP.
+
+---
+
+### BiaUtil
+
+A classe `BiaUtil` fornece métodos auxiliares para uso **dentro de MCP Servers**,
+permitindo acesso fácil a:
+- Headers padronizados enviados pelo runtime do Bia Agent Builder
+- Parâmetros sensíveis vindos de variáveis de ambiente ou cofre de segredos (AWS SSM)
+
+#### Principais métodos
+
+- **construtor**
+  - Recebe uma instância de `FastMCP` para acessar o contexto da requisição atual.
+
+- **get_header()**
+  - Extrai e retorna os headers customizados do runtime.
+  - Retorna um objeto `Header` com os campos:
+    - `current_host`: Host do ERP no qual o copilot está em execução.
+    - `user_email`: Email do usuário autenticado.
+    - `jwt_token`: Token JWT do usuário.
+    - `jsessionid`: ID de autenticação do ERP.
+    - `organization_id`: ID da organização da Bia.
+    - `codparc`: Código do parceiro Sankhya.
+    - `iam_user_id`: ID do usuário do BIA IAM.
+    - `gateway_token`: Token primário do Sankhya API Gateway.
+
+- **get_parameter(parameter_name)**
+  - Recupera parâmetros sensíveis seguindo a ordem:
+    1. Variáveis de ambiente do sistema
+    2. AWS SSM Parameter Store (fallback)
+
+  **Observações importantes:**
+  - O SSM só é consultado se o parâmetro **não existir** nas variáveis de ambiente.
+  - Em produção, a busca no SSM depende do header  
+    `X-Amzn-Bedrock-AgentCore-Runtime-Custom-prefix`.
+  - Se esse header não estiver presente, o método retorna `None`.
+
+---
+
+## **Como utilizar**
+
+Nesta seção você encontrará uma breve descrição de como utilizar os principais recursos da biblioteca **Bia Toolkit**.
+
+### **Criando um MCP Server**
+
+Primeiro, instale os pacotes **MCP** e **Bia Toolkit**.
+
+```bash
+pip install mcp biatoolkit
+```
+
+Crie um novo arquivo chamado `meu_mcp_server.py` com o seguinte conteúdo:
+
+```python
+from mcp.server.fastmcp import FastMCP
+import json
+
+mcp = FastMCP(host="0.0.0.0", stateless_http=True)
+
+@mcp.tool()
+def listar() -> str:
+    """Retorna uma lista de exemplo"""
+    exemplo = {
+        "itens": [
+            {"id": 1, "nome": "Item 1"},
+            {"id": 2, "nome": "Item 2"},
+            {"id": 3, "nome": "Item 3"},
+        ]
+    }
+    return json.dumps(exemplo, indent=4, sort_keys=True)
+
+@mcp.tool()
+def adicionar(id: int, nome: str) -> str:
+    """Adiciona um item à lista de exemplo"""
+    novo_item = {"id": id, "nome": nome}
+    return json.dumps(novo_item, indent=4, sort_keys=True)
+
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http")
+```
+
+#### **Entendendo o código**
+
+- **FastMCP**: Cria um servidor MCP que pode hospedar suas ferramentas.
+- **@mcp.tool()**: Decorador que transforma suas funções Python em ferramentas MCP.
+- **Tool**: Duas ferramentas simples que demonstram diferentes tipos de operação.
+
+⚠️ **IMPORTANTE**: Para fazer o deploy no ambiente do Bia Agent Builder, o nome do arquivo, que neste exemplo é `meu_mcp_server.py`, será utilizado para gerar um `pacote Python`. Este pacote deverá ser `único` no Bia Agent Builder. Portanto, no deploy, caso este pacote `já exista` no Bia Agent Builder, você precisará renomear o seu arquivo.
+
+#### **Iniciando o servidor localmente**
+
+Para executar o seu servidor localmente:
+
+```bash
+python meu_mcp_server.py
+```
+
+Você deverá receber uma mensagem no console semelhante à imagem a seguir:
+
+![Figura 01 - Servidor MCP executando localmente](https://iili.io/fSAyNRI.png)
+
+#### **Como testar o servidor local**
+
+Crie um novo arquivo chamado `local.py` com o seguinte conteúdo:
+
+```python
+import asyncio
+from biatoolkit.basic_client import BiaClient
+
+MCP_SERVER_URL = "http://0.0.0.0:8000/mcp"
+client = BiaClient(MCP_SERVER_URL)
+
+async def list_tools():
+    tools = await client.list_tools()
+    for tool in tools.tools:
+        print(f"Tool: {tool.name}, Description: {tool.description}")
+
+async def call_tool(tool_name: str, params: dict = None):
+    result = await client.call_tool(tool_name, params)
+    print(result.content[0].text)
+
+async def main():
+    await list_tools()
+
+asyncio.run(main())
+```
+
+#### **Entendendo o código**
+
+- **BiaClient**: É uma classe da biblioteca **Bia Toolkit** que encapsula um cliente HTTP para comunicação com servidores MCP.
+- **list_tools**: Executa a instrução `client.list_tools()` para recuperar todas as ferramentas disponíveis no servidor MCP.
+- **call_tool**: Executa a instrução `client.call_tool(tool_name, params)` para executar uma ferramenta específica do servidor MCP.
+
+#### **Executando o código**
+
+⚠️ Certifique-se de que o servidor MCP `meu_mcp_server.py` ainda esteja em execução.
+
+Execute o arquivo `local.py` em outro terminal:
+
+```bash
+python local.py
+```
+
+Você deverá ver a saída no console semelhante a:
+
+![Figura 02 - Cliente MCP listando tools do servidor](https://iili.io/fS7lELN.png)
+
+Caso deseje testar a execução de uma **tool**, basta alterar o método `main` conforme a seguir:
+
+```python
+async def main():
+    await call_tool("adicionar", {"id": 4, "nome": "Novo item"})
+```
+
+Veja que o método `call_tool` possui dois parâmetros:
+
+- O primeiro é o nome da tool que queremos executar.
+- O segundo é um `dicionário` com os parâmetros da tool, sendo o segundo __(opcional)__ caso exista.
+
+Ao executar o arquivo `local.py`, você deverá ver a saída no console semelhante a: 
+
+![Figura 03 - Cliente MCP executando uma tool do servidor](https://iili.io/fS7l1Xp.png)
+
+### **Enviando parâmetros via header**
+
+Se seu servidor MCP estiver sendo executado **localmente**, você conseguirá informar qualquer parâmetro no `header` da requisição. Entretanto, quando o seu servidor MCP estiver hospedado no ambiente de produção do **Bia Agent Builder** (AWS Bedrock AgentCore), apenas os parâmetros abaixo podem ser utilizados.
+
+⚠️ QUALQUER OUTRO PARÂMETRO SERÁ IGNORADO PELO SERVIDOR. ⚠️
+
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-current-host**: Host do ERP no qual o copilot está em execução.
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-user-email**: Email do usuário autenticado.
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-jwt-token**: JWT token do usuário -> SankhyaID, SankhyaPass ou Token interno Bia.
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-jsessionid**: ID de autenticação do ERP.
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-organization-id**: ID da organização da Bia.
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-codparc**: Código do parceiro (parceiro Sankhya).
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-iam-user-id**: ID do usuário do BIA IAM.
+- **X-Amzn-Bedrock-AgentCore-Runtime-Custom-gateway-token**: Token primário do Sankhya API Gateway.
+
+```python
+import asyncio
+from biatoolkit.basic_client import BiaClient
+
+MCP_SERVER_URL = "http://0.0.0.0:8000/mcp"
+
+# Se seu servidor MCP estiver sendo executado **localmente**, você conseguirá informar qualquer parâmetro
+# no `header` da requisição. Entretanto, quando o seu servidor MCP estiver hospedado no ambiente de produção
+# do Bia Agent Builder (AWS Bedrock AgentCore), apenas os parâmetros abaixo podem ser utilizados.
+
+# Ao utilizar os serviços de interação com a Bia (/agent/stream, /agent/message ou /agent/invoke), 
+# os parâmetros abaixo já são automaticamente preenchidos e enviados pelos serviços.
+headers = {
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-current-host": "current-host-123456", # Host do ERP no qual o copilot está em execução.
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-user-email": "user-email-123456", # Email do usuário autenticado.
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-jwt-token": "jwt-token-123456", # JWT token do usuário -> SankhyaID, SankhyaPass ou Token interno Bia.
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-jsessionid": "jsessionid-123456", # ID de autenticação do ERP.
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-organization-id": "123", # ID da organização da Bia.
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-codparc": "456", # Código do parceiro (parceiro Sankhya).
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-iam-user-id": "789", # ID do usuário do BIA IAM.
+    "X-Amzn-Bedrock-AgentCore-Runtime-Custom-gateway-token": "gateway-token-123456", # Token primário do Sankhya API Gateway.
+    "Content-Type": "application/json"
+}
+
+client = BiaClient(MCP_SERVER_URL, headers=headers)
+
+async def list_tools() -> None:
+    tools = await client.list_tools()
+    for tool in tools.tools:
+        print(f"Tool: {tool.name}, Description: {tool.description}")
+
+
+async def call_tool(tool_name: str, params: dict = None) -> None:
+    result = await client.call_tool(tool_name, params)
+    print(result.content[0].text)
+
+
+async def main():
+    await call_tool("listar")
+    
+    
+asyncio.run(main())
+```
+
+...existing code...
+
+Para recuperar os parâmetros no MCP Server que foram enviados por meio do `header` da requisição, basta utilizar a classe `BiaUtil` conforme a seguir:
+
+```python
+from mcp.server.fastmcp import FastMCP
+from biatoolkit.util import BiaUtil
+
+mcp = FastMCP(host="0.0.0.0", stateless_http=True)
+
+@mcp.tool()
+def processar() -> str:
+    """Executa o processamento de algo"""
+    
+    util = BiaUtil(mcp)
+    header = util.get_header()
+
+    # Exemplo de uso dos parâmetros do header. Utilize conforme a necessidade 
+    # do seu processamento, como autenticação de endpoints, identificação, etc.
+    
+    print("Valor do parâmetro current_host:", header.current_host)
+    print("Valor do parâmetro user_email:", header.user_email)
+    print("Valor do parâmetro jwt_token:", header.jwt_token)
+    print("Valor do parâmetro jsessionid:", header.jsessionid)
+    print("Valor do parâmetro organization_id:", header.organization_id)
+    print("Valor do parâmetro codparc:", header.codparc)
+    print("Valor do parâmetro iam_user_id:", header.iam_user_id)
+    print("Valor do parâmetro gateway_token:", header.gateway_token)
+    
+    return f"Processamento executado"
+
+    
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http")
+```
+
+### **Recuperando parâmetros do cofre de segredos**
+
+Você pode utilizar parâmetros sensíveis de duas formas:
+
+- Usando arquivos `.env` para execução local.
+- Usando o cofre de segredos do Bia Agent Builder para execução em ambiente produtivo.
+  - Você pode adicionar parâmetros sensíveis no cofre de segredos do Bia Agent Builder. Para adicionar, alterar e excluir os parâmetros do cofre, utilize as funcionalidades da Plataforma Bia Agent Builder UI.
+
+Para recuperar um valor sensível no seu MCP Server, utilize o método `get_parameter(parameter_name: str)` da classe `BiaUtil`.
+
+```python
+from mcp.server.fastmcp import FastMCP
+from biatoolkit.util import BiaUtil
+
+mcp = FastMCP(host="0.0.0.0", stateless_http=True)
+
+@mcp.tool()
+def processar() -> str:
+    """Executa o processamento de algo"""
+    
+    util = BiaUtil(mcp)
+    valor = util.get_parameter("meu_parametro")
+
+    # Exemplo de uso do parâmetro recuperado. Utilize conforme a necessidade 
+    # do seu processamento, como autenticação de endpoints, identificação, etc.
+
+    print("Valor do parâmetro:", valor)
+    return f"Processamento executado"
+
+    
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http")
+```
+
+O método `get_parameter(parameter_name: str)` busca o parâmetro informado em duas fontes distintas. Primeiro, o método tenta buscar o parâmetro consultando as **variáveis de ambiente** do sistema. Caso não exista, o método tenta buscar o parâmetro na **AWS SSM Parameter Store**.
+
+✅ Isso é vantajoso pois você pode armazenar o parâmetro em:
+
+- Um arquivo `.env` para testes locais.
+- No cofre de segredos do Bia Agent Builder para usar em ambiente produtivo. 
+
+
+---
+
+## Validação e Coerção de Dados
+
+O Bia Toolkit oferece funções utilitárias para normalização, sanitização e coerção de dados, facilitando o consumo seguro de entradas vindas de APIs, headers, payloads e integrações legadas.
+
+
+### Validação de Dados (`biatoolkit.validation.validation`)
+
+Utilize a classe **BiaValidation** para acessar as funções de validação de forma padronizada:
+
+- **BiaValidation.parse_int_list(value, dedupe=True, keep_order=True)**
+    - Normaliza um valor arbitrário em uma lista de inteiros.
+    - Suporta: None, int, str (extrai números), list/tuple (recursivo).
+    - Ignora valores inválidos.
+    - Deduplica e mantém ordem por padrão.
+    - Exemplo:
+        ```python
+        from biatoolkit.validation.validation import BiaValidation
+        BiaValidation.parse_int_list("SKU=300231 x2")  # [300231, 2]
+        BiaValidation.parse_int_list([1, 2, 1, 3], dedupe=False)  # [1, 2, 1, 3]
+        ```
+
+- **BiaValidation.sanitize_like(value, max_len=80, upper=True)**
+    - Sanitiza texto para uso seguro em filtros LIKE/search SQL.
+    - Remove caracteres fora da allowlist, limita tamanho, escapa aspas simples, %, _ e normaliza espaços.
+    - Converte para maiúsculas por padrão.
+    - Exemplo:
+        ```python
+        from biatoolkit.validation.validation import BiaValidation
+        BiaValidation.sanitize_like("O'Reilly")  # "O''REILLY"
+        BiaValidation.sanitize_like("100%_OK")   # "100\\%\\_OK"
+        ```
+
+
+### Coerção de Dados (`biatoolkit.validation.coercion`)
+
+Utilize a classe **BiaCoercion** para acessar as funções de coerção de forma padronizada:
+
+- **BiaCoercion.ensure_list(value)**
+    - Garante que o valor seja retornado como lista.
+    - None → [], list → list, tuple/set → list, dict → [dict], outro → [valor].
+    - Exemplo:
+        ```python
+        from biatoolkit.validation.coercion import BiaCoercion
+        BiaCoercion.ensure_list(None)  # []
+        BiaCoercion.ensure_list({"a": 1})  # [{"a": 1}]
+        BiaCoercion.ensure_list(5)  # [5]
+        ```
+
+- **BiaCoercion.unwrap_dollar_value(value)**
+    - Desembrulha valores no formato {"$": ...} (comum em integrações legadas).
+    - Exemplo:
+        ```python
+        from biatoolkit.validation.coercion import BiaCoercion
+        BiaCoercion.unwrap_dollar_value({"$": 123})  # 123
+        BiaCoercion.unwrap_dollar_value("abc")  # "abc"
+        ```
+
+- **BiaCoercion.to_int(value, default=0)**
+    - Converte valor para int de forma segura.
+    - None, "", bool, NaN/inf → default.
+    - Aceita strings numéricas, floats (trunca), etc.
+    - Exemplo:
+        ```python
+        from biatoolkit.validation.coercion import BiaCoercion
+        BiaCoercion.to_int(" 42 ")  # 42
+        BiaCoercion.to_int(None, default=-1)  # -1
+        ```
+
+- **BiaCoercion.to_float(value, default=0.0)**
+    - Converte valor para float de forma segura.
+    - None, "", bool, NaN/inf → default.
+    - Aceita strings com vírgula decimal.
+    - Exemplo:
+        ```python
+        from biatoolkit.validation.coercion import BiaCoercion
+        BiaCoercion.to_float("12,34")  # 12.34
+        BiaCoercion.to_float("abc", default=-1.0)  # -1.0
+        ```
+
+
+Essas funções são úteis para garantir robustez e previsibilidade ao tratar dados vindos de múltiplas fontes, reduzindo erros e if/else espalhados pelo código.
+
+---
+
+## Integração com Sankhya (`biatoolkit.sankhya_call`)
+
+
+O Bia Toolkit oferece integração pronta para consumo de serviços HTTP da plataforma Sankhya (ou gateway), com autenticação via JSESSIONID e configuração de timeouts/retries via variáveis de ambiente.
+
+### Objetivo
+
+- Facilitar chamadas autenticadas a serviços Sankhya sem que o desenvolvedor precise lidar com autenticação, headers ou gerenciamento de sessão HTTP.
+- Fornecer métodos prontos para chamadas genéricas (`call_json`) e para consultas a views (`load_view`).
+- Permitir uso estático compatível com scaffolds legados via `Sankhya.Call(...)`.
+
+### Configuração
+
+- O caminho do serviço (`/mge/service.sbr`) é fixo no toolkit.
+- O parâmetro `base_url` é obrigatório e pode ser passado explicitamente ou extraído automaticamente do header do runtime (`current_host` via `BiaUtil`).
+- Não existe mais configuração via variável de ambiente para base_url ou service_path.
+- As variáveis de ambiente opcionais são apenas para timeout, retries e SSL:
+    - `SANKHYA_TIMEOUT_CONNECT`: timeout de conexão (default: 3.05)
+    - `SANKHYA_TIMEOUT_READ`: timeout de leitura (default: 12)
+    - `SANKHYA_RETRIES_TOTAL`: número de tentativas em falha (default: 3)
+    - `SANKHYA_RETRY_BACKOFF`: backoff entre tentativas (default: 0.5)
+    - `SANKHYA_VERIFY_SSL`: se valida SSL (default: "1")
+
+### Principais classes e métodos
+
+- **SankhyaSettings**: Dataclass de configuração de timeouts/retries/SSL. Use `SankhyaSettings.from_env()` para obter as configurações do ambiente.
+- **Sankhya**: Classe principal de integração. Permite instanciar com contexto MCP (`FastMCP`) ou usar métodos estáticos.
+    - `call_json(...)`: Realiza chamada HTTP autenticada, retorna JSON. Veja detalhes dos parâmetros abaixo.
+    - `load_view(...)`: Helper para consultas a views Sankhya (`CRUDServiceProvider.loadView`). Veja detalhes dos parâmetros abaixo.
+    - `Call(...)`: Método estático compatível com scaffolds legados. Veja detalhes dos parâmetros abaixo.
+### Parâmetros dos métodos principais
+
+#### `call_json`
+
+| Parâmetro         | Obrigatório | Descrição |
+|-------------------|-------------|-----------|
+| payload           | Não         | Dicionário enviado como corpo da requisição (POST). Pode ser None. |
+| jsessionid        | Não         | Token de sessão JSESSIONID. Se não informado, tenta extrair do header do runtime (via MCP/BiaUtil). |
+| url               | Não         | URL completa para chamada. Se informado, ignora base_url. |
+| base_url          | Sim*        | Base URL do serviço Sankhya (ex: https://meu.sankhya.com.br). Obrigatório se não estiver em contexto MCP (header). |
+| query             | Não         | Querystring adicional (ex: serviceName=...&outputType=json). |
+| method            | Não         | "POST" (default) ou "GET". |
+| extra_headers     | Não         | Dicionário de headers adicionais. |
+| timeout           | Não         | Tupla (connect, read) para sobrescrever timeout padrão. |
+| raise_for_http_error | Não      | Se True (default), lança SankhyaHTTPError em erro HTTP. |
+
+*Se não passar base_url, o método tentará extrair automaticamente do header do runtime (MCP) se disponível. Caso contrário, será obrigatório.
+
+#### `load_view`
+
+| Parâmetro         | Obrigatório | Descrição |
+|-------------------|-------------|-----------|
+| view_name         | Sim         | Nome da view no Sankhya. |
+| where_sql         | Sim         | Cláusula WHERE (string). |
+| fields            | Não         | Campos a retornar (string). Default: "*". |
+| jsessionid        | Não         | Token de sessão JSESSIONID. Se não informado, tenta extrair do header do runtime (via MCP/BiaUtil). |
+| url               | Não         | URL completa opcional (override). |
+| base_url          | Não*        | Base URL do serviço Sankhya. Se não informado, tenta extrair do header do runtime (current_host). |
+| output_type       | Não         | "json" (default). |
+| extra_headers     | Não         | Dicionário de headers adicionais. |
+
+*Se não passar base_url, o método tentará extrair automaticamente do header do runtime (MCP) via BiaUtil. Caso não consiga, lança erro.
+
+#### `Call`
+
+| Parâmetro         | Obrigatório | Descrição |
+|-------------------|-------------|-----------|
+| jsessionID        | Não         | Token de sessão JSESSIONID. Se não informado, tenta extrair do header do runtime (via MCP/BiaUtil). |
+| payload           | Não         | Dicionário enviado como corpo da requisição. |
+| mcp               | Não         | Instância opcional do FastMCP para contexto do runtime. |
+| url               | Não         | URL completa (opcional). |
+| base_url          | Sim*        | Base URL do serviço Sankhya. Obrigatório se não estiver em contexto MCP (header). |
+| query             | Não         | Querystring adicional (opcional). |
+| method            | Não         | "POST" (default) ou "GET". |
+| extra_headers     | Não         | Dicionário de headers adicionais. |
+
+*Se não passar base_url, o método tentará extrair automaticamente do header do runtime (MCP) se disponível. Caso contrário, será obrigatório.
+
+**Resumo:** Sempre que possível, o toolkit resolve automaticamente base_url e jsessionid do contexto MCP (headers). Se não estiver rodando em MCP, passe base_url explicitamente.
+- **SankhyaHTTPError**: Exceção lançada em caso de erro HTTP (status != 200), contendo status_code e response_text.
+
+### Exemplo de uso (instanciado)
+
+```python
+from biatoolkit.sankhya_call import Sankhya
+sk = Sankhya(mcp=mcp)
+result = sk.load_view("BIA_VW_MB_RULES", "CODPROD_A = 123", fields="*")
+# O base_url será extraído automaticamente do header do runtime (current_host)
+```
+
+### Exemplo de uso (estático)
+
+```python
+from biatoolkit.sankhya_call import Sankhya
+result = Sankhya.Call(jsessionID="...", payload={...}, base_url="https://meu.sankhya.com.br", query="serviceName=...&outputType=json")
+```
+
+### Observações
+
+- O JSESSIONID pode ser passado explicitamente ou extraído automaticamente do header do runtime (se rodando em MCP Server).
+- O método `load_view` facilita consultas a views Sankhya, montando o payload e a querystring automaticamente, e resolve o base_url do header se não for passado.
+- O método `call_json` permite chamadas genéricas a qualquer serviço Sankhya, com controle total sobre headers, método HTTP, payload e querystring, mas exige base_url explícito se não estiver em contexto MCP.
+
+---
