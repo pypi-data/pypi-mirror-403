@@ -1,0 +1,132 @@
+Metadata-Version: 2.4
+Name: metapg.pool
+Version: 0.3.0
+Summary: Async and sync PostgreSQL connection pool for multi-database applications
+Project-URL: Homepage, https://github.com/metapg/metapg
+Project-URL: Repository, https://github.com/metapg/metapg
+Project-URL: Issues, https://github.com/metapg/metapg/issues
+Project-URL: Documentation, https://metapg.readthedocs.io/
+Author-email: Darwin Monroy <darwin@ideatives.com>
+License: MIT
+Keywords: async,database,pool,postgresql,psycopg
+Classifier: Development Status :: 4 - Beta
+Classifier: Framework :: AsyncIO
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Database
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.11
+Requires-Dist: psycopg[binary,pool]>=3.2.0
+Requires-Dist: pydantic<3.0.0,>=2.11.7
+Provides-Extra: dev
+Requires-Dist: black>=24.0.0; extra == 'dev'
+Requires-Dist: mypy>=1.11.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.24.0; extra == 'dev'
+Requires-Dist: pytest-cov>=5.0.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.6.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# metapg.pool
+
+**High-performance PostgreSQL connection pool with async and sync support**
+
+`metapg.pool` provides async and sync PostgreSQL connection pooling built on psycopg3. It supports multiple databases, smart connection reuse, and context-aware operations.
+
+## Installation
+
+```bash
+pip install metapg.pool
+```
+
+## Quick Start
+
+```python
+import metapg.pool
+
+# Initialize pool
+metapg.pool.init_pool(dsn="postgresql://localhost/mydb", db_name="main")
+
+# Async usage
+async with metapg.pool.cursor() as cur:
+    await cur.execute("SELECT * FROM users")
+    users = await cur.fetchall()
+
+# Sync usage (same interface!)
+with metapg.pool.cursor() as cur:
+    cur.execute("SELECT * FROM users")
+    users = cur.fetchall()
+
+# Transactions
+async with metapg.pool.transaction():
+    async with metapg.pool.cursor() as cur:
+        await cur.execute("INSERT INTO users (name) VALUES (%s)", ("Alice",))
+```
+
+## Features
+
+- **🎯 Smart Interface** - Same API for both async and sync operations
+- **⚡ High Performance** - Built on psycopg3 with efficient connection pooling
+- **🎛️ Multi-Database** - Manage multiple PostgreSQL databases with named pools
+- **🧠 Context-Aware** - Smart connection reuse with contextvars
+- **🔒 Thread-Safe** - Safe for use in threaded applications
+- **⚙️ Zero-Config** - Works out of the box with sensible defaults
+
+## API Reference
+
+### Pool Management
+
+```python
+# Initialize pools (creates both async and sync pools)
+metapg.pool.init_pool(
+    dsn="postgresql://user:pass@host:port/dbname",
+    db_name="default",
+    min_size=1,
+    max_size=20
+)
+
+# Get existing pool
+pool = metapg.pool.get_pool("default")
+
+# Close specific pool
+await metapg.pool.close_pool("default")
+
+# Close all pools
+await metapg.pool.close_all_pools()
+```
+
+### Database Operations
+
+```python
+# Smart cursor (adapts to sync/async context)
+async with metapg.pool.cursor("db_name") as cur:
+    await cur.execute("SELECT * FROM table")
+    results = await cur.fetchall()
+
+# Direct connection access
+async with metapg.pool.connection("db_name") as conn:
+    async with conn.cursor() as cur:
+        await cur.execute("SELECT 1")
+
+# Transactions
+async with metapg.pool.transaction("db_name"):
+    async with metapg.pool.cursor() as cur:
+        await cur.execute("INSERT INTO table VALUES (%s)", (value,))
+```
+
+## Environment Variables
+
+- `DATABASE_URL` - Default database connection string
+- `DATABASE_URL_{NAME}` - Connection string for named database (e.g., `DATABASE_URL_ANALYTICS`)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Part of metapg
+
+This package is part of the [metapg](https://github.com/metapg/metapg) metapackage for PostgreSQL operations.
