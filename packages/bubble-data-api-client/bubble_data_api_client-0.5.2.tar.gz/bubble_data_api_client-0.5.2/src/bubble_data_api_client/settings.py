@@ -1,0 +1,6 @@
+"""Environment variable settings for Bubble API credentials."""
+
+import os
+
+BUBBLE_DATA_API_ROOT_URL = os.getenv("BUBBLE_DATA_API_ROOT_URL")
+BUBBLE_API_KEY = os.getenv("BUBBLE_API_KEY")
