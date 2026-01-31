@@ -1,0 +1,177 @@
+# PySap2000
+
+[![PyPI version](https://badge.fury.io/py/pysap2000.svg)](https://badge.fury.io/py/pysap2000)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**PySap2000** 是一个现代化的 SAP2000 结构分析软件 Python API 封装库，提供面向对象的接口和 AI 智能助手功能。
+
+## ✨ 特性
+
+- 🏗️ **面向对象设计** - 提供简洁直观的 API
+- 🤖 **AI 智能助手** - 集成 LangChain Agent，支持自然语言控制 SAP2000
+- 📊 **完整功能覆盖** - 支持建模、分析、设计、结果提取等全流程
+- 🔒 **安全操作** - 修改操作需确认，支持撤回功能
+- 📚 **RAG 知识库** - 内置 SAP2000 API 文档搜索
+
+## 📦 安装
+
+### 基础安装
+```bash
+pip install pysap2000
+```
+
+### 安装 AI Agent 功能
+```bash
+pip install pysap2000[agent]
+```
+
+### 安装全部功能
+```bash
+pip install pysap2000[all]
+```
+
+## 🚀 快速开始
+
+### 基础用法
+
+```python
+from PySap2000 import Application
+from PySap2000.structure_core import Point, Frame
+from PySap2000.global_parameters import Units, UnitSystem
+
+# 连接 SAP2000
+with Application() as app:
+    # 设置单位
+    Units.set_present_units(app.model, UnitSystem.KN_M_C)
+    
+    # 创建节点
+    app.create_object(Point(no=1, x=0, y=0, z=0))
+    app.create_object(Point(no=2, x=10, y=0, z=0))
+    
+    # 创建框架
+    app.create_object(Frame(no=1, start_point=1, end_point=2, section="W14X30"))
+    
+    # 运行分析
+    app.calculate()
+```
+
+### AI 智能助手
+
+```python
+from PySap2000.langchain_agent import SapAgent
+
+# 创建 Agent（需要设置 DASHSCOPE_API_KEY 环境变量）
+agent = SapAgent(provider="qwen")
+
+# 自然语言控制
+response = agent.chat("显示模型中所有杆件的截面信息")
+print(response)
+
+response = agent.chat("把上弦杆组的截面改成 H400x200x8x12")
+# Agent 会请求确认后执行修改
+```
+
+## 📖 功能模块
+
+| 模块 | 功能 |
+|------|------|
+| `Application` | SAP2000 连接和模型管理 |
+| `structure_core` | Point, Frame, Material, Section |
+| `loading` | LoadPattern, LoadCombination |
+| `loads` | PointLoad, FrameDistributedLoad |
+| `results` | PointResults, FrameResults |
+| `design` | SteelDesign, ConcreteDesign |
+| `langchain_agent` | AI 智能助手 |
+| `logger` | 日志管理 |
+| `config` | 配置管理 |
+| `utils` | 工具函数（Result, deprecated等）|
+
+## 📥 导入说明
+
+> **注意**: 包目录名为 `PySap2000`（大写），PyPI 包名为 `pysap2000`（小写）
+
+```python
+# 安装（小写）
+pip install pysap2000
+
+# 导入（大写）
+from PySap2000 import Application
+from PySap2000.structure_core import Point, Frame
+```
+
+### 配置管理
+
+```python
+from PySap2000.config import config
+
+# 查看/修改配置
+config.log_level = "DEBUG"
+config.agent.max_history_rounds = 20
+
+# 通过环境变量配置
+# export PYSAP_LOG_LEVEL=DEBUG
+# export PYSAP_AGENT_MAX_HISTORY=20
+```
+
+### 日志系统
+
+```python
+from PySap2000.logger import logger, setup_logger
+
+# 使用默认日志器
+logger.info("Connected to SAP2000")
+
+# 自定义配置
+setup_logger(level="DEBUG", log_file="pysap2000.log")
+```
+
+### 批量操作
+
+```python
+from PySap2000.structure_core import Frame
+
+# 批量计算重量（性能优化）
+weights = Frame.calculate_weights_batch(model)
+total = sum(weights.values())
+
+# 批量创建
+frames = [Frame(no=f"F{i}", ...) for i in range(100)]
+succeeded, failed = Frame.create_batch(model, frames)
+```
+
+## ⚙️ 环境要求
+
+- **操作系统**: Windows（SAP2000 仅支持 Windows）
+- **Python**: 3.8+
+- **SAP2000**: v19.0+ (需要已安装并激活)
+
+## 🔑 AI Agent 配置
+
+支持多种 LLM 提供商：
+
+```python
+# 通义千问（推荐）
+agent = SapAgent(provider="qwen")  # 需要 DASHSCOPE_API_KEY
+
+# DeepSeek
+agent = SapAgent(provider="deepseek")  # 需要 DEEPSEEK_API_KEY
+
+# OpenAI
+agent = SapAgent(provider="openai")  # 需要 OPENAI_API_KEY
+```
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE)
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📧 联系
+
+- 作者: jiangyao（江瑶）
+- 邮箱: 631488424@qq.com
+- 博客: https://www.spancore.cn
+- GitHub: [pysap2000](https://github.com/jiangyao/pysap2000)
