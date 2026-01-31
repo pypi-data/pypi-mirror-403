@@ -1,0 +1,108 @@
+# GitLab CI configuration for RTL tests with Package Registry cache
+#
+# This configuration:
+# 1. Downloads RTL network cache from Package Registry
+# 2. Runs RTL tests using cached responses
+# 3. Optionally regenerates cache on schedule or manual trigger
+
+variables:
+  RTL_CACHE_VERSION: "1.0.0"  # Update this when cache format changes
+
+stages:
+  - prepare
+  - test
+
+# Download cache before running tests
+.download-rtl-cache: &download-rtl-cache
+  before_script:
+    - cd react/network-testing/tools
+    - ./download_cache_from_gitlab.sh noi ${RTL_CACHE_VERSION}
+    - cd ../../..
+
+# Job to regenerate and publish cache
+# Run manually or on schedule (weekly recommended)
+regenerate-rtl-cache:
+  stage: prepare
+  image: node:18
+  services:
+    - postgres:13
+  variables:
+    POSTGRES_DB: test_db
+    POSTGRES_USER: test_user
+    POSTGRES_PASSWORD: test_pass
+    LINO_LOGLEVEL: INFO
+  script:
+    # Install Python and dependencies
+    - apt-get update && apt-get install -y python3 python3-pip python3-venv
+    
+    # Setup Python environment
+    - python3 -m venv /tmp/venv
+    - source /tmp/venv/bin/activate
+    
+    # Install Lino packages (adjust paths as needed)
+    - pip install -e ./lino
+    - pip install -e ./react
+    - pip install -e ./noi
+    # ... install other required packages
+    
+    # Prepare demo database
+    - cd react/puppeteers/noi
+    - python manage.py prep --noinput
+    - cd ../../..
+    
+    # Install Node dependencies
+    - cd react
+    - npm ci
+    
+    # Generate cache by running tests with live server
+    - RTL_LOG_NETWORK=1 BASE_SITE=noi BABEL=1 npm run rtltest
+    
+    # Publish to GitLab Package Registry
+    - cd network-testing/tools
+    - ./publish_cache_to_gitlab.sh noi ${RTL_CACHE_VERSION}
+  only:
+    - schedules  # Run on scheduled pipeline
+    - web        # Allow manual trigger
+  when: manual
+  allow_failure: false
+
+# Run RTL tests using cached network responses
+rtl-test-noi:
+  stage: test
+  image: node:18
+  <<: *download-rtl-cache
+  script:
+    - cd react
+    - npm ci
+    - BASE_SITE=noi BABEL=1 npm run rtltest
+  artifacts:
+    reports:
+      junit: react/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: react/coverage/cobertura-coverage.xml
+    when: always
+    paths:
+      - react/coverage/
+      - react/junit.xml
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Optional: Run for other sites (avanti, welfare, etc.)
+rtl-test-avanti:
+  stage: test
+  image: node:18
+  before_script:
+    - cd react/network-testing/tools
+    - ./download_cache_from_gitlab.sh avanti ${RTL_CACHE_VERSION}
+    - cd ../../..
+  script:
+    - cd react
+    - npm ci
+    - BASE_SITE=avanti BABEL=1 npm run rtltest
+  only:
+    - merge_requests
+    - main
+  when: manual
