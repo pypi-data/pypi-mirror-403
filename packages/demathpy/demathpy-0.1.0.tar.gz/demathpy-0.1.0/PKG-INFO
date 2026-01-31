@@ -1,0 +1,160 @@
+Metadata-Version: 2.4
+Name: demathpy
+Version: 0.1.0
+Summary: PDE/ODE math backend
+Author: Misekai
+Author-email: Misekai <mcore-us@misekai.net>
+License-Expression: MIT
+License-File: LICENSE
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: sympy>=1.12.0
+Requires-Dist: typing>=3.10.0.0
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+# Demathpy
+
+A Python library for parsing and safely evaluating symbolic Ordinary and Partial Differential Equations (ODEs/PDEs) on numerical grids.
+
+This repository provides:
+- A class-based `PDE` solver (`from demathpy import PDE`) for running simulations.
+- A lightweight **symbol normalizer** that converts human-readable mathematical notation into valid Python expressions.
+- Equation-based Boundary Conditions and Initial Conditions.
+- Built-in support for common differential operators and vector calculus notation using Finite Differences.
+
+### Key Features
+
+#### 1. The PDE Class
+
+The core of the library is the `PDE` class. It manages the grid state, parsing, and time-stepping.
+
+```python
+from demathpy import PDE
+import numpy as np
+
+# Define a Heat Equation: du/dt = Laplacian(u)
+p = PDE("du/dt = lap(u)", space_axis=["x", "y"])
+
+# Configure the grid
+p.init_grid(width=100, height=100, dx=0.5)
+
+# Set Initial Conditions using equations
+p.initial = ["u = exp(-(x-25)**2 - (y-25)**2)"]
+p.set_initial_state()
+
+# Set Boundary Conditions using equations
+# Format: "axis(coord) = value" or "axis=coord = value"
+p.boundry = [
+    "x=0 = 1.0",     # Left boundary (x=0) is fixed at 1.0
+    "x=100 = 0.0",   # Right boundary (x=100) is fixed at 0.0
+    "y=0 = 0.0",     # Bottom boundary is 0.0
+    "periodic"       # Other unset boundaries (y=100) default to periodic or 0
+]
+
+# Run simulation
+for _ in range(100):
+    p.step(dt=0.01)
+
+print(p.u.mean())
+```
+
+#### 2. Equation-Based Configuration
+
+You can configure boundaries and initial states using string equations instead of manual array manipulation.
+
+**Boundary Conditions (`p.boundry` list):**
+- **Dirichlet:** `x=0 = 1.0` (Fixes value at boundary)
+- **Neumann:** `dx(u) = 0` (Not fully exposed yet, currently defaults to Dirichlet logic if value provided).
+- **Periodic:** Use `periodic` keyword or leave empty for default periodic behavior (if implemented).
+
+**Initial Conditions (`p.initial` list):**
+- **Scalar:** `u = sin(x) * cos(y)`
+- **Vector Components:** `ux = 1.0`, `uy = 0.0` (if `p.u_shape = ["ux", "uy"]`)
+
+#### 3. Vector Fields
+
+The solver supports vector-valued PDEs (e.g., Navier-Stokes, Reaction-Diffusion systems).
+
+```python
+# 2D Advection: du/dt = - (u · ∇) u
+p = PDE("du/dt = -advect(u, u)", space_axis=["x", "y"])
+p.u_shape = ["ux", "uy"] # Define component names
+p.init_grid(width=50, height=50, dx=1.0)
+
+# Initialize Vortex
+p.initial = [
+    "ux = -sin(y)",
+    "uy = sin(x)"
+]
+p.set_initial_state()
+```
+
+### Supported Operators
+
+The parser recognizes and maps these to NumPy finite difference functions:
+
+- **Derivatives:** `du/dt`, `dx(u)`, `dy(u)`, `dz(u)`
+- **Second Derivatives:** `dxx(u)`, `dzz(u)`
+- **Laplacian:** `lap(u)` or `∇²u`
+- **Gradient:** `grad(u)` or `∇u` (Returns vector)
+- **Divergence:** `div(u)` or `∇·u` (Expects vector input)
+- **Advection:** `advect(velocity, field)` -> `(velocity · ∇) field`
+- **Math Functions:** `sin, cos, exp, log, abs, sqrt, tanh` ...
+
+### Symbol Normalization
+
+The parser supports Unicode and mathematical shorthand:
+- `α, β, γ` → `alpha, beta, gamma`
+- `u²` → `u**2`
+- `|u|` → `abs(u)`
+
+### Workflow & Visualization
+
+To integrate `Demathpy` into visualization software or interactive notebooks, you can use the `get_grid()` method to probe the field dynamics without advancing the simulation time.
+
+#### Visualization Step-by-Step
+
+1.  **Initialize**:
+    ```python
+    p = PDE("du/dt = lap(u) - u**3 + u", space_axis=["x", "y"])
+    p.init_grid(width=20, height=20, dx=0.5)
+    p.initial = ["u = 0.1 * sin(x)"] 
+    p.boundry = ["periodic"]
+    p.set_initial_state()
+    ```
+
+2.  **Probe the Vector Field (du/dt)**:
+    Use `get_grid(dt=0)` to get the instantaneous rate of change. This is useful for visualizing flow fields or phase plots.
+    ```python
+    # Get Rate of Change (RHS of PDE)
+    du_dt = p.get_grid(dt=0)
+    
+    # Or calculate the hypothetical next step delta
+    delta_u = p.get_grid(dt=0.01)
+    ```
+
+3.  **Predict on Arbitrary States**:
+    You can evaluate the PDE on a hypothetical state `u_test` without updating the solver's internal state. This is useful for drawing vector fields in phase space.
+    ```python
+    # Create a test state
+    test_u = np.sin(p.u) 
+    
+    # Calculate how the PDE would evolve this state
+    # Returns the rate of change for the test state
+    response = p.get_grid(u_state=test_u, dt=0)
+    ```
+
+4.  **Run Simulation Loops**:
+    ```python
+    import matplotlib.pyplot as plt
+    
+    for i in range(100):
+        p.step(dt=0.01)
+        if i % 10 == 0:
+            plt.imshow(p.u) # Visualization logic
+            # plt.show()
+    ```
+
+### License
+
+MIT
