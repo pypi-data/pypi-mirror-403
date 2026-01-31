@@ -1,0 +1,414 @@
+openapi: 3.1.0
+info:
+  title: MAIL Server API
+  version: "1.3"
+  description: REST API for the Multi-Agent Interface Layer (MAIL) server, including interswarm messaging.
+servers:
+  - url: http://localhost:8000
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    MAILAddress:
+      $ref: './MAIL-core.schema.json#/$defs/MAILAddress'
+    MAILRequest:
+      $ref: './MAIL-core.schema.json#/$defs/MAILRequest'
+    MAILResponse:
+      $ref: './MAIL-core.schema.json#/$defs/MAILResponse'
+    MAILBroadcast:
+      $ref: './MAIL-core.schema.json#/$defs/MAILBroadcast'
+    MAILInterrupt:
+      $ref: './MAIL-core.schema.json#/$defs/MAILInterrupt'
+    MAILMessage:
+      $ref: './MAIL-core.schema.json#/$defs/MAILMessage'
+    MAILInterswarmMessage:
+      $ref: './MAIL-interswarm.schema.json'
+paths:
+  /:
+    get:
+      summary: Root health
+      operationId: root
+      responses:
+        '200':
+          description: Server info
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  name: { 
+                    type: string,
+                    enum: ["mail"]
+                  }
+                  version: { 
+                    type: string,
+                    enum: ["1.3"]
+                  }
+                  swarm: { type: string }
+                  status: { 
+                    type: string,
+                    enum: ["running"]
+                  }
+                  uptime: { type: number }
+  /status:
+    get:
+      summary: Server status
+      operationId: status
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Status summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  swarm:
+                    type: object
+                    properties:
+                      name: { 
+                        type: string, 
+                        nullable: true 
+                      }
+                      status: { type: string }
+                  active_users: { type: integer }
+                  user_mail_ready: { type: boolean }
+                  user_task_running: { type: boolean }
+  /whoami:
+    get:
+      summary: Caller identity
+      operationId: whoami
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Username and role bound to the supplied token
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id, role]
+                properties:
+                  id: { type: string }
+                  role: { 
+                    type: string,
+                    enum: ["admin", "user", "agent"]
+                  }
+        '401':
+          description: Unauthorized
+  /message:
+    post:
+      summary: Send a message to the swarm 
+      description: Requires role=user or role=admin.
+      operationId: message
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message]
+              properties:
+                message: { type: string }
+                entrypoint:
+                  type: string
+                  description: Optional agent entrypoint override (defaults to configured entrypoint)
+                show_events:
+                  type: boolean
+                  description: When true, include collected events alongside the response
+                  default: false
+                stream:
+                  type: boolean
+                  description: When true, server responds with text/event-stream (SSE)
+                  default: false
+                resume_from:
+                  type: string
+                  description: When provided, resume the task from the given state
+                  enum: ["user_response", "breakpoint_tool_call"]
+                  default: null
+                kwargs:
+                  type: object
+                  description: Additional keyword arguments to pass to the entrypoint
+                  default: {}
+      responses:
+        '200':
+          description: Final response produced by supervisor after task completion
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  response: { type: string }
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      description: Server-sent event snapshot
+                      properties:
+                        data:
+                          type: object
+                        event:
+                          type: string
+                      additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE stream emitted when stream=true
+        '401':
+          description: Unauthorized
+  /health:
+    get:
+      summary: Health for interswarm checks
+      operationId: health
+      responses:
+        '200':
+          description: Health info
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  status: { type: string }
+                  swarm_name: { type: string }
+                  timestamp: { 
+                    type: string, 
+                    format: date-time 
+                  }
+  /swarms:
+    get:
+      summary: List known swarms
+      operationId: listSwarms
+      responses:
+        '200':
+          description: Known swarms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  swarms:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        swarm_name: { type: string }
+                        base_url: { type: string }
+                        version: { type: string }
+                        is_active: { type: boolean }
+                        last_seen: { 
+                          type: string, 
+                          format: date-time, 
+                          nullable: true 
+                        }
+                        swarm_description: { type: string }
+                        keywords: { type: array, items: { type: string } }
+                        metadata: { 
+                          type: object, 
+                          nullable: true 
+                        }
+  /swarms/register:
+    post:
+      summary: Register a swarm
+      description: Requires role=admin.
+      operationId: registerSwarm
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, base_url]
+              properties:
+                name: { type: string }
+                base_url: { type: string }
+                auth_token: { 
+                  type: string, 
+                  nullable: true 
+                }
+                volatile: { 
+                  type: boolean, 
+                  default: true 
+                }
+                metadata: { 
+                  type: object, 
+                  nullable: true 
+                }
+      responses:
+        '200':
+          description: Registration result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  swarm_name: { type: string }
+        '401':
+          description: Unauthorized
+  /interswarm/forward:
+    post:
+      summary: Receive interswarm forward message
+      description: Requires role=agent.
+      operationId: receiveInterswarmForward
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message]
+              properties:
+                message: { $ref: '#/components/schemas/MAILInterswarmMessage' }
+      responses:
+        '200':
+          description: Status indicating operation success
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  swarm: { type: string }
+                  status: { 
+                    type: string,
+                    enum: ["success"]
+                  }
+                  task_id: { type: string }
+                  local_runner: { type: string }
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+  /interswarm/back:
+    post:
+      summary: Receive interswarm back message
+      description: Requires role=agent.
+      operationId: receiveInterswarmBack
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message]
+              properties:
+                message: { $ref: '#/components/schemas/MAILInterswarmMessage' }
+      responses:
+        '200':
+          description: Status indicating operation success
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  swarm: { type: string }
+                  status: { 
+                    type: string,
+                    enum: ["success"]
+                  }
+                  task_id: { type: string }
+                  local_runner: { type: string }
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+  /interswarm/message:
+    post:
+      summary: Post an interswarm message
+      description: Requires role=user or role=admin.
+      operationId: postInterswarmMessage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [user_token]
+              properties:
+                user_token:
+                  type: string
+                  description: User runtime token returned by the `/message` endpoints
+                targets:
+                  type: array
+                  description: Optional list of agent addresses; use when sending broadcasts
+                  items:
+                    type: string
+                body:
+                  type: string
+                  description: Alternative field name for `message`
+                subject:
+                  type: string
+                  description: Subject line for the outgoing MAIL message
+                  default: Interswarm Message
+                msg_type:
+                  type: string
+                  description: MAIL message type to construct
+                  enum: [request, broadcast]
+                  default: request
+                task_id:
+                  type: string
+                  description: Optional task identifier to associate with the message
+                routing_info:
+                  type: object
+                  description: Additional routing metadata appended to the MAIL payload
+                  default: {}
+                stream:
+                  type: boolean
+                  description: Request interswarm streaming for this task
+                ignore_stream_pings:
+                  type: boolean
+                  description: Suppress heartbeat `ping` events when streaming is enabled
+              allOf:
+                - anyOf:
+                    - required: [body]
+                  description: message body must be supplied
+                - anyOf:
+                    - required: [targets]
+                  description: Provide a list of `targets`
+      responses:
+        '200':
+          description: Routed MAIL message result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  response:
+                    $ref: '#/components/schemas/MAILMessage'
+                  events:
+                    type: array
+                    nullable: true
+                    items:
+                      type: object
+                      description: Server-sent event snapshot
+                      additionalProperties: true
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
