@@ -1,0 +1,173 @@
+[project]
+dynamic = ["version"]
+name = "irrd"
+
+[tool.poetry]
+name = "irrd"
+# Note that version is also in irrd/__init__.py
+version = "4.5.0"
+description = "Internet Routing Registry daemon (IRRd)"
+authors = ["Reliably Coded for NTT Ltd. and others <irrd@reliablycoded.nl>"]
+license = "BSD"
+readme = "README.rst"
+repository = "https://github.com/irrdnet/irrd"
+documentation = "https://irrd.readthedocs.io/"
+exclude = ['irrd/*/tests', 'irrd/*/*/tests', 'irrd/integration_tests']
+
+[tool.poetry.dependencies]
+python = ">3.10.0,<4.0"
+# For installation dependencies, this project pins on exact
+# versions. This is because it's an application rather than
+# a library, so we assume that irrd is the only tool installed
+# in the venv. Pinning exact versions increases reproducability
+# in our distributed packages.
+# https://github.com/python-poetry/poetry/issues/2778 may fix this
+python-gnupg = "0.5.6"
+passlib = "1.7.4"
+bcrypt = "4.3.0"  # pinned <5, passlib is not compatible with newer
+ipy = "1.1"
+ordered-set = "4.1.0"
+beautifultable = "0.8.0"  # pinned <1.0.0
+pyyaml = "6.0.3"
+datrie = "0.8.3"
+setproctitle = "1.3.7"
+python-daemon = "3.1.2"
+pid = "3.0.4"
+redis = "7.1.0"
+hiredis = "3.3.0"
+coredis = "5.4.0"
+requests = "2.32.5"
+pytz = "2025.2"
+ariadne = "0.27.0"
+uvicorn = { extras = ["standard"], version = "0.40.0" }
+starlette = "0.52.1"
+psutil = "7.2.1"
+asgiref = "3.11.0"
+pydantic = "2.12.5"
+typing-extensions = "4.15.0"
+py-radix-sr = "1.0.2"
+psycopg2-binary = "2.9.11"
+sqlalchemy = "1.4.54"
+alembic = "1.18.1"
+ujson = "5.11.0"
+wheel = "0.46.2"
+jinja2 = "3.1.6"
+python-multipart = "0.0.22"
+imia = "0.5.3"
+starlette-wtf = "0.4.5"
+limits = "5.6.0"
+webauthn = "2.7.0"
+pyotp = "2.9.0"
+click = "8.3.1"
+zxcvbn = "4.5.0"
+wtforms-bootstrap5 = "0.3.0"
+email-validator = "2.3.0"
+asgi-logger = "0.1.0"
+joserfc = "1.6.1"
+time-machine = "3.2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2"
+pytest-cov = "^4.0"
+coverage = "^7.2"
+twisted = "^22.10"
+python-graphql-client = "^0.4"
+pytest-asyncio = "^0.20"
+mypy = "^1.0.1"
+ruff = "^0.14.8"
+isort = "^7.0.0"
+black = "25.12"
+poethepoet = "^0.18.1"
+factory-boy = "^3.2.1"
+smtpdfix = "0.5.1"
+httpx = "^0.28.1"
+
+[tool.poetry.group.docs.dependencies]
+# Also in readthedocs.yaml
+sphinx = "^8.0"
+sphinxcontrib-spelling = "^8.0.0"
+sphinx-immaterial = "^0.13.8"
+pyenchant = "^3.2.2"
+
+[tool.poetry.scripts]
+irrd = 'irrd.daemon.main:main'
+irrdctl = 'irrd.scripts.irrd_control:cli'
+irrd_submit_email = 'irrd.scripts.submit_email:main'
+irrd_database_upgrade = 'irrd.scripts.database_upgrade:main'
+irrd_database_downgrade = 'irrd.scripts.database_downgrade:main'
+irrd_load_database = 'irrd.scripts.load_database:main'
+irrd_update_database = 'irrd.scripts.update_database:main'
+irrd_set_last_modified_auth = 'irrd.scripts.set_last_modified_auth:main'
+irrd_expire_journal = 'irrd.scripts.expire_journal:main'
+irrd_mirror_force_reload = 'irrd.scripts.mirror_force_reload:main'
+irr_rpsl_submit = 'irrd.scripts.irr_rpsl_submit:main'
+irrd_load_pgp_keys = 'irrd.scripts.load_pgp_keys:main'
+
+[tool.isort]
+profile = "black"
+py_version = 310
+src_paths = "irrd"
+
+[tool.ruff]
+line-length = 110
+lint.ignore = ["E501"]
+target-version = "py310"
+
+[tool.black]
+line-length = 110
+target-version = ['py310']
+preview = true
+
+[tool.pytest.ini_options]
+log_level = "DEBUG"
+asyncio_mode = "auto"
+
+[tool.mypy]
+ignore_missing_imports = true
+install_types = true
+non_interactive = true
+exclude = ['irrd/vendor/mock_alchemy/']
+
+[[tool.mypy.overrides]]
+module = "irrd.vendor.mock_alchemy.*"
+follow_imports = "skip"
+
+[tool.poe.tasks]
+black = "black irrd"
+ruff = "ruff check irrd --fix"
+isort = "isort irrd"
+mypy = "mypy irrd"
+lint = ["black", "ruff", "isort", "mypy"]
+test = "pytest --cov-report term-missing:skip-covered --cov=irrd --basetemp=.tmpdirs/ "
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == \"__main__\":",
+]
+
+# Impractical for unit tests, but covered in integration tests
+omit = [
+    "irrd/daemon/main.py",
+    "irrd/server/http/app.py",
+    "irrd/server/graphql/schema_builder.py",
+    "irrd/server/http/server.py",
+    "irrd/storage/alembic/*",
+    "irrd/scripts/query_qa_comparison.py",
+    "irrd/scripts/database_upgrade.py",
+    "irrd/scripts/database_downgrade.py",
+    "irrd/scripts/load_test.py",
+    "irrd/integration_tests/*",
+    "irrd/vendor/*",
+    "irrd/*/tests/*",
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
