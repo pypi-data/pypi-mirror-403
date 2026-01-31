@@ -1,0 +1,102 @@
+# StartFast
+
+[![PyPI version](https://badge.fury.io/py/startfast.svg)](https://badge.fury.io/py/startfast)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A CLI tool that generates production-ready FastAPI project structures. Saves you from setting up the same boilerplate every time you start a new API project.
+
+```bash
+pip install startfast
+startfast my-api
+cd my-api
+uvicorn app.main:app --reload
+```
+
+## Why?
+
+Setting up a new FastAPI project always takes the same couple hours: configuring the database, setting up authentication, organizing the folder structure, adding Docker files, configuring tests. This tool does all of that for you.
+
+## What you get
+
+```
+my-api/
+├── app/
+│   ├── main.py              # FastAPI application
+│   ├── core/
+│   │   ├── config.py        # Environment configuration
+│   │   └── security.py      # JWT auth + password hashing
+│   ├── api/v1/              # API routes
+│   ├── models/              # Database models  
+│   ├── schemas/             # Pydantic schemas
+│   └── services/            # Business logic
+├── tests/                   # pytest test suite
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
+```
+
+The generated project includes:
+- Async FastAPI setup with proper project structure
+- PostgreSQL with async SQLAlchemy (or SQLite/MySQL/MongoDB)
+- JWT authentication and user management
+- Docker and docker-compose configuration
+- pytest with test fixtures
+- Environment-based configuration
+- CORS, error handling, and health check endpoints
+
+## Installation
+
+```bash
+pip install startfast
+```
+
+Requires Python 3.8 or higher.
+
+## Usage
+
+Basic usage:
+```bash
+startfast my-api
+```
+
+With options:
+```bash
+# Use SQLite instead of PostgreSQL
+startfast my-app --db sqlite
+
+# Minimal setup for quick prototypes
+startfast my-app --minimal
+```
+
+### Database options
+
+```bash
+--db postgres    # Default
+--db sqlite      # For development/prototyping
+--db mysql       # If you need MySQL
+--db mongo       # For document storage
+```
+
+### Authentication options
+
+```bash
+--auth jwt       # Default - JWT tokens
+--auth oauth2    # OAuth2 with scopes
+--auth api-key   # Simple API key auth
+--auth none      # No authentication
+```
+
+## Contributing
+
+Pull requests are welcome. The project structure is pretty straightforward:
+
+```bash
+git clone https://github.com/Incognitol07/startfast.git
+cd startfast
+pip install -e ".[dev]"
+```
+
+## License
+
+MIT
