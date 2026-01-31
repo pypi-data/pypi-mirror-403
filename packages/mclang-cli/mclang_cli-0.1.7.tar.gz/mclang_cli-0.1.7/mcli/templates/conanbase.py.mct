@@ -1,0 +1,400 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# openUBMC is licensed under Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#         http://license.coscl.org.cn/MulanPSL2
+
+from conan import ConanFile
+from pathlib import Path
+import sys
+import subprocess
+from typing import Any, Optional
+import glob as glob_module
+
+PROJECT_VERSION = "{{ project_version }}"
+TOOLCHAIN_NAME = "{{ toolchain_name }}"
+CONAN_REQUIRES = [
+{% for req in conan_requires %}
+    "{{ req }}",
+{% endfor %}
+]
+CONAN_TEST_REQUIRES = [
+{% for req in conan_test_requires %}
+    "{{ req }}",
+{% endfor %}
+]
+
+
+class ConanBase(ConanFile):
+    language = "c++"
+    generators = "CMakeDeps", "VirtualBuildEnv", "PkgConfigDeps"
+    build_folder_name = "{{ build_dir_name }}"
+
+    settings = "os", "compiler", "build_type", "arch"
+    options = {
+        "cpp_std": [17, 20, 23],
+        "test": [True, False],
+        "asan": [True, False],
+        "gcov": [True, False],
+        "manufacture": [True, False],
+        "enable_luajit": [True, False],
+    }
+    default_options = {
+        "cpp_std": 17,
+        "test": False,
+        "asan": False,
+        "gcov": False,
+        "manufacture": False,
+        "enable_luajit": False,
+    }
+
+    exports_sources = "src*", "tests*", "CMakeLists.txt", "*.py"
+    version = PROJECT_VERSION
+
+    def layout(self) -> None:
+        self.folders.source = "."
+        toolchain = self._get_toolchain_name()
+        target = self._get_target_platform()
+        build_type = str(self.settings.build_type)
+        build_dir_name = f"{toolchain}_{target}_{build_type}"
+        self.folders.build = f"{self.build_folder_name}/{build_dir_name}"
+        self.folders.generators = f"{self.build_folder_name}/{build_dir_name}/generators"
+
+    def configure(self) -> None:
+        """从 compiler.cppstd setting 映射到 cpp_std option"""
+        # 获取 compiler.cppstd setting（如 gnu17, 17, gnu20）
+        cppstd_setting = str(self.settings.get_safe("compiler.cppstd"))
+
+        if cppstd_setting:
+            # 提取数字部分（gnu17 -> 17, 17 -> 17）
+            import re
+            match = re.search(r'(\d+)', cppstd_setting)
+            if match:
+                std_num = int(match.group(1))
+                # 映射到支持的值
+                if std_num >= 23:
+                    self.options.cpp_std = 23
+                elif std_num >= 20:
+                    self.options.cpp_std = 20
+                else:
+                    self.options.cpp_std = 17
+
+    def _get_toolchain_name(self) -> str:
+        # 回退方法：从 compiler setting 推断
+        compiler = str(self.settings.compiler)
+        if compiler == "apple-clang":
+            return "clang"
+        return compiler
+
+    def _get_target_platform(self) -> str:
+        os_name = str(self.settings.os).lower()
+        arch = str(self.settings.arch).lower()
+
+        if os_name == "macos":
+            os_name = "darwin"
+        if arch in ("x86_64", "amd64"):
+            arch = "x86_64"
+        elif arch in ("aarch64", "arm64"):
+            arch = "arm64"
+        elif arch == "armv8":
+            arch = "arm64"
+
+        return f"{os_name}-{arch}"
+
+    def requirements(self) -> None:
+        for require in CONAN_REQUIRES:
+            if require:
+                self.requires(require)
+
+        if self.options.get_safe("test", False):
+            for require in CONAN_TEST_REQUIRES:
+                if require:
+                    self.requires(require)
+
+    def _pre_generate(self) -> Any:
+        from conan.tools.cmake import CMakeToolchain
+
+        tc = CMakeToolchain(self)
+
+        tc.cache_variables["CMAKE_CXX_STANDARD"] = f"{self.options.cpp_std}"
+        tc.cache_variables["ENABLE_TEST"] = self.options.test
+        tc.cache_variables["PROJECT_NAME"] = self.name
+        tc.cache_variables["PROJECT_VERSION"] = PROJECT_VERSION
+        tc.preprocessor_definitions["_FORTIFY_SOURCE"] = "2"
+        tc.cache_variables["BUILD_MANUFACTURE"] = self.options.manufacture
+        if self.options.enable_luajit:
+            tc.cache_variables["CONAN_DEFS_ENABLE_LUAJIT"] = True
+
+        version = PROJECT_VERSION.split(".")
+        if len(version) >= 1:
+            tc.variables["PACKAGE_VERSION_MAJOR"] = version[0]
+        if len(version) >= 2:
+            tc.variables["PACKAGE_VERSION_MINOR"] = version[1]
+        if len(version) >= 3:
+            tc.variables["PACKAGE_VERSION_REVISION"] = version[2]
+
+        if self.options.get_safe("asan", False):
+            print("Enable asan flags")
+            asan_flags = "-fsanitize=address -fsanitize-recover=address,all -fno-omit-frame-pointer -fno-stack-protector -O0"
+            tc.extra_cflags.append(asan_flags)
+            tc.extra_cxxflags.append(asan_flags)
+            tc.extra_sharedlinkflags.append("-fsanitize=address")
+            tc.extra_exelinkflags.append("-fsanitize=address")
+
+        if self.options.get_safe("gcov", False):
+            print("Enable gcov flags")
+            gcov_flags = "-ftest-coverage -fprofile-arcs -fprofile-update=atomic"
+            tc.extra_cflags.append(gcov_flags)
+            tc.extra_cxxflags.append(gcov_flags)
+
+        conan_jobs = self.conf.get("tools.build:jobs", default=None)
+        if conan_jobs:
+            try:
+                jobs = int(conan_jobs)
+                tc.cache_variables["CONAN_PARALLEL_JOBS"] = jobs
+                print(f"Conan configured parallel jobs: {jobs}")
+            except (ValueError, TypeError):
+                print(f"Warning: Invalid tools.build:jobs value: {conan_jobs}")
+
+        if str(self.settings.arch) in ["armv8", "x86_64"]:
+            tc.cache_variables["CMAKE_INSTALL_LIBDIR"] = "usr/lib64"
+        else:
+            tc.cache_variables["CMAKE_INSTALL_LIBDIR"] = "usr/lib"
+
+        return tc
+
+    def generate(self) -> None:
+        # 在 codegen 之前创建 stub 链接，确保类型信息可用
+        from mcli.package.deps import sync_mclang_dir
+        source_folder = self.source_folder or self.recipe_folder
+        build_type = str(self.settings.build_type).lower()
+        sync_mclang_dir(Path(source_folder), dep_type="test", build_type=build_type)
+
+        tc = self._pre_generate()
+        tc.generate()
+
+    def codegen(
+        self,
+        sources: list[str],
+        output_dir: str,
+        header_dir: str = None,
+    ) -> list[str]:
+        """Generate C++ from .py files using mcc"""
+        source_folder = self.source_folder or self.recipe_folder
+        assert source_folder is not None
+        source_dir = Path(source_folder)
+
+        if header_dir is None:
+            header_dir = output_dir
+
+        output_path = Path(output_dir)
+        if not output_path.is_absolute():
+            output_path = source_dir / output_dir
+
+        header_path = Path(header_dir)
+        if not header_path.is_absolute():
+            header_path = source_dir / header_path
+
+        output_path.mkdir(parents=True, exist_ok=True)
+        header_path.mkdir(parents=True, exist_ok=True)
+
+        stubs_dir = source_dir / ".mclang" / "packages"
+
+        all_py_files = []
+        for pattern in sources:
+            if Path(pattern).is_absolute():
+                glob_patterns = [pattern]
+            else:
+                glob_patterns = [str(source_dir / pattern)]
+
+            for glob_pattern in glob_patterns:
+                matched_files = glob_module.glob(glob_pattern, recursive=True)
+                for py_file_str in matched_files:
+                    py_file = Path(py_file_str)
+                    all_py_files.append(py_file)
+
+        if not all_py_files:
+            self.output.info(f"No Python files found for pattern: {sources}")
+            return []
+
+        # 获取并发配置
+        conan_jobs = self.conf.get("tools.build:jobs", default=None)
+        parallel_jobs = 1
+        if conan_jobs:
+            try:
+                parallel_jobs = int(conan_jobs)
+            except (ValueError, TypeError):
+                pass
+
+        import os
+        verbose = os.environ.get("VERBOSE", "0") == "1"
+        self.output.info(f"Generating C++ from {len(all_py_files)} .py files (jobs={parallel_jobs})...")
+
+        generated_cpp_files = []
+
+        # 并发生成
+        if parallel_jobs > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            with ThreadPoolExecutor(max_workers=parallel_jobs) as executor:
+                future_to_file = {
+                    executor.submit(self._generate_one_file, py_file, output_path, header_path, source_dir, stubs_dir, verbose): py_file
+                    for py_file in all_py_files
+                }
+
+                for future in as_completed(future_to_file):
+                    py_file = future_to_file[future]
+                    stem = py_file.stem
+                    cpp_file = output_path / f"{stem}.cpp"
+
+                    try:
+                        if future.result():
+                            if cpp_file.exists():
+                                generated_cpp_files.append(cpp_file)
+                    except Exception as e:
+                        # mcli.logging 已经处理了异常日志
+                        pass
+        else:
+            # 单线程
+            for py_file in all_py_files:
+                stem = py_file.stem
+                cpp_file = output_path / f"{stem}.cpp"
+
+                if self._generate_one_file(py_file, output_path, header_path, source_dir, stubs_dir, verbose):
+                    if cpp_file.exists():
+                        generated_cpp_files.append(cpp_file)
+
+        return generated_cpp_files
+
+    def _generate_one_file(
+        self,
+        py_file: Path,
+        output_dir: Path,
+        header_dir: Path,
+        source_dir: Path,
+        stubs_dir: Path,
+        verbose: bool = False,
+    ) -> bool:
+        # 使用 mcli.logging（线程安全），避免手动管理锁
+        from mcli.logging import get_logger
+        _logger = get_logger("codegen")
+
+        stem = py_file.stem
+        cpp_file = output_dir / f"{stem}.cpp"
+
+        if cpp_file.exists() and cpp_file.is_file():
+            py_mtime = py_file.stat().st_mtime
+            cpp_mtime = cpp_file.stat().st_mtime
+            if py_mtime <= cpp_mtime:
+                if verbose:
+                    _logger.info(f"  [skip] {py_file.name} (up to date)")
+                return True
+
+        _logger.info(f"  [gen] {py_file.name} -> {cpp_file.relative_to(output_dir)}")
+
+        if cpp_file.exists():
+            if cpp_file.is_dir():
+                import shutil
+                shutil.rmtree(cpp_file)
+            else:
+                cpp_file.unlink()
+
+        cmd = [
+            sys.executable, "-m", "mcc",
+            str(py_file.resolve()),
+            "-o", str(output_dir.resolve()),
+            "--header-output", str(header_dir.resolve()),
+            "--source-root", str(source_dir.resolve()),
+            "--format", "true",
+        ]
+
+        if stubs_dir.exists():
+            cmd.extend(["--stubs-dir", str(stubs_dir.resolve())])
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(source_dir),
+            )
+            if result.returncode != 0:
+                error_output = result.stdout or result.stderr
+                _logger.warning(f"      Failed: {error_output[:200]}")
+                return False
+
+            if not cpp_file.exists() or cpp_file.is_dir():
+                _logger.warning(f"      Expected .cpp file not generated")
+                return False
+
+            return True
+
+        except subprocess.TimeoutExpired:
+            _logger.warning(f"      Timeout generating {py_file.name}")
+            return False
+        except Exception as e:
+            import traceback
+            _logger.warning(f"      Error: {e}")
+            _logger.warning(f"      Traceback: {traceback.format_exc()[:500]}")
+            return False
+
+    def build(self) -> None:
+        from conan.tools.cmake import CMake
+        cmake = CMake(self)
+        cmake.configure()
+        cmake.build()
+        if self.options.get_safe("test", False):
+            self.test()
+
+    def package(self) -> None:
+        from conan.tools.cmake import CMake
+        from conan.tools.apple import fix_apple_shared_install_name
+
+        cmake = CMake(self)
+        cmake.install()
+
+        # macOS: 使用 Conan 工具修复 dylib install_name
+        # 这会将绝对路径改为 @rpath，确保发布的包不带本地路径信息
+        if self.settings.os == "Macos":
+            fix_apple_shared_install_name(self)
+            self.output.info("Fixed dylib install_names")
+
+    def test(self) -> None:
+        """Run CTest tests. Override in conanfile.py to add custom tests."""
+        import os
+        import subprocess
+
+        build_folder = self.build_folder or self.build_folder
+        if not build_folder:
+            self.output.warning("未设置 build_folder，跳过 CTest")
+            return
+
+        ctestfile = Path(build_folder) / "CTestTestfile.cmake"
+        if not ctestfile.exists():
+            self.output.info("未找到 CTestTestfile.cmake，跳过 CTest")
+            return
+
+        # 获取测试参数
+        filter_arg = os.environ.get("MCLI_TEST_FILTER")
+        verbose = os.environ.get("MCLI_TEST_VERBOSE")
+
+        # 使用 CTest 运行
+        ctest_cmd = ["ctest", "--output-on-failure"]
+        if filter_arg:
+            ctest_cmd.extend(["-R", filter_arg])
+        if verbose:
+            ctest_cmd.append("-V")
+
+        self.output.info(f"运行 CTest: {' '.join(ctest_cmd)}")
+        result = subprocess.run(
+            ctest_cmd,
+            cwd=build_folder,
+            capture_output=False,
+            text=True,
+        )
+        if result.returncode != 0:
+            self.output.warning(f"CTest 返回非零退出码: {result.returncode}")
+
+    def package_info(self) -> None:
+        self.cpp_info.libs = [self.name]
+        self.cpp_info.includedirs = ["include"]

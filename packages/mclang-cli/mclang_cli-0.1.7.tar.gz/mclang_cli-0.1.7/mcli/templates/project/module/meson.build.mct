@@ -1,0 +1,48 @@
+# meson.build - MCLang 共享库项目
+#
+# 编译器配置（cpp_std, 警告等）由工具链默认配置提供
+# 用户可在此添加额外的 default_options 覆盖或扩展
+project('{{ project_name }}', 'cpp',
+    version: '{{ version }}',
+    # cpp_std 由工具链配置（通过 native/cross file）传递
+    # 如需覆盖，取消下行注释：
+    # default_options: ['cpp_std=c++20']
+)
+
+# Python 和 mcc 编译器
+py = import('python')
+python3 = py.find_installation('python3', required: true)
+
+# C++ 编译器（用于查找库）
+cpp = meson.get_compiler('cpp')
+
+# mclang 运行时库
+# 库路径由 cpp_link_args 提供，这里只需声明库名
+mcbase_lib = cpp.find_library('mcbase', required: true)
+mclang_runtime_lib = cpp.find_library('mclang_runtime', required: true)
+
+mclang_dep = declare_dependency(
+    dependencies: [mclang_runtime_lib, mcbase_lib],
+)
+
+# 代码生成器
+code_gen = generator(
+    python3,
+    output: ['@BASENAME@.cpp'],
+    arguments: [
+        '-m', 'mclang.mcc',
+        '@INPUT@',
+        '-o', '@BUILD_DIR@',
+        '--header-output', meson.current_build_dir(),
+        '--source-root', meson.current_source_dir() / 'src',
+        '--format', 'true',
+    ],
+)
+
+inc_dir = include_directories('.')
+
+# 库
+subdir('src')
+
+# 测试
+subdir('tests')

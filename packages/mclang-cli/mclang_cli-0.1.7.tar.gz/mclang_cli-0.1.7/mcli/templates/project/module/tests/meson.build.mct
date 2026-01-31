@@ -1,0 +1,39 @@
+# tests/meson.build - 测试构建配置
+#
+# gtest 库路径由 cpp_link_args 提供
+
+# gtest 依赖
+gtest_lib = cpp.find_library('gtest', required: true)
+gtest_main_lib = cpp.find_library('gtest_main', required: true)
+
+gtest_dep = declare_dependency(
+    dependencies: [gtest_lib, gtest_main_lib],
+)
+
+test_code_gen = generator(
+    python3,
+    output: ['@BASENAME@.cpp'],
+    arguments: [
+        '-m', 'mclang.mcc',
+        '@INPUT@',
+        '-o', '@BUILD_DIR@',
+        '--header-output', meson.current_build_dir(),
+        '--source-root', meson.current_source_dir(),
+        '--format', 'true',
+    ],
+)
+
+test_sources = files(
+    'main.py',
+    'test_{{ project_name }}.py',
+)
+
+{{ safe_name }}_test = executable(
+    '{{ safe_name }}_test',
+    test_code_gen.process(test_sources),
+    include_directories: inc_dir,
+    dependencies: [mclang_dep, {{ safe_name }}_dep, gtest_dep],
+    install: false,
+)
+
+test('{{ project_name }}_test', {{ safe_name }}_test, timeout: 30)

@@ -1,0 +1,146 @@
+# mclang 工具链默认配置
+# 平台: {{ platform }}
+# 版本: {{ version }}
+# 编译器类型: {{ compiler_type }}
+#
+# 配置优先级（从低到高）：
+#   1. 工具链默认配置（本文件，只读）
+#   2. 用户全局配置（~/.mclang/config.toml）
+#   3. 项目配置（项目目录/mds/service.json 的 mclang.build_options 节）
+#
+# 后加载的配置会覆盖或扩展前面的配置
+
+[compiler]
+# C++ 标准版本
+cpp_std = "c++17"
+
+[compiler.args]
+flags = [
+    "-Wall",
+    "-Wextra",
+    "-fPIC",
+    "-fvisibility=hidden",
+    "-fno-omit-frame-pointer",
+]
+
+{% if compiler_type == 'gcc' -%}
+[compiler.args.gcc]
+flags = [
+    "-Wno-sign-compare",
+    "-Wno-unused-parameter",
+    "-Wno-unused-variable",
+    "-Wno-pedantic",
+    "-Wno-deprecated-copy",
+]
+{% elif compiler_type in ['zig', 'clang'] -%}
+[compiler.args.{{ compiler_type }}]
+flags = [
+    "-Wno-sign-compare",
+    "-Wno-unused-parameter",
+    "-Wno-unused-variable",
+    "-Wno-pedantic",
+    "-Wno-#warnings",
+    "-Wno-deprecated-copy",
+]
+{% elif compiler_type == 'msvc' -%}
+[compiler.args.msvc]
+flags = [
+    "/wd4389",
+    "/wd4100",
+    "/wd4101",
+    "/wd4189",
+]
+{% endif -%}
+
+[compiler.args.debug]
+# Debug 构建额外参数
+extra = ["-g", "-O0"]
+defines = ["DEBUG"]
+
+[compiler.args.release]
+# Release 构建额外参数
+extra = ["-O3"]
+defines = ["NDEBUG"]
+
+[linker.args]
+# 默认链接参数
+{% if platform.startswith('darwin') -%}
+rpath = ["-Wl,-rpath,@loader_path"]
+{% else -%}
+rpath = ["-Wl,-rpath,$ORIGIN"]
+{% endif -%}
+
+[linker.args.{{ platform }}]
+# 平台特定链接参数（可为空）
+
+{% if compiler_type == 'zig' -%}
+[binaries]
+c = ['{{ compiler_path }}', 'cc']
+cpp = ['{{ compiler_path }}', 'c++']
+ar = ['{{ compiler_path }}', 'ar']
+ranlib = ['{{ compiler_path }}', 'ranlib']
+
+[binaries.cross]
+c = ['{{ compiler_path }}', 'cc', '-target', '{{ target }}']
+cpp = ['{{ compiler_path }}', 'c++', '-target', '{{ target }}']
+ar = ['{{ compiler_path }}', 'ar']
+ranlib = ['{{ compiler_path }}', 'ranlib']
+{%- elif compiler_type == 'gcc' -%}
+[binaries]
+c = '{{ compiler_dir }}/gcc'
+cpp = '{{ compiler_dir }}/g++'
+ar = '{{ compiler_dir }}/ar'
+ranlib = '{{ compiler_dir }}/ranlib'
+
+[binaries.cross]
+c = '{{ compiler_dir }}/{{ triple }}-gcc'
+cpp = '{{ compiler_dir }}/{{ triple }}-g++'
+ar = '{{ compiler_dir }}/{{ triple }}-ar'
+ranlib = '{{ compiler_dir }}/{{ triple }}-ranlib'
+{%- elif compiler_type == 'clang' -%}
+[binaries]
+c = '{{ compiler_dir }}/clang'
+cpp = '{{ compiler_dir }}/clang++'
+ar = 'ar'
+ranlib = 'ranlib'
+
+[binaries.cross]
+c = ['{{ compiler_dir }}/clang', '-target', '{{ target }}']
+cpp = ['{{ compiler_dir }}/clang++', '-target', '{{ target }}']
+ar = 'ar'
+ranlib = 'ranlib'
+{%- endif -%}
+
+# ============================================================================
+# 目标平台配置
+# ============================================================================
+
+{% if compiler_type == 'zig' -%}
+# Zig 支持任意目标，这里列出常用目标作为快捷方式
+[[targets]]
+name = "{{ platform }}"
+triple = "{{ host_triple }}"
+default = true
+
+# 其他常用目标（可根据需要添加）
+# [[targets]]
+# name = "linux-x86_64"
+# triple = "x86_64-linux-gnu"
+{%- elif compiler_type == 'gcc' -%}
+# GCC 交叉编译器：通常只支持一个目标
+[[targets]]
+name = "{{ platform }}"
+triple = "{{ triple }}"
+default = true
+{%- elif compiler_type == 'clang' -%}
+# Clang 支持多目标交叉编译
+[[targets]]
+name = "{{ platform }}"
+triple = "{{ host_triple }}"
+default = true
+
+# 其他支持的目标（示例）
+# [[targets]]
+# name = "linux-x86_64"
+# triple = "x86_64-unknown-linux-gnu"
+{%- endif -%}
