@@ -1,0 +1,466 @@
+"""
+Translation Helps MCP Client
+
+Connects to the Translation Helps MCP server via HTTP (remote).
+"""
+
+import json
+from typing import Dict, Any, Optional, List
+import httpx
+from .types import (
+    ClientOptions,
+    MCPTool,
+    MCPPrompt,
+    FetchScriptureOptions,
+    FetchTranslationNotesOptions,
+    FetchTranslationQuestionsOptions,
+    FetchTranslationWordOptions,
+    FetchTranslationWordLinksOptions,
+    FetchTranslationAcademyOptions,
+    ListLanguagesOptions,
+    ListSubjectsOptions,
+    ListResourcesForLanguageOptions,
+)
+
+DEFAULT_SERVER_URL = "https://tc-helps.mcp.servant.bible/api/mcp"
+DEFAULT_TIMEOUT = 30.0
+
+
+class TranslationHelpsClient:
+    """
+    Client for connecting to the Translation Helps MCP server.
+    
+    Example:
+        >>> client = TranslationHelpsClient()
+        >>> await client.connect()
+        >>> scripture = await client.fetch_scripture(reference="John 3:16")
+    """
+
+    def __init__(self, options: Optional[ClientOptions] = None):
+        """
+        Initialize the client.
+        
+        Args:
+            options: Optional client configuration
+        """
+        options = options or {}
+        self.server_url = options.get("serverUrl") or DEFAULT_SERVER_URL
+        self.timeout = options.get("timeout") or (DEFAULT_TIMEOUT * 1000)  # Convert to ms
+        self.headers = {
+            "Content-Type": "application/json",
+            **(options.get("headers") or {}),
+        }
+        self.tools_cache: Optional[List[MCPTool]] = None
+        self.prompts_cache: Optional[List[MCPPrompt]] = None
+        self.initialized = False
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    async def connect(self) -> None:
+        """Initialize connection to the MCP server."""
+        if self.initialized:
+            return
+
+        try:
+            # Create HTTP client
+            self._http_client = httpx.AsyncClient(
+                timeout=self.timeout / 1000,  # Convert ms to seconds
+                headers=self.headers,
+            )
+
+            # Initialize the server
+            init_response = await self._send_request("initialize")
+
+            # Handle JSON-RPC 2.0 format - serverInfo is in result.serverInfo or directly in response
+            # The _send_request method now extracts result, so serverInfo should be directly accessible
+            if "serverInfo" not in init_response:
+                raise ValueError("Invalid server response: missing serverInfo")
+
+            # Cache tools and prompts
+            await self._refresh_tools()
+            # Prompts may not be supported by all servers - handle gracefully
+            try:
+                await self._refresh_prompts()
+            except Exception as e:
+                # If prompts/list is not supported, continue without prompts
+                # This allows the SDK to work with servers that only support tools
+                self.prompts_cache = []
+                if "prompts/list" in str(e) or "500" in str(e):
+                    # Server doesn't support prompts - this is okay
+                    pass
+                else:
+                    # Re-raise if it's a different error
+                    raise
+
+            self.initialized = True
+        except Exception as e:
+            raise ConnectionError(
+                f"Failed to connect to MCP server: {str(e)}"
+            ) from e
+
+    async def close(self) -> None:
+        """Close the HTTP client connection."""
+        if self._http_client:
+            await self._http_client.aclose()
+            self._http_client = None
+        self.initialized = False
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
+
+    async def _send_request(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Send a request to the MCP server."""
+        if not self._http_client:
+            raise RuntimeError("Client not connected. Call connect() first.")
+
+        payload: Dict[str, Any] = {"method": method}
+        if params:
+            payload["params"] = params
+
+        try:
+            response = await self._http_client.post(
+                self.server_url,
+                json=payload,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Handle MCP error responses (JSON-RPC 2.0 format)
+            if "error" in data:
+                raise RuntimeError(
+                    data["error"].get("message", "MCP server error")
+                )
+
+            # Extract result from JSON-RPC 2.0 format if present
+            # The server now always returns JSON-RPC 2.0 format: { jsonrpc: "2.0", result: {...}, id: ... }
+            # But we need to support both formats for backward compatibility
+            response_data = data.get("result") if "result" in data else data
+
+            return response_data
+        except httpx.HTTPError as e:
+            raise ConnectionError(f"HTTP error: {str(e)}") from e
+
+    async def _refresh_tools(self) -> None:
+        """Refresh the tools cache."""
+        response = await self._send_request("tools/list")
+        self.tools_cache = response.get("tools", [])
+
+    async def _refresh_prompts(self) -> None:
+        """Refresh the prompts cache."""
+        response = await self._send_request("prompts/list")
+        self.prompts_cache = response.get("prompts", [])
+
+    async def _ensure_initialized(self) -> None:
+        """Ensure the client is initialized."""
+        if not self.initialized:
+            await self.connect()
+
+    async def list_tools(self) -> List[MCPTool]:
+        """List available tools."""
+        await self._ensure_initialized()
+        if not self.tools_cache:
+            await self._refresh_tools()
+        return self.tools_cache or []
+
+    async def list_prompts(self) -> List[MCPPrompt]:
+        """List available prompts."""
+        await self._ensure_initialized()
+        if not self.prompts_cache:
+            await self._refresh_prompts()
+        return self.prompts_cache or []
+
+    async def call_tool(
+        self, name: str, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Call a tool by name."""
+        await self._ensure_initialized()
+        return await self._send_request("tools/call", {
+            "name": name,
+            "arguments": arguments,
+        })
+
+    async def get_prompt(
+        self, name: str, arguments: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Get a prompt template."""
+        await self._ensure_initialized()
+        return await self._send_request("prompts/get", {
+            "name": name,
+            "arguments": arguments or {},
+        })
+
+    # Convenience methods for common operations
+
+    async def fetch_scripture(
+        self, options: FetchScriptureOptions
+    ) -> str:
+        """Fetch Bible scripture text."""
+        params: Dict[str, Any] = {
+            "reference": options["reference"],
+            "language": options.get("language", "en"),
+            "organization": options.get("organization", "unfoldingWord"),
+            "format": options.get("format", "text"),
+            "includeVerseNumbers": options.get("includeVerseNumbers", True),
+        }
+        
+        # Add optional parameters if provided
+        if options.get("resource") is not None:
+            params["resource"] = options["resource"]
+        if options.get("includeAlignment") is not None:
+            params["includeAlignment"] = options["includeAlignment"]
+        
+        response = await self.call_tool("fetch_scripture", params)
+
+        # Extract text from response
+        if response.get("content") and response["content"][0].get("text"):
+            return response["content"][0]["text"]
+
+        raise ValueError("Invalid response format from fetch_scripture")
+
+    async def fetch_translation_notes(
+        self, options: FetchTranslationNotesOptions
+    ) -> Dict[str, Any]:
+        """Fetch translation notes."""
+        response = await self.call_tool("fetch_translation_notes", {
+            "reference": options["reference"],
+            "language": options.get("language", "en"),
+            "organization": options.get("organization", "unfoldingWord"),
+            "includeIntro": options.get("includeIntro", True),
+            "includeContext": options.get("includeContext", True),
+        })
+
+        if response.get("content") and response["content"][0].get("text"):
+            return json.loads(response["content"][0]["text"])
+
+        raise ValueError("Invalid response format from fetch_translation_notes")
+
+    async def fetch_translation_questions(
+        self, options: FetchTranslationQuestionsOptions
+    ) -> Dict[str, Any]:
+        """Fetch translation questions."""
+        response = await self.call_tool("fetch_translation_questions", {
+            "reference": options["reference"],
+            "language": options.get("language", "en"),
+            "organization": options.get("organization", "unfoldingWord"),
+        })
+
+        if response.get("content") and response["content"][0].get("text"):
+            return json.loads(response["content"][0]["text"])
+
+        raise ValueError("Invalid response format from fetch_translation_questions")
+
+    async def fetch_translation_word(
+        self, options: FetchTranslationWordOptions
+    ) -> Dict[str, Any]:
+        """Fetch translation word (by term or reference)."""
+        response = await self.call_tool("fetch_translation_word", {
+            "reference": options.get("reference"),
+            "term": options.get("term"),
+            "language": options.get("language", "en"),
+            "organization": options.get("organization", "unfoldingWord"),
+            "category": options.get("category"),
+        })
+
+        if response.get("content") and response["content"][0].get("text"):
+            return json.loads(response["content"][0]["text"])
+
+        raise ValueError("Invalid response format from fetch_translation_word")
+
+    async def fetch_translation_word_links(
+        self, options: FetchTranslationWordLinksOptions
+    ) -> Dict[str, Any]:
+        """Fetch translation word links."""
+        response = await self.call_tool("fetch_translation_word_links", {
+            "reference": options["reference"],
+            "language": options.get("language", "en"),
+            "organization": options.get("organization", "unfoldingWord"),
+        })
+
+        if response.get("content") and response["content"][0].get("text"):
+            return json.loads(response["content"][0]["text"])
+
+        raise ValueError("Invalid response format from fetch_translation_word_links")
+
+    async def fetch_translation_academy(
+        self, options: FetchTranslationAcademyOptions
+    ) -> Any:
+        """Fetch translation academy articles."""
+        response = await self.call_tool("fetch_translation_academy", {
+            "reference": options.get("reference"),
+            "rcLink": options.get("rcLink"),
+            "moduleId": options.get("moduleId"),
+            "path": options.get("path"),
+            "language": options.get("language", "en"),
+            "organization": options.get("organization", "unfoldingWord"),
+            "format": options.get("format", "json"),
+        })
+
+        if response.get("content") and response["content"][0].get("text"):
+            text = response["content"][0]["text"]
+            if options.get("format") == "markdown":
+                return text
+            return json.loads(text)
+
+        raise ValueError("Invalid response format from fetch_translation_academy")
+
+
+    async def list_languages(
+        self, options: Optional[ListLanguagesOptions] = None
+    ) -> Dict[str, Any]:
+        """
+        List available languages from Door43 catalog.
+        
+        Args:
+            options: Optional filtering options (organization, stage)
+            
+        Returns:
+            Dictionary with languages array and metadata
+        """
+        options = options or {}
+        response = await self.call_tool("list_languages", {
+            "organization": options.get("organization"),
+            "stage": options.get("stage", "prod"),
+        })
+
+        if response.get("content") and response["content"][0].get("text"):
+            return json.loads(response["content"][0]["text"])
+
+        raise ValueError("Invalid response format from list_languages")
+
+    async def list_subjects(
+        self, options: Optional[ListSubjectsOptions] = None
+    ) -> Dict[str, Any]:
+        """
+        List available resource subjects from Door43 catalog.
+        
+        Args:
+            options: Optional filtering options (language, organization, stage)
+            
+        Returns:
+            Dictionary with subjects array and metadata
+        """
+        options = options or {}
+        response = await self.call_tool("list_subjects", {
+            "language": options.get("language"),
+            "organization": options.get("organization"),
+            "stage": options.get("stage", "prod"),
+        })
+
+        if response.get("content") and response["content"][0].get("text"):
+            return json.loads(response["content"][0]["text"])
+
+        raise ValueError("Invalid response format from list_subjects")
+
+    async def list_resources_for_language(
+        self, options: ListResourcesForLanguageOptions
+    ) -> Dict[str, Any]:
+        """
+        List all resources for a specific language (RECOMMENDED - much faster!).
+        
+        Single API call (~1-2 seconds). Use this after list_languages() to discover
+        what's available for a chosen language.
+        
+        Args:
+            options: Language (required) and optional filters
+            options["topic"]: Filter by topic tag. Defaults to "tc-ready" if not provided.
+            
+        Returns:
+            Dictionary with resources for the specified language organized by subject
+            
+        Example:
+            >>> resources = await client.list_resources_for_language({
+            ...     "language": "es-419"
+            ...     # topic defaults to "tc-ready" if not specified
+            ... })
+            >>> print(f"Found {resources['totalResources']} resources")
+        """
+        if not options.get("language"):
+            raise ValueError("language parameter is required for list_resources_for_language")
+        
+        params: Dict[str, Any] = {
+            "language": options["language"],
+            "stage": options.get("stage", "prod"),
+        }
+        
+        if options.get("organization") is not None:
+            params["organization"] = options["organization"]
+        if options.get("subject"):
+            params["subject"] = options["subject"]
+        if options.get("limit"):
+            params["limit"] = options["limit"]
+        if options.get("topic"):
+            params["topic"] = options["topic"]
+
+        response = await self.call_tool("list_resources_for_language", params)
+
+        if response.get("content") and response["content"][0].get("text"):
+            return json.loads(response["content"][0]["text"])
+
+        raise ValueError("Invalid response format from list_resources_for_language")
+
+
+    def is_connected(self) -> bool:
+        """Check if client is initialized."""
+        return self.initialized
+
+    async def check_prompts_support(self) -> bool:
+        """
+        Dynamically check if the MCP server supports prompts.
+        
+        This attempts to call prompts/list and returns True if successful,
+        False if prompts are not supported.
+        
+        Returns:
+            True if the server supports prompts, False otherwise
+            
+        Example:
+            >>> if await client.check_prompts_support():
+            ...     # Server supports prompts - use them natively
+            ...     prompts = await client.list_prompts()
+        """
+        await self._ensure_initialized()
+        try:
+            await self._refresh_prompts()
+            return True
+        except Exception:
+            return False
+
+    async def get_capabilities(self) -> Dict[str, Any]:
+        """
+        Get the server's capabilities by checking what's actually supported.
+        
+        This dynamically checks if tools and prompts are supported by attempting
+        to use them, rather than relying on cached initialization data.
+        
+        Returns:
+            Dictionary with capabilities information
+            
+        Example:
+            >>> await client.connect()
+            >>> caps = await client.get_capabilities()
+            >>> if caps.get("prompts_supported"):
+            ...     print("Server supports prompts")
+        """
+        await self._ensure_initialized()
+        
+        capabilities = {
+            "tools_supported": self.tools_cache is not None and len(self.tools_cache) > 0,
+            "prompts_supported": False
+        }
+        
+        # Check prompts support dynamically
+        try:
+            capabilities["prompts_supported"] = await self.check_prompts_support()
+        except Exception:
+            capabilities["prompts_supported"] = False
+        
+        return capabilities
+
