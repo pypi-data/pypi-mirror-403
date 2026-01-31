@@ -1,0 +1,10 @@
+"""
+catfood 的一些常量
+"""
+
+from typing import Final
+
+VERSION: Final = "1.0.7"
+"""
+catfood 的版本。
+"""
