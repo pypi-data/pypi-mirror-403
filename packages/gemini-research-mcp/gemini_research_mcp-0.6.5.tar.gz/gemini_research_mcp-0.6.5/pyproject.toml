@@ -1,0 +1,110 @@
+[project]
+name = "gemini-research-mcp"
+dynamic = ["version"]
+description = "MCP server for AI-powered research using Gemini: quick grounded search + Deep Research Agent"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    { name = "Guillaume Fortaine", email = "guillaume.fortaine+github@machinemates.ai" }
+]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "gemini",
+    "research",
+    "ai",
+    "deep-research",
+    "grounding",
+    "google-search",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Typing :: Typed",
+]
+dependencies = [
+    "google-genai>=1.60.0",
+    # MCP upgraded from 1.10.0 to 1.26.0; restrict to 1.x to avoid unexpected breaking changes.
+    "mcp>=1.26.0,<2.0.0",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.1",
+    # Persistent storage using industry-standard key-value interface (used by FastMCP, agentpool, etc.)
+    "py-key-value-aio[disk]>=0.3.0",
+    # XDG-compliant platform-specific directories
+    "platformdirs>=4.5.1",
+]
+
+[project.optional-dependencies]
+# DOCX export uses marko (Markdown→AST) + python-docx (native DOCX generation)
+# Zero external runtime dependencies - pure Python, no Pandoc binary needed
+# Optional: pygments for syntax highlighting in code blocks
+docx = [
+    "marko>=2.2.2",
+    "python-docx>=1.2.0",
+    "pygments>=2.19.2",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.3.0",
+    "mypy>=1.10.0",
+    "ruff>=0.4.0",
+    "marko>=2.2.2",
+    "python-docx>=1.2.0",
+    "pygments>=2.19.2",
+    "types-Pygments>=2.19.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/machinemates-ai/gemini-research-mcp"
+Documentation = "https://github.com/machinemates-ai/gemini-research-mcp#readme"
+Repository = "https://github.com/machinemates-ai/gemini-research-mcp"
+Issues = "https://github.com/machinemates-ai/gemini-research-mcp/issues"
+
+[project.scripts]
+gemini-research-mcp = "gemini_research_mcp.server:main"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.metadata]
+# Allow git+ references for dependencies (needed for fork while waiting for upstream PR merge)
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gemini_research_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    "e2e: end-to-end tests that require GEMINI_API_KEY",
+]
+addopts = "-m 'not e2e'"
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
