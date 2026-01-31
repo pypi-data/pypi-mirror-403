@@ -1,0 +1,256 @@
+[project]
+name = "potamides"
+authors = [
+  { name = "Jacob Nibauer", email = "jnibauer@princeton.edu" },
+  { name = "Nathaniel Starkman", email = "starkman@mit.edu" },
+  { name = "Sirui Wu", email = "sirui.wu@nbi.ku.dk" },
+]
+description = "Constrain gravitational potential with stream curvature"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python",
+  "Topic :: Scientific/Engineering",
+  "Typing :: Typed",
+]
+dynamic = ["version"]
+dependencies = [
+  "astropy>=7.0",
+  "galax",
+  "interpax>=0.3.8",
+  "jax>=0.5.3",
+  "jaxtyping>=0.3.1",
+  "matplotlib>=3.10.1",
+  "numpy>=2.2.3",
+  "optax>=0.2.4",
+  "scipy>=1.15.2",
+  "typing-extensions>=4.13.2",
+  "unxt>=1.6.2",
+  "xmmutablemap>=0.1",
+]
+
+[project.urls]
+Homepage      = "https://github.com/xggs-dev/potamides"
+"Bug Tracker" = "https://github.com/xggs-dev/potamides/issues"
+Discussions   = "https://github.com/xggs-dev/potamides/discussions"
+Changelog     = "https://github.com/xggs-dev/potamides/releases"
+
+
+[dependency-groups]
+dev = [
+  "ipykernel>=6.29.5",
+  { include-group = "docs" },
+  { include-group = "lint" },
+  { include-group = "nox" },
+  { include-group = "test" },
+  "cz-conventional-gitmoji>=0.7.0",
+]
+docs = [
+  "corner>=2.2.3",
+  "furo>=2023.08.17",
+  "matplotlib>=3.10.1",
+  "myst_nb>=1.0.0",
+  "myst_parser>=0.13",
+  "sphinx>=7.0",
+  "sphinx_autodoc_typehints",
+  "sphinx_book_theme>=1.0.0",
+  "sphinx_copybutton",
+  "sphinx_design>=0.5.0",
+]
+lint = [
+  "pre-commit>=4.5.0",
+  "pylint==4.0.4",
+]
+nox = [
+  "nox-uv>=0.6.3",
+  "nox[uv]>=2025.5.1",
+  "uv>=0.9.16",
+]
+test = [
+  "corner>=2.2.3",
+  "matplotlib>=3.10.1",
+  "optional-dependencies>=0.3.2",
+  "pytest>=9.0.2",
+  "pytest-arraydiff>=0.6.1",
+  "pytest-cov>=6.0.0",
+  "pytest-mpl>=0.17.0",
+  "sybil[pytest]>=9.1.0",
+]
+
+
+[build-system]
+requires = ["hatch-vcs", "hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch]
+build.hooks.vcs.version-file = "src/potamides/_version.py"
+build.hooks.vcs.version-file-template = """\
+version: str = {version!r}
+version_tuple: tuple[int, int, int] | tuple[int, int, int, str, str]
+version_tuple = {version_tuple!r}
+"""
+version.source = "vcs"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+
+[tool.codespell]
+skip = ["uv.lock", "paper/paper.bib"]
+ignore-words-list = "ptd"
+
+
+[tool.commitizen]
+name = "cz_gitmoji"
+
+
+[tool.coverage]
+report.exclude_also = [
+  '\.\.\.',
+  'if TYPE_CHECKING:',
+]
+run.branch = true
+run.source = ["potamides"]
+
+
+[tool.mypy]
+  files = ["src"]
+  python_version = "3.11"
+  warn_unused_configs = true
+  strict = true
+  enable_error_code = [
+    "ignore-without-code",
+    "redundant-expr",
+    "truthy-bool",
+  ]
+  warn_unreachable = true
+  disallow_untyped_defs = false
+  disallow_incomplete_defs = false
+
+  [[tool.mypy.overrides]]
+    module = "potamides.*"
+    disallow_untyped_defs = true
+    disallow_incomplete_defs = true
+    disable_error_code = [
+      "name-defined",
+    ]
+
+  [[tool.mypy.overrides]]
+    module = [
+      "equinox.*",
+      "galax.*",
+      "interpax.*",
+      "jax.*",
+      "jaxtyping.*",
+      "matplotlib.*",
+      "numpy.*",
+      "optax.*",
+      "scipy.*",
+      "unxt.*",
+      "xmmutablemap.*",
+    ]
+    ignore_missing_imports = true
+
+
+[tool.pylint]
+  py-version = "3.11"
+  ignore-paths = [
+    ".*/_version.py",
+  ]
+  disable = ["invalid-name"]
+  reports.output-format = "colorized"
+  similarities.ignore-imports = "yes"
+  messages_control.disable = [
+    "design",
+    "fixme",
+    "line-too-long",
+    "missing-function-docstring",
+    "missing-module-docstring",
+    "wrong-import-position",
+  ]
+
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = [
+  "--showlocals",
+  "--strict-config",
+  "--strict-markers",
+  "-p no:doctest",    # using sybil
+  "-ra",
+  "--arraydiff",
+  "--arraydiff-reference-path=tests/data",
+  "--mpl-hash-library=tests/baseline/plot_hashes.json"
+]
+xfail_strict = true
+filterwarnings = [
+  "error",
+  "ignore:.*jax\\.interpreters\\.xla\\.pytype_aval_mappings is deprecated.*:DeprecationWarning",
+  "ignore:No artists with labels found to put in legend.*:UserWarning"
+]
+log_cli_level = "INFO"
+testpaths = ["src", "tests", "docs"]
+norecursedirs = ["docs/_build"]
+
+
+[tool.ruff]
+
+  [tool.ruff.lint]
+    extend-select = [
+      "ARG", # flake8-unused-arguments
+      "B",   # flake8-bugbear
+      "C4",  # flake8-comprehensions
+      "EM",  # flake8-errmsg
+      "EXE", # flake8-executable
+      "G",   # flake8-logging-format
+      "I",   # isort
+      "ICN", # flake8-import-conventions
+      "NPY", # NumPy specific rules
+      "PD",  # pandas-vet
+      "PGH", # pygrep-hooks
+      "PIE", # flake8-pie
+      "PL",  # pylint
+      "PT",  # flake8-pytest-style
+      "PTH", # flake8-use-pathlib
+      "RET", # flake8-return
+      "RUF", # Ruff-specific
+      "SIM", # flake8-simplify
+      "T20", # flake8-print
+      "UP",  # pyupgrade
+      "YTT", # flake8-2020
+    ]
+    ignore = [
+      "B008",    # Do not perform function call in argument defaults;
+      "COM812",  # Add trailing comma
+      "EXE002",  # executable file missing shebang
+      "F722",    # reason: ruff doesn't like jaxtyping annotations
+      "F821",    # Undefined name. reason: jaxtyping annotations
+      "PD",      # Pandas
+      "PLR09",   # Too many <...>
+      "PLR2004", # Magic value used in comparison
+      "RET504",  # Unnecessary assignment before `return` statement
+      "RUF003",  # doesn't like chinese commas
+    ]
+
+    [tool.ruff.lint.per-file-ignores]
+      "docs/**" = ["EXE001", "T201"]
+      "tests/**" = ["T20"]
+      "noxfile.py" = ["T20"]
+
+    [tool.ruff.lint.flake8-import-conventions.aliases]
+      potamides = "ptd"
+      "potamides.splinelib" = "splib"
+
+
+[tool.uv.sources]
+  galax = { git = "https://github.com/GalacticDynamics/galax.git", rev = "main" }
