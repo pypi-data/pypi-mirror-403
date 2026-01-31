@@ -1,0 +1,112 @@
+"""Example usage of claude_traces_client with pretty printing."""
+
+import asyncio
+
+from claude_code_sdk import (
+    AssistantMessage,
+    ClaudeCodeOptions,
+    ResultMessage,
+    SystemMessage,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+    query,
+)
+
+from claude_traces_client import traced
+
+
+# ANSI color codes
+class Colors:
+    BLUE = "\033[94m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    MAGENTA = "\033[95m"
+    CYAN = "\033[96m"
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+
+def format_message(message) -> str:
+    """Format a message for pretty printing."""
+    lines = []
+
+    if isinstance(message, SystemMessage):
+        lines.append(f"{Colors.BLUE}{Colors.BOLD}=== SYSTEM MESSAGE ==={Colors.RESET}")
+        lines.append(f"{Colors.BLUE}subtype:{Colors.RESET} {message.subtype}")
+        if message.data:
+            lines.append(f"{Colors.BLUE}session_id:{Colors.RESET} {message.data.get('session_id', 'N/A')}")
+            lines.append(f"{Colors.BLUE}model:{Colors.RESET} {message.data.get('model', 'N/A')}")
+            tools = message.data.get("tools", [])
+            if tools:
+                lines.append(f"{Colors.BLUE}tools:{Colors.RESET} {', '.join(tools[:5])}{'...' if len(tools) > 5 else ''}")
+
+    elif isinstance(message, UserMessage):
+        lines.append(f"{Colors.GREEN}{Colors.BOLD}=== USER MESSAGE ==={Colors.RESET}")
+        content = message.content
+        if isinstance(content, str):
+            lines.append(f"{Colors.GREEN}content:{Colors.RESET}")
+            lines.append(f"  {content}")
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, ToolResultBlock):
+                    lines.append(f"{Colors.GREEN}tool_result:{Colors.RESET} {block.tool_use_id}")
+                    result_str = str(block.content) if block.content else "None"
+                    if len(result_str) > 200:
+                        result_str = result_str[:200] + "..."
+                    lines.append(f"  {result_str}")
+
+    elif isinstance(message, AssistantMessage):
+        lines.append(f"{Colors.YELLOW}{Colors.BOLD}=== ASSISTANT MESSAGE ==={Colors.RESET}")
+        lines.append(f"{Colors.YELLOW}model:{Colors.RESET} {message.model}")
+        for block in message.content:
+            if isinstance(block, TextBlock):
+                lines.append(f"{Colors.YELLOW}text:{Colors.RESET}")
+                for line in block.text.split("\n"):
+                    lines.append(f"  {line}")
+            elif isinstance(block, ToolUseBlock):
+                lines.append(f"{Colors.CYAN}tool_use:{Colors.RESET} {block.name}")
+                lines.append(f"  {Colors.DIM}id:{Colors.RESET} {block.id}")
+                lines.append(f"  {Colors.DIM}input:{Colors.RESET} {block.input}")
+
+    elif isinstance(message, ResultMessage):
+        lines.append(f"{Colors.MAGENTA}{Colors.BOLD}=== RESULT ==={Colors.RESET}")
+        lines.append(f"{Colors.MAGENTA}session_id:{Colors.RESET} {message.session_id}")
+        lines.append(f"{Colors.MAGENTA}duration_ms:{Colors.RESET} {message.duration_ms}")
+        lines.append(f"{Colors.MAGENTA}num_turns:{Colors.RESET} {message.num_turns}")
+        lines.append(f"{Colors.MAGENTA}is_error:{Colors.RESET} {message.is_error}")
+        if message.total_cost_usd:
+            lines.append(f"{Colors.MAGENTA}total_cost_usd:{Colors.RESET} ${message.total_cost_usd:.4f}")
+        if message.result:
+            lines.append(f"{Colors.MAGENTA}result:{Colors.RESET}")
+            for line in message.result.split("\n"):
+                lines.append(f"  {line}")
+
+    else:
+        lines.append(f"{Colors.DIM}=== UNKNOWN MESSAGE ==={Colors.RESET}")
+        lines.append(str(message))
+
+    return "\n".join(lines)
+
+
+async def main():
+    # Endpoint read from CLAUDE_TRACES_ENDPOINT env var
+    # Default: https://claudetraces.dev/api/trace
+    async for msg in traced(
+        query(
+            prompt="What is the temperature difference between Miami and New York today? Use WebSearch to look up both.",
+            options=ClaudeCodeOptions(
+                max_turns=10,
+                permission_mode="bypassPermissions",
+            ),
+        ),
+    ):
+        print(format_message(msg))
+        print()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
