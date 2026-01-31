@@ -1,0 +1,49 @@
+"""Deployment action for {{ name }}."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from synapse_sdk.plugins import BaseDeploymentAction
+
+from plugin.inference import InferenceDeployment as InferenceServe
+
+
+class DeploymentParams(BaseModel):
+    """Parameters for deployment action.
+
+    Configure resource requirements for the Ray Serve deployment.
+    """
+
+    num_cpus: float = Field(default=4, description='Number of CPUs')
+    num_gpus: float = Field(default=0, description='Number of GPUs')
+
+
+class InferenceDeployment(BaseDeploymentAction[DeploymentParams]):
+    """Deployment action for {{ name }} inference endpoint.
+
+    Deploys the inference serve deployment to Ray Serve
+    and registers it with the Synapse backend.
+
+    The `entrypoint` attribute points to the serve deployment class
+    defined in inference.py.
+    """
+
+    action_name = 'deployment'
+    params_model = DeploymentParams
+    entrypoint = InferenceServe
+
+    def execute(self) -> dict[str, Any]:
+        """Deploy inference endpoint to Ray Serve."""
+        self.ray_init()
+        self.set_progress(1, 3, self.progress.INITIALIZE)
+
+        self.deploy()
+        self.set_progress(2, 3, self.progress.DEPLOY)
+
+        app_id = self.register_serve_application()
+        self.set_progress(3, 3, self.progress.REGISTER)
+
+        return {'serve_application': app_id}

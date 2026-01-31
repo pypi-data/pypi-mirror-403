@@ -1,0 +1,94 @@
+"""Upload action for {{ name }}."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from synapse_sdk.plugins.actions.upload import (
+    AssetConfig,
+    DefaultUploadAction,
+    UploadContext,
+    UploadParams,
+)
+from synapse_sdk.plugins.steps import StepRegistry
+
+
+class UploadAction(DefaultUploadAction[UploadParams]):
+    """Upload action for {{ name }}.
+
+    This action handles data upload from external sources using an 8-step workflow:
+    1. Initialize - Setup storage and paths
+    2. Process Metadata - Load Excel metadata (optional)
+    3. Analyze Collection - Load file specifications
+    4. Organize Files - Group files by stem
+    5. Validate Files - Validate against specs
+    6. Upload Files - Upload to storage
+    7. Generate Data Units - Create data units
+    8. Cleanup - Final cleanup
+
+    Supports both single-path and multi-path modes for flexible file organization.
+
+    Single Path Mode (use_single_path=True, DEFAULT):
+        All file specifications share one base path.
+        Example:
+            params = {
+                'name': 'Standard Upload',
+                'path': '/data/experiment_1',
+                'storage': 1,
+                'data_collection': 5,
+            }
+
+    Multi-Path Mode (use_single_path=False):
+        Each file specification has its own path.
+        Example:
+            params = {
+                'name': 'Multi-Source Upload',
+                'use_single_path': False,
+                'assets': {
+                    'image_1': {'path': '/sensors/camera', 'is_recursive': True},
+                    'pcd_1': {'path': '/sensors/lidar', 'is_recursive': False},
+                },
+                'storage': 1,
+                'data_collection': 5,
+            }
+
+    Customization:
+        Override setup_steps() to customize the workflow:
+
+        def setup_steps(self, registry: StepRegistry[UploadContext]) -> None:
+            # Call parent to register default steps
+            super().setup_steps(registry)
+            # Or register custom steps instead
+
+        Override get_allowed_extensions() to restrict file types:
+
+        def get_allowed_extensions(self) -> dict[str, list[str]] | None:
+            return {
+                'video': ['.mp4', '.avi'],
+                'image': ['.jpg', '.png'],
+            }
+    """
+
+    action_name = 'upload'
+    params_model = UploadParams
+
+    # Uncomment to restrict file extensions by file type:
+    # def get_allowed_extensions(self) -> dict[str, list[str]] | None:
+    #     """Restrict allowed file extensions.
+    #
+    #     Returns:
+    #         Dict mapping file_type to allowed extensions, or None for no restriction.
+    #         Extensions should include the dot prefix (e.g., '.mp4').
+    #
+    #     Example:
+    #         return {
+    #             'video': ['.mp4', '.avi', '.mov'],
+    #             'image': ['.jpg', '.jpeg', '.png'],
+    #         }
+    #     """
+    #     return None
+
+    # Uncomment to customize the workflow steps:
+    # def setup_steps(self, registry: StepRegistry[UploadContext]) -> None:
+    #     """Customize workflow steps."""
+    #     super().setup_steps(registry)

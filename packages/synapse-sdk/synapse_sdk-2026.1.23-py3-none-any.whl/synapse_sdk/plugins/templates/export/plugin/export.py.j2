@@ -1,0 +1,225 @@
+"""Export action for {{ name }}."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Generator
+
+from synapse_sdk.plugins.actions.export.exporter import BaseExporter
+
+
+class Exporter(BaseExporter):
+    """Plugin export action for {{ name }}.
+
+    This class provides a template interface for implementing custom export logic.
+    Override the methods below to customize the export process.
+
+    Core Methods (inherit from BaseExporter):
+        export(): Main export workflow (usually no override needed).
+        process_data_conversion(): Data conversion pipeline.
+        process_file_saving(): File saving operations.
+        setup_output_directories(): Directory setup.
+
+    Template Methods (override these for custom logic):
+        convert_data(): Transform data during export.
+        before_convert(): Pre-process data before conversion.
+        after_convert(): Post-process data after conversion.
+        save_original_file(): Custom original file saving logic.
+        save_as_json(): Custom JSON file saving logic.
+        additional_file_saving(): Post-export file operations.
+
+    Example Usage:
+        >>> # In your action execute() method:
+        >>> from plugin.export import Exporter
+        >>>
+        >>> exporter = Exporter(
+        ...     ctx=self.ctx,
+        ...     export_items=export_items_generator,
+        ...     path_root=Path('/path/to/export'),
+        ...     name='my_export',
+        ...     count=total_count,
+        ...     save_original_file=True,
+        ... )
+        >>> result = exporter.export()
+    """
+
+    def convert_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Transform data during export.
+
+        Override this method to implement custom data conversion logic.
+        This is the main method you'll want to customize for your export format.
+
+        Args:
+            data: Input data to convert (from export_items).
+
+        Returns:
+            Converted data ready for export.
+
+        Example:
+            >>> def convert_data(self, data: dict[str, Any]) -> dict[str, Any]:
+            ...     # Convert to custom format
+            ...     return {
+            ...         'id': data['id'],
+            ...         'annotations': self._convert_annotations(data['data']),
+            ...         'metadata': data.get('metadata', {}),
+            ...     }
+        """
+        # TODO: Implement your conversion logic here
+        return data
+
+    def before_convert(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Pre-process data before conversion.
+
+        Use this method to perform any preprocessing steps before the main
+        conversion logic (e.g., filtering, validation, enrichment).
+
+        Args:
+            data: Input data.
+
+        Returns:
+            Pre-processed data.
+
+        Example:
+            >>> def before_convert(self, data: dict[str, Any]) -> dict[str, Any]:
+            ...     # Filter out invalid data
+            ...     if not data.get('files'):
+            ...         return data
+            ...     # Enrich with additional metadata
+            ...     data['project_name'] = self.params.get('configuration', {}).get('name')
+            ...     return data
+        """
+        return data
+
+    def after_convert(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Post-process data after conversion.
+
+        Use this method to perform any post-processing steps after the main
+        conversion logic (e.g., normalization, validation, formatting).
+
+        Args:
+            data: Converted data.
+
+        Returns:
+            Final processed data.
+
+        Example:
+            >>> def after_convert(self, data: dict[str, Any]) -> dict[str, Any]:
+            ...     # Validate converted data
+            ...     if 'annotations' not in data:
+            ...         data['annotations'] = []
+            ...     return data
+        """
+        return data
+
+    # Optional: Override file saving methods for custom logic
+    # def save_original_file(self, result, base_path, error_file_list):
+    #     """Custom original file saving logic."""
+    #     return super().save_original_file(result, base_path, error_file_list)
+
+    # def save_as_json(self, result, base_path, error_file_list):
+    #     """Custom JSON file saving logic."""
+    #     return super().save_as_json(result, base_path, error_file_list)
+
+    # Optional: Override for custom directory structure
+    # def setup_output_directories(self, unique_export_path, save_original_file_flag):
+    #     """Custom directory setup."""
+    #     # Example: Create additional subdirectories
+    #     output_paths = super().setup_output_directories(unique_export_path, save_original_file_flag)
+    #     annotations_path = unique_export_path / 'annotations'
+    #     annotations_path.mkdir(parents=True, exist_ok=True)
+    #     output_paths['annotations_path'] = annotations_path
+    #     return output_paths
+
+    # Optional: Override for post-export operations
+    # def additional_file_saving(self, unique_export_path):
+    #     """Save additional files after export completes."""
+    #     # Example: Save metadata file
+    #     metadata = {
+    #         'export_name': self.params['name'],
+    #         'total_items': self.params['count'],
+    #         'project_id': self.params.get('project_id'),
+    #     }
+    #     with (unique_export_path / 'metadata.json').open('w') as f:
+    #         import json
+    #         json.dump(metadata, f, indent=2)
+
+    # Optional: Development logging examples
+    def sample_dev_log(self) -> None:
+        """Sample development logging examples for plugin developers.
+
+        This method demonstrates various ways to use log_dev_event() for debugging,
+        monitoring, and tracking plugin execution.
+
+        Use Cases:
+        1. Process Tracking: Log when important processes start/complete.
+        2. Error Handling: Capture detailed error information.
+        3. Performance Monitoring: Record timing and resource usage.
+        4. Data Validation: Log validation results and data quality metrics.
+        5. Debug Information: Track variable states and execution flow.
+        """
+        # Example 1: Basic Process Tracking
+        self.run.log_dev_event(
+            'Starting data conversion process',
+            {'data_type': 'img', 'data_size': 'unknown', 'conversion_method': 'custom_format'},
+        )
+
+        # Example 2: Error Handling with Detailed Information
+        from synapse_sdk.plugins.models.logger import LogLevel
+
+        try:
+            # Simulated operation that might fail
+            pass
+        except Exception as e:
+            self.run.log_dev_event(
+                f'Data conversion failed: {str(e)}',
+                {
+                    'error_type': type(e).__name__,
+                    'error_details': str(e),
+                    'operation': 'data_conversion',
+                    'recovery_attempted': False,
+                },
+                level=LogLevel.ERROR,
+            )
+
+        # Example 3: Performance Monitoring
+        import time
+
+        start_time = time.time()
+        # Simulated processing work
+        time.sleep(0.001)
+        processing_time = time.time() - start_time
+
+        self.run.log_dev_event(
+            'File processing completed',
+            {
+                'processing_time_ms': round(processing_time * 1000, 2),
+                'files_processed': 1,
+                'performance_rating': 'excellent' if processing_time < 0.1 else 'normal',
+            },
+        )
+
+        # Example 4: Data Validation Logging
+        validation_passed = True  # Simulated validation result
+        self.run.log_dev_event(
+            'Data validation completed',
+            {
+                'validation_passed': validation_passed,
+                'validation_rules': ['format_check', 'required_fields', 'data_types'],
+                'data_quality_score': 95.5,
+            },
+            level=LogLevel.INFO if validation_passed else LogLevel.WARNING,
+        )
+
+        # Example 5: Debug Information with Variable States
+        current_batch_size = 100
+        memory_usage = 45.2  # Simulated memory usage in MB
+
+        self.run.log_dev_event(
+            'Processing checkpoint reached',
+            {
+                'current_batch_size': current_batch_size,
+                'memory_usage_mb': memory_usage,
+                'checkpoint_location': 'after_data_preprocessing',
+                'next_operation': 'file_saving',
+            },
+        )

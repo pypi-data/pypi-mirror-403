@@ -1,0 +1,73 @@
+"""Training action for {{ name }}."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from synapse_sdk.plugins.actions.train import BaseTrainAction, BaseTrainParams
+from synapse_sdk.plugins.types import ModelWeights
+
+
+class TrainParams(BaseTrainParams):
+    """Training hyperparameters.
+
+    Extend this model with your model-specific hyperparameters.
+    Fields defined here will appear in the training UI.
+    """
+
+    epochs: int = Field(default=10, ge=1, le=1000, description='Number of training epochs')
+    batch_size: int = Field(default=32, ge=1, le=512, description='Batch size')
+    learning_rate: float = Field(default=0.001, ge=1e-6, le=1.0, description='Learning rate')
+
+
+class TrainResult(BaseModel):
+    """Result from training.
+
+    Define the output schema for your training action.
+    """
+
+    weights_path: str = Field(description='Path to trained model weights')
+    final_loss: float | None = Field(default=None, description='Final training loss')
+
+
+class TrainAction(BaseTrainAction[TrainParams]):
+    """Training action for {{ name }}.
+
+    Subclass of BaseTrainAction with automatic dataset download,
+    conversion, and checkpoint management.
+
+    Set `target_format` to automatically convert downloaded datasets
+    (e.g., 'yolo', 'coco'). Set to None to use raw Datamaker format.
+    """
+
+    action_name = 'train'
+
+    # Set target_format to enable automatic dataset conversion.
+    # Examples: 'yolo', 'coco', or None for raw Datamaker format.
+    target_format: str | None = None
+
+    input_type = None
+    output_type = ModelWeights
+    result_model = TrainResult
+
+    def execute(self, data_path: Path, checkpoint: dict[str, Any] | None) -> TrainResult:
+        """Run model training.
+
+        Args:
+            data_path: Path to prepared dataset (auto-resolved by SDK).
+            checkpoint: Checkpoint dict with 'path' and 'category', or None.
+
+        Returns:
+            TrainResult with weights path and metrics.
+
+        Raises:
+            NotImplementedError: Must be implemented with your training logic.
+        """
+        raise NotImplementedError(
+            'Implement your training logic here. '
+            'Load your model, run the training loop, save weights, '
+            'and return a TrainResult.'
+        )
