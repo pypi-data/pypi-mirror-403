@@ -1,0 +1,46 @@
+"""
+TriTopic: Tri-Modal Graph Topic Modeling with Iterative Refinement
+===================================================================
+
+A state-of-the-art topic modeling library that combines:
+- Semantic embeddings (Sentence-BERT, Instructor, BGE)
+- Lexical similarity (BM25)
+- Metadata context (optional)
+
+With advanced techniques:
+- Leiden clustering with consensus
+- Mutual kNN + SNN graph construction
+- Iterative refinement loop
+- LLM-powered topic labeling
+
+Basic usage:
+-----------
+>>> from tritopic import TriTopic
+>>> model = TriTopic()
+>>> topics = model.fit_transform(documents)
+>>> model.visualize()
+
+Author: Roman Egger
+License: MIT
+"""
+
+__version__ = "0.1.0"
+__author__ = "Roman Egger"
+
+from tritopic.core.model import TriTopic
+from tritopic.core.graph_builder import GraphBuilder
+from tritopic.core.clustering import ConsensusLeiden
+from tritopic.core.embeddings import EmbeddingEngine
+from tritopic.core.keywords import KeywordExtractor
+from tritopic.labeling.llm_labeler import LLMLabeler
+from tritopic.visualization.plotter import TopicVisualizer
+
+__all__ = [
+    "TriTopic",
+    "GraphBuilder", 
+    "ConsensusLeiden",
+    "EmbeddingEngine",
+    "KeywordExtractor",
+    "LLMLabeler",
+    "TopicVisualizer",
+]
