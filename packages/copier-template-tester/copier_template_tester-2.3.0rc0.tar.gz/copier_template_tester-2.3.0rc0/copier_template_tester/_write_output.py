@@ -1,0 +1,226 @@
+"""Template Directory Writer."""
+
+import re
+import shutil
+import stat
+import sys
+from contextlib import contextmanager, suppress
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+# Copier 9.7.0 renamed internal modules with a `_` prefix and emits deprecation warnings
+#   for non-public API imports. The public API (run_copy, run_recopy, run_update) doesn't
+#   support task injection, so we continue using Worker directly.
+# Alternative: replace load_template_config with pyyaml (loses !include support)
+# References:
+#   https://copier.readthedocs.io/en/stable/changelog/ (v9.7.0)
+#   https://github.com/orgs/copier-org/discussions/1250
+from copier._main import Worker  # noqa:  PLC2701
+from copier._template import load_template_config  # noqa: PLC2701
+from corallium.file_helpers import read_lines
+from corallium.log import get_logger
+from corallium.shell import capture_shell
+
+logger = get_logger()
+
+DEFAULT_TEMPLATE_FILE_NAME = 'copier.yaml'
+"""Default answer file name; however, `copier.yml` is also supported through `read_copier_template`."""
+
+
+DEFAULT_ANSWER_FILE_NAME = '.copier-answers.yml'
+"""Default answer file name.
+
+https://github.com/copier-org/copier/blob/7f05baf4f004a4876fb6158e1c532b28290146a4/copier/subproject.py#L39
+
+"""
+
+
+@lru_cache(maxsize=1)
+def read_copier_template(base_dir: Path) -> dict[str, Any]:
+    """Locate the copier file regardless of variation and return the content.
+
+    https://github.com/copier-org/copier/blob/5827d6a6fc6592e64c983bc52a254471ecff7531/docs/creating.md?plain=1#L13-L14
+
+    """
+    copier_path = base_dir / DEFAULT_TEMPLATE_FILE_NAME
+    if not copier_path.is_file():
+        copier_path = copier_path.with_suffix('.yml')
+    if not copier_path.is_file():  # pragma: no cover
+        msg = f"Can't find the copier template file. Expected: {copier_path} (or .yaml)"
+        raise FileNotFoundError(msg)
+
+    return load_template_config(conf_path=copier_path)
+
+
+@lru_cache(maxsize=1)
+def _find_answers_file(*, src_path: Path, dst_path: Path) -> Path:
+    """Locate the copier answers file based on the copier template."""
+    copier_config = read_copier_template(src_path)
+    answers_filename = copier_config.get('_answers_file') or DEFAULT_ANSWER_FILE_NAME
+    if '{{' in answers_filename:
+        # If the filename is created from the template, just grab the first match
+        # Replace Jinja2 template variables (e.g., {{project_name}}) with glob wildcards
+        search_name = re.sub(r'{{[^}]+}}', '*', answers_filename)
+        matches = [*dst_path.glob(search_name)]
+        if len(matches) != 1:  # pragma: no cover
+            msg = f"Can't find just one copier answers file matching {dst_path / search_name}. Found: {matches}"
+            raise ValueError(msg)
+        return matches[0]
+    return dst_path / answers_filename  # pragma: no cover
+
+
+@lru_cache(maxsize=3)
+def _resolve_git_root_dir(base_dir: Path) -> Path:
+    """Use git to list all untracked files."""
+    cmd = 'git rev-parse --show-toplevel'
+    output = capture_shell(cmd=cmd, cwd=base_dir)
+    return Path(output.strip())
+
+
+def _stabilize(line: str, answers_path: Path) -> str:
+    """Stabilize copier answers file values for deterministic output.
+
+    Converts variable values in the copier answers file to deterministic forms:
+    - _src_path: Converts absolute paths to relative paths from the answers file
+    - _commit: Converts specific commit hashes to 'HEAD' reference
+
+    This ensures that generated templates produce consistent, reproducible output
+    regardless of the absolute file system paths or git commit states.
+
+    Args:
+        line: A line from the copier answers file
+        answers_path: Path to the copier answers file being processed
+
+    Returns:
+        The stabilized line with deterministic values, or the original line if no changes needed
+
+    """
+    # Convert _src_path to a deterministic relative path
+    if line.startswith('_src_path'):
+        logger.info('Replacing with deterministic value', line=line)
+        raw_path = Path(line.rsplit('_src_path:', maxsplit=1)[-1].strip())
+        ans_dir = answers_path.parent
+        if ans_dir.is_relative_to(raw_path):
+            count_rel = len(ans_dir.relative_to(raw_path).parts)
+            rel_path = '/'.join([*(['..'] * count_rel), raw_path.name])
+            return f'_src_path: {rel_path}'
+        return line
+    # Create a stable tag for '_commit' that copier will still utilize
+    if line.startswith('_commit'):
+        logger.info('Replacing with deterministic value', line=line)
+        return '_commit: HEAD'
+    return line
+
+
+def _stabilize_answers_file(*, src_path: Path, dst_path: Path) -> None:
+    """Ensure that the answers file is deterministic."""
+    answers_path = _find_answers_file(src_path=src_path, dst_path=dst_path)
+    lines = (_stabilize(l_, answers_path) for l_ in read_lines(answers_path) if l_.strip())
+    answers_path.write_text('\n'.join(lines) + '\n')
+
+
+@contextmanager
+# PLANNED: In python 3.10, there is a Beartype error for this return annotation:
+#   -> Generator[None, None, None]
+def _output_dir(*, src_path: Path, dst_path: Path):  # noqa: ANN202
+    """Context manager to prepare output directory and handle copier answers file cleanup.
+
+    This context manager ensures proper setup and teardown of the copier output directory:
+    1. Pre-yield: Creates the destination directory if it doesn't exist
+    2. Post-yield: Handles the copier answers file based on template configuration
+       - If template has a custom answers file template, stabilizes it for deterministic output
+       - If template has no custom answers template, removes the default answers file
+
+    Templates with custom answer file templates (e.g., `{{ _copier_conf.answers_file }}.jinja`)
+    need stabilization to ensure reproducible output across different environments.
+
+    Addresses: <https://github.com/KyleKing/copier-template-tester/issues/24>
+
+    Args:
+        src_path: Path to the source copier template directory
+        dst_path: Path to the destination output directory
+
+    Yields:
+        None
+
+    Raises:
+        FileNotFoundError: If expected answers file cannot be found (re-raised after logging)
+
+    """
+    template_name = '{{ _copier_conf.answers_file }}.jinja'
+    has_answers_template = any(src_path.rglob(template_name))
+
+    dst_path.mkdir(parents=True, exist_ok=True)
+    yield
+
+    if has_answers_template:
+        # Reduce variability in the output
+        try:
+            _stabilize_answers_file(src_path=src_path, dst_path=dst_path)
+        except FileNotFoundError as exc:  # pragma: no cover
+            logger.warning(str(exc))
+            raise
+    else:
+        with suppress(FileNotFoundError):
+            answers_path = _find_answers_file(src_path=src_path, dst_path=dst_path)
+            answers_path.unlink()
+
+
+def _remove_readonly(func, path: str, _excinfo) -> None:  # pragma: no cover  # noqa: ANN001
+    """Clear the readonly bit for `shutil.rmtree(..., onexc=_remove_readonly)`.
+
+    Adapted from: https://docs.python.org/3/library/shutil.html#rmtree-example
+
+    Resolves: https://github.com/KyleKing/copier-template-tester/issues/34
+
+    The first parameter, function, is the function which raised the exception; it depends on the platform and
+    implementation. The second parameter, path, will be the path name passed to function. The third parameter,
+    excinfo, is the exception that was raised. Exceptions raised by onexc will not be caught.
+
+    """
+    Path.chmod(Path(path), stat.S_IWRITE)
+    func(path)
+
+
+def write_output(
+    *,
+    src_path: Path,
+    dst_path: Path,
+    data: dict[str, Any],
+    post_tasks: list[str | list[str] | dict[str, str | list[str]]] | None = None,
+    pre_tasks: list[str | list[str] | dict[str, str | list[str]]] | None = None,
+    skip_tasks: bool = False,
+    **kwargs,
+) -> None:
+    """Copy the specified directory to the target location with provided data.
+
+    kwargs documentation: https://github.com/copier-org/copier/blob/103828b59fd9eb671b5ffa909004d1577742300b/copier/main.py#L86-L173
+
+    """
+    with _output_dir(src_path=src_path, dst_path=dst_path):
+        kwargs.setdefault('cleanup_on_error', False)
+        kwargs.setdefault('data', data or {})
+        kwargs.setdefault('defaults', True)
+        kwargs.setdefault('exclude', ['.ctt', 'ctt.toml'])
+        kwargs.setdefault('overwrite', True)
+        kwargs.setdefault('quiet', False)
+        kwargs.setdefault('unsafe', True)
+        kwargs.setdefault('vcs_ref', 'HEAD')
+
+        with Worker(src_path=str(src_path), dst_path=dst_path, **kwargs) as worker:
+            if skip_tasks:
+                worker.template.config_data['tasks'] = (pre_tasks or []) + (post_tasks or [])
+            else:
+                template_tasks = worker.template.config_data.get('tasks', [])
+                worker.template.config_data['tasks'] = (pre_tasks or []) + template_tasks + (post_tasks or [])
+            worker.run_copy()
+
+        # Remove any .git directory created by copier script
+        git_path = dst_path / '.git'
+        if git_path.is_dir():  # pragma: no cover
+            logger.info('Removing git created by copier', git_path=git_path)
+            if sys.version_info >= (3, 12, 0):
+                shutil.rmtree(git_path, onexc=_remove_readonly)  # type: ignore[call-arg]
+            else:
+                shutil.rmtree(git_path, onerror=_remove_readonly)
