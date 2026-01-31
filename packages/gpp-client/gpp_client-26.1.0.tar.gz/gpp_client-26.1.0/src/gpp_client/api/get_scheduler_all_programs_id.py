@@ -1,0 +1,19 @@
+from typing import Any
+
+from .base_model import BaseModel
+
+
+class GetSchedulerAllProgramsId(BaseModel):
+    programs: "GetSchedulerAllProgramsIdPrograms"
+
+
+class GetSchedulerAllProgramsIdPrograms(BaseModel):
+    matches: list["GetSchedulerAllProgramsIdProgramsMatches"]
+
+
+class GetSchedulerAllProgramsIdProgramsMatches(BaseModel):
+    id: Any
+
+
+GetSchedulerAllProgramsId.model_rebuild()
+GetSchedulerAllProgramsIdPrograms.model_rebuild()
