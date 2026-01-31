@@ -1,0 +1,98 @@
+Metadata-Version: 2.4
+Name: mps-watch
+Version: 0.1.2
+Summary: Apple Silicon MPS (Metal Performance Shaders) memory monitoring tool for PyTorch.
+Author-email: Antigravity <antigravity@example.com>
+Project-URL: Homepage, https://github.com/example/mps-watch
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: MacOS
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: torch
+Requires-Dist: rich
+Requires-Dist: psutil
+Requires-Dist: numpy
+
+# mps-watch
+
+The Apple Silicon equivalent of `nvidia-smi` or `gpustat` for PyTorch. Monitor your MPS (Metal Performance Shaders) memory usage in real-time.
+
+## Features
+
+- **Python API**: Context manager and decorator for tracking VRAM usage of specific code blocks.
+- **CLI Tool**: Terminal-based dashboard for system unified memory monitoring.
+- **Safe Fallbacks**: Graceful handling on non-Mac systems or without MPS.
+
+## Installation
+
+```bash
+pip install mps-watch
+```
+
+## Usage
+
+### Python API
+
+Monitor memory usage of specific blocks or functions:
+
+```python
+from mps_watch import monitor
+import torch
+
+# As context manager
+with monitor("Training Block"):
+    # Your MPS code here
+    model.to("mps")
+    output = model(input)
+
+# As decorator
+@monitor("Inference")
+def predict(x):
+    return model(x)
+
+# Get current usage directly
+from mps_watch import get_current_memory_usage, get_system_memory
+
+allocated, reserved = get_current_memory_usage()
+print(f"Current Allocated: {allocated} bytes")
+
+# Get system-wide unified memory
+sys_mem = get_system_memory()
+print(f"System Total: {sys_mem['total']} bytes")
+print(f"System Used: {sys_mem['used']} bytes")
+```
+
+**Output:**
+It will print a table showing Initial, Final, and Delta memory usage (Allocated vs Reserved).
+
+### CLI Tool
+
+Run the dashboard in your terminal:
+
+```bash
+mps-watch
+```
+
+This will show a live-updating dashboard of your System Unified Memory and MPS availability status.
+
+## Requirements
+
+- macOS 12.3+ (for MPS support)
+- Python 3.8+
+- PyTorch
+- rich
+- psutil
+
+## Understanding the Stats
+
+### CLI vs Python API
+- **The CLI Tool (`mps-watch`)**: Shows **System-wide** memory usage. Since Apple Silicon uses Unified Memory, this reflects the total RAM used by the OS and *all* applications combined. It gives you an idea of the overall system pressure.
+- **The Python API (`monitor` / `get_current_memory_usage`)**: Shows **Process-specific** MPS memory usage. This is the amount of memory specifically allocated by PyTorch on the Metal device for *your* script.
+
+**Why are they different?**
+The CLI shows the whole pie (System RAM). The Python API shows just your slice (PyTorch MPS Usage).
+
+## License
+
+MIT
