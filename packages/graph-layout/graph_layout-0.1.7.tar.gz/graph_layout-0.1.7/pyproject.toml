@@ -1,0 +1,155 @@
+[project]
+name = "graph-layout"
+version = "0.1.7"
+description = "A collection of graph layout algorithms in Python"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    { name = "Shakeeb Alireza", email = "me@example.org" }
+]
+keywords = ["graph", "layout", "constraints", "optimization", "visualization", "cola", "force-directed"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+dependencies = [
+    "numpy>=1.20.0",
+    "sortedcontainers>=2.4.0",
+]
+
+[project.optional-dependencies]
+ilp = ["scipy>=1.9.0"]
+
+[build-system]
+requires = [
+    "setuptools>=64",
+    "wheel",
+    "Cython>=3.0.0; platform_python_implementation=='CPython'",
+    "numpy>=1.20.0",
+]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "pytest>=8.3.5",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.13.3",
+    "Cython>=3.0.0",
+    "matplotlib>=3.9.4",
+    "twine>=5.0.0",
+    "typing-extensions>=4.15.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/shakfu/graph-layout"
+Repository = "https://github.com/shakfu/graph-layout"
+Documentation = "https://github.com/shakfu/graph-layout"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+
+[tool.coverage.run]
+source = ["graph_layout"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+# Additional strictness
+check_untyped_defs = true
+strict_equality = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+# Strict typing for new Pythonic API modules
+[[tool.mypy.overrides]]
+module = [
+    "graph_layout.base",
+    "graph_layout.types",
+    "graph_layout.validation",
+    "graph_layout.metrics",
+    "graph_layout.force.*",
+    "graph_layout.hierarchical.*",
+    "graph_layout.circular.*",
+    "graph_layout.spectral.*",
+    "graph_layout.cola.adapter",
+]
+disallow_untyped_defs = true
+warn_return_any = true
+
+# Legacy cola modules have less strict typing (ported from JavaScript)
+# These use dynamic patterns (fluent API with getter/setter overloads) that
+# don't fit well with static typing.
+# Known issues: 146 mypy errors when strict checking is enabled.
+# Main causes: Optional handling, Union types from getter/setter pattern,
+# dynamic attribute access on ported JavaScript objects.
+[[tool.mypy.overrides]]
+module = [
+    "graph_layout.cola.layout",
+    "graph_layout.cola.layout3d",
+    "graph_layout.cola.batch",
+    "graph_layout.cola.gridrouter",
+    "graph_layout.cola.linklengths",
+    "graph_layout.cola.handledisconnected",
+    "graph_layout.cola.geom",
+    "graph_layout.cola.rectangle",
+    "graph_layout.cola.powergraph",
+    "graph_layout.cola.adapter",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "graph_layout.cola.*"
+disallow_untyped_defs = false
+warn_return_any = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+# Ignore naming conventions in modules using mathematical notation
+[tool.ruff.lint.per-file-ignores]
+"src/graph_layout/cola/*.py" = ["N803", "N806", "E741", "E731", "F841", "F401", "E501"]
+# Spectral/force/hierarchical/orthogonal use matrix notation (A, D, L, H for matrices)
+"src/graph_layout/spectral/*.py" = ["N806"]
+"src/graph_layout/force/*.py" = ["N806"]
+"src/graph_layout/hierarchical/*.py" = ["N806"]
+"src/graph_layout/orthogonal/*.py" = ["N806"]
+# Tests: allow mathematical names, lambdas, explicit boolean comparisons, unused setup vars, class args
+"tests/*.py" = ["N803", "N806", "E741", "E731", "E712", "F841"]
+# Scripts: allow class variable names
+"scripts/*.py" = ["N803", "N806", "E741"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"graph_layout" = ["py.typed"]
+
+[tool.setuptools.exclude-package-data]
+"graph_layout" = ["*.c", "*.pyx", "*.pxd"]
