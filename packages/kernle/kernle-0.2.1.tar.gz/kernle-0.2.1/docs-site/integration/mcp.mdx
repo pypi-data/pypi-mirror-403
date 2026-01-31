@@ -1,0 +1,228 @@
+---
+title: MCP Integration
+description: "Using Kernle as an MCP server for AI assistants"
+---
+
+# MCP Integration
+
+Kernle provides an MCP (Model Context Protocol) server that exposes memory operations as tools for AI assistants.
+
+## What is MCP?
+
+MCP is a protocol that allows AI assistants to use external tools. When you add Kernle as an MCP server, your AI assistant gains access to memory operations like:
+
+- Loading working memory
+- Saving checkpoints
+- Recording episodes and notes
+- Searching memory
+- Managing beliefs and values
+
+## Starting the MCP Server
+
+```bash
+kernle -a <agent_id> mcp
+```
+
+This starts an MCP server using stdio transport. The server stays running and responds to tool calls from the connected client.
+
+## Available Tools
+
+When connected, the MCP server exposes these tools:
+
+### Core Memory Operations
+
+| Tool | Description |
+|------|-------------|
+| `memory_load` | Load working memory with priority-based budget allocation |
+| `memory_checkpoint_save` | Save checkpoint with task description |
+| `memory_checkpoint_load` | Load previous checkpoint |
+| `memory_status` | Get memory statistics |
+| `memory_sync` | Trigger synchronization with cloud storage |
+
+#### memory_load Tool Details
+
+The `memory_load` tool uses priority-based budget allocation to load the most important memories within token limits.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `format` | string | `"text"` | Output format: `"text"` or `"json"` |
+| `budget` | integer | `8000` | Token budget (100-50000) |
+| `truncate` | boolean | `true` | Truncate long content to fit more items |
+
+**Priority Ordering:**
+
+Memories are loaded by priority until the budget is exhausted:
+
+1. **Checkpoint** (1.00) - Always loaded first for task continuity
+2. **Values** (0.90) - Sorted by priority descending
+3. **Beliefs** (0.70) - Sorted by confidence descending
+4. **Goals** (0.65) - Sorted by recency
+5. **Drives** (0.60) - Sorted by intensity descending
+6. **Episodes** (0.40) - Sorted by recency
+7. **Notes** (0.35) - Sorted by recency
+8. **Relationships** (0.30) - Sorted by last interaction
+
+**Response Metadata (`_meta`):**
+
+When using JSON format, the response includes budget metrics:
+
+```json
+{
+  "_meta": {
+    "budget_used": 5200,
+    "budget_total": 8000,
+    "excluded_count": 12
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `budget_used` | Tokens consumed by loaded memories |
+| `budget_total` | Original budget requested |
+| `excluded_count` | Number of memories that could not fit |
+
+**Token Estimation:**
+
+Tokens are estimated at approximately 4 characters per token, with a 1.3x safety margin for JSON serialization overhead.
+
+**Access Tracking:**
+
+Loading memories automatically records access for salience-based forgetting. This helps Kernle identify frequently-used memories that should be preserved.
+
+### Memory Capture
+
+| Tool | Description |
+|------|-------------|
+| `memory_episode` | Record an experience with lessons |
+| `memory_note` | Capture a note (decision/insight/quote) |
+| `memory_raw` | Quick capture to raw layer |
+| `memory_belief` | Add or update beliefs |
+| `memory_value` | Define core values |
+| `memory_goal` | Set and manage goals |
+| `memory_drive` | Set or update drives (motivations) |
+
+<Note>
+Playbooks are currently available via CLI only. MCP tools for playbook operations are planned for a future release.
+</Note>
+
+### Search & Query
+
+| Tool | Description |
+|------|-------------|
+| `memory_search` | Semantic search across all memory |
+| `memory_raw_search` | FTS5 keyword search on raw entries |
+| `memory_note_search` | Search notes by content and type |
+| `memory_when` | Query memories by time period (today, yesterday, this week) |
+| `memory_consolidate` | Get reflection scaffold with recent episodes and beliefs |
+
+### List Operations
+
+| Tool | Description |
+|------|-------------|
+| `memory_belief_list` | List all active beliefs with confidence levels |
+| `memory_value_list` | List all core values ordered by priority |
+| `memory_goal_list` | List goals filtered by status |
+| `memory_drive_list` | List all drives with current intensities |
+
+### Update Operations
+
+| Tool | Description |
+|------|-------------|
+| `memory_episode_update` | Update an episode (add lessons, change outcome, add tags) |
+| `memory_goal_update` | Update a goal's status, priority, or description |
+| `memory_belief_update` | Update a belief's confidence or deactivate it |
+
+### Suggestions
+
+| Tool | Description |
+|------|-------------|
+| `memory_suggestions_list` | List pending memory suggestions |
+| `memory_suggestions_promote` | Approve and promote a suggestion to structured memory |
+| `memory_suggestions_reject` | Reject a suggestion |
+| `memory_suggestions_extract` | Extract suggestions from unprocessed raw entries |
+
+## Client Configuration
+
+### Claude Code
+
+Add Kernle as an MCP server using the Claude CLI:
+
+```bash
+claude mcp add kernle -- kernle -a <agent_id> mcp
+```
+
+This registers Kernle with Claude Code. You can verify with:
+
+```bash
+claude mcp list
+```
+
+### General MCP Configuration
+
+For clients that use a JSON configuration file:
+
+```json
+{
+  "mcpServers": {
+    "kernle": {
+      "command": "kernle",
+      "args": ["-a", "<agent_id>", "mcp"]
+    }
+  }
+}
+```
+
+Replace `<agent_id>` with your actual agent identifier.
+
+## Usage Example
+
+Once configured, your AI assistant can use memory tools naturally:
+
+```
+"Let me save my current progress..."
+→ Tool call: memory_checkpoint_save(task="Working on user auth")
+
+"What have I learned about caching?"
+→ Tool call: memory_search(query="caching")
+
+"I should remember this insight about rate limiting."
+→ Tool call: memory_note(content="Rate limits are per-user, not per-key", type="insight")
+```
+
+## Best Practices
+
+<Tip>
+**Session Start**: Always call `memory_load` at the beginning of a session to restore context.
+</Tip>
+
+<Tip>
+**Save Often**: Use `memory_checkpoint_save` before context gets full, not just at session end.
+</Tip>
+
+<Tip>
+**Record Lessons**: Use `memory_episode` with lessons when you learn something significant.
+</Tip>
+
+## Troubleshooting
+
+### Server Not Starting
+
+Verify Kernle is installed and accessible:
+
+```bash
+which kernle
+kernle --version
+```
+
+### Tools Not Appearing
+
+1. Restart your MCP client
+2. Check the MCP configuration path
+3. Verify the agent ID exists: `kernle -a <agent_id> status`
+
+### Permission Issues
+
+The MCP server runs with the same permissions as your user. Ensure `~/.kernle/` is accessible.
