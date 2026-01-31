@@ -1,0 +1,347 @@
+Metadata-Version: 2.4
+Name: seme-sdk
+Version: 0.1.0
+Summary: Python SDK for SecondMe API
+Project-URL: Homepage, https://github.com/secondme/seme-sdk
+Project-URL: Documentation, https://github.com/secondme/seme-sdk#readme
+Project-URL: Repository, https://github.com/secondme/seme-sdk
+Author: SecondMe Team
+License-Expression: MIT
+License-File: LICENSE
+Keywords: ai,api,chat,sdk,secondme
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Typing :: Typed
+Requires-Python: >=3.8
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: pydantic>=2.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Requires-Dist: respx>=0.20.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# SecondMe Python SDK (seme-sdk)
+
+A Python SDK for interacting with the SecondMe API.
+
+## Installation
+
+```bash
+pip install seme-sdk
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/secondme/seme-sdk.git
+cd seme-sdk
+pip install -e .
+```
+
+## Quick Start
+
+### Using API Key
+
+```python
+from seme import SecondMeClient
+
+# Create client with API Key
+client = SecondMeClient(api_key="lba_ak_xxxxx...")
+
+# Get user information
+user = client.get_user_info()
+print(f"Hello, {user.name}!")
+
+# Streaming chat
+for chunk in client.chat_stream("Hello, introduce yourself!"):
+    print(chunk.delta, end="", flush=True)
+
+# Close the client when done
+client.close()
+```
+
+### Using OAuth2
+
+```python
+from seme import OAuth2Client, SecondMeClient
+
+# Create OAuth2 client
+oauth = OAuth2Client(
+    client_id="your_client_id",
+    client_secret="your_client_secret",
+    redirect_uri="https://your-app.com/callback"
+)
+
+# Get authorization URL
+auth_url = oauth.get_authorization_url(
+    scopes=["user.info", "chat", "note.add"]
+)
+print(f"Direct user to: {auth_url}")
+
+# Exchange authorization code for tokens
+tokens = oauth.exchange_code(code="lba_ac_xxxxx...")
+
+# Create client with auto-refresh
+client = SecondMeClient.from_oauth(
+    oauth_client=oauth,
+    token_response=tokens,
+    on_token_refresh=lambda t: print(f"Token refreshed!")
+)
+```
+
+## API Reference
+
+### SecondMeClient
+
+The main client for interacting with SecondMe API.
+
+#### Initialization
+
+```python
+# With API Key (long-lived)
+client = SecondMeClient(api_key="lba_ak_xxxxx...")
+
+# With Access Token (short-lived, 2 hours)
+client = SecondMeClient(access_token="lba_at_xxxxx...")
+
+# With auto-refresh from OAuth2
+client = SecondMeClient.from_oauth(oauth_client, token_response)
+```
+
+#### User API
+
+```python
+# Get user information
+user = client.get_user_info()
+print(user.name, user.email, user.bio)
+
+# Get user interest shades
+shades = client.get_user_shades()
+for shade in shades:
+    print(shade.shade_name, shade.confidence_level)
+
+# Get user soft memory (with pagination)
+memories = client.get_user_softmemory(
+    keyword="python",  # optional filter
+    page_no=1,
+    page_size=20
+)
+for memory in memories.items:
+    print(memory.content)
+```
+
+#### Note API
+
+```python
+# Add a text note
+note_id = client.add_note(
+    content="This is my note content",
+    title="My Note"  # optional
+)
+
+# Add a note with URLs
+note_id = client.add_note(
+    urls=["https://example.com/article"],
+    memory_type="URL"
+)
+```
+
+#### Chat API
+
+```python
+# Streaming chat
+for chunk in client.chat_stream("Hello!"):
+    print(chunk.delta, end="", flush=True)
+
+# Chat with session continuity
+session_id = None
+for chunk in client.chat_stream("Hi!", session_id=session_id):
+    if chunk.session_id:
+        session_id = chunk.session_id
+    print(chunk.delta, end="", flush=True)
+
+# Continue conversation
+for chunk in client.chat_stream("Tell me more", session_id=session_id):
+    print(chunk.delta, end="", flush=True)
+
+# Chat with custom system prompt
+for chunk in client.chat_stream(
+    "Tell me a joke",
+    system_prompt="You are a friendly comedian."
+):
+    print(chunk.delta, end="", flush=True)
+
+# Get session list
+sessions = client.get_session_list()
+for session in sessions:
+    print(session.session_id, session.last_message)
+
+# Get session messages
+messages = client.get_session_messages(session_id="xxx")
+for msg in messages:
+    print(f"{msg.role}: {msg.content}")
+```
+
+### OAuth2Client
+
+For OAuth2 authorization flow.
+
+```python
+from seme import OAuth2Client
+
+oauth = OAuth2Client(
+    client_id="your_client_id",
+    client_secret="your_client_secret",
+    redirect_uri="https://your-app.com/callback"
+)
+
+# Generate authorization URL
+url = oauth.get_authorization_url(
+    scopes=["user.info", "chat"],
+    state="csrf_token"  # optional
+)
+
+# Exchange code for tokens
+tokens = oauth.exchange_code(code="lba_ac_xxxxx...")
+print(tokens.access_token)
+print(tokens.refresh_token)
+print(tokens.expires_in)
+
+# Manually refresh token
+new_tokens = oauth.refresh_token(tokens.refresh_token)
+```
+
+## Available Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `user.info` | Access user basic information |
+| `user.info.shades` | Access user interest shades |
+| `user.info.softmemory` | Access user soft memory |
+| `note.add` | Add notes |
+| `chat` | Chat and session management |
+
+## Exception Handling
+
+```python
+from seme import (
+    SecondMeClient,
+    SecondMeError,
+    AuthenticationError,
+    PermissionDeniedError,
+    NotFoundError,
+    InvalidParameterError,
+    RateLimitError,
+    ServerError,
+    TokenExpiredError,
+)
+
+try:
+    client = SecondMeClient(api_key="invalid_key")
+    user = client.get_user_info()
+except AuthenticationError as e:
+    print(f"Authentication failed: {e}")
+except PermissionDeniedError as e:
+    print(f"Permission denied: {e}")
+except TokenExpiredError as e:
+    print(f"Token expired: {e}")
+except SecondMeError as e:
+    print(f"API error: {e}")
+```
+
+## Data Models
+
+### UserInfo
+
+```python
+class UserInfo:
+    name: str
+    email: str
+    avatar: str
+    bio: str
+    self_introduction: str
+    voice_id: str
+    profile_completeness: float
+```
+
+### Shade
+
+```python
+class Shade:
+    id: str
+    shade_name: str
+    confidence_level: float
+    public_content: str
+    private_content: str
+```
+
+### SoftMemory
+
+```python
+class SoftMemory:
+    id: str
+    content: str
+    created_at: datetime
+    memory_type: str
+```
+
+### ChatChunk
+
+```python
+class ChatChunk:
+    content: str      # Accumulated content
+    delta: str        # New content in this chunk
+    done: bool        # Whether streaming is complete
+    session_id: str
+    message_id: str
+```
+
+### Session
+
+```python
+class Session:
+    session_id: str
+    app_id: str
+    last_message: str
+    last_update_time: datetime
+    message_count: int
+```
+
+## Development
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/secondme/seme-sdk.git
+cd seme-sdk
+
+# Install with dev dependencies
+pip install -e ".[dev]"
+```
+
+### Running Tests
+
+```bash
+pytest tests/
+```
+
+### Code Style
+
+```bash
+ruff check .
+ruff format .
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
