@@ -1,0 +1,268 @@
+# CAPA SDK
+
+[![PyPI version](https://img.shields.io/pypi/v/capa-sdk.svg)](https://pypi.org/project/capa-sdk/)
+[![Python versions](https://img.shields.io/pypi/pyversions/capa-sdk.svg)](https://pypi.org/project/capa-sdk/)
+[![License](https://img.shields.io/badge/License-Dual%20(Non--Commercial%20Free)-blue.svg)](https://github.com/yarel2l/capa-sdk/blob/master/LICENSE)
+[![Patent](https://img.shields.io/badge/Patent-US%2010%2C885%2C309-green.svg)](https://patents.google.com/patent/US10885309B1)
+
+**Craniofacial Analysis & Prediction Architecture**
+
+A Python SDK for advanced craniofacial analysis based on 15+ peer-reviewed scientific papers.
+
+## Features
+
+- **WD Analysis**: Bizygomatic width measurement and classification
+- **Forehead Analysis**: Frontal inclination angle measurement
+- **Morphology Analysis**: Face shape classification and facial proportions
+- **Neoclassical Canons**: Classical facial proportion analysis
+- **Multi-Angle Support**: Combine results from multiple images
+- **Quality Control**: Adaptive quality assessment and validation
+
+## Installation
+
+```bash
+pip install capa-sdk
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/yarel2l/capa-sdk.git
+cd capa-sdk
+pip install -e .
+```
+
+### Dependencies
+
+- Python 3.9+
+- OpenCV
+- dlib
+- MediaPipe
+- face-recognition
+- scikit-learn
+- scipy
+- numpy
+- Pillow
+- matplotlib
+
+### Required Model File
+
+Download the dlib 68-point facial landmark model:
+
+```bash
+wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
+bzip2 -d shape_predictor_68_face_landmarks.dat.bz2
+```
+
+## Quick Start
+
+```python
+from capa import CoreAnalyzer
+
+# Initialize analyzer
+analyzer = CoreAnalyzer()
+
+# Analyze an image
+result = analyzer.analyze_image("photo.jpg")
+
+# Access results
+if result.wd_result:
+    print(f"WD Value: {result.wd_result.wd_value:.3f}")
+    print(f"Classification: {result.wd_result.primary_classification.value}")
+
+if result.forehead_result:
+    print(f"Forehead Angle: {result.forehead_result.forehead_geometry.slant_angle_degrees:.1f}")
+
+if result.morphology_result:
+    print(f"Face Shape: {result.morphology_result.shape_classification.primary_shape.value}")
+
+# Always shutdown when done
+analyzer.shutdown()
+```
+
+## Analysis Modes
+
+```python
+from capa import CoreAnalyzer, AnalysisConfiguration, AnalysisMode
+
+config = AnalysisConfiguration(
+    mode=AnalysisMode.STANDARD,  # FAST, STANDARD, THOROUGH, SCIENTIFIC
+    enable_wd_analysis=True,
+    enable_forehead_analysis=True,
+    enable_morphology_analysis=True,
+)
+
+analyzer = CoreAnalyzer(config=config)
+```
+
+## Multi-Angle Analysis
+
+```python
+from capa import MultiAngleAnalyzer, AngleSpecification
+
+analyzer = MultiAngleAnalyzer()
+
+angle_specs = [
+    AngleSpecification(angle_type='frontal', image_path='front.jpg'),
+    AngleSpecification(angle_type='profile', image_path='side.jpg'),
+]
+
+result = analyzer.analyze_multiple_angles(
+    angle_specs=angle_specs,
+    subject_id="subject_001"
+)
+
+print(f"Combined Confidence: {result.combined_confidence*100:.1f}%")
+analyzer.shutdown()
+```
+
+## Using Individual Modules
+
+```python
+from capa.modules import WDAnalyzer, ForeheadAnalyzer, MorphologyAnalyzer
+import cv2
+
+image = cv2.imread("photo.jpg")
+
+# WD Analysis only
+wd_analyzer = WDAnalyzer()
+wd_result = wd_analyzer.analyze(image)
+
+# Forehead Analysis only
+forehead_analyzer = ForeheadAnalyzer()
+forehead_result = forehead_analyzer.analyze(image)
+
+# Morphology Analysis only
+morphology_analyzer = MorphologyAnalyzer()
+morphology_result = morphology_analyzer.analyze(image)
+```
+
+## Scientific Foundation
+
+CAPA is built on 15+ peer-reviewed scientific papers. All referenced papers are included in the [`data/`](data/) folder for easy access.
+
+### WD Analysis (Bizygomatic Width)
+
+| Paper | Local PDF |
+|-------|-----------|
+| Bizygomatic Width and Personality Traits of the Relational Field | [View PDF](data/Bizygomatic%20Width%20and%20Personality%20Traits%20of%20the%20Relational%20Field.pdf) |
+| Bizygomatic Width and its Association with Social and Personality Traits in Males | [View PDF](data/Bizygomatic%20Width%20and%20its%20Association%20with%20Social%20and%20Personality%20Traits%20in%20Males.pdf) |
+| Association between self-reported impulsiveness and gray matter volume | [View PDF](data/Association%20between%20self%20reported%20impulsiveness%20and%20gray%20matter%20volume%20in%20healthy%20adults.An%20exploratory%20MRI%20study.pdf) |
+
+### Forehead Analysis (Frontal Inclination)
+
+| Paper | Local PDF |
+|-------|-----------|
+| The Slant of the Forehead as a Craniofacial Feature of Impulsiveness | [View PDF](data/The%20slant%20of%20the%20forehead%20as%20a%20craniofacial%20feature%20of%20impulsiveness.pdf) |
+| Correlation between Impulsiveness, Cortical Thickness and Slant of The Forehead | [View PDF](data/Correlation%20between%20Impulsiveness%2C%20Cortical%20Thickness%20and%20Slant%20of%20The%20Forehead%20in%20Healthy%20Adults.pdf) |
+| La impulsividad y su asociacion con la inclinacion de la frente | [View PDF](data/La%20impulsividad%20y%20su%20asociacion%20con%20la%20inclinacion%20de%20la%20frente.pdf) |
+| Frontonasal dysmorphology in bipolar disorder by 3D laser surface imaging | [View PDF](data/Frontonasal%20dysmorphology%20in%20bipolar%20disorder%20by%203D%20laser%20surface%20imaging%20and%20geometric%20morphometrics_%20Comparisons%20with%20schizophrenia.pdf) |
+
+### Morphology Analysis (Face Shape)
+
+| Paper | Local PDF |
+|-------|-----------|
+| The validity of eight neoclassical facial canons in the Turkish adults | [View PDF](data/The%20validity%20of%20eight%20neoclassical%20facial%20canons%20in%20the%20Turkish%20adults.pdf) |
+| Evaluation of Face Shape in Turkish Individuals | [View PDF](data/Evaluation%20of%20Face%20Shape%20in%20Turkish%20Individuals.pdf) |
+| Accuracy and precision of a 3D anthropometric facial analysis | [View PDF](data/Accuracy%20and%20precision%20of%20a%203D%20anthropometric%20facial%20analysis%20with%20and.pdf) |
+| Determinacion del Indice Facial Total y Cono Facial | [View PDF](data/Determinaci%C3%B3n%20del%20%C3%8Dndice%20Facial%20Total%20y%20Cono%20Facial%20en%20Individuos%20Chilenos.pdf) |
+
+### Neoclassical Canons
+
+| Paper | Local PDF |
+|-------|-----------|
+| Assessing Facial Beauty of Sabah Ethnic Groups Using Farkas Principles | [View PDF](data/Assessing%20Facial%20Beauty%20of%20Sabah%20Ethnic%20Groups%20Using%20Farkas%20Principles%20.pdf) |
+
+### Additional Morphology Papers
+
+| Paper | Local PDF |
+|-------|-----------|
+| Morphology Studies | [View PDF 1](data/MOrphology.pdf) / [View PDF 2](data/Morphology%20(2).pdf) |
+
+### External References
+
+- Farkas, L.G. (1994). *Anthropometry of the Head and Face*. Raven Press, New York.
+- Gonzalez-Jose, R. et al. (2005). Functional-craniology approach to the influence of economic strategy on skull morphology. *American Journal of Physical Anthropology*.
+- Kolar, J.C. & Salter, E.M. (1997). *Craniofacial Anthropometry: Practical Measurement of the Head and Face for Clinical, Surgical, and Research Use*. Charles C Thomas Publisher.
+
+## Documentation
+
+Full documentation is available in the [`docs/`](docs/) directory:
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/getting_started.md) | Installation and basic usage |
+| [Configuration](docs/configuration.md) | Analysis modes and settings |
+| [API Reference](docs/api_reference.md) | Complete API documentation |
+| [Scientific Foundation](docs/scientific_foundation.md) | Research papers and methodology |
+| [Examples](docs/examples.md) | Code examples and use cases |
+
+## API Reference
+
+### Main Classes
+
+| Class | Description |
+|-------|-------------|
+| `CoreAnalyzer` | Main orchestrator for comprehensive analysis |
+| `MultiAngleAnalyzer` | Multi-angle analysis coordinator |
+| `ResultsIntegrator` | Combines results from multiple sources |
+
+### Scientific Modules
+
+| Module | Description |
+|--------|-------------|
+| `WDAnalyzer` | Bizygomatic width analysis |
+| `ForeheadAnalyzer` | Frontal inclination analysis |
+| `MorphologyAnalyzer` | Face shape classification |
+| `NeoclassicalCanonsAnalyzer` | Classical proportion analysis |
+
+### Result Types
+
+| Type | Description |
+|------|-------------|
+| `ComprehensiveAnalysisResult` | Complete analysis result |
+| `WDResult` | WD analysis result |
+| `ForeheadResult` | Forehead analysis result |
+| `MorphologyResult` | Morphology analysis result |
+
+## Examples
+
+See the `examples/` directory for complete usage examples:
+
+- `basic_analysis.py` - Simple single-image analysis
+- `multi_angle_analysis.py` - Multi-angle analysis
+- `individual_modules.py` - Using modules directly
+
+## License
+
+**Dual License - See [LICENSE](LICENSE) for full terms**
+
+| Use Type | License | Cost |
+|----------|---------|------|
+| Personal projects | Non-Commercial License | Free |
+| Academic research | Non-Commercial License | Free |
+| Educational use | Non-Commercial License | Free |
+| Non-profit internal use | Non-Commercial License | Free |
+| **Commercial use** | **Commercial License Required** | Contact us |
+
+### Patent Notice
+
+This software implements methods covered by **US Patent 10,885,309**:
+*"System and method for evaluating personality using anthropometric measurement of a person's face"*
+
+The Non-Commercial License includes a limited patent license for non-commercial use only.
+Commercial use without a Commercial License may constitute patent infringement.
+
+### Commercial Licensing
+
+For commercial licensing inquiries, contact:
+- Email: yarelleyva2@gmail.com
+- GitHub: [Open an issue](https://github.com/yarel2l/capa-sdk/issues)
+
+## Contributing
+
+Contributions are welcome! Please read our contributing guidelines before submitting PRs.
+
+## Disclaimer
+
+This SDK provides measurements and classifications based on peer-reviewed scientific research. Results should be interpreted by qualified professionals and should not be used as the sole basis for any clinical, psychological, or employment decisions.
