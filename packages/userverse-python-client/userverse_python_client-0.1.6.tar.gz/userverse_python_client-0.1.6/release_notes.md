@@ -1,0 +1,6 @@
+# Release notes for v0.1.6
+
+Changes since v0.1.5:
+
+- style: auto-format code with Black (37ecd33) by github-actions
+- completed base API for company client (fcd66b5) by Skhendle@gmail.com
