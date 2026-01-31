@@ -1,0 +1,54 @@
+{% load i18n %}
+<div class="modal-content" id="htmx-modal-content">
+<div class="modal-header">
+    <h5 class="modal-title">
+        {% if object %}
+            {% blocktrans %}Filters for Endpoint: {{ object.name }}{% endblocktrans %}
+            <br>
+            <small class="text-muted">
+                {% trans "Endpoint:" %} {{ object.endpoint }}
+            </small>
+        {% else %}
+            {% trans "Endpoint Filters" %}
+        {% endif %}
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+    {% if object %}
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="form-group">
+                    <label for="sync-selector">{% trans "Select Sync:" %}</label>
+                    <select id="sync-selector"
+                            class="form-select"
+                            hx-get="{% url 'plugins:ipfabric_netbox:ipfabricendpoint_filters' pk=object.pk %}"
+                            hx-target="#filters-content"
+                            hx-include="#sync-selector"
+                            hx-swap="innerHTML"
+                            name="sync_pk">
+                        <option value="">{% trans "All Syncs" %}</option>
+                        {% for sync in available_syncs %}
+                            <option value="{{ sync.pk }}" {% if selected_sync_pk == sync.pk %}selected{% endif %}>
+                                {{ sync.name }} (ID: {{ sync.pk }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="filters-content">
+            {% include "ipfabric_netbox/inc/combined_expressions_content.html" %}
+        </div>
+    {% else %}
+        <div class="alert alert-info" role="alert">
+            <i class="mdi mdi-information"></i>
+            {% trans "This view requires an HTMX request." %}
+        </div>
+    {% endif %}
+</div>
+
+<div class="modal-footer">
+</div>
+</div>
