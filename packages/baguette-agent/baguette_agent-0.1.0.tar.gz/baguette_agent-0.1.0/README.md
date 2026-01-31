@@ -1,0 +1,292 @@
+﻿
+# 🥖 Baguette — Transactional Memory + Skill Artifacts for AI Agents
+
+
+**Baguette** is an open-source **memory correctness + procedural skill + auditability layer** for AI agents.
+It makes agents more reliable by turning “memory” into **structured artifacts** that can be **validated, versioned, and replayed**.
+
+Most agent systems today can *talk*.
+Baguette helps them **remember safely**, **reuse skills**, and **explain decisions**.
+
+---
+
+## What You Get
+
+- **Transactional memory** so hallucinations don’t become permanent facts.
+- **Skill artifacts** (prompt + workflow) that are versioned, tagged, and reusable.
+- **Decision traces** that make agent behavior auditable and debuggable.
+- **Bounded prompt overhead** with global injection caps.
+- **MCP + adapter integrations** so teams don’t need to switch stacks.
+
+_Baguette is a plug-in layer, not a full agent framework._
+_Use only what you need: memory, skills, or traces can be adopted independently._
+
+---
+
+## Quickstart (2 Minutes)
+
+Install and import a prompt skill:
+
+```bash
+pip install -e .
+baguette import examples/prompt_skills/api-tester.md --name api_tester --version 0.1.0
+baguette list
+baguette run api_tester@0.1.0 --inputs "{\"base_url\": \"https://api.example.com\", \"endpoints\": [\"/health\"]}"
+```
+
+More: [examples/quickstart.md](examples/quickstart.md) and [examples/README.md](examples/README.md).
+
+---
+
+## Core Capabilities (Why It Matters)
+
+**1) Transactional Memory**
+- Stage → validate → commit (or rollback) memory writes.
+- Prevents “false facts” from sticking in production.
+- Details: [docs/validation-policy.md](docs/validation-policy.md) and [docs/memory-types.md](docs/memory-types.md).
+
+**2) Skill Artifacts (Procedural Memory)**
+- Store workflows + role prompts as versioned artifacts (`name@version`, `@stable` tags).
+- Enforce typed inputs with JSON Schema for safer execution.
+- Prompt skills can be plain `.md` files with optional YAML front‑matter.
+- Details: [examples/prompt_skills/](examples/prompt_skills/), [examples/skills/](examples/skills/), and [docs/tools.md](docs/tools.md).
+
+**3) Decision Traces**
+- Structured logs for “why did the agent do that?”
+- Supports replay and regression debugging.
+- Details: [docs/memory-redaction.md](docs/memory-redaction.md) (privacy) and trace CLI examples below.
+
+**4) Bounded Context Overhead**
+- Injection is capped by default (`AdapterPipeline(max_injected_tokens=1000)`).
+- Keeps prompts predictable vs dumping full histories.
+- Details: [docs/memory-consumption.md](docs/memory-consumption.md).
+
+---
+
+## When Baguette Shines
+
+- You maintain **a library of agent prompts** and want versioning + metadata.
+- You run **repeatable workflows** (deploys, QA checks, data extraction).
+- You need **auditability** for production agent behavior.
+- You want **bounded context overhead** instead of raw history dumps.
+
+---
+
+## Benefits & Use‑Cases
+
+See [docs/benefits-use-cases.md](docs/benefits-use-cases.md) for persona‑based examples (solo devs, vibe coders,
+production teams) and modular adoption guidance.
+
+---
+
+## Integrations
+
+- **LangGraph adapter** (stable): [docs/langgraph-adapter.md](docs/langgraph-adapter.md)
+- **LangChain adapter** (stable): [docs/langchain-adapter.md](docs/langchain-adapter.md)
+- **MCP server (stdio + HTTP/SSE)**: [docs/mcp.md](docs/mcp.md)
+- **MCP client guides**: [docs/mcp-clients.md](docs/mcp-clients.md)
+
+---
+
+## Docs Index (Start Here)
+
+- Overview + roadmap: [docs/README.md](docs/README.md)
+- MCP server + client setup: [docs/mcp.md](docs/mcp.md), [docs/mcp-clients.md](docs/mcp-clients.md)
+- Skills + tool adapters: [docs/tools.md](docs/tools.md)
+- Memory governance: [docs/validation-policy.md](docs/validation-policy.md), [docs/memory-types.md](docs/memory-types.md)
+- Memory cost notes: [docs/memory-consumption.md](docs/memory-consumption.md)
+- CLI usage (full reference): [docs/cli.md](docs/cli.md)
+- Benefits & use‑cases: [docs/benefits-use-cases.md](docs/benefits-use-cases.md)
+- Python API: [docs/python-api.md](docs/python-api.md)
+- Storage service + Postgres: [docs/storage-service.md](docs/storage-service.md)
+
+---
+
+# CLI Quickstart
+
+```bash
+baguette import examples/prompt_skills/api-tester.md --name api_tester --version 0.1.0
+baguette list
+baguette run api_tester@0.1.0 --inputs "{\"base_url\": \"https://api.example.com\", \"endpoints\": [\"/health\"]}"
+```
+
+Full CLI + injection examples: [docs/cli.md](docs/cli.md).
+
+### Skill tool integration (callable by LLMs)
+
+Expose skills as tool/function definitions and execute tool calls:
+
+```python
+from baguette.skills import (
+    SkillToolConfig,
+    SkillToolRegistry,
+    SkillQueryConfig,
+    execute_tool_call,
+)
+
+registry = SkillToolRegistry.from_storage(
+    storage,
+    query=SkillQueryConfig(tags=["stable"]),
+    config=SkillToolConfig(name_strategy="name_version"),
+)
+
+tool_defs = registry.definitions()  # pass to your LLM runtime as tool/function specs
+
+# ...when the model calls a tool:
+result = execute_tool_call(storage, tool_name, tool_arguments, registry=registry)
+print(result.to_dict())
+```
+
+Provider-specific tool adapters and SDK call examples live in [docs/tools.md](docs/tools.md).
+
+Tools quickstart:
+
+- Build tool definitions with `SkillToolRegistry.from_storage(...)`
+- Convert them for your provider via `to_openai_tools` / `to_anthropic_tools` / `to_gemini_tools`
+- Execute tool calls with `execute_tool_call(...)`
+- Auto-run from model responses with `auto_execute_with_model(...)` (see `docs/tools.md`)
+
+Runnable demo (no external SDKs required):
+
+```bash
+python examples/skills/tool_adapters_demo.py
+```
+
+### MCP server (stdio)
+
+Expose skills + memory + traces via Model Context Protocol:
+
+```bash
+baguette-mcp --backend sqlite --db ~/.baguette/baguette.db
+```
+
+HTTP/SSE transport (optional):
+
+```bash
+baguette-mcp-http --host 127.0.0.1 --port 8001 --backend sqlite --db ~/.baguette/baguette.db
+```
+
+#### MCP quickstart (60 seconds)
+
+Copy/paste MCP client config (Cursor, Claude Desktop, etc.):
+
+```json
+{
+  "mcpServers": {
+    "baguette": {
+      "command": "baguette-mcp",
+      "args": ["--backend", "sqlite", "--db", "/path/to/baguette.db"]
+    }
+  }
+}
+```
+
+60-second smoke test (HTTP): see `examples/mcp/README.md`.
+
+See `docs/mcp.md` for tool inventory and request/response examples.
+Client setup for Cursor and Claude Desktop: `docs/mcp-clients.md`.
+Cursor quickstart config template: `configs/mcp-cursor.json` and `docs/mcp-cursor.md`.
+Windsurf + Claude MCP guides: `docs/mcp-windsurf.md` and `docs/mcp-claude.md`.
+Compatibility matrix + example app: `docs/mcp-compatibility.md` and `examples/mcp/`.
+
+Prompt skills surfaced via MCP include argument metadata. If your skill `inputs` use JSON Schema
+fields like `description` (or `title`), MCP clients can render richer prompt UIs:
+
+```yaml
+inputs:
+  text:
+    type: string
+    description: Text to summarize.
+```
+
+```bash
+# Decision traces + audit journal
+baguette trace log --decision execute_skill --skill-ref deploy_fastapi@1.0.0 --reason "deploy requested" --confidence 0.9 --result success --tx-id <tx_id>
+baguette trace query --decision execute_skill --limit 50
+baguette trace query --skill-ref deploy_fastapi@1.0.0 --result success --created-after 2026-01-01T00:00:00Z --correlation-id corr-123
+baguette journal query --tx-id <tx_id> --limit 50 --show-payload
+baguette journal query --tx-id <tx_id> --limit 10 --format json
+baguette replay --tx-id <tx_id> --limit 50 --show-payload
+```
+
+CLI run retries/timeouts:
+
+```bash
+baguette run deploy_fastapi@1.0.0 --inputs "{\"repo_path\": \".\", \"retries\": 1}" --max-attempts 3 --retry-on timeout,failure --backoff-ms 250,500 --total-timeout-s 60 --step-timeout-s 10 --idempotency-key deploy-2026-01-27-001 --trace-inputs-preview --trace-output-preview --trace-preview-max-chars 120
+```
+
+### Config file (optional)
+
+Configuration can be stored in `~/.baguette/baguette.yaml` (or `BAGUETTE_CONFIG`) with
+precedence: CLI args > env vars > config file > defaults.
+
+Starter template: `configs/baguette.yaml`.
+
+```yaml
+storage:
+  backend: sqlite
+  db: ~/.baguette/baguette.db
+  backend_config: {}
+```
+
+Inspect the resolved configuration and sources:
+
+```bash
+baguette config show --format json
+```
+
+---
+
+## Storage + Python API
+
+Storage service, Postgres backend setup, and programmatic API examples live in:
+`docs/storage-service.md` and `docs/python-api.md`.
+
+---
+
+## Examples
+
+- LangGraph starter app: `examples/langgraph/starter_app/README.md`
+- LangGraph migration guide: `docs/langgraph-migration.md`
+- LangGraph demos: `examples/langgraph/demo.py`, `examples/langgraph/parallel_demo.py`, `examples/langgraph/reference_demo.py`
+- LangGraph ergonomics RFC: `docs/rfcs/0001-langgraph-adapter-ergonomics.md`
+- Benchmark harness: `benchmarks/README.md`
+- Docs index: `docs/README.md`
+- Examples index: `examples/README.md`
+
+---
+
+# Contributing
+
+Contributions are welcome. See `docs/contributing.md` for setup, guidelines, and ideas.
+
+Open items we would love help with:
+- LeTTA / memU / ReMe adapters
+- Adapter compatibility notes + deprecation policy
+- Adapter conformance tests in CI
+- Memory pollution benchmark + trace replay regression tests
+
+---
+
+# 🥖 FAQ
+
+### Q: Is this just another RAG memory system?
+
+No. Baguette focuses on:
+
+* transactional memory correctness
+* procedural skills as artifacts
+* decision trace auditability
+
+### Q: Why “Baguette”?
+
+Because we **bake** and **share** reusable agent skills, like a daily staple.
+Also… **oui oui baguette**.
+
+---
+
+# License
+
+MIT. See `LICENSE`.
+
+---
