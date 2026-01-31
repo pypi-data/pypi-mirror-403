@@ -1,0 +1,2 @@
+class NoResourceIdException(Exception):
+    pass
