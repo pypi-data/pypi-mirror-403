@@ -1,0 +1,139 @@
+Metadata-Version: 2.4
+Name: pyznuny
+Version: 0.0.7
+Summary: A Python client for interacting with the Znuny ticketing system API.
+Author-email: Junior Rosa <jr.dasrosas@gmail.com>, Pablo Gascon <pablogasconiel445@gmail.com>
+Project-URL: Homepage, https://github.com/Junior-Rosa/py-znuny
+Project-URL: Repository, https://github.com/Junior-Rosa/py-znuny
+Project-URL: Issues, https://github.com/Junior-Rosa/py-znuny/issues
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Typing :: Typed
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httpx>=0.28.1
+Requires-Dist: pydantic>=2.12.5
+Dynamic: license-file
+
+# pyznuny
+
+A Python client for interacting with the Znuny ticketing system API.
+
+## Features
+
+- Simple, typed client built on httpx
+- Ticket create, update, and get routes
+- Easy custom endpoint configuration
+
+## Installation
+
+```console
+pip install pyznuny
+```
+
+Or with uv:
+
+```console
+uv add pyznuny
+```
+
+## Quick start
+
+Create a client and authenticate using environment variables.
+
+```python
+from pyznuny import TicketClient
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+client = TicketClient(
+    base_url=os.getenv("HOST"),
+    username=os.getenv("USER_LOGIN"),
+    password=os.getenv("PASSWORD"),
+)
+```
+
+Example `.env`:
+
+```ini
+HOST=https://your-znuny-instance.com
+USER_LOGIN=your-username
+PASSWORD=your-password
+```
+
+## Usage examples
+
+### Create a ticket
+
+```python
+payload = {
+    "Ticket": {
+        "Title": "Ticket Title",
+        "Queue": "Ticket queue",
+        "State": "Ticket state",
+        "Priority": "Ticket priority",
+        "CustomerUser": "customer@example.com",
+    },
+    "Article": {
+        "Subject": "Ticket subject",
+        "Body": "Ticket body...",
+        "ContentType": "text/plain; charset=utf-8",
+        "From": "customer@example.com",
+    },
+}
+
+response = client.ticket.create(payload=payload)
+print(response.json())
+```
+
+### Get a ticket by ID
+
+```python
+# default endpoint is GET /Ticket/{ticket_id}
+response = client.ticket.get(ticket_id=1234)
+print(response.json())
+```
+
+### Update a ticket
+
+```python
+response = client.ticket.update(
+    ticket_id=1234,
+    Ticket={"State": "open"},
+)
+print(response.json())
+```
+
+### Customize endpoints
+
+If your Znuny instance uses different paths, set them with the endpoint setter.
+
+```python
+# Example: custom ticket get endpoint and identifier
+client.set_endpoint.ticket_get(endpoint="Tickets/{id}", identifier="id")
+
+response = client.ticket.get(ticket_id=1234)
+```
+
+## Notes
+
+- When `username` and `password` are provided, the client logs in and stores
+  `session_id` automatically.
+- You can pass a pre-configured `httpx.Client` via `client=...` if needed.
+- You can send payloads as plain dicts using the same attributes shown in the
+  examples.
+
+## License
+
+MIT
