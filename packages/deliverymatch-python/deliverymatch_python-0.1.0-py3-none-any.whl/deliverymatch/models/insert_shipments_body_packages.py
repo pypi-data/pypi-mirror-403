@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, TypeVar
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..types import UNSET, Unset
+
+if TYPE_CHECKING:
+    from ..models.package import Package
+
+
+T = TypeVar("T", bound="InsertShipmentsBodyPackages")
+
+
+@_attrs_define
+class InsertShipmentsBodyPackages:
+    """When given, DeliveryMatch does not use quote information to generate packages
+
+    Attributes:
+        package (list[Package] | Unset):
+    """
+
+    package: list[Package] | Unset = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        package: list[dict[str, Any]] | Unset = UNSET
+        if not isinstance(self.package, Unset):
+            package = []
+            for package_item_data in self.package:
+                package_item = package_item_data.to_dict()
+                package.append(package_item)
+
+        field_dict: dict[str, Any] = {}
+        field_dict.update(self.additional_properties)
+        field_dict.update({})
+        if package is not UNSET:
+            field_dict["package"] = package
+
+        return field_dict
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.package import Package
+
+        d = dict(src_dict)
+        _package = d.pop("package", UNSET)
+        package: list[Package] | Unset = UNSET
+        if _package is not UNSET:
+            package = []
+            for package_item_data in _package:
+                package_item = Package.from_dict(package_item_data)
+
+                package.append(package_item)
+
+        insert_shipments_body_packages = cls(
+            package=package,
+        )
+
+        insert_shipments_body_packages.additional_properties = d
+        return insert_shipments_body_packages
+
+    @property
+    def additional_keys(self) -> list[str]:
+        return list(self.additional_properties.keys())
+
+    def __getitem__(self, key: str) -> Any:
+        return self.additional_properties[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.additional_properties[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self.additional_properties[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.additional_properties
