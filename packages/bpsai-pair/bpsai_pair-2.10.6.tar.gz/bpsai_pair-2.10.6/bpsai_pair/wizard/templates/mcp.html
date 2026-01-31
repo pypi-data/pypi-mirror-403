@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}MCP &amp; Timer Setup - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="mcp-page">
+    <div class="page-header">
+        <h2>MCP &amp; Timer Setup</h2>
+        <p class="page-description">Configure the MCP server and time tracking integration.</p>
+    </div>
+
+    {% if is_locked %}
+    {% include "partials/locked_overlay.html" %}
+    <div class="form-actions navigation-buttons">
+        <button type="button" class="btn btn-secondary" onclick="window.location.href='/wizard/budget'">Back</button>
+    </div>
+    {% else %}
+    <form id="mcp-form" class="wizard-form">
+        <div class="form-group">
+            <label>MCP Server</label>
+            <div class="toggle-item">
+                <div class="toggle-switch">
+                    <input type="checkbox" id="mcp-enabled" name="mcp_enabled" checked>
+                    <label for="mcp-enabled" class="toggle-label"></label>
+                </div>
+                <div class="toggle-info">
+                    <h4>Enable MCP Server</h4>
+                    <p>Allows external tools to connect to PairCoder for extended functionality.</p>
+                </div>
+            </div>
+
+            <div id="mcp-config-section">
+                <div class="credential-field">
+                    <label for="mcp-port">Port</label>
+                    <input type="number" id="mcp-port" name="mcp_port"
+                           value="3000" min="1024" max="65535"
+                           class="form-input" style="max-width: 200px;">
+                    <p class="help-text">Default: 3000. Must be between 1024 and 65535.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+            <label>Time Tracking (Toggl)</label>
+            <div class="toggle-item">
+                <div class="toggle-switch">
+                    <input type="checkbox" id="toggl-enabled" name="toggl_enabled">
+                    <label for="toggl-enabled" class="toggle-label"></label>
+                </div>
+                <div class="toggle-info">
+                    <h4>Enable Toggl Integration</h4>
+                    <p>Automatically track time spent on tasks with Toggl.</p>
+                </div>
+            </div>
+
+            <div id="toggl-config-section" style="display:none;">
+                <div class="credential-field">
+                    <div class="credential-header">
+                        <label for="toggl-api-key">API Key</label>
+                        <a href="https://track.toggl.com/profile" target="_blank" rel="noopener" class="help-link">Get your Toggl API key &rarr;</a>
+                    </div>
+                    <input type="password" id="toggl-api-key" name="toggl_api_key"
+                           placeholder="Enter your Toggl API key"
+                           class="form-input" autocomplete="off">
+                </div>
+
+                <div class="connection-test">
+                    <button type="button" id="test-toggl-btn" class="btn btn-secondary" onclick="testTogglConnection()">Test Connection</button>
+                    <span id="toggl-connection-status" class="connection-status"></span>
+                </div>
+
+                <div class="credential-field" id="workspace-section" style="display:none;">
+                    <label for="toggl-workspace">Workspace</label>
+                    <select id="toggl-workspace" name="toggl_workspace_id" class="form-input form-select" disabled>
+                        <option value="">Test connection first...</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions navigation-buttons">
+            <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+            <div class="nav-right">
+                <button type="button" class="btn btn-ghost" onclick="skipMcp()">Skip</button>
+                <button type="submit" class="btn btn-primary">Next</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<script>
+// Toggle MCP config visibility
+document.getElementById('mcp-enabled').addEventListener('change', function() {
+    document.getElementById('mcp-config-section').style.display = this.checked ? '' : 'none';
+});
+
+// Toggle Toggl config visibility
+document.getElementById('toggl-enabled').addEventListener('change', function() {
+    document.getElementById('toggl-config-section').style.display = this.checked ? '' : 'none';
+});
+
+function testTogglConnection() {
+    var apiKey = document.getElementById('toggl-api-key').value.trim();
+    var statusEl = document.getElementById('toggl-connection-status');
+    var btn = document.getElementById('test-toggl-btn');
+
+    if (!apiKey) {
+        statusEl.textContent = 'Please enter an API key.';
+        statusEl.className = 'connection-status error-text';
+        return;
+    }
+
+    btn.disabled = true;
+    statusEl.textContent = 'Testing...';
+    statusEl.className = 'connection-status';
+
+    fetch('/api/mcp/test-toggl', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({api_key: apiKey})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        if (data.success) {
+            statusEl.textContent = 'Connected!';
+            statusEl.className = 'connection-status success-text';
+            showWorkspaces(data.workspaces || []);
+        } else {
+            statusEl.textContent = data.error || 'Connection failed.';
+            statusEl.className = 'connection-status error-text';
+        }
+    })
+    .catch(function() {
+        btn.disabled = false;
+        statusEl.textContent = 'Connection failed. Check your API key.';
+        statusEl.className = 'connection-status error-text';
+    });
+}
+
+function showWorkspaces(workspaces) {
+    var section = document.getElementById('workspace-section');
+    section.style.display = '';
+
+    var select = document.getElementById('toggl-workspace');
+    select.disabled = false;
+    select.innerHTML = '<option value="">Select a workspace...</option>';
+    workspaces.forEach(function(ws) {
+        var opt = document.createElement('option');
+        opt.value = ws.id;
+        opt.textContent = ws.name;
+        select.appendChild(opt);
+    });
+}
+
+function skipMcp() {
+    fetch('/api/mcp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mcp_enabled: false, toggl_enabled: false})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/review';
+        }
+    })
+    .catch(function() {
+        window.location.href = '/wizard/review';
+    });
+}
+
+document.getElementById('mcp-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    var payload = {
+        mcp_enabled: document.getElementById('mcp-enabled').checked,
+        mcp_port: parseInt(document.getElementById('mcp-port').value) || 3000,
+        toggl_enabled: document.getElementById('toggl-enabled').checked
+    };
+
+    if (payload.toggl_enabled) {
+        payload.toggl_api_key = document.getElementById('toggl-api-key').value.trim();
+        var ws = document.getElementById('toggl-workspace');
+        payload.toggl_workspace_id = ws.value;
+        payload.toggl_workspace_name = ws.options[ws.selectedIndex]
+            ? ws.options[ws.selectedIndex].textContent : '';
+    }
+
+    fetch('/api/mcp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/review';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save MCP settings'));
+        }
+    })
+    .catch(function() {
+        alert('Failed to save settings. Please try again.');
+    });
+});
+
+function navigateBack() {
+    window.location.href = '/wizard/budget';
+}
+</script>
+{% endif %}
+{% endblock %}
