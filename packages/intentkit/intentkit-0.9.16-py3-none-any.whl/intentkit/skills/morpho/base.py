@@ -1,0 +1,9 @@
+"""Morpho AgentKit skills base class."""
+
+from intentkit.skills.cdp.base import CDPBaseTool
+
+
+class MorphoBaseTool(CDPBaseTool):
+    """Base class for Morpho tools."""
+
+    category: str = "morpho"
