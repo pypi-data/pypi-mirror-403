@@ -1,0 +1,378 @@
+Metadata-Version: 2.4
+Name: toolaide
+Version: 0.2.0
+Summary: Tool-calling agent for GLM-4.7-Flash-4bit via mlx-lm.server
+Project-URL: Homepage, https://github.com/quosa/toolaide
+Project-URL: Repository, https://github.com/quosa/toolaide
+Author-email: Jussi Kuosa <jussi.kuosa@iki.fi>
+License: MIT
+Keywords: agent,glm,llm,toolbox
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.10
+Requires-Dist: pathspec
+Requires-Dist: requests
+Provides-Extra: dev
+Requires-Dist: build; extra == 'dev'
+Requires-Dist: pytest; extra == 'dev'
+Requires-Dist: twine; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Toolaide - an agentic coding assistant
+
+> A tool-calling agent powered by GLM-4.7-Flash-4bit (quantized via MLX) for local LLM development
+
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+
+## 📋 Overview
+
+This project provides a command-line interface (CLI) tool that leverages the powerful GLM-4.7-Flash-4bit model to interact with your local workspace through tool calls. It's designed for:
+
+- **Local AI development** - Run GLM-4.7 locally without cloud dependencies
+- **Tool-calling workflows** - Execute file operations, searches, and more via natural language
+- **Interactive sessions** - Chat with the model while it performs file operations
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+Before you begin, ensure you have:
+
+- **macOS** (MLX is Apple Silicon optimized)
+- **Python 3.10+**
+- **GPU memory** - At least 8GB VRAM recommended, 16GB+ preferred
+
+### Step 1: Install Dependencies
+
+```bash
+# Create a virtual environment (recommended)
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install the package in editable mode
+pip install -e .
+```
+
+### Step 2: Start the MLX Server
+
+Toolaide communicates with the MLX server which loads the model:
+
+```bash
+# Terminal 1 - Start the server with recommended settings for coding tasks
+mlx_lm.server --model mlx-community/GLM-4.7-Flash-4bit --port 8080 --max-tokens 16384 --temp 0.7 --top-p 0.95
+```
+
+> **Note:** The first run will download the model (~5.36GB). This may take 15-30 minutes depending on your internet speed.
+>
+> **Recommended settings:** `--temp 0.7` and `--top-p 0.95` are optimized for coding/software engineering tasks.
+
+### Step 3: Start Toolaide
+
+```bash
+# Terminal 2 - Start the tool-calling agent
+toolaide --workspace .
+```
+
+You should see:
+
+```
+Workspace : /path/to/your/workspace
+Server    : http://localhost:8080
+Tools     : ['read_file', 'write_file', 'search_files', 'list_files']
+
+> _
+```
+
+## 💡 Basic Usage
+
+### Example 1: Reading a File
+
+```bash
+> read the contents of readme.md and summarize it in one sentence.
+```
+
+### Example 2: Creating a New File
+
+```bash
+> create a Python function that calculates the fibonacci sequence, add it to utils.py
+```
+
+### Example 3: Searching for Patterns
+
+```bash
+> find all instances of "TODO" or "FIXME" in the codebase and list the files.
+```
+
+### Example 4: Interactive Session
+
+```bash
+> /help  # View available commands
+
+> /verbose on  # Enable detailed output
+
+> create a simple HTTP server in Python, and explain how it works.
+```
+
+## 🛠️ Available Tools
+
+Toolaide provides 5 built-in tools for file and workspace operations:
+
+| Tool | Description | Example Use Case |
+|------|-------------|------------------|
+| `read_file` | Read file contents | Review code, analyze existing files |
+| `write_file` | Create or modify files | Write new code, make changes |
+| `search_files` | Search for patterns in files | Find specific code, locate bugs |
+| `list_files` | List files/directories | Navigate project structure |
+| `list_tools` | List all available tools | Discover functionality |
+
+> **Tip:** The model automatically decides when to use which tool based on your request!
+
+## 📖 Command Reference
+
+### Slash Commands
+
+```
+/verbose, /v          - Toggle verbose mode (shows reasoning, tool results)
+/verbose on|off       - Set verbose mode explicitly
+/quit, /exit, /q      - Exit the session
+/help                 - Show this help message
+```
+
+### Command Line Arguments
+
+```bash
+toolaide [OPTIONS]
+
+Options:
+  --workspace PATH  Workspace directory (default: current directory)
+  --port PORT       Server port (default: 8080)
+  -v, --verbose     Enable verbose output
+```
+
+## 🎯 Best Practices
+
+### 1. Always Read Before Writing
+When modifying files, the model will automatically read the file first (per the system prompt rules).
+
+### 2. Check Context Usage
+Watch the token usage indicator in your output:
+
+```
+[tokens] prompt=15000 completion=200 [█████████▊] 75.5% context
+```
+
+> **⚠️ Warning:** At 90% context, consider starting a new session to avoid truncation.
+
+### 3. Use Verbose Mode for Debugging
+```bash
+> /verbose on
+```
+
+This reveals:
+- Model reasoning before tool calls
+- Tool invocation details
+- Result summaries
+
+### 4. Handle Large Files
+For files > 5MB, consider using `list_files` first to understand the structure, or `search_files` to locate specific content.
+
+## 🐛 Troubleshooting
+
+### "Resource limit exceeded" Error
+
+```
+RuntimeError: [metal::malloc] Resource limit (500000) exceeded2;
+```
+
+**Solution:** This means the GPU memory ran out. Try:
+1. Reduce `max_tokens` in your requests (default is 16384)
+2. Close other heavy applications
+3. Use a machine with more VRAM
+
+### Model Download Fails
+
+If the MLX server can't download the model:
+
+```bash
+# Try downloading manually first
+wget https://huggingface.co/mlx-community/GLM-4.7-Flash-4bit/resolve/main/model.safetensors
+
+# Or use a mirror
+```
+
+### Connection Refused
+
+```
+requests.exceptions.ConnectionError: [Errno 61] Connection refused
+```
+
+**Solution:** Ensure the MLX server is running:
+```bash
+ps aux | grep mlx_lm.server  # Check if it's running
+```
+
+### File Truncation Issues
+
+If generated files are incomplete:
+
+1. Check the `max_tokens` setting (default 16384)
+2. Request smaller, focused changes
+3. Use `list_files` to verify the output location
+
+## 📊 Technical Details
+
+### Architecture
+
+```
+User Input
+    ↓
+Toolaide CLI (Python)
+    ↓
+MLX Server (C++)
+    ↓
+GLM-4.7-Flash-4bit Model (MLX)
+```
+
+### Project Structure
+
+```
+.
+├── toolaide/             # Main package
+│   ├── __init__.py
+│   ├── cli.py            # CLI entry point
+│   ├── tools/            # Available tools
+│   │   ├── read_file.py
+│   │   ├── write_file.py
+│   │   ├── search_files.py
+│   │   ├── list_files.py
+│   │   └── common.py
+├── tests/                # Test suite
+├── Makefile              # Convenient targets
+└── README.md             # This file
+```
+
+### Token Limits
+
+- **Context Window:** 128,000 tokens (GLM-4.7 max)
+- **Default Completion:** 16,384 tokens per response
+- **Recommended:** Keep context below 75-80% to avoid performance issues
+
+## 🧪 Testing
+
+Run the test suite to verify everything works:
+
+```bash
+# Run all tests
+make test
+
+# Or with pytest
+pytest -v
+```
+
+## 📦 Building and Publishing
+
+### Building a Wheel Package
+
+To create a distributable wheel package:
+
+```bash
+# Install dev dependencies (includes build and twine)
+make install-dev
+
+# Build the package
+make build
+```
+
+This creates a `dist/` directory with:
+- `toolaide-0.2.0-py3-none-any.whl` - Wheel package
+- `toolaide-0.2.0.tar.gz` - Source distribution
+
+### Installing from Wheel
+
+Share the wheel file with colleagues who can install it with:
+
+```bash
+pip install toolaide-0.2.0-py3-none-any.whl
+```
+
+### Publishing to PyPI
+
+1. **Create a PyPI account**
+   - Production: https://pypi.org/account/register/
+   - Test PyPI (recommended first): https://test.pypi.org/account/register/
+
+2. **Get an API token**
+   - Go to Account Settings → API tokens
+   - Create a token for uploading
+
+3. **Publish to Test PyPI first**
+   ```bash
+   make publish-test
+   ```
+
+   Users can then install with:
+   ```bash
+   pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ toolaide
+   ```
+
+4. **Publish to production PyPI**
+   ```bash
+   make publish
+   ```
+
+   Users can then install normally:
+   ```bash
+   pip install toolaide
+   ```
+
+> **Note:** Use `__token__` as the username and your API token as the password when prompted by twine.
+
+## 📝 Example Use Case: Code Refactoring
+
+Here's a complete workflow example:
+
+```bash
+> I want to refactor the authentication module in api/auth.py.
+> First, list the files in the api directory to see what's there.
+> Then, read the current auth.py file.
+> After that, create a new version with better error handling.
+> Finally, show me a diff of what changed.
+```
+
+The model will:
+1. List files in `api/`
+2. Read `api/auth.py`
+3. Write a refactored version to a temp file
+4. Compare and show you the differences
+
+## 📚 Additional Resources
+
+- [MLX Documentation](https://github.com/ml-explore/mlx)
+- [GLM-4 Model Card](https://huggingface.co/mlx-community/GLM-4.7-Flash-4bit)
+- [Toolaide GitHub Repository](https://github.com/quosa/toolaide)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Submit a pull request
+
+## 📄 License
+
+MIT License - feel free to use this project for learning or personal projects.
+
+## 🙏 Acknowledgments
+
+- Developed for the GLM-4.7-Flash-4bit model
+- Built on MLX (Apple Silicon ML framework)
+- Inspired by tool-calling agents like AutoGPT
+
+---
+
+**Enjoy coding with your local AI!** 🚀
+
+For issues or questions, please open an issue on GitHub.
