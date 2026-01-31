@@ -1,0 +1,72 @@
+---
+include:
+  - project: 'tango-controls/gitlab-ci-templates'
+    file: 'PythonPublic.gitlab-ci.yml'
+
+variables:
+  TRUSTED_PUBLISHER_ENABLED: "true"
+
+default:
+  tags:
+    - saas-linux-small-amd64
+
+# I am redefining the test stage so I disable the ones from the template
+run-pytest:
+  rules:
+    - when: never
+
+run-pytest-with-tangodb:
+  rules:
+    - when: never
+
+# Add test job with pytango-db and tango-test
+run-pytest-with-tangotest:
+  stage: test
+  image: ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.9", "3.10", "3.11", "3.12"]
+  variables:
+    FF_NETWORK_PER_BUILD: "true"
+    TANGO_HOST: "tango-db:10000"
+  services:
+    - name: registry.gitlab.com/tango-controls/docker/pytango-db:0.4.0
+      alias: tango-db
+    - name: registry.gitlab.com/tango-controls/docker/tango-test:3.4
+      alias: tango-test
+      variables:
+        TANGO_HOST: "tango-db:10000"
+      command:
+        - /bin/sh
+        - -lc
+        - |
+          echo "Waiting 15s for tango-db..." ; sleep 15
+          echo "Starting TangoTest device server"
+          exec /tango/bin/TangoTest test
+  before_script:
+    - pip install -e ".[tests]"
+    - |
+      python - <<'PY'
+      import os, socket, time, sys, tango
+      host, port = os.environ.get("TANGO_HOST","tango-db:10000").split(":"); port=int(port)
+      for _ in range(120):
+          try: socket.create_connection((host, port), 1.0).close(); break
+          except: time.sleep(1)
+      else: print("Tango DB not reachable"); sys.exit(1)
+      for _ in range(90):
+          try: tango.DeviceProxy("sys/tg_test/1").ping(); print("TangoTest ready"); break
+          except Exception as e: print("waiting for TangoTest...", e); time.sleep(2)
+      else: print("TangoTest not ready in time"); sys.exit(1)
+      PY
+  script:
+    - pytest --junitxml=report.xml
+  coverage: '/^TOTAL.+?(\d+\%)$/'
+  artifacts:
+    when: always
+    paths:
+      - htmlcov/
+      - report.xml
+    reports:
+      junit: report.xml
+  rules:
+    - !reference [.rules-pytest, rules]
