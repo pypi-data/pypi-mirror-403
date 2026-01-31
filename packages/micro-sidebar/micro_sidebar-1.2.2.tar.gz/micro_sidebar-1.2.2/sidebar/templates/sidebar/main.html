@@ -1,0 +1,46 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'sidebar/sidebar.css' %}">
+<script src="{% static 'sidebar/sidebar.js' %}" nonce="{{ request.csp_nonce }}" defer></script>
+<!-- Ghost Sidebar for small screens layout stability -->
+<div class="sidebar-ghost"></div>
+
+<!-- sidebar.html -->
+<div class="col-2 flex-column shadow-sm sidebar {% if request.session.sidebarCollapsed %}collapsed{% endif %} no-print" 
+     id="sidebar" 
+     data-toggle-url="{% url 'toggle_sidebar' %}"
+     data-session-collapsed="{{ request.session.sidebarCollapsed|yesno:'true,false' }}">
+    <script nonce="{{ request.csp_nonce }}">
+        // Immediate FOUC fix for small screens
+        (function() {
+            var screenWidth = window.innerWidth;
+            var sidebar = document.currentScript.parentElement;
+            if (screenWidth < 1100) {
+                sidebar.classList.add('collapsed');
+                // Temporarily disable transition to avoid "sliding shut" flicker on load
+                sidebar.style.transition = 'none';
+                setTimeout(function() { sidebar.style.transition = ''; }, 100);
+            }
+        })();
+    </script>
+    <div class="list-group flex-shrink-0">
+        {% block items %}
+        
+        <!-- DEFAULT CONTENT / INSTRUCTIONS -->
+        <div class="p-3 text-center text-muted">
+            <i class="bi bi-info-circle mb-2" style="font-size: 24px;"></i>
+            <p class="small">
+                <strong>Default Sidebar</strong><br>
+                To customize this menu, create a template extending:<br>
+                <code>sidebar/main.html</code><br>
+                and override the <code>items</code> block.
+            </p>
+        </div>
+
+        <a href="#" class="list-group-item list-group-item-action">
+            <i class="bi bi-house me-2" style="font-size: 24px;"></i>
+            <span>Example Home</span>
+        </a>
+        
+        {% endblock %}
+    </div>
+</div>
