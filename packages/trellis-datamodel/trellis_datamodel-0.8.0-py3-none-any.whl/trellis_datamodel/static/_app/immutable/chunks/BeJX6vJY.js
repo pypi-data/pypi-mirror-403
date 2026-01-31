@@ -1,0 +1,1 @@
+import"./CjZGm4I-.js";import"./QnYduk6G.js";import{s,r as e}from"./DjhwXl_d.js";import{I as n}from"./CfnWWzkx.js";function m(r,o){let t=e(o,["$$slots","$$events","$$legacy","icon"]);n(r,s({get icon(){return o.icon}},()=>t))}export{m as I};
