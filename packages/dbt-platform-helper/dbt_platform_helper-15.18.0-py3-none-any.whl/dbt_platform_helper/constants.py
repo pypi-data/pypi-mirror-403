@@ -1,0 +1,75 @@
+# TODO: DBTP-1888: Move to Config provider
+REPO_ORG = "uktrade"
+PLATFORM_CONFIG_FILE = "platform-config.yml"
+SERVICE_DIRECTORY = "services"
+SERVICE_CONFIG_FILE = "service-config.yml"
+ENVIRONMENT_PIPELINE_MODULE_PATH = (
+    "git::git@github.com:uktrade/platform-tools.git//terraform/environment-pipelines?depth=1&ref="
+)
+
+CODEBASE_PIPELINE_MODULE_PATH = (
+    "git::git@github.com:uktrade/platform-tools.git//terraform/codebase-pipelines?depth=1&ref="
+)
+EXTENSIONS_MODULE_PATH = (
+    "git::git@github.com:uktrade/platform-tools.git//terraform/extensions?depth=1&ref="
+)
+PLATFORM_HELPER_VERSION_OVERRIDE_KEY = "PLATFORM_HELPER_VERSION_OVERRIDE"
+TERRAFORM_EXTENSIONS_MODULE_SOURCE_OVERRIDE_ENV_VAR = "TERRAFORM_EXTENSIONS_MODULE_SOURCE_OVERRIDE"
+TERRAFORM_ENVIRONMENT_PIPELINES_MODULE_SOURCE_OVERRIDE_ENV_VAR = (
+    "TERRAFORM_ENVIRONMENT_PIPELINES_MODULE_SOURCE_OVERRIDE"
+)
+TERRAFORM_CODEBASE_PIPELINES_MODULE_SOURCE_OVERRIDE_ENV_VAR = (
+    "TERRAFORM_CODEBASE_PIPELINES_MODULE_SOURCE_OVERRIDE"
+)
+TERRAFORM_ECS_SERVICE_MODULE_SOURCE_OVERRIDE_ENV_VAR = (
+    "TERRAFORM_ECS_SERVICE_MODULE_SOURCE_OVERRIDE"
+)
+TERRAFORM_MODULE_SOURCE_TYPE_ENV_VAR = "TERRAFORM_MODULE_SOURCE_TYPE"  # "LOCAL", "SSH", "OVERRIDE"
+IMAGE_TAG_ENV_VAR = "IMAGE_TAG"
+PLATFORM_HELPER_PACKAGE_NAME = "dbt-platform-helper"
+SUPPORTED_TERRAFORM_VERSION = "~> 1.11"
+SUPPORTED_AWS_PROVIDER_VERSION = "~> 6"
+FIRST_UPGRADABLE_PLATFORM_HELPER_MAJOR_VERSION = 13
+
+MERGED_TPM_PLATFORM_HELPER_VERSION = 14
+PLATFORM_CONFIG_SCHEMA_VERSION = 1
+SERVICE_CONFIG_SCHEMA_VERSION = 1
+
+# Keys
+CODEBASE_PIPELINES_KEY = "codebase_pipelines"
+ENVIRONMENTS_KEY = "environments"
+ENVIRONMENT_PIPELINES_KEY = "environment_pipelines"
+
+# Conduit
+CONDUIT_ADDON_TYPES = [
+    "opensearch",
+    "postgres",
+    "redis",
+]
+CONDUIT_DOCKER_IMAGE_LOCATION = "public.ecr.aws/uktrade/tunnel"
+HYPHENATED_APPLICATION_NAME = "hyphenated-application-name"
+ALPHANUMERIC_ENVIRONMENT_NAME = "alphanumericenvironmentname123"
+ALPHANUMERIC_SERVICE_NAME = "alphanumericservicename123"
+COPILOT_IDENTIFIER = "c0PIlotiD3ntIF3r"
+CLUSTER_NAME_SUFFIX = f"Cluster-{COPILOT_IDENTIFIER}"
+SERVICE_NAME_SUFFIX = f"Service-{COPILOT_IDENTIFIER}"
+REFRESH_TOKEN_MESSAGE = (
+    "To refresh this SSO session run `aws sso login` with the corresponding profile"
+)
+COPILOT_RULE_PRIORITY = 48000
+PLATFORM_RULE_STARTING_PRIORITY = 10000
+RULE_PRIORITY_INCREMENT = 100
+DUMMY_RULE_REASON = "DummyRule"
+MAINTENANCE_PAGE_TAGS = ["MaintenancePage", "AllowedIps", "BypassIpFilter", "AllowedSourceIps"]
+MAINTENANCE_PAGE_REASON = "MaintenancePage"
+MANAGED_BY_PLATFORM = "DBT Platform"
+MANAGED_BY_SERVICE_TERRAFORM = "DBT Platform - Service Terraform"
+MANAGED_BY_PLATFORM_TERRAFORM = "DBT Platform - Terraform"
+STANDARD_PLATFORM_SSO_ROLES = [
+    "AdministratorAccess",
+    "DBTPlatformDeveloperWrite",
+    "DBTPlatformDeveloperRead",
+]
+ROUTED_TO_PLATFORM_MODES = ["platform", "dual-deploy-platform-traffic"]
+ROUTED_TO_COPILOT_MODES = ["copilot", "dual-deploy-copilot-traffic"]
+HTTP_SERVICE_TYPES = ["Load Balanced Web Service"]
