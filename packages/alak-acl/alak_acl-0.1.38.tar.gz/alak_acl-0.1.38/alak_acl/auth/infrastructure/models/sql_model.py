@@ -1,0 +1,135 @@
+"""
+Modèle SQLAlchemy pour les utilisateurs (PostgreSQL/MySQL).
+
+Ce module fournit un modèle de base extensible que le développeur
+peut personnaliser en ajoutant ses propres colonnes via héritage.
+
+Note SaaS Multi-Tenant:
+    Un utilisateur peut appartenir à plusieurs tenants. L'association
+    user <-> tenant <-> role est gérée via la table acl_memberships.
+    Le tenant_id n'est donc PAS sur l'utilisateur.
+"""
+
+from datetime import datetime
+from uuid import uuid4
+
+from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy.orm import declared_attr, relationship
+
+from alak_acl.shared.database.declarative_base import Base
+
+
+def generate_uuid_str() -> str:
+    """Génère un UUID sous forme de string."""
+    return str(uuid4())
+
+
+class SQLAuthUserModel(Base):
+    """
+    Modèle SQLAlchemy de base pour la table des utilisateurs.
+
+    Compatible PostgreSQL et MySQL.
+
+    Ce modèle peut être étendu par le développeur pour ajouter
+    des colonnes personnalisées via héritage de table unique (single table inheritance).
+
+    Attributes:
+        id: Identifiant unique UUID (stocké en VARCHAR(36))
+        username: Nom d'utilisateur unique (globalement)
+        email: Email unique (globalement)
+        hashed_password: Mot de passe hashé
+        is_active: Compte actif
+        is_verified: Email vérifié
+        is_superuser: Administrateur
+        created_at: Date de création
+        updated_at: Date de mise à jour
+        last_login: Dernière connexion
+
+    Note:
+        En mode SaaS, un utilisateur peut appartenir à plusieurs tenants
+        via la table acl_memberships (user_id, tenant_id, role_id).
+
+    Example:
+        Pour ajouter des colonnes personnalisées, créez une sous-classe
+        sans redéfinir __tablename__ (single table inheritance):
+
+        ```python
+        from sqlalchemy import Column, String, Integer
+        from alak_acl import SQLAuthUserModel
+
+        class CustomUserModel(SQLAuthUserModel):
+            # Pas de __tablename__ - les colonnes sont ajoutées à acl_auth_users
+
+            # Colonnes personnalisées
+            phone = Column(String(20), nullable=True)
+            company = Column(String(100), nullable=True)
+            age = Column(Integer, nullable=True)
+        ```
+    """
+
+    __tablename__ = "acl_auth_users"
+    __table_args__ = {'extend_existing': True}
+
+    # UUID stocké en VARCHAR(36) pour compatibilité PostgreSQL et MySQL
+    id = Column(
+        String(36),
+        primary_key=True,
+        default=generate_uuid_str,
+        index=True,
+    )
+    username = Column(
+        String(50),
+        nullable=False,
+        unique=True,  # Globalement unique
+        index=True,
+    )
+    email = Column(
+        String(255),
+        nullable=False,
+        unique=True,  # Globalement unique
+        index=True,
+    )
+    hashed_password = Column(
+        String(255),
+        nullable=False,
+    )
+    is_active = Column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    is_verified = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    is_superuser = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+    last_login = Column(
+        DateTime,
+        nullable=True,
+    )
+    # Relationship avec les memberships (user <-> tenant <-> role)
+    memberships = relationship(
+        "SQLMembershipModel",
+        back_populates="user",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}(id={self.id}, username={self.username})>"
