@@ -1,0 +1,70 @@
+//#############################################################################
+//# Function: 2-Input Glitch-Free Clock Mux                                   #
+//# Copyright: Lambda Project Authors. All rights Reserved.                   #
+//# License:  MIT (see LICENSE file in Lambda repository)                     #
+//#############################################################################
+
+module la_clkmux2 #(
+                    parameter PROP = "DEFAULT" // cell property
+                    )
+   (
+    input  clk0,
+    input  clk1,
+    input  sel, // sel ==0, clk0 is active
+    input  nreset,
+    output out
+    );
+
+   // local wires
+   wire       selb;
+   wire [1:0] en;
+   wire [1:0] ensync;
+   wire [1:0] maskb;
+   wire [1:0] clkg;
+
+   // non glitch clock enable trick
+   la_inv isel (.a(sel),
+                .z(selb));
+
+   la_inv inv0 (.a(ensync[0]),
+                .z(maskb[0]));
+
+   la_inv inv1 (.a(ensync[1]),
+                .z(maskb[1]));
+
+   la_and2 ien0 (.a(selb),
+                 .b(maskb[1]), // en once clk1 is safely zero
+                 .z(en[0]));
+
+   la_and2 ien1 (.a(sel),
+                 .b(maskb[0]), // en once clk0 is safely zero
+                 .z(en[1]));
+
+   // syncing logic to each clock domain
+   la_drsync isync0 (.clk    (clk0),
+                     .nreset (nreset),
+                     .in     (en[0]),
+                     .out    (ensync[0]));
+
+   la_drsync isync1 (.clk    (clk1),
+                     .nreset (nreset),
+                     .in     (en[1]),
+                     .out    (ensync[1]));
+
+   // glitch free clock gating
+   la_clkicgand igate0 (.clk  (clk0),
+                        .te   (1'b0),
+                        .en   (ensync[0]),
+                        .eclk (clkg[0]));
+
+   la_clkicgand igate1 (.clk  (clk1),
+                        .te   (1'b0),
+                        .en   (ensync[1]),
+                        .eclk (clkg[1]));
+
+   // or-ing one hot clocks
+   la_clkor2 iorclk (.a(clkg[0]),
+                     .b(clkg[1]),
+                     .z(out));
+
+endmodule
