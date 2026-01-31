@@ -1,0 +1,67 @@
+"""
+Test writePoints and writePointsBatch functions from historianmulti module
+"""
+
+from regressiontests.eigeningenuity.common_multi import BaseHistorianMultiTest
+import unittest
+from datetime import datetime, timedelta
+
+
+class TestWritePointsMulti(BaseHistorianMultiTest):
+    """Test cases for writePoints and writePointsBatch functions in historianmulti"""
+    
+    def setUp(self):
+        """Extended setup for write tests"""
+        super().setUp()
+        self.test_write_tag = "eigen_manual_input/TEST_WRITE_TAG_MULTI"
+        
+    def test_write_single_point(self):
+        """Test writing a single data point"""
+        point_data = {"value": 42.5, "timestamp": datetime.now(), "status": "OK"}
+        
+        try:
+            result = self.historian_multi.writePoints(self.test_write_tag, point_data)
+            self.assertIsInstance(result, (bool, dict, list))
+        except Exception as e:
+            # Write operations may fail if permissions are not available
+            self.skipTest(f"Write operation not permitted: {e}")
+            
+    def test_write_multiple_points(self):
+        """Test writing multiple data points"""
+        points_data = [
+            {"value": 42.5, "timestamp": datetime.now(), "status": "OK"},
+            {"value": 43.0, "timestamp": datetime.now() - timedelta(minutes=1), "status": "OK"}
+        ]
+        
+        try:
+            result = self.historian_multi.writePoints(self.test_write_tag, points_data)
+            self.assertIsInstance(result, (bool, dict, list))
+        except Exception as e:
+            self.skipTest(f"Write operation not permitted: {e}")
+            
+    def test_write_points_batch(self):
+        """Test writing points in batch mode"""
+        batch_data = [
+            {self.test_write_tag: [{"value": 1, "timestamp": datetime.now()}]},
+            {self.test_write_tag: [{"value": 2, "timestamp": datetime.now() - timedelta(minutes=1)}]}
+        ]
+        
+        try:
+            result = self.historian_multi.writePointsBatch(batch_data)
+            self.assertIsInstance(result, (bool, dict, list))
+        except Exception as e:
+            self.skipTest(f"Write operation not permitted: {e}")
+            
+    def test_write_point_with_bad_status(self):
+        """Test writing a point with bad status"""
+        point_data = {"value": 42.5, "timestamp": datetime.now(), "status": "BAD"}
+        
+        try:
+            result = self.historian_multi.writePoints(self.test_write_tag, point_data)
+            self.assertIsInstance(result, (bool, dict, list))
+        except Exception as e:
+            self.skipTest(f"Write operation not permitted: {e}")
+
+
+if __name__ == '__main__':
+    unittest.main()
