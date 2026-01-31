@@ -1,0 +1,37 @@
+UPDATE_TASK_SCHEMA = {
+    "title": "Controller input schema for updating a task",
+    "description": "Schema for validating input data when updating a task in Saviia",
+    "type": "object",
+    "properties": {
+        "tid": {"type": "string"},
+        "title": {"type": "string"},
+        "description": {"type": "string"},
+        "deadline": {
+            "type": "string",
+            "format": "date-time",
+        },
+        "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4,
+        },
+        "assignee": {"type": "string"},
+        "category": {"type": "string"},
+        "periodicity": {"type": "string"},
+        "webhook_url": {"type": "string"},
+        "completed": {"type": "boolean"},
+        "channel_id": {"type": "string"},
+    },
+    "required": [
+        "webhook_url",
+        "tid",
+        "title",
+        "deadline",
+        "priority",
+        "assignee",
+        "category",
+        "description",
+        "completed",
+    ],
+    "additionalProperties": False,
+}
