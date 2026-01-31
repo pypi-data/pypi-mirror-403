@@ -1,0 +1,173 @@
+
+•  GeoExpress:  Python SDK for compression of Satellite, Aerial and Drone Imgery
+
+•  The GeoExpress Python SDK provides a thin, Pythonic wrapper around the GeoExpress engine, enabling programmatic access to MrSID raster compression, decompression, metadata management, and security operations. It is designed for automation, batch pipelines, and integration into larger GIS, remote sensing, and GeoAI workflows.
+________________________________________
+Installation
+pip install geoexpress
+Prerequisites
+•	GeoExpress Desktop or Server must be installed on the host machine
+•	A valid and activated Float or Local GeoExpress license must be available
+•	The GeoExpress binaries must be accessible via the system PATH (or installed in the default Program Files directory on Windows)
+The Python SDK does not implement compression logic itself; it orchestrates and invokes the underlying GeoExpress engine.
+________________________________________
+Encode GeoTIFF/JP2 → MrSID
+
+from geoexpress import encode
+
+encode(
+    input=r"C:\data\input.tif",
+    output=r"C:\data\output.sid",
+    options={
+        "of": "mg4",
+        "cr": 20
+    }
+)
+
+Lossless Encoding GeoTIFF/JP2 → MrSID
+
+from geoexpress import encode
+
+encode(
+    input=r"E:\Vibudh\GeoExpress_CMD_Utility_Test\input\Parker-Sample_ortho_3cm_RGB.tif",
+    output=r"E:\Vibudh\GeoExpress_CMD_Utility_Test\output\lossless_output.sid",
+    options={
+        "of": "mg4",
+        "lossless": True
+    }
+)
+
+Explanation
+•	Input: Any supported raster format (GeoTIFF in this example)
+•	Output: MrSID (.sid) file
+•	of=mg4: Specifies MrSID Generation 4 (MG4), optimized for high compression and fast decoding
+•	cr=20: Compression ratio (20:1). Higher values reduce file size at the cost of fidelity
+This operation preserves georeferencing, projections, and spatial metadata while dramatically reducing storage and distribution costs.
+________________________________________
+Decode MrSID → GeoTIFF/JP2
+from geoexpress import decode
+
+decode(
+    input=r"C:\data\output.sid",
+    output=r"C:\data\decoded.tif"
+)
+Explanation
+Decoding converts MrSID back into a standard raster format. This is typically used for:
+•	Interoperability with non-MrSID-aware software
+•	Pixel-level analytics
+•	Export workflows
+Spatial reference and geospatial metadata are retained during decoding.
+________________________________________
+Read Image Information
+from geoexpress import info_parsed
+
+info = info_parsed(r"C:\data\output.sid")
+print(info["parsed"])
+Explanation
+info_parsed() extracts structured metadata from the MrSID file, including:
+•	Image dimensions and resolution
+•	Coordinate reference system
+•	Number of bands and data type
+•	Compression parameters
+This is useful for validation, QA/QC pipelines, and automated cataloging.
+________________________________________
+Set and Get Metadata
+
+from geoexpress import set_metadata, get_metadata
+
+sid = r"E:\Vibudh\GeoExpress_CMD_Utility_Test\output\output.sid"
+
+set_metadata(sid, "Author", "Vibudh")
+print(get_metadata(sid))
+
+Explanation
+MrSID supports embedded key–value metadata. Typical use cases include:
+•	Provenance tracking
+•	Workflow attribution
+•	Enterprise catalog integration
+Metadata is stored directly in the MrSID container and travels with the file.
+________________________________________
+Lock / Unlock MrSID Files (Password Protected)
+
+from geoexpress import lock_image
+
+lock_image(
+    r"E:\Vibudh\GeoExpress_CMD_Utility_Test\output\output.sid",
+    r"E:\Vibudh\GeoExpress_CMD_Utility_Test\output\locked.sid",
+    "1234"
+)
+
+unlock image
+
+
+from geoexpress import unlock_image
+
+unlock_image(
+    r"E:\Vibudh\GeoExpress_CMD_Utility_Test\output\locked.sid",
+    r"E:\Vibudh\GeoExpress_CMD_Utility_Test\output\unlocked.sid",
+    "1234"
+)
+
+Explanation
+•	Lock: Applies password-based protection to the MrSID file
+•	Unlock: Removes protection using the same password
+This feature is commonly used for controlled distribution, IP protection, and secure data delivery.
+________________________________________
+Batch Encoding (Automation-Friendly)
+from geoexpress.batch import batch_encode
+
+jobs = [
+    {
+        "input": "E:\Vibudh\GeoExpress_CMD_Utility_Test\input\Parker-Sample_ortho_3cm_RGB.tif",
+        "output": "E:\Vibudh\GeoExpress_CMD_Utility_Test\output\output_a.sid",
+        "options": {"cr": 20}
+    },
+    {
+        "input": "E:\Vibudh\GeoExpress_CMD_Utility_Test\input\smallest_car_detection.tif",
+        "output": "E:\Vibudh\GeoExpress_CMD_Utility_Test\output\output_b.sid",
+        "options": {"lossless" : True}
+    }
+]
+
+results = batch_encode(jobs)
+print(results)
+
+Explanation
+Batch encoding enables high-throughput processing of large imagery collections. This is ideal for:
+•	Satellite or aerial imagery archives
+•	UAV imagery pipelines
+•	Enterprise-scale data migration to MrSID
+All inputs are encoded using the same compression profile for consistency.
+________________________________________
+
+Command-Line Interface (CLI)
+geoexpress encode input.tif output.sid --of mg4 --cr 20
+geoexpress info output.sid
+geoexpress meta set output.sid Author=GeoExpress
+Explanation
+The CLI exposes the same capabilities as the Python SDK and is suitable for:
+•	Shell scripting
+•	CI/CD pipelines
+•	Headless server environments
+The Python SDK internally mirrors these CLI operations.
+________________________________________
+Common Errors and Troubleshooting
+License Not Found
+Symptoms
+•	Encoding or decoding fails immediately
+Resolution
+•	Ensure GeoExpress is installed
+•	Verify that the license is activated and valid
+•	Confirm license visibility for the executing user
+________________________________________
+Binary Not Found
+Symptoms
+•	Errors indicating GeoExpress executables cannot be located
+Resolution
+•	Confirm GeoExpress is installed in the default location
+(C:\Program Files\… on Windows)
+•	Ensure installation directories are included in the system PATH
+________________________________________
+Summary
+The GeoExpress Python SDK enables developers and GIS engineers to embed industry-grade MrSID compression and management directly into automated workflows. It is particularly well-suited for large-scale imagery pipelines, SaaS platforms, and enterprise geospatial infrastructure where performance, scalability, and data integrity are critical.
+
