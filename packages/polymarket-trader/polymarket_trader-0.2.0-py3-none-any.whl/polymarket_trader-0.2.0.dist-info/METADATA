@@ -1,0 +1,151 @@
+Metadata-Version: 2.4
+Name: polymarket-trader
+Version: 0.2.0
+Summary: Polymarket CLOB trading CLI
+License: MIT License
+        
+        Copyright (c) 2026 kadaliao
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Keywords: cli,clob,polymarket,prediction-market,trading
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Office/Business :: Financial
+Classifier: Topic :: Utilities
+Requires-Python: >=3.10
+Requires-Dist: py-clob-client
+Description-Content-Type: text/markdown
+
+# Polymarket Trader CLI
+
+A command-line tool for Polymarket CLOB trading: browse markets, inspect orderbooks, place/cancel orders, and run diagnostics. Built on `py-clob-client`.
+
+Note: this repo contains the CLI/tooling only. Any AI skill definitions live in a separate repo.
+
+## Install
+
+Recommended (uv):
+```
+uv tool install polymarket-trader
+```
+
+Also supported:
+```
+pipx install polymarket-trader
+# or
+pip install polymarket-trader
+```
+
+## Quick Start (Polymarket UI / Proxy Wallet)
+
+Most Polymarket accounts use a proxy (Safe) wallet that holds funds, while your MetaMask EOA signs orders. The UI shows the proxy address.
+
+Create `~/.polymarket.env`:
+
+```
+POLYMARKET_KEY=<your MetaMask private key>
+POLYMARKET_SIG_TYPE=2
+POLYMARKET_FUNDER=<proxy wallet address shown on Polymarket>
+POLYMARKET_SIGNER=<your MetaMask EOA address>
+POLYMARKET_RPC=https://polygon-rpc.com
+```
+
+Verify:
+
+```
+polymarket-trader whoami
+polymarket-trader balance --asset-type collateral
+```
+
+If allowances are all zero, open Polymarket, click Buy on any market, and approve USDC (Enable trading).
+
+## Commands (examples)
+
+List markets:
+```
+polymarket-trader markets --sampling --accepting-only --limit 50
+```
+
+Include titles:
+```
+polymarket-trader markets --sampling --with-title --limit 20
+```
+
+Orderbook / quote:
+```
+polymarket-trader orderbook <token_id>
+polymarket-trader quote <token_id>
+```
+
+Buy with USD cap (best ask by default):
+```
+polymarket-trader buy-max <token_id> 5
+```
+
+Diagnostics:
+```
+polymarket-trader diagnose --onchain --fix
+```
+
+Full command list:
+```
+polymarket-trader --help
+```
+
+## Environment variables
+
+- `POLYMARKET_KEY`: signer private key (required for trading)
+- `POLYMARKET_SIG_TYPE`: 0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE
+- `POLYMARKET_FUNDER`: proxy wallet address that holds collateral
+- `POLYMARKET_SIGNER`: expected EOA address for safety checks
+- `POLYMARKET_ENV_FILE`: override env file path (default `~/.polymarket.env`)
+- `POLYMARKET_HOST`: CLOB API host (default `https://clob.polymarket.com`)
+- `POLYMARKET_CHAIN_ID`: chain id (default `137` for Polygon)
+- `POLYMARKET_RPC`: RPC URL (used for onchain allowance/receipt checks)
+
+## Using from source (no install)
+
+```
+uv run --with py-clob-client -m polymarket_trader whoami
+uv run --with py-clob-client -m polymarket_trader balance --asset-type collateral
+```
+
+## Publishing
+
+Build a wheel/sdist:
+```
+uv run --with build -m build
+```
+
+## Safety
+
+- Never paste private keys into chat or commit them to git.
+- `~/.polymarket.env` is loaded automatically and should be kept local.
+
+## License
+
+MIT (see LICENSE).
