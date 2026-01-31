@@ -1,0 +1,361 @@
+# Shaped CLI
+
+CLI for interactions with the Shaped API.
+
+For full documentation, see [docs.shaped.ai](https://docs.shaped.ai/).
+
+## Installing the Shaped CLI
+
+```
+pip install shaped
+```
+
+## Initialize
+
+```
+shaped init --api-key <API_KEY> [--env <ENV>]
+```
+
+The `--env` option defaults to `prod` and can be set to other environments like `dev` or `staging`.
+
+## Engine API
+
+### Create Engine
+
+```
+shaped create-engine --file <PATH_TO_FILE>
+```
+
+Or pipe from stdin:
+
+```
+cat <PATH_TO_FILE> | shaped create-engine
+```
+
+### Update Engine
+
+```
+shaped update-engine --file <PATH_TO_FILE>
+```
+
+Or pipe from stdin:
+
+```
+cat <PATH_TO_FILE> | shaped update-engine
+```
+
+### List Engines
+
+```
+shaped list-engines
+```
+
+### View Engine
+
+```
+shaped view-engine --engine-name <ENGINE_NAME>
+```
+
+### Delete Engine
+
+```
+shaped delete-engine --engine-name <ENGINE_NAME>
+```
+
+## Table API
+
+### Create Table
+
+```
+shaped create-table --file <PATH_TO_FILE>
+```
+
+Or pipe from stdin:
+
+```
+cat <PATH_TO_FILE> | shaped create-table
+```
+
+### Create Table from URI
+
+Create a table and automatically insert data from a file:
+
+```
+shaped create-table-from-uri --name <TABLE_NAME> --path <PATH_TO_FILE> --type <FILE_TYPE>
+```
+
+Supported file types: `parquet`, `csv`, `tsv`, `json`, `jsonl`
+
+### List Tables
+
+```
+shaped list-tables
+```
+
+### Table Insert
+
+Insert data into an existing table:
+
+```
+shaped table-insert --table-name <TABLE_NAME> --file <DATAFRAME_FILE> --type <FILE_TYPE>
+```
+
+Supported file types: `parquet`, `csv`, `tsv`, `json`, `jsonl`
+
+### View Table
+
+```
+shaped view-table --table-name <TABLE_NAME>
+```
+
+### Update Table
+
+```
+shaped update-table --file <PATH_TO_FILE>
+```
+
+Or pipe from stdin:
+
+```
+cat <PATH_TO_FILE> | shaped update-table
+```
+
+### Delete Table
+
+```
+shaped delete-table --table-name <TABLE_NAME>
+```
+
+## View API
+
+### Create View
+
+```
+shaped create-view --file <PATH_TO_FILE>
+```
+
+Or pipe from stdin:
+
+```
+cat <PATH_TO_FILE> | shaped create-view
+```
+
+### List Views
+
+```
+shaped list-views
+```
+
+### View View
+
+```
+shaped view-view --view-name <VIEW_NAME>
+```
+
+### Update View
+
+```
+shaped update-view --file <PATH_TO_FILE>
+```
+
+Or pipe from stdin:
+
+```
+cat <PATH_TO_FILE> | shaped update-view
+```
+
+### Delete View
+
+```
+shaped delete-view --view-name <VIEW_NAME>
+```
+
+## Query API
+
+### Execute Query
+
+Execute an ad-hoc query against an engine. The query can be provided in three ways:
+
+**From a file:**
+```
+shaped query --engine-name <ENGINE_NAME> --query-file <PATH_TO_FILE>
+```
+
+**As a JSON string:**
+```
+shaped query --engine-name <ENGINE_NAME> --query '{"sql": "SELECT * FROM table"}'
+```
+
+**From stdin:**
+```
+cat <PATH_TO_FILE> | shaped query --engine-name <ENGINE_NAME>
+```
+
+### Execute Saved Query
+
+Execute a previously saved query by name:
+
+```
+shaped execute-saved-query --engine-name <ENGINE_NAME> --query-name <QUERY_NAME>
+```
+
+### List Saved Queries
+
+List all saved queries for an engine:
+
+```
+shaped list-saved-queries --engine-name <ENGINE_NAME>
+```
+
+### View Saved Query
+
+View the definition of a saved query:
+
+```
+shaped view-saved-query --engine-name <ENGINE_NAME> --query-name <QUERY_NAME>
+```
+
+---
+
+# Python SDK (V2)
+
+## Installation
+
+### Pip Installation
+
+```sh
+pip install shaped
+```
+
+## V2 Query API with Fluent Builders
+
+The V2 SDK provides a fluent query builder API that leverages Shaped's declarative query language:
+
+```python
+from shaped import (
+    Client,
+    RankQueryBuilder,
+    ColumnOrder,
+    TextSearch,
+    Ensemble,
+    Diversity,
+)
+
+client = Client(api_key="your-api-key")
+
+# Build a query using the fluent builder with step objects
+query = (RankQueryBuilder()
+    .from_entity('item')
+    .retrieve(
+        ColumnOrder(
+            [{'name': 'popularity', 'ascending': False}],
+            limit=1000
+        ),
+        TextSearch(
+            'laptop',
+            mode={'type': 'vector', 'text_embedding_ref': 'text_emb'}
+        )
+    )
+    .filter(Expression('price < 1000')) filter
+    .score(Ensemble('lightgbm', input_user_id='$parameters.userId'))
+    .reorder(Diversity(diversity_attributes=['category']))
+    .limit(50)
+    .columns(['item_id', 'title', 'price'])
+    .build())
+
+# Execute the query
+result = client.execute_query(
+    'my_engine',
+    query,
+    parameters={'userId': '123'}
+)
+```
+
+### Available Step Factory Functions
+
+The SDK provides convenient factory functions for creating step objects:
+
+**Retrieve Steps:**
+- `ColumnOrder(columns, limit=100, where=None, name=None)` - Sort by columns
+- `TextSearch(input_text_query, mode, limit=100, where=None, name=None)` - Text search
+- `Similarity(embedding_ref, query_encoder, limit=100, where=None, name=None)` - Similarity search
+- `Filter(where=None, limit=100, name=None)` - Filter without ordering
+- `CandidateIds(item_ids, limit=None, name=None)` - Specific item IDs
+- `CandidateAttributes(item_attributes, limit=None, name=None)` - Item attributes
+
+**Filter Steps:**
+- `Expression(expression, name=None)` - DuckDB filter expression
+- `Truncate(max_length=500, name=None)` - Truncate results to max_length
+- `Prebuilt(filter_ref, input_user_id=None, name=None)` - Reference to prebuilt filter
+
+**Score Configs:**
+- `Ensemble(value_model, input_user_id=None, ...)`
+- `Passthrough(name=None)`
+
+**Reorder Steps:**
+- `Diversity(diversity_attributes=None, strength=0.5, ...)`
+- `Boosted(retriever, strength=0.5, name=None)`
+- `Exploration(retriever, strength=0.5, name=None)`
+
+### Execute Saved Query
+
+```python
+result = client.execute_saved_query(
+    'my_engine',
+    'recommendations',
+    parameters={'userId': '123', 'limit': 20}
+)
+```
+
+---
+
+# TypeScript/Node.js SDK (V2)
+
+## Installation
+
+### NPM Installation
+
+```sh
+npm install @shaped.ai/client
+```
+
+## V2 Query API with Fluent Builders
+
+The V2 SDK provides a fluent, type-safe query builder API:
+
+```typescript
+import { Client, RankQueryBuilder } from '@shaped.ai/client';
+
+const client = new Client({ apiKey: 'your-api-key' });
+
+// Build a query using the fluent builder
+const query = new RankQueryBuilder()
+  .from('item')
+  .retrieve(step => step
+    .columnOrder([{name: 'popularity', ascending: false}], {limit: 1000}))
+  .retrieve(step => step
+    .textSearch('laptop', {type: 'vector', textEmbeddingRef: 'text_emb'}))
+  .filter(step => step.expression('price < 1000'))
+  .score(step => step.ensemble('lightgbm', {inputUserId: '$parameters.userId'}))
+  .reorder(step => step.diversity({attribute: 'category'}))
+  .limit(50)
+  .columns(['item_id', 'title', 'price'])
+  .build();
+
+// Execute the query
+const result = await client.executeQuery(
+  'my_engine',
+  query,
+  {userId: '123'}
+);
+```
+
+### Execute Saved Query
+
+```typescript
+const result = await client.executeSavedQuery(
+  'my_engine',
+  'recommendations',
+  {userId: '123', limit: 20}
+);
+```
