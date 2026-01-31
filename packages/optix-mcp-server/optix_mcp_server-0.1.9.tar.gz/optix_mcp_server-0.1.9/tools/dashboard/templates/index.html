@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Optix Dashboard</title>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"
+    ></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css" />
+    <script src="/static/js/dashboard.js"></script>
+  </head>
+  <body x-data="dashboard()" x-init="init()">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 9h6v6H9z" />
+          </svg>
+        </div>
+        <span style="font-weight: 600; font-size: 16px">Optix</span>
+      </div>
+
+      <div class="sidebar-section-label">AUDIT LENS</div>
+      <nav class="sidebar-nav">
+        <template x-for="audit in auditTypes" :key="audit.id">
+          <div
+            class="persona-item"
+            :class="{
+              active: selectedAuditType === audit.id,
+              'has-findings': getAuditFindingsCount(audit.id) > 0,
+              'is-running': getAuditStatus(audit.id) === 'running'
+            }"
+            @click="selectAuditType(audit.id)"
+          >
+            <img class="persona-icon" :src="'/static/icons/' + audit.id.replace('_audit', '') + '.svg'" :alt="audit.name" />
+            <span class="persona-label" x-text="audit.name"></span>
+            <div class="persona-meta">
+              <span
+                class="persona-count"
+                x-show="getAuditFindingsCount(audit.id) > 0"
+                x-text="getAuditFindingsCount(audit.id)"
+              ></span>
+              <span
+                class="connection-indicator"
+                :class="getAuditStatus(audit.id) === 'running' ? 'connected' : 'disconnected'"
+                :title="getAuditStatus(audit.id) === 'running' ? 'Audit running' : 'No active audit'"
+              ></span>
+            </div>
+          </div>
+        </template>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="nav-item" @click="openSettings()">
+          <img class="nav-item-icon" src="/static/icons/settings.svg" alt="Settings" />
+          <span class="nav-item-label">Settings</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="main-header">
+        <div class="header-left">
+          <div class="project-info">
+            <h1 x-text="(projectName || 'Project') + ' / ' + currentAuditLabel + ' Audit'"></h1>
+            <div class="audit-id" x-text="auditId"></div>
+          </div>
+
+          <div class="header-stats">
+            <div class="live-badge" x-show="isRunning">
+              <span class="live-dot"></span>
+              LIVE
+            </div>
+            <div class="completed-badge" x-show="isCompleted && !isRunning">
+              <span class="completed-icon">✓</span>
+              COMPLETED
+            </div>
+
+            <div class="stat-item">
+              <div class="stat-label">Findings</div>
+              <div class="stat-value" x-text="totalFindings || 0"></div>
+            </div>
+
+            <div class="stat-item">
+              <div class="stat-label">Files</div>
+              <div class="stat-value" x-text="filesChecked"></div>
+            </div>
+
+            <div class="stat-item">
+              <div class="stat-label">Time</div>
+              <div class="stat-value" x-text="formatElapsedTime()"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <input
+            type="text"
+            class="search-input"
+            placeholder="Search logs..."
+            x-model="searchQuery"
+          />
+          <button class="btn btn-icon" :class="{ active: isPaused }" @click="togglePause()" :title="isPaused ? 'Resume' : 'Pause'" x-text="isPaused ? '▶' : '⏸'" x-show="isRunning"></button>
+          <button class="btn btn-stop" :class="{ disabled: !isRunning }" :disabled="!isRunning" @click="stopAudit()">Stop Audit</button>
+        </div>
+      </header>
+
+      <!-- Main Body -->
+      <div class="main-body">
+        <!-- Empty State - No Workflows -->
+        <div class="empty-audit-state" x-show="!hasWorkflowsForType(selectedAuditType)">
+          <div class="empty-audit-icon">
+            <img :src="'/static/icons/' + selectedAuditType.replace('_audit', '') + '.svg'" :alt="currentAuditLabel" />
+          </div>
+          <h2 class="empty-audit-title" x-text="'No ' + currentAuditLabel + ' Audit Running'"></h2>
+          <p class="empty-audit-desc">Start a new audit to analyze your codebase</p>
+          <div class="empty-audit-instruction">
+            <div class="instruction-label">Run in your terminal:</div>
+            <code class="instruction-code" x-text="getAuditCommand()"></code>
+            <button class="btn btn-copy-cmd" @click="copyAuditCommand()" title="Copy command">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Audit Pipeline -->
+        <div class="audit-pipeline" x-show="hasWorkflowsForType(selectedAuditType)">
+          <div class="pipeline-title">Audit Pipeline</div>
+          <div class="pipeline-steps">
+            <template x-for="(step, index) in pipelineSteps" :key="index">
+              <div
+                class="pipeline-step"
+                :class="{ active: step.status === 'active' }"
+              >
+                <div
+                  :class="getStepIndicatorClass(step)"
+                  x-text="getStepIndicatorContent(step, index)"
+                ></div>
+                <div class="step-content">
+                  <div class="step-name" x-text="step.name"></div>
+                  <div
+                    class="step-status"
+                    :class="{ running: step.status === 'active' }"
+                    x-text="getStepStatusText(step)"
+                  ></div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="content-area" x-show="hasWorkflowsForType(selectedAuditType)">
+          <!-- Top Panels -->
+          <div class="top-panels">
+            <!-- Recent Activity Panel -->
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Recent Activity</div>
+                <span class="activity-status" x-show="isRunning">LIVE</span>
+              </div>
+              <div class="activity-feed scrollbar-thin">
+                <template x-for="(entry, i) in activityLog" :key="i">
+                  <div class="activity-entry" :class="entry.type">
+                    <span class="activity-prefix" :class="entry.severity || entry.type"></span>
+                    <span class="activity-message" x-text="entry.message"></span>
+                  </div>
+                </template>
+                <div x-show="activityLog.length === 0" class="activity-empty">
+                  No activity yet. Start an audit to see progress.
+                </div>
+              </div>
+            </div>
+
+            <!-- Severity Distribution Panel -->
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Severity Distribution</div>
+              </div>
+              <div class="severity-chart">
+                <div class="donut-container">
+                  <svg width="120" height="120" viewBox="0 0 120 120">
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="45"
+                      fill="none"
+                      stroke="var(--color-border)"
+                      stroke-width="20"
+                    />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="45"
+                      fill="none"
+                      stroke="#6b7280"
+                      stroke-width="20"
+                      :stroke-dasharray="getSegmentStyle('low').dasharray"
+                      :stroke-dashoffset="getSegmentStyle('low').dashoffset"
+                      transform="rotate(-90 60 60)"
+                      :style="{ opacity: severityCounts.low > 0 ? 1 : 0 }"
+                    />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="45"
+                      fill="none"
+                      stroke="#eab308"
+                      stroke-width="20"
+                      :stroke-dasharray="getSegmentStyle('medium').dasharray"
+                      :stroke-dashoffset="getSegmentStyle('medium').dashoffset"
+                      transform="rotate(-90 60 60)"
+                      :style="{ opacity: severityCounts.medium > 0 ? 1 : 0 }"
+                    />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="45"
+                      fill="none"
+                      stroke="#f97316"
+                      stroke-width="20"
+                      :stroke-dasharray="getSegmentStyle('high').dasharray"
+                      :stroke-dashoffset="getSegmentStyle('high').dashoffset"
+                      transform="rotate(-90 60 60)"
+                      :style="{ opacity: severityCounts.high > 0 ? 1 : 0 }"
+                    />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="45"
+                      fill="none"
+                      stroke="#ef4444"
+                      stroke-width="20"
+                      :stroke-dasharray="getSegmentStyle('critical').dasharray"
+                      :stroke-dashoffset="getSegmentStyle('critical').dashoffset"
+                      transform="rotate(-90 60 60)"
+                      :style="{ opacity: severityCounts.critical > 0 ? 1 : 0 }"
+                    />
+                  </svg>
+                  <div class="donut-center">
+                    <div class="donut-total" x-text="totalFindings || 0"></div>
+                    <div class="donut-label">TOTAL</div>
+                  </div>
+                </div>
+                <div class="severity-legend">
+                  <div class="legend-item">
+                    <span class="legend-dot critical"></span>
+                    <span>Critical</span>
+                    <span
+                      class="legend-count"
+                      x-text="severityCounts.critical"
+                    ></span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-dot high"></span>
+                    <span>High</span>
+                    <span
+                      class="legend-count"
+                      x-text="severityCounts.high"
+                    ></span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-dot medium"></span>
+                    <span>Medium</span>
+                    <span
+                      class="legend-count"
+                      x-text="severityCounts.medium"
+                    ></span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-dot low"></span>
+                    <span>Low</span>
+                    <span
+                      class="legend-count"
+                      x-text="severityCounts.low"
+                    ></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Findings Feed -->
+          <div class="panel findings-panel">
+            <div class="findings-header">
+              <div class="findings-title">Live Findings Feed</div>
+              <div class="findings-actions">
+                <div class="filter-dropdown-container" style="position: relative;">
+                  <button class="btn btn-icon" :class="{ active: severityFilter !== 'all' }" @click="toggleFilterDropdown()" title="Filter">≡</button>
+                  <div class="filter-dropdown" x-show="showFilterDropdown" x-cloak @click.stop>
+                    <div class="filter-option" :class="{ active: severityFilter === 'all' }" @click="setSeverityFilter('all')">All Severities</div>
+                    <div class="filter-option" :class="{ active: severityFilter === 'critical' }" @click="setSeverityFilter('critical')">
+                      <span class="legend-dot critical"></span> Critical
+                    </div>
+                    <div class="filter-option" :class="{ active: severityFilter === 'high' }" @click="setSeverityFilter('high')">
+                      <span class="legend-dot high"></span> High
+                    </div>
+                    <div class="filter-option" :class="{ active: severityFilter === 'medium' }" @click="setSeverityFilter('medium')">
+                      <span class="legend-dot medium"></span> Medium
+                    </div>
+                    <div class="filter-option" :class="{ active: severityFilter === 'low' }" @click="setSeverityFilter('low')">
+                      <span class="legend-dot low"></span> Low
+                    </div>
+                  </div>
+                </div>
+                <button class="btn btn-icon" @click="downloadFindings()" title="Download">↓</button>
+              </div>
+            </div>
+
+            <div x-show="filteredFindings.length === 0" class="empty-state">
+              <div class="empty-state-icon">🔍</div>
+              <div class="empty-state-text" x-text="findings.length === 0 ? 'No findings yet. Start an audit to see results.' : 'No findings match the current filter.'">
+              </div>
+            </div>
+
+            <div
+              class="findings-list scrollbar-thin"
+              x-show="filteredFindings.length > 0"
+            >
+              <template x-for="(finding, index) in filteredFindings" :key="index">
+                <div class="finding-card" :class="getSeverityClass(finding.severity)" @click="showFindingDetail(finding)">
+                  <div class="finding-header">
+                    <div class="finding-meta">
+                      <span
+                        class="severity-badge"
+                        :class="getSeverityClass(finding.severity)"
+                        x-text="(finding.severity || 'MEDIUM').toUpperCase()"
+                      ></span>
+                      <span
+                        class="finding-file"
+                        x-show="finding.location && finding.location !== '.'"
+                        x-text="finding.location"
+                      ></span>
+                      <span
+                        class="tip-badge"
+                        x-show="!finding.location || finding.location === '.'"
+                      >Tip</span>
+                    </div>
+                    <span
+                      class="finding-time"
+                      x-text="formatTimeAgo(finding.detected_at)"
+                    ></span>
+                  </div>
+                  <div
+                    class="finding-title"
+                    x-text="finding.description || 'Security issue detected'"
+                  ></div>
+                  <div class="finding-code-block" x-show="finding.code_snippet">
+                    <code class="finding-code-content" x-text="finding.code_snippet"></code>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar - File Explorer -->
+    <aside class="file-explorer">
+      <div class="explorer-header">Analyzed Files</div>
+      <div class="explorer-stats">
+        <span x-text="workflowFiles.length + ' files analyzed'"></span>
+      </div>
+      <div class="explorer-tree scrollbar-thin">
+        <template x-if="fileTree.length === 0">
+          <div class="empty-explorer">
+            <img src="/static/icons/file.svg" alt="No files" class="empty-explorer-icon" />
+            <span>No files analyzed yet</span>
+          </div>
+        </template>
+        <template x-for="item in fileTree" :key="item.path">
+          <div class="tree-node">
+            <div
+              class="tree-item"
+              :class="{ selected: selectedFile?.path === item.path }"
+              @click="item.type === 'folder' ? toggleTreeItem(item) : selectFile(item)"
+            >
+              <img class="tree-item-icon" :src="item.type === 'folder' ? (item.expanded ? '/static/icons/folder-open.svg' : '/static/icons/folder.svg') : '/static/icons/file.svg'" :alt="item.type" />
+              <span class="tree-item-name" x-text="item.name"></span>
+              <span class="tree-badge" :class="item.highestSeverity" x-show="item.type === 'file'" x-text="item.findingsCount"></span>
+            </div>
+            <template x-if="item.type === 'folder' && item.expanded && item.children">
+              <div class="tree-children">
+                <template x-for="child in item.children" :key="child.path">
+                  <div class="tree-node">
+                    <div
+                      class="tree-item depth-1"
+                      :class="{ selected: selectedFile?.path === child.path }"
+                      @click="child.type === 'folder' ? toggleTreeItem(child) : selectFile(child)"
+                    >
+                      <img class="tree-item-icon" :src="child.type === 'folder' ? (child.expanded ? '/static/icons/folder-open.svg' : '/static/icons/folder.svg') : '/static/icons/file.svg'" :alt="child.type" />
+                      <span class="tree-item-name" x-text="child.name"></span>
+                      <span class="tree-badge" :class="child.highestSeverity" x-show="child.type === 'file'" x-text="child.findingsCount"></span>
+                    </div>
+                    <template x-if="child.type === 'folder' && child.expanded && child.children">
+                      <div class="tree-children">
+                        <template x-for="grandchild in child.children" :key="grandchild.path">
+                          <div class="tree-node">
+                            <div
+                              class="tree-item depth-2"
+                              :class="{ selected: selectedFile?.path === grandchild.path }"
+                              @click="grandchild.type === 'folder' ? toggleTreeItem(grandchild) : selectFile(grandchild)"
+                            >
+                              <img class="tree-item-icon" :src="grandchild.type === 'folder' ? (grandchild.expanded ? '/static/icons/folder-open.svg' : '/static/icons/folder.svg') : '/static/icons/file.svg'" :alt="grandchild.type" />
+                              <span class="tree-item-name" x-text="grandchild.name"></span>
+                              <span class="tree-badge" :class="grandchild.highestSeverity" x-show="grandchild.type === 'file'" x-text="grandchild.findingsCount"></span>
+                            </div>
+                            <template x-if="grandchild.type === 'folder' && grandchild.expanded && grandchild.children">
+                              <div class="tree-children">
+                                <template x-for="item4 in grandchild.children" :key="item4.path">
+                                  <div
+                                    class="tree-item depth-3"
+                                    :class="{ selected: selectedFile?.path === item4.path }"
+                                    @click="selectFile(item4)"
+                                  >
+                                    <img class="tree-item-icon" src="/static/icons/file.svg" alt="File" />
+                                    <span class="tree-item-name" x-text="item4.name"></span>
+                                    <span class="tree-badge" :class="item4.highestSeverity" x-show="item4.type === 'file'" x-text="item4.findingsCount"></span>
+                                  </div>
+                                </template>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="explorer-footer" x-show="selectedFile">
+        <strong x-text="selectedFile?.name"></strong>
+        <div class="explorer-footer-path" x-text="selectedFile?.path"></div>
+        <div x-show="selectedFile?.findingsCount > 0">
+          <span class="explorer-footer-findings" x-text="selectedFile?.findingsCount + ' finding(s)'"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Finding Detail Modal -->
+    <div
+      class="modal-overlay"
+      x-show="selectedFinding"
+      x-cloak
+      @click.self="closeFindingDetail()"
+      @keydown.escape.window="closeFindingDetail()"
+    >
+      <div class="modal finding-modal" :class="getSeverityClass(selectedFinding?.severity)" @click.stop>
+        <div class="modal-header">
+          <div class="modal-title-section">
+            <span
+              class="severity-badge"
+              :class="getSeverityClass(selectedFinding?.severity)"
+              x-text="(selectedFinding?.severity || 'MEDIUM').toUpperCase()"
+            ></span>
+            <div>
+              <div class="modal-title" x-text="(selectedFinding?.description || 'Security Issue') + ' in ' + (selectedFinding?.location || 'Unknown')"></div>
+              <div class="modal-subtitle">
+                <span class="modal-id" x-text="selectedFinding?.finding_id || '--'"></span>
+                <span class="modal-separator">•</span>
+                <span>Detected <span x-text="formatTimeAgo(selectedFinding?.discovered_at)"></span></span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-icon" @click="minimizeFinding()" title="Minimize">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h16M4 10h16"/></svg>
+            </button>
+            <button class="btn btn-icon" @click="hideFinding()" title="Hide">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+            <button class="btn btn-icon" @click="closeFindingDetail()" title="Close">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <!-- Detail Cards -->
+          <div class="detail-cards">
+            <div class="detail-card" x-show="selectedFinding?.category">
+              <div class="detail-card-label">CATEGORY</div>
+              <div class="detail-card-value" x-text="selectedFinding?.category"></div>
+            </div>
+            <div class="detail-card" x-show="selectedFinding?.cwe_id">
+              <div class="detail-card-label">CWE ID</div>
+              <div class="detail-card-value">
+                <span x-text="selectedFinding?.cwe_id"></span>
+                <span class="cwe-info" title="Common Weakness Enumeration">ⓘ</span>
+              </div>
+            </div>
+            <div class="detail-card" x-show="selectedFinding?.discovered_in_step">
+              <div class="detail-card-label">DISCOVERY STEP</div>
+              <div class="detail-card-value" x-text="'Step ' + selectedFinding?.discovered_in_step"></div>
+            </div>
+          </div>
+
+          <!-- Vulnerability Details Section -->
+          <div class="section-card">
+            <div class="section-header">
+              <span class="section-icon warning">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 3.5L19.5 19h-15L12 5.5zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg>
+              </span>
+              <span class="section-title-text">Finding Details</span>
+            </div>
+            <p class="vulnerability-desc" x-text="selectedFinding?.description || 'No description available.'"></p>
+          </div>
+
+          <!-- Suggested Remediation Section -->
+          <div class="section-card remediation" x-show="selectedFinding?.remediation">
+            <div class="section-header">
+              <span class="section-icon success">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+              </span>
+              <span class="section-title-text">Suggested Remediation</span>
+              <button class="btn btn-copy" @click="copyRemediation()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                Copy
+              </button>
+            </div>
+            <p class="vulnerability-desc" x-text="selectedFinding?.remediation"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div
+      class="modal-overlay"
+      x-show="showSettingsModal"
+      x-cloak
+      @click.self="closeSettings()"
+      @keydown.escape.window="closeSettings()"
+    >
+      <div class="modal settings-modal" @click.stop>
+        <div class="modal-header">
+          <div class="modal-title-section">
+            <div class="modal-title">Settings</div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-icon" @click="closeSettings()" title="Close">✕</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="settings-section">
+            <div class="settings-label">Polling Interval</div>
+            <div class="settings-description">How often to refresh data from the server</div>
+            <select class="settings-select">
+              <option value="3000">3 seconds</option>
+              <option value="5000" selected>5 seconds</option>
+              <option value="10000">10 seconds</option>
+              <option value="30000">30 seconds</option>
+            </select>
+          </div>
+          <div class="settings-section">
+            <div class="settings-label">Notifications</div>
+            <div class="settings-description">Show toast notifications for events</div>
+            <label class="settings-toggle">
+              <input type="checkbox" checked />
+              <span>Enabled</span>
+            </label>
+          </div>
+          <div class="settings-section">
+            <div class="settings-label">Auto-scroll Findings</div>
+            <div class="settings-description">Automatically scroll to new findings</div>
+            <label class="settings-toggle">
+              <input type="checkbox" checked />
+              <span>Enabled</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div
+      class="toast"
+      :class="toast?.type"
+      x-show="toast"
+      x-cloak
+      x-transition:enter="toast-enter"
+      x-transition:leave="toast-leave"
+    >
+      <span x-text="toast?.message"></span>
+    </div>
+  </body>
+</html>
