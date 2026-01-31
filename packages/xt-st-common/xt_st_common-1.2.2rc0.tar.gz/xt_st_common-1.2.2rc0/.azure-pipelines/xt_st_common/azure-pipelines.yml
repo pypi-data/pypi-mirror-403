@@ -1,0 +1,94 @@
+# Build xt-st-common on commit
+
+trigger:
+  - main
+
+variables:
+  - group: pypi
+
+parameters:
+  - name: RELEASE_TYPE
+    displayName: "Perform release?"
+    type: string
+    default: " "
+    values:
+      - " "
+      - "major"
+      - "minor"
+      - "patch"
+
+# Build and test `xt-st-common`
+resources:
+  containers:
+    - container: mongo
+      image: "mongo:5.0"
+      env:
+        MONGO_INITDB_ROOT_USERNAME: root
+        MONGO_INITDB_ROOT_PASSWORD: example
+      ports:
+        - 27018:27017
+    - container: minio
+      image: "bitnami/minio:2022.9.25"
+      ports:
+        - 9002:9000
+        - 9003:9001
+      env:
+        MINIO_ROOT_USER: minio
+        MINIO_ROOT_PASSWORD: minio123
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+  - job: lintTest
+    services:
+      mongo: mongo
+      minio: minio
+    steps:
+      - checkout: self
+        fetchDepth: 0
+        fetchTags: true
+        persistCredentials: true
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: "3.11"
+        displayName: "Use Python 3.11"
+
+      - script: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          pip install poethepoet
+          poetry install --all-extras
+        displayName: "Install"
+
+      - script: |
+          poe lint
+        workingDirectory: "src/"
+        displayName: "Run linting"
+
+      - script: |
+          poetry run pytest --cov=src/xt_st_common --junitxml=junit/test-results.xml --cov-report=xml
+        displayName: "Run Tests"
+        condition: succeededOrFailed()
+      - task: PublishCodeCoverageResults@1
+        condition: succeededOrFailed()
+        inputs:
+          codeCoverageTool: Cobertura
+          summaryFileLocation: "$(System.DefaultWorkingDirectory)/**/coverage.xml"
+
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFiles: "**/test-*.xml"
+          testRunTitle: "Publish pytest results for Python 3.11"
+  - ${{ if in(parameters.RELEASE_TYPE, 'major', 'minor', 'patch') }}:
+      - job: release
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            fetchTags: true
+            persistCredentials: true
+          - template: ./release-job-template.yml
+            parameters:
+              RELEASE_TYPE: ${{ parameters.RELEASE_TYPE }}

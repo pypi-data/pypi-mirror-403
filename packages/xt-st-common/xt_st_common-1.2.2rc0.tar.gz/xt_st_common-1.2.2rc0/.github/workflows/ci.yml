@@ -1,0 +1,79 @@
+name: CI - Lint and Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-22.04
+    services:
+      mongo:
+        image: mongo:8.0
+        ports:
+          - 27018:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+      minio:
+        image: bitnamilegacy/minio:2025.2.28
+        ports:
+          - 9002:9000
+          - 9003:9001
+        env:
+          MINIO_SCHEME: http
+          MINIO_ROOT_USER: minio123456
+          MINIO_ROOT_PASSWORD: minio123456
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: |
+          uv run poe install
+
+      - name: Run linting
+        run: |
+          uv run poe lint
+        working-directory: src/
+
+      - name: Run tests
+        run: |
+          uv run pytest \
+            --cov=src/xt_st_common \
+            --junitxml=junit/test-results.xml \
+            --cov-report=xml
+
+      - name: Publish code coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: "**/coverage.xml"
+
+      - name: Publish test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: "**/test-*.xml"

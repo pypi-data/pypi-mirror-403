@@ -1,0 +1,38 @@
+# Release new version and publish to Nexus template
+
+parameters:
+- name: RELEASE_TYPE
+  displayName: 'Release Type'
+  type: string
+  default: patch
+  values:
+  - patch
+  - minor
+  - major
+
+steps:
+- script: |
+    git config --global user.email 'azdo-ci@geoanalytics.group'
+    git config --global user.name 'AzDO Pipeline'
+    git checkout $(Build.SourceBranchName)
+  displayName: 'Set up git'
+
+- script: |
+    pip install bump2version
+    bump2version --verbose ${{ parameters.RELEASE_TYPE }}
+  displayName: 'Bump version'
+
+- script: |
+    git push origin --tags
+    git push origin $(Build.SourceBranchName)
+  displayName: 'Commit, and tag'
+
+- script: |
+    pip install poetry
+    poetry build
+  displayName: 'Build package'
+
+- script: |
+    poetry config pypi-token.pypi $(pypi-token-hun220)
+    poetry publish
+  displayName: 'Publish to PyPI'

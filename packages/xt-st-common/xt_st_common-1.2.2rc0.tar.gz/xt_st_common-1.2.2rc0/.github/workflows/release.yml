@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-publish:
+    name: Build and Publish to xt-pypi
+    # Must run on a self-hosted runner with Linux tag as requested
+    runs-on: [self-hosted, Linux]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync (no dev deps)
+        run: uv sync --no-default-groups
+
+      - name: Build wheel and sdist
+        run: uv build --no-sources
+
+      - name: Publish to xt-pypi
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          # Publish using the index defined in pyproject [[tool.uv.index]]
+          uv publish

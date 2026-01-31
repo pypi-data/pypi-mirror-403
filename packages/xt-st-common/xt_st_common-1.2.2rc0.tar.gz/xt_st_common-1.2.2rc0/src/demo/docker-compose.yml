@@ -1,0 +1,62 @@
+version: '3.5'
+
+services:
+  minio:
+    image: 'bitnami/minio:2022.9.25'
+    ports:
+      - 9000:9000
+      - 9001:9001
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+    volumes:
+      - miniodata:/data
+  mongo:
+    image: mongo:5.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    volumes:
+      - mongodata:/data/db
+    ports:
+      - 27017:27017
+  mpl-toolbox-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mpl-toolbox-ui:latest
+    volumes:
+      - ./.streamlit/config.toml:/app/.streamlit/config.toml
+      - ./mpl_toolbox_ui:/app/mpl_toolbox_ui
+      - ./scripts/wait-for-it.sh:/app/wait-for-it.sh
+    env_file:
+      - .env
+    depends_on:
+      - "minio"
+      - "mongo"
+    environment:
+      - STORAGE_TYPE=MINIO
+      - BUCKET_NAME=xtappdata
+      - MINIO_SECRET_KEY=minio123
+      - MINIO_ACCESS_KEY=minio
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_HTTPS=false
+      - MONGO_CONNECTION_STRING=mongodb://root:example@mongo:27017
+      - DATABASE_NAME=xtappdata
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    command:
+      [
+        "./wait-for-it.sh",
+        "minio:9001",
+        "--",
+        "streamlit",
+        "run",
+        "run.py",
+        "--server.port",
+        "8080"
+      ]
+volumes:
+  mongodata:
+  miniodata:
