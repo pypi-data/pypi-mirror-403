@@ -1,0 +1,278 @@
+"""Gemini AI provider (Google)
+
+Supports both API key and OAuth authentication via gcloud.
+Also supports custom endpoints with Anthropic-compatible API format."""
+
+from .base import AIProvider
+from ..models import AIRequest, AIResponse, AIMessage
+from ..exceptions import AIProviderAPIError
+
+from ..constants import get_default_model
+
+try:
+    import google.genai as genai
+    import google.auth
+    from google.genai.types import GenerateContentConfig
+    GEMINI_AVAILABLE = True
+    GEMINI_IMPORT_ERROR = None
+except ImportError as e:
+    GEMINI_AVAILABLE = False
+    GEMINI_IMPORT_ERROR = str(e)
+    
+# For custom endpoint support
+import requests
+
+
+class GeminiProvider(AIProvider):
+    """
+    Provider for Gemini API (Google).
+
+    Supports:
+    - API key authentication
+    - OAuth via gcloud (Application Default Credentials)
+
+    Requires:
+    - pip install google-genai google-auth
+    - API key from https://makersuite.google.com/app/apikey
+    - OR: gcloud auth application-default login
+
+    Usage:
+        # With API key
+        provider = GeminiProvider("AIza...", model="gemini-pro")
+
+        # With OAuth (gcloud)
+        provider = GeminiProvider("GCLOUD_OAUTH", model="gemini-pro")
+    """
+
+    def __init__(self, api_key: str, model: str = get_default_model("gemini"), base_url: str = None):
+        super().__init__(api_key, model)
+
+        # Normalize base_url by removing trailing slash
+        self.base_url = base_url.rstrip('/') if base_url else None
+        self.use_custom_endpoint = bool(base_url)
+        
+        # Check if using OAuth or API key
+        self.use_oauth = (api_key == "GCLOUD_OAUTH")
+
+        if self.use_custom_endpoint:
+            # Custom endpoint mode - use HTTP requests manually
+            # Corporate endpoint uses same API format as Anthropic
+            if self.use_oauth:
+                raise AIProviderAPIError(
+                    "OAuth is not supported with custom endpoints. Please use an API key."
+                )
+            # No additional setup needed, will use requests directly
+        else:
+            # Standard Google Gemini endpoint - use google-genai library
+            if not GEMINI_AVAILABLE:
+                error_msg = "google-genai not installed.\n"
+                if GEMINI_IMPORT_ERROR:
+                    error_msg += f"Import error: {GEMINI_IMPORT_ERROR}\n"
+                error_msg += "Install with: poetry add google-genai google-auth"
+                raise AIProviderAPIError(error_msg)
+
+            if self.use_oauth:
+                # Use Application Default Credentials with Client, assuming Vertex AI context for OAuth
+                try:
+                    google.auth.default() # This is for ADC
+                    self._genai_client = genai.Client(vertexai=True)
+                except Exception as e:
+                    raise AIProviderAPIError(
+                        f"Failed to get Google Cloud credentials for Vertex AI: {e}\n"
+                        "Run: gcloud auth application-default login"
+                    )
+            else:
+                # Use API key with Client for official Google endpoint
+                self._genai_client = genai.Client(api_key=api_key)
+
+    def generate(self, request: AIRequest) -> AIResponse:
+        """
+        Generate response using Gemini API
+
+        Args:
+            request: AI request with messages
+
+        Returns:
+            AI response
+
+        Raises:
+            AIProviderAPIError: If generation fails
+        """
+        if self.use_custom_endpoint:
+            return self._generate_custom_endpoint(request)
+        else:
+            return self._generate_google_endpoint(request)
+
+    def _generate_custom_endpoint(self, request: AIRequest) -> AIResponse:
+        """
+        Generate using custom corporate endpoint.
+        Uses same API format as Anthropic (messages API).
+        """
+        try:
+            # Separate system messages from regular messages
+            system_messages = [msg for msg in request.messages if msg.role == "system"]
+            regular_messages = [msg for msg in request.messages if msg.role != "system"]
+
+            # Build system parameter
+            system_content = "\n\n".join(msg.content for msg in system_messages) if system_messages else None
+
+            # Convert messages to API format
+            messages = [{"role": msg.role, "content": msg.content} for msg in regular_messages]
+
+            # Build request payload
+            payload = {
+                "model": self.model,
+                "max_tokens": request.max_tokens or 4096,
+                "messages": messages
+            }
+
+            if system_content:
+                payload["system"] = system_content
+
+            if request.temperature is not None:
+                payload["temperature"] = request.temperature
+
+            # Build headers
+            headers = {
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+
+            # Make HTTP request
+            response = requests.post(
+                f"{self.base_url}/v1/messages",
+                headers=headers,
+                json=payload,
+                timeout=120
+            )
+
+            if response.status_code != 200:
+                raise AIProviderAPIError(
+                    f"Custom endpoint error: {response.status_code} - {response.text}"
+                )
+
+            data = response.json()
+
+            # Extract response content (Anthropic format)
+            content = ""
+            if "content" in data and len(data["content"]) > 0:
+                content = data["content"][0].get("text", "")
+
+            # Handle empty content (e.g., max_tokens reached)
+            if not content and data.get("stop_reason") == "max_tokens":
+                raise AIProviderAPIError(
+                    "Response truncated due to max_tokens limit. Increase max_tokens in request."
+                )
+
+            # Extract usage
+            usage_data = {}
+            if "usage" in data:
+                usage_data = {
+                    "input_tokens": data["usage"].get("input_tokens", 0),
+                    "output_tokens": data["usage"].get("output_tokens", 0),
+                }
+
+            return AIResponse(
+                content=content,
+                model=data.get("model", self.model),
+                usage=usage_data,
+                finish_reason=data.get("stop_reason", "stop")
+            )
+
+        except requests.exceptions.RequestException as e:
+            raise AIProviderAPIError(f"Custom endpoint request failed: {e}")
+        except Exception as e:
+            raise AIProviderAPIError(f"Gemini API error: {e}")
+
+    def _generate_google_endpoint(self, request: AIRequest) -> AIResponse:
+        """Generate using official Google Gemini endpoint"""
+        try:
+            # Convert messages to Gemini format
+            gemini_messages = self._convert_messages(request.messages)
+
+            # Prepare generation config
+            config = GenerateContentConfig(
+                temperature=request.temperature,
+                maxOutputTokens=request.max_tokens
+            )
+
+            # Generate response
+            if len(gemini_messages) == 1 and gemini_messages[0].get("role") == "user":
+                # Single message - use generate_content
+                response = self._genai_client.models.generate_content(
+                    model=self.model,
+                    contents=gemini_messages[0]["parts"],
+                    config=config
+                )
+            else:
+                # Multiple messages - use chat
+                chat_session = self._genai_client.chats.create(
+                    model=self.model,
+                    history=gemini_messages[:-1] if len(gemini_messages) > 1 else [],
+                    config=config
+                )
+                response = chat_session.send_message(
+                    gemini_messages[-1]["parts"]
+                )
+
+            # Extract text
+            text = response.text
+
+            # Extract usage data if available
+            usage_data = {}
+            if hasattr(response, 'usage_metadata'):
+                usage_data = {
+                    "input_tokens": response.usage_metadata.prompt_token_count,
+                    "output_tokens": response.usage_metadata.candidates_token_count,
+                }
+
+            return AIResponse(
+                content=text,
+                model=self.model,
+                usage=usage_data,
+                finish_reason="stop" # Not easily available in all cases
+            )
+
+        except Exception as e:
+            raise AIProviderAPIError(f"Gemini API error: {e}")
+
+    def _convert_messages(self, messages: list[AIMessage]) -> list[dict]:
+        """
+        Convert AIMessage format to Gemini format
+
+        Gemini uses:
+        - role: "user" or "model" (not "assistant")
+        - parts: list of text content
+
+        System messages are prepended to the first user message
+        """
+        gemini_messages = []
+        system_context = ""
+
+        for msg in messages:
+            if msg.role == "system":
+                # Accumulate system messages
+                system_context += msg.content + "\n\n"
+            elif msg.role == "user":
+                content = msg.content
+                if system_context:
+                    # Prepend system context to first user message
+                    content = f"{system_context}{content}"
+                    system_context = ""
+
+                gemini_messages.append({
+                    "role": "user",
+                    "parts": [content]
+                })
+            elif msg.role == "assistant":
+                gemini_messages.append({
+                    "role": "model",  # Gemini uses "model" instead of "assistant"
+                    "parts": [msg.content]
+                })
+
+        return gemini_messages
+
+    @property
+    def name(self) -> str:
+        return "gemini"

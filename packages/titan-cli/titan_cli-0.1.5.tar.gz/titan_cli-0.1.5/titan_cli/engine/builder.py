@@ -1,0 +1,159 @@
+"""
+WorkflowContextBuilder - Fluent API for building WorkflowContext.
+"""
+from __future__ import annotations
+
+from typing import Optional, Any
+
+from titan_cli.core.plugins.plugin_registry import PluginRegistry
+from titan_cli.core.models import AIConfig
+from titan_cli.core.secrets import SecretManager
+from .context import WorkflowContext
+from titan_cli.ai.client import AIClient
+from titan_cli.ai.exceptions import AIConfigurationError
+
+
+class WorkflowContextBuilder:
+    """
+    Fluent builder for WorkflowContext.
+
+    Example:
+        plugin_registry = PluginRegistry()
+        secrets = SecretManager()
+        ai_config = AIConfig(provider="anthropic", model="claude-3-haiku-20240307")
+        ctx = WorkflowContextBuilder(plugin_registry, secrets, ai_config) \\
+            .with_ai() \\
+            .build()
+    """
+
+    def __init__(
+        self,
+        plugin_registry: PluginRegistry,
+        secrets: SecretManager,
+        ai_config: Optional[AIConfig] = None
+    ):
+        """
+        Initialize builder.
+
+        Args:
+            plugin_registry: The PluginRegistry instance.
+            secrets: The SecretManager instance.
+            ai_config: Optional AI configuration.
+        """
+        self._plugin_registry = plugin_registry
+        self._secrets = secrets
+        self._ai_config = ai_config
+
+        # Service clients
+        self._ai = None
+        self._git = None
+        self._github = None
+        self._jira = None
+
+    def with_ai(self, ai_client: Optional[Any] = None) -> WorkflowContextBuilder:
+        """
+        Add AI client.
+
+        Args:
+            ai_client: Optional AIClient instance (auto-created if None)
+        """
+        if ai_client:
+            # DI pure
+            self._ai = ai_client
+        else:
+            # Convenience - auto-create from ai_config
+            if self._ai_config:
+                try:
+                    self._ai = AIClient(self._ai_config, self._secrets)
+                except AIConfigurationError:
+                    self._ai = None
+            else:
+                self._ai = None
+        return self
+
+    def with_git(self, git_client: Optional[Any] = None) -> "WorkflowContextBuilder":
+        """
+        Add Git client.
+
+        Args:
+            git_client: Optional GitClient instance (auto-created if None)
+        """
+        if git_client:
+            self._git = git_client
+        else:
+            # Auto-create from plugin registry
+            git_plugin = self._plugin_registry.get_plugin("git")
+            if git_plugin and git_plugin.is_available():
+                try:
+                    self._git = git_plugin.get_client()
+                except Exception: # Catch any exception during client retrieval
+                    self._git = None # Fail silently
+            else:
+                self._git = None
+        return self
+
+    def with_github(self, github_client: Optional[Any] = None) -> "WorkflowContextBuilder":
+        """
+        Add GitHub client.
+
+        Args:
+            github_client: Optional GitHubClient instance (auto-loaded if None)
+        """
+        if github_client:
+            self._github = github_client
+        else:
+            # Auto-create from plugin registry
+            github_plugin = self._plugin_registry.get_plugin("github")
+            if github_plugin and github_plugin.is_available():
+                try:
+                    self._github = github_plugin.get_client()
+                except Exception: # Catch any exception during client retrieval
+                    self._github = None # Fail silently
+            else:
+                self._github = None
+        return self
+
+    def with_jira(self, jira_client: Optional[Any] = None) -> "WorkflowContextBuilder":
+        """
+        Add JIRA client to workflow context.
+
+        The JIRA client is optional and only used by JIRA plugin steps.
+        Other plugin steps will have ctx.jira = None and should ignore it.
+
+        Args:
+            jira_client: Optional JiraClient instance (auto-loaded if None).
+                        If None, attempts to load from JIRA plugin registry.
+                        If plugin is not available or fails to load, sets ctx.jira = None.
+
+        Returns:
+            Self for method chaining
+
+        Note:
+            Steps from other plugins do not need to handle ctx.jira.
+            Only JIRA plugin steps should check for and use ctx.jira.
+        """
+        if jira_client:
+            self._jira = jira_client
+        else:
+            # Auto-create from plugin registry
+            jira_plugin = self._plugin_registry.get_plugin("jira")
+            if jira_plugin and jira_plugin.is_available():
+                try:
+                    self._jira = jira_plugin.get_client()
+                except Exception: # Catch any exception during client retrieval
+                    self._jira = None # Fail silently
+            else:
+                self._jira = None
+        return self
+
+
+    def build(self) -> WorkflowContext:
+        """Build the WorkflowContext."""
+        return WorkflowContext(
+            secrets=self._secrets,
+            plugin_manager=self._plugin_registry,
+            ai=self._ai,
+            git=self._git,
+            github=self._github,
+            jira=self._jira,
+        )

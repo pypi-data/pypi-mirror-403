@@ -1,0 +1,430 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+import yaml
+from dataclasses import dataclass
+from copy import deepcopy
+
+from titan_cli.core.plugins.plugin_registry import PluginRegistry
+from titan_cli.core.workflows.project_step_source import ProjectStepSource, UserStepSource, StepFunction
+
+from .workflow_sources import (
+    WorkflowSource,
+    ProjectWorkflowSource,
+    UserWorkflowSource,
+    SystemWorkflowSource,
+    PluginWorkflowSource,
+    WorkflowInfo,
+)
+from .workflow_exceptions import WorkflowNotFoundError, WorkflowError
+
+
+@dataclass
+class ParsedWorkflow:
+    """
+    A fully parsed, resolved, and merged workflow, ready to be executed.
+    This is the output of the registry's 'get_workflow' method.
+    """
+
+    name: str
+    description: str
+    source: str
+    steps: List[Dict[str, Any]]
+    params: Dict[str, Any]
+
+
+class WorkflowRegistry:
+    """
+    Central registry for discovering and managing workflows from all sources.
+
+    This class is analogous to PluginRegistry. It discovers workflows from
+    various sources (project, user, system, plugins), resolves 'extends'
+    chains, merges configurations, and caches the final, parsed workflows.
+    """
+
+    def __init__(
+        self,
+        project_root: Path,
+        plugin_registry: PluginRegistry,
+        project_step_source: ProjectStepSource,
+        user_step_source: UserStepSource = None,
+        config: Any = None
+    ):
+        """
+        Initialize the WorkflowRegistry.
+
+        Args:
+            project_root: Root path of the current project.
+            plugin_registry: Registry of installed plugins.
+            project_step_source: Source for discovering project-specific steps.
+            user_step_source: Source for discovering user-specific steps (~/.titan/steps/).
+            config: TitanConfig instance (optional, for filtering by enabled plugins).
+        """
+        self.project_root = project_root
+        self.plugin_registry = plugin_registry
+        self._project_step_source = project_step_source
+        self._user_step_source = user_step_source
+        self._config = config
+
+        # Define the base path for system workflows, assuming it's in the root of the package
+        # (e.g., titan_cli/workflows). The path is constructed relative to this file's location.
+        system_workflows_path = (
+            Path(__file__).resolve().parent.parent.parent / "workflows"
+        )
+
+        # Workflow sources are listed in order of precedence (highest to lowest).
+        self._sources: List[WorkflowSource] = [
+            ProjectWorkflowSource(project_root / ".titan" / "workflows", plugin_registry),
+            UserWorkflowSource(Path.home() / ".titan" / "workflows", plugin_registry),
+            SystemWorkflowSource(system_workflows_path, plugin_registry),
+            PluginWorkflowSource(plugin_registry), # PluginWorkflowSource takes plugin_registry once
+        ]
+
+        # Cache for fully parsed workflows (similar to PluginRegistry._plugins).
+        self._workflows: Dict[str, ParsedWorkflow] = {}
+
+        # Cache for discovered workflow metadata (to avoid re-scanning files).
+        self._discovered: Optional[List[WorkflowInfo]] = None
+
+    def discover(self) -> List[WorkflowInfo]:
+        """
+        Discovers all available workflows from all registered sources,
+        filtering out those with unmet plugin dependencies.
+        
+        This method respects precedence; if a workflow with the same name
+        exists in multiple sources, only the one from the highest-precedence
+        source is included.
+        
+        Returns:
+            A list of WorkflowInfo objects for all unique, executable workflows.
+        """
+        # Return from cache if already discovered
+        if self._discovered is not None:
+            return self._discovered
+
+        workflows: List[WorkflowInfo] = []
+        seen_names = set()
+
+        # Use enabled plugins if config is available, otherwise fall back to installed
+        if self._config:
+            available_plugins = set(self.plugin_registry.list_enabled(self._config))
+        else:
+            available_plugins = set(self.plugin_registry.list_installed())
+
+        for source in self._sources:
+            try:
+                for workflow_info in source.discover():
+                    if workflow_info.name not in seen_names:
+                        # Check if all required plugins for this workflow are available (enabled)
+                        if workflow_info.required_plugins.issubset(available_plugins):
+                            workflows.append(workflow_info)
+                            seen_names.add(workflow_info.name)
+            except Exception:
+                # Catch all exceptions from source discovery to prevent a single broken source
+                # from breaking the entire discovery process. This allows other sources to continue.
+                # TODO: Add proper logging when logger is available to help with debugging.
+                # For now, we continue silently to maintain graceful degradation.
+                continue
+
+        self._discovered = workflows
+        return workflows
+
+    def list_available(self) -> List[str]:
+        """
+        Returns a simple list of the names of all available workflows.
+        
+        Similar to PluginRegistry.list_installed().
+        """
+        return [wf.name for wf in self.discover()]
+
+    def get_workflow(self, name: str) -> Optional[ParsedWorkflow]:
+        """
+        Gets a fully parsed and resolved workflow by its name.
+
+        This is the main entry point for fetching a workflow for execution.
+        It handles finding the file, resolving the 'extends' chain,
+        merging configurations, and caching the result.
+
+        Similar to PluginRegistry.get_plugin().
+        """
+        # Return from cache if available
+        if name in self._workflows:
+            return self._workflows[name]
+
+        # Find the highest-precedence workflow file for the given name
+        workflow_file = self._find_workflow_file(name)
+        if not workflow_file:
+            return None
+
+        # Load, parse, merge, and validate the workflow
+        try:
+            parsed_workflow = self._load_and_parse(name, workflow_file)
+            # Cache the successfully parsed workflow
+            self._workflows[name] = parsed_workflow
+            return parsed_workflow
+        except (WorkflowNotFoundError, yaml.YAMLError) as e:
+            # Propagate specific workflow errors for upstream handling (e.g., UI display)
+            raise e
+        except Exception as e:
+            # Catch any other unexpected errors during parsing/merging
+            raise WorkflowError(f"An unexpected error occurred while loading workflow '{name}': {e}") from e
+
+
+    def _find_workflow_file(self, name: str) -> Optional[Path]:
+        """Finds a workflow file by name, respecting source precedence."""
+        for source in self._sources:
+            path = source.find(name)
+            if path:
+                return path
+        return None
+
+    def _ensure_unique_step_ids(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Ensures all step IDs are unique by adding numeric suffixes for duplicates.
+
+        For example, if two steps both have id="git_status", they will become
+        "git_status_1" and "git_status_2".
+
+        Args:
+            steps: List of step dictionaries
+
+        Returns:
+            List of step dictionaries with unique IDs
+        """
+        from titan_cli.core.workflows.models import WorkflowStepModel
+
+        # First, validate all steps to trigger auto-generation of IDs
+        validated_steps = []
+        for step_data in steps:
+            try:
+                step_model = WorkflowStepModel(**step_data)
+                validated_steps.append(step_model)
+            except Exception as e:
+                # If a step fails validation, re-raise with more context
+                raise WorkflowError(f"Invalid step configuration: {e}") from e
+
+        # Track ID counts and assign unique IDs
+        id_counts: Dict[str, int] = {}
+        final_steps = []
+
+        for step in validated_steps:
+            original_id = step.id
+
+            if original_id in id_counts:
+                # This ID has been used before, add a suffix
+                id_counts[original_id] += 1
+                step.id = f"{original_id}_{id_counts[original_id]}"
+            else:
+                # First occurrence of this ID
+                id_counts[original_id] = 1
+                # Check if we need to rename the first occurrence
+                if id_counts[original_id] > 1:
+                    # This shouldn't happen in this logic, but keeping for safety
+                    step.id = f"{original_id}_1"
+
+            final_steps.append(step.model_dump())
+
+        # If any ID appeared more than once, we need to rename all occurrences
+        # to maintain consistency (e.g., git_status_1, git_status_2 instead of git_status, git_status_2)
+        duplicate_ids = {id for id, count in id_counts.items() if count > 1}
+
+        if duplicate_ids:
+            # Re-process to add suffixes to ALL duplicates including first occurrence
+            final_steps = []
+            id_occurrence: Dict[str, int] = {}
+
+            for step_data in steps:
+                step_model = WorkflowStepModel(**step_data)
+                original_id = step_model.id
+
+                if original_id in duplicate_ids:
+                    id_occurrence[original_id] = id_occurrence.get(original_id, 0) + 1
+                    step_model.id = f"{original_id}_{id_occurrence[original_id]}"
+
+                final_steps.append(step_model.model_dump())
+
+        return final_steps
+
+    def _load_and_parse(self, name: str, file_path: Path) -> ParsedWorkflow:
+        """Loads and parses a single workflow file, resolving its 'extends' chain."""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f) or {}
+
+        # Resolve 'extends' chain if present
+        if "extends" in config:
+            base_config = self._resolve_extends(config["extends"])
+            config = self._merge_configs(base_config, config)
+
+        # Ensure step IDs are unique
+        steps = config.get("steps", [])
+        if steps:
+            steps = self._ensure_unique_step_ids(steps)
+
+        # Create the final ParsedWorkflow object
+        return ParsedWorkflow(
+            name=config.get("name", name),
+            description=config.get("description", ""),
+            source=self._get_source_name_from_path(file_path),
+            steps=steps,
+            params=config.get("params", {}),
+        )
+
+    def _resolve_extends(self, extends_ref: str) -> Dict[str, Any]:
+        """
+        Recursively resolves a base workflow from an 'extends' reference.
+
+        Supports:
+        - "plugin:github/create-pr"
+        - "system/quick-commit"
+        - "create-pr" (resolved by precedence)
+        """
+        # Parse the extends reference to find the correct file
+        base_workflow_path = None
+        if ":" in extends_ref:
+            source_type, ref_path = extends_ref.split(":", 1)
+            # Find a source that matches the type (e.g., 'plugin')
+            for source in self._sources:
+                # This logic assumes plugin source names are like "plugin:github", "plugin:git"
+                if source.name == source_type or source.name.startswith(f"{source_type}:"):
+                    base_workflow_path = source.find(ref_path)
+                    if base_workflow_path:
+                        break
+            if not base_workflow_path:
+                # Better error message: check if plugin is installed
+                if source_type == "plugin":
+                    plugin_name = ref_path.split("/")[0] if "/" in ref_path else None
+                    if plugin_name:
+                        installed_plugins = self.plugin_registry.list_installed()
+                        if plugin_name not in installed_plugins:
+                            raise WorkflowNotFoundError(
+                                f"Cannot extend '{extends_ref}': Plugin '{plugin_name}' is not installed.\n"
+                                f"Installed plugins: {', '.join(installed_plugins) if installed_plugins else 'none'}\n"
+                                f"Please install it from the Plugin Management menu."
+                            )
+                raise WorkflowNotFoundError(f"Base workflow '{extends_ref}' not found in source '{source_type}'.")
+        else:
+            # Normal resolution across all sources by precedence
+            base_workflow_path = self._find_workflow_file(extends_ref)
+
+        if not base_workflow_path:
+            raise WorkflowNotFoundError(f"Base workflow '{extends_ref}' not found.")
+
+        # Load the base configuration from the file
+        with open(base_workflow_path, 'r', encoding='utf-8') as f:
+            base_config = yaml.safe_load(f) or {}
+
+        # If the base itself extends another workflow, resolve it recursively
+        if "extends" in base_config:
+            parent_config = self._resolve_extends(base_config["extends"])
+            return self._merge_configs(parent_config, base_config)
+
+        return base_config
+
+    def _merge_configs(self, base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Merges an overlay configuration into a base configuration.
+        - Metadata: overlay wins
+        - Params: overlay wins (shallow merge)
+        - Steps: merged via hooks
+        """
+        merged = deepcopy(base)
+
+        # Merge metadata
+        for key in ["name", "description", "category"]:
+            if key in overlay:
+                merged[key] = overlay[key]
+
+        # Merge params (shallow merge, overlay takes precedence)
+        if "params" in overlay:
+            merged.setdefault("params", {}).update(overlay["params"])
+
+        # Merge steps using hooks defined in the overlay
+        if "hooks" in overlay and isinstance(overlay["hooks"], dict):
+            merged["steps"] = self._merge_steps_with_hooks(
+                base_steps=base.get("steps", []),
+                hooks=overlay["hooks"]
+            )
+        # If overlay specifies its own steps, it is in full control.
+        # This is implicitly handled by deepcopy and then not entering the hooks block.
+        # If 'steps' key is present in overlay, it completely replaces base 'steps' during deepcopy
+        # before the hooks logic is applied, if no 'hooks' are in overlay for step merging.
+        # So, if overlay.steps exists AND overlay.hooks is empty/not a dict, overlay.steps takes precedence.
+        elif "steps" in overlay:
+             merged["steps"] = overlay["steps"]
+
+
+        return merged
+    
+    def _merge_steps_with_hooks(self, base_steps: List[Dict], hooks: Dict[str, List[Dict]]) -> List[Dict]:
+        """Injects steps from the 'hooks' dictionary into the base step list."""
+
+        # Find all available hook points in base workflow
+        available_hooks = set()
+        for step in base_steps:
+            if "hook" in step and isinstance(step["hook"], str):
+                available_hooks.add(step["hook"])
+
+        # Add implicit 'after' hook (always available)
+        available_hooks.add("after")
+
+        # Validate that all hooks being used exist in base workflow
+        undefined_hooks = set(hooks.keys()) - available_hooks
+        if undefined_hooks:
+            from .workflow_exceptions import WorkflowError
+            raise WorkflowError(
+                f"Workflow defines hooks {sorted(undefined_hooks)} but base workflow only supports: {sorted(available_hooks)}.\n"
+                f"Available hooks in base workflow: {', '.join(sorted(available_hooks))}"
+            )
+
+        merged = []
+
+        for step in base_steps:
+            # Check if the current step is a hook point
+            if "hook" in step and isinstance(step["hook"], str):
+                hook_name = step["hook"]
+                # If the overlay provides steps for this hook, inject them
+                if hook_name in hooks:
+                    # The value from the hooks dict should be a list of step dicts
+                    injected_steps = hooks[hook_name]
+                    if isinstance(injected_steps, list):
+                        merged.extend(injected_steps)
+            else:
+                # This is a regular step, just append it
+                merged.append(step)
+
+        # Handle implicit 'after' hook for steps to be added at the very end
+        if "after" in hooks: # User's example used "after" as a hook name, not "after_workflow"
+            after_steps = hooks["after"]
+            if isinstance(after_steps, list):
+                merged.extend(after_steps)
+
+        return merged
+
+    def _get_source_name_from_path(self, file_path: Path) -> str:
+        """Determines the source ('project', 'user', etc.) from a file path."""
+        for source in self._sources:
+            if source.contains(file_path):
+                return source.name
+        return "unknown"
+
+    def reload(self):
+        """Clears all caches, forcing re-discovery and re-parsing."""
+        self._workflows.clear()
+        self._discovered = None
+
+    def get_project_step(self, step_name: str) -> Optional[StepFunction]:
+        """
+        Retrieves a loaded project step function by its name from the project step source.
+        """
+        return self._project_step_source.get_step(step_name)
+
+    def get_user_step(self, step_name: str) -> Optional[StepFunction]:
+        """
+        Retrieves a loaded user step function by its name from the user step source.
+        """
+        if self._user_step_source:
+            return self._user_step_source.get_step(step_name)
+        return None
+
+
