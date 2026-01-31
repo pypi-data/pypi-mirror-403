@@ -1,0 +1,191 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "{{metadataSchemaName}}"
+type: object
+properties:
+  fetchedMetadata:
+    type: object
+    properties:
+      criteriaReport:
+        $ref: "{{criteriaSchemaRef}}"
+      plotConfiguration:
+        type: object
+        properties:
+          title:
+            type: string
+            description: "Main title for the plot"
+          subtitle:
+            type: string
+            description: "Optional subtitle"
+          x:
+            type: object
+            properties:
+              label:
+                type: string
+                description: "X-axis label"
+              domain:
+                type: array
+                items:
+                  type: number
+                minItems: 2
+                maxItems: 2
+                description: "X-axis domain [min, max]"
+              unit:
+                type: string
+                description: "X-axis unit"
+              scale:
+                $ref: "#/$defs/axisScale"
+            required: ["label"]
+            additionalProperties: false
+          y:
+            type: object
+            properties:
+              label:
+                type: string
+                description: "Y-axis label"
+              domain:
+                type: array
+                items:
+                  type: number
+                minItems: 2
+                maxItems: 2
+                description: "Y-axis domain [min, max]"
+              unit:
+                type: string
+                description: "Y-axis unit"
+              scale:
+                $ref: "#/$defs/axisScale"
+            required: ["label"]
+            additionalProperties: false
+          marks:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                  [
+                    "circle",
+                    "triangle",
+                    "cross",
+                    "wye",
+                    "star",
+                    "square",
+                    "diamond",
+                  ]
+                description: "D3 mark/shape type"
+              fill:
+                type: string
+                description: "Fill color (CSS color or D3 color scheme)"
+              stroke:
+                type: string
+                description: "Stroke color Put 'None' for no stroke"
+              strokeWidth:
+                type: number
+                minimum: 0
+                description: "Stroke width"
+              opacity:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: "Opacity value"
+              size:
+                type: number
+                minimum: 0
+                description: "Size for symbols/points"
+            additionalProperties: false
+            description: "Array of mark specifications for the plot"
+            minItems: 1
+            maxItems: 1
+          plotType:
+            type: string
+            enum: ["scatterplot", "cameraview", "histogram1d"]
+        required: ["x", "y"]
+      additionalProperties: false
+
+    additionalProperties: false
+required: ["fetchedMetadata"]
+
+$defs:
+  axisScale:
+    type: string
+    enum: ["linear", "log", "time", "ordinal", "band", "point"]
+    default: "linear"
+    description: "D3 scale type"
+
+  # Common number definition used throughout
+  floatParameter:
+    type: number
+    minimum: -1.7976931348623157e308
+    maximum: 1.7976931348623157e308
+
+  # Telescope-specific float parameter (combines item and array)
+  floatTelescopeParameter:
+    type: array
+    minItems: 1
+    items:
+      type: array
+      minItems: 3
+      maxItems: 3
+      items:
+        - type: string
+          enum: ["type", "id"]
+        - {}
+        - $ref: "#/$defs/floatParameter"
+      allOf:
+        - if:
+            items:
+              - const: "type"
+          then:
+            items:
+              - {}
+              - type: string
+                pattern: "^(\\*|[LMS]ST_.*)$"
+        - if:
+            items:
+              - const: "id"
+          then:
+            items:
+              - {}
+              - type: integer
+                minimum: 1
+
+  # Range criterion configuration (telescope-agnostic)
+  rangeCriterionConfig:
+    type: object
+    properties:
+      min_value:
+        $ref: "#/$defs/floatParameter"
+      max_value:
+        $ref: "#/$defs/floatParameter"
+    required: ["min_value", "max_value"]
+    additionalProperties: false
+
+  # Telescope range criterion configuration (telescope-specific)
+  telescopeRangeCriterionConfig:
+    type: object
+    properties:
+      min_value:
+        $ref: "#/$defs/floatTelescopeParameter"
+      max_value:
+        $ref: "#/$defs/floatTelescopeParameter"
+    required: ["min_value", "max_value"]
+
+  # Threshold criterion configuration (telescope-agnostic)
+  thresholdCriterionConfig:
+    type: object
+    properties:
+      above:
+        type: boolean
+      threshold:
+        $ref: "#/$defs/floatParameter"
+    required: ["above", "threshold"]
+    additionalProperties: false
+
+  # Telescope threshold criterion configuration (telescope-specific)
+  telescopeThresholdCriterionConfig:
+    type: object
+    properties:
+      above:
+        type: boolean
+      threshold:
+        $ref: "#/$defs/floatTelescopeParameter"
+    required: ["above", "threshold"]
