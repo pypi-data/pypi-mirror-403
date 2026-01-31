@@ -1,0 +1,648 @@
+import struct
+import os
+from .protocol import Message, PayloadItem, parse_messages_json_folder
+from .protocol import ProtocolPayload, message
+from .protocol import DefaultPluginMessagePayload, plugin_message
+from .protocol import MessageID
+
+def handle_undefined_message(*args):
+    pass
+
+def handle_undefined_plugin_message(*args):
+    pass
+
+"""
+PLUGIN MESSAGES
+"""
+class GenericPluginMessagePayload(DefaultPluginMessagePayload):
+    plugin_message_payload = Message([
+        PayloadItem(name = 'data', dimension = 4096-4-20, datatype = "B"),
+    ])
+
+"""
+MANUAL AND VARIABLE LENGTH MESSAGES
+"""
+@message(MessageID.RESPONSE)
+class ResponsePayload(ProtocolPayload):
+    message_description = Message([
+            PayloadItem(name = 'responseID', dimension = 1, datatype = 'H'),
+            PayloadItem(name = 'repsonseLength', dimension = 1, datatype = 'H'),
+    ])
+
+    def get_varsize_item_list(self, payload_length):
+        _item_list = [
+            PayloadItem(name = 'responseID', dimension = 1, datatype = 'H'),
+            PayloadItem(name = 'repsonseLength', dimension = 1, datatype = 'H'),
+            PayloadItem(name = 'responseText', dimension = payload_length-4, datatype = 's'),
+        ]
+        return _item_list
+
+    def get_varsize_arg_from_bytes(self, inBytes):
+        payload_length = len(inBytes)
+        return payload_length
+
+    """def __init__(self, msgLength):
+        self.message_description = Message([
+            PayloadItem(name = 'responseID', dimension = 1, datatype = 'H'),
+            PayloadItem(name = 'repsonseLength', dimension = 1, datatype = 'H'),
+            PayloadItem(name = 'responseText', dimension = msgLength-24, datatype = 's'),
+        ])
+        super().__init__()"""
+
+
+@message(0x19)
+class SYSSTAT_Payload(ProtocolPayload):
+    message_description = Message([
+            PayloadItem(name = 'statMode', dimension = 1, datatype = 'I'),
+            PayloadItem(name = 'sysStat', dimension = 1, datatype = 'I'),
+    ])
+
+    @staticmethod
+    def get_varsize_item_list(stat_mode):
+        _item_list = [
+            PayloadItem(name = 'statMode', dimension = 1, datatype = 'I'),
+            PayloadItem(name = 'sysStat', dimension = 1, datatype = 'I')
+            ]
+        if(stat_mode & (1 << 0)):
+            _item_list += [PayloadItem(name = 'imuStat', dimension = 1, datatype = 'I')]
+        if(stat_mode & (1 << 1)):
+            _item_list += [PayloadItem(name = 'gnssStat', dimension = 1, datatype = 'I')]
+        if(stat_mode & (1 << 2)):
+            _item_list += [PayloadItem(name = 'magStat', dimension = 1, datatype = 'I')]
+        if(stat_mode & (1 << 3)):
+            _item_list += [PayloadItem(name = 'madcStat', dimension = 1, datatype = 'I')]
+        if(stat_mode & (1 << 4)):
+            _item_list += [PayloadItem(name = 'ekfStat', dimension = 2, datatype = 'I')]
+        if(stat_mode & (1 << 5)):
+            _item_list += [PayloadItem(name = 'ekfGeneralStat', dimension = 1, datatype = 'I')]
+        if(stat_mode & (1 << 6)):
+            _item_list += [PayloadItem(name = 'addStat', dimension = 4, datatype = 'I')]
+        if(stat_mode & (1 << 7)):
+            _item_list += [PayloadItem(name = 'serviceStat', dimension = 1, datatype = 'I')]
+        if(stat_mode & (1 << 8)):
+            _item_list += [PayloadItem(name = 'remainingAlignTime', dimension = 1, datatype = 'f')]
+        if(stat_mode & (1 << 9)):
+            _item_list += [PayloadItem(name = 'sysStat2', dimension = 1, datatype = 'I')]
+        return _item_list
+
+    @staticmethod
+    def get_varsize_arg_from_bytes(inBytes):
+        stat_mode = struct.unpack('I', inBytes[:4])[0]
+        return stat_mode
+
+
+@message(0x91)
+class CANGATEWAY_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name='device', dimension=1, datatype='B'),
+        PayloadItem(name='reserved', dimension=3, datatype='B'),
+    ])
+
+    def get_varsize_item_list(self, num_frames):
+        _can_frame = Message([
+            PayloadItem(name='data', dimension=8, datatype='B'),
+            PayloadItem(name='length', dimension=1, datatype='B'),
+            PayloadItem(name='is_extended_mid', dimension=1, datatype='B'),
+            PayloadItem(name='is_remote_frame', dimension=1, datatype='B'),
+            PayloadItem(name='reserved', dimension=1, datatype='B'),
+            PayloadItem(name='mid', dimension=1, datatype='I'),
+            PayloadItem(name='timestamp', dimension=1, datatype='d')
+        ])
+        _item_list = [
+            PayloadItem(name='device', dimension=1, datatype='B'),
+            PayloadItem(name='reserved', dimension=3, datatype='B'),
+            PayloadItem(name='can_frames', dimension=num_frames, datatype=_can_frame)
+            ]
+        return _item_list
+
+    def get_varsize_arg_from_bytes(self, inBytes):
+        num_frames = (len(inBytes) - 4) / 24
+        return int(num_frames)
+
+
+class IMU_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'acc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'omg', dimension = 3, datatype = 'f'),
+    ])
+
+@message(0x00)
+class IMURAW_Payload(IMU_Payload):
+    pass
+
+
+@message(0x01)
+class IMUCORR_Payload(IMU_Payload):
+    pass
+
+
+@message(0x02)
+class IMUCOMP_Payload(IMU_Payload):
+    pass
+
+@message(0x03)
+class INSSOL_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'acc', dimension = 3, datatype = 'f', unit = 'm/s²', description = 'Acceleration'),
+        PayloadItem(name = 'omg', dimension = 3, datatype = 'f', unit = 'rad/s', description = 'Specific force'),
+        PayloadItem(name = 'rpy', dimension = 3, datatype = 'f', unit = 'rad', description = 'Angle'),
+        PayloadItem(name = 'vel', dimension = 3, datatype = 'f', unit = 'm/s', description = 'Velocity'),
+        PayloadItem(name = 'lon', dimension = 1, datatype = 'd', unit = 'rad', description = 'Longitude'),
+        PayloadItem(name = 'lat', dimension = 1, datatype = 'd', unit = 'rad', description = 'Latitude'),
+        PayloadItem(name = 'alt', dimension = 1, datatype = 'f', unit = 'm', description = 'Altitude'),
+        PayloadItem(name = 'undulation', dimension = 1, datatype = 'h', unit = 'cm', description = 'Undulation'),
+        PayloadItem(name = 'DatSel', dimension = 1, datatype = 'H'),
+    ])
+
+@message(0x40)
+class POSTPROC_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'acc', dimension = 3, datatype = 'f', unit = 'm/s²', description = 'Specific force'),
+        PayloadItem(name = 'omg', dimension = 3, datatype = 'f', unit = 'rad/s', description = 'Angular rate'),
+        PayloadItem(name = 'delta_theta', dimension = 12, datatype = 'f'),
+        PayloadItem(name = 'delta_v', dimension = 12, datatype = 'f'),
+        PayloadItem(name = 'q_nb', dimension = 4, datatype = 'd'),
+        PayloadItem(name = 'pos', dimension = 3, datatype = 'd'),
+        PayloadItem(name = 'vel', dimension = 3, datatype = 'd', unit = 'm/s', description = 'NED Velocity'),
+        PayloadItem(name = 'sysStat', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'ekfStat', dimension = 2, datatype = 'I'),
+        PayloadItem(name = 'odoSpeed', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'odoTicks', dimension = 1, datatype = 'i'),
+        PayloadItem(name = 'odoInterval', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'odoTrigEvent', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'odoNextEvent', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x47)
+class INSSOLECEF_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'acc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'omg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'pos_ecef', dimension = 3, datatype = 'd'),
+        PayloadItem(name = 'vel_ecef', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'q_nb', dimension = 4, datatype = 'f'),
+    ])
+
+@message(0x48)
+class EKFSTDDEVECEF_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'Pos', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'Vel', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'Rpy', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'BiasAcc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'BiasOmg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'MaAcc', dimension = 9, datatype = 'f'),
+        PayloadItem(name = 'MaOmg', dimension = 9, datatype = 'f'),
+        PayloadItem(name = 'ScfOdo', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'MaOdo', dimension = 2, datatype = 'f'),
+    ])
+
+@message(0x49)
+class LOADFACTOR_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'LoadFactor', dimension = 3, datatype = 'f'),
+    ])
+
+@message(0x50)
+class OMGDOT_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'AngAcc', dimension = 3, datatype = 'f'),
+    ])
+
+@message(0x56)
+class IMU_FILTERED_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'Acc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'Omg', dimension = 3, datatype = 'f'),
+    ])
+@message(0x65)
+class MAGDATA2_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name='rawx', dimension=1, datatype='i'),
+        PayloadItem(name='rawy', dimension=1, datatype='i'),
+        PayloadItem(name='rawz', dimension=1, datatype='i'),
+        PayloadItem(name='bit_error', dimension=1, datatype='B'),
+        PayloadItem(name='reserved', dimension=3, datatype='B'),
+    ])
+@message(0x1a)
+class MAGHDG_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'MagHdg', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'MagCOG', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'Deviation', dimension = 1, datatype = 'f'),
+    ])
+
+@message(0x04)
+class INSRPY_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'rpy', dimension = 3, datatype = 'f'),
+    ])
+
+@message(0x05)
+class INSDCM_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'DCM', dimension = 9, datatype = 'f'),
+    ])
+
+@message(0x06)
+class INSQUAT_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'quat', dimension = 4, datatype = 'f'),
+    ])
+
+@message(0x0A)
+class INSPOSLLH_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'lon', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'lat', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'alt', dimension = 1, datatype = 'f'),
+    ])
+
+@message(0x0C)
+class INSPOSUTM_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'zone', dimension = 1, datatype = 'i'),
+        PayloadItem(name = 'easting', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'northing', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'height', dimension = 1, datatype = 'f'),
+    ])
+
+@message(0x0B)
+class INSPOSECEF_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'pos', dimension = 3, datatype = 'd'),
+    ])
+
+class INSVEL_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'vel', dimension = 3, datatype = 'f'),
+    ])
+
+@message(0x07)
+class INSVELNED_Payload(INSVEL_Payload):
+    pass
+
+@message(0x08)
+class INSVELECEF_Payload(INSVEL_Payload):
+    pass
+
+@message(0x09)
+class INSVELBODY_Payload(INSVEL_Payload):
+    pass
+
+@message(0x23)
+class INSVELENU_Payload(INSVEL_Payload):
+    pass
+
+@message(0x18)
+class MAGDATA_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'field', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'magHdg', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'magBank', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'magElevation', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'magDeviation', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'status', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x17)
+class AIRDATA_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'TAS', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'IAS', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'baroAlt', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'baroAltRate', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'Pd', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'Ps', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'OAT', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'estBias', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'estScaleFactor', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'estBiasStdDev', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'estScaleFactorStdDev', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'status', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x0e)
+class INSTRACKACC_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'AccACV', dimension = 3, datatype = 'f'),
+    ])
+
+@message(0x0F)
+class EKFSTDDEV_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'pos', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'vel', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'tilt', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'biasAcc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'biasOmg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'scfAcc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'scfOmg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'scfOdo', dimension = 1, datatype = 'f'),
+    ])
+
+@message(0x28)
+class EKFSTDDEV2_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'pos', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'vel', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'rpy', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'biasAcc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'biasOmg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'fMaAcc', dimension = 9, datatype = 'f'),
+        PayloadItem(name = 'fMaOmg', dimension = 9, datatype = 'f'),
+        PayloadItem(name = 'scfOdo', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'fMaOdo', dimension = 2, datatype = 'f'),
+    ])
+
+@message(0x27)
+class EKFERROR2_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'biasAcc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'biasOmg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'fMaAcc', dimension = 9, datatype = 'f'),
+        PayloadItem(name = 'fMaOmg', dimension = 9, datatype = 'f'),
+        PayloadItem(name = 'scfOdo', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'maOdo', dimension = 2, datatype = 'f'),
+    ])
+
+@message(0x10)
+class EKFERROR_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'biasAcc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'biasOmg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'scfAcc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'scfOmg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'scfOdo', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'maOdo', dimension = 2, datatype = 'f'),
+    ])
+
+@message(0x29)
+class EKFPOSCOVAR_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'fPosCovar', dimension = 9, datatype = 'f'),
+    ])
+
+@message(0x21)
+class POWER_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'power', dimension = 32, datatype = 'f'),
+    ])
+
+@message(0x22)
+class TEMP_Payload(ProtocolPayload):
+    
+    message_description = Message([
+        PayloadItem(name = 'temp_power_pcb', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'temp_switcher', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'temp_oem628', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'temp_oem615', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'temp_cpu', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'temp_acc', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'temp_omg', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'temp_other', dimension = 5, datatype = 'f'),
+    ])
+
+@message(0x1F)
+class HEAVE_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'StatFiltPos', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'AppliedFreqHz', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'AppliedAmplMeter', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'AppliedSigWaveHeightMeter', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'PZpos', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'ZDpos', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'ZDvel', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'AccZnavDown', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'HeavePosVelDown', dimension = 2, datatype = 'd'),
+        PayloadItem(name = 'HeaveAlgoStatus1', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'HeaveAlgoStatus2', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x24)
+class CANSTAT_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'uiErrorMask', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'ucControllerStatus', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'ucTransceiverStatus', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'ucProtocolStatus', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'ucProtocolLocation', dimension = 1, datatype = 'B'),
+    ])
+
+@message(0x1D)
+class ARINC429STAT_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'uiStatus', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x26)
+class TIME_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'sysTime', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'ImuInterval', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'TimeSincePPS', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'PPS_IMUtime', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'PPS_GNSStime', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'GNSSbias', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'GNSSbiasSmoothed', dimension = 1, datatype = 'd'),
+    ])
+
+@message(0x12)
+class GNSSSOL_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'lon', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'lat', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'alt', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'undulation', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'velNED', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'stdDevPos', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'stdDevVel', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'solStatus', dimension = 1, datatype = 'H'),
+        PayloadItem(name = 'posType', dimension = 1, datatype = 'H'),
+        PayloadItem(name = 'pdop', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'satsUsed', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'solTracked', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'baseID', dimension = 1, datatype = 'H'),
+        PayloadItem(name = 'diffAge', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'solAge', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'gnssStatus', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x13)
+class INSGNDSPEED_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'SOG', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'COG', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'VDown', dimension = 1, datatype = 'f'),
+    ])
+
+@message(0x14)
+class GNSSTIME_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'utcOffset', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'offset', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'year', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'month', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'day', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'hour', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'minute', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'millisec', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'status', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x33)
+class GNSSHDG_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'hdg', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'stdDevHdg', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'pitch', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'stdDevPitch', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'solStat', dimension = 1, datatype = 'H'),
+        PayloadItem(name = 'solType', dimension = 1, datatype = 'H'),
+        PayloadItem(name = 'res', dimension = 1, datatype = 'H'),
+        PayloadItem(name = 'satsUsed', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'satsTracked', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'gnssStatus', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x1B)
+class GNSSLEVERARM_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'primary', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'stdDevPrimary', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'relative', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'stdDevRelative', dimension = 3, datatype = 'f'),
+    ])
+
+@message(0x1C)
+class GNSSVOTER_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'ucSatsUsed_INT', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'ucSatsUsed_EXT', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'usReserved', dimension = 1, datatype = 'H'),
+        PayloadItem(name = 'fStdDevHDG_INT', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'fStdDevHDG_EXT', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'fStdDevPOS_INT', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'fStdDevPOS_EXT', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'uiStatus', dimension = 1, datatype = 'I'),
+    ])
+
+@message(0x1E)
+class GNSSHWMON_Payload(ProtocolPayload):
+    GnssHwMonitor = Message([PayloadItem(name = 'val' , dimension = 1, datatype = 'f'),
+                             PayloadItem(name = 'status' , dimension = 1, datatype = 'I')])
+    
+    message_description = Message([PayloadItem(name = 'GnssHwMonitor' , dimension = 16, datatype = GnssHwMonitor)])
+
+@message(0x16)
+class WHEELDATA_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'odoSpeed', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'ticks', dimension = 1, datatype = 'i'),
+    ])
+
+@message(0x34)
+class EVENTTIME_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'dGpsTime_EVENT_0', dimension = 1, datatype = 'd'),
+        PayloadItem(name = 'dGpsTime_EVENT_1', dimension = 1, datatype = 'd'),
+    ])
+
+@message(0x35)
+class OMGINT_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'omgINT', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'omgINTtime', dimension = 1, datatype = 'f'),
+    ])
+
+@message(0x42)
+class CSACDATA_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'status', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'alarm', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'serialNum', dimension = 32, datatype = 's'),
+        PayloadItem(name = 'mode', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'contrast', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'laserCurrent', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'tcx0', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'heatP', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'sig', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'temperature', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'steer', dimension = 1, datatype = 'i'),
+        PayloadItem(name = 'atune', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'phase', dimension = 1, datatype = 'i'),
+        PayloadItem(name = 'discOk', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'timeSincePowerOn', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'timeSinceLock', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'dataValid', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'reserved', dimension = 1, datatype = 'B'),
+        PayloadItem(name = 'fwStatus', dimension = 1, datatype = 'H'),
+    ])
+
+@message(0x46)
+class INSMGRS_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'Error Code', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'MGRS Position', dimension = 64, datatype = 's'),
+    ])
+
+@message(0x25)
+class GNSSSATINFO_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'SvID', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'PositionECEF', dimension = 3, datatype = 'd'),
+        PayloadItem(name = 'VelocityECEF', dimension = 3, datatype = 'd'),
+        PayloadItem(name = 'CN0', dimension = 3, datatype = 'f'),
+        PayloadItem(name = 'ClockError', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'IonoError', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'TropoError', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'Elevation', dimension = 1, datatype = 'f'),
+        PayloadItem(name = 'Azimuth', dimension = 1, datatype = 'f'),
+    ])
+
+@message(0x51)
+class GNSSSATINF_Payload(ProtocolPayload):
+
+    _satellite_info = Message([
+            PayloadItem(name='sat_system', dimension=1, datatype='I'),
+            PayloadItem(name='sat_id', dimension=1, datatype='H'),
+            PayloadItem(name='glo_freq', dimension=1, datatype='h'),
+            PayloadItem(name='cn0', dimension=1, datatype='f'),
+            PayloadItem(name='reject', dimension=1, datatype='I'),
+            PayloadItem(name='azimuth', dimension=1, datatype='f'),
+            PayloadItem(name='elevation', dimension=1, datatype='f')
+    ])
+
+    message_description = Message([
+        PayloadItem(name = 'num_obs', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'sat_observations', dimension = 0, datatype = _satellite_info)
+    ])
+
+
+    def get_varsize_item_list(self, num_obs):
+        _item_list = [
+        PayloadItem(name = 'num_obs', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'sat_observations', dimension = num_obs, datatype = self._satellite_info)
+            ]
+        return _item_list
+
+    def get_varsize_arg_from_bytes(self, inBytes):
+        num_obs = int.from_bytes(inBytes[:3],'little')
+        return num_obs
+
+
+@message(0x45)
+class NTRIPSTAT_Payload(ProtocolPayload):
+    message_description = Message([
+        PayloadItem(name = 'NtripStatus', dimension = 1, datatype = 'I'),
+        PayloadItem(name = 'LastErrorMsg', dimension = 256, datatype = 's'),
+        PayloadItem(name = 'ErrorCounter', dimension = 1, datatype = 'I'),
+    ])
+
+
+"""
+MESSAGES FROM JSON FILES
+"""
+path_json = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'json-files', 'messages')
+parse_messages_json_folder(path_json)
+
