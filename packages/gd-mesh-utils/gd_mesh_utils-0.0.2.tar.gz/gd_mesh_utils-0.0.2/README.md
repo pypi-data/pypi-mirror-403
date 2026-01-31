@@ -1,0 +1,153 @@
+# [gdmesh](https://gdmesh-a2ef81.gitlabpages.inria.fr)
+
+**gdmesh** is a lightweight Python mesh utility library. It provides tools for mesh management, format-agnostic I/O, and remeshing capabilities, built on top of pyvista.
+
+## Installation
+
+```bash
+pip install gd-mesh-utils
+```
+
+## Quick Start
+
+### 1. Creating Meshes
+
+Create meshes from points and cells:
+
+```python
+import numpy as np
+import gdmesh as gm
+
+# Create a triangle mesh
+points = np.array([
+    [0, 0, 0],
+    [1, 0, 0],
+    [0.5, 1, 0],
+])
+cells = {"triangle": np.array([[0, 1, 2]])}
+mesh = gm.Mesh(points=points, cells=cells)
+```
+
+### 2. Loading and Saving Meshes
+
+Load and save meshes in various formats using meshio:
+
+```python
+import gdmesh as gm
+
+# Load mesh from file
+mesh = gm.Mesh.load("input.stl")
+
+# Or use convenience function
+mesh = gm.load_mesh("input.vtk")
+
+# Save mesh to file
+mesh.save("output.obj")
+```
+
+### 3. Accessing Mesh Data
+
+Access mesh components as numpy arrays:
+
+```python
+# Get point coordinates
+points = mesh.points  # Shape: (n_points, 3)
+
+# Get cells
+cells = mesh.cells  # Dict: {"triangle": array, ...}
+
+# Get point and cell data
+point_data = mesh.point_data  # Dict of arrays
+cell_data = mesh.cell_data    # Dict of arrays
+```
+
+### 4. Remeshing
+
+Remesh surfaces and volumes using pymmg (mmgs/mmg3d under the hood):
+
+```python
+# Surface remeshing
+remeshed = mesh.remesh_surface()
+
+# Volume remeshing
+remeshed = mesh.remesh_volume()
+
+# Optional: provide MMG options
+from gdmesh.remesh import MmgOptions
+opts = MmgOptions(hmax=0.3, hmin=0.05, hausd=0.01, hgrad=1.3)
+remeshed = mesh.remesh_surface(mmg_args=opts)
+```
+
+### 5. PyVista Integration
+
+Access underlying pyvista mesh for advanced operations:
+
+```python
+# Direct access to pyvista mesh
+pv_mesh = mesh.pv_mesh
+
+# Use any pyvista functionality
+pv_mesh.plot()
+pv_mesh.compute_normals()
+```
+
+### 6. Plotter
+
+Use the built-in `Plotter` wrapper for quick visualization while accepting
+`gdmesh.Mesh` instances directly:
+
+```python
+import gdmesh as gm
+
+mesh = gm.Mesh.load("input.vtk")
+with gm.Plotter(off_screen=True) as pl:
+    pl.add_mesh(mesh)
+    pl.save("preview.png")
+```
+
+### 7. Integration with gdutils
+
+Use with gdutils Container for organized mesh management:
+
+```python
+import gdutils as gd
+import gdmesh as gm
+
+out = gd.fPath(__file__, "out")
+with gd.Container(out / "meshes") as ct:
+    # Load mesh
+    mesh = gm.Mesh.load("input.stl")
+    
+    # Remesh
+    remeshed = mesh.remesh_surface()
+    
+    # Save to container
+    remeshed.save(ct / "remeshed.stl")
+    
+# Access later
+print(ct.remeshed)  # Path to remeshed mesh
+```
+
+## Features
+
+* **Mesh Types**: Support for points, lines, triangles, and tetrahedra in 3D
+* **Format Agnostic**: Read/write many formats via meshio (STL, OBJ, VTK, PLY, etc.)
+* **Remeshing**: Surface and volume remeshing using pymmg
+* **PyVista Wrapper**: Full access to pyvista functionality
+* **Clean API**: Simple, intuitive interface similar to gdutils
+
+## Supported Mesh Types
+
+* **Points**: Point clouds
+* **Lines**: Line segments
+* **Triangles**: Triangular surface meshes
+* **Tetrahedra**: Tetrahedral volume meshes
+
+## Supported Formats
+
+All formats supported by meshio, including:
+- STL, OBJ, PLY
+- VTK, VTP, VTU
+- Gmsh (.msh)
+- Abaqus (.inp)
+- And many more...
