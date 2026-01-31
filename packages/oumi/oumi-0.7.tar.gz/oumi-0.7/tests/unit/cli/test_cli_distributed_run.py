@@ -1,0 +1,609 @@
+import copy
+import logging
+import sys
+import tempfile
+from unittest.mock import Mock, patch
+
+import pytest
+import typer
+from typer.testing import CliRunner
+
+from oumi.cli.cli_utils import CONTEXT_ALLOW_EXTRA_ARGS
+from oumi.cli.distributed_run import (
+    _detect_backend,
+    _extract_target_command,
+    accelerate,
+    torchrun,
+)
+from oumi.utils.logging import logger
+
+runner = CliRunner()
+
+
+#
+# Fixtures
+#
+@pytest.fixture
+def app():
+    fake_app = typer.Typer()
+    fake_app.command(context_settings=CONTEXT_ALLOW_EXTRA_ARGS)(accelerate)
+    fake_app.command(context_settings=CONTEXT_ALLOW_EXTRA_ARGS)(torchrun)
+    yield fake_app
+
+
+@pytest.fixture
+def mock_os():
+    with patch("oumi.cli.distributed_run.os") as os_mock:
+        yield os_mock
+
+
+@pytest.fixture
+def mock_popen():
+    with patch("oumi.cli.distributed_run.Popen") as popen_mock:
+        yield popen_mock
+
+
+@pytest.fixture
+def mock_subprocess():
+    with patch("oumi.cli.distributed_run.subprocess") as subprocess_mock:
+        yield subprocess_mock
+
+
+@pytest.fixture
+def mock_torch():
+    torch_mock = Mock()
+    with patch.dict("sys.modules", {"torch": torch_mock}):
+        yield torch_mock
+
+
+def test_torchrun_skypilot_single_gpu(
+    app,
+    mock_os,
+    mock_popen,
+    monkeypatch,
+):
+    test_env_vars = {
+        "SKYPILOT_NODE_IPS": "mymachine",
+        "SKYPILOT_NODE_RANK": 0,
+        "SKYPILOT_NUM_GPUS_PER_NODE": 1,
+    }
+    mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+    mock_process.wait.return_value = 0
+
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+    _ = runner.invoke(
+        app,
+        [
+            "torchrun",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+            "--log-level",
+            "ERROR",
+        ],
+    )
+
+    mock_popen.assert_called_once_with(
+        [
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+        ],
+        env=copy.deepcopy(test_env_vars),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    assert logger.level == logging.ERROR
+
+
+def test_torchrun_skypilot_multi_gpu(
+    app,
+    mock_os,
+    mock_popen,
+    monkeypatch,
+):
+    test_env_vars = {
+        "SKYPILOT_NODE_IPS": "x111\nx222\nx333\n",
+        "SKYPILOT_NODE_RANK": 2,
+        "SKYPILOT_NUM_GPUS_PER_NODE": 4,
+        # Define the redundant OUMI_ variables to activate consistency checks.
+        "OUMI_TOTAL_NUM_GPUS": 12,
+        "OUMI_NUM_NODES": 3,
+        "OUMI_MASTER_ADDR": "x111",
+    }
+    mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+    mock_process.wait.return_value = 0
+
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+    _ = runner.invoke(
+        app,
+        [
+            "torchrun",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+            "--log-level",
+            "ERROR",
+        ],
+    )
+
+    mock_popen.assert_called_once_with(
+        [
+            "torchrun",
+            "--nnodes=3",
+            "--node-rank=2",
+            "--nproc-per-node=4",
+            "--master-addr=x111",
+            "--master-port=8007",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+        ],
+        env=copy.deepcopy(test_env_vars),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    assert logger.level == logging.ERROR
+
+
+def test_torchrun_polaris_multi_gpu(
+    app,
+    mock_os,
+    mock_popen,
+    monkeypatch,
+):
+    with tempfile.NamedTemporaryFile("w+t") as file_nodelist:
+        # file_nodelist.name
+        file_nodelist.writelines(["z111\n", "x222\n", "x333\n"])
+        file_nodelist.flush()
+
+        test_env_vars = {
+            "PBS_NODEFILE": file_nodelist.name,
+            "PMI_RANK": 1,
+            "PBS_JOBID": "123456.polaris",
+            # Define the redundant OUMI_ variables to activate consistency checks.
+            "OUMI_TOTAL_NUM_GPUS": 12,
+            "OUMI_NUM_NODES": 3,
+            "OUMI_MASTER_ADDR": "z111",
+        }
+        mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+
+        mock_process = Mock()
+        mock_popen.return_value = mock_process
+        mock_process.wait.return_value = 0
+
+        monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+        monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+        _ = runner.invoke(
+            app,
+            [
+                "torchrun",
+                "-m",
+                "oumi",
+                "train",
+                "--training.max_steps",
+                "21",
+                "--log-level",
+                "DEBUG",
+            ],
+        )
+
+        mock_popen.assert_called_once()
+        mock_popen.assert_called_once_with(
+            [
+                "torchrun",
+                "--nnodes=3",
+                "--node-rank=1",
+                "--nproc-per-node=4",
+                "--master-addr=z111",
+                "--master-port=8007",
+                "-m",
+                "oumi",
+                "train",
+                "--training.max_steps",
+                "21",
+            ],
+            env=copy.deepcopy(test_env_vars),
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            bufsize=1,
+            universal_newlines=True,
+        )
+        assert logger.level == logging.DEBUG
+
+
+def test_torchrun_slurm_multi_gpu(
+    app,
+    mock_os,
+    mock_popen,
+    mock_subprocess,
+    mock_torch,
+    monkeypatch,
+):
+    test_env_vars = {
+        "SLURM_NODELIST": "frontier[04316-04317]",
+        "SLURM_NODEID": 1,
+        "SLURM_JOBID": "123456.frontier",
+        # Define the redundant OUMI_ variables to activate consistency checks.
+        "OUMI_TOTAL_NUM_GPUS": 16,
+        "OUMI_NUM_NODES": 2,
+        "OUMI_MASTER_ADDR": "frontier04316",
+    }
+    mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+    mock_torch.cuda.device_count.return_value = 8
+
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+    mock_process.wait.return_value = 0
+
+    mock_subprocess_run = Mock()
+    mock_subprocess.run.return_value = mock_subprocess_run
+    mock_subprocess_run.stdout = "frontier04316\nfrontier04317"
+
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+    _ = runner.invoke(
+        app,
+        [
+            "torchrun",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "21",
+            "--log-level",
+            "DEBUG",
+        ],
+    )
+
+    mock_popen.assert_called_once()
+    mock_popen.assert_called_once_with(
+        [
+            "torchrun",
+            "--nnodes=2",
+            "--node-rank=1",
+            "--nproc-per-node=8",
+            "--master-addr=frontier04316",
+            "--master-port=8007",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "21",
+        ],
+        env=copy.deepcopy(test_env_vars),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    assert logger.level == logging.DEBUG
+
+
+def test_accelerate_skypilot_multi_gpu(
+    app,
+    mock_os,
+    mock_popen,
+    monkeypatch,
+):
+    test_env_vars = {
+        "SKYPILOT_NODE_IPS": "x111\nx222\nx333\n",
+        "SKYPILOT_NODE_RANK": 2,
+        "SKYPILOT_NUM_GPUS_PER_NODE": 4,
+        # Define the redundant OUMI_ variables to activate consistency checks.
+        "OUMI_TOTAL_NUM_GPUS": 12,
+        "OUMI_NUM_NODES": 3,
+        "OUMI_MASTER_ADDR": "x111",
+    }
+    mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+    mock_process.wait.return_value = 0
+
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+    _ = runner.invoke(
+        app,
+        [
+            "accelerate",
+            "launch",
+            "-m",
+            "oumi",
+            "evaluate",
+            "--log-level",
+            "DEBUG",
+        ],
+    )
+
+    mock_popen.assert_called_once_with(
+        [
+            "accelerate",
+            "launch",
+            "--num_machines=3",
+            "--machine_rank=2",
+            "--num_processes=12",
+            "--main_process_ip=x111",
+            "--main_process_port=8007",
+            "-m",
+            "oumi",
+            "evaluate",
+        ],
+        env=copy.deepcopy(test_env_vars),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    assert logger.level == logging.DEBUG
+
+
+def test_torchrun_localmachine_multi_gpu(
+    app,
+    mock_os,
+    mock_popen,
+    mock_torch,
+    monkeypatch,
+):
+    test_env_vars = {
+        # No environment vars set
+    }
+    mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+    mock_torch.cuda.device_count.return_value = 8
+
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+    mock_process.wait.return_value = 0
+
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+    _ = runner.invoke(
+        app,
+        [
+            "torchrun",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+            "--log-level",
+            "ERROR",
+        ],
+    )
+
+    mock_popen.assert_called_once_with(
+        [
+            "torchrun",
+            "--nnodes=1",
+            "--node-rank=0",
+            "--nproc-per-node=8",
+            "--master-addr=127.0.0.1",
+            "--master-port=8007",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+        ],
+        env=copy.deepcopy(test_env_vars),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    assert logger.level == logging.ERROR
+
+
+def test_torchrun_localmachine_multi_gpu_masteraddress(
+    app,
+    mock_os,
+    mock_popen,
+    mock_torch,
+    monkeypatch,
+):
+    test_env_vars = {"MASTER_ADDRESS": "111.0.0.0", "MASTER_PORT": 1337}
+    mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+    mock_torch.cuda.device_count.return_value = 8
+
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+    mock_process.wait.return_value = 0
+
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+    _ = runner.invoke(
+        app,
+        [
+            "torchrun",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+            "--log-level",
+            "ERROR",
+        ],
+    )
+
+    mock_popen.assert_called_once_with(
+        [
+            "torchrun",
+            "--nnodes=1",
+            "--node-rank=0",
+            "--nproc-per-node=8",
+            "--master-addr=111.0.0.0",
+            "--master-port=1337",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "20",
+        ],
+        env=copy.deepcopy(test_env_vars),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    assert logger.level == logging.ERROR
+
+
+#
+# Tests for _detect_backend
+#
+def test_detect_backend_skypilot(monkeypatch):
+    monkeypatch.setenv("SKYPILOT_NODE_RANK", "0")
+    monkeypatch.delenv("PBS_NODEFILE", raising=False)
+    monkeypatch.delenv("SLURM_NODELIST", raising=False)
+
+    assert _detect_backend() == "skypilot"
+
+
+def test_detect_backend_polaris(monkeypatch):
+    monkeypatch.delenv("SKYPILOT_NODE_RANK", raising=False)
+    monkeypatch.setenv("PBS_NODEFILE", "/path/to/nodefile")
+    monkeypatch.delenv("SLURM_NODELIST", raising=False)
+
+    assert _detect_backend() == "polaris"
+
+
+def test_detect_backend_slurm(monkeypatch):
+    monkeypatch.delenv("SKYPILOT_NODE_RANK", raising=False)
+    monkeypatch.delenv("PBS_NODEFILE", raising=False)
+    monkeypatch.setenv("SLURM_NODELIST", "node[001-002]")
+
+    assert _detect_backend() == "slurm"
+
+
+def test_detect_backend_local(monkeypatch):
+    monkeypatch.delenv("SKYPILOT_NODE_RANK", raising=False)
+    monkeypatch.delenv("PBS_NODEFILE", raising=False)
+    monkeypatch.delenv("SLURM_NODELIST", raising=False)
+
+    assert _detect_backend() == "local"
+
+
+def test_detect_backend_priority(monkeypatch):
+    # When multiple env vars are set, skypilot takes priority
+    monkeypatch.setenv("SKYPILOT_NODE_RANK", "0")
+    monkeypatch.setenv("PBS_NODEFILE", "/path/to/nodefile")
+    monkeypatch.setenv("SLURM_NODELIST", "node[001-002]")
+
+    assert _detect_backend() == "skypilot"
+
+
+#
+# Tests for _extract_target_command
+#
+def test_extract_target_command_train():
+    args = ["-m", "oumi", "train", "--config", "test.yaml"]
+    assert _extract_target_command(args) == "train"
+
+
+def test_extract_target_command_evaluate():
+    args = ["-m", "oumi", "evaluate", "--model", "gpt2"]
+    assert _extract_target_command(args) == "evaluate"
+
+
+def test_extract_target_command_infer():
+    args = ["oumi", "infer", "--input", "test.txt"]
+    assert _extract_target_command(args) == "infer"
+
+
+def test_extract_target_command_no_oumi():
+    args = ["-m", "other_module", "train"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_oumi_at_end():
+    args = ["-m", "oumi"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_empty():
+    args = []
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_flag_after_oumi():
+    args = ["-m", "oumi", "--help"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_multiple_oumi_returns_first():
+    args = ["-m", "oumi", "train", "oumi", "evaluate"]
+    assert _extract_target_command(args) == "train"
+
+
+def test_extract_target_command_oumi_as_value():
+    args = ["--config", "oumi", "train"]
+    assert _extract_target_command(args) == "train"
+
+
+def test_extract_target_command_only_flags():
+    args = ["--verbose", "-d", "--config=test.yaml"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_oumi_with_short_flag_after():
+    args = ["-m", "oumi", "-h"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_oumi_with_long_flag_after():
+    args = ["-m", "oumi", "--version"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_oumi_followed_by_equals_arg():
+    args = ["-m", "oumi", "--config=test.yaml"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_subcommand_with_dash():
+    args = ["-m", "oumi", "-train"]
+    assert _extract_target_command(args) is None
+
+
+def test_extract_target_command_nested_subcommand():
+    args = ["-m", "oumi", "distributed", "torchrun", "train"]
+    assert _extract_target_command(args) == "distributed"
+
+
+def test_extract_target_command_whitespace_in_args():
+    args = ["-m", "oumi", "train", "--config", "path with spaces/config.yaml"]
+    assert _extract_target_command(args) == "train"
+
+
+def test_extract_target_command_special_characters():
+    args = ["-m", "oumi", "train_v2"]
+    assert _extract_target_command(args) == "train_v2"
+
+    args = ["-m", "oumi", "train.run"]
+    assert _extract_target_command(args) == "train.run"
