@@ -1,0 +1,694 @@
+"""
+picasso.zfit
+~~~~~~~~~~~~
+
+Fitting z coordinates using astigmatism.
+
+:author: Joerg Schnitzbauer, 2016
+:copyright: Copyright (c) 2016 Jungmann Lab, MPI of Biochemistry
+"""
+
+from __future__ import annotations
+
+import multiprocessing
+from concurrent import futures
+from concurrent.futures import ProcessPoolExecutor
+from typing import Literal
+
+import numba
+import yaml
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from scipy.optimize import minimize_scalar
+
+from . import lib, gausslq, gaussmle
+
+
+plt.style.use("ggplot")
+
+
+def nan_index(y: np.ndarray) -> tuple[np.ndarray, callable]:
+    """Find indices of NaN values in an array."""
+    return np.isnan(y), lambda z: z.nonzero()[0]
+
+
+def interpolate_nan(data: np.ndarray) -> np.ndarray:
+    """Linear interpolattion of NaN values in an array ``data``."""
+    nans, x = nan_index(data)
+    data[nans] = np.interp(x(nans), x(~nans), data[~nans])
+    return data
+
+
+def calibrate_z(
+    locs: pd.DataFrame,
+    info: list[dict],
+    d: float,
+    magnification_factor: float,
+    path: str | None = None,
+) -> dict:
+    """Given localizations of a calibration sample (e.g., gold beads at
+    different z positions), calibrate the z-axis by fitting a polynomial
+    to the mean spot width/height of each frame. See Huang et al.
+    Science, 2008. DOI: 10.1126/science.1153529.
+
+    Parameters
+    ----------
+    locs : pd.DataFrame
+        Localizations of a calibration sample.
+    info : list of dicts
+        Information about the calibration sample, including the number
+        of frames.
+    d : float
+        Step size in nm, i.e., the distance between the z positions of
+        the calibration sample.
+    magnification_factor : float
+        Magnification factor of the microscope, i.e., the ratio between
+        the actual z position of the calibration sample and the
+        estimated z position from the localization data.
+    path : str, optional
+        Path to save the calibration data as a YAML file. If None, the
+        calibration data will not be saved. Default is None.
+
+    Returns
+    -------
+    calibration : dict
+        Dictionary containing the calibration coefficients (i.e.,
+        polynomial coefficients), number of frames, step size, and
+        magnification factor.
+    """
+    n_frames = info[0]["Frames"]
+    range = (n_frames - 1) * d
+    frame_range = np.arange(n_frames)
+    z_range = -(frame_range * d - range / 2)  # negative so that the
+    # first frames of a bottom-to-up scan are positive z coordinates.
+
+    mean_sx = np.array(
+        [locs["sx"][locs["frame"] == _].mean() for _ in frame_range]
+    )
+    mean_sy = np.array(
+        [locs["sy"][locs["frame"] == _].mean() for _ in frame_range]
+    )
+    var_sx = np.array(
+        [locs["sx"][locs["frame"] == _].var() for _ in frame_range]
+    )
+    var_sy = np.array(
+        [locs["sy"][locs["frame"] == _].var() for _ in frame_range]
+    )
+
+    keep_x = (
+        (locs["sx"] - mean_sx[locs["frame"]]) ** 2 < var_sx[locs["frame"]]
+    ).to_numpy()
+    keep_y = (
+        (locs["sy"] - mean_sy[locs["frame"]]) ** 2 < var_sy[locs["frame"]]
+    ).to_numpy()
+    keep = keep_x & keep_y
+    locs = locs[keep]
+
+    # Fits calibration curve to the mean of each frame
+    mean_sx = np.array(
+        [locs["sx"][locs["frame"] == _].mean() for _ in frame_range]
+    )
+    mean_sy = np.array(
+        [locs["sy"][locs["frame"] == _].mean() for _ in frame_range]
+    )
+
+    # Fix nan
+    mean_sx = interpolate_nan(mean_sx)
+    mean_sy = interpolate_nan(mean_sy)
+
+    cx = np.polyfit(z_range, mean_sx, 6, full=False)
+    cy = np.polyfit(z_range, mean_sy, 6, full=False)
+
+    # make sure that the calibration curves cross at z = 0
+    z = np.linspace(z_range[0], z_range[-1], 10000)
+    spot_width = np.poly1d(cx)
+    spot_height = np.poly1d(cy)
+    z_range -= z[np.argmin(np.abs(spot_width(z) - spot_height(z)))]
+    cx = np.polyfit(z_range, mean_sx, 6, full=False)
+    cy = np.polyfit(z_range, mean_sy, 6, full=False)
+
+    calibration = {
+        "X Coefficients": [float(_) for _ in cx],
+        "Y Coefficients": [float(_) for _ in cy],
+        "Number of frames": int(n_frames),
+        "Step size in nm": float(d),
+        "Magnification factor": float(magnification_factor),
+    }
+    if path is not None:
+        with open(path, "w") as f:
+            yaml.dump(calibration, f, default_flow_style=False)
+
+    # pixelsize does not matter here anyway
+    locs = fit_z(locs, info, calibration, magnification_factor, pixelsize=130)
+    locs["z"] /= magnification_factor
+
+    plt.figure(figsize=(18, 10), constrained_layout=True)
+
+    plt.subplot(231)
+    plt.plot(z_range, mean_sx, ".-", label="x")
+    plt.plot(z_range, mean_sy, ".-", label="y")
+    plt.plot(z_range, np.polyval(cx, z_range), "0.3", lw=1.5, label="x fit")
+    plt.plot(z_range, np.polyval(cy, z_range), "0.3", lw=1.5, label="y fit")
+    plt.xlabel("Stage position")
+    plt.ylabel("Mean spot width/height")
+    plt.xlim(z_range.min(), z_range.max())
+    plt.legend(loc="best")
+
+    ax = plt.subplot(232)
+    plt.scatter(locs["sx"], locs["sy"], c="k", lw=0, alpha=0.1)
+    plt.plot(
+        np.polyval(cx, z_range),
+        np.polyval(cy, z_range),
+        lw=1.5,
+        label="calibration from fit of mean width/height",
+    )
+    plt.plot()
+    ax.set_aspect("equal")
+    plt.xlabel("Spot width")
+    plt.ylabel("Spot height")
+    plt.legend(loc="best")
+
+    plt.subplot(233)
+    plt.plot(locs["z"], locs["sx"], ".", label="x", alpha=0.2)
+    plt.plot(locs["z"], locs["sy"], ".", label="y", alpha=0.2)
+    plt.plot(
+        z_range,
+        np.polyval(cx, z_range),
+        "0.3",
+        lw=1.5,
+        label="calibration",
+    )
+    plt.plot(z_range, np.polyval(cy, z_range), "0.3", lw=1.5)
+    plt.xlim(z_range.min(), z_range.max())
+    plt.xlabel("Estimated z")
+    plt.ylabel("Spot width/height")
+    plt.legend(loc="best")
+
+    ax = plt.subplot(234)
+    plt.plot(z_range[locs["frame"]], locs["z"], ".k", alpha=0.1)
+    plt.plot(
+        [z_range.min(), z_range.max()],
+        [z_range.min(), z_range.max()],
+        lw=1.5,
+        label="identity",
+    )
+    plt.xlim(z_range.min(), z_range.max())
+    plt.ylim(z_range.min(), z_range.max())
+    ax.set_aspect("equal")
+    plt.xlabel("Stage position")
+    plt.ylabel("Estimated z")
+    plt.legend(loc="best")
+
+    ax = plt.subplot(235)
+    deviation = locs["z"] - z_range[locs["frame"]]
+    bins = lib.calculate_optimal_bins(deviation, max_n_bins=1000)
+    plt.hist(deviation, bins)
+    plt.xlabel("Deviation to true position")
+    plt.ylabel("Occurence")
+
+    ax = plt.subplot(236)
+    square_deviation = deviation**2
+    mean_square_deviation_frame = [
+        np.mean(square_deviation[locs["frame"] == _]) for _ in frame_range
+    ]
+    rmsd_frame = np.sqrt(mean_square_deviation_frame)
+    plt.plot(z_range, rmsd_frame, ".-", color="0.3")
+    plt.xlim(z_range.min(), z_range.max())
+    plt.gca().set_ylim(bottom=0)
+    plt.xlabel("Stage position")
+    plt.ylabel("Mean z precision")
+
+    plt.tight_layout(pad=2)
+
+    if path is not None:
+        dirname = path[0:-5]
+        plt.savefig(dirname + ".png", format="png", dpi=300)
+
+    plt.show()
+    return calibration
+
+
+@numba.jit(nopython=True, nogil=True)
+def _fit_z_target(
+    z: np.array,
+    sx: np.array,
+    sy: np.array,
+    cx: np.array,
+    cy: np.array,
+) -> np.array:
+    """Target function that's to be minimized for fitting the z
+    coordinates given the single-emitter image width and height as well
+    as the calibration curve coefficients. It calculates the difference
+    between the square root of the spot width/height and the polynomial
+    fit of the z-axis calibration curve. Based on Huang et al. Science,
+    2008. DOI: 10.1126/science.1153529."""
+    z2 = z * z
+    z3 = z * z2
+    z4 = z * z3
+    z5 = z * z4
+    z6 = z * z5
+    wx = (
+        cx[0] * z6
+        + cx[1] * z5
+        + cx[2] * z4
+        + cx[3] * z3
+        + cx[4] * z2
+        + cx[5] * z
+        + cx[6]
+    )
+    wy = (
+        cy[0] * z6
+        + cy[1] * z5
+        + cy[2] * z4
+        + cy[3] * z3
+        + cy[4] * z2
+        + cy[5] * z
+        + cy[6]
+    )
+    return (sx**0.5 - wx**0.5) ** 2 + (
+        sy**0.5 - wy**0.5
+    ) ** 2  # Apparently this results in slightly more accurate z coordinates
+    # (Huang et al. '08)
+
+
+def fit_z(
+    locs: pd.DataFrame,
+    info: list[dict],
+    calibration: dict,
+    magnification_factor: float,
+    pixelsize: float,
+    filter: int = 2,
+) -> pd.DataFrame:
+    """Fit z coordinates to the localizations based on the calibration
+    curve coefficients and the single-emitter image width and height.
+
+    Parameters
+    ----------
+    locs : pd.DataFrame
+        Localizations to fit the z-axis calibration curve to.
+    info : list of dicts
+        Information about the localizations, including the number of
+        frames.
+    calibration : dict
+        Calibration data containing the polynomial coefficients for
+        the x and y axes, number of frames, step size, and magnification
+        factor.
+    magnification_factor : float
+        Magnification factor of the microscope, i.e., the ratio between
+        the actual z position of the calibration sample and the
+        estimated z position from the localization data.
+    pixelsize : float
+        Camera pixel size in nm.
+    filter : int, optional
+        Filter for the z fits. If set to 0, no filtering is applied.
+        If set to 2, the z fits are filtered based on the root mean
+        square deviation (RMSD) of the z calibration. Default is 2.
+
+    Returns
+    -------
+    locs : pd.DataFrame
+        Localizations with the fitted z coordinates and their residuals
+        (d_zcalib).
+    """
+    locs = locs.copy()
+    cx = np.array(calibration["X Coefficients"])
+    cy = np.array(calibration["Y Coefficients"])
+    z = np.zeros_like(locs["x"])
+    square_d_zcalib = np.zeros_like(z)
+    sx = locs["sx"].to_numpy()
+    sy = locs["sy"].to_numpy()
+    photons = locs["photons"].to_numpy()
+    bg = locs["bg"].to_numpy()
+    print(pixelsize)
+    for i in range(len(z)):
+        # set bounds to avoid potential gaps in the calibration curve,
+        # credits to Loek Andriessen
+        result = minimize_scalar(
+            _fit_z_target, bounds=[-1000, 1000], args=(sx[i], sy[i], cx, cy)
+        )
+        z[i] = result.x
+        square_d_zcalib[i] = result.fun
+    z *= magnification_factor
+    locs["z"] = z
+    locs["d_zcalib"] = np.sqrt(square_d_zcalib)
+    locs["lpz"] = (
+        _axial_localization_precision_astig(
+            photons,
+            sx,
+            sy,
+            bg,
+            z,
+            cx,
+            cy,
+            pixelsize,
+            "gausslq",
+        )
+        * magnification_factor
+    )  # TODO: add fitting method, its actually a bad implementation, should use saxial_localization_precision
+    locs = lib.ensure_sanity(locs, info)
+    return filter_z_fits(locs, filter)
+
+
+def fit_z_parallel(
+    locs: pd.DataFrame,
+    info: list[dict],
+    calibration: dict,
+    magnification_factor: float,
+    pixelsize: float,
+    filter: int = 2,
+    asynch: bool = False,
+) -> pd.DataFrame | list[futures.Future]:
+    """Fit z coordinates to the localizations based on the calibration
+    curve coefficients and the single-emitter image width and height,
+    optionally using multiprocessing.
+
+    Parameters
+    ----------
+    locs : pd.DataFrame
+        Localizations to fit the z-axis calibration curve to.
+    info : list of dicts
+        Information about the localizations, including the number of
+        frames.
+    calibration : dict
+        Calibration data containing the polynomial coefficients for
+        the x and y axes, number of frames, step size, and magnification
+        factor.
+    magnification_factor : float
+        Magnification factor of the microscope, i.e., the ratio between
+        the actual z position of the calibration sample and the
+        estimated z position from the localization data.
+    pixelsize : float
+        Camera pixel size in nm.
+    filter : int, optional
+        Filter for the z fits. If set to 0, no filtering is applied.
+        If set to 2, the z fits are filtered based on the root mean
+        square deviation (RMSD) of the z calibration. Default is 2.
+    asynch : bool, optional
+        If True, use multiprocessing. Then, a list of futures that can
+        be used to retrieve the results asynchronously is returned. If
+        False, the function waits for all tasks to complete and returns
+        the combined results. Default is False.
+
+    Returns
+    -------
+    locs : pd.DataFrame or list of futures.Future
+        If `asynch` is False, returns a DataFrame of localizations with
+        the fitted z coordinates and their residuals (d_zcalib).
+        If `asynch` is True, returns a list of futures that can be
+        used to retrieve the results asynchronously.
+    """
+    n_workers = min(
+        60, max(1, int(0.75 * multiprocessing.cpu_count()))
+    )  # Python crashes when using >64 cores
+    n_locs = len(locs)
+    n_tasks = 100 * n_workers
+    spots_per_task = [
+        (
+            int(n_locs / n_tasks + 1)
+            if _ < n_locs % n_tasks
+            else int(n_locs / n_tasks)
+        )
+        for _ in range(n_tasks)
+    ]
+    start_indices = np.cumsum([0] + spots_per_task[:-1])
+    fs = []
+    executor = ProcessPoolExecutor(n_workers)
+    for i, n_locs_task in zip(start_indices, spots_per_task):
+        fs.append(
+            executor.submit(
+                fit_z,
+                locs[i : i + n_locs_task],
+                info,
+                calibration,
+                magnification_factor,
+                pixelsize,
+                filter=0,
+            )
+        )
+    if asynch:
+        return fs
+    with tqdm(total=n_tasks, unit="task") as progress_bar:
+        for f in futures.as_completed(fs):
+            progress_bar.update()
+    return locs_from_futures(fs, filter=filter)
+
+
+def locs_from_futures(
+    futures: list[futures.Future], filter: int = 2
+) -> pd.DataFrame:
+    """Combine the results from a list of futures (i.e.,
+    multiprocessing results) into a single DataFrame of localizations
+    with fitted z coordinates and their residuals (d_zcalib).
+
+    Parameters
+    ----------
+    futures : list of futures.Future
+        List of futures that contain the results of the z fits.
+    filter : int, optional
+        Filter for the z fits. If set to 0, no filtering is applied.
+        If set to 2, the z fits are filtered based on the root mean
+        square deviation (RMSD) of the z calibration. Default is 2.
+
+    Returns
+    -------
+    locs : pd.DataFrame
+        DataFrame of localizations with the fitted z coordinates and
+        their residuals (d_zcalib).
+    """
+    locs = [_.result() for _ in futures]
+    locs = pd.concat(locs, ignore_index=True)
+    return filter_z_fits(locs, filter)
+
+
+def filter_z_fits(locs: pd.DataFrame, range: int) -> pd.DataFrame:
+    """Filter the z fits based on the root mean square deviation (RMSD)
+    of the z calibration (d_zcalib residual). If `range` is set to 0, no
+    filtering is applied. If `range` is greater than 0, the
+    localizations with a RMSD greater than `range` are removed.
+
+    Parameters
+    ----------
+    locs : pd.DataFrame
+        Localizations with fitted z coordinates and their residuals
+        (d_zcalib).
+    range : int
+        Range for filtering the z fits. If set to 0, no filtering is
+        applied. If set to a positive value, localizations with a
+        RMSD greater than `range` times the RMSD of the z calibration
+        are removed.
+
+    Returns
+    -------
+    locs : pd.DataFrame
+        DataFrame of localizations with the fitted z coordinates and
+        their residuals (d_zcalib) after filtering.
+    """
+    if "d_zcalib" not in locs.columns:
+        return locs
+    if range > 0:
+        rmsd = np.sqrt(np.nanmean(locs["d_zcalib"] ** 2))
+        locs = locs[locs["d_zcalib"] <= range * rmsd]
+    return locs
+
+
+def axial_localization_precision(
+    locs: np.recarray,
+    info: list[dict],
+    calibration: dict,
+    fitting_method: Literal["gausslq", "gaussmle"] = "gausslq",
+    modality: Literal["astigmatic"] = "astigmatic",
+) -> np.ndarray:
+    """Calculate axial localization precision for given localizations
+    based on calibration.
+
+    Parameters
+    ----------
+    locs : np.recarray
+        Localizations.
+    info : list of dicts
+        Localizations metadata.
+    calibration : dict
+        Calibration dictionary with x and y coefficients, z step size
+        and the number of frames.
+    fitting_method : {"gausslq", "gaussmle"}, optional
+        Fitting method used to obtain 2D localization parameters (x, y,
+        sx, sy). Default is "gausslq".
+    modality : {"astigmatic"}, optional
+        3D imaging modality. Currently, only "astigmatic" is supported.
+        Default is "astigmatic".
+
+    Returns
+    -------
+    lpz: np.ndarray
+        Calculated lpz values for the given localizations in nm.
+    """
+    if modality != "astigmatic":
+        raise NotImplementedError(
+            "Currently, only 'astigmatic' modality is supported."
+        )
+    lpz = axial_localization_precision_astig(
+        locs, info, calibration, fitting_method
+    )
+    return lpz
+
+
+def axial_localization_precision_astig(
+    locs: np.recarray,
+    info: list[dict],
+    calibration: dict,
+    fitting_method: Literal["gausslq", "gaussmle"] = "gausslq",
+) -> np.ndarray:
+    """Calculate axial localization precision for astigmatic 3D imaging
+    for given localizations based on calibration.
+
+    Based on Kowalewski, Reinhardt, et al. *DOI will be added once available*.
+
+    Parameters
+    ----------
+    locs : np.recarray
+        Localizations.
+    info : list of dicts
+        Localizations metadata.
+    calibration : dict
+        Calibration dictionary with x and y coefficients, z step size
+        and the number of frames.
+    fitting_method : {"gausslq", "gaussmle"}, optional
+        Fitting method used to obtain 2D localization parameters (x, y,
+        sx, sy). Default is "gausslq".
+
+    Returns
+    -------
+    lpz: np.ndarray
+        Calculated lpz values for the given localizations in nm.
+    """
+    assert fitting_method in [
+        "gausslq",
+        "gaussmle",
+    ], "fitting_method must be 'gausslq' or 'gaussmle'."
+    assert (
+        "X Coefficients" in calibration
+        and "Y Coefficients" in calibration
+        and "Magnification factor" in calibration
+    ), "Calibration dictionary must contain 'X Coefficients', 'Y Coefficients', and 'Magnification factor'."
+
+    # get camera pixel size
+    pixelsize = lib.get_from_metadata(info, "Pixelsize")
+    if pixelsize is None:
+        raise ValueError("Pixelsize not found in info.")
+
+    photons = locs["photons"].to_numpy()
+    sx = locs["sx"].to_numpy()
+    sy = locs["sy"].to_numpy()
+    bg = locs["bg"].to_numpy()
+    mag_factor = calibration["Magnification factor"]
+    z = (
+        locs["z"].to_numpy() / mag_factor
+    )  # to pinpoint what was the actual spot size during measurement
+    cx = np.array(calibration["X Coefficients"])
+    cy = np.array(calibration["Y Coefficients"])
+    lpz = (
+        _axial_localization_precision_astig(
+            photons, sx, sy, bg, z, cx, cy, pixelsize, fitting_method
+        )
+        * mag_factor
+    )
+    return lpz
+
+
+def _axial_localization_precision_astig(
+    photons: np.ndarray,
+    sx: np.ndarray,
+    sy: np.ndarray,
+    bg: np.ndarray,
+    z: np.ndarray,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    pixelsize: float,
+    fitting_method: Literal["gausslq", "gaussmle"] = "gausslq",
+) -> np.ndarray:
+    """Calculate axial localization precision for astigmatic 3D imaging
+    based on calibration coefficients and localization parameters.
+
+    Parameters
+    ----------
+    photons : np.ndarray
+        Number of photons.
+    sx : np.ndarray
+        Single-emitter images' fitted width in camera pixels.
+    sy : np.ndarray
+        Single-emitter images' fitted height in camera pixels.
+    bg : np.ndarray
+        Background photons per pixel.
+    z : np.ndarray
+        Z positions in nm.
+    cx : np.ndarray
+        3D calibration coefficients for x.
+    cy : np.ndarray
+        3D calibration coefficients for y.
+    pixelsize : float
+        Camera pixel size in nm.
+    fitting_method : {"gausslq", "gaussmle"}, optional
+        Fitting method used to obtain 2D localization parameters (x, y,
+        sx, sy). Default is "gausslq".
+
+    Returns
+    -------
+    lpz: np.ndarray
+        Calculated lpz values for the given localizations in nm.
+    """
+    if fitting_method == "gausslq":
+        sigma_uncertainty = gausslq.sigma_uncertainty
+    elif fitting_method == "gaussmle":
+        sigma_uncertainty = gaussmle.sigma_uncertainty
+    else:
+        raise ValueError("fitting_method must be 'gausslq' or 'gaussmle'.")
+
+    wx_calib = get_calib_size(cx, z) * pixelsize
+    wy_calib = get_calib_size(cy, z) * pixelsize
+    wx_calib_prime = get_prime_calib_size(cx, z) * pixelsize
+    wy_calib_prime = get_prime_calib_size(cy, z) * pixelsize
+    sqrt_wx_calib = np.sqrt(wx_calib)
+    sqrt_wx_calib_prime = wx_calib_prime / (2 * sqrt_wx_calib)
+    sqrt_wy_calib = np.sqrt(wy_calib)
+    sqrt_wy_calib_prime = wy_calib_prime / (2 * sqrt_wy_calib)
+    se_sx = sigma_uncertainty(sx, sy, photons, bg) * pixelsize
+    se_sy = sigma_uncertainty(sy, sx, photons, bg) * pixelsize
+    delta_sqrt_wx = (1 / (2 * np.sqrt(sx * pixelsize))) * se_sx
+    delta_sqrt_wy = (1 / (2 * np.sqrt(sy * pixelsize))) * se_sy
+    swxc2 = sqrt_wx_calib_prime**2
+    swyc2 = sqrt_wy_calib_prime**2
+    swx2 = delta_sqrt_wx**2
+    swy2 = delta_sqrt_wy**2
+    lpz = np.sqrt((swxc2 * swx2 + swyc2 * swy2) / (swxc2 + swyc2) ** 2)
+    return lpz
+
+
+def get_calib_size(coeffs: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Calculate calibration spot size at the given z position given
+    the calibration coefficients. Based on Huang et al., Science 2008."""
+    size = (
+        coeffs[0] * z**6
+        + coeffs[1] * z**5
+        + coeffs[2] * z**4
+        + coeffs[3] * z**3
+        + coeffs[4] * z**2
+        + coeffs[5] * z
+        + coeffs[6]
+    )
+    return size
+
+
+def get_prime_calib_size(coeffs: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Same as ``get_calib_size`` but for the derivative of the size
+    function."""
+    size_prime = (
+        6 * coeffs[0] * z**5
+        + 5 * coeffs[1] * z**4
+        + 4 * coeffs[2] * z**3
+        + 3 * coeffs[3] * z**2
+        + 2 * coeffs[4] * z
+        + coeffs[5]
+    )
+    return size_prime
