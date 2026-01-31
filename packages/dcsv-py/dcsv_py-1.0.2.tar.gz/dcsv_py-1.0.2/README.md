@@ -1,0 +1,151 @@
+# dcsv-py
+
+[![PyPI version](https://badge.fury.io/py/dcsv-py.svg)](https://badge.fury.io/py/dcsv-py)
+[![Python versions](https://img.shields.io/pypi/pyversions/dcsv-py.svg)](https://pypi.org/project/dcsv-py/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**English** | **[Türkçe](#türkçe)**
+
+Ultra High Performance, Stackless Discord Library for Python
+
+---
+
+## English
+
+### 🚀 Features
+
+- **Stackless Architecture**: Zero caching, 100% control over memory
+- **Auto-Sharding**: Built-in, zero-config sharding support
+- **Memory Efficient**: Minimal RAM usage compared to other libraries
+- **Raw Events**: Listen to any Discord Gateway event directly
+- **Interaction Focused**: Optimized for Slash Commands and Components
+- **Async/Await**: Full async support with `aiohttp` and `websockets`
+
+### 📦 Installation
+
+```bash
+pip install dcsv-py
+```
+
+### 📝 Quick Start
+
+```python
+import asyncio
+from dcsv import Client, GatewayIntentBits
+
+client = Client({
+    'intents': (
+        GatewayIntentBits.GUILDS | 
+        GatewayIntentBits.GUILD_MESSAGES |
+        GatewayIntentBits.MESSAGE_CONTENT
+    ),
+    'shards': 'auto',
+    'debug': True
+})
+
+@client.event
+async def on_ready(user):
+    print(f"Logged in as {user['username']}")
+    await client.set_presence("with Python", 0, "online")
+
+@client.event
+async def on_messageCreate(message):
+    if message.get('content') == '!ping':
+        await client.create_message(
+            message['channel_id'], 
+            {'content': 'Pong! 🏓'}
+        )
+
+asyncio.run(client.login('YOUR_TOKEN'))
+```
+
+---
+
+## 🇹🇷 Türkçe
+
+### 🚀 Özellikler
+
+- **Stackless Mimarisi**: Sıfır önbellek, bellek üzerinde %100 kontrol
+- **Otomatik Sharding**: Yerleşik, yapılandırma gerektirmeyen sharding desteği
+- **Bellek Verimli**: Diğer kütüphanelere göre minimum RAM kullanımı
+- **Ham Olaylar**: Herhangi bir Discord Gateway olayını doğrudan dinleme
+- **Etkileşim Odaklı**: Slash komutlar ve bileşenler için optimize edilmiş
+
+### 📦 Kurulum
+
+```bash
+pip install dcsv-py
+```
+
+### 📝 Hızlı Başlangıç
+
+```python
+import asyncio
+from dcsv import Client, GatewayIntentBits
+
+client = Client({
+    'intents': (
+        GatewayIntentBits.GUILDS | 
+        GatewayIntentBits.GUILD_MESSAGES |
+        GatewayIntentBits.MESSAGE_CONTENT
+    ),
+    'shards': 'auto',
+    'debug': True
+})
+
+@client.event
+async def on_ready(user):
+    print(f"Giriş yapıldı: {user['username']}")
+    await client.set_presence("Python ile", 0, "online")
+
+@client.event
+async def on_messageCreate(message):
+    if message.get('author', {}).get('bot'):
+        return
+    
+    if message.get('content') == '!ping':
+        await client.create_message(
+            message['channel_id'], 
+            {'content': 'Pong! 🏓 (Stackless Hızında)'}
+        )
+
+TOKEN = "BOT_TOKENINIZ_BURAYA"
+asyncio.run(client.login(TOKEN))
+```
+
+### 🔧 Gelişmiş Kullanım
+
+#### Slash Komutlar
+```python
+@client.event
+async def on_interactionCreate(interaction):
+    if interaction.command_name == 'ping':
+        await interaction.reply({
+            'content': 'Pong! (Slash Komut)'
+        })
+```
+
+#### Embed Örneği
+```python
+from dcsv import Embed
+
+embed = (
+    Embed()
+    .set_title('Başlık')
+    .set_description('Açıklama')
+    .set_color(0x5865F2)
+    .add_field('Alan 1', 'Değer 1', True)
+    .set_footer('dcsv-py ile oluşturuldu')
+)
+
+await client.create_message(channel_id, {'embeds': [embed.to_dict()]})
+```
+
+### ⚠️ Önemli Notlar
+
+- **Intent'ler**: Gerekli intent'leri [Discord Developer Portal](https://discord.com/developers/applications)'dan açmayı unutmayın.
+- **Stackless**: Bu kütüphane önbellek kullanmaz. Verilere ihtiyacınız varsa `client.request()` ile API'den çekin.
+
+### 📄 Lisans
+
+MIT License - detaylar için LICENSE dosyasına bakın.
