@@ -1,0 +1,447 @@
+Metadata-Version: 2.4
+Name: ytdlp-simple-api
+Version: 0.0.1
+Summary: API for downloading media from YouTube and other platforms with various download modes, and manages cookies for accessing content that requires authorization.
+Project-URL: Homepage, https://github.com/imbecility/ytdlp-simple-api
+License-Expression: MIT
+License-File: LICENSE
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Multimedia
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.128.0
+Requires-Dist: python-multipart>=0.0.22
+Requires-Dist: uvicorn>=0.40.0
+Requires-Dist: ytdlp-simple
+Description-Content-Type: text/markdown
+
+# ytdlp_simple_api
+
+ytdlp_simple_api — это FastAPI-сервер для скачивания видео и аудио с YouTube и других платформ, поддерживает различные режимы загрузки: лучшее качество, аудио для транскрипции, видео для мессенджеров, полностью ручные настройки, управляет файлами cookie для доступа к контенту, требующему авторизации.
+
+## Оглавление
+
+*   [Особенности](#особенности)
+*   [Установка](#установка)
+*   [Конфигурация](#конфигурация)
+    *   [Переменные окружения](#переменные-окружения)
+*   [Использование API](#использование-api)
+    *   [Аутентификация](#аутентификация)
+    *   [Эндпоинты загрузки](#эндпоинты-загрузки)
+        *   [`POST /download/best-audio`](#post-downloadbest-audio)
+        *   [`POST /download/transcription-audio`](#post-downloadtranscription-audio)
+        *   [`POST /download/video-for-chat`](#post-downloadvideo-for-chat)
+        *   [`POST /download/best-quality`](#post-downloadbest-quality)
+        *   [`POST /download/manual`](#post-downloadmanual)
+    *   [Эндпоинты файлов](#эндпоинты-файлов)
+        *   [`GET /files`](#get-files)
+        *   [`GET /files/{filename}`](#get-filesfilename)
+        *   [`DELETE /files/{filename}`](#delete-filesfilename)
+    *   [Эндпоинты файлов Cookie](#эндпоинты-файлов-cookie)
+        *   [`GET /cookies`](#get-cookies)
+        *   [`POST /cookies`](#post-cookies)
+        *   [`POST /cookies/text`](#post-cookiestext)
+        *   [`GET /cookies/{filename}`](#get-cookiesfilename)
+        *   [`DELETE /cookies/{filename}`](#delete-cookiesfilename)
+    *   [Системные эндпоинты](#системные-эндпоинты)
+        *   [`GET /`](#get-)
+        *   [`POST /cleanup`](#post-cleanup)
+*   [Веб-интерфейс (UI)](#веб-интерфейс-ui)
+    *   [UI загрузки](#ui-загрузки)
+    *   [UI управления Cookie](#ui-управления-cookie)
+*   [Предупреждения и особенности](#предупреждения-и-особенности)
+    *   [Управление файлами](#управление-файлами)
+    *   [Безопасность](#безопасность)
+    *   [Производительность](#производительность)
+    *   [Логирование](#логирование)
+*   [Разработка](#разработка)
+*   [Лицензия](#лицензия)
+
+## Особенности
+
+*   **Режимы загрузки**
+    *   аудио в высоком качестве: Opus, 130 кбит/с.
+    *   аудио для транскрибации через ASR: моно, нормализованное, с передискретизацией.
+    *   видео для чатов: 480p/360p, низкий битрейт, сжатый звук.
+    *   видео в высоком качестве: VP9/AV1, Opus.
+    *   ручная настройка: разрешение, кодеки, битрейт, контейнер.
+*   **Управление cookie**
+    *   загрузка, просмотр и удаление cookie в формате Netscape для доступа к закрытому контенту.
+*   **Управление загрузками**
+    *   просмотр списка медиа-файлов, скачивание по прямой ссылке и удаление вручную.
+*   **Автоматическая очистка диска**
+    *   настраиваемый период хранения файлов, чтобы диск не переполнялся.
+*   **Защита API**
+    *   аутентификация по Bearer-токену.
+*   **Веб-интерфейс**
+    *   скачивание медиа-файлов и управление cookie через браузер.
+
+## Установка
+
+```bash
+uv add ytdlp-simple-api
+```
+
+или:
+
+```bash
+pip install ytdlp-simple-api
+```
+
+## Конфигурация
+
+Конфигурация API осуществляется через переменные окружения. Вы можете использовать файл `.env` для удобства.
+
+1.  **Создайте файл `.env`:**
+    Скопируйте `.env.example` в `.env` и отредактируйте его:
+    ```bash
+    cp .env.example .env
+    ```
+
+2.  **Запустите приложение:**
+    ```bash
+    uvicorn ytdlp_simple_api.api:app --host 0.0.0.0 --port 7860
+    ```
+    Или используйте скрипт из `__init__.py`:
+    ```bash
+    python -m ytdlp_simple_api
+    ```
+
+### Переменные окружения
+
+| Переменная         | Описание                                                                                                                                                                                                                                                                                            | Значение по умолчанию  |
+|:-------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------|
+| `PORT`             | порт, на котором будет слушать API                                                                                                                                                                                                                                                                  | `7860`                 |
+| `WEB_UI`           | `True` для включения веб-интерфейса для загрузки и управления файлами cookie в браузере. `False` для отключения.                                                                                                                                                                                    | `False`                |
+| `HIDE_HOME`        | `True` для маскировки главной страницы (`/`) UI. Полезно для развертывания на HuggingFace Spaces, где главная страница может быть заменена другим контентом. Если `True`, `/` вернет JSON с информацией о состоянии, иначе - фрейм с внешним URL.                                                   | `False`                |
+| `API_TOKEN`        | Bearer-токен для аутентификации. Если не задан, аутентификация отключена (открытый доступ). **Настоятельно рекомендуется установить в производственной среде.**                                                                                                                                     | `None`                 |
+| `DOWNLOADS_DIR`    | директория для сохранения загруженных файлов. Если не указано, будет использоваться директория по умолчанию, управляемая библиотекой `ytdlp_simple`.                                                                                                                                                | `None` (автоматически) |
+| `COOKIES_FOLDER`   | директория для хранения файлов `cookies.txt`. Если не указано, будет использоваться директория по умолчанию, управляемая библиотекой `ytdlp_simple`.                                                                                                                                                | `None` (автоматически) |
+| `FILE_RETENTION_H` | время в часах, в течение которого файлы будут храниться перед автоматической очисткой. Установите `0` для отключения автоматической очистки. **Настоятельно рекомендуется установить значение больше `0` в производственной среде для предотвращения переполнения диска.**                          | `0`                    |
+
+**Пример файла `.env`:**
+
+```dotenv
+PORT=8000
+WEB_UI=True
+HIDE_HOME=False
+API_TOKEN=your_super_secret_token_here
+DOWNLOADS_DIR=/app/downloads
+COOKIES_FOLDER=/app/cookies
+FILE_RETENTION_H=3
+```
+
+## Использование API
+
+Документация по API доступна по адресу `/docs` (Swagger UI) и `/redoc` (Redoc UI) после запуска сервера.
+
+### Аутентификация
+
+Если переменная окружения `API_TOKEN` установлена, все эндпоинты, кроме UI, будут требовать аутентификации.
+
+Для аутентификации включите заголовок `Authorization` в ваших запросах:
+
+```
+Authorization: Bearer your_super_secret_token_here
+```
+
+Если `API_TOKEN` не установлен, аутентификация отключена, и все эндпоинты доступны без токена.
+
+### Эндпоинты загрузки
+
+Все эндпоинты загрузки возвращают `DownloadResponse`:
+
+```json
+{
+  "success": true,
+  "file_url": "http://localhost:8000/files/video_abc123.mp4",
+  "filename": "video_abc123.mp4",
+  "error": null,
+  "warnings": []
+}
+```
+
+В случае ошибки:
+
+```json
+{
+  "success": false,
+  "file_url": null,
+  "filename": null,
+  "error": "Failed to download video: This video is unavailable.",
+  "warnings": ["Some warnings from yt-dlp"]
+}
+```
+
+#### `POST /download/best-audio`
+
+Скачивает аудио в максимально возможном качестве (обычно ~130 кбит/с Opus).
+**Вариант использования:** для музыки, подкастов, высококачественного извлечения аудио.
+
+*   **Request Body:** `BestAudioRequest`
+    ```json
+    {
+      "url": "string",
+      "prefer_lang": ["ru", "en"], // Optional, предпочтительные языки аудио
+      "sponsorblock": true // Optional, удалять рекламные сегменты
+    }
+    ```
+
+#### `POST /download/transcription-audio`
+
+Скачивает и подготавливает аудио для моделей преобразования речи в текст (ASR).
+**Пайплайн:** низкий битрейт → нормализация → моно → передискретизация → кодирование.
+**Вариант использования:** Whisper, Qwen-3-ASR, Gemma-3n, Microsoft VibeVoice-ASR и т.д.
+
+*   **Request Body:** `TranscriptionAudioRequest`
+    ```json
+    {
+      "url": "string",
+      "sample_rate": 16000, // Optional, 16000 или 24000 Гц
+      "output_format": "opus", // Optional, "opus", "flac" или "pcm"
+      "prefer_lang": null // Optional, предпочтительные языки аудио
+    }
+    ```
+
+#### `POST /download/video-for-chat`
+
+Скачивает видео, оптимизированное для мессенджеров (Telegram/WhatsApp и т.д.).
+**Качество:** 480p/360p, минимальный битрейт, самый маленький he-aac аудио, FPS ≤ 30.
+Корректно обрабатывает вертикальные видео (Shorts, Reels, TikTok).
+
+*   **Request Body:** `VideoForChatRequest`
+    ```json
+    {
+      "url": "string",
+      "prefer_lang": null, // Optional
+      "sponsorblock": true // Optional
+    }
+    ```
+
+#### `POST /download/best-quality`
+
+Скачивает видео в максимально доступном качестве.
+Обычно: лучшее видео VP9/AV1 + лучшее аудио Opus.
+**Вариант использования:** архивирование, редактирование, просмотр в высоком качестве.
+
+*   **Request Body:** `BestQualityRequest`
+    ```json
+    {
+      "url": "string",
+      "prefer_lang": null, // Optional
+      "sponsorblock": true, // Optional
+      "container": "mp4" // Optional, "mp4", "mkv", "webm", "mov"
+    }
+    ```
+
+#### `POST /download/manual`
+
+Полный контроль над параметрами загрузки.
+Укажите разрешение, кодеки, битрейт, контейнер и т.д.
+
+*   **Request Body:** `ManualDownloadRequest`
+    ```json
+    {
+      "url": "string",
+      "max_resolution": "4k", // Optional, "8k", "4k", "2k", "1080p", "720p", "480p", "360p", "240p", "144p"
+      "audio_bitrate": "best", // Optional, "best", "medium", "low"
+      "vcodec": "avc", // Optional, "av1", "vp9", "avc", "hevc"
+      "acodec": "opus", // Optional, "opus", "aac"
+      "speech_lang": "ru", // Optional, "orig", "ru", "en"
+      "limit_fps": false, // Optional, ограничить до 30 FPS
+      "container": "mp4", // Optional, "mp4", "mkv", "webm", "mov"
+      "sponsorblock": true // Optional
+    }
+    ```
+
+### Эндпоинты файлов
+
+#### `GET /files`
+
+Получает список всех загруженных файлов с их метаданными.
+
+*   **Response:** `list[FileInfo]`
+    ```json
+    [
+      {
+        "filename": "video_123.mp4",
+        "size_bytes": 1024000,
+        "size_human": "1.0 MB",
+        "created_at": "2023-10-27T10:00:00Z",
+        "download_url": "/files/video_123.mp4"
+      }
+    ]
+    ```
+
+#### `GET /files/{filename}`
+
+Скачивает ранее созданный файл по его имени.
+Файлы автоматически удаляются после периода хранения.
+
+*   **Path Parameter:** `filename` (string)
+*   **Response:** `FileResponse` (поток файла)
+
+#### `DELETE /files/{filename}`
+
+Вручную удаляет загруженный файл.
+
+*   **Path Parameter:** `filename` (string)
+*   **Response:**
+    ```json
+    {
+      "status": "deleted",
+      "filename": "video_123.mp4"
+    }
+    ```
+
+### Эндпоинты файлов Cookie
+
+#### `GET /cookies`
+
+Получает список всех загруженных файлов cookie с их метаданными.
+
+*   **Response:** `list[CookieFileInfo]`
+    ```json
+    [
+      {
+        "filename": "youtube_cookies.txt",
+        "size_bytes": 1500,
+        "size_human": "1.5 KB",
+        "modified_at": "2023-10-27T10:00:00Z",
+        "is_valid": true,
+        "domains": ["YouTube", "Google"]
+      }
+    ]
+    ```
+
+#### `POST /cookies`
+
+Загружает файл cookie в формате Netscape.
+
+*   **Request Body:** `multipart/form-data`
+    *   `file`: (тип `File`) Файл `cookies.txt` в формате Netscape.
+*   **Response:**
+    ```json
+    {
+      "status": "uploaded",
+      "filename": "my_cookies.txt",
+      "size": "500 B",
+      "domain_hint": ["YouTube"]
+    }
+    ```
+
+#### `POST /cookies/text`
+
+Создает файл cookie путем вставки текстового содержимого.
+
+*   **Request Body:** `CookieTextRequest`
+    ```json
+    {
+      "filename": "my_pasted_cookies.txt",
+      "content": "# Netscape HTTP Cookie File..." // Содержимое файла cookie
+    }
+    ```
+*   **Response:**
+    ```json
+    {
+      "status": "created",
+      "filename": "my_pasted_cookies.txt",
+      "size": "500 B",
+      "domains": ["YouTube"]
+    }
+    ```
+
+#### `GET /cookies/{filename}`
+
+Получает информацию о конкретном файле cookie.
+
+*   **Path Parameter:** `filename` (string)
+*   **Response:** `CookieFileInfo`
+
+#### `DELETE /cookies/{filename}`
+
+Удаляет файл cookie.
+
+*   **Path Parameter:** `filename` (string)
+*   **Response:**
+    ```json
+    {
+      "status": "deleted",
+      "filename": "my_cookies.txt"
+    }
+    ```
+
+### Системные эндпоинты
+
+#### `GET /`
+
+Проверка состояния сервиса и информация о конфигурации.
+Если `HIDE_HOME` установлен в `True`, возвращает JSON. Если `WEB_UI` включен, и `HIDE_HOME` - `False`, возвращает HTML-страницу с фреймом.
+
+*   **Response (JSON, если `HIDE_HOME=True`):**
+    ```json
+    {
+      "status": "ok",
+      "service": "ytdlp-simple-api",
+      "config": {
+        "downloads_dir": "/tmp/ytdlp_downloads",
+        "cookies_configured": true,
+        "file_retention_hours": 24
+      }
+    }
+    ```
+
+#### `POST /cleanup`
+
+Вручную запускает очистку просроченных файлов.
+
+*   **Response:**
+    ```json
+    {
+      "status": "completed",
+      "deleted_files": 5,
+      "retention_hours": 24
+    }
+    ```
+
+## Веб-интерфейс (UI)
+
+Если `WEB_UI` установлен в `True`, доступны два веб-интерфейса:
+
+### UI загрузки
+
+Доступен по адресу `/ui` или `/ui/`.
+
+Предоставляет простую форму для загрузки видео/аудио и отображает список загруженных файлов.
+
+### UI управления Cookie
+
+Доступен по адресу `/cookies-ui` или `/cookies-ui/`.
+
+Позволяет просматривать, загружать (через файл или текст) и удалять файлы cookie в формате Netscape.
+
+**Примечание:** Если `API_TOKEN` установлен, в UI появится поле для ввода токена для аутентификации. Если токен не установлен, поле аутентификации будет скрыто.
+
+
+## Предупреждения и особенности
+
+### Управление файлами
+
+*   **Временные файлы:** все загруженные файлы считаются временными если переменная окружения `FILE_RETENTION_H` установлена больше 0. **Настоятельно рекомендуется** настроить `FILE_RETENTION_H` для автоматической очистки, чтобы избежать переполнения диска.
+
+### Безопасность
+
+*   **API Token:** если API разворачивается на публичном сервере, **обязательно** нужно установить `API_TOKEN` для защиты эндпоинтов от несанкционированного доступа.
+*   **Валидация имен файлов:** API включает базовую валидацию имен файлов для предотвращения атак типа Path Traversal.
+*   **Файлы Cookie:** загружайте файлы cookie только не из основных и важных аккаунтов YouTube, X.com, и т.д., поскольку эти аккаунты могут быть заблокированы из-за злоупотреблений! Так же, любой кто сможет прочитать файлы cookies с сервера - сможет получить доступ к аккаунтам. Используйте cookies если с IP сервера невозможно скачивать контент из-за ограничений, либо если требуется обходить возрастные 18+ ограничения сервисов или получать доступ к закрытому контенту.
+
+### Производительность
+
+*   **Фоновые задачи:** очистка файлов запускается как фоновая задача при каждом запросе загрузки, чтобы не блокировать основной поток.
+*   **Конкурентные загрузки:** FastAPI может обрабатывать несколько запросов одновременно, и сами загрузки `yt-dlp` выполняются в асинхронном контексте, но чрезмерное количество одновременных загрузок может повлиять на производительность.
+
+### Логирование
+
+API использует стандартный Python-логгер. Вы можете настроить его уровень детализации в вашей среде. Сообщения о создании папок для cookie, UI-ссылки и предупреждения о `FILE_RETENTION_H` будут отображаться в консоли при запуске.
+
