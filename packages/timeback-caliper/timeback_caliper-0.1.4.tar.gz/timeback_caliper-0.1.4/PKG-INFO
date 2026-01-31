@@ -1,0 +1,247 @@
+Metadata-Version: 2.4
+Name: timeback-caliper
+Version: 0.1.4
+Summary: Timeback Caliper client for learning analytics events
+Project-URL: Homepage, https://developer.timeback.com
+Project-URL: Documentation, https://docs.timeback.com
+Project-URL: Repository, https://github.com/superbuilders/timeback-dev-python
+Author-email: Timeback <dev@timeback.dev>
+License-Expression: MIT
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Typing :: Typed
+Requires-Python: >=3.12
+Requires-Dist: timeback-common>=0.1.0
+Description-Content-Type: text/markdown
+
+# timeback-caliper
+
+Python client for sending Caliper learning analytics events to Timeback.
+
+## Installation
+
+```bash
+# pip
+pip install timeback-caliper
+
+# uv (add to a project)
+uv add timeback-caliper
+
+# uv (install into current environment)
+uv pip install timeback-caliper
+```
+
+## Quick Start
+
+```python
+from timeback_caliper import (
+    CaliperClient,
+    ActivityCompletedInput,
+    TimebackUser,
+    TimebackActivityContext,
+    TimebackApp,
+    TimebackActivityMetric,
+)
+
+# Initialize client
+client = CaliperClient(
+    env="staging",  # or "production"
+    client_id="your-client-id",
+    client_secret="your-client-secret",
+)
+
+# Send an activity completed event
+result = await client.events.send_activity(
+    sensor_id="https://myapp.example.com/sensors/main",
+    input=ActivityCompletedInput(
+        actor=TimebackUser(
+            id="https://example.edu/users/123",
+            email="student@example.edu",
+        ),
+        object=TimebackActivityContext(
+            id="https://myapp.example.com/activities/456",
+            subject="Math",
+            app=TimebackApp(name="My Learning App"),
+        ),
+        metrics=[
+            TimebackActivityMetric(type="totalQuestions", value=10),
+            TimebackActivityMetric(type="correctQuestions", value=8),
+            TimebackActivityMetric(type="xpEarned", value=150),
+        ],
+    ),
+)
+
+# Wait for processing
+status = await client.jobs.wait_for_completion(result.job_id)
+print(f"Processed {status.events_processed} events")
+```
+
+## FastAPI Integration
+
+```python
+from fastapi import FastAPI, HTTPException
+from timeback_caliper import (
+    CaliperClient,
+    ActivityCompletedInput,
+    APIError,
+)
+
+app = FastAPI()
+
+# Initialize client (reuse across requests)
+caliper = CaliperClient(
+    env="staging",
+    client_id="...",
+    client_secret="...",
+)
+
+
+@app.post("/api/activity")
+async def submit_activity(input: ActivityCompletedInput):
+    """Submit a learning activity event."""
+    try:
+        result = await caliper.events.send_activity(
+            sensor_id="https://myapp.example.com/sensors/main",
+            input=input,
+        )
+        return {"success": True, "job_id": result.job_id}
+    except APIError as e:
+        raise HTTPException(status_code=e.status_code or 500, detail=str(e))
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await caliper.close()
+```
+
+## Event Types
+
+### ActivityCompletedEvent
+
+Records when a student completes an activity with performance metrics:
+
+```python
+from timeback_caliper import (
+    ActivityCompletedInput,
+    TimebackUser,
+    TimebackActivityContext,
+    TimebackApp,
+    TimebackCourse,
+    TimebackActivityMetric,
+)
+
+input = ActivityCompletedInput(
+    actor=TimebackUser(
+        id="https://example.edu/users/123",
+        email="student@example.edu",
+        name="Jane Doe",
+        role="student",
+    ),
+    object=TimebackActivityContext(
+        id="https://myapp.example.com/activities/456",
+        subject="Math",
+        app=TimebackApp(name="My Learning App"),
+        course=TimebackCourse(name="Algebra 101"),
+    ),
+    metrics=[
+        TimebackActivityMetric(type="totalQuestions", value=10),
+        TimebackActivityMetric(type="correctQuestions", value=8),
+        TimebackActivityMetric(type="xpEarned", value=150),
+        TimebackActivityMetric(type="masteredUnits", value=1),
+    ],
+)
+
+result = await client.events.send_activity(sensor_id, input)
+```
+
+### TimeSpentEvent
+
+Records time spent on an activity:
+
+```python
+from timeback_caliper import TimeSpentInput, TimeSpentMetric
+
+input = TimeSpentInput(
+    actor=TimebackUser(id="...", email="..."),
+    object=TimebackActivityContext(id="...", subject="Reading", app=TimebackApp(name="...")),
+    metrics=[
+        TimeSpentMetric(type="active", value=1800),    # 30 minutes
+        TimeSpentMetric(type="inactive", value=300),   # 5 minutes
+    ],
+)
+
+result = await client.events.send_time_spent(sensor_id, input)
+```
+
+## Job Tracking
+
+Events are processed asynchronously. Track processing status:
+
+```python
+# Get job status
+status = await client.jobs.get_status(job_id)
+print(f"Status: {status.status}")
+
+# Wait for completion (with timeout)
+status = await client.jobs.wait_for_completion(
+    job_id,
+    timeout=60.0,      # Max wait time
+    poll_interval=1.0, # Check every second
+)
+
+if status.status == "completed":
+    print(f"Processed {status.events_processed} events")
+elif status.status == "failed":
+    print(f"Failed: {status.error}")
+```
+
+## Context Manager
+
+Use the client as an async context manager for automatic cleanup:
+
+```python
+async with CaliperClient(client_id="...", client_secret="...") as client:
+    await client.events.send_activity(sensor_id, input)
+# Client is automatically closed
+```
+
+## Error Handling
+
+```python
+from timeback_caliper import (
+    CaliperClient,
+    AuthenticationError,
+    APIError,
+)
+
+try:
+    result = await client.events.send_activity(sensor_id, input)
+except AuthenticationError:
+    print("Invalid credentials")
+except APIError as e:
+    print(f"API error ({e.status_code}): {e}")
+```
+
+## Configuration
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `env` | `str` | `None` | `"staging"` or `"production"` |
+| `base_url` | `str` | auto | Override API URL |
+| `auth_url` | `str` | auto | Override auth URL |
+| `client_id` | `str` | env var | OAuth2 client ID |
+| `client_secret` | `str` | env var | OAuth2 client secret |
+| `timeout` | `float` | `30.0` | Request timeout in seconds |
+
+### Environment Variables
+
+```bash
+CALIPER_CLIENT_ID=your-client-id
+CALIPER_CLIENT_SECRET=your-client-secret
+CALIPER_BASE_URL=https://api.staging.timeback.com
+CALIPER_TOKEN_URL=https://auth.staging.timeback.com/oauth2/token
+```
