@@ -1,0 +1,122 @@
+# Complete Data Contract Template
+# Combines schema, coercion rules, validation rules, and metadata
+#
+# Usage:
+#   from pycharter import parse_contract, validate_with_contract
+#
+#   contract = parse_contract(contract_dict)  # or parse_contract_file("contract.yaml")
+#   result = validate_with_contract(contract_dict, data)
+
+schema:
+  type: object
+  title: User
+  version: "1.0.0"
+
+  properties:
+    user_id:
+      type: string
+      description: Unique user identifier
+      minLength: 1
+      # PyCharter extension: coercion
+      coercion: coerce_to_string
+      # PyCharter extension: validations
+      validations:
+        non_empty_string: null
+
+    name:
+      type: string
+      description: User's full name
+      minLength: 1
+      maxLength: 100
+      coercion: coerce_to_stripped_string
+      validations:
+        non_empty_string: null
+        max_length:
+          threshold: 100
+
+    email:
+      type: string
+      format: email
+      description: User email address
+      coercion: coerce_to_lowercase
+      validations:
+        is_email: null
+
+    age:
+      type: integer
+      description: User age
+      minimum: 0
+      maximum: 150
+      coercion: coerce_to_integer
+      validations:
+        greater_than_or_equal_to:
+          threshold: 0
+        less_than_or_equal_to:
+          threshold: 150
+
+    status:
+      type: string
+      description: Account status
+      enum: [active, inactive, pending]
+      coercion: coerce_to_lowercase
+      validations:
+        only_allow:
+          allowed_values: [active, inactive, pending]
+
+    created_at:
+      type: string
+      format: date-time
+      description: Account creation timestamp
+      coercion: coerce_to_datetime
+
+    # Nullable field example
+    notes:
+      anyOf:
+        - type: string
+          maxLength: 500
+        - type: "null"
+      default: null
+      description: Optional notes
+      coercion: coerce_to_nullable_string
+      validations:
+        max_length:
+          threshold: 500
+
+  required:
+    - user_id
+    - name
+    - email
+    - status
+    - created_at
+
+# Contract metadata (ownership and governance nested inside)
+metadata:
+  version: "1.0.0"
+  description: User data contract
+  status: active
+  created_at: "2025-01-01T00:00:00Z"
+  created_by: data-team
+
+  # Ownership information (nested in metadata)
+  ownership:
+    owner: data-team
+    team: engineering
+
+  # Governance rules (nested in metadata)
+  governance_rules:
+    data_retention:
+      days: 365
+      reason: Standard user data retention
+    pii_fields:
+      fields: [email, name]
+    sensitivity: confidential
+    access_control:
+      read: [analytics-team, data-team]
+      write: [data-team]
+
+# Version tracking (optional - for build_contract_from_store)
+versions:
+  schema: "1.0.0"
+  coercion_rules: "1.0.0"
+  validation_rules: "1.0.0"
+  metadata: "1.0.0"

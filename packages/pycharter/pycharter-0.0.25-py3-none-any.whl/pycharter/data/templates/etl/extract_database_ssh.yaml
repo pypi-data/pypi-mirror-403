@@ -1,0 +1,40 @@
+# Template: Extract from Database via SSH Tunnel
+# Copy to your pipeline directory as extract.yaml
+# Use when database is only accessible through a bastion/jump host
+
+title: database_ssh_extraction
+description: Extract from database through SSH tunnel
+version: "1.0.0"
+
+# Source type (required)
+type: database
+
+query: |
+  SELECT id, name, email, created_at
+  FROM users
+  WHERE status = :status
+
+params:
+  status: active
+
+# Database connection (use localhost since tunnel forwards)
+connection_string: postgresql://user:pass@localhost:5433/database
+
+# SSH tunnel configuration
+ssh_tunnel:
+  enabled: true
+  host: bastion.example.com
+  port: 22
+  username: ${SSH_USER}
+  key_file: ~/.ssh/id_rsa
+  # Or use password:
+  # password: ${SSH_PASSWORD}
+
+  # Remote database endpoint (the actual database host)
+  remote_host: db.internal.example.com
+  remote_port: 5432
+
+  # Local port for tunnel (connect to this)
+  local_port: 5433
+
+batch_size: 1000

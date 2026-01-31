@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pycharter.io/schemas/etl/transform.json",
+  "title": "ETL Transform Configuration",
+  "description": "Configuration for ETL data transformation",
+  "type": "object",
+  "properties": {
+    "transform": {
+      "description": "Transform operations - can be a list (ordered) or object (legacy)",
+      "oneOf": [
+        {
+          "type": "array",
+          "description": "List of transform operations (executed in order)",
+          "items": {
+            "$ref": "#/definitions/transformOperation"
+          }
+        },
+        {
+          "$ref": "#/definitions/transformObject"
+        }
+      ]
+    },
+    "jsonata": {
+      "$ref": "#/definitions/jsonataConfig"
+    },
+    "custom_function": {
+      "$ref": "#/definitions/customFunctionConfig"
+    }
+  },
+  "definitions": {
+    "transformOperation": {
+      "type": "object",
+      "description": "A single transform operation",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "rename": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Map of old field names to new field names"
+        },
+        "convert": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["int", "integer", "float", "number", "str", "string", "bool", "boolean", "datetime", "date"]
+          },
+          "description": "Map of field names to target types"
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Map of field names to default values"
+        },
+        "add": {
+          "type": "object",
+          "description": "Map of new field names to values or expressions (supports ${field}, now(), uuid())"
+        },
+        "select": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of fields to keep"
+        },
+        "drop": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of fields to remove"
+        },
+        "filter": {
+          "type": "object",
+          "properties": {
+            "expression": { "type": "string" },
+            "field": { "type": "string" },
+            "operator": {
+              "type": "string",
+              "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "contains", "not_contains", "is_null", "is_not_null"]
+            },
+            "value": {}
+          },
+          "description": "Filter records based on condition"
+        },
+        "map": {
+          "type": "object",
+          "properties": {
+            "field": { "type": "string" },
+            "mapping": { "type": "object" },
+            "default": {}
+          },
+          "required": ["field", "mapping"],
+          "description": "Map field values using a lookup table"
+        },
+        "custom_function": {
+          "$ref": "#/definitions/customFunctionConfig"
+        }
+      }
+    },
+    "transformObject": {
+      "type": "object",
+      "description": "Legacy object format (operations applied in fixed order: rename, convert, defaults, add, select, drop)",
+      "properties": {
+        "rename": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "convert": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "defaults": {
+          "type": "object"
+        },
+        "add": {
+          "type": "object"
+        },
+        "select": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "drop": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "filter": {
+          "type": "object"
+        },
+        "custom_function": {
+          "$ref": "#/definitions/customFunctionConfig"
+        }
+      }
+    },
+    "jsonataConfig": {
+      "type": "object",
+      "required": ["expression"],
+      "properties": {
+        "expression": {
+          "type": "string",
+          "description": "JSONata expression"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["record", "batch"],
+          "default": "record",
+          "description": "Apply expression per record or to entire batch"
+        }
+      }
+    },
+    "customFunctionConfig": {
+      "type": "object",
+      "required": ["module", "function"],
+      "properties": {
+        "module": {
+          "type": "string",
+          "description": "Python module name or path"
+        },
+        "function": {
+          "type": "string",
+          "description": "Function name to call"
+        },
+        "kwargs": {
+          "type": "object",
+          "description": "Keyword arguments to pass to the function"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["record", "batch"],
+          "default": "batch",
+          "description": "Apply function per record or to entire batch"
+        }
+      }
+    }
+  }
+}

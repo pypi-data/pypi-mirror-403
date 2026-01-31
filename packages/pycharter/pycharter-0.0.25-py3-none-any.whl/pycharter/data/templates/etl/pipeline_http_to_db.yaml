@@ -1,0 +1,75 @@
+# Template: Complete HTTP-to-Database Pipeline
+# Single-file format: extract, transform, load in one file
+# Alternative: Use separate extract.yaml, transform.yaml, load.yaml files
+
+name: http_to_db_pipeline
+version: "1.0.0"
+description: Complete ETL pipeline example
+
+# =============================================================================
+# EXTRACT: HTTP API
+# =============================================================================
+extract:
+  type: http  # Required: http | file | database | cloud_storage
+  url: https://api.example.com/v1/users
+  method: GET
+  params:
+    api_key: ${API_KEY}
+    limit: 100
+  headers:
+    Accept: application/json
+  batch_size: 1000
+  response_path: data.users
+  pagination:
+    enabled: true
+    strategy: page
+    page:
+      param_name: page
+      start: 1
+    stop_conditions:
+      - type: fewer_records
+
+# =============================================================================
+# TRANSFORM: Ordered list of operations (new format)
+# =============================================================================
+transform:
+  # List format for explicit ordering
+  - rename:
+      userId: user_id
+      firstName: first_name
+      lastName: last_name
+      createdAt: created_at
+
+  - convert:
+      user_id: int
+      created_at: datetime
+
+  - defaults:
+      status: "active"
+
+  - add:
+      full_name: "${first_name} ${last_name}"
+      loaded_at: now()
+
+  - select:
+      - user_id
+      - first_name
+      - last_name
+      - full_name
+      - email
+      - status
+      - created_at
+      - loaded_at
+
+# =============================================================================
+# LOAD: PostgreSQL
+# =============================================================================
+load:
+  type: postgres  # Required: postgres | sqlite | file | cloud_storage
+  table: users
+  schema: public
+  write_method: upsert
+  primary_key: user_id
+  batch_size: 1000
+  database:
+    url: ${DATABASE_URL}

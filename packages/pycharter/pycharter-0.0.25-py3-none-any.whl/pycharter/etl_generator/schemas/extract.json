@@ -1,0 +1,234 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pycharter.io/schemas/etl/extract.json",
+  "title": "ETL Extract Configuration",
+  "description": "Configuration for ETL data extraction",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["http", "file", "database", "cloud_storage"],
+      "description": "Type of data source"
+    },
+    "batch_size": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1000,
+      "description": "Number of records per batch"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "http" } }
+      },
+      "then": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Full URL for the HTTP request"
+          },
+          "base_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL (used with endpoint)"
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "API endpoint path (used with base_url)"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+            "default": "GET",
+            "description": "HTTP method"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "HTTP headers"
+          },
+          "params": {
+            "type": "object",
+            "description": "Query parameters"
+          },
+          "body": {
+            "type": "object",
+            "description": "Request body (for POST/PUT/PATCH)"
+          },
+          "response_format": {
+            "type": "string",
+            "enum": ["json", "text", "xml"],
+            "default": "json",
+            "description": "Expected response format"
+          },
+          "response_path": {
+            "type": "string",
+            "description": "JSONPath to data array in response"
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean", "default": false },
+              "strategy": {
+                "type": "string",
+                "enum": ["page", "offset", "cursor", "link"],
+                "description": "Pagination strategy"
+              },
+              "page_param": { "type": "string" },
+              "offset_param": { "type": "string" },
+              "limit_param": { "type": "string" },
+              "cursor_param": { "type": "string" },
+              "cursor_path": { "type": "string" },
+              "next_link_path": { "type": "string" },
+              "page_size": { "type": "integer", "minimum": 1 },
+              "max_pages": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "retry": {
+            "type": "object",
+            "properties": {
+              "max_attempts": { "type": "integer", "minimum": 1, "default": 3 },
+              "backoff_factor": { "type": "number", "minimum": 0, "default": 2 },
+              "retry_on_status": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "default": [429, 500, 502, 503, 504]
+              }
+            }
+          },
+          "timeout": {
+            "type": "object",
+            "properties": {
+              "connect": { "type": "number", "minimum": 0 },
+              "read": { "type": "number", "minimum": 0 },
+              "write": { "type": "number", "minimum": 0 }
+            }
+          },
+          "rate_limit_delay": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Delay between requests in seconds"
+          }
+        },
+        "anyOf": [
+          { "required": ["url"] },
+          { "required": ["base_url", "endpoint"] }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "file" } }
+      },
+      "then": {
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path (supports glob patterns)"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["csv", "json", "jsonl", "parquet", "excel", "tsv", "xml"],
+            "description": "File format (auto-detected if not specified)"
+          },
+          "csv_options": {
+            "type": "object",
+            "properties": {
+              "delimiter": { "type": "string", "default": "," },
+              "quote_char": { "type": "string", "default": "\"" },
+              "escape_char": { "type": "string" },
+              "has_header": { "type": "boolean", "default": true },
+              "encoding": { "type": "string", "default": "utf-8" }
+            }
+          },
+          "json_options": {
+            "type": "object",
+            "properties": {
+              "encoding": { "type": "string", "default": "utf-8" },
+              "lines": { "type": "boolean", "default": false }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "database" } }
+      },
+      "then": {
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SQL query to execute"
+          },
+          "connection_string": {
+            "type": "string",
+            "description": "Database connection URL"
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" }
+            }
+          },
+          "params": {
+            "type": "object",
+            "description": "Query parameter bindings"
+          },
+          "ssh_tunnel": {
+            "type": "object",
+            "properties": {
+              "host": { "type": "string" },
+              "port": { "type": "integer", "default": 22 },
+              "username": { "type": "string" },
+              "private_key_path": { "type": "string" },
+              "remote_host": { "type": "string" },
+              "remote_port": { "type": "integer" }
+            },
+            "required": ["host", "username"]
+          }
+        },
+        "anyOf": [
+          { "required": ["connection_string"] },
+          { "required": ["database"] }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "cloud_storage" } }
+      },
+      "then": {
+        "required": ["storage"],
+        "properties": {
+          "storage": {
+            "type": "object",
+            "required": ["provider"],
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": ["s3", "gcs", "azure"],
+                "description": "Cloud storage provider"
+              },
+              "bucket": { "type": "string" },
+              "container": { "type": "string" },
+              "path": { "type": "string" },
+              "prefix": { "type": "string" },
+              "credentials": { "type": "object" }
+            }
+          },
+          "format": {
+            "type": "string",
+            "enum": ["csv", "json", "jsonl", "parquet"],
+            "description": "File format"
+          }
+        }
+      }
+    }
+  ]
+}

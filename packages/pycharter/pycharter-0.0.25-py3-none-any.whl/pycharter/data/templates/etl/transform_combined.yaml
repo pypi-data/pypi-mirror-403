@@ -1,0 +1,48 @@
+# Template: Combined Transformations
+# Apply simple ops, then JSONata, then custom function
+# Copy to your pipeline directory as transform.yaml
+
+title: combined_transformation
+description: Simple operations + JSONata + custom function
+version: "1.0.0"
+
+# Step 1: Simple operations (applied first)
+transform:
+  rename:
+    userId: user_id
+    fullName: full_name
+
+  convert:
+    score: float
+    count: int
+
+  defaults:
+    source: "api"
+
+  add:
+    loaded_at: "now()"
+
+  select:
+    - user_id
+    - full_name
+    - score
+    - source
+    - loaded_at
+
+# Step 2: JSONata expressions (applied after simple ops)
+# Requires: pip install pyjsonata
+jsonata:
+  # Mode: record (per-record) or batch (all records)
+  mode: record
+  expression: |
+    $ ~> |$|{
+      "score_pct": score * 100,
+      "name_upper": $uppercase(full_name)
+    }|
+
+# Step 3: Custom function (applied last)
+# custom_function:
+#   module: mypackage.transforms
+#   function: enrich_records
+#   kwargs:
+#     add_metadata: true
