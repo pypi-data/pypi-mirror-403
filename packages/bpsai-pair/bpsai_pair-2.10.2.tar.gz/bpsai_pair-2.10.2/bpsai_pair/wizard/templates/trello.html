@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Trello Integration - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="trello-page">
+    <div class="page-header">
+        <h2>Trello Integration</h2>
+        <p class="page-description">Connect your Trello board for task tracking and workflow automation.</p>
+    </div>
+
+    {% if is_locked %}
+    {% include "partials/locked_overlay.html" %}
+    <div class="form-actions navigation-buttons">
+        <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+    </div>
+    {% else %}
+    <form id="trello-form" class="wizard-form">
+        <div class="form-group">
+            <div class="toggle-item trello-enable-toggle">
+                <div class="toggle-switch">
+                    <input type="checkbox" id="trello-enabled" name="trello_enabled" checked>
+                    <label for="trello-enabled" class="toggle-label"></label>
+                </div>
+                <div class="toggle-info">
+                    <h4>Enable Trello Integration</h4>
+                    <p>Sync tasks, track progress, and automate workflow with Trello.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="trello-config-section">
+            <div class="section-divider"></div>
+
+            <div class="form-group">
+                <label>API Credentials</label>
+                <div class="credential-field">
+                    <div class="credential-header">
+                        <label for="trello-api-key">API Key</label>
+                        <a href="https://trello.com/power-ups/admin/new" target="_blank" rel="noopener" class="help-link">Get your API key &rarr;</a>
+                    </div>
+                    <input type="password" id="trello-api-key" name="api_key"
+                           placeholder="Enter your Trello API key"
+                           class="form-input" autocomplete="off">
+                </div>
+
+                <div class="credential-field">
+                    <div class="credential-header">
+                        <label for="trello-token">Token</label>
+                        <a href="https://trello.com/1/authorize?expiration=never&scope=read,write&response_type=token&key=YOUR_KEY" target="_blank" rel="noopener" class="help-link">Get your token &rarr;</a>
+                    </div>
+                    <input type="password" id="trello-token" name="token"
+                           placeholder="Enter your Trello token"
+                           class="form-input" autocomplete="off">
+                </div>
+
+                <div class="connection-test">
+                    <button type="button" id="test-connection-btn" class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+                    <span id="connection-status" class="connection-status"></span>
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="form-group" id="board-config-section" style="display:none;">
+                <label>Board Configuration</label>
+
+                <div class="credential-field">
+                    <label for="board-select">Board</label>
+                    <select id="board-select" name="board_id" class="form-input form-select" disabled>
+                        <option value="">Test connection first...</option>
+                    </select>
+                </div>
+
+                <div class="credential-field">
+                    <label>Default Fields</label>
+                    <div class="field-defaults">
+                        <div class="default-field-row">
+                            <label for="default-project">Project</label>
+                            <input type="text" id="default-project" name="default_project"
+                                   value="PairCoder" class="form-input">
+                        </div>
+                        <div class="default-field-row">
+                            <label for="default-stack">Stack</label>
+                            <input type="text" id="default-stack" name="default_stack"
+                                   value="Worker/Function" class="form-input">
+                        </div>
+                        <div class="default-field-row">
+                            <label for="repo-url">Repo URL</label>
+                            <input type="url" id="repo-url" name="repo_url"
+                                   placeholder="https://github.com/your/repo"
+                                   class="form-input">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="credential-field">
+                    <label>Workflow Mode</label>
+                    <div class="mode-options">
+                        <label class="mode-option">
+                            <input type="radio" name="mode" value="flat">
+                            <div class="mode-card">
+                                <h4>Flat</h4>
+                                <p>All cards in one list. Simple and straightforward.</p>
+                            </div>
+                        </label>
+                        <label class="mode-option">
+                            <input type="radio" name="mode" value="native" checked>
+                            <div class="mode-card">
+                                <h4>Native / Hierarchy</h4>
+                                <p>Cards move through lists following your workflow.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions navigation-buttons">
+            <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+            <div class="nav-right">
+                <button type="button" class="btn btn-ghost" onclick="skipTrello()">Skip</button>
+                <button type="submit" class="btn btn-primary">Next</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<script>
+var connectedBoards = [];
+
+// Toggle visibility of config section
+document.getElementById('trello-enabled').addEventListener('change', function() {
+    var section = document.getElementById('trello-config-section');
+    section.style.display = this.checked ? '' : 'none';
+});
+
+function testConnection() {
+    var apiKey = document.getElementById('trello-api-key').value.trim();
+    var token = document.getElementById('trello-token').value.trim();
+    var statusEl = document.getElementById('connection-status');
+    var btn = document.getElementById('test-connection-btn');
+
+    if (!apiKey || !token) {
+        statusEl.textContent = 'Please enter both API key and token.';
+        statusEl.className = 'connection-status error-text';
+        return;
+    }
+
+    btn.disabled = true;
+    statusEl.textContent = 'Testing...';
+    statusEl.className = 'connection-status';
+
+    fetch('/api/trello/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({api_key: apiKey, token: token})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        if (data.success) {
+            statusEl.textContent = 'Connected!';
+            statusEl.className = 'connection-status success-text';
+            connectedBoards = data.boards || [];
+            showBoardConfig(connectedBoards);
+        } else {
+            statusEl.textContent = data.error || 'Connection failed.';
+            statusEl.className = 'connection-status error-text';
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        statusEl.textContent = 'Connection failed. Check your credentials.';
+        statusEl.className = 'connection-status error-text';
+    });
+}
+
+function showBoardConfig(boards) {
+    var section = document.getElementById('board-config-section');
+    section.style.display = '';
+
+    var select = document.getElementById('board-select');
+    select.disabled = false;
+    select.innerHTML = '<option value="">Select a board...</option>';
+    boards.forEach(function(b) {
+        var opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.name;
+        select.appendChild(opt);
+    });
+}
+
+function skipTrello() {
+    fetch('/api/trello', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: false})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/github';
+        }
+    })
+    .catch(function() {
+        window.location.href = '/wizard/github';
+    });
+}
+
+document.getElementById('trello-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    var enabled = document.getElementById('trello-enabled').checked;
+    var payload = {enabled: enabled};
+
+    if (enabled) {
+        payload.api_key = document.getElementById('trello-api-key').value.trim();
+        payload.token = document.getElementById('trello-token').value.trim();
+
+        var boardSelect = document.getElementById('board-select');
+        payload.board_id = boardSelect.value;
+        payload.board_name = boardSelect.options[boardSelect.selectedIndex]
+            ? boardSelect.options[boardSelect.selectedIndex].textContent
+            : '';
+
+        payload.default_project = document.getElementById('default-project').value.trim();
+        payload.default_stack = document.getElementById('default-stack').value.trim();
+        payload.repo_url = document.getElementById('repo-url').value.trim();
+
+        var modeRadio = document.querySelector('input[name="mode"]:checked');
+        payload.mode = modeRadio ? modeRadio.value : 'native';
+    }
+
+    fetch('/api/trello', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/github';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save Trello settings'));
+        }
+    })
+    .catch(function() {
+        alert('Failed to save settings. Please try again.');
+    });
+});
+
+function navigateBack() {
+    window.location.href = '/wizard/enforcement';
+}
+</script>
+{% endif %}
+{% endblock %}

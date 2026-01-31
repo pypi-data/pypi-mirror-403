@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Project Basics - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="project-page">
+    <div class="page-header">
+        <h2>Project Basics</h2>
+        <p class="page-description">Configure your project settings and preferences.</p>
+    </div>
+
+    <form id="project-form" class="wizard-form">
+        <div class="form-group">
+            <label for="project-name">Project Name</label>
+            <input type="text" id="project-name" name="name"
+                   placeholder="My Awesome App"
+                   value="{{ project_data.name or '' }}"
+                   minlength="3" maxlength="50" required
+                   aria-required="true"
+                   aria-describedby="project-name-error"
+                   autocomplete="off">
+            <div id="project-name-error" class="field-error hidden" role="alert"></div>
+            <div class="slug-display">
+                Slug: <span id="project-slug">{{ project_data.name|default('-', true)|lower|replace(' ', '-') }}</span>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="project-description">Description <span class="optional-label">(optional)</span></label>
+            <textarea id="project-description" name="description"
+                      placeholder="A brief description of your project..."
+                      maxlength="500" rows="3"
+                      autocomplete="off">{{ project_data.description or '' }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="primary-goal">Primary Goal</label>
+            <input type="text" id="primary-goal" name="goal"
+                   placeholder="Build a task tracking app with team collaboration features"
+                   value="{{ project_data.goal or '' }}"
+                   minlength="10" maxlength="200" required
+                   aria-required="true"
+                   aria-describedby="primary-goal-error"
+                   autocomplete="off">
+            <div id="primary-goal-error" class="field-error hidden" role="alert"></div>
+        </div>
+
+        <div class="form-group">
+            <label for="coverage-target">Test Coverage Target</label>
+            <div class="slider-container">
+                <input type="range" id="coverage-target" name="coverage_target"
+                       min="0" max="100" value="{{ project_data.coverage_target or 80 }}">
+                <span id="coverage-display" class="slider-value">{{ project_data.coverage_target or 80 }}%</span>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Preset</label>
+            <div class="preset-options">
+                <label class="preset-option">
+                    <input type="radio" name="preset" value="default"
+                           {% if project_data.preset == 'default' or not project_data.preset %}checked{% endif %}>
+                    <div class="preset-card">
+                        <h4>Default</h4>
+                        <p>Balanced settings for most projects</p>
+                    </div>
+                </label>
+
+                <label class="preset-option">
+                    <input type="radio" name="preset" value="strict"
+                           {% if project_data.preset == 'strict' %}checked{% endif %}>
+                    <div class="preset-card">
+                        <h4>Strict</h4>
+                        <p>Maximum enforcement, high coverage</p>
+                    </div>
+                </label>
+
+                <label class="preset-option">
+                    <input type="radio" name="preset" value="relaxed"
+                           {% if project_data.preset == 'relaxed' %}checked{% endif %}>
+                    <div class="preset-card">
+                        <h4>Relaxed</h4>
+                        <p>Minimal enforcement, flexible</p>
+                    </div>
+                </label>
+
+                <label class="preset-option {% if tier == 'solo' %}locked{% endif %}">
+                    <input type="radio" name="preset" value="pro-workflow"
+                           {% if tier == 'solo' %}disabled{% endif %}
+                           {% if project_data.preset == 'pro-workflow' %}checked{% endif %}>
+                    <div class="preset-card">
+                        <h4>
+                            {% if tier == 'solo' %}<span class="lock-icon">🔒</span>{% endif %}
+                            Pro Workflow
+                        </h4>
+                        <p>Trello + GitHub integration</p>
+                        {% if tier == 'solo' %}<span class="pro-badge">PRO</span>{% endif %}
+                    </div>
+                </label>
+
+                <label class="preset-option {% if tier not in ['enterprise'] %}locked{% endif %}">
+                    <input type="radio" name="preset" value="enterprise"
+                           {% if tier not in ['enterprise'] %}disabled{% endif %}
+                           {% if project_data.preset == 'enterprise' %}checked{% endif %}>
+                    <div class="preset-card">
+                        <h4>
+                            {% if tier not in ['enterprise'] %}<span class="lock-icon">🔒</span>{% endif %}
+                            Enterprise
+                        </h4>
+                        <p>Multi-workspace, remote access</p>
+                        {% if tier not in ['enterprise'] %}<span class="enterprise-badge">ENT</span>{% endif %}
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <div id="form-error" class="form-error-banner hidden" role="alert"></div>
+
+        <div class="form-actions navigation-buttons">
+            <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+            <button type="submit" id="project-submit-btn" class="btn btn-primary">Next</button>
+        </div>
+    </form>
+</section>
+
+<script>
+// Auto-generate slug from project name
+const nameInput = document.getElementById('project-name');
+const slugDisplay = document.getElementById('project-slug');
+
+function generateSlug(name) {
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 50);
+}
+
+nameInput.addEventListener('input', function() {
+    const slug = generateSlug(this.value);
+    slugDisplay.textContent = slug || '-';
+});
+
+// Update coverage display
+const coverageSlider = document.getElementById('coverage-target');
+const coverageDisplay = document.getElementById('coverage-display');
+
+coverageSlider.addEventListener('input', function() {
+    coverageDisplay.textContent = this.value + '%';
+});
+
+// Client-side validation
+function validateProjectForm() {
+    var valid = true;
+    clearFormErrors('project-form');
+
+    var name = nameInput.value.trim();
+    if (!name) {
+        showFieldError('project-name', 'Project name is required.');
+        valid = false;
+    } else if (name.length < 3) {
+        showFieldError('project-name', 'Must be at least 3 characters.');
+        valid = false;
+    }
+
+    var goal = document.getElementById('primary-goal').value.trim();
+    if (!goal) {
+        showFieldError('primary-goal', 'Primary goal is required.');
+        valid = false;
+    } else if (goal.length < 10) {
+        showFieldError('primary-goal', 'Must be at least 10 characters.');
+        valid = false;
+    }
+
+    return valid;
+}
+
+// Form submission
+document.getElementById('project-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    if (!validateProjectForm()) return;
+
+    var submitBtn = document.getElementById('project-submit-btn');
+    setButtonLoading(submitBtn, 'Saving...');
+    clearFormErrors('project-form');
+
+    const formData = {
+        name: nameInput.value,
+        description: document.getElementById('project-description').value,
+        goal: document.getElementById('primary-goal').value,
+        preset: document.querySelector('input[name="preset"]:checked').value,
+        coverage_target: parseInt(coverageSlider.value)
+    };
+
+    fetch('/api/project', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/enforcement';
+        } else {
+            showFormError(data.error || 'Failed to save project.');
+            clearButtonLoading(submitBtn);
+        }
+    })
+    .catch(function(err) {
+        console.error('Form submission error:', err);
+        showFormError('Network error. Please check your connection and try again.');
+        clearButtonLoading(submitBtn);
+    });
+});
+
+function navigateBack() {
+    window.location.href = '/welcome';
+}
+
+// Handle locked preset clicks
+document.querySelectorAll('.preset-option.locked').forEach(el => {
+    el.addEventListener('click', function(e) {
+        e.preventDefault();
+        showUpgradeModal();
+    });
+});
+</script>
+{% endblock %}

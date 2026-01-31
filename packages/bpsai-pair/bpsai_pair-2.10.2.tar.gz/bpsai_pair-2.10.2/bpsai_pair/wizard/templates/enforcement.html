@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}Enforcement Settings - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="enforcement-page">
+    <div class="page-header">
+        <h2>Enforcement Settings</h2>
+        <p class="page-description">Configure guardrails and accountability for your workflow.</p>
+    </div>
+
+    <form id="enforcement-form" class="wizard-form">
+        <div class="form-group">
+            <label>Enforcement Level</label>
+            <div class="enforcement-presets">
+                <label class="enforcement-preset">
+                    <input type="radio" name="preset" value="permissive"
+                           {% if enforcement_data.preset == 'permissive' %}checked{% endif %}>
+                    <div class="enforcement-preset-card">
+                        <h4>Permissive</h4>
+                        <p>Minimal guardrails. Suggestions only, nothing enforced.</p>
+                    </div>
+                </label>
+
+                <label class="enforcement-preset">
+                    <input type="radio" name="preset" value="balanced"
+                           {% if enforcement_data.preset == 'balanced' or not enforcement_data.preset %}checked{% endif %}>
+                    <div class="enforcement-preset-card">
+                        <h4>Balanced</h4>
+                        <p>Recommended for most teams. Enforces key workflow gates.</p>
+                    </div>
+                </label>
+
+                <label class="enforcement-preset">
+                    <input type="radio" name="preset" value="strict"
+                           {% if enforcement_data.preset == 'strict' %}checked{% endif %}>
+                    <div class="enforcement-preset-card">
+                        <h4>Strict</h4>
+                        <p>Maximum accountability. All gates blocking, bypasses audited.</p>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+            <label>Individual Settings</label>
+            <div class="toggle-list">
+                <div class="toggle-item">
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="ac-verification" name="ac_verification"
+                               {% if enforcement_data.ac_verification is not defined or enforcement_data.ac_verification %}checked{% endif %}>
+                        <label for="ac-verification" class="toggle-label"></label>
+                    </div>
+                    <div class="toggle-info">
+                        <h4>AC Verification Gates</h4>
+                        <p>Verify acceptance criteria before marking tasks complete.</p>
+                    </div>
+                </div>
+
+                <div class="toggle-item">
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="state-machine" name="state_machine"
+                               {% if enforcement_data.state_machine is not defined or enforcement_data.state_machine %}checked{% endif %}>
+                        <label for="state-machine" class="toggle-label"></label>
+                    </div>
+                    <div class="toggle-info">
+                        <h4>State Machine Enforcement</h4>
+                        <p>Enforce valid task workflow transitions (pending, in_progress, done).</p>
+                    </div>
+                </div>
+
+                <div class="toggle-item">
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="bypass-audit" name="bypass_audit"
+                               {% if enforcement_data.bypass_audit %}checked{% endif %}>
+                        <label for="bypass-audit" class="toggle-label"></label>
+                    </div>
+                    <div class="toggle-info">
+                        <h4>Bypass Audit Logging</h4>
+                        <p>Log all workflow bypasses for review and accountability.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+            <label>Containment (Protected Paths)</label>
+            <p class="field-description">Files and directories that agents cannot modify.</p>
+            <div class="protected-paths" id="protected-paths">
+                {% if enforcement_data.protected_paths %}
+                    {% for path in enforcement_data.protected_paths %}
+                <div class="path-item">
+                    <code>{{ path }}</code>
+                    <button type="button" class="path-remove" aria-label="Remove path">&times;</button>
+                </div>
+                    {% endfor %}
+                {% else %}
+                <div class="path-item">
+                    <code>.claude/skills/</code>
+                    <button type="button" class="path-remove" aria-label="Remove path">&times;</button>
+                </div>
+                <div class="path-item">
+                    <code>.paircoder/config.yaml</code>
+                    <button type="button" class="path-remove" aria-label="Remove path">&times;</button>
+                </div>
+                {% endif %}
+            </div>
+            <div class="add-path-row">
+                <input type="text" id="new-path-input" placeholder="Add a protected path..."
+                       class="path-input">
+                <button type="button" id="add-path-btn" class="btn btn-small">+ Add</button>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        {% if tier == 'solo' %}
+        <div class="form-group">
+            <div class="pro-feature-card">
+                <div class="pro-feature-header">
+                    <span class="lock-icon">🔒</span>
+                    <h4>Token Budget <span class="pro-badge">PRO</span></h4>
+                </div>
+                <p>Track and limit AI token usage per task. Set budgets to control costs.</p>
+                <button type="button" class="btn btn-upgrade-prompt" onclick="showUpgradeModal('Token Budget')">
+                    Upgrade to enable
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
+        <div id="form-error" class="form-error-banner hidden" role="alert"></div>
+
+        <div class="form-actions navigation-buttons">
+            <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+            <button type="submit" id="enforcement-submit-btn" class="btn btn-primary">Next</button>
+        </div>
+    </form>
+</section>
+
+<script>
+// Preset selection updates individual toggles
+const presetRadios = document.querySelectorAll('input[name="preset"]');
+const acToggle = document.getElementById('ac-verification');
+const smToggle = document.getElementById('state-machine');
+const baToggle = document.getElementById('bypass-audit');
+
+const PRESET_DEFAULTS = {
+    permissive: { ac: false, sm: false, ba: false },
+    balanced:   { ac: true,  sm: true,  ba: false },
+    strict:     { ac: true,  sm: true,  ba: true }
+};
+
+presetRadios.forEach(radio => {
+    radio.addEventListener('change', function() {
+        const defaults = PRESET_DEFAULTS[this.value];
+        if (defaults) {
+            acToggle.checked = defaults.ac;
+            smToggle.checked = defaults.sm;
+            baToggle.checked = defaults.ba;
+        }
+    });
+});
+
+// Protected paths management
+function getProtectedPaths() {
+    const pathItems = document.querySelectorAll('#protected-paths .path-item code');
+    return Array.from(pathItems).map(el => el.textContent);
+}
+
+document.getElementById('add-path-btn').addEventListener('click', function() {
+    const input = document.getElementById('new-path-input');
+    const value = input.value.trim();
+    if (!value) return;
+
+    const container = document.getElementById('protected-paths');
+    const item = document.createElement('div');
+    item.className = 'path-item';
+    item.innerHTML = '<code>' + value.replace(/</g, '&lt;') + '</code>' +
+        '<button type="button" class="path-remove" aria-label="Remove path">&times;</button>';
+    container.appendChild(item);
+    input.value = '';
+
+    item.querySelector('.path-remove').addEventListener('click', function() {
+        item.remove();
+    });
+});
+
+// Remove path buttons
+document.querySelectorAll('.path-remove').forEach(btn => {
+    btn.addEventListener('click', function() {
+        this.closest('.path-item').remove();
+    });
+});
+
+// Form submission
+document.getElementById('enforcement-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    var submitBtn = document.getElementById('enforcement-submit-btn');
+    setButtonLoading(submitBtn, 'Saving...');
+    clearFormErrors('enforcement-form');
+
+    const formData = {
+        preset: document.querySelector('input[name="preset"]:checked').value,
+        ac_verification: acToggle.checked,
+        state_machine: smToggle.checked,
+        bypass_audit: baToggle.checked,
+        protected_paths: getProtectedPaths()
+    };
+
+    fetch('/api/enforcement', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/review';
+        } else {
+            showFormError(data.error || 'Failed to save enforcement settings.');
+            clearButtonLoading(submitBtn);
+        }
+    })
+    .catch(function(err) {
+        console.error('Form submission error:', err);
+        showFormError('Network error. Please check your connection and try again.');
+        clearButtonLoading(submitBtn);
+    });
+});
+
+function navigateBack() {
+    window.location.href = '/wizard/project';
+}
+</script>
+{% endblock %}
