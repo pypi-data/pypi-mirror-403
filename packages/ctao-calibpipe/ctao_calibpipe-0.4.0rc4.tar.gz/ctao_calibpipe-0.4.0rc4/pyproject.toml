@@ -1,0 +1,214 @@
+[build-system]
+requires = ["setuptools>=65", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctao-calibpipe"
+authors = [
+    {name = "Leonid Burmistrov"},
+    {name = "Mykhailo Dalchenko"},
+    {name = "Antonio Di Pilato"},
+    {name = "Gabriel Emery"},
+    {name = "Tjark Miener"},
+    {name = "Gregoire Uhlrich"},
+    {name = "Georgios Voutsinas"},
+    {name = "Vadym Voitsekhovskyi"},
+]
+
+classifiers = ["License :: OSI Approved :: MIT License"]
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+
+dependencies = [
+    "astral",
+    "astropy",
+    "cdsapi",
+    "ctapipe[all]>=0.29.0",
+    "ctapipe-io-zfits>=0.4.1",
+    "h5py",
+    "iminuit",
+    "molecularprofiles>=3.0.0",
+    "numpy",
+    "pandas",
+    "psycopg[binary]",
+    "pygrib",
+    "pyrdams>=3.0.1",
+    "requests>=2.27",
+    "requests",
+    "sqlalchemy>=2.0.1",
+    "traitlets",
+]
+
+[project.optional-dependencies]
+test = [
+    "black >=22.5",
+    "coverage-badge",
+    "cwltool",
+    "nodejs-bin[cmd]",
+    "pylint >=2.15",
+    "pytest-cov",
+    "pytest-order",
+    "pytest",
+    "pyyaml",
+    "pytest-requirements",
+]
+
+doc = [
+    "linkify-it-py",
+    "myst-parser",
+    "nbsphinx",
+    "numpydoc",
+    "ctao-sphinx-theme",
+    "cwltool",
+    "sphinx-argparse",
+    "sphinx-paramlinks",
+    "sphinx >=8.2.1",
+    "sphinx-changelog",
+    "nodejs-bin[cmd]",  # Provides node and npm
+    "playwright",       # For mermaid-cli rendering
+]
+
+dev = [
+    "setuptools_scm",
+    "towncrier",
+    "pre-commit",
+]
+
+# we can use self-references to simplify all
+all = [
+  "ctao-calibpipe[test,doc,dev]",
+]
+
+[project.scripts]
+calibpipe-select-reference-atmospheric-model = "calibpipe.tools.reference_atmospheric_model_selector:main"
+calibpipe-create-molecular-density-profile = "calibpipe.tools.contemporary_mdp_producer:main"
+calibpipe-calculate-macobac = "calibpipe.tools.macobac_calculator:main"
+calibpipe-create-molecular-atmospheric-model = "calibpipe.tools.molecular_atmospheric_model_producer:main"
+calibpipe-upload-observatory-data = "calibpipe.tools.observatory_data_db_loader:main"
+calibpipe-upload-atmospheric-model-data = "calibpipe.tools.atmospheric_model_db_loader:main"
+calibpipe-init-db = "calibpipe.tools.init_db:main"
+calibpipe-produce-camcalib-test-data = "calibpipe.tools.camcalib_test_data:main"
+calibpipe-calculate-camcalib-coefficients = "calibpipe.tools.camera_calibrator:main"
+calibpipe-calculate-throughput-muon = "calibpipe.tools.muon_throughput_calculator:main"
+calibpipe-calculate-psf-muon = "calibpipe.tools.muon_psf_calculator:main"
+calibpipe-cross-calibration = "calibpipe.tools.telescope_cross_calibration_calculator:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["calibpipe._dev_version"]
+
+[tool.setuptools_scm]
+write_to = "src/calibpipe/_version.py"
+
+[tool.towncrier]
+package = "calibpipe"
+directory = "docs/changes"
+filename = "CHANGES.rst"
+template = "docs/changes/template.rst"
+underlines = ["-", "~", "^"]
+# Let towncrier create proper links to the merged MR.
+# By default, towncrier connects everything to issues.
+# We rather want to connect it to merge request
+issue_format = "`!{issue} <https://gitlab.cta-observatory.org/cta-computing/dpps/calibpipe/calibpipe/-/merge_requests/{issue}>`__"
+
+[tool.towncrier.fragment.feature]
+    name = "New Features"
+    showcontent = true
+
+[tool.towncrier.fragment.bugfix]
+    name = "Bug Fixes"
+    showcontent = true
+
+[tool.towncrier.fragment.api]
+    name = "API Changes"
+    showcontent = true
+
+[tool.towncrier.fragment.optimization]
+    name = "Refactoring and Optimization"
+    showcontent = true
+
+[tool.towncrier.fragment.maintenance]
+    name = "Maintenance"
+    showcontent = true
+
+[tool.pylint.main]
+extension-pkg-whitelist = ["numpy", "astropy", "astropy.units", "astropy.units.cds"]
+suggestion-mode = true
+ignore-paths = ["src/calibpipe/_dev_version/*"]
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "x", "_"]
+class-naming-style = "PascalCase"
+class-const-naming-style = "UPPER_CASE"
+argument-naming-style = "snake_case"
+attr-naming-style = "snake_case"
+function-naming-style = "snake_case"
+inlinevar-naming-style = "any"
+[tool.pylint.exceptions]
+overgeneral-exceptions = ["builtins.BaseException", "builtins.Exception"]
+[tool.pylint.format]
+ignore-long-lines = "^\\s*(# )?<?https?://\\S+>?$"
+max-line-length = 88
+[tool.pylint.typecheck]
+generated-members=["REQUEST", "acl_users", "aq_parent", "numpy.*", "np.*", "astropy.*"]
+ignored-modules = ["numpy", "np", "astropy"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+
+[tool.ruff.lint]
+extend-select = [
+    "I", # isort
+    "N", # pep8 naming
+    "D", # pydocstyle
+    "NPY", # numpy
+    "PT", # pytest
+    "UP", # pyupgrade
+    "COM", # flake8-commas
+    "ISC", # implicit string concat rules
+    "ICN", # import name conventions
+    "G", # logging
+]
+ignore = [
+    "COM812", # incompatible with ruff format
+    "ISC001", # incompatible with ruff format
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+# no documentation linting for test files
+"**/tests/**" = ["D"]
+"**/test_*.py" = ["D"]
+"**/tests_*.py" = ["D"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.pytest.ini_options]
+markers = [
+    "muon: marks tests related to muon analysis (deselect with '-m \"not muon\"')",
+    "lst: marks tests related to lst (deselect with '-m \"not lst\"')",
+    "mst: marks tests related to mst (deselect with '-m \"not mst\"')",
+    "nc: marks tests related to NectarCAM (deselect with '-m \"not nc\"')",
+    "fc: marks tests related to FlashCam (deselect with '-m \"not fc\"')",
+    "db: marks tests related to DB functionality (deselect with '-m \"not db\"')",
+    "gdas: marks tests related to GDAS meteo data (deselect with '-m \"not gdas\"')",
+    "ecmwf: marks tests related to ECMWF meteo data (deselect with '-m \"not ecmwf\"')",
+    "mdps: marks tests involving molecularprofiles package (deselect with '-m \"not mdps\"')",
+    "aerosols: marks tests involving clouds/aerosol calibration (deselect with '-m \"not aerosols\"')",
+    "observatory: marks tests of observatory module functionality (deselect with '-m \"not observatory\"')" ,
+    "integration: marks integration tests (deselect with '-m \"not integration\"')" ,
+]
+minversion = "7"
+testpaths = ["src", "workflows_test"]
+addopts = ["-p", "pytest_requirements"]
+
+[tool.codespell]
+ignore-words-list = "pres,chec,fram"
