@@ -1,0 +1,67 @@
+"""Environment test action for {{ name }}."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel
+
+from synapse_sdk.plugins.action import BaseAction
+from synapse_sdk.plugins.types import TestResults
+
+
+class TestParams(BaseModel):
+    """Parameters for test action.
+
+    No input needed by default. Extend this model if your
+    environment test requires configuration.
+    """
+
+    pass
+
+
+class TestAction(BaseAction[TestParams]):
+    """Test action for {{ name }}.
+
+    Validates that the execution environment has the required
+    dependencies, hardware (GPU), and configuration.
+
+    Customize `execute()` to verify your specific framework
+    and model requirements.
+    """
+
+    action_name = 'test'
+    params_model = TestParams
+    output_type = TestResults
+
+    def execute(self) -> dict[str, Any]:
+        """Test environment readiness.
+
+        Override this method to add framework-specific checks
+        (e.g., import your ML library, verify GPU access, etc.).
+
+        Returns:
+            Dict with environment status information.
+        """
+        import platform
+
+        env_info: dict[str, Any] = {
+            'python_version': platform.python_version(),
+            'platform': platform.platform(),
+        }
+
+        # Check for GPU availability (optional, requires torch)
+        try:
+            import torch
+
+            env_info['cuda_available'] = torch.cuda.is_available()
+            if torch.cuda.is_available():
+                env_info['device_count'] = torch.cuda.device_count()
+                env_info['device_name'] = torch.cuda.get_device_name(0)
+        except ImportError:
+            env_info['cuda_available'] = None
+
+        for key, value in env_info.items():
+            self.logger.info(f'{key}: {value}')
+
+        return env_info
