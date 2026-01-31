@@ -1,0 +1,415 @@
+{% load static %}
+
+{# Composant Lucy Assist - Sidebar Chatbot #}
+{# Ce template est autonome et inclut ses propres ressources CSS/JS #}
+
+{% if lucy_assist_enabled %}
+{# CSS Lucy Assist #}
+<link href="{% static 'lucy_assist/css/lucy-assist.css' %}" rel="stylesheet">
+
+{# Script Lucy Assist - doit etre charge avant d'utiliser le composant Alpine #}
+<script src="{% static 'lucy_assist/js/lucy-assist.js' %}"></script>
+
+<div x-data="lucyAssist()" x-init="init()" @keydown.window="handleKeydown($event)">
+    {# Bouton flottant - masque quand le chat est ouvert #}
+    <button
+        x-show="!isOpen"
+        @click="toggleSidebar()"
+        class="lucy-float-btn"
+        :class="{ 'animate-pulse': hasNewMessage }"
+        title="Ouvrir Lucy (Ctrl+K)"
+    >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+        </svg>
+    </button>
+
+    {# Sidebar #}
+    <div
+        x-show="isOpen"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="transform translate-x-full"
+        x-transition:enter-end="transform translate-x-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="transform translate-x-0"
+        x-transition:leave-end="transform translate-x-full"
+        class="lucy-sidebar"
+        :class="{ 'hidden': !isOpen }"
+        style="display: none;"
+        x-cloak
+    >
+        {# Header #}
+        <div class="lucy-header">
+            <span class="lucy-header-title">Lucy Assist</span>
+            <div class="lucy-header-actions">
+                {# Bouton Historique #}
+                <button
+                    @click="showHistory = !showHistory; showDoc = false"
+                    class="lucy-header-btn"
+                    :class="{ 'active': showHistory }"
+                    title="Historique des conversations"
+                >
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </button>
+
+                {# Bouton Nouvelle conversation #}
+                <button
+                    @click="newConversation()"
+                    class="lucy-header-btn"
+                    title="Nouvelle conversation"
+                >
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+
+                {# Bouton Documentation #}
+                <button
+                    @click="showDoc = !showDoc; showHistory = false"
+                    class="lucy-header-btn"
+                    :class="{ 'active': showDoc }"
+                    title="Documentation"
+                >
+                    <i class="fa-solid fa-book"></i>
+                </button>
+
+                {# Bouton Fermer #}
+                <button
+                    @click="closeSidebar()"
+                    class="lucy-header-btn"
+                    title="Fermer (Echap)"
+                >
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        {# Indicateur de credits #}
+        <div class="lucy-credits-bar">
+            <span>
+                <i class="fa-solid fa-coins"></i>
+                <span x-text="formatTokens(tokensDisponibles)"></span> credits
+            </span>
+            <button
+                x-show="tokensDisponibles < 100000"
+                @click="showBuyCredits = true"
+                class="lucy-btn-warning"
+            >
+                <i class="fa-solid fa-cart-plus"></i>
+                Acheter
+            </button>
+        </div>
+
+        {# Contenu principal #}
+        <div class="lucy-content">
+            {# Vue Historique #}
+            <template x-if="showHistory">
+                <div class="lucy-history">
+                    <h3>Historique des conversations</h3>
+                    <template x-if="conversations.length === 0">
+                        <p class="lucy-history-empty">Aucune conversation</p>
+                    </template>
+                    <div class="lucy-history-list">
+                        <template x-for="conv in conversations" :key="conv.id">
+                            <div
+                                @click="loadConversation(conv.id)"
+                                class="lucy-history-item"
+                                :class="{ 'active': currentConversationId === conv.id }"
+                            >
+                                <div class="lucy-history-item-title" x-text="conv.titre"></div>
+                                <div class="lucy-history-item-meta">
+                                    <span x-text="formatDate(conv.created_date)"></span>
+                                    <span style="margin-left: 0.5rem;">
+                                        <i class="fa-solid fa-coins"></i>
+                                        <span x-text="conv.total_tokens"></span> tokens | <span x-text="formatTokenCost(conv.total_tokens)"></span>
+                                    </span>
+                                </div>
+                                <button
+                                    @click.stop="deleteConversation(conv.id)"
+                                    class="lucy-btn-delete"
+                                >
+                                    <i class="fa-solid fa-trash"></i> Supprimer
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            {# Vue Documentation #}
+            <template x-if="showDoc">
+                <div class="lucy-doc">
+                    {% include "lucy_assist/partials/documentation_content.html" %}
+                </div>
+            </template>
+
+            {# Vue Chat #}
+            <template x-if="!showHistory && !showDoc">
+                <div class="lucy-chat">
+                    {# Zone de messages #}
+                    <div
+                        x-ref="messagesContainer"
+                        class="lucy-messages"
+                    >
+                        {# Message de bienvenue / Suggestions #}
+                        <template x-if="messages.length === 0">
+                            <div class="lucy-welcome">
+                                <div class="lucy-welcome-icon">
+                                    <img src="{% static 'lucy_assist/image/icon-lucy.png' %}" alt="Lucy">
+                                </div>
+                                <h3>Bonjour ! Je suis Lucy</h3>
+                                <p>Comment puis-je vous aider aujourd'hui ?</p>
+
+                                {# Suggestions #}
+                                <div class="lucy-suggestions">
+                                    <template x-for="suggestion in suggestions" :key="suggestion">
+                                        <button
+                                            @click="sendMessage(suggestion)"
+                                            class="lucy-suggestion-btn"
+                                        >
+                                            <i class="fa-solid fa-lightbulb"></i>
+                                            <span x-text="suggestion"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        {# Messages #}
+                        <template x-for="(msg, index) in messages" :key="msg.id || index">
+                            <div
+                                class="lucy-message"
+                                :class="msg.repondant === 'UTILISATEUR' ? 'user' : 'bot'"
+                            >
+                                <div class="lucy-message-avatar">
+                                    <template x-if="msg.repondant === 'UTILISATEUR'">
+                                        {% if lucy_assist_config.avatar_url %}
+                                            <img src="{{ lucy_assist_config.avatar_url }}" alt="Utilisateur">
+                                        {% else %}
+                                            <i class="fa-solid fa-user"></i>
+                                        {% endif %}
+                                    </template>
+                                    <template x-if="msg.repondant !== 'UTILISATEUR'">
+                                        <img src="{% static 'lucy_assist/image/icon-lucy.png' %}" alt="Lucy">
+                                    </template>
+                                </div>
+                                <div class="lucy-message-content">
+                                    <div class="lucy-message-bubble">
+                                        <template x-if="msg.contenu">
+                                            <span x-html="formatMessage(msg.contenu)"></span>
+                                        </template>
+                                        <template x-if="!msg.contenu">
+                                            <span class="lucy-loading-dots">
+                                                <span></span>
+                                                <span></span>
+                                                <span></span>
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <div class="lucy-message-time" x-text="formatTime(msg.created_date)"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    {# Bouton Feedback - Lucy n'a pas compris #}
+                    <template x-if="lucyDidNotUnderstand && messages.length > 0">
+                        <div class="lucy-feedback-bar info">
+                            <button
+                                @click="openFeedback()"
+                                class="lucy-feedback-btn info"
+                            >
+                                <i class="fa-solid fa-headset"></i>
+                                Contacter le chef de projet Revolucy
+                            </button>
+                        </div>
+                    </template>
+
+                    {# Bouton Feedback - Erreur technique #}
+                    <template x-if="hasError && !lucyDidNotUnderstand && messages.length > 0">
+                        <div class="lucy-feedback-bar warning">
+                            <button
+                                @click="openFeedback()"
+                                class="lucy-feedback-btn warning"
+                            >
+                                <i class="fa-solid fa-comment-medical"></i>
+                                Souhaites-tu que j'informe Revolucy ?
+                            </button>
+                        </div>
+                    </template>
+
+                    {# Zone de saisie #}
+                    <div class="lucy-input-area">
+                        <div class="lucy-input-wrapper">
+                            <textarea
+                                x-model="currentMessage"
+                                x-ref="messageInput"
+                                :disabled="isLoading"
+                                @keydown.ctrl.enter.prevent="sendCurrentMessage()"
+                                @keydown.meta.enter.prevent="sendCurrentMessage()"
+                                placeholder="Tapez votre message..."
+                                class="lucy-input"
+                                rows="1"
+                                @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 128) + 'px'"
+                            ></textarea>
+                            <button
+                                type="button"
+                                @click="sendCurrentMessage()"
+                                :disabled="isLoading || !currentMessage.trim()"
+                                class="lucy-send-btn"
+                            >
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                        <p class="lucy-input-hint">Ctrl+Entree pour envoyer</p>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# Modal Achat de credits #}
+    <template x-if="showBuyCredits">
+        <div class="lucy-modal-overlay" @keydown.escape="showBuyCredits = false">
+            <div class="lucy-modal">
+                <div class="lucy-modal-header">
+                    <i class="fa-solid fa-cart-plus"></i>
+                    Acheter des credits
+                </div>
+
+                <div class="lucy-modal-body">
+                    <div class="lucy-form-group">
+                        <label class="lucy-form-label">Montant (EUR HT)</label>
+                        <input
+                            type="number"
+                            x-model.number="buyAmount"
+                            min="10"
+                            step="10"
+                            class="lucy-form-input"
+                        />
+                    </div>
+
+                    <div class="lucy-stats-box">
+                        <div class="lucy-stats-row">
+                            <span class="lucy-stats-label">Tokens a recevoir</span>
+                            <span class="lucy-stats-value" x-text="formatTokens(calculateTokens(buyAmount))"></span>
+                        </div>
+                        <div class="lucy-stats-row">
+                            <span class="lucy-stats-label">Conversations estimees</span>
+                            <span class="lucy-stats-value" x-text="Math.floor(calculateTokens(buyAmount) / 2000)"></span>
+                        </div>
+                    </div>
+
+                    <div class="lucy-info-box">
+                        <i class="fa-solid fa-info-circle"></i>
+                        <span>10 EUR = 1 million de tokens = ~500 conversations</span>
+                    </div>
+                </div>
+
+                <div class="lucy-modal-footer">
+                    <button @click="showBuyCredits = false" class="lucy-btn lucy-btn-ghost">
+                        Annuler
+                    </button>
+                    <button @click="buyCredits()" class="lucy-btn lucy-btn-primary" :disabled="buyAmount < 10">
+                        <i class="fa-solid fa-credit-card"></i>
+                        Acheter
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {# Modal Feedback #}
+    <template x-if="showFeedback">
+        <div class="lucy-modal-overlay" @keydown.escape="closeFeedback()">
+            <div class="lucy-modal">
+                <div class="lucy-modal-header">
+                    <i class="fa-solid fa-comment-medical" style="color: var(--lucy-warning);"></i>
+                    Signaler un probleme
+                </div>
+
+                <div class="lucy-modal-body">
+                    <div class="lucy-info-box">
+                        <i class="fa-solid fa-info-circle"></i>
+                    <span>Votre conversation sera envoyée à l'équipe Revolucy pour analyse et amélioration de Lucy Assist.</span>
+                    </div>
+
+                    <div class="lucy-form-group">
+                        <label class="lucy-form-label">Description du probleme (optionnel)</label>
+                        <textarea
+                            x-model="feedbackDescription"
+                            class="lucy-form-textarea"
+                            placeholder="Decrivez ce qui n'a pas fonctionne ou ce que vous attendiez..."
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="lucy-modal-footer">
+                    <button @click="closeFeedback()" class="lucy-btn lucy-btn-ghost" :disabled="feedbackSending">
+                        Annuler
+                    </button>
+                    <button
+                        @click="sendFeedback()"
+                        class="lucy-btn lucy-btn-warning-solid"
+                        :disabled="feedbackSending"
+                    >
+                        <template x-if="!feedbackSending">
+                            <span>
+                                <i class="fa-solid fa-paper-plane"></i>
+                                Envoyer le feedback
+                            </span>
+                        </template>
+                        <template x-if="feedbackSending">
+                            <span class="lucy-spinner"></span>
+                        </template>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {# Guide interactif (premier lancement) #}
+    <template x-if="showGuide">
+        <div class="lucy-guide-overlay">
+            <div
+                x-show="guideStep === 1"
+                class="lucy-guide-modal center"
+            >
+                <h3 class="lucy-guide-title">
+                    <i class="fa-solid fa-hand-wave"></i>
+                    Bienvenue sur Lucy Assist !
+                </h3>
+                <p class="lucy-guide-text">
+                    Je suis votre assistant intelligent. Je peux vous aider a :
+                </p>
+                <ul class="lucy-guide-list">
+                    <li>Naviguer dans l'application</li>
+                    <li>Rechercher des informations</li>
+                    <li>Creer et modifier des elements</li>
+                    <li>Comprendre les fonctionnalites</li>
+                </ul>
+                <div class="lucy-guide-actions">
+                    <button @click="skipGuide()" class="lucy-btn lucy-btn-ghost">
+                        Passer
+                    </button>
+                    <button @click="nextGuideStep()" class="lucy-btn lucy-btn-primary">
+                        Suivant
+                    </button>
+                </div>
+            </div>
+
+            <div
+                x-show="guideStep === 2"
+                class="lucy-guide-modal bottom-right"
+            >
+                <p class="lucy-guide-text">
+                    Cliquez sur ce bouton ou utilisez <span class="lucy-kbd">Ctrl+K</span> pour ouvrir Lucy Assist a tout moment.
+                </p>
+                <div class="lucy-guide-actions">
+                    <button @click="finishGuide()" class="lucy-btn lucy-btn-primary">
+                        Compris !
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>
+{% endif %}
