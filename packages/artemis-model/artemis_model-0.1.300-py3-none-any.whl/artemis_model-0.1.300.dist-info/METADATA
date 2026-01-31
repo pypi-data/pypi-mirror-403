@@ -1,0 +1,139 @@
+Metadata-Version: 2.4
+Name: artemis-model
+Version: 0.1.300
+Summary: 
+Author: Jukeboxy
+Requires-Python: >=3.10.6,<4.0.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Dist: alembic (>=1.13.1,<2.0.0)
+Requires-Dist: asyncpg (>=0.30.0,<0.31.0)
+Requires-Dist: boto3 (>=1.34.0,<2.0.0)
+Requires-Dist: greenlet (>=3.0.2,<4.0.0)
+Requires-Dist: pydantic (>=2.10.2,<3.0.0)
+Requires-Dist: python-dotenv (>=1.0.0,<2.0.0)
+Requires-Dist: python-slugify (>=8.0.4,<9.0.0)
+Requires-Dist: sqlalchemy (>=2.0.23,<3.0.0)
+Description-Content-Type: text/markdown
+
+# artemis-model
+
+Welcome to `artemis-model`, the backbone repository that contains all the essential models used in both the `artemis-api` and the `prophet` project. This project includes asynchronous models used by `artemis-api`, such as `Artist`, and synchronous models like `ArtistSync` for other implementations.
+
+## Getting Started
+
+To set up your development environment for `artemis-model`, follow these initial setup steps:
+
+1. **Install Dependencies**
+
+```shell
+poetry install
+```
+
+2. **Environment Setup** (for running migrations)
+
+Create a `.env` file in the `artemis-model` directory:
+
+```shell
+# .env
+MIGRATION_MODE=aws
+STAGE=dev
+```
+
+This will use AWS Secrets Manager to fetch dev database credentials.
+
+## Creating a New Model
+
+To introduce a new model in the project, you should start by creating a mixin and then define two different model classes that inherit from this mixin.
+
+### Example: Adding a `LoginHistory` Model
+
+1. **Define the Mixin**
+This mixin will include all the common attributes of your model.
+
+```python
+class LoginHistoryMixin:
+    """
+    Stores the login history of users.
+    """
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_account.id"), nullable=False, index=True)
+    ip_address: Mapped[str] = mapped_column(nullable=True)
+    created_at = mapped_column(DateTime, default=datetime.utcnow)
+
+    @declared_attr
+    def account(cls) -> Mapped["UserAccount"]:
+        return relationship("UserAccount", back_populates="login_histories")
+```
+
+2. **Inherit from Base Classes**
+Create two classes that inherit from CustomBase and CustomSyncBase respectively, using the mixin for shared attributes.
+
+```python
+class LoginHistorySync(CustomSyncBase, LoginHistoryMixin):
+    pass
+
+class LoginHistory(CustomBase, LoginHistoryMixin):
+    pass
+```
+
+## Version Management and Builds
+
+1. **Update the Project Version**
+
+```shell
+# For patch version bump
+make bump-model-patch
+
+# For minor version bump
+make bump-model-minor
+
+# For major version bump
+make bump-model-major
+```
+
+2. **Build the Project**
+
+```shell
+poetry build
+```
+
+3. **Update Dependency in artemis-api**
+
+The `make bump-model-*` commands automatically update the dependency in `artemis-api`. If you need to do it manually, update the version in `artemis-api/pyproject.toml`.
+
+## Database Migrations
+
+All database schema changes are managed through Alembic migrations in this project.
+
+**For complete documentation, see [MIGRATIONS.md](./MIGRATIONS.md)**
+
+### Quick Reference
+
+```shell
+# Generate migration from model changes
+alembic revision --autogenerate -m "add_user_email_column"
+
+# Apply migrations to dev DB
+alembic upgrade head
+
+# Rollback last migration
+alembic downgrade -1
+
+# Check migration status
+alembic current
+```
+
+### Important Notes
+
+- All migrations live in `alembic/versions/`
+- We use the **dev database** for local development (via AWS Secrets Manager)
+- Always review auto-generated migrations before committing
+- Migrations are applied to dev/prod via ECS tasks during CI/CD deployment
+
+See [MIGRATIONS.md](./MIGRATIONS.md) for the complete guide including production deployment workflow.
+
