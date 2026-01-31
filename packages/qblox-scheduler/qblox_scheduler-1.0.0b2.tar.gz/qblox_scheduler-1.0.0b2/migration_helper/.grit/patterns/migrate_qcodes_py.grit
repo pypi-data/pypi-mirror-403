@@ -1,0 +1,94 @@
+engine marzano(0.1)
+language python
+
+pattern migrate_qcodes_py() {
+    or {
+        convert_getter(),
+        convert_setter()
+    }
+}
+
+// Converts the QCoDeS setters `parameter(value)` to `parameter = value`.
+pattern convert_setter() {
+    or {
+        `$q.$a.$b($val)` where {
+            $program <: module(statements = $stmts),
+            $stmts <: some `$q = $member($_)` where {
+                or {
+                    $member <: `BasicTransmonElement`,
+                    $member <: `BasicSpinElement`,
+                    $member <: `BasicElectronicNVElement`,
+                }
+            }
+        } => `$q.$a.$b = $val`,
+        `$q.$a.$b.$c($val)` where {
+            $program <: module(statements = $stmts),
+            $stmts <: some `$q = $member($_)` where {
+                or {
+                    $member <: `BasicTransmonElement`,
+                    $member <: `BasicSpinElement`,
+                    $member <: `BasicElectronicNVElement`,
+                }
+            }
+        } => `$q.$a.$b.$c = $val`,
+        `$q.$a($val)` where {
+            $program <: module(statements = $stmts),
+            $stmts <: some `$q = $member($_)` where {
+                and {
+                    $member <: `QuantumDevice`,
+                        or {
+                            $a <: `cfg_sched_repetitions`,
+                            $a <: `edges`,
+                            $a <: `elements`,
+                            $a <: `hardware_config`,
+                            $a <: `keep_original_schedule`,
+                            $a <: `scheduling_strategy`
+                        }
+                }
+            }
+        } => `$q.$a = $val`,
+
+    }
+}
+
+// Converts the QCoDeS getters `parameter()` to `parameter`.
+pattern convert_getter() {
+    or {
+        `$q.$a.$b()` where {
+            $program <: module(statements = $stmts),
+            $stmts <: some `$q = $member($_)` where {
+                or {
+                    $member <: `BasicTransmonElement`,
+                    $member <: `BasicSpinElement`,
+                    $member <: `BasicElectronicNVElement`,
+                }
+            }
+        } => `$q.$a.$b`,
+        `$q.$a.$b.$c()` where {
+            $program <: module(statements = $stmts),
+            $stmts <: some `$q = $member($_)` where {
+                or {
+                    $member <: `BasicTransmonElement`,
+                    $member <: `BasicSpinElement`,
+                    $member <: `BasicElectronicNVElement`,
+                }
+            }
+        } => `$q.$a.$b.$c`,
+        `$q.$a()` where {
+            $program <: module(statements = $stmts),
+            $stmts <: some `$q = $member($_)` where {
+                and {
+                    $member <: `QuantumDevice`,
+                        or {
+                            $a <: `cfg_sched_repetitions`,
+                            $a <: `edges`,
+                            $a <: `elements`,
+                            $a <: `hardware_config`,
+                            $a <: `keep_original_schedule`,
+                            $a <: `scheduling_strategy`
+                        }
+                }
+            }
+        } => `$q.$a`,
+    }
+}

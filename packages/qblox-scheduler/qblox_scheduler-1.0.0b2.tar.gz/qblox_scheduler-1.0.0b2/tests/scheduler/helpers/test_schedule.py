@@ -1,0 +1,129 @@
+# Repository: https://gitlab.com/qblox/packages/software/qblox-scheduler
+# Licensed according to the LICENSE file on the main branch
+
+
+from __future__ import annotations
+
+from qblox_scheduler import TimeableSchedule
+from qblox_scheduler.backends import SerialCompiler
+from qblox_scheduler.helpers.collections import make_hash
+from qblox_scheduler.helpers.schedule import get_acq_info_by_uuid, get_acq_uuid, get_pulse_uuid
+from qblox_scheduler.operations.acquisition_library import SSBIntegrationComplex
+from qblox_scheduler.operations.gate_library import X90, Measure, Reset
+
+
+def test_make_hash() -> None:
+    my_test_dict = {"a": 5, "nested_dict": {"a": 2, "c": 4, "B": "str"}, "b": 24}
+
+    same_test_dict_diff_order = {
+        "a": 5,
+        "b": 24,
+        "nested_dict": {"a": 2, "c": 4, "B": "str"},
+    }
+
+    diff_test_dict = {"nested_dict": {"a": 2, "c": 4, "B": "str"}, "b": 24}
+
+    test_hash = make_hash(my_test_dict)
+    same_test_hash = make_hash(same_test_dict_diff_order)
+
+    assert test_hash == same_test_hash
+
+    diff_hash = make_hash(diff_test_dict)
+
+    assert test_hash != diff_hash
+
+    # modify dict in place, the object id won't change
+    my_test_dict["efg"] = 15
+    new_hash = make_hash(my_test_dict)
+    assert test_hash != new_hash
+
+
+def test_get_acq_info_by_uuid(
+    schedule_with_measurement: TimeableSchedule,
+    device_compile_config_basic_transmon,
+):
+    # Arrange
+    compiler = SerialCompiler(name="compiler")
+    schedule = compiler.compile(
+        schedule=schedule_with_measurement, config=device_compile_config_basic_transmon
+    )
+
+    measure_operation_id = list(schedule.schedulables.values())[-1]["operation_id"]
+    measure_operation = schedule.operations[measure_operation_id]
+
+    acq_operation_id = list(measure_operation.schedulables.values())[-1]["operation_id"]
+    acq_operation = measure_operation.operations[acq_operation_id]
+
+    acq_info_0 = acq_operation.data["acquisition_info"]
+    acq_pulse_infos = acq_info_0["waveforms"]
+
+    acq_id = get_acq_uuid(acq_info_0)
+    pulse_id0 = get_pulse_uuid(acq_pulse_infos[0])
+    pulse_id1 = get_pulse_uuid(acq_pulse_infos[1])
+
+    # Act
+    acqid_acqinfo_dict = get_acq_info_by_uuid(schedule)
+
+    # Assert
+    assert acq_id in acqid_acqinfo_dict
+    assert pulse_id0 not in acqid_acqinfo_dict
+    assert pulse_id1 not in acqid_acqinfo_dict
+
+    assert acqid_acqinfo_dict[acq_id] == acq_info_0
+
+
+def test_schedule_timing_table(mock_setup_basic_transmon_with_standard_params):
+    schedule = TimeableSchedule("test_schedule_timing_table")
+    schedule.add(Reset("q0"))
+    schedule.add(X90("q0"))
+    schedule.add(Measure("q0"))
+
+    quantum_device = mock_setup_basic_transmon_with_standard_params["quantum_device"]
+    compiler = SerialCompiler(name="compiler")
+    schedule = compiler.compile(
+        schedule=schedule, config=quantum_device.generate_compilation_config()
+    )
+
+    q0 = mock_setup_basic_transmon_with_standard_params["q0"]
+    x90_duration = q0.rxy.duration
+    measure_acq_delay = q0.measure.acq_delay
+    reset_duration = q0.reset.duration
+
+    expected_abs_timing = [
+        0.0,
+        reset_duration,
+        reset_duration + x90_duration,
+        reset_duration + x90_duration,
+        reset_duration + x90_duration + measure_acq_delay,
+    ]
+    actual_abs_timing = schedule.timing_table.data.abs_time
+    assert all(expected_abs_timing == actual_abs_timing)
+
+
+def test_get_used_port_clocks(create_schedule_with_pulse_info):
+    schedule0 = TimeableSchedule("my-schedule")
+    schedule0.add(X90("q0"))
+    schedule0 = create_schedule_with_pulse_info(schedule0)
+    assert schedule0.get_used_port_clocks() == {("q0:mw", "q0.01")}
+
+    schedule1 = TimeableSchedule("my-schedule")
+    schedule1.add(
+        SSBIntegrationComplex(
+            duration=1e-6,
+            port="q0:ro",
+            clock="q0.res",
+            coords={"index": 0},
+            acq_channel=0,
+        )
+    )
+    schedule1 = create_schedule_with_pulse_info(schedule1)
+    assert schedule1.get_used_port_clocks() == {("q0:ro", "q0.res")}
+
+    schedule2 = TimeableSchedule("my-schedule")
+    schedule2.add(schedule0)
+    schedule2.add(schedule1)
+    schedule2 = create_schedule_with_pulse_info(schedule2)
+    assert schedule2.get_used_port_clocks() == {
+        ("q0:mw", "q0.01"),
+        ("q0:ro", "q0.res"),
+    }

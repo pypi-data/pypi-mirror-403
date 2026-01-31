@@ -1,0 +1,321 @@
+import json
+
+import numpy as np
+import pytest
+
+from qblox_scheduler.backends import SerialCompiler
+from qblox_scheduler.json_utils import SchedulerJSONDecoder, SchedulerJSONEncoder
+from qblox_scheduler.operations.acquisition_library import SSBIntegrationComplex
+from qblox_scheduler.operations.control_flow_library import LoopOperation
+from qblox_scheduler.operations.gate_library import CNOT, CZ, X90, Y90, Measure, Reset, Rxy, X, Y
+from qblox_scheduler.operations.operation import Operation
+from qblox_scheduler.operations.pulse_library import SquarePulse
+from qblox_scheduler.resources import BasebandClockResource, ClockResource
+from qblox_scheduler.schedules.schedule import CompiledSchedule, TimeableSchedule
+
+
+@pytest.fixture(scope="module", autouse=False)
+def t1_schedule():
+    schedule = TimeableSchedule("T1", 10)
+    qubit = "q0"
+    times = np.arange(0, 20e-6, 2e-6)
+    for i, tau in enumerate(times):
+        schedule.add(Reset(qubit), label=f"Reset {i}")
+        schedule.add(X(qubit), label=f"pi {i}")
+        schedule.add(Measure(qubit), ref_pt="start", rel_time=tau, label=f"Measurement {i}")
+
+    return schedule
+
+
+def test_schedule_properties():
+    # Act
+    schedule = TimeableSchedule("Test", repetitions=1e3)
+
+    # Assert
+    assert schedule.name == "Test"
+    assert schedule.repetitions == 1e3
+
+
+def test_schedule_adding_double_resource():
+    # clock associated with qubit
+    sched = TimeableSchedule("Bell experiment")
+    with pytest.raises(ValueError):
+        sched.add_resource(BasebandClockResource(BasebandClockResource.IDENTITY))
+
+    sched.add_resource(ClockResource("mystery", 6e9))
+    with pytest.raises(ValueError):
+        sched.add_resource(ClockResource("mystery", 6e9))
+
+
+def test_schedule_bell():
+    # Create an empty schedule
+    sched = TimeableSchedule("Bell experiment")
+    assert TimeableSchedule.is_valid(sched)
+
+    assert len(sched.data["operation_dict"]) == 0
+    assert len(sched.data["schedulables"]) == 0
+
+    # define the resources
+    q0, q1 = ("q0", "q1")
+
+    # Define the operations, these will be added to the circuit
+    init_all = Reset(q0, q1)  # instantiates
+    x90_q0 = Rxy(theta=90, phi=0, qubit=q0)
+
+    # we use a regular for loop as we have to unroll the changing theta variable here
+    for theta in np.linspace(0, 360, 21):
+        sched.add(init_all)
+        sched.add(x90_q0)
+        sched.add(operation=CNOT(qC=q0, qT=q1))
+        sched.add(Rxy(theta=theta, phi=0, qubit=q0))
+        sched.add(Measure(q0, q1), label=f"M {theta:.2f} deg")
+
+    assert len(sched.operations) == 24 - 1  # angle theta == 360 will evaluate to 0
+    assert len(sched.schedulables) == 105
+
+    assert TimeableSchedule.is_valid(sched)
+
+
+def test_gates_valid():
+    init_all = Reset("q0", "q1")  # instantiates
+    rxy_operation = Rxy(theta=124, phi=23.9, qubit="q5")
+    x_operation = X("q0")
+    x90_operation = X90("q1")
+    y_operation = Y("q0")
+    y90_operation = Y90("q1")
+
+    cz_operation = CZ("q0", "q1")
+    cnot_operation = CNOT("q0", "q6")
+
+    measure_operation = Measure("q0", "q9")
+
+    assert Operation.is_valid(init_all)
+    assert Operation.is_valid(rxy_operation)
+    assert Operation.is_valid(x_operation)
+    assert Operation.is_valid(x90_operation)
+    assert Operation.is_valid(y_operation)
+    assert Operation.is_valid(y90_operation)
+    assert Operation.is_valid(cz_operation)
+    assert Operation.is_valid(cnot_operation)
+    assert Operation.is_valid(measure_operation)
+
+
+def test_operation_equality():
+    xa_q0 = X("q0")
+    xb_q0 = X("q0")
+    assert xa_q0 == xb_q0
+    # we now modify the contents of xa_q0.data
+    # this does not change the repr but does change the content of the operation
+    xa_q0.data["custom_key"] = 5
+    assert xa_q0 != xb_q0
+
+
+def test_type_properties():
+    operation = Operation("blank op")
+    assert not operation.valid_gate
+    assert not operation.valid_pulse
+    assert operation.name == "blank op"
+
+    gate = X("q0")
+    assert gate.valid_gate
+    assert not gate.valid_pulse
+
+    pulse = SquarePulse(1.0, 20e-9, "q0", clock="cl0.baseband")
+    assert not pulse.valid_gate
+    assert pulse.valid_pulse
+
+    pulse.add_gate_info(X("q0"))
+    assert pulse.valid_gate
+    assert pulse.valid_pulse
+
+    gate.add_device_representation(SquarePulse(1.0, 20e-9, "q0", clock="cl0.baseband"))
+    assert gate.valid_gate
+    assert gate.valid_pulse
+
+
+def test_operation_duration():
+    # Arrange
+    square_pulse_duration = 20e-9
+    acquisition_duration = 300e-9
+
+    # Act
+    empty_measure = Measure("q0")
+    empty_x_gate = X("q0")
+
+    pulse = SquarePulse(1.0, square_pulse_duration, "q0", clock="cl0.baseband")
+
+    x_gate = X("q0")
+    x_gate.add_device_representation(pulse)
+
+    measure = Measure("q0")
+    measure.add_device_representation(
+        SSBIntegrationComplex(
+            port="q0:res",
+            clock="q0.ro",
+            duration=acquisition_duration,
+        )
+    )
+
+    # Assert
+    assert empty_measure.duration == 0
+    assert empty_x_gate.duration == 0
+    assert pulse.duration == square_pulse_duration
+    assert x_gate.duration == square_pulse_duration
+    assert measure.duration == acquisition_duration
+
+
+def test___repr__():
+    operation = Operation("test")
+    operation["gate_info"] = {"clock": "q0.01"}
+    obj = SchedulerJSONDecoder().decode_dict(operation.__getstate__())
+    assert obj == operation
+
+
+def test___str__():
+    operation = Operation("test")
+    assert eval(str(operation)) == operation
+
+
+def test_t1_sched_valid(t1_schedule):
+    """
+    Tests that the test schedule is a valid TimeableSchedule and an invalid CompiledSchedule
+    """
+    test_schedule = t1_schedule
+    assert TimeableSchedule.is_valid(test_schedule)
+
+    assert not CompiledSchedule.is_valid(test_schedule)
+
+
+def test_compiled_t1_sched_valid(t1_schedule):
+    """
+    Tests that the test schedule is a valid TimeableSchedule and a valid CompiledSchedule
+    """
+    test_schedule = CompiledSchedule(t1_schedule)
+
+    assert TimeableSchedule.is_valid(test_schedule)
+    assert CompiledSchedule.is_valid(test_schedule)
+
+
+def test_t1_sched_circuit_diagram(t1_schedule):
+    """
+    Tests that the test schedule can be visualized
+    """
+    # will only test that a figure is created and runs without errors
+    _ = t1_schedule.plot_circuit_diagram()
+
+
+def test_t1_sched_pulse_diagram(t1_schedule, device_compile_config_basic_transmon):
+    """
+    Tests that the test schedule can be visualized
+    """
+    compiler = SerialCompiler(name="compiler")
+    compiled_schedule = compiler.compile(
+        schedule=t1_schedule, config=device_compile_config_basic_transmon
+    )
+    # will only test that a figure is created and runs without errors
+    _ = compiled_schedule.plot_pulse_diagram()
+
+
+@pytest.mark.parametrize("reset_clock_phase", (True, False))
+def test_sched_timing_table(mock_setup_basic_transmon_with_standard_params, reset_clock_phase):
+    schedule = TimeableSchedule(name="test_sched", repetitions=10)
+    qubit = "q0"
+    times = [0, 10e-6, 30e-6]
+    for i, tau in enumerate(times):
+        schedule.add(Reset(qubit), label=f"Reset {i}")
+        schedule.add(X(qubit), label=f"pi {i}")
+        schedule.add(
+            Measure(qubit),
+            ref_pt="start",
+            rel_time=tau,
+            label=f"Measurement {i}",
+        )
+
+    with pytest.raises(ValueError):
+        _ = schedule.timing_table
+
+    quantum_device = mock_setup_basic_transmon_with_standard_params["quantum_device"]
+    q0 = mock_setup_basic_transmon_with_standard_params["q0"]
+    q0.measure.reset_clock_phase = reset_clock_phase
+    q0.measure.acq_delay = 120e-9
+    q0.reset.duration = 200e-6
+
+    compiler = SerialCompiler(name="compiler")
+    compiled_schedule = compiler.compile(
+        schedule=schedule, config=quantum_device.generate_compilation_config()
+    )
+
+    timing_table_data = compiled_schedule.timing_table.data
+    assert set(timing_table_data.keys()) == {
+        "abs_time",
+        "clock",
+        "duration",
+        "is_acquisition",
+        "port",
+        "waveform_op_id",
+        "operation",
+        "operation_hash",
+    }
+    assert len(timing_table_data) == 15 if reset_clock_phase else 12
+
+    if reset_clock_phase:
+        desired_timing = np.array(
+            [
+                0,
+                200e-6,
+                200e-6,
+                200e-6,
+                200e-6 + 120e-9,  # acq delay
+                200e-6 + 1120e-9,
+                400e-6 + 1120e-9,
+                410e-6 + 1120e-9,
+                410e-6 + 1120e-9,
+                410e-6 + 1240e-9,
+                410e-6 + 2240e-9,
+                610e-6 + 2240e-9,
+                640e-6 + 2240e-9,
+                640e-6 + 2240e-9,
+                640e-6 + 2360e-9,
+            ]
+        )
+    else:
+        desired_timing = np.array(
+            [
+                0,
+                200e-6,
+                200e-6,
+                200e-6 + 120e-9,  # acq delay
+                200e-6 + 1120e-9,
+                400e-6 + 1120e-9,
+                410e-6 + 1120e-9,
+                410e-6 + 1240e-9,
+                410e-6 + 2240e-9,
+                610e-6 + 2240e-9,
+                640e-6 + 2240e-9,
+                640e-6 + 2360e-9,
+            ]
+        )
+    np.testing.assert_almost_equal(
+        actual=np.array(timing_table_data["abs_time"]),
+        desired=desired_timing,
+        decimal=10,
+    )
+
+
+def test_nested_schedule_to_from_json():
+    schedule = TimeableSchedule("schedule")
+
+    inner = TimeableSchedule("inner")
+    inner.add(X("q0"))
+    schedule.add(LoopOperation(body=inner, repetitions=3))
+    schedule.add(inner)
+
+    # Serialization/deserialization using TimeableSchedule.to_json and TimeableSchedule.from_json.
+    schedule_serialized_1 = schedule.to_json()
+    schedule_deserialized_1 = TimeableSchedule.from_json(schedule_serialized_1)
+    assert schedule == schedule_deserialized_1
+
+    # Serialization/deserialization using json.dumps and json.loads functions.
+    schedule_serialized_2 = json.dumps(schedule, cls=SchedulerJSONEncoder)
+    schedule_deserialized_2 = json.loads(schedule_serialized_2, cls=SchedulerJSONDecoder)
+    assert schedule == schedule_deserialized_2
