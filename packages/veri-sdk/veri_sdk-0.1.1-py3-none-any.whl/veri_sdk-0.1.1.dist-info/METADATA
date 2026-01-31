@@ -1,0 +1,220 @@
+Metadata-Version: 2.4
+Name: veri-sdk
+Version: 0.1.1
+Summary: Official Python SDK for Veri AI Deepfake Detection API
+Project-URL: Homepage, https://veri.studio
+Project-URL: Documentation, https://docs.veri.studio
+Author-email: Veri Team <support@veri.studio>
+License-Expression: MIT
+Keywords: ai,api,deepfake,detection,fake,image,machine-learning,sdk,veri
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Classifier: Typing :: Typed
+Requires-Python: >=3.10
+Requires-Dist: httpx>=0.24.0
+Requires-Dist: pydantic>=2.0.0
+Provides-Extra: dev
+Requires-Dist: mypy>=1.0.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.21.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# veri-sdk
+
+Official Python SDK for the Veri AI Deepfake Detection API.
+
+## Installation
+
+```bash
+pip install veri-sdk
+```
+
+## Quick Start
+
+```python
+from veri import VeriClient
+
+# Create a client with your API key
+client = VeriClient(api_key="your-api-key-here")
+
+# Detect an image
+with open("image.jpg", "rb") as f:
+    result = client.detect(f)
+
+print(f"Prediction: {result.prediction}")
+print(f"Is AI-generated: {result.is_fake}")
+print(f"Confidence: {result.confidence:.1%}")
+```
+
+## Usage Examples
+
+### Detect from File Path
+
+```python
+from pathlib import Path
+from veri import VeriClient
+
+client = VeriClient(api_key="your-api-key")
+
+result = client.detect(Path("suspicious-image.jpg"))
+
+if result.is_fake:
+    print("This image appears to be AI-generated")
+    print(f"Confidence: {result.confidence:.1%}")
+    print(f"Verdict: {result.verdict}")
+else:
+    print("This image appears to be authentic")
+```
+
+### Detect from Bytes
+
+```python
+import requests
+from veri import VeriClient
+
+client = VeriClient(api_key="your-api-key")
+
+# Download image and detect
+response = requests.get("https://example.com/image.jpg")
+result = client.detect(response.content)
+```
+
+### Detect from URL
+
+```python
+result = client.detect_url("https://example.com/image.jpg")
+```
+
+### With Detection Options
+
+```python
+from veri import VeriClient, DetectionOptions
+
+client = VeriClient(api_key="your-api-key")
+
+options = DetectionOptions(
+    threshold=0.6,
+)
+
+result = client.detect(image_bytes, options=options)
+```
+
+### Get Profile
+
+```python
+profile = client.get_profile()
+print(f"User ID: {profile['userId']}")
+print(f"Credits: {profile['credits']}")
+```
+
+### Async Client
+
+```python
+import asyncio
+from veri import AsyncVeriClient
+
+async def main():
+    async with AsyncVeriClient(api_key="your-api-key") as client:
+        # Run multiple detections concurrently
+        tasks = [
+            client.detect(image1_bytes),
+            client.detect(image2_bytes),
+            client.detect(image3_bytes),
+        ]
+        results = await asyncio.gather(*tasks)
+
+        for i, result in enumerate(results):
+            print(f"Image {i+1}: {'FAKE' if result.is_fake else 'REAL'}")
+
+asyncio.run(main())
+```
+
+## Error Handling
+
+```python
+from veri import (
+    VeriClient,
+    VeriAPIError,
+    VeriValidationError,
+    VeriRateLimitError,
+    VeriTimeoutError,
+)
+
+client = VeriClient(api_key="your-api-key")
+
+try:
+    result = client.detect(image_bytes)
+except VeriRateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after} seconds")
+except VeriTimeoutError as e:
+    print(f"Request timed out after {e.timeout_ms}ms")
+except VeriAPIError as e:
+    print(f"API Error: {e.message} (code: {e.code})")
+    print(f"Request ID: {e.request_id}")
+except VeriValidationError as e:
+    print(f"Validation Error: {e.message} (field: {e.field})")
+```
+
+## Configuration
+
+```python
+client = VeriClient(
+    api_key="your-api-key",
+    base_url="https://api.veri.studio/v1",  # Custom API URL
+    timeout=30.0,                         # Request timeout (seconds)
+    max_retries=3,                        # Retry attempts
+)
+```
+
+## Context Manager
+
+Both sync and async clients support context managers:
+
+```python
+# Sync
+with VeriClient(api_key="your-api-key") as client:
+    result = client.detect(image_bytes)
+
+# Async
+async with AsyncVeriClient(api_key="your-api-key") as client:
+    result = await client.detect(image_bytes)
+```
+
+## Model
+
+| Model | Description |
+|-------|-------------|
+| `veri_face` | DenseNet-121 + MoE face forgery detector |
+
+## Type Hints
+
+This SDK is fully typed. Import types for your IDE:
+
+```python
+from veri import (
+    DetectionResult,
+    DetectionOptions,
+    ModelResult,
+)
+```
+
+## Requirements
+
+- Python 3.10+
+- httpx
+- pydantic
+
+## License
+
+MIT
