@@ -1,0 +1,145 @@
+---
+name: Tests
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    # Run tests every Monday at 9:17 to catch regressions.
+    - cron: "17 9 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.event.head_commit.message, '[changelog] Release') }}
+
+jobs:
+
+  tests:
+    strategy:
+      # We delegate the failure decision to each job, by the way of the "continue-on-error" flag.
+      fail-fast: false
+      matrix:
+        # Available OS: https://github.com/actions/runner-images#available-images
+        # Only targets 2 variants per platforms to keep the matrix small.
+        os:
+          - ubuntu-24.04-arm # arm64
+          - ubuntu-slim      # x86
+          - macos-26         # arm64
+          - macos-15-intel   # x86
+          - windows-11-arm   # arm64
+          - windows-2025     # x86
+        python-version:
+          - "3.10"
+          # Ignore intermediate versions to reduce CI load.
+          # - "3.11"
+          # - "3.12"
+          # - "3.13"
+          - "3.14"
+          - "3.14t"
+          - "3.15"
+          - "3.15t"
+        include:
+          # Default all jobs as stable, unless marked otherwise below.
+          - state: stable
+          # XXX Python 3.15 is still in development.
+          - state: unstable
+            python-version: "3.15"
+          - state: unstable
+            python-version: "3.15t"
+    name: "${{ matrix.state == 'stable' && '✅' || '⁉️' }} ${{ matrix.os }} / py${{ matrix.python-version }}"
+    runs-on: ${{ matrix.os }}
+    # We keep going when a job flagged as not stable fails.
+    continue-on-error: ${{ matrix.state == 'unstable' }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Install Python ${{ matrix.python-version }}
+        # If UV cannot find the requested Python version, it exits with code 2, which let the job pass unnoticed on
+        # Windows. So we force the shell to bash, even on Windows, and "set -e" to ensure any error in the install
+        # process is caught and fails the job. It works because Windows runners too Git Bash available).
+        shell: bash
+        run: |
+          set -e
+          uv --no-progress venv --python ${{ matrix.python-version }}
+      - name: Install project
+        run: |
+          uv --no-progress sync --frozen --group test
+
+      - name: Check launchable modules
+        run: |
+          uv run        -m gha_utils --version
+          uv run python -m gha_utils --version
+      - name: Check launchable stable CLI
+        run: |
+          uvx    -- gha-utils --version
+          uv run -- gha-utils --version
+      - name: Check launchable dev CLI
+        run: |
+          uvx    --from git+https://github.com/kdeldycke/workflows -- gha-utils --version
+          uv run --with git+https://github.com/kdeldycke/workflows -- gha-utils --version
+
+      - name: Unittests
+        run: |
+          uv --no-progress run --frozen -- pytest
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5.5.2
+        with:
+          report_type: coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov
+        uses: codecov/codecov-action@v5.5.2
+        with:
+          report_type: test_results
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Self-tests against test plan
+        run: |
+          uv run -- gha-utils test-plan --command "uv run -- gha-utils" --plan-file "./tests/cli-test-plan.yaml"
+
+  project-metadata:
+    name: Project metadata
+    runs-on: ubuntu-slim
+    outputs:
+      build_targets: ${{ steps.project-metadata.outputs.build_targets }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run gha-utils metadata
+        id: project-metadata
+        run: |
+          uvx 'gha-utils==5.4.0' metadata --output "$GITHUB_OUTPUT"
+
+  validate-arch:
+    # Check architecture matches the one expected from the runner image. This is to ensure that the OS does not rely on
+    # emulation to run the build. See:
+    # https://docs.astral.sh/uv/concepts/python-versions/#transparent-x86_64-emulation-on-aarch64
+    name: Validate ${{ matrix.os }} / ${{ matrix.arch }}
+    needs:
+      - project-metadata
+    if: needs.project-metadata.outputs.build_targets
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.project-metadata.outputs.build_targets) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check Python version
+        run: |
+          python --version
+          python -m pip --version
+      - name: Check architecture is ${{ matrix.arch }}
+        shell: python
+        run: |
+          import platform
+
+          arch = platform.machine()
+          print(f"Detected architecture: {arch}")
+
+          matrix_arch = "${{ matrix.arch }}"
+          if matrix_arch == "x64":
+              assert arch.lower() in ("x86_64", "amd64")
+          elif matrix_arch == "arm64":
+              assert arch.lower() in ("aarch64", "arm64")
+          else:
+              raise ValueError(f"Unrecognized architecture in the matrix: {matrix_arch}")

@@ -1,0 +1,231 @@
+---
+name: Lint
+"on":
+  workflow_call:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.event.head_commit.message, '[changelog] Release') }}
+
+jobs:
+
+  project-metadata:
+    name: Project metadata
+    # All jobs depending on project-metadata in this workflow are skipped on prepare-release branch.
+    if: github.head_ref != 'prepare-release'
+    runs-on: ubuntu-slim
+    outputs:
+      is_bot: ${{ steps.project-metadata.outputs.is_bot }}
+      python_files: ${{ steps.project-metadata.outputs.python_files }}
+      yaml_files: ${{ steps.project-metadata.outputs.yaml_files }}
+      workflow_files: ${{ steps.project-metadata.outputs.workflow_files }}
+      doc_files: ${{ steps.project-metadata.outputs.doc_files }}
+      zsh_files: ${{ steps.project-metadata.outputs.zsh_files }}
+      is_python_project: ${{ steps.project-metadata.outputs.is_python_project }}
+      package_name: ${{ steps.project-metadata.outputs.package_name }}
+      is_sphinx: ${{ steps.project-metadata.outputs.is_sphinx }}
+      mypy_params: ${{ steps.project-metadata.outputs.mypy_params }}
+      project_description: ${{ steps.project-metadata.outputs.project_description }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run gha-utils metadata
+        id: project-metadata
+        run: |
+          uvx 'gha-utils==5.4.0' metadata --output "$GITHUB_OUTPUT"
+
+  lint-repo:
+    needs:
+      - project-metadata
+    # Only check Python projects that have a package name, Sphinx docs, or description.
+    if: >
+      fromJSON(needs.project-metadata.outputs.is_python_project)
+      && (needs.project-metadata.outputs.package_name || fromJSON(needs.project-metadata.outputs.is_sphinx)
+      || needs.project-metadata.outputs.project_description)
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Lint repository metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          uvx 'gha-utils==5.5.0' lint-repo
+          ${{ needs.project-metadata.outputs.package_name &&
+          format('--package-name "{0}"', needs.project-metadata.outputs.package_name) || '' }}
+          --repo-name "${{ github.event.repository.name }}"
+          ${{ fromJSON(needs.project-metadata.outputs.is_sphinx) && '--is-sphinx' || '--no-sphinx' }}
+          ${{ needs.project-metadata.outputs.project_description &&
+          format('--project-description "{0}"', needs.project-metadata.outputs.project_description) || '' }}
+
+  lint-mypy:
+    needs:
+      - project-metadata
+    # Skip linting on prepare-release branch as it points to a tagged URL that does not exist yet.
+    if: github.head_ref != 'prepare-release' && needs.project-metadata.outputs.python_files
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Install all package dependencies
+        # --all-extras and --all-groups are required as Mypy will check all Python files of the project, including
+        # those related to optional features, tests, development and documentation.
+        run: |
+          uv --no-progress sync --frozen --all-extras --all-groups
+      - name: Run Mypy
+        # --color-output - Force colorized output as in CI, Mypy defaults to no color in CI.
+        run: >
+          uv --no-progress run --frozen --with 'mypy==1.19.1' --
+          mypy --color-output ${{ needs.project-metadata.outputs.mypy_params }}
+          ${{ needs.project-metadata.outputs.python_files }}
+
+  lint-yaml:
+    needs:
+      - project-metadata
+    # Skip linting on prepare-release branch as it points to a tagged URL that does not exist yet.
+    # Also skip dependency update PRs which do not heavily alter YAML files.
+    if: >
+      github.head_ref != 'prepare-release'
+      && (! fromJson(needs.project-metadata.outputs.is_bot))
+      && needs.project-metadata.outputs.yaml_files
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run yamllint
+        run: |
+          uvx 'yamllint==1.38.0' --strict --config-data "{rules: {line-length: {max: 120}}}" --format github .
+
+  lint-zsh:
+    needs:
+      - project-metadata
+    # Skip linting on prepare-release branch and bots PRs because they do not alter Zsh files.
+    if: >
+      github.head_ref != 'prepare-release'
+      && (! fromJson(needs.project-metadata.outputs.is_bot))
+      && needs.project-metadata.outputs.zsh_files
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Install Zsh
+        run: |
+          sudo apt update
+          sudo apt install --yes zsh
+      - name: Lint
+        run: |
+          for file in ${{ needs.project-metadata.outputs.zsh_files }}; do zsh --no-exec "$file"; done
+
+  lint-github-action:
+    needs:
+      - project-metadata
+    # Skip linting on prepare-release branch and dependency update PRs because they do not heavily alter GitHub Actions.
+    if: >
+      github.head_ref != 'prepare-release'
+      && (! fromJson(needs.project-metadata.outputs.is_bot))
+      && needs.project-metadata.outputs.workflow_files
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Install actionlint and shellcheck
+        id: install_actionlint
+        run: |
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.10
+          sudo apt update
+          sudo apt install --yes shellcheck
+      - name: Setup problem matcher
+        # Source: https://github.com/rhysd/actionlint/blob/main/docs/usage.md#problem-matchers
+        run: |
+          curl -fsSL --output ./.github/actionlint-matcher.json \
+            https://raw.githubusercontent.com/rhysd/actionlint/refs/tags/v1.7.10/.github/actionlint-matcher.json
+          echo "::add-matcher::.github/actionlint-matcher.json"
+      - name: Run actionlint
+        # XXX actionlint triggers this error:
+        # .github/workflows/release.yaml:306:22: property "workflow_update_github_pat" is not defined in object type
+        # {actions_runner_debug: string; actions_step_debug: string; github_token: string; pypi_token: string}
+        # [expression]
+        #     |
+        # 306 | token: ${{ secrets.WORKFLOW_UPDATE_GITHUB_PAT || secrets.GITHUB_TOKEN }}
+        #     |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # See: https://github.com/rhysd/actionlint/issues/148
+        run: >
+          ${{ steps.install_actionlint.outputs.executable }}
+          -color
+          -ignore 'property "workflow_update_github_pat" is not defined in .+'
+
+  broken-links:
+    needs:
+      - project-metadata
+    # Skip all PRs as we won't have permissions to create issues.
+    # Skip the prepare-release branch as it contains URLs pointing to tags that don't exist yet.
+    # Skip any push containing a post-release bump commit as a precautionary measure.
+    if: >
+      github.event_name != 'pull_request'
+      && github.ref != 'refs/heads/prepare-release'
+      && (! contains(github.event.commits.*.message, '[changelog] Post-release version bump'))
+      && needs.project-metadata.outputs.doc_files
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - uses: lycheeverse/lychee-action@v2.7.0
+        id: lychee_run
+        with:
+          fail: false
+          args: >
+            --hidden
+            --suggest
+            --insecure
+            --no-progress
+            --include-fragments
+            --exclude-all-private
+            ${{ needs.project-metadata.outputs.doc_files }}
+      - name: Manage broken links issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          uvx 'gha-utils==5.5.0' broken-links
+          --lychee-exit-code ${{ steps.lychee_run.outputs.exit_code }}
+          --body-file ./lychee/out.md
+          --repo-name "${{ github.event.repository.name }}"
+
+  lint-awesome:
+    # Lint only "awesome-*" repositories except "awesome-template".
+    # Skip linting on prepare-release branch to align the condition with other jobs, even if it does not really matter
+    # here as "awesome-*" repositories don't trigger the release workflow.
+    if: >
+      startsWith(github.event.repository.name, 'awesome-')
+      && github.event.repository.name != 'awesome-template'
+      && github.head_ref != 'prepare-release'
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          # Fetch all history to please linter's age checks.
+          fetch-depth: 0
+      - name: Install awesome-lint
+        run: |
+          npm install awesome-lint@2.2.2
+          npx awesome-lint --version
+      - name: Run awesome-lint
+        run: |
+          npx awesome-lint
+
+  check-secrets:
+    needs:
+      - project-metadata
+    # Skip secret checks on prepare-release branch and dependency update PRs.
+    if: github.head_ref != 'prepare-release' && ! fromJson(needs.project-metadata.outputs.is_bot)
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2.3.9
+        with:
+          config-path: .github/gitleaks.toml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

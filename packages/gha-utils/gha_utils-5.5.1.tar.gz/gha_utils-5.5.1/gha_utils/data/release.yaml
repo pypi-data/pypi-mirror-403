@@ -1,0 +1,356 @@
+---
+name: Build & release
+# Read https://github.com/actions/runner/issues/491 for insights on complex workflow execution logic.
+"on":
+  workflow_call:
+    secrets:
+      PYPI_TOKEN:
+        required: false
+    inputs:
+      unstable-targets:
+        description: List of unstable targets on which the build should be attempted but not fatal
+        required: false
+        # XXX This has to be a string because workflow inputs are not allowed to be complex types.
+        # Still, thanks to gha-utils resilience, we can pass a list of targets as a string, separated
+        # by arbitrary sepatarators.
+        type: string
+      timeout:
+        description: Timeout in seconds for each binary test
+        required: false
+        type: number
+      test-plan-file:
+        description: YAML file containing the full test plan for binaries
+        required: false
+        type: string
+        default: ./tests/cli-test-plan.yaml
+      test-plan:
+        description: Test plan for binaries
+        required: false
+        # XXX This has to be a string because workflow inputs are not allowed to be complex types.
+        type: string
+    outputs:
+      nuitka_matrix:
+        description: Nuitka build matrix
+        value: ${{ jobs.project-metadata.outputs.nuitka_matrix }}
+
+  # Target are chosen so that all commits get a chance to have their build tested.
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Defaults sets in workflow_call.inputs or workflow_dispatch.inputs are not propagated to other events.
+# We have to manually manage them: https://github.com/orgs/community/discussions/39357#discussioncomment-7500641
+env:
+  test-plan-file: >-
+    ${{ inputs.test-plan-file == null && './tests/cli-test-plan.yaml' || inputs.test-plan-file }}
+  test-plan: ${{ inputs.test-plan }}
+
+concurrency:
+  # Protect release workflows by giving them unique concurrency groups.
+  # The problem: cancel-in-progress is evaluated on the NEW workflow, not the old one.
+  # If a regular commit is pushed while a release workflow is running, the new workflow
+  # would cancel the release (since they share the same group and the new commit doesn't
+  # match the release pattern).
+  # Solution: Release commits get a unique group (using SHA), so they can never be
+  # cancelled by subsequent pushes. Regular pushes share a group and cancel each other.
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event.pull_request.number
+      || (
+        (startsWith(github.event.head_commit.message, '[changelog] Release')
+        || startsWith(github.event.head_commit.message, '[changelog] Post-release'))
+        && github.sha
+      )
+      || github.ref
+    }}
+  cancel-in-progress: true
+
+jobs:
+
+  project-metadata:
+    name: Project metadata
+    runs-on: ubuntu-slim
+    outputs:
+      # There's a design issue with GitHub actions: matrix outputs are not cumulative. The last job wins
+      # (see: https://github.community/t/bug-jobs-output-should-return-a-list-for-a-matrix-job/128626).
+      # This means in a graph of jobs, a matrix-based one is terminal, and cannot be depended on. Same goes for
+      # (reusable) workflows. We use this preliminary job to produce all matrix we need to trigger depending jobs
+      # over the dimensions.
+      new_commits_matrix: ${{ steps.project-metadata.outputs.new_commits_matrix }}
+      release_commits_matrix: ${{ steps.project-metadata.outputs.release_commits_matrix }}
+      # Export Python project metadata.
+      build_targets: ${{ steps.project-metadata.outputs.build_targets }}
+      nuitka_matrix: ${{ steps.project-metadata.outputs.nuitka_matrix }}
+      is_python_project: ${{ steps.project-metadata.outputs.is_python_project }}
+      package_name: ${{ steps.project-metadata.outputs.package_name }}
+      release_notes: ${{ steps.project-metadata.outputs.release_notes }}
+      skip_binary_build: ${{ steps.project-metadata.outputs.skip_binary_build }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          # Checkout pull request HEAD commit to ignore actions/checkout's merge commit. Fallback to push SHA.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # We're going to browse all new commits.
+          fetch-depth: 0
+      - name: List all branches
+        run: |
+          git branch --all
+      - name: List all commits
+        run: |
+          git log --decorate=full --oneline
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run gha-utils metadata
+        id: project-metadata
+        run: >
+          uvx 'gha-utils==5.4.0' metadata
+          ${{ inputs.unstable-targets != null && format('--unstable-targets "{0}"', inputs.unstable-targets) || '' }}
+          --output "$GITHUB_OUTPUT"
+
+  package-build:
+    name: Build package
+    needs:
+      - project-metadata
+    if: fromJSON(needs.project-metadata.outputs.is_python_project)
+    strategy:
+      matrix: ${{ fromJSON(needs.project-metadata.outputs.new_commits_matrix) }}
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ matrix.commit }}
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Build package
+        run: |
+          uv --no-progress build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: ${{ github.event.repository.name }}-${{ matrix.short_sha }}
+          path: ./dist/*
+      # TODO: Should we also attest the archive created here? See:
+      # https://github.com/actions/attest-build-provenance?tab=readme-ov-file#integration-with-actionsupload-artifact
+
+  compile-binaries:
+    name: "${{ matrix.state == 'stable' && '✅' || '⁉️' }} ${{ matrix.os }}, ${{ matrix.short_sha }} build"
+    needs:
+      - project-metadata
+    # Skip binary compilation for branches that don't affect code (e.g., update-mailmap, format-markdown).
+    if: >
+      needs.project-metadata.outputs.nuitka_matrix
+      && !fromJSON(needs.project-metadata.outputs.skip_binary_build || 'false')
+    strategy:
+      matrix: ${{ fromJSON(needs.project-metadata.outputs.nuitka_matrix) }}
+    runs-on: ${{ matrix.os }}
+    # We keep going when a job flagged as not stable fails.
+    continue-on-error: ${{ matrix.state == 'unstable' }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ matrix.commit }}
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Setup venv
+        run: |
+          uv --no-progress venv --python 3.13
+      - name: Install Nuitka
+        run: |
+          uv --no-progress pip install 'nuitka[onefile]==2.8.9'
+      - name: Nuitka + compilers versions
+        run: |
+          uv --no-progress run --frozen -- nuitka --version
+      - name: Build binary
+        id: build-binary
+        continue-on-error: true
+        run: >
+          uv --no-progress run --frozen -- nuitka
+          --onefile --assume-yes-for-downloads --output-filename=${{ matrix.bin_name }} ${{ matrix.module_path }}
+      - name: Upload Nuitka crash report
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: nuitka-crash-report-${{ matrix.os }}-${{ matrix.short_sha }}.xml
+          if-no-files-found: ignore
+          path: nuitka-crash-report.xml
+      - if: steps.build-binary.outcome == 'failure'
+        run: |
+          echo "Nuitka build failed, skipping the rest of the steps."
+          exit 1
+      - name: Install exiftool - Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt --quiet --yes install exiftool
+      - name: Install exiftool - macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install exiftool
+      - name: Install exiftool - Windows
+        if: runner.os == 'Windows'
+        run: |
+          choco install exiftool --no-progress --yes --retry-count=3
+      - name: Verify binary architecture
+        run: |
+          uvx 'gha-utils==5.5.0' verify-binary --target "${{ matrix.target }}" --binary "${{ matrix.bin_name }}"
+      - name: Upload binaries
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: ${{ matrix.bin_name }}
+          if-no-files-found: warn
+          path: ${{ matrix.bin_name }}
+
+  test-binaries:
+    name: "${{ matrix.state == 'stable' && '✅' || '⁉️' }} ${{ matrix.os }}, ${{ matrix.short_sha }} test"
+    needs:
+      - project-metadata
+      - compile-binaries
+    # Skip binary tests for branches that don't affect code (e.g., update-mailmap, format-markdown).
+    if: >
+      needs.project-metadata.outputs.nuitka_matrix
+      && !fromJSON(needs.project-metadata.outputs.skip_binary_build || 'false')
+    strategy:
+      matrix: ${{ fromJSON(needs.project-metadata.outputs.nuitka_matrix) }}
+    runs-on: ${{ matrix.os }}
+    # We keep going when a job flagged as not stable fails.
+    continue-on-error: ${{ matrix.state == 'unstable' }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ matrix.commit }}
+      - name: Download artifact
+        uses: actions/download-artifact@v7.0.0
+        id: artifacts
+        with:
+          name: ${{ matrix.bin_name }}
+      - name: Set binary permissions
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x ${{ steps.artifacts.outputs.download-path }}/${{ matrix.bin_name }}
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run test plan for binary
+        run: >
+          uvx 'gha-utils==5.4.0' test-plan
+          ${{ inputs.timeout != null && format('--timeout {0}', inputs.timeout) || '' }}
+          --binary "${{ steps.artifacts.outputs.download-path }}/${{ matrix.bin_name }}"
+          --plan-file "${{ env.test-plan-file }}"
+          ${{ env.test-plan != null && '--plan-envvar test-plan' || '' }}
+
+  git-tag:
+    name: Tag release
+    needs:
+      - project-metadata
+    # Only consider pushes to main branch as triggers for releases.
+    if: github.ref == 'refs/heads/main' && needs.project-metadata.outputs.release_commits_matrix
+    strategy:
+      matrix: ${{ fromJSON(needs.project-metadata.outputs.release_commits_matrix) }}
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ matrix.commit }}
+          # XXX We need custom PAT with workflows permissions because tag generation will work but it will not trigger
+          # any other workflows that use `on.push.tags` triggers. See:
+          # https://stackoverflow.com/questions/60963759/use-github-actions-to-create-a-tag-but-not-a-release#comment135891921_64479344
+          # https://github.com/orgs/community/discussions/27028
+          token: ${{ secrets.WORKFLOW_UPDATE_GITHUB_PAT || secrets.GITHUB_TOKEN }}
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Create and push tag
+        # Idempotent: skips if tag already exists instead of failing. This allows re-running
+        # workflows interrupted after tag creation.
+        run: >
+          uvx 'gha-utils==5.5.0' git-tag
+          --tag "v${{ matrix.current_version }}"
+          --commit "${{ matrix.commit }}"
+          --skip-existing
+
+  pypi-publish:
+    name: Publish to PyPi
+    needs:
+      - project-metadata
+      - package-build
+      - git-tag
+    if: needs.project-metadata.outputs.package_name
+    strategy:
+      matrix: ${{ fromJSON(needs.project-metadata.outputs.release_commits_matrix) }}
+    runs-on: ubuntu-slim
+    permissions:
+      # Allow GitHub's OIDC provider to create a JSON Web Token:
+      # https://github.blog/changelog/2023-06-15-github-actions-securing-openid-connect-oidc-token-permissions-in-reusable-workflows/
+      # https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#adding-permissions-settings
+      id-token: write
+      attestations: write
+    steps:
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7.0.0
+        id: download
+        with:
+          name: ${{ github.event.repository.name }}-${{ matrix.short_sha }}
+      - name: Generate attestations
+        uses: actions/attest-build-provenance@v3.1.0
+        with:
+          subject-path: "${{ steps.download.outputs.download-path }}/*"
+      - name: Push to PyPi
+        run: |
+          uv --no-progress publish --token "${{ secrets.PYPI_TOKEN }}" "${{ steps.download.outputs.download-path }}/*"
+
+  github-release:
+    name: Publish GitHub release
+    needs:
+      - project-metadata
+      - package-build
+      - compile-binaries
+      - git-tag
+    # Make sure this job always starts if git-tag ran and succeeded.
+    if: always() && needs.git-tag.result == 'success'
+    strategy:
+      matrix: ${{ fromJSON(needs.project-metadata.outputs.release_commits_matrix) }}
+    runs-on: ubuntu-slim
+    permissions:
+      # Allow GitHub's OIDC provider to create a JSON Web Token:
+      # https://github.blog/changelog/2023-06-15-github-actions-securing-openid-connect-oidc-token-permissions-in-reusable-workflows/
+      # https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#adding-permissions-settings
+      id-token: write
+      attestations: write
+      # Allow project without WORKFLOW_UPDATE_GITHUB_PAT to create a GitHub release.
+      contents: write
+    steps:
+      - name: Download all artifacts
+        # Do not fetch build artifacts if all jobs producing them were skipped.
+        if: needs.package-build.result != 'skipped' || needs.compile-binaries.result != 'skipped'
+        uses: actions/download-artifact@v7.0.0
+        id: artifacts
+        with:
+          path: release_artifact
+          # Only consider artifacts produced by the release commit.
+          pattern: "*-${{ matrix.short_sha }}*"
+          merge-multiple: true
+      - uses: astral-sh/setup-uv@v7.2.0
+        # Only set up uv if we have artifacts to process.
+        if: steps.artifacts.outputs.download-path
+      - name: Collect and rename artifacts
+        # Do not try to rename artifacts if none have been downloaded.
+        if: steps.artifacts.outputs.download-path
+        id: collect_artifacts
+        run: >
+          uvx 'gha-utils==5.5.0' collect-artifacts
+          --download-folder "${{ steps.artifacts.outputs.download-path }}"
+          --short-sha "${{ matrix.short_sha }}"
+          --nuitka-matrix '${{ needs.project-metadata.outputs.nuitka_matrix }}'
+          --output "$GITHUB_OUTPUT"
+      - name: Generate attestations
+        # Do not try to attest artifacts if none have been produced.
+        if: steps.collect_artifacts.outputs.artifacts_path
+        uses: actions/attest-build-provenance@v3.1.0
+        with:
+          subject-path: ${{ steps.collect_artifacts.outputs.artifacts_path }}
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2.5.0
+        # XXX We need custom PAT with workflows permissions because tag generation will work but it will not trigger
+        # any other workflows that use `on.push.tags` triggers. See:
+        # https://stackoverflow.com/questions/60963759/use-github-actions-to-create-a-tag-but-not-a-release#comment135891921_64479344
+        # https://github.com/orgs/community/discussions/27028
+        env:
+          GITHUB_TOKEN: ${{ secrets.WORKFLOW_UPDATE_GITHUB_PAT || secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ matrix.current_version }}
+          target_commitish: ${{ matrix.commit }}
+          files: ${{ steps.collect_artifacts.outputs.artifacts_path }}
+          body: ${{ needs.project-metadata.outputs.release_notes }}

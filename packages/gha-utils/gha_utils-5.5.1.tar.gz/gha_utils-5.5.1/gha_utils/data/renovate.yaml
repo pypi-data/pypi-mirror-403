@@ -1,0 +1,74 @@
+---
+name: Renovate
+"on":
+  workflow_call:
+  schedule:
+    # Run weekly.
+    - cron: "3 17 * * 1"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/renovate.yaml"
+      - "renovate.json5"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.event.head_commit.message, '[changelog] Release') }}
+
+jobs:
+
+  check-renovate-prereqs:
+    name: Check Renovate prerequisites
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Check Renovate prerequisites
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_UPDATE_GITHUB_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          uvx 'gha-utils==5.5.0' check-renovate-prereqs
+
+  renovate:
+    name: Renovate
+    needs:
+      - check-renovate-prereqs
+    # Cannot use "ubuntu-slim" here because renovatebot/github-action relies on Docker.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Update exclude-newer date if stale
+        id: update_date
+        # Updates the exclude-newer date in pyproject.toml when it's older than 7 days.
+        # Uses a fixed date (not relative) to prevent uv.lock timestamp churn on every sync.
+        # Runs before Renovate so changes are picked up in lock file maintenance.
+        run: |
+          uvx 'gha-utils==5.5.0' update-exclude-newer --output "$GITHUB_OUTPUT"
+      - name: Commit and push if modified
+        if: steps.update_date.outputs.modified == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "[deps] Update exclude-newer date"
+          git push
+      - uses: renovatebot/github-action@v44.2.5
+        with:
+          # Custom PAT required for Renovate to function fully.
+          # See readme.md for full list of required permissions.
+          token: ${{ secrets.WORKFLOW_UPDATE_GITHUB_PAT || secrets.GITHUB_TOKEN }}
+        env:
+          # Self-hosted configuration.
+          RENOVATE_PLATFORM: "github"
+          RENOVATE_AUTODISCOVER: "false"
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          # Skip onboarding PR since we already have renovate.json5.
+          RENOVATE_ONBOARDING: "false"
+          # Require a configuration file to be present.
+          RENOVATE_REQUIRE_CONFIG: "required"
+          # Fetch all PRs, not just those created by the current bot.
+          # Useful for migrating between bot accounts or taking over existing PRs.
+          RENOVATE_IGNORE_PR_AUTHOR: "true"
