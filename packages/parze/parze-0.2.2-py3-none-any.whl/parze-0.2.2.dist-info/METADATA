@@ -1,0 +1,125 @@
+Metadata-Version: 2.4
+Name: parze
+Version: 0.2.2
+Summary: Python SDK for the Parze API
+Author: gideononyewuenyi
+License: MIT License
+        
+        Copyright (c) 2024 Parze
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://platform.parze.ai
+Keywords: parze,sdk,document-processing,api
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.7
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.31
+Dynamic: license-file
+
+# Parze Python SDK
+
+Official Python client for the Parze document parsing API.
+
+## Installation
+```bash
+pip install parze
+```
+
+## Quick Start
+
+```python
+from parze import ParzeClient
+
+# Initialize client with your API key
+client = ParzeClient(api_key="pk_live_your_key_here")
+
+# Parse a document
+result = client.parse("invoice.pdf")
+print(result["text"])
+
+# Extract structured data (one step)
+schema = {
+    "invoice_number": {"type": "string", "description": "Invoice number"},
+    "total_amount": {"type": "string", "description": "Total amount"},
+    "date": {"type": "string", "description": "Invoice date"}
+}
+extraction = client.extract(file="invoice.pdf", extraction_schema=schema)
+print(extraction["extraction"])
+
+# To avoid double billing, parse first and then extract with job_id
+parse_result = client.parse("invoice.pdf")
+extraction = client.extract(parse_result["text"], schema, parse_result["job_id"])
+
+# Get AI-suggested schema
+suggested = client.suggest_schema(text)
+print(suggested)
+```
+
+## API Reference
+
+### `parse(file, output_format="structured", preserve_tables=True, preserve_layout=True, extraction_mode="auto")`
+Parse a document into structured text.
+
+**Parameters:**
+- `file` (str or file object): Path to file or file object
+- `output_format` (str): "structured", "markdown", or "json"
+- `preserve_tables` (bool): Preserve table structure
+- `preserve_layout` (bool): Preserve document layout
+- `extraction_mode` (str): "auto", "ocr_only", "llm_only", or "identity_doc"
+
+**Returns:** Dict with parsed text and metadata
+
+### `extract(text=None, extraction_schema=None, job_id=None, file=None)`
+Extract structured data from a file or parsed text using a schema.
+
+**Parameters:**
+- `text` (str, optional): Document text (from parse)
+- `extraction_schema` (dict, required): Schema defining fields to extract
+- `job_id` (str, required if text is provided): Job ID from parse response
+- `file` (str or file object, optional): Path to file or file object (if provided, parse runs internally)
+
+**Returns:** Dict with extracted data and confidence scores
+
+### `suggest_schema(text)`
+Get AI-suggested extraction schema based on document text.
+
+**Parameters:**
+- `text` (str): Document text
+
+**Returns:** Dict with suggested schema
+
+### `text_to_schema(description)`
+Convert natural language description to extraction schema.
+
+**Parameters:**
+- `description` (str): Natural language description of fields
+
+**Returns:** Dict with generated schema
+
+## Get API Key
+
+Get your API key from [platform.parze.ai](https://platform.parze.ai)
