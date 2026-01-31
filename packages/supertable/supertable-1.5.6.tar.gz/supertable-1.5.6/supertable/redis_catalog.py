@@ -1,0 +1,1113 @@
+from __future__ import annotations
+
+import os
+import json
+import time
+import uuid
+import hashlib
+import secrets
+from dataclasses import dataclass, field
+from typing import Dict, Iterator, List, Optional, Any
+from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+import redis
+from redis.sentinel import Sentinel, MasterNotFoundError
+from supertable.config.defaults import logger
+
+load_dotenv()
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _root_key(org: str, sup: str) -> str:
+    return f"supertable:{org}:{sup}:meta:root"
+
+
+def _leaf_key(org: str, sup: str, simple: str) -> str:
+    return f"supertable:{org}:{sup}:meta:leaf:{simple}"
+
+
+def _lock_key(org: str, sup: str, simple: str) -> str:
+    return f"supertable:{org}:{sup}:lock:leaf:{simple}"
+
+
+def _stat_lock_key(org: str, sup: str) -> str:
+    # Dedicated lock for stats updates
+    return f"supertable:{org}:{sup}:lock:stat"
+
+
+def _mirrors_key(org: str, sup: str) -> str:
+    return f"supertable:{org}:{sup}:meta:mirrors"
+
+def _users_key(org: str, sup: str) -> str:
+    return f"supertable:{org}:{sup}:meta:users:meta"
+
+def _roles_key(org: str, sup: str) -> str:
+    return f"supertable:{org}:{sup}:meta:roles:meta"
+
+def _user_hash_key(org: str, sup: str, user_hash: str) -> str:
+    return f"supertable:{org}:{sup}:meta:users:{user_hash}"
+
+def _role_hash_key(org: str, sup: str, role_hash: str) -> str:
+    return f"supertable:{org}:{sup}:meta:roles:{role_hash}"
+
+def _user_name_to_hash_key(org: str, sup: str) -> str:
+    return f"supertable:{org}:{sup}:meta:users:name_to_hash"
+
+
+def _auth_tokens_key(org: str) -> str:
+    # Store hashed tokens (sha256) -> JSON metadata in a single Redis hash.
+    # Value example: {"created_ms": 123, "created_by": "superuser", "label": "dev", "enabled": true}
+    return f"supertable:{org}:auth:tokens"
+def _role_type_to_hash_key(org: str, sup: str, role_type: str) -> str:
+    return f"supertable:{org}:{sup}:meta:roles:type_to_hash:{role_type}"
+
+# --------------------------------------------------------------------------- #
+# Staging / Pipe meta keys (Redis-backed UI listing)
+# --------------------------------------------------------------------------- #
+
+def _staging_key(org: str, sup: str, staging_name: str) -> str:
+    return f"supertable:{org}:{sup}:meta:staging:{staging_name}"
+
+
+def _stagings_meta_key(org: str, sup: str) -> str:
+    # Set of staging names for fast listing
+    return f"supertable:{org}:{sup}:meta:staging:meta"
+
+
+def _pipe_key(org: str, sup: str, staging_name: str, pipe_name: str) -> str:
+    return f"supertable:{org}:{sup}:meta:staging:{staging_name}:pipe:{pipe_name}"
+
+
+def _pipes_meta_key(org: str, sup: str, staging_name: str) -> str:
+    # Set of pipe names for a staging for fast listing
+    return f"supertable:{org}:{sup}:meta:staging:{staging_name}:pipe:meta"
+
+
+
+
+def _stage_lock_key(org: str, sup: str, stage_name: str) -> str:
+    return f"supertable:{org}:{sup}:lock:stage:{stage_name}"
+
+
+@dataclass(frozen=True)
+class RedisOptions:
+    """
+    Reads Redis connection options from environment variables.
+
+    Supported:
+      - SUPERTABLE_REDIS_URL (e.g. redis://:pass@host:6379/0 or rediss://:pass@host:6380/1)
+      - or split vars: SUPERTABLE_REDIS_HOST, SUPERTABLE_REDIS_PORT, SUPERTABLE_REDIS_DB, SUPERTABLE_REDIS_PASSWORD
+
+    Optional:
+      - SUPERTABLE_REDIS_DECODE_RESPONSES (default: "true")
+
+    Sentinel (optional):
+      - SUPERTABLE_REDIS_SENTINEL (true/false)
+      - SUPERTABLE_REDIS_SENTINELS="host1:26379,host2:26379"
+      - SUPERTABLE_REDIS_SENTINEL_MASTER="mymaster"
+      - SUPERTABLE_REDIS_SENTINEL_PASSWORD (optional; defaults to SUPERTABLE_REDIS_PASSWORD; also used as fallback for SUPERTABLE_REDIS_PASSWORD in Sentinel mode)
+      - SUPERTABLE_REDIS_SENTINEL_STRICT (true/false, default: false)  # if true, do not fall back when Sentinel is unavailable
+    """
+    host: str = field(init=False)
+    port: int = field(init=False)
+    db: int = field(init=False)
+    password: Optional[str] = field(init=False)
+    use_ssl: bool = field(init=False)
+    decode_responses: bool = field(default=True)
+
+    # Sentinel-related
+    is_sentinel: bool = field(init=False)
+    sentinel_hosts: List[tuple] = field(init=False)
+    sentinel_master: str = field(init=False)
+    sentinel_password: Optional[str] = field(init=False)
+    sentinel_strict: bool = field(init=False)
+
+    def __post_init__(self):
+        url = os.getenv("SUPERTABLE_REDIS_URL")
+        if url:
+            u = urlparse(url)
+            host = u.hostname or "localhost"
+            port = u.port or 6379
+            # path like "/0"
+            db = int((u.path or "/0").lstrip("/") or 0)
+            password = u.password
+            use_ssl = (u.scheme.lower() == "rediss")
+        else:
+            host = os.getenv("SUPERTABLE_REDIS_HOST", "localhost")
+            port = int(os.getenv("SUPERTABLE_REDIS_PORT", "6379"))
+            db = int(os.getenv("SUPERTABLE_REDIS_DB", "0"))
+            password = os.getenv("SUPERTABLE_REDIS_PASSWORD")
+            use_ssl = False
+
+        decode = os.getenv("SUPERTABLE_REDIS_DECODE_RESPONSES", "true").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        )
+
+        # Sentinel mode configuration
+        is_sentinel = os.getenv("SUPERTABLE_REDIS_SENTINEL", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        )
+        sentinel_raw = os.getenv("SUPERTABLE_REDIS_SENTINELS", "").strip()
+        sentinels: List[tuple] = []
+        if sentinel_raw:
+            for part in sentinel_raw.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    h, p = part.split(":")
+                    sentinels.append((h.strip(), int(p)))
+                except ValueError:
+                    logger.warning(f"[redis-options] Invalid sentinel spec: {part}")
+
+        sentinel_master = os.getenv("SUPERTABLE_REDIS_SENTINEL_MASTER", "mymaster")
+
+        sentinel_password = os.getenv("SUPERTABLE_REDIS_SENTINEL_PASSWORD") or password
+
+        # In many deployments the Sentinel and Redis server share the same password.
+        # Allow a single-password setup by reusing SUPERTABLE_REDIS_SENTINEL_PASSWORD
+        # for Redis auth when SUPERTABLE_REDIS_PASSWORD is not set.
+        if is_sentinel and password is None and sentinel_password:
+            password = sentinel_password
+
+        sentinel_strict = os.getenv("SUPERTABLE_REDIS_SENTINEL_STRICT", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        )
+
+        object.__setattr__(self, "host", host)
+        object.__setattr__(self, "port", port)
+        object.__setattr__(self, "db", db)
+        object.__setattr__(self, "password", password)
+        object.__setattr__(self, "use_ssl", use_ssl)
+        object.__setattr__(self, "decode_responses", decode)
+
+        object.__setattr__(self, "is_sentinel", is_sentinel)
+        object.__setattr__(self, "sentinel_hosts", sentinels)
+        object.__setattr__(self, "sentinel_master", sentinel_master)
+        object.__setattr__(self, "sentinel_password", sentinel_password)
+        object.__setattr__(self, "sentinel_strict", sentinel_strict)
+
+
+class RedisCatalog:
+    """
+    Redis-backed catalog for SuperTable:
+      * meta:root -> {"version": int, "ts": epoch_ms}
+      * meta:leaf:{simple} -> {"version": int, "ts": epoch_ms, "path": ".../snapshot.json"}
+      * meta:mirrors -> {"formats": [...], "ts": epoch_ms}
+      * lock:leaf:{simple} -> token (SET NX EX)
+      * lock:stat -> token (SET NX EX)  # for monitoring stats updates
+    """
+
+    # ------------- Lua sources -------------
+    _LUA_LEAF_CAS_SET = """
+local key = KEYS[1]
+local new_path = ARGV[1]
+local now_ms = tonumber(ARGV[2])
+
+local cur = redis.call('GET', key)
+local old_version = -1
+if cur then
+  local ok, obj = pcall(cjson.decode, cur)
+  if ok and obj and obj['version'] then
+    old_version = tonumber(obj['version'])
+  end
+end
+local new_version = old_version + 1
+local new_val = cjson.encode({version=new_version, ts=now_ms, path=new_path})
+redis.call('SET', key, new_val)
+return new_version
+"""
+
+    _LUA_ROOT_BUMP = """
+local key = KEYS[1]
+local now_ms = tonumber(ARGV[1])
+
+local cur = redis.call('GET', key)
+local old_version = -1
+if cur then
+  local ok, obj = pcall(cjson.decode, cur)
+  if ok and obj and obj['version'] then
+    old_version = tonumber(obj['version'])
+  end
+end
+local new_version = old_version + 1
+local new_val = cjson.encode({version=new_version, ts=now_ms})
+redis.call('SET', key, new_val)
+return new_version
+"""
+
+    _LUA_LOCK_RELEASE_IF_TOKEN = """
+local key = KEYS[1]
+local token = ARGV[1]
+local cur = redis.call('GET', key)
+if cur and cur == token then
+  redis.call('DEL', key)
+  return 1
+end
+return 0
+"""
+
+    _LUA_LOCK_EXTEND_IF_TOKEN = """
+local key = KEYS[1]
+local token = ARGV[1]
+local ttl_ms = tonumber(ARGV[2])
+local cur = redis.call('GET', key)
+if cur and cur == token then
+  redis.call('PEXPIRE', key, ttl_ms)
+  return 1
+end
+return 0
+"""
+
+    def __init__(self, options: Optional[RedisOptions] = None):
+        opts = options or RedisOptions()
+
+        # Decide between standard Redis and Sentinel-based Redis
+        if opts.is_sentinel and opts.sentinel_hosts:
+            logger.debug(
+                f"[redis-catalog] Using Redis Sentinel mode. master={opts.sentinel_master}, "
+                f"sentinels={opts.sentinel_hosts}"
+            )
+            sentinel = Sentinel(
+                opts.sentinel_hosts,
+                sentinel_kwargs={
+                    "socket_timeout": 0.5,
+                    "password": opts.sentinel_password,
+                    "decode_responses": opts.decode_responses,
+                },
+                socket_timeout=0.5,
+                password=opts.password,
+                decode_responses=opts.decode_responses,
+            )
+
+            sentinel_client = sentinel.master_for(
+                opts.sentinel_master,
+                db=opts.db,
+                password=opts.password,
+                decode_responses=opts.decode_responses,
+            )
+
+            # Fail-fast probe: in some deployments (e.g. standalone Redis without Sentinel),
+            # redis-py will only raise on first command. We probe here so we can provide a
+            # clearer error (or fall back to direct Redis if configured to do so).
+            sentinel_err: Optional[BaseException] = None
+            deadline = time.time() + 3.0
+            while time.time() < deadline:
+                try:
+                    sentinel_client.ping()
+                    sentinel_err = None
+                    break
+                except (MasterNotFoundError, redis.RedisError, OSError) as e:
+                    sentinel_err = e
+                    time.sleep(0.2)
+
+            if sentinel_err is None:
+                self.r = sentinel_client
+            else:
+                if opts.sentinel_strict:
+                    logger.error(f"[redis-catalog] Sentinel unavailable (strict mode): {sentinel_err}")
+                    raise sentinel_err
+
+                logger.warning(
+                    "[redis-catalog] Sentinel unavailable; falling back to standard Redis. "
+                    f"master={opts.sentinel_master}, sentinels={opts.sentinel_hosts}, "
+                    f"fallback={opts.host}:{opts.port}/{opts.db}. err={sentinel_err}"
+                )
+                self.r = redis.Redis(
+                    host=opts.host,
+                    port=opts.port,
+                    db=opts.db,
+                    password=opts.password,
+                    decode_responses=opts.decode_responses,
+                    ssl=opts.use_ssl,
+                )
+                try:
+                    self.r.ping()
+                except (redis.RedisError, OSError) as e:
+                    logger.error(f"[redis-catalog] Standard Redis fallback ping failed: {e}")
+                    # Both Sentinel and the configured direct Redis fallback are unavailable.
+                    # Raise a single actionable error that includes both root causes.
+                    raise redis.ConnectionError(
+                        "Redis Sentinel is enabled but unavailable, and the configured direct Redis "
+                        "fallback is also unreachable. "
+                        f"sentinels={opts.sentinel_hosts}, master={opts.sentinel_master}, "
+                        f"fallback={opts.host}:{opts.port}/{opts.db}. "
+                        f"sentinel_err={sentinel_err!r}. fallback_err={e!r}. "
+                        "If you are running the app in Docker, do not use localhost—use the Redis "
+                        "service name (e.g. redis-master) or set SUPERTABLE_REDIS_URL accordingly. "
+                        "Also ensure your Sentinel containers are actually running Redis Sentinel "
+                        "(Bitnami uses a separate redis-sentinel image)."
+                    ) from e
+        else:
+            if opts.is_sentinel and not opts.sentinel_hosts:
+                logger.warning(
+                    "[redis-catalog] SUPERTABLE_REDIS_SENTINEL=true but no "
+                    "SUPERTABLE_REDIS_SENTINELS set. Falling back to standard Redis."
+                )
+            logger.info(
+                f"[redis-catalog] Using standard Redis mode. host={opts.host}, port={opts.port}, db={opts.db}"
+            )
+            self.r = redis.Redis(
+                host=opts.host,
+                port=opts.port,
+                db=opts.db,
+                password=opts.password,
+                decode_responses=opts.decode_responses,
+                ssl=opts.use_ssl,
+            )
+
+        # Register scripts
+        self._leaf_cas_set = self.r.register_script(self._LUA_LEAF_CAS_SET)
+        self._root_bump = self.r.register_script(self._LUA_ROOT_BUMP)
+        self._lock_release_if_token = self.r.register_script(self._LUA_LOCK_RELEASE_IF_TOKEN)
+        self._lock_extend_if_token = self.r.register_script(self._LUA_LOCK_EXTEND_IF_TOKEN)
+
+    # ------------- Locking -------------
+
+    def acquire_simple_lock(self, org: str, sup: str, simple: str, ttl_s: int = 30, timeout_s: int = 30) -> Optional[str]:
+        """SET lock key NX EX with retry/backoff <= timeout. Returns token if acquired else None."""
+        key = _lock_key(org, sup, simple)
+        token = uuid.uuid4().hex
+        deadline = time.time() + max(1, int(timeout_s))
+        while time.time() < deadline:
+            try:
+                ok = self.r.set(key, token, nx=True, ex=max(1, int(ttl_s)))
+                if ok:
+                    return token
+            except redis.RedisError as e:
+                logger.debug(f"[redis-lock] acquire error on {key}: {e}")
+            time.sleep(0.05)
+        return None
+
+    def release_simple_lock(self, org: str, sup: str, simple: str, token: str) -> bool:
+        """Compare-and-delete via Lua."""
+        try:
+            res = self._lock_release_if_token(keys=[_lock_key(org, sup, simple)], args=[token])
+            return int(res or 0) == 1
+        except redis.RedisError as e:
+            logger.debug(f"[redis-lock] release error: {e}")
+            return False
+
+    def extend_simple_lock(self, org: str, sup: str, simple: str, token: str, ttl_ms: int) -> bool:
+        """Optionally extend TTL if token matches."""
+        try:
+            res = self._lock_extend_if_token(keys=[_lock_key(org, sup, simple)], args=[token, int(ttl_ms)])
+            return int(res or 0) == 1
+        except redis.RedisError as e:
+            logger.debug(f"[redis-lock] extend error: {e}")
+            return False
+
+    # ---- Stage lock (staging + pipe mutations) ----
+
+    def acquire_stage_lock(
+        self,
+        org: str,
+        sup: str,
+        stage_name: str,
+        ttl_s: int = 30,
+        timeout_s: int = 30,
+    ) -> Optional[str]:
+        """Acquire lock for staging/pipe operations:
+            supertable:{org}:{sup}:lock:stage:{stage_name}
+        """
+        key = _stage_lock_key(org, sup, stage_name)
+        token = uuid.uuid4().hex
+        deadline = time.time() + max(1, int(timeout_s))
+        while time.time() < deadline:
+            try:
+                ok = self.r.set(key, token, nx=True, ex=max(1, int(ttl_s)))
+                if ok:
+                    return token
+            except redis.RedisError as e:
+                logger.debug(f"[redis-stage-lock] acquire error on {key}: {e}")
+            time.sleep(0.05)
+        return None
+
+    def release_stage_lock(self, org: str, sup: str, stage_name: str, token: str) -> bool:
+        """Release stage lock if token matches."""
+        try:
+            res = self._lock_release_if_token(keys=[_stage_lock_key(org, sup, stage_name)], args=[token])
+            return int(res or 0) == 1
+        except redis.RedisError as e:
+            logger.debug(f"[redis-stage-lock] release error: {e}")
+            return False
+
+    def extend_stage_lock(self, org: str, sup: str, stage_name: str, token: str, ttl_ms: int) -> bool:
+        """Optionally extend stage lock TTL if token matches."""
+        try:
+            res = self._lock_extend_if_token(keys=[_stage_lock_key(org, sup, stage_name)], args=[token, int(ttl_ms)])
+            return int(res or 0) == 1
+        except redis.RedisError as e:
+            logger.debug(f"[redis-stage-lock] extend error: {e}")
+            return False
+
+    # ---- Stats lock (for monitoring _stats.json updates) ----
+
+    def acquire_stat_lock(self, org: str, sup: str, ttl_s: int = 10, timeout_s: int = 10) -> Optional[str]:
+        """Acquire stat lock: supertable:{org}:{sup}:lock:stat"""
+        key = _stat_lock_key(org, sup)
+        token = uuid.uuid4().hex
+        deadline = time.time() + max(1, int(timeout_s))
+        while time.time() < deadline:
+            try:
+                ok = self.r.set(key, token, nx=True, ex=max(1, int(ttl_s)))
+                if ok:
+                    return token
+            except redis.RedisError as e:
+                logger.debug(f"[redis-stat-lock] acquire error on {key}: {e}")
+            time.sleep(0.05)
+        return None
+
+    def release_stat_lock(self, org: str, sup: str, token: str) -> bool:
+        """Release stat lock if token matches."""
+        try:
+            res = self._lock_release_if_token(keys=[_stat_lock_key(org, sup)], args=[token])
+            return int(res or 0) == 1
+        except redis.RedisError as e:
+            logger.debug(f"[redis-stat-lock] release error: {e}")
+            return False
+
+    # ------------- Pointers (root/leaf) -------------
+
+    def ensure_root(self, org: str, sup: str) -> None:
+        """Initialize meta:root if missing with version=0."""
+        key = _root_key(org, sup)
+        try:
+            if not self.r.exists(key):
+                init = {"version": 0, "ts": _now_ms()}
+                self.r.set(key, json.dumps(init))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] ensure_root failed: {e}")
+            raise
+
+    def root_exists(self, org: str, sup: str) -> bool:
+        """Check existence of meta:root key."""
+        try:
+            return bool(self.r.exists(_root_key(org, sup)))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] root_exists error: {e}")
+            return False
+
+    def leaf_exists(self, org: str, sup: str, simple: str) -> bool:
+        """Check existence of meta:leaf key for a simple table."""
+        try:
+            return bool(self.r.exists(_leaf_key(org, sup, simple)))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] leaf_exists error: {e}")
+            return False
+
+    def get_root(self, org: str, sup: str) -> Optional[Dict]:
+        try:
+            raw = self.r.get(_root_key(org, sup))
+            return json.loads(raw) if raw else None
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_root error: {e}")
+            return None
+
+    def bump_root(self, org: str, sup: str, now_ms: Optional[int] = None) -> int:
+        try:
+            return int(self._root_bump(keys=[_root_key(org, sup)], args=[int(now_ms or _now_ms())]) or 0)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] root_bump error: {e}")
+            raise
+
+    def get_leaf(self, org: str, sup: str, simple: str) -> Optional[Dict]:
+        try:
+            raw = self.r.get(_leaf_key(org, sup, simple))
+            return json.loads(raw) if raw else None
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_leaf error: {e}")
+            return None
+
+    def set_leaf_path_cas(self, org: str, sup: str, simple: str, path: str, now_ms: Optional[int] = None) -> int:
+        try:
+            return int(
+                self._leaf_cas_set(keys=[_leaf_key(org, sup, simple)], args=[path, int(now_ms or _now_ms())]) or 0
+            )
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] leaf_cas_set error: {e}")
+            raise
+
+    # ------------- Mirror formats (Redis-backed) -------------
+
+    def get_mirrors(self, org: str, sup: str) -> List[str]:
+        """Read enabled mirror formats from Redis key."""
+        try:
+            raw = self.r.get(_mirrors_key(org, sup))
+            if not raw:
+                return []
+            obj = json.loads(raw)
+            formats = obj.get("formats", [])
+            seen = set()
+            out: List[str] = []
+            for f in (formats or []):
+                fu = str(f).upper()
+                if fu in ("DELTA", "ICEBERG", "PARQUET") and fu not in seen:
+                    seen.add(fu)
+                    out.append(fu)
+            return out
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_mirrors error: {e}")
+            return []
+        except Exception:
+            return []
+
+    def set_mirrors(self, org: str, sup: str, formats: List[str], now_ms: Optional[int] = None) -> List[str]:
+        """Atomically set enabled mirror formats."""
+        seen = set()
+        ordered: List[str] = []
+        for f in formats or []:
+            fu = str(f).upper()
+            if fu in ("DELTA", "ICEBERG", "PARQUET") and fu not in seen:
+                seen.add(fu)
+                ordered.append(fu)
+        try:
+            payload = {"formats": ordered, "ts": int(now_ms or _now_ms())}
+            self.r.set(_mirrors_key(org, sup), json.dumps(payload))
+            return ordered
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] set_mirrors error: {e}")
+            raise
+
+    def enable_mirror(self, org: str, sup: str, fmt: str) -> List[str]:
+        cur = self.get_mirrors(org, sup)
+        fu = str(fmt).upper()
+        if fu not in ("DELTA", "ICEBERG", "PARQUET"):
+            return cur
+        if fu in cur:
+            return cur
+        return self.set_mirrors(org, sup, cur + [fu])
+
+    def disable_mirror(self, org: str, sup: str, fmt: str) -> List[str]:
+        cur = self.get_mirrors(org, sup)
+        fu = str(fmt).upper()
+        nxt = [x for x in cur if x != fu]
+        if nxt == cur:
+            return cur
+        return self.set_mirrors(org, sup, nxt)
+
+    # ------------- User and Role Management -------------
+
+    def get_users(self, org: str, sup: str) -> List[Dict[str, Any]]:
+        """Get all users for organization."""
+        users = []
+        pattern = f"supertable:{org}:{sup}:meta:users:*"
+        cursor = 0
+        try:
+            while True:
+                cursor, keys = self.r.scan(cursor=cursor, match=pattern, count=100)
+                for key in keys:
+                    # Skip name_to_hash and meta keys
+                    if "name_to_hash" in key or ("meta" in key and "users:meta" not in key):
+                        continue
+                    raw = self.r.get(key)
+                    if raw:
+                        try:
+                            user_data = json.loads(raw)
+                            if isinstance(user_data, dict):
+                                user_hash = key.split(':')[-1]
+                                users.append({
+                                    "hash": user_hash,
+                                    **user_data
+                                })
+                        except Exception:
+                            continue
+                if cursor == 0:
+                    break
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_users error: {e}")
+        return users
+
+    def get_roles(self, org: str, sup: str) -> List[Dict[str, Any]]:
+        """Get all roles for organization."""
+        roles = []
+        pattern = f"supertable:{org}:{sup}:meta:roles:*"
+        cursor = 0
+        try:
+            while True:
+                cursor, keys = self.r.scan(cursor=cursor, match=pattern, count=100)
+                for key in keys:
+                    # Skip type_to_hash and meta keys
+                    if "type_to_hash" in key or ("meta" in key and "roles:meta" not in key):
+                        continue
+                    raw = self.r.get(key)
+                    if raw:
+                        try:
+                            role_data = json.loads(raw)
+                            if isinstance(role_data, dict):
+                                role_hash = key.split(':')[-1]
+                                roles.append({
+                                    "hash": role_hash,
+                                    **role_data
+                                })
+                        except Exception:
+                            continue
+                if cursor == 0:
+                    break
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_roles error: {e}")
+        return roles
+
+    def get_role_details(self, org: str, sup: str, role_hash: str) -> Optional[Dict[str, Any]]:
+        """Get detailed role information."""
+        try:
+            raw = self.r.get(_role_hash_key(org, sup, role_hash))
+            if raw:
+                return json.loads(raw)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_role_details error: {e}")
+        return None
+
+    def get_user_details(self, org: str, sup: str, user_hash: str) -> Optional[Dict[str, Any]]:
+        """Get detailed user information."""
+        try:
+            raw = self.r.get(_user_hash_key(org, sup, user_hash))
+            if raw:
+                return json.loads(raw)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_user_details error: {e}")
+        return None
+
+
+    # ------------- Organization auth tokens (login tokens) -------------
+
+    def list_auth_tokens(self, org: str) -> List[Dict[str, Any]]:
+        """List auth tokens for an organization (tokens are stored hashed; only token_id is returned)."""
+        key = _auth_tokens_key(org)
+        out: List[Dict[str, Any]] = []
+        try:
+            raw_map = self.r.hgetall(key) or {}
+            for token_id, raw in raw_map.items():
+                try:
+                    meta = json.loads(raw) if raw else {}
+                except Exception:
+                    meta = {"value": raw}
+                if isinstance(meta, dict):
+                    meta = dict(meta)
+                else:
+                    meta = {"value": meta}
+                meta.setdefault("token_id", token_id)
+                out.append(meta)
+            out.sort(key=lambda x: int(x.get("created_ms") or 0), reverse=True)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] list_auth_tokens error: {e}")
+        return out
+
+    def create_auth_token(
+        self,
+        org: str,
+        created_by: str,
+        label: Optional[str] = None,
+        enabled: bool = True,
+    ) -> Dict[str, Any]:
+        """Create a new auth token.
+
+        The plaintext token is returned ONLY once. Redis stores only token_id (sha256(token)).
+        """
+        token = secrets.token_urlsafe(24)
+        token_id = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        meta = {
+            "token_id": token_id,
+            "created_ms": _now_ms(),
+            "created_by": str(created_by or ""),
+            "label": (str(label).strip() if label is not None else ""),
+            "enabled": bool(enabled),
+        }
+        try:
+            self.r.hset(_auth_tokens_key(org), token_id, json.dumps(meta))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] create_auth_token error: {e}")
+            raise
+        return {"token": token, **meta}
+
+    def delete_auth_token(self, org: str, token_id: str) -> bool:
+        """Delete an auth token by token_id (sha256)."""
+        if not token_id:
+            return False
+        try:
+            return bool(self.r.hdel(_auth_tokens_key(org), token_id))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] delete_auth_token error: {e}")
+            return False
+
+    def validate_auth_token(self, org: str, token: str) -> bool:
+        """Validate a plaintext auth token."""
+        if not token:
+            return False
+        token_id = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        try:
+            return bool(self.r.hexists(_auth_tokens_key(org), token_id))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] validate_auth_token error: {e}")
+            return False
+
+
+# ------------- Listings via SCAN -------------
+
+    def scan_leaf_keys(self, org: str, sup: str, count: int = 1000) -> Iterator[str]:
+        """Yields full Redis keys: supertable:{org}:{sup}:meta:leaf:*"""
+        pattern = f"supertable:{org}:{sup}:meta:leaf:*"
+        cursor = 0
+        try:
+            while True:
+                cursor, keys = self.r.scan(cursor=cursor, match=pattern, count=max(1, int(count)))
+                for k in keys:
+                    yield k
+                if cursor == 0:
+                    break
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] SCAN error: {e}")
+            return
+
+    def scan_leaf_items(self, org: str, sup: str, count: int = 1000) -> Iterator[Dict]:
+        """Iterates SCAN pages and fetches values in batches (pipeline)."""
+        batch: List[str] = []
+        for key in self.scan_leaf_keys(org, sup, count=count):
+            batch.append(key)
+            if len(batch) >= count:
+                yield from self._fetch_batch(batch)
+                batch = []
+        if batch:
+            yield from self._fetch_batch(batch)
+
+    def _fetch_batch(self, keys: List[str]) -> Iterator[Dict]:
+        try:
+            with self.r.pipeline() as p:
+                for k in keys:
+                    p.get(k)
+                vals = p.execute()
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] pipeline GET error: {e}")
+            return
+
+        for k, raw in zip(keys, vals):
+            if not raw:
+                continue
+            try:
+                obj = json.loads(raw)
+                simple = k.rsplit("meta:leaf:", 1)[-1]
+                yield {
+                    "simple": simple,
+                    "version": int(obj.get("version", -1)),
+                    "ts": int(obj.get("ts", 0)),
+                    "path": obj.get("path", ""),
+                }
+            except Exception:
+                continue
+
+
+# ------------- Deletions (dangerous) -------------
+
+    def delete_simple_table(self, org: str, sup: str, simple: str) -> bool:
+        """Delete a simple table's Redis meta (leaf pointer + lock).
+
+        This does **not** delete storage. Callers should delete storage first, then call this.
+        """
+        if not (org and sup and simple):
+            return False
+        keys = [_leaf_key(org, sup, simple), _lock_key(org, sup, simple)]
+        try:
+            # DEL returns number of keys removed
+            self.r.delete(*keys)
+            return True
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] delete_simple_table error: {e}")
+            return False
+
+    def delete_super_table(self, org: str, sup: str, count: int = 1000) -> int:
+        """Delete **all** Redis keys for a given supertable (meta + locks + RBAC, etc).
+
+        This is implemented via SCAN to avoid blocking Redis.
+        Returns the number of keys deleted (best-effort).
+        """
+        if not (org and sup):
+            return 0
+        pattern = f"supertable:{org}:{sup}:*"
+        return self._delete_by_scan(pattern=pattern, count=count)
+
+    def _delete_by_scan(self, pattern: str, count: int = 1000) -> int:
+        deleted = 0
+        cursor = 0
+        try:
+            while True:
+                cursor, keys = self.r.scan(cursor=cursor, match=pattern, count=max(1, int(count)))
+                # redis-py may return list[str] or list[bytes]
+                str_keys = [k if isinstance(k, str) else k.decode("utf-8") for k in (keys or [])]
+                if str_keys:
+                    try:
+                        with self.r.pipeline() as p:
+                            for k in str_keys:
+                                p.delete(k)
+                            res = p.execute()
+                        # Each delete returns 0/1, sum them
+                        deleted += sum(int(x or 0) for x in res)
+                    except redis.RedisError as e:
+                        logger.error(f"[redis-catalog] pipeline DEL error: {e}")
+                if cursor == 0:
+                    break
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] SCAN delete error: {e}")
+        return deleted
+
+
+# --------------------------------------------------------------------------- #
+# Staging / Pipe meta (for website UI)
+# --------------------------------------------------------------------------- #
+
+    def upsert_staging_meta(self, org: str, sup: str, staging_name: str, meta: Dict[str, Any]) -> bool:
+        """Upsert staging metadata and ensure it is indexed for listing."""
+        if not (org and sup and staging_name):
+            return False
+        payload = dict(meta or {})
+        payload.setdefault("organization", org)
+        payload.setdefault("super_name", sup)
+        payload.setdefault("staging_name", staging_name)
+        payload["updated_at_ms"] = _now_ms()
+
+        try:
+            with self.r.pipeline() as p:
+                p.set(_staging_key(org, sup, staging_name), json.dumps(payload))
+                p.sadd(_stagings_meta_key(org, sup), staging_name)
+                p.execute()
+            return True
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] upsert_staging_meta error: {e}")
+            raise
+
+    def staging_exists(self, org: str, sup: str, staging_name: str) -> bool:
+        """Fast existence check for a staging (Redis-backed)."""
+        if not (org and sup and staging_name):
+            return False
+        try:
+            return bool(self.r.exists(_staging_key(org, sup, staging_name)))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] staging_exists error: {e}")
+            return False
+
+    def get_staging_meta(self, org: str, sup: str, staging_name: str) -> Optional[Dict[str, Any]]:
+        if not (org and sup and staging_name):
+            return None
+        try:
+            raw = self.r.get(_staging_key(org, sup, staging_name))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_staging_meta error: {e}")
+            return None
+        if not raw:
+            return None
+        try:
+            obj = json.loads(raw)
+            return obj if isinstance(obj, dict) else None
+        except Exception:
+            return None
+
+    def list_stagings(self, org: str, sup: str, *, count: int = 1000) -> List[str]:
+        """List staging names. Prefers the staging index set; falls back to SCAN."""
+        if not (org and sup):
+            return []
+        try:
+            names = list(self.r.smembers(_stagings_meta_key(org, sup)) or [])
+            if names:
+                return sorted({str(n) for n in names if str(n)})
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] list_stagings smembers error: {e}")
+
+        # Fallback (migration/back-compat): scan exact staging meta keys.
+        pattern = f"supertable:{org}:{sup}:meta:staging:*"
+        seen = set()
+        cursor = 0
+        try:
+            while True:
+                cursor, keys = self.r.scan(cursor=cursor, match=pattern, count=max(1, int(count)))
+                for k in keys or []:
+                    kk = k if isinstance(k, str) else k.decode("utf-8")
+                    if ":pipe:" in kk:
+                        continue
+                    if kk.endswith(":meta"):
+                        continue
+                    name = kk.rsplit("meta:staging:", 1)[-1]
+                    if name:
+                        seen.add(name)
+                if cursor == 0:
+                    break
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] list_stagings scan error: {e}")
+        return sorted(seen)
+
+    def delete_staging_meta(self, org: str, sup: str, staging_name: str, *, count: int = 1000) -> int:
+        """Delete staging meta and *all* related keys under the staging prefix.
+
+        This removes the staging from the staging index set, deletes the staging meta key,
+        and deletes any keys matching:
+            supertable:{org}:{sup}:meta:staging:{staging_name}:*
+        Returns number of keys deleted (best-effort; does not include SREM).
+        """
+        if not (org and sup and staging_name):
+            return 0
+
+        deleted = 0
+        try:
+            # Remove from list index
+            self.r.srem(_stagings_meta_key(org, sup), staging_name)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] delete_staging_meta srem error: {e}")
+
+        try:
+            # Delete the base meta key
+            deleted += int(self.r.delete(_staging_key(org, sup, staging_name)) or 0)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] delete_staging_meta del error: {e}")
+
+        # Delete everything under the staging namespace (pipes, pipe meta set, etc.)
+        pattern = f"supertable:{org}:{sup}:meta:staging:{staging_name}:*"
+        deleted += self._delete_by_scan(pattern=pattern, count=count)
+        return deleted
+
+    def upsert_pipe_meta(
+        self,
+        org: str,
+        sup: str,
+        staging_name: str,
+        pipe_name: str,
+        meta: Dict[str, Any],
+    ) -> bool:
+        """Upsert pipe metadata and ensure it is indexed for listing under a staging."""
+        if not (org and sup and staging_name and pipe_name):
+            return False
+        payload = dict(meta or {})
+        payload.setdefault("organization", org)
+        payload.setdefault("super_name", sup)
+        payload.setdefault("staging_name", staging_name)
+        payload.setdefault("pipe_name", pipe_name)
+        payload["updated_at_ms"] = _now_ms()
+
+        try:
+            with self.r.pipeline() as p:
+                p.set(_pipe_key(org, sup, staging_name, pipe_name), json.dumps(payload))
+                p.sadd(_pipes_meta_key(org, sup, staging_name), pipe_name)
+                p.execute()
+            return True
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] upsert_pipe_meta error: {e}")
+            raise
+
+    def get_pipe_meta(self, org: str, sup: str, staging_name: str, pipe_name: str) -> Optional[Dict[str, Any]]:
+        if not (org and sup and staging_name and pipe_name):
+            return None
+        try:
+            raw = self.r.get(_pipe_key(org, sup, staging_name, pipe_name))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_pipe_meta error: {e}")
+            return None
+        if not raw:
+            return None
+        try:
+            obj = json.loads(raw)
+            return obj if isinstance(obj, dict) else None
+        except Exception:
+            return None
+
+    def get_pipe_defs(self, org: str, sup: str, staging_name: str, pipe_name: str) -> List[Dict[str, Any]]:
+        """Read a pipe definition payload stored as a JSON **list** (spec).
+
+        Back-compat: if a dict is stored, it is returned as a single-item list.
+        """
+        if not (org and sup and staging_name and pipe_name):
+            return []
+        try:
+            raw = self.r.get(_pipe_key(org, sup, staging_name, pipe_name))
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] get_pipe_defs error: {e}")
+            return []
+        if not raw:
+            return []
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            return []
+        if isinstance(obj, list):
+            return [x for x in obj if isinstance(x, dict)]
+        if isinstance(obj, dict):
+            return [obj]
+        return []
+
+    def upsert_pipe_defs(
+        self,
+        org: str,
+        sup: str,
+        staging_name: str,
+        pipe_name: str,
+        defs: List[Dict[str, Any]],
+    ) -> bool:
+        """Store a pipe definition payload as a JSON **list** and index it for listing."""
+        if not (org and sup and staging_name and pipe_name):
+            return False
+        safe_defs = [d for d in (defs or []) if isinstance(d, dict)]
+        try:
+            with self.r.pipeline() as p:
+                p.set(_pipe_key(org, sup, staging_name, pipe_name), json.dumps(safe_defs))
+                p.sadd(_pipes_meta_key(org, sup, staging_name), pipe_name)
+                p.execute()
+            return True
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] upsert_pipe_defs error: {e}")
+            raise
+
+    def list_pipes(self, org: str, sup: str, staging_name: str, *, count: int = 1000) -> List[str]:
+        """List pipe names for a staging. Prefers the pipe index set; falls back to SCAN."""
+        if not (org and sup and staging_name):
+            return []
+        try:
+            names = list(self.r.smembers(_pipes_meta_key(org, sup, staging_name)) or [])
+            if names:
+                return sorted({str(n) for n in names if str(n)})
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] list_pipes smembers error: {e}")
+
+        # Fallback: scan pipe definition keys.
+        pattern = f"supertable:{org}:{sup}:meta:staging:{staging_name}:pipe:*"
+        seen = set()
+        cursor = 0
+        try:
+            while True:
+                cursor, keys = self.r.scan(cursor=cursor, match=pattern, count=max(1, int(count)))
+                for k in keys or []:
+                    kk = k if isinstance(k, str) else k.decode("utf-8")
+                    if kk.endswith(":meta"):
+                        continue
+                    name = kk.rsplit(":pipe:", 1)[-1]
+                    if name:
+                        seen.add(name)
+                if cursor == 0:
+                    break
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] list_pipes scan error: {e}")
+        return sorted(seen)
+
+    def delete_pipe_meta(self, org: str, sup: str, staging_name: str, pipe_name: str) -> int:
+        """Delete a pipe meta key and remove it from the pipe index set."""
+        if not (org and sup and staging_name and pipe_name):
+            return 0
+        try:
+            self.r.srem(_pipes_meta_key(org, sup, staging_name), pipe_name)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] delete_pipe_meta srem error: {e}")
+        try:
+            return int(self.r.delete(_pipe_key(org, sup, staging_name, pipe_name)) or 0)
+        except redis.RedisError as e:
+            logger.error(f"[redis-catalog] delete_pipe_meta del error: {e}")
+            return 0
