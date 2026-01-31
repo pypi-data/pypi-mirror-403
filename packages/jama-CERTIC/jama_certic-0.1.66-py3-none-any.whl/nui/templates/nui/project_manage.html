@@ -1,0 +1,42 @@
+{% extends "nui/_base.html" %}
+{% block title %}gestion {{ project.label }}{% endblock %}
+{% block content %}
+    <h1>{{ project.label }}</h1>
+    <h2>Accès</h2>
+    <p>
+        <a up-layer="new"
+           up-history="false"
+           up-accept-location="{% url "nui:project_manage" project.pk %}"
+           up-on-accepted="up.reload('#usersTable');"
+           href="{% url "nui:add_user_to_project" project.pk %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-person-add"></i>
+            ajouter une personne
+        </a>
+    </p>
+    <table class="table table-sm" id="usersTable">
+        <thead>
+        <tr>
+            <th><i class="bi bi-person"></i> utilisateur</th>
+            <th class="text-end"><i class="bi bi-trash"></i> suppression</th>
+        </tr>
+        </thead>
+        {% for project_access in project.accesses %}
+            <tr>
+                <td>{{ project_access.user.username }}</td>
+                <td class="text-end">
+                    <form method="post" action="{% url "nui:project_manage" project.pk %}" up-submit
+                          up-target="#usersTable">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove_access">
+                        <input type="hidden" name="user_id" value="{{ project_access.user.pk }}">
+                        <button type="submit"
+                                onclick="return confirm('suppression de l\'accès ?');"
+                                class="btn btn-outline-secondary btn-sm"><i class="bi bi-person-dash"></i> suppr
+                        </button>
+                    </form>
+
+                </td>
+            </tr>
+        {% endfor %}
+    </table>
+{% endblock content %}
