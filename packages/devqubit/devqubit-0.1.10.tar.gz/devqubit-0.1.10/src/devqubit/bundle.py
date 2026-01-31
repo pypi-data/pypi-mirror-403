@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 devqubit
+
+"""
+Run packaging and sharing utilities.
+
+This module provides tools for packaging runs into portable bundles
+that can be shared, archived, or used for offline verification.
+
+Packing
+-------
+>>> from devqubit.bundle import pack_run
+>>> result = pack_run("run_id", "experiment.zip")
+>>> print(f"Packed {result.object_count} objects")
+
+>>> # Or by name within a project
+>>> result = pack_run("nightly-v1", "experiment.zip", project="bell_state")
+
+Unpacking
+---------
+>>> from devqubit.bundle import unpack_bundle
+>>> result = unpack_bundle("experiment.zip")
+>>> print(f"Restored {result.object_count} new objects")
+
+Reading Bundles
+---------------
+>>> from devqubit.bundle import Bundle
+>>> with Bundle("experiment.zip") as bundle:
+...     print(bundle.run_id)
+...     print(bundle.run_record)
+
+Listing Contents
+----------------
+>>> from devqubit.bundle import list_bundle_contents
+>>> contents = list_bundle_contents("experiment.zip")
+>>> for item in contents:
+...     print(item)
+
+Replay
+------
+>>> from devqubit.bundle import replay
+>>> result = replay("experiment.zip", backend="aer_simulator")
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+
+__all__ = [
+    "pack_run",
+    "unpack_bundle",
+    "Bundle",
+    "list_bundle_contents",
+    "replay",
+    "PackResult",
+    "UnpackResult",
+]
+
+
+if TYPE_CHECKING:
+    from devqubit_engine.bundle.pack import (
+        PackResult,
+        UnpackResult,
+        list_bundle_contents,
+        pack_run,
+        unpack_bundle,
+    )
+    from devqubit_engine.bundle.reader import Bundle
+    from devqubit_engine.bundle.replay import replay
+
+
+_LAZY_IMPORTS = {
+    "pack_run": ("devqubit_engine.bundle.pack", "pack_run"),
+    "unpack_bundle": ("devqubit_engine.bundle.pack", "unpack_bundle"),
+    "list_bundle_contents": ("devqubit_engine.bundle.pack", "list_bundle_contents"),
+    "Bundle": ("devqubit_engine.bundle.reader", "Bundle"),
+    "replay": ("devqubit_engine.bundle.replay", "replay"),
+    "PackResult": ("devqubit_engine.bundle.pack", "PackResult"),
+    "UnpackResult": ("devqubit_engine.bundle.pack", "UnpackResult"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy import handler."""
+    if name in _LAZY_IMPORTS:
+        module_path, attr_name = _LAZY_IMPORTS[name]
+        module = __import__(module_path, fromlist=[attr_name])
+        value = getattr(module, attr_name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    """List available attributes."""
+    return sorted(set(__all__) | set(_LAZY_IMPORTS.keys()))
