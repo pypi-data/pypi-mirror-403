@@ -1,0 +1,166 @@
+Metadata-Version: 2.4
+Name: django-inpi
+Version: 0.4.1
+Summary: Get companies info by using INPI api.
+License: GNU GPLv3
+License-File: LICENSE
+Author: Kapt dev team
+Author-email: dev@kapt.mobi
+Requires-Python: >=3.9
+Classifier: License :: Other/Proprietary License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Dist: Django (>2.2)
+Requires-Dist: luhncheck (>=2.2.0,<3.0.0)
+Requires-Dist: mureq (==0.*)
+Project-URL: Repository, https://gitlab.com/kapt/open-source/django-inpi
+Description-Content-Type: text/markdown
+
+<div align="center">
+    <img src="https://gitlab.com/-/project/66877239/uploads/7b9ae108bd86878b6953fc570d4ec9ed/image.png" alt="Django INPI" />
+</div>
+
+Django INPI allows you to use the [INPI API](https://data.inpi.fr/content/editorial/Acces_API_Entreprises) to to get information about companies.
+
+# Features
+
+- Siren/Siret **fields** (`django_inpi.fields.SIRETField`, `django_inpi.fields.SIRENField`) which ensure that submitted Siren/Siret are numbers, and that their lenght is respectively 14 & 9 chars.
+- **Forms** with those custom fields (`django_inpi.forms.SIRETForm`, `django_inpi.forms.SIRENForm`)
+- An **API** (`django_inpi.api.INPIApi`) which allows you to get a token and make your own requests to the INSE API. Available functions:
+    - `login()`: send a login POST request to INPI API, stores the Bearer token in your api instance (automatically called in `INPIApi.__init__()`, call `INPIApi(skip_init=True)` to skip login (if so, you will not have a token, and will need to login yourself)).
+    - `get(siret=None, siren=None)`: get company details using it's siret/siren. Returns the whole json from INPI API.
+    - `get_generic_company_data(siret=None, siren=None)`: get company details using it's siret/siren. Returns a formatted json containing only a few values (see examples below).
+- 4 **Mixins** that you can use in your views:
+    - `django_inpi.views.SIRETFormGetAllJsonMixin`: Uses `SIRETForm`, and calls `INPIApi.get(siret)`.
+    - `django_inpi.views.SIRETFormGetGenericCompanyDataMixin` Uses `SIRETForm`, and calls `INPIApi.get_generic_company_data(siret)`.
+    - `django_inpi.views.SIRENFormGetAllJsonMixin`: Uses `SIRENForm`, and calls `INPIApi.get(siren)`.
+    - `django_inpi.views.SIRENFormGetGenericCompanyDataMixin` Uses `SIRENForm`, and calls `INPIApi.get_generic_company_data(siren)`.
+
+# Install
+
+1. Install the package:
+    ```sh
+    python3 -m pip install django-inpi
+    ```
+2. Add those apps to your `INSTALLED_APPS`:
+    ```py
+    "django_inpi",
+    ```
+3. Add your user/pass in your env vars & project settings:
+    ```sh
+    DJANGO_INPI_USERNAME = "username"
+    DJANGO_INPI_PASSWORD = "username"
+    ```
+    ```py
+    from os import getenv
+
+    DJANGO_INPI_USERNAME = getenv("DJANGO_INPI_USERNAME", None)
+    DJANGO_INPI_PASSWORD = getenv("DJANGO_INPI_PASSWORD", None)
+    ```
+6. That's all folks!
+
+# Examples
+
+## View
+
+```py
+# my_app/urls.py
+
+urlpatterns = [
+    # ...
+    path(
+        "get-company-infos-from-siret/",
+        views.GetCompanyInfosView.as_view(),
+        name="get_company_infos",
+    ),
+]
+```
+
+```py
+# my_app/views.py
+from django_inpi.views import SIRENFormGetAllJsonMixin
+
+# ...
+class GetCompanyInfosView(
+    SIRENFormGetAllJsonMixin,  # <-- our mixin here
+    FormView,  # required, our mixin does not inherit from any *View
+):
+    def get_success_url(self):
+        return reverse(
+            "my_app:get_company_infos",
+        )
+```
+
+# API
+
+This package comes with an API that you can use independently from the Field or Form. Here's how to use it:
+
+```py
+from django_inpi.api import INPIApi
+
+inpi_api = INPIApi()
+# use `inpi_api = INPIApi(skip_init=True)` if you want to call the login function yourself
+
+# Get full json
+siret = "01234567891234"
+company_infos = inpi_api.get(siret=siret)
+# OR
+siren = "123456789"
+company_infos = inpi_api.get(siren=siren)
+```
+
+```py
+from django_inpi.api import INPIApi
+
+inpi_api = INPIApi()
+
+# Get partial json
+siret = "01234567891234"
+generic_company_infos = inpi_api.get_generic_company_data(siret=siret)
+# OR
+siren = "123456789"
+generic_company_infos = inpi_api.get_generic_company_data(siren=siren)
+```
+
+`generic_company_infos` wil contains those data:
+
+```json
+{
+  "siren": 123456789,
+  "data": {
+    "name": "NAME",
+    "legal_status": {
+      "full_name": "Full legal status name",
+      "acronym": "FLSN"
+    },
+    "address": {
+      "street_number": "1",
+      "street_type": "STREET TYPE",
+      "street_name": "STREET NAME",
+      "postal_code": "01234",
+      "city": "CITY NAME",
+      "full_address": "1 STREET TYPE STREET NAME 01234 CITY NAME",
+      "country": "FR"
+    },
+    "manager": {
+      "first_name": "MANAGER FIRST NAME",
+      "last_name": "MANAGER LAST NAME"
+    },
+  }
+}
+```
+
+# Config
+
+- `DJANGO_INPI_USERNAME` (no default, required): You must set this value in your settings in order to be able to access the INPI API.
+- `DJANGO_INPI_PASSWORD` (no default, required): You must set this value in your settings in order to be able to access the INPI API.
+
+> *You must have an account on the INPI website in order to set your credentials, [see here for registering a new account](https://data.inpi.fr/register) or [here to login](https://data.inpi.fr/login).*
+
+- `DJANGO_INPI_LOGIN_URL` (default `https://registre-national-entreprises.inpi.fr/api/sso/login`): Set this var in your settings if you want to use a custom (selfhosted?) api.
+
