@@ -1,0 +1,379 @@
+# ytdlp-simple
+
+Высокоуровневая обертка над `yt-dlp`, написанная на Python, которая фокусируется на принципе «всё включено» и максимальной автоматизации. Основная цель проекта — избавить пользователя от необходимости вручную настраивать аргументы командной строки, скачивать бинарные файлы или разбираться в селекторах форматов.
+
+### Так же: [ytdlp-simple-api](https://github.com/imbecility/ytdlp-simple-api) и [ytdlp-simple-gui](https://github.com/imbecility/ytdlp-simple-gui)
+
+-   **Dependency Free:** никакие дополнительные pyhon-библиотеки не требуются, только стандартная библиотека Python 3.13+
+-   **Zero Configuration:** библиотека сама скачивает и обновляет необходимые исполняемые файлы (`yt-dlp`, `ffmpeg`, `bun`) под Windows/Linux. Фоновое обновление бинарников через `BackgroundUpdater`. Если папка приложения защищена от записи, библиотека автоматически перенесет бинарники в `Local AppData` или временную директорию.
+-   **Smart Formatting:** автоматический выбор лучшего качества или оптимизация видео специально для мессенджеров (Telegram/Discord).
+-   **Vertical Video Support:** корректная обработка разрешений для Shorts, Reels и TikTok.
+-   **Invidious Fallback:** если YouTube недоступен, загрузка автоматически пойдет через зеркала Invidious.
+-   **AI Ready:** специальный режим для подготовки аудио к ASR-транскрибации (Whisper, Faster-Whisper, Speech-to-Text).
+-   **SponsorBlock:** автоматическое вырезание рекламных интеграций из видео.
+-   **Поддержка cookies**: случайный выбор из доступных файлов Netscape-формата в указанной папке.
+-   **Performance:** используется рантайм `Bun` для ускорения обработки JavaScript-сигнатур YouTube.
+-   **Auto-Repair:** все скачанные файлы проходят через стадию ремуксинга. Это гарантирует правильное отображение длительности и поддержку стриминга (FastStart) в браузерах и плеерах.
+
+---
+
+## Установка
+
+```bash
+uv add ytdlp-simple
+```
+
+или:
+
+```bash
+pip install ytdlp-simple
+```
+---
+
+## 📖 Примеры использования
+
+### Публичный API (экспортируемые функции)
+
+1. **`download_best_audio`** - скачивание аудио максимального качества (opus ~130kbps)
+2. **`download_audio_for_transcription`** - подготовка аудио для транскрипции (нормализация, моно, ресемплинг)
+3. **`download_video_for_chat`** - оптимизированное видео для мессенджеров (480p/360p, минимальный битрейт)
+4. **`download_best_quality`** - максимальное качество видео (vp9 + opus)
+5. **`download_manual`** - ручной выбор всех параметров
+6. **`update_binaries_sync/async`** - обновление бинарников
+7. **`get_binaries_sync/async`** - загрузка бинарников
+
+Все функции загрузки в `ytdlp-simple` являются асинхронными и возвращают объект `DownloadResult`. Это позволяет удобно обрабатывать результаты даже в случае частичного успеха (например, когда видео скачалось, но в более низком разрешении).
+
+#### Поля объекта `DownloadResult`:
+
+| Поле | Тип | Описание |
+| :--- | :--- | :--- |
+| `success` | `bool` | `True`, если загрузка завершена успешно. |
+| `path` | `Path \| None` | Объект `pathlib.Path` к скачанному файлу. `None`, если произошла ошибка. |
+| `error` | `str \| None` | Текст критической ошибки, из-за которой загрузка прервалась. |
+| `warnings` | `list[str]` | Список некритических предупреждений. |
+
+#### Пример обработки результата:
+
+```python
+result = await download_best_audio("https://...")
+
+if result.success:
+    print(f"✅ Успешно: {result.path.name}")
+    if result.warnings:
+        print(f"⚠️ Внимание: {', '.join(result.warnings)}")
+else:
+    print(f"❌ Ошибка: {result.error}")
+```
+
+#### Экспорт в JSON:
+Объект имеет встроенный метод `.to_json()`, что делает его идеально подходящим для использования в веб-API или логах:
+
+```python
+print(result.to_json())
+```
+
+**Пример вывода JSON:**
+```json
+{
+  "success": true,
+  "path": "/home/user/downloads/ytdlp_downloads/video_id.mp4",
+  "error": null,
+  "warnings": [
+    "480p unavailable, using 360p",
+    "original YouTube failed: HTTP Error 403",
+    "used Invidious: yewtu.be"
+  ]
+}
+```
+
+
+## 📚 API Reference
+
+### download_best_audio
+
+Скачивает аудио в максимальном качестве (Opus ~130 kbps).
+
+```python
+async def download_best_audio(
+    url: str,
+    output_dir: Path | str = None,      # Директория для сохранения
+    prefer_lang: list[str] = None,       # Предпочтительные языки ['ru', 'en']
+    sponsorblock: bool = True,           # Вырезать рекламу через SponsorBlock
+    cookies_folder: Path | str = None,   # Папка с cookies в Netscape-формате
+) -> DownloadResult
+```
+
+**Пример:**
+```python
+result = await download_best_audio(
+    "https://youtube.com/watch?v=...",
+    output_dir="~/Music",
+    prefer_lang=["ru", "en"],
+    sponsorblock=True
+)
+```
+
+---
+
+### download_audio_for_transcription
+
+Подготавливает аудио для систем распознавания речи (ASR): нормализация громкости, конвертация в моно, ресемплинг.
+
+```python
+async def download_audio_for_transcription(
+    url: str,
+    output_dir: Path | str = None,
+    cookies_folder: Path | str = None,
+    sample_rate: Literal[16000, 24000] = 16000,  # Whisper использует 16kHz
+    output_format: Literal['opus', 'flac', 'pcm'] = 'opus',
+    prefer_lang: list[str] = None,
+) -> DownloadResult
+```
+
+**Пример для Whisper:**
+```python
+result = await download_audio_for_transcription(
+    "https://youtube.com/watch?v=...",
+    sample_rate=16000,
+    output_format='flac'  # Lossless для максимального качества
+)
+
+# Использование с Whisper
+import whisper
+model = whisper.load_model("base")
+result = model.transcribe(str(result.path))
+```
+
+---
+
+### download_video_for_chat
+
+Оптимизированное видео для мессенджеров и Telegram: 480p/360p, минимальный битрейт аудио, fps ≤ 30.
+
+```python
+async def download_video_for_chat(
+    url: str,
+    output_dir: Path | str = None,
+    prefer_lang: list[str] = None,
+    sponsorblock: bool = True,
+    cookies_folder: Path | str = None,
+) -> DownloadResult
+```
+
+**Особенности:**
+- Автоматически определяет ориентацию (вертикальное/горизонтальное)
+- Корректно обрабатывает YouTube Shorts, Instagram Reels, TikTok
+- Remux в MP4 для совместимости с Telegram
+
+**Пример:**
+```python
+# Скачать Shorts для пересылки в Telegram
+result = await download_video_for_chat(
+    "https://youtube.com/shorts/abc123"
+)
+# Видео будет в правильной ориентации и оптимального размера
+```
+
+---
+
+### download_best_quality
+
+Скачивает видео в максимальном качестве: лучшее видео (VP9/AV1) + лучшее аудио (Opus).
+
+```python
+async def download_best_quality(
+    url: str,
+    output_dir: Path | str = None,
+    prefer_lang: list[str] = None,
+    sponsorblock: bool = True,
+    cookies_folder: Path | str = None,
+    container: Literal['mp4', 'mkv', 'webm', 'mov'] = 'mp4',
+) -> DownloadResult
+```
+
+**Пример:**
+```python
+result = await download_best_quality(
+    "https://youtube.com/watch?v=...",
+    container='mkv'  # MKV поддерживает все кодеки
+)
+```
+
+---
+
+### download_manual
+
+Полный контроль над параметрами загрузки.
+
+```python
+async def download_manual(
+    url: str,
+    output_dir: Path | str = None,
+    max_resolution: Literal['8k', '4k', '2k', '1080p', '720p', '480p', '360p', '240p', '144p'] = '4k',
+    audio_bitrate: Literal['best', 'medium', 'low'] = 'best',
+    vcodec: Literal['av1', 'vp9', 'avc', 'hevc'] = 'avc',
+    acodec: Literal['opus', 'aac'] = 'opus',
+    speech_lang: Literal['orig', 'ru', 'en'] = 'ru',
+    limit_fps: bool = False,
+    container: Literal['mp4', 'mkv', 'webm', 'mov'] = 'mp4',
+    sponsorblock: bool = True,
+    cookies_folder: Path | str = None,
+) -> DownloadResult
+```
+
+**Пример — видео для старого устройства:**
+```python
+result = await download_manual(
+    "https://youtube.com/watch?v=...",
+    max_resolution='720p',
+    vcodec='avc',        # H.264 — максимальная совместимость
+    acodec='aac',        # AAC — поддерживается везде
+    limit_fps=True,      # Не более 30fps
+    container='mp4'
+)
+```
+
+**Пример — максимальное качество для архива:**
+```python
+result = await download_manual(
+    "https://youtube.com/watch?v=...",
+    max_resolution='4k',
+    vcodec='av1',        # Лучшее сжатие
+    acodec='opus',       # Лучшее качество аудио
+    container='mkv',     # Все кодеки без перекодирования
+    sponsorblock=False   # Сохранить оригинал
+)
+```
+
+---
+
+## 🍪 Использование cookies
+
+Для доступа к возрастным ограничениям или приватным видео и для обхода проверки на бота:
+
+```python
+result = await download_best_audio(
+    "https://youtube.com/watch?v=...",
+    cookies_folder="./cookies"  # Папка с .txt файлами в Netscape-формате
+)
+```
+
+**Экспорт cookies из браузера:**
+1. Установите расширение [Cookie-Editor](https://cookie-editor.com/#download)
+2. Зайдите на youtube.com под своим аккаунтом
+3. Кликните на иконку расширения Cookie-Editor
+4. Выберите "Export", затем: "Export as" -> "Netscape"
+5. Вставьте из буфера обмена текст в файл, например в: `./cookies/youtube.txt` и сохраните
+6. То же самое можно проделать и для x.com и т.п. если требуется, объединяя cookies с разных сайтов в один файл.
+7. Если разместить в папку несколько файлов с cookies от разных аккаунтов - они будут ротироваться случайным образом.
+
+---
+
+## 🔧 Управление бинарниками
+
+Библиотека автоматически скачивает и обновляет необходимые бинарники.
+
+### Ручное обновление
+
+```python
+from ytdlp_simple import update_binaries_sync, update_binaries_async
+
+# Синхронно
+update_binaries_sync(force=True)  # force=True — обновить даже если актуальны
+
+# Асинхронно
+await update_binaries_async(parallel=True)
+```
+
+### Фоновое обновление
+
+Запускается автоматически при импорте. Проверяет обновления каждые 24 часа.
+
+```python
+from ytdlp_simple.bins import binaries_bg_updater
+
+# Уже запущен, но можно остановить
+binaries_bg_updater.stop()
+
+# И запустить снова
+binaries_bg_updater.start()
+```
+
+### Где хранятся бинарники?
+
+1. `ytdlp_simple/bin/` — если директория библиотеки доступна для записи
+2. `~/.local/share/ytdlp_simple/bin/` (Linux) или `%LOCALAPPDATA%\ytdlp_simple\bin\` (Windows)
+3. Системная временная директория (fallback)
+
+## ⚙️ Продвинутые примеры
+
+### Batch-загрузка плейлиста
+
+```python
+import asyncio
+from ytdlp_simple import download_best_audio
+
+async def download_playlist(urls: list[str]):
+    tasks = [download_best_audio(url) for url in urls]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for url, result in zip(urls, results):
+        if isinstance(result, Exception):
+            print(f"❌ {url}: {result}")
+        elif result.success:
+            print(f"✅ {url}: {result.path.name}")
+        else:
+            print(f"❌ {url}: {result.error}")
+
+urls = [
+    "https://youtube.com/watch?v=...",
+    "https://youtube.com/watch?v=...",
+]
+asyncio.run(download_playlist(urls))
+```
+
+### Интеграция с Telegram Bot
+
+```python
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+from ytdlp_simple import download_video_for_chat
+
+async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = context.args[0] if context.args else None
+    if not url:
+        await update.message.reply_text("Укажите URL: /download <url>")
+        return
+    
+    await update.message.reply_text("⏳ Загружаю...")
+    
+    result = await download_video_for_chat(url)
+    
+    if result.success:
+        await update.message.reply_video(
+            video=open(result.path, 'rb'),
+            caption=result.path.stem
+        )
+        result.path.unlink()  # Удалить после отправки
+    else:
+        await update.message.reply_text(f"❌ {result.error}")
+```
+
+### Получение информации о форматах (для API)
+
+```python
+from ytdlp_simple.ytdlp import get_video_formats, analyze_available_formats
+
+async def get_available_options(url: str):
+    formats = await get_video_formats(url)
+    if formats:
+        analysis = analyze_available_formats(formats)
+        return {
+            "resolutions": analysis['resolutions'],  # [360, 480, 720, 1080]
+            "orientation": analysis['orientation'],  # 'horizontal' | 'vertical'
+            "codecs": list(analysis['vcodecs']),     # ['vp9', 'avc1']
+            "languages": list(analysis['languages']) # ['ru', 'en']
+        }
+    return None
+```
