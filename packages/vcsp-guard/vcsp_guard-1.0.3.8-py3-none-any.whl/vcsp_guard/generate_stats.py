@@ -1,0 +1,125 @@
+import os
+import glob
+import re
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+def main():
+    print("📊 Gerando estatísticas de segurança (VCSP)...")
+    
+    # 1. Encontrar logs
+    list_of_files = glob.glob('logs_scan_vcsp/scan_*.txt')
+    if not list_of_files:
+        print("⚠️  Nenhum log encontrado em logs_scan_vcsp/. Rode 'vcsp-scan' primeiro.")
+        return
+
+    # Ordenar por data (nome do arquivo contém timestamp)
+    list_of_files.sort()
+
+    # 2. Processar Histórico
+    history = []
+    
+    print(f"📂 Processando {len(list_of_files)} logs...")
+
+    for log_file in list_of_files:
+        stats = {
+            'date': '', 
+            'secrets': 0, 
+            'detect_secrets': 0,
+            'bandit': 0, 
+            'audit': 0, 
+            'ruff': 0, 
+            'semgrep': 0,
+            'cwe': 0
+        }
+        
+        filename = os.path.basename(log_file)
+        try:
+            date_part = filename.replace("scan_", "").replace(".txt", "")
+            dt = datetime.strptime(date_part, "%Y-%m-%d_%H-%M-%S")
+            stats['date'] = dt.strftime('%d/%m %H:%M')
+        except ValueError:
+            stats['date'] = "Unknown"
+
+        with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+            stats['secrets'] = len(re.findall(r'❌ \[SEGREDO\]', content))
+            stats['detect_secrets'] = len(
+                re.findall(
+                    r'❌ \[DETECT-SECRETS\]|❌ Detect-secrets encontrou',
+                    content
+                )
+            )
+            bandit_match = re.search(r'Total issues: (\d+)', content)
+            if bandit_match:
+                stats['bandit'] = int(bandit_match.group(1))
+            audit_match = re.search(r'Found (\d+) known vulnerabilit', content)
+            if audit_match:
+                stats['audit'] = int(audit_match.group(1))
+            ruff_match = re.search(r'Found (\d+) error', content)
+            if ruff_match:
+                stats['ruff'] = int(ruff_match.group(1))
+            
+            # E501: Quebra linha longa para semgrep_match
+            semgrep_match = re.search(
+                r'Found (\d+) infrastructure issues|'
+                r'Problemas de infraestrutura encontrados: (\d+)',
+                content
+            )
+            if semgrep_match:
+                val = semgrep_match.group(1) or semgrep_match.group(2)
+                stats['semgrep'] = int(val)
+
+            cwe_match = re.search(r'│\s*(\d+)\s*Code Finding', content)
+            if cwe_match:
+                stats['cwe'] = int(cwe_match.group(1))
+            else:
+                # fallback para contagem por linha "Falhas CWE detectadas: N"
+                cwe_fallback = re.search(r'Falhas CWE detectadas: (\d+)', content)
+                if cwe_fallback:
+                    stats['cwe'] = int(cwe_fallback.group(1))
+                elif "Semgrep CWE Top 25 encontrou vulnerabilidades!" in content:
+                    stats['cwe'] = 1
+        
+        history.append(stats)
+
+    # 3. Gerar Gráfico
+    os.makedirs('.vibe/assets', exist_ok=True)
+    output_img = '.vibe/assets/bug_trend.png'
+    
+    dates = [h['date'] for h in history]
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Helper para plotar
+    def plot_line(key, label, color):
+        # Usa .get para evitar KeyError em históricos antigos
+        plt.plot(
+            dates,
+            [h.get(key, 0) for h in history],
+            label=label,
+            marker='o',
+            color=color
+        )
+
+    plot_line('secrets', 'Secrets', 'red')
+    plot_line('detect_secrets', 'Detect-secrets', 'brown')
+    plot_line('bandit', 'Bandit (Logic)', 'orange')
+    plot_line('audit', 'Pip-Audit (Deps)', 'blue')
+    plot_line('ruff', 'Ruff (Lint)', 'green')
+    plot_line('semgrep', 'Semgrep (IaC)', 'purple')
+    plot_line('cwe', 'CWE Top 25', 'black')
+    
+    plt.title('Tendência de Vulnerabilidades (VCSP)')
+    plt.xlabel('Execuções (Data/Hora)')
+    plt.ylabel('Quantidade de Falhas')
+    plt.xticks(rotation=45, ha='right')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig(output_img)
+    
+    print(f"✅ Gráfico gerado com sucesso: {output_img}")
+
+if __name__ == "__main__":
+    main()
