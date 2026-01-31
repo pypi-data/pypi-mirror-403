@@ -1,0 +1,136 @@
+from __future__ import annotations
+from dataclasses import dataclass
+from pprint import pformat
+from typing import TYPE_CHECKING, override
+
+from jinja2.sandbox import SandboxedEnvironment
+from jinja2 import StrictUndefined, DebugUndefined
+
+from ..data import ParsedData
+from ..utils import Report
+
+if TYPE_CHECKING:
+    from typing import Any, Iterable
+    from sphinx.application import Sphinx
+    from sphinx.environment import BuildEnvironment
+    from sphinx.builders import Builder
+
+
+@dataclass
+class TemplateRenderer:
+    text: str
+
+    def render(
+        self,
+        data: ParsedData | dict[str, Any],
+        extra: dict[str, Any] = {},
+        debug: Report | None = None,
+    ) -> str:
+        if debug:
+            debug.text('Starting Jinja template rendering...')
+
+            debug.text('Data:')
+            debug.code(pformat(data), lang='python')
+            debug.text('Extra context (just key):')
+            debug.code(pformat(list(extra.keys())), lang='python')
+
+        # Convert data to context dict.
+        if isinstance(data, ParsedData):
+            ctx = data.asdict()
+        elif isinstance(data, dict):
+            ctx = data.copy()
+
+        # Merge extra context and main context.
+        conflicts = set()
+        for name, e in extra.items():
+            if name not in ctx:
+                ctx[name] = e
+            else:
+                conflicts.add(name)
+
+        text = self._render(ctx, debug=debug is not None)
+
+        return text
+
+    def _render(self, ctx: dict[str, Any], debug: bool = False) -> str:
+        extensions = [
+            'jinja2.ext.loopcontrols',  # enable {% break %}, {% continue %}
+            'jinja2.ext.do',  # enable {% do ... %}
+        ]
+        if debug:
+            extensions.append('jinja2.ext.debug')
+
+        env = _JinjaEnv(
+            undefined=DebugUndefined if debug else StrictUndefined,
+            extensions=extensions,
+        )
+        # TODO: cache jinja env
+
+        return env.from_string(self.text).render(ctx)
+
+    def _report_self(self, reporter: Report) -> None:
+        reporter.text('Template:')
+        reporter.code(self.text, lang='jinja')
+
+
+class _JinjaEnv(SandboxedEnvironment):
+    _builder: Builder
+    # List of user defined filter factories.
+    _filter_factories = {}
+
+    @classmethod
+    def _on_builder_inited(cls, app: Sphinx):
+        cls._builder = app.builder
+
+    @classmethod
+    def _on_build_finished(cls, app: Sphinx, exception): ...
+
+    @classmethod
+    def add_filter(cls, name: str, ff):
+        cls._filter_factories[name] = ff
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name, factory in self._filter_factories.items():
+            self.filters[name] = factory(self._builder.env)
+
+    @override
+    def is_safe_attribute(self, obj, attr, value=None):
+        """
+        The sandboxed environment will call this method to check if the
+        attribute of an object is safe to access. Per default all attributes
+        starting with an underscore are considered private as well as the
+        special attributes of internal python objects as returned by the
+        is_internal_attribute() function.
+
+        .. seealso:: :cls:`..utils.ctxproxy.Proxy`
+        """
+        return super().is_safe_attribute(obj, attr, value)
+
+
+def _roles_filter(env: BuildEnvironment):
+    """
+    Fetch artwork picture by ID and install theme to Sphinx's source directory,
+    return the relative URI of current doc root.
+    """
+
+    def _filter(value: Iterable[str], role: str) -> Iterable[str]:
+        """
+        A heplfer filter for converting list of string to list of role.
+
+        For example::
+
+            {{ ["foo", "bar"] | roles("doc") }}
+
+        Produces ``[":doc:`foo`", ":doc:`bar`"]``.
+        """
+        return map(lambda x: ':%s:`%s`' % (role, x), value)
+
+    return _filter
+
+
+def setup(app: Sphinx):
+    app.connect('builder-inited', _JinjaEnv._on_builder_inited)
+    app.connect('build-finished', _JinjaEnv._on_build_finished)
+
+    _JinjaEnv.add_filter('roles', _roles_filter)
