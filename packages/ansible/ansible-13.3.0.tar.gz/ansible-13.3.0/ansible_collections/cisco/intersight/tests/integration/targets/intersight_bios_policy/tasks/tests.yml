@@ -1,0 +1,217 @@
+---
+- block:
+  - name: Define anchor for Intersight API login info
+    ansible.builtin.set_fact:
+      api_info: &api_info
+        api_private_key: "{{ api_private_key }}"
+        api_key_id: "{{ api_key_id }}"
+        api_uri: "{{ api_uri | default(omit) }}"
+        validate_certs: "{{ validate_certs | default(omit) }}"
+        organization: "{{ organization }}"
+
+  - name: Make sure Environment is clean
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: "{{ item }}"
+      state: absent
+    loop:
+      - test_bios_policy_minimal
+      - test_bios_policy_virtualization
+      - test_bios_policy_performance
+
+  - name: Create BIOS policy with minimal parameters - check-mode
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_minimal
+      description: "Test BIOS policy with minimal parameters"
+    check_mode: true
+    register: creation_res_check_mode
+
+  - name: Verify BIOS policy was not created - check-mode
+    ansible.builtin.assert:
+      that:
+        - creation_res_check_mode is changed
+        - creation_res_check_mode.api_response == {}
+
+  - name: Create BIOS policy with minimal parameters
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_minimal
+      description: "Test BIOS policy with minimal parameters"
+    register: creation_res
+
+  - name: Fetch info after creation
+    cisco.intersight.intersight_bios_policy_info:
+      <<: *api_info
+      name: test_bios_policy_minimal
+    register: creation_info_res
+
+  - name: Verify BIOS policy creation by info
+    ansible.builtin.assert:
+      that:
+        - creation_res.changed
+        - creation_info_res.api_response[0].Name == 'test_bios_policy_minimal'
+        - creation_info_res.api_response[0].ObjectType == 'bios.Policy'
+        - creation_info_res.api_response[0].Description == 'Test BIOS policy with minimal parameters'
+
+  - name: Verify BIOS policy creation response aligns with info response
+    ansible.builtin.assert:
+      that:
+        - creation_res.api_response.Name == creation_info_res.api_response[0].Name
+        - creation_res.api_response.Moid == creation_info_res.api_response[0].Moid
+
+  - name: Create BIOS policy (idempotency check)
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_minimal
+      description: "Test BIOS policy with minimal parameters"
+    register: creation_res_ide
+
+  - name: Verify BIOS policy creation (idempotency check)
+    ansible.builtin.assert:
+      that:
+        - not creation_res_ide.changed
+
+  - name: Update BIOS policy description
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_minimal
+      description: "Updated BIOS policy description"
+    register: update_res
+
+  - name: Fetch info after update
+    cisco.intersight.intersight_bios_policy_info:
+      <<: *api_info
+      name: test_bios_policy_minimal
+    register: update_info_res
+
+  - name: Verify BIOS policy update
+    ansible.builtin.assert:
+      that:
+        - update_res.changed
+        - update_info_res.api_response[0].Description == 'Updated BIOS policy description'
+
+  - name: Create BIOS policy optimized for virtualization
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_virtualization
+      description: "BIOS policy optimized for virtualization workloads"
+      tags:
+        - Key: Environment
+          Value: Test
+        - Key: Workload
+          Value: Virtualization
+      intel_hyper_threading_tech: enabled
+      intel_virtualization_technology: enabled
+      intel_vtd_coherency_support: enabled
+      intel_vt_for_directed_io: enabled
+      processor_c1e: disabled
+      processor_c6report: disabled
+      cpu_performance: enterprise
+    register: creation_res_vm
+
+  - name: Fetch info for virtualization BIOS policy
+    cisco.intersight.intersight_bios_policy_info:
+      <<: *api_info
+      name: test_bios_policy_virtualization
+    register: creation_info_res_vm
+
+  - name: Verify virtualization BIOS policy creation
+    ansible.builtin.assert:
+      that:
+        - creation_res_vm.changed
+        - creation_info_res_vm.api_response[0].Name == 'test_bios_policy_virtualization'
+        - creation_info_res_vm.api_response[0].IntelHyperThreadingTech == 'enabled'
+        - creation_info_res_vm.api_response[0].IntelVirtualizationTechnology == 'enabled'
+        - creation_info_res_vm.api_response[0].IntelVtdCoherencySupport == 'enabled'
+        - creation_info_res_vm.api_response[0].IntelVtForDirectedIo == 'enabled'
+
+  - name: Create BIOS policy optimized for performance
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_performance
+      description: "BIOS policy optimized for high performance"
+      intel_turbo_boost_tech: enabled
+      enhanced_intel_speed_step_tech: enabled
+      energy_efficient_turbo: disabled
+      cpu_performance: hpc
+      hardware_prefetch: enabled
+      adjacent_cache_line_prefetch: enabled
+    register: creation_res_perf
+
+  - name: Fetch info for performance BIOS policy
+    cisco.intersight.intersight_bios_policy_info:
+      <<: *api_info
+      name: test_bios_policy_performance
+    register: creation_info_res_perf
+
+  - name: Verify performance BIOS policy creation
+    ansible.builtin.assert:
+      that:
+        - creation_res_perf.changed
+        - creation_info_res_perf.api_response[0].Name == 'test_bios_policy_performance'
+        - creation_info_res_perf.api_response[0].IntelTurboBoostTech == 'enabled'
+        - creation_info_res_perf.api_response[0].CpuPerformance == 'hpc'
+
+  - name: Fetch all BIOS policies under the organization
+    cisco.intersight.intersight_bios_policy_info:
+      <<: *api_info
+    register: all_policies_res
+
+  - name: Check that there are at least 3 BIOS policies under this organization
+    ansible.builtin.assert:
+      that:
+        - all_policies_res.api_response | length >= 3
+
+  - name: Verify specific policies exist in the list
+    ansible.builtin.assert:
+      that:
+        - all_policies_res.api_response | selectattr('Name', 'equalto', 'test_bios_policy_minimal') | list | length == 1
+        - all_policies_res.api_response | selectattr('Name', 'equalto', 'test_bios_policy_virtualization') | list | length == 1
+        - all_policies_res.api_response | selectattr('Name', 'equalto', 'test_bios_policy_performance') | list | length == 1
+
+  - name: Delete BIOS policy - test_bios_policy_performance
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_performance
+      state: absent
+    register: delete_res
+
+  - name: Verify deletion
+    ansible.builtin.assert:
+      that:
+        - delete_res.changed
+
+  - name: Delete BIOS policy again (idempotency check)
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: test_bios_policy_performance
+      state: absent
+    register: delete_res_ide
+
+  - name: Verify deletion idempotency
+    ansible.builtin.assert:
+      that:
+        - not delete_res_ide.changed
+
+  - name: Verify policy is deleted via info module
+    cisco.intersight.intersight_bios_policy_info:
+      <<: *api_info
+      name: test_bios_policy_performance
+    register: deleted_policy_info
+
+  - name: Check that deleted policy is not found
+    ansible.builtin.assert:
+      that:
+        - deleted_policy_info.api_response.Results | default(deleted_policy_info.api_response) | length == 0
+
+  always:
+  - name: Remove BIOS policies
+    cisco.intersight.intersight_bios_policy:
+      <<: *api_info
+      name: "{{ item }}"
+      state: absent
+    loop:
+      - test_bios_policy_minimal
+      - test_bios_policy_virtualization
+      - test_bios_policy_performance

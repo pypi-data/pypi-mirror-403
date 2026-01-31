@@ -1,0 +1,36 @@
+---
+- ansible.builtin.debug:
+    msg: START nxos_snmp_server gathered integration tests on connection={{ ansible_connection}}
+
+- ansible.builtin.include_tasks: _remove_config.yaml
+
+- ansible.builtin.include_tasks: _populate_config.yaml
+
+- block:
+    - name: Gather snmp-server facts using gathered
+      register: result
+      cisco.nxos.nxos_snmp_server:
+        state: gathered
+
+    - name: Assert AAA user cache timeout is configured
+      assert:
+        that:
+          - result.gathered.aaa_user.cache_timeout is defined
+          - result.gathered.aaa_user.cache_timeout == 36000
+        fail_msg: "AAA user cache timeout is not configured correctly"
+        success_msg: "AAA user cache timeout is configured correctly"
+
+    - name: Assert SNMP communities are configured
+      assert:
+        that:
+          - result.gathered.communities is defined
+          - result.gathered.communities | length == 2
+          - result.gathered.communities[0].name == "private"
+          - result.gathered.communities[0].group == "network-admin"
+          - result.gathered.communities[1].name == "public"
+          - result.gathered.communities[1].group == "network-operator"
+        fail_msg: "SNMP communities are not configured correctly"
+        success_msg: "SNMP communities are configured correctly"
+
+  always:
+    - ansible.builtin.include_tasks: _remove_config.yaml

@@ -1,0 +1,25 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    simulator: http://172.17.0.2:8888
+  tasks:
+    - name: Retrieve Simulator Keys
+      uri:
+        url: "{{ simulator }}/admin.json"
+        return_content: true
+      register: admin
+      until: admin is success
+      retries: 5
+      delay: 1
+
+    - name: Create cloudstack.env
+      template:
+        src: templates/cloudstack.env.j2
+        dest: ../cloudstack.env
+
+    - name: Create cloudstack-instances.yml
+      template:
+        src: templates/cloudstack-instances.yml.j2
+        dest: ../cloudstack-instances.yml
