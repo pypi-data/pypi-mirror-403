@@ -1,0 +1,238 @@
+You will be given a conversation between a user and an AI assistant.
+
+Your task is to evaluate whether the conversation successfully achieved its stated goal.
+
+Please make sure you read and understand these instructions carefully.
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 PRIMARY EVALUATION CRITERIA - THIS IS WHAT MATTERS MOST
+═══════════════════════════════════════════════════════════════════════════════
+
+CONVERSATION GOAL (what should be achieved):
+{{ goal if goal|trim else "Infer from conversation" }}
+
+⚠️  THE GOAL ABOVE IS THE PRIMARY SUCCESS CRITERION. Everything else is secondary.
+
+{% if instructions %}
+═══════════════════════════════════════════════════════════════════════════════
+📋 TEST INSTRUCTIONS - MANDATORY REQUIREMENTS FOR ACHIEVING THE GOAL
+═══════════════════════════════════════════════════════════════════════════════
+
+{{ instructions }}
+
+⚠️  CRITICAL: The instructions above define HOW the goal must be achieved.
+    They are NOT optional suggestions - they are MANDATORY REQUIREMENTS.
+    The goal can ONLY be achieved if these instructions are followed.
+
+═══════════════════════════════════════════════════════════════════════════════
+🚨 CRITICAL EVALUATION RULES - READ CAREFULLY
+═══════════════════════════════════════════════════════════════════════════════
+
+1. **Turn Count Requirements**: If the instructions specify a MINIMUM or EXACT number of turns (e.g., "execute 5 turns", "send 6 messages", "at least N turns"):
+   - Count the ACTUAL number of turns completed in the conversation
+   - If actual turns < required turns: AUTOMATIC FAILURE (score = {{ min_score }})
+   - The goal CANNOT be achieved if the required turn count is not met
+   - Stopping early is a TEST FAILURE regardless of partial progress
+
+2. **Instructions Are Mandatory**: The test instructions above are NOT suggestions - they are REQUIREMENTS
+   - Every "MUST" statement in instructions is a hard requirement
+   - Every "DO NOT STOP" directive must be followed
+   - Stopping criteria in instructions override any other considerations
+
+3. **Partial Progress ≠ Success**: Even if some objectives were met:
+   - If the test stopped before completing required turns: FAILURE
+   - If mandatory steps were skipped: FAILURE
+   - Good partial results do NOT compensate for incomplete execution
+
+EVALUATION PRIORITY:
+1. FIRST: Check if turn count requirements are met (if specified)
+2. SECOND: Check if all mandatory steps were completed
+3. THIRD: Evaluate quality of results
+
+If steps 1 or 2 fail, the score MUST be {{ min_score }} regardless of step 3.
+
+═══════════════════════════════════════════════════════════════════════════════
+{% else %}
+═══════════════════════════════════════════════════════════════════════════════
+{% endif %}
+
+📝 FULL CONVERSATION ({{ turn_count }} turns):
+═══════════════════════════════════════════════════════════════════════════════
+{{ conversation_text }}
+═══════════════════════════════════════════════════════════════════════════════
+
+EVALUATION INSTRUCTIONS:
+1. Identify or confirm the goal of the conversation (either stated explicitly or inferred from context)
+2. Break down the goal into specific measurable criteria
+3. Evaluate each criterion individually with evidence from specific turns
+4. For EACH criterion, note which turn numbers demonstrate progress toward or achievement of that criterion
+5. Determine if the overall goal was achieved based on all criteria
+
+EVALUATION CRITERIA:
+{% if evaluation_prompt %}
+{{ evaluation_prompt }}
+{% else %}
+Consider these aspects when evaluating goal achievement:
+
+**Understanding**: Did the assistant correctly understand the user's objective?
+- Evidence: Look for acknowledgment, clarifying questions, or direct responses to the stated need
+
+**Relevance**: Were the assistant's responses relevant and helpful toward achieving the goal?
+- Evidence: Each response should advance the conversation toward the goal, not diverge
+
+**Progress**: Did the conversation make steady, logical progress toward the goal?
+- Evidence: Track how each exchange moves closer to goal completion
+
+**Completeness**: Was the goal fully achieved by the end of the conversation?
+- Evidence: The user's original need should be satisfied, not partially addressed
+
+**Quality**: Were the responses accurate, clear, and actionable?
+- Evidence: Information should be correct and useful for the user's needs
+{% endif %}
+
+EVALUATION STEPS:
+{% if evaluation_steps %}
+{{ evaluation_steps }}
+{% else %}
+{% if instructions %}
+**MANDATORY FIRST STEP - Turn Count Validation:**
+1a. Count the ACTUAL number of turns in the conversation: {{ turn_count }} turns
+1b. Check if instructions specify a minimum or exact turn count requirement
+1c. If a turn count requirement exists:
+    - Compare actual ({{ turn_count }}) vs required
+    - If actual < required: STOP HERE, score = {{ min_score }}, all_criteria_met = false
+    - Document this as a failed criterion: "Turn count requirement not met"
+1d. Only proceed to step 2 if turn count requirement is satisfied (or not specified)
+
+**Standard Evaluation Steps:**
+{% endif %}
+2. Identify the primary goal and break it into 2-4 specific measurable criteria
+   {% if instructions %}- Include "Turn count requirement" as the FIRST criterion if specified in instructions{% endif %}
+3. For each criterion:
+   - Determine if it was met (yes/no)
+   - Provide specific evidence (quotes or observations from the conversation)
+   - Note which turn numbers (1, 2, 3, etc.) are relevant to this criterion
+4. Evaluate whether ALL criteria are met (if ANY criterion is not met, all_criteria_met = false)
+5. Make a final determination: was the overall goal achieved?
+6. Provide a numerical score reflecting goal achievement
+   - If turn count requirement failed: score MUST be {{ min_score }}
+   - If any mandatory criterion failed: score MUST be {{ min_score }}
+   - Only if ALL criteria met: score can be > {{ min_score }}
+{% endif %}
+
+REASONING GUIDELINES:
+{% if reasoning %}
+{{ reasoning }}
+{% else %}
+When evaluating, consider:
+
+- **Goal Clarity**: Is the goal clearly defined or easily inferred from the conversation?
+  * If ambiguous, state your interpretation of the goal
+  * A clear goal should be evident within the first 1-2 turns
+
+- **Criterion-based Assessment**: Each criterion should be evaluated independently
+  * Use specific turn references (e.g., "Turn 3 shows...")
+  * Quote relevant portions when possible
+  * Partial achievement should be clearly noted
+
+- **Progress Tracking**: Goal achievement is cumulative across turns
+  * Early turns establish context and understanding
+  * Middle turns typically contain the core information exchange
+  * Final turns should show resolution or completion
+
+- **Efficiency Consideration**: Could the goal have been achieved more quickly?
+  * Excellent: Goal achieved efficiently with no unnecessary detours
+  * Good: Goal achieved but with some inefficiency
+  * Poor: Goal not achieved or significant wasted turns
+
+- **Quality of Achievement**: Meeting the goal doesn't mean it was done well
+  * Consider accuracy, completeness, and usefulness of information
+  * Partial or unclear information reduces the score
+{% endif %}
+
+{% if evaluation_examples %}
+EXAMPLES:
+{{ evaluation_examples }}
+{% endif %}
+
+SCORING SCALE ({{ min_score }} to {{ max_score }}):
+- {{ max_score }}: Goal fully achieved with high quality, efficient conversation
+- {{ (min_score + max_score) / 2 }}: Goal partially achieved or achieved with quality issues
+- {{ min_score }}: Goal not achieved or conversation went off-track
+
+{% if instructions %}
+⚠️  MANDATORY SCORING RULES:
+- If turn count requirement not met → score MUST be {{ min_score }}
+- If any "MUST" instruction violated → score MUST be {{ min_score }}
+- If test stopped early per instructions → score MUST be {{ min_score }}
+- Partial progress does NOT increase score if mandatory requirements failed
+{% endif %}
+
+IMPORTANT NOTES:
+- Always provide specific turn references in your reasoning
+- Quote relevant portions of the conversation as evidence
+- If the goal is ambiguous, state your interpretation clearly
+- Distinguish between "goal achieved poorly" (low score) vs "goal not achieved" ({{ min_score }} score)
+{% if instructions %}
+- **CRITICAL**: Check turn count FIRST before evaluating anything else
+- **CRITICAL**: If instructions say "MUST do X" and X wasn't done → automatic failure
+- **CRITICAL**: "Stopping early" when instructions prohibit it → automatic failure
+- **CRITICAL**: Actual turn count ({{ turn_count }}) must meet or exceed any required minimum
+{% endif %}
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 EVALUATION SUMMARY - BEFORE YOU RESPOND
+═══════════════════════════════════════════════════════════════════════════════
+
+Remember:
+1. **PRIMARY CRITERION**: Does the conversation achieve this goal?
+   → "{{ goal if goal|trim else "Infer from conversation" }}"
+
+{% if instructions %}
+2. **MANDATORY REQUIREMENTS**: Were ALL instructions followed?
+   - Check turn count requirements
+   - Check all "MUST" statements
+   - Check stopping criteria
+   - If ANY instruction was violated → score = {{ min_score }}
+
+3. **EVALUATION PRIORITY**:
+   - Instructions define HOW to achieve the goal
+   - Goal cannot be achieved if instructions are violated
+   - Partial progress does NOT count if requirements aren't met
+{% else %}
+2. **QUALITY**: Was the goal achieved well?
+   - Accuracy, completeness, efficiency
+{% endif %}
+
+═══════════════════════════════════════════════════════════════════════════════
+📤 RESPONSE FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+Your response must be a valid JSON object with the following structure:
+{
+  "score": <float between {{ min_score }} and {{ max_score }}>,
+  "reason": "<overall explanation of the assessment>",
+  "criteria_evaluations": [
+    {
+      "criterion": "<specific measurable criterion>",
+      "met": <true/false>,
+      "evidence": "<specific evidence from conversation with quotes>",
+      "relevant_turns": [<list of turn numbers, e.g. [1, 3, 5]>]
+    }
+  ],
+  "all_criteria_met": <true if ALL criteria have met=true, false otherwise>,
+  "confidence": <float between 0.0 and 1.0 indicating confidence in assessment>
+}
+
+IMPORTANT: 
+- Include 2-4 criteria in criteria_evaluations (break down the goal into measurable parts)
+{% if instructions %}- **FIRST CRITERION MUST BE**: "Turn count requirement" if instructions specify minimum turns{% endif %}
+- Each criterion must have specific evidence and relevant turn numbers
+- all_criteria_met should be true ONLY if every single criterion has met=true
+- The score should reflect the overall achievement, with confidence indicating assessment certainty
+{% if instructions %}
+- If turn count requirement criterion has met=false → all_criteria_met MUST be false
+- If any "MUST" instruction criterion has met=false → all_criteria_met MUST be false
+- If all_criteria_met is false → score MUST be {{ min_score }}
+{% endif %}
+
