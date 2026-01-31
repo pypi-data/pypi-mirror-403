@@ -1,0 +1,185 @@
+---
+
+# Simple Snake Game 🐍
+
+A minimalist snake game written in Python using `asyncio`.
+Customize speed, grid size, controls, and even add a poison mode for extra challenge!
+
+---
+
+## Author
+
+* **userAnonymous**
+* GitHub: [ramimK0bir](https://github.com/ramimk0bir)
+
+---
+
+## Installation
+
+Install the game easily using `pip`:
+
+### From PyPI:
+
+```bash
+pip install python-snake-game
+```
+
+### Or directly from GitHub:
+
+```bash
+pip install git+https://github.com/ramimK0bir/python-snake-game@v1.0.10
+```
+
+---
+
+## Usage
+
+You can import and run the game from Python code:
+
+```python
+import python_snake_game as snake_game
+
+snake_game.play()
+```
+
+---
+
+## Parameters of `play` function
+
+| Parameter          | Type            | Default | Description                                            |
+| ------------------ | --------------- | ------- | ------------------------------------------------------ |
+| `speed`            | int             | 10      | Controls the game speed (higher = faster; range 1–20). |
+| `snake_food_emoji` | str             | "🍎"    | Emoji to represent the food on the grid.               |
+| `grid_size`        | tuple (int,int) | (15,12) | Size of the game grid as `(width, height)`.            |
+| `background_emoji` | str             | "🟫"    | Emoji or character to represent the grid blocks.       |
+| `invisible_wall`   | bool            | False   | Snake wraps around edges instead of dying.             |
+| `poison_mode`      | bool            | False   | Adds poisonous food. Snake dies if eaten.              |
+
+---
+
+## Key Customization Functions
+
+The game allows full key customization via three built-in functions:
+
+1. **`automatic_configure_custom_key()`**
+   Interactively prompts the user at runtime to configure custom keys for movement and pause.
+
+2. **`manual_configure_custom_key()`**
+   Allows the user to edit a configuration file to set preferred keys and save them for future sessions.
+
+3. **`reset_key_configuration()`**
+   Restores default key bindings, undoing any previous customizations.
+
+### Example Usage
+
+```python
+import python_snake_game as snake_game
+
+# Automatic interactive key configuration
+snake_game.automatic_configure_custom_key()
+
+# Manual configuration via config file
+snake_game.manual_configure_custom_key()
+
+# Reset keys to default
+snake_game.reset_key_configuration()
+
+# Start the game after customizing keys
+snake_game.play(speed=10, grid_size=(20, 15), poison_mode=False)
+```
+
+---
+
+## 🚀 Command Line Interface – `python -m python_snake_game`
+
+Run the snake game directly from the command line:
+
+```bash
+python -m python_snake_game [options]
+```
+
+---
+
+### 📥 Available CLI Arguments
+
+| Argument           | Type         | Default | Description                                                        |
+| ------------------ | ------------ | ------- | ------------------------------------------------------------------ |
+| `--speed`          | int (1–20)   | 10      | Controls game speed. Higher = faster.                              |
+| `--grid_size`      | string (W,H) | 15,12   | Grid size as `width,height`. Must be two positive integers.        |
+| `--invisible_wall` | bool         | False   | Snake wraps around screen edges instead of dying.                  |
+| `--poison_mode`    | bool         | False   | Adds poisonous food. Snake dies if eaten.                          |
+| `--customize_key`  | bool         | False   | Enable interactive or file-based key customization before playing. |
+
+---
+
+### 🧪 Examples
+
+```bash
+# Run with default settings
+python -m python_snake_game
+
+# Custom speed and grid size
+python -m python_snake_game --speed 5 --grid_size 20,15
+
+# Enable invisible walls (screen wrapping)
+python -m python_snake_game --invisible_wall
+
+# Enable poison mode
+python -m python_snake_game --poison_mode
+
+# Customize keys interactively before start game
+python -m python_snake_game --customize_key
+
+# All options together
+python -m python_snake_game --speed 8 --grid_size 30,20 --invisible_wall --poison_mode --customize_key
+```
+
+---
+
+## Controls
+
+* **Arrow keys** (default) to move the snake:
+
+  * Up: `w`
+  * Down: `s`
+  * Left: `a`
+  * Right: `d`
+* **Space bar** to pause/resume the game.
+* **Custom keys** can be configured via CLI or the three customization functions.
+
+---
+
+## How to Play
+
+* The snake moves continuously on the grid.
+* Eat the food (`🍎`) to grow longer and increase your score.
+* Avoid hitting walls or your own body unless `invisible_wall=True`.
+* In **poison mode**, some food can kill the snake instantly.
+* Current score is displayed above the grid.
+
+---
+
+## 🆕 What's New in v1.0.10
+
+* **Custom Key Configuration**
+
+  * **Automatic** – interactively configure keys via `automatic_configure_custom_key()`.
+  * **Manual** – configure keys by editing a configuration file via `manual_configure_custom_key()`.
+  * **Reset** – restore default key bindings using `reset_key_configuration()`.
+* **New CLI Argument:** `--customize_key` to trigger key customization before playing.
+
+---
+
+## Notes
+
+* Uses ANSI escape codes for terminal control (screen clear, colors).
+* Works best on terminals supporting Unicode and ANSI colors.
+
+---
+
+## License
+
+This project is open source. Feel free to contribute or modify!
+
+---
+
