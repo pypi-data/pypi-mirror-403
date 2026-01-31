@@ -1,0 +1,814 @@
+Metadata-Version: 2.4
+Name: fika-logger
+Version: 1.0.0
+Summary: Production-grade logging library with Slack/GitHub alerting, context propagation, and deduplication
+Author: FIKA Private Limited
+License: Copyright (c) 2026 FIKA Private Limited. All Rights Reserved.
+Project-URL: Documentation, https://github.com/fika-tech/fika-logger#readme
+Project-URL: Homepage, https://github.com/fika-tech/fika-logger
+Project-URL: Issues, https://github.com/fika-tech/fika-logger/issues
+Project-URL: Repository, https://github.com/fika-tech/fika-logger
+Keywords: logging,alerts,monitoring,slack,github,fastapi,async,context-propagation,deduplication,loguru
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: Other/Proprietary License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: loguru>=0.7.0
+Requires-Dist: motor>=3.0.0
+Requires-Dist: httpx>=0.24.0
+Provides-Extra: redis
+Requires-Dist: redis>=4.0.0; extra == "redis"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: fastapi>=0.100.0; extra == "dev"
+Requires-Dist: uvicorn>=0.20.0; extra == "dev"
+
+# FIKA Logger
+
+Production-grade Python logging library built on [Loguru](https://github.com/Delgan/loguru) with automatic Slack alerts, GitHub issue creation, async context propagation, and error deduplication.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Core Concepts](#core-concepts)
+  - [Auto-detected Component](#auto-detected-component)
+  - [Context Propagation](#context-propagation)
+  - [Error Deduplication](#error-deduplication)
+  - [Cooldown-based Alerting](#cooldown-based-alerting)
+- [Configuration](#configuration)
+  - [Environment Behavior](#environment-behavior)
+  - [Storage Backends](#storage-backends)
+- [API Reference](#api-reference)
+  - [FikaLogger](#fikalogger)
+  - [Logging Methods](#logging-methods)
+  - [Context Methods](#context-methods)
+  - [Decorators](#decorators)
+  - [ChildLogger](#childlogger)
+- [FastAPI Integration](#fastapi-integration)
+- [Log Files](#log-files)
+- [Slack Alerts](#slack-alerts)
+- [GitHub Issues](#github-issues)
+- [Architecture](#architecture)
+- [Examples](#examples)
+
+---
+
+## Installation
+
+```bash
+pip install fika-logger
+```
+
+With Redis support:
+```bash
+pip install fika-logger[redis]
+```
+
+### Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `loguru>=0.7.0` | Base logging framework |
+| `motor>=3.0.0` | Async MongoDB driver |
+| `httpx>=0.24.0` | Async HTTP client for Slack/GitHub |
+| `redis>=4.0.0` | (Optional) Redis storage backend |
+
+---
+
+## Quick Start
+
+```python
+import os
+from fika_logger import FikaLogger
+
+# Initialize logger
+logger = FikaLogger(
+    service_name="my-service",
+    environment=os.getenv("ENVIRONMENT", "development"),
+
+    # Storage for deduplication (choose one)
+    storage="mongodb",  # or "redis" or "memory"
+    mongodb_uri=os.getenv("MONGODB_URI"),
+
+    # Alerting (optional)
+    slack_webhook=os.getenv("SLACK_WEBHOOK"),
+    github_token=os.getenv("GITHUB_TOKEN"),
+    github_repo="owner/repo",
+)
+
+# Basic logging
+logger.debug("Debug message")
+logger.info("User logged in", user_id="123", ip="192.168.1.1")
+logger.warning("Rate limit approaching", current=95, limit=100)
+logger.error("Payment failed", order_id="ord_456")
+logger.critical("Database connection lost")
+
+# Exception logging (inside except block)
+try:
+    result = 1 / 0
+except ZeroDivisionError:
+    logger.exception("Math operation failed")  # Captures full traceback
+```
+
+---
+
+## Core Concepts
+
+### Auto-detected Component
+
+FIKA Logger automatically detects the source file path of each log call. This appears in:
+- Console output
+- Log files
+- Slack alerts
+- GitHub issues
+
+```python
+# In /app/src/integrations/zoho/client.py
+logger.info("Creating lead")
+# Output: 2024-01-28 10:00:00 | INFO | /app/src/integrations/zoho/client.py | Creating lead
+```
+
+You can override this:
+```python
+logger.info("Message", component="/custom/path.py")
+```
+
+### Context Propagation
+
+Context flows through all nested async tasks when using `@logger.trace`:
+
+```python
+import asyncio
+from fika_logger import FikaLogger
+
+logger = FikaLogger(service_name="api", environment="production")
+
+async def send_email(user_id: str):
+    # This log will have client="acme" from the parent context!
+    logger.info("Sending email", user_id=user_id)
+
+async def process_order(order_id: str):
+    logger.info("Processing order", order_id=order_id)
+    # Spawn background task - context is preserved
+    asyncio.create_task(send_email("user_123"))
+
+@logger.trace  # <-- This enables context propagation
+async def handle_webhook(payload: dict):
+    with logger.context(client="acme", request_id="req_abc"):
+        await process_order(payload["order_id"])
+
+# All logs from handle_webhook, process_order, and send_email
+# will have client="acme" and request_id="req_abc"
+```
+
+**How it works:**
+1. `@logger.trace` patches `asyncio.create_task` to copy the current context
+2. `logger.context()` sets context variables that flow through the call chain
+3. All logs within traced functions include the accumulated context
+
+### Error Deduplication
+
+Errors are deduplicated using a fingerprint based on:
+- Error type (e.g., `ValueError`)
+- Location (file path + line number)
+- Service name
+
+Same error at same location = same fingerprint = deduplicated alerts.
+
+```python
+# These two errors have the SAME fingerprint (same type + location):
+try:
+    raise ValueError("Connection timeout")  # Line 42
+except:
+    logger.exception("Failed")
+
+try:
+    raise ValueError("Invalid response")    # Line 42 (same line!)
+except:
+    logger.exception("Failed")
+
+# This error has a DIFFERENT fingerprint (different type):
+try:
+    raise TypeError("Invalid argument")     # Line 42
+except:
+    logger.exception("Failed")
+```
+
+### Cooldown-based Alerting
+
+Alerts are sent based on two conditions (whichever comes first):
+
+| Condition | Default | Description |
+|-----------|---------|-------------|
+| Time cooldown | 15 minutes | Alert if last alert was > 15 min ago |
+| Count threshold | 10 occurrences | Alert every 10th occurrence |
+
+```python
+logger = FikaLogger(
+    service_name="api",
+    environment="production",
+    alert_cooldown_minutes=15,      # Alert at most every 15 minutes
+    alert_every_n_occurrences=10,   # Or every 10th occurrence
+)
+```
+
+**Example timeline:**
+```
+10:00 - Error #1  → Alert sent (first occurrence)
+10:01 - Error #2  → No alert (cooldown)
+10:02 - Error #3  → No alert (cooldown)
+...
+10:05 - Error #10 → Alert sent (10th occurrence)
+...
+10:16 - Error #15 → Alert sent (cooldown expired)
+```
+
+---
+
+## Configuration
+
+### Full Configuration Options
+
+```python
+from fika_logger import FikaLogger
+
+logger = FikaLogger(
+    # Required
+    service_name="my-service",           # Identifies your service
+    environment="production",            # "development" | "staging" | "production"
+
+    # Storage (for deduplication)
+    storage="mongodb",                   # "mongodb" | "redis" | "memory" | None
+    mongodb_uri="mongodb://localhost:27017",
+    redis_url="redis://localhost:6379",
+
+    # Slack alerts
+    slack_webhook="https://hooks.slack.com/services/...",
+
+    # GitHub issues
+    github_token="ghp_xxxxxxxxxxxx",
+    github_repo="owner/repo",
+    extra_labels=["team:backend"],       # Additional labels for issues
+
+    # Alert tuning
+    alert_cooldown_minutes=15,           # Min time between alerts
+    alert_every_n_occurrences=10,        # Alert every N occurrences
+
+    # Log files
+    log_dir="logs",                      # Directory for log files
+
+    # Integration detection
+    integration_patterns=[               # Patterns to detect integrations
+        "integrations/",
+        "services/",
+        "connectors/",
+    ],
+)
+```
+
+### Environment Behavior
+
+| Feature | Development | Staging | Production |
+|---------|-------------|---------|------------|
+| Console output | ✅ Colored | ✅ Colored | ✅ Colored |
+| Main log file | ✅ Reset on start | ✅ Reset on start | ✅ Reset on start |
+| Error log file | ✅ Reset on start | ✅ Reset on start | ✅ Reset on start |
+| Slack alerts | ❌ Off | ⚠️ Critical only | ✅ Error + Critical |
+| GitHub issues | ❌ Off | ❌ Off | ✅ On |
+| Storage/dedup | ❌ Off | ✅ On | ✅ On |
+
+Override defaults by explicitly passing configuration:
+```python
+# Enable storage in development for testing
+logger = FikaLogger(
+    service_name="test",
+    environment="development",
+    storage="memory",  # Explicit override
+)
+```
+
+### Storage Backends
+
+#### MongoDB (Recommended for production)
+```python
+logger = FikaLogger(
+    storage="mongodb",
+    mongodb_uri="mongodb://localhost:27017",
+)
+# Creates database: fika_logger
+# Creates collection: errors
+```
+
+#### Redis
+```python
+logger = FikaLogger(
+    storage="redis",
+    redis_url="redis://localhost:6379",
+)
+# Keys: fika_logger:error:{fingerprint}
+# TTL: 30 days
+```
+
+#### Memory (For development/testing)
+```python
+logger = FikaLogger(
+    storage="memory",
+)
+# In-memory dict, lost on restart
+```
+
+---
+
+## API Reference
+
+### FikaLogger
+
+```python
+class FikaLogger:
+    def __init__(
+        self,
+        service_name: str,                              # Required
+        environment: str,                               # Required
+        storage: Optional[str] = "memory",              # "mongodb" | "redis" | "memory" | None
+        mongodb_uri: Optional[str] = None,
+        redis_url: Optional[str] = None,
+        slack_webhook: Optional[str] = None,
+        github_token: Optional[str] = None,
+        github_repo: Optional[str] = None,
+        alert_cooldown_minutes: int = 15,
+        alert_every_n_occurrences: int = 10,
+        extra_labels: Optional[List[str]] = None,
+        log_dir: str = "logs",
+        integration_patterns: Optional[List[str]] = None,
+    ): ...
+```
+
+### Logging Methods
+
+```python
+# Standard levels
+logger.debug(message: str, **context)
+logger.info(message: str, **context)
+logger.warning(message: str, **context)
+logger.error(message: str, exc_info: Optional[Exception] = None, **context)
+logger.critical(message: str, exc_info: Optional[Exception] = None, **context)
+
+# Exception logging (use inside except block)
+logger.exception(message: str, **context)
+```
+
+**Examples:**
+```python
+# Simple message
+logger.info("Server started")
+
+# With context
+logger.info("User logged in", user_id="123", ip="192.168.1.1")
+
+# Error with exception
+try:
+    risky_operation()
+except Exception as e:
+    logger.error("Operation failed", exc_info=e, operation="payment")
+
+# Exception (auto-captures traceback)
+try:
+    risky_operation()
+except:
+    logger.exception("Operation failed", operation="payment")
+```
+
+### Context Methods
+
+```python
+# Context manager - scoped context
+with logger.context(request_id="abc", user_id="123"):
+    logger.info("Has context")  # Includes request_id and user_id
+logger.info("No context")       # Context cleared
+
+# Add to current context (persists until scope ends)
+logger.add_context(step="validation")
+
+# Update existing context
+logger.update_context(step="processing")
+
+# Get current context
+ctx = logger.get_current_context()  # Returns dict
+```
+
+**Nested contexts merge:**
+```python
+with logger.context(a="1"):
+    with logger.context(b="2"):
+        logger.info("Has both")  # a="1", b="2"
+    logger.info("Only a")        # a="1"
+```
+
+### Decorators
+
+```python
+@logger.trace
+async def my_entry_point():
+    """
+    Enables context propagation for all nested async tasks.
+    Use on FastAPI routes or other entry points.
+    """
+    with logger.context(request_id="abc"):
+        asyncio.create_task(background_work())  # Context preserved!
+```
+
+**Important:** `@logger.trace` should be used on entry points only (routes, event handlers), not on every function.
+
+### ChildLogger
+
+Create loggers with preset default context:
+
+```python
+# Create child logger
+zoho_logger = logger.child(
+    integration="zoho",
+    component="/app/src/integrations/zoho"
+)
+
+# All logs include the preset context
+zoho_logger.info("Creating lead")  # Has integration="zoho"
+zoho_logger.error("API failed")    # Has integration="zoho"
+
+# Child methods
+zoho_logger.debug(message, **context)
+zoho_logger.info(message, **context)
+zoho_logger.warning(message, **context)
+zoho_logger.error(message, exc_info=None, **context)
+zoho_logger.critical(message, exc_info=None, **context)
+zoho_logger.exception(message, **context)
+zoho_logger.context(**context)  # Returns context manager
+```
+
+---
+
+## FastAPI Integration
+
+```python
+from fastapi import FastAPI
+from fika_logger import FikaLogger
+
+app = FastAPI()
+
+logger = FikaLogger(
+    service_name="api",
+    environment="production",
+    slack_webhook="https://hooks.slack.com/...",
+)
+
+# Add exception capture middleware
+logger.instrument_fastapi(app)
+
+@app.post("/webhook")
+@logger.trace  # Enable context propagation
+async def handle_webhook(payload: dict):
+    with logger.context(
+        client=payload.get("client"),
+        event_type=payload.get("type"),
+    ):
+        logger.info("Webhook received")
+
+        # All nested calls have the context
+        await process_event(payload)
+
+        return {"status": "ok"}
+
+async def process_event(payload: dict):
+    logger.info("Processing event")  # Has client and event_type
+
+    # Background tasks also have context
+    asyncio.create_task(send_notification(payload))
+
+async def send_notification(payload: dict):
+    logger.info("Sending notification")  # Still has context!
+```
+
+**What `instrument_fastapi` does:**
+1. Adds middleware to catch unhandled exceptions
+2. Logs exceptions with request context (method, path)
+3. Returns 500 response to client
+
+---
+
+## Log Files
+
+Two log files are created (both reset on program start):
+
+### Main Log (`logs/{service_name}.log`)
+
+Contains ALL logs in JSON format:
+
+```json
+{"time": "2024-01-28T10:00:00.123456", "level": "INFO", "message": "User logged in | context={'user_id': '123', 'component': '/app/src/api/auth.py'}", "component": "/app/src/api/auth.py", "user_id": "123"}
+{"time": "2024-01-28T10:00:01.234567", "level": "ERROR", "message": "Payment failed | context={'order_id': 'ord_456', 'component': '/app/src/services/payment.py'}", "component": "/app/src/services/payment.py", "order_id": "ord_456", "exception": "..."}
+```
+
+### Error Log (`logs/{service_name}.error.log`)
+
+Contains ONLY errors/critical with full tracebacks in human-readable format:
+
+```
+================================================================================
+2024-01-28 10:00:01 | ERROR | /app/src/services/payment.py
+
+Message: Payment failed | context={'order_id': 'ord_456', 'component': '/app/src/services/payment.py'}
+
+Context:
+  order_id: ord_456
+  component: /app/src/services/payment.py
+  amount: 99.99
+
+Traceback (most recent call last):
+  File "/app/src/api/orders.py", line 45, in create_order
+    await payment_service.charge(order)
+  File "/app/src/services/payment.py", line 123, in charge
+    response = await self.client.post(url, data=payload)
+  File "/app/src/services/payment.py", line 125, in charge
+    raise PaymentError(f"Charge failed: {response.status}")
+PaymentError: Charge failed: 402
+================================================================================
+```
+
+---
+
+## Slack Alerts
+
+Slack messages include:
+- Error type and message
+- Location (full file path)
+- Context (all key-value pairs)
+- Shortened traceback (call chain only)
+- Stats (first seen, occurrence count)
+- Link to GitHub issue
+
+**Example Slack message:**
+
+```
+🚨 ERROR - my-service
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ValueError: Connection timeout
+
+📍 Location
+/app/src/integrations/zoho/client.py:145 in create_lead()
+
+📋 Context
+• client: acme
+• lead_id: lead_123
+• retry_count: 3
+
+📚 Stack Trace (shortened)
+webhooks.py:23 → engine.py:89 → client.py:145
+
+📊 Stats
+• First seen: 2 hours ago
+• Occurrences: 47
+• GitHub: #123
+
+[View Full Details on GitHub]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+production • Jan 28, 2024 10:00 AM UTC
+```
+
+---
+
+## GitHub Issues
+
+GitHub issues include:
+- Full error message
+- Location with function name
+- Complete context table
+- **Full traceback** (for debugging)
+- Auto-generated labels
+
+**Labels automatically added:**
+- `service:{service_name}`
+- `error:{ErrorType}`
+- `env:{environment}`
+- `component:{path.to.file}`
+- `integration:{name}` (if detected)
+- `priority:high` or `priority:critical`
+
+**Issue state sync:**
+- If a GitHub issue is closed and the same error occurs again, a NEW issue is created
+- This ensures closed issues don't get buried
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         FikaLogger                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  logger.info()  ──────┬──────────────────────────────────────►  │
+│  logger.error() ──────┤                                         │
+│  logger.exception() ──┤     ┌─────────────┐                     │
+│                       ├────►│   Loguru    │────► Console        │
+│                       │     └─────────────┘────► Log Files      │
+│                       │                                         │
+│                       │     ┌─────────────────────────────────┐ │
+│                       └────►│  Error Handler (async)          │ │
+│                             │                                 │ │
+│                             │  1. Generate fingerprint        │ │
+│                             │  2. Check storage for existing  │ │
+│                             │  3. Apply cooldown logic        │ │
+│                             │  4. Create GitHub issue         │ │
+│                             │  5. Send Slack alert            │ │
+│                             │  6. Update storage              │ │
+│                             └─────────────────────────────────┘ │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  Storage Backends                                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                      │
+│  │ MongoDB  │  │  Redis   │  │  Memory  │                      │
+│  └──────────┘  └──────────┘  └──────────┘                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+1. **Log call** → Loguru processes message
+2. **If error/critical** → Queue for async processing
+3. **Generate fingerprint** → Hash of (service, error_type, location)
+4. **Check storage** → Is this a known error?
+5. **Apply cooldown** → Should we alert?
+6. **GitHub** → Create issue (if new or previously closed)
+7. **Slack** → Send alert (if cooldown allows)
+8. **Update storage** → Increment count, update timestamps
+
+### Background Processing
+
+For sync code (no event loop), alerts are processed in a background thread:
+
+```python
+# This works even without async context
+def sync_function():
+    try:
+        risky_operation()
+    except:
+        logger.exception("Failed")  # Queued for background processing
+```
+
+---
+
+## Examples
+
+### Complete FastAPI Application
+
+```python
+# src/logger.py
+import os
+from fika_logger import FikaLogger
+
+logger = FikaLogger(
+    service_name=os.getenv("SERVICE_NAME", "my-api"),
+    environment=os.getenv("ENVIRONMENT", "development"),
+    storage="mongodb",
+    mongodb_uri=os.getenv("MONGODB_URI"),
+    slack_webhook=os.getenv("SLACK_WEBHOOK"),
+    github_token=os.getenv("GITHUB_TOKEN"),
+    github_repo=os.getenv("GITHUB_REPO"),
+)
+```
+
+```python
+# src/main.py
+from fastapi import FastAPI
+from src.logger import logger
+
+app = FastAPI()
+logger.instrument_fastapi(app)
+
+# Import routes after instrumenting
+from src.api import webhooks, users
+```
+
+```python
+# src/api/webhooks.py
+import asyncio
+from fastapi import APIRouter
+from src.logger import logger
+
+router = APIRouter()
+
+@router.post("/webhook/stripe")
+@logger.trace
+async def stripe_webhook(payload: dict):
+    with logger.context(
+        provider="stripe",
+        event_type=payload.get("type"),
+        event_id=payload.get("id"),
+    ):
+        logger.info("Webhook received")
+
+        try:
+            await process_stripe_event(payload)
+            return {"status": "ok"}
+        except Exception as e:
+            logger.exception("Webhook processing failed")
+            raise
+
+async def process_stripe_event(payload: dict):
+    event_type = payload.get("type")
+
+    if event_type == "payment_intent.succeeded":
+        logger.info("Payment succeeded")
+        asyncio.create_task(send_receipt(payload))
+    elif event_type == "payment_intent.failed":
+        logger.warning("Payment failed", reason=payload.get("failure_message"))
+
+async def send_receipt(payload: dict):
+    logger.info("Sending receipt")  # Has all parent context
+    # ... email logic
+```
+
+```python
+# src/integrations/zoho/client.py
+from src.logger import logger
+
+# Create child logger for this integration
+zoho_logger = logger.child(integration="zoho")
+
+class ZohoClient:
+    async def create_lead(self, data: dict):
+        zoho_logger.info("Creating lead", lead_data=data)
+
+        try:
+            response = await self.http.post("/leads", json=data)
+            response.raise_for_status()
+
+            lead_id = response.json()["id"]
+            zoho_logger.info("Lead created", lead_id=lead_id)
+            return lead_id
+
+        except Exception as e:
+            zoho_logger.exception("Failed to create lead")
+            raise
+```
+
+### Testing with Mock Storage
+
+```python
+import pytest
+from fika_logger import FikaLogger
+
+@pytest.fixture
+def logger():
+    return FikaLogger(
+        service_name="test",
+        environment="development",
+        storage="memory",  # Use in-memory for tests
+    )
+
+async def test_error_logging(logger):
+    try:
+        raise ValueError("Test error")
+    except:
+        logger.exception("Caught error")
+
+    # Check storage
+    # (In real tests, you'd access logger.storage)
+```
+
+---
+
+## Troubleshooting
+
+### Alerts not sending
+
+1. Check environment is "production" (or "staging" for critical)
+2. Verify `slack_webhook` is set
+3. Check logs for "Slack alert failed" warnings
+
+### Context not propagating
+
+1. Ensure `@logger.trace` is on the entry point
+2. Use `asyncio.create_task()` (not other methods)
+3. Check `is_inside_trace()` returns True
+
+### Duplicate GitHub issues
+
+1. Check MongoDB/Redis is connected
+2. Verify fingerprint is consistent (same location)
+3. Check if previous issue was closed (new one created)
+
+---
+
+## License
+
+Copyright (c) 2026 FIKA Private Limited. All Rights Reserved.
