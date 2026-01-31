@@ -1,0 +1,234 @@
+Metadata-Version: 2.4
+Name: truthtrader-market-reaction
+Version: 0.1.0
+Summary: Market reaction engine: compute price reactions at a given datetime with automatic biggest mover discovery by sector or market-wide.
+Author: Bryan Clauss
+Author-email: bryanclauss@gmail.com
+Requires-Python: >=3.11,<4.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Dist: numpy (>=1.26.0,<2.0.0)
+Requires-Dist: pandas (>=2.2.0,<3.0.0)
+Requires-Dist: truthtrader-barvault (>=0.1.0,<0.2.0)
+Description-Content-Type: text/markdown
+
+# truthtrader-market-reaction
+
+Market reaction engine for computing price movements at a specific datetime with automatic biggest mover discovery by sector or market-wide.
+
+Built on [truthtrader-barvault](https://pypi.org/project/truthtrader-barvault/) for reliable, cached market data access.
+
+## Installation
+
+```bash
+pip install truthtrader-market-reaction
+```
+
+## Quick Start
+
+```python
+from datetime import datetime, timezone
+from market_reaction import get_market_reaction
+from market_data import ArchiveConfig
+
+result = get_market_reaction(
+    event_datetime=datetime(2025, 1, 15, 14, 30, tzinfo=timezone.utc),
+    tickers=["TSLA"],
+    include_biggest_movers="technology",
+    biggest_movers_limit=10,
+    market="NYSE",
+    barvault_config=ArchiveConfig.s3(
+        bucket="public-market-data-truth-trader",
+        prefix="md-archive"
+    ),
+    polygon_api_key="YOUR_KEY"  # optional
+)
+
+print(f"TSLA: {result['watchlist'][0]['change_pct']}%")
+print(f"Top tech mover: {result['biggest_movers'][0]['ticker']}")
+```
+
+## Core Concepts
+
+### Watchlist
+
+Your specified tickers are always analyzed:
+
+```python
+result = get_market_reaction(
+    event_datetime=event_time,
+    tickers=["TSLA", "AAPL", "NVDA"],
+    barvault_config=config
+)
+
+for mover in result["watchlist"]:
+    print(f"{mover['ticker']}: {mover['change_pct']}%")
+```
+
+### Biggest Movers
+
+Discover top movers beyond your watchlist—by sector or market-wide:
+
+```python
+# Top 10 movers in technology sector
+result = get_market_reaction(
+    event_datetime=event_time,
+    tickers=["TSLA"],
+    include_biggest_movers="technology",
+    biggest_movers_limit=10,
+    barvault_config=config
+)
+
+# Top 20 movers across entire market
+result = get_market_reaction(
+    event_datetime=event_time,
+    tickers=["TSLA"],
+    include_biggest_movers="market",
+    biggest_movers_limit=20,
+    barvault_config=config
+)
+```
+
+### Supported Sectors
+
+| Sector | Examples |
+|--------|----------|
+| `technology` | AAPL, MSFT, NVDA, AMD, GOOGL, META |
+| `financials` | JPM, BAC, GS, V, MA, PYPL |
+| `healthcare` | UNH, JNJ, LLY, PFE, ABBV, MRK |
+| `energy` | XOM, CVX, COP, SLB, OXY |
+| `consumer` | TSLA, HD, WMT, COST, MCD, NKE |
+| `industrials` | CAT, DE, BA, HON, UPS, FDX |
+| `defense` | LMT, RTX, NOC, GD, LHX |
+| `communications` | NFLX, DIS, T, VZ, TMUS |
+| `crypto` | COIN, MSTR, RIOT, MARA |
+| `real_estate` | PLD, AMT, EQIX, SPG |
+| `utilities` | NEE, DUK, SO, AEP |
+| `materials` | GDX, GLD, SLV |
+
+Use `"market"` or `"all"` to analyze across all ~250 tracked symbols.
+
+## Response Structure
+
+```python
+{
+    "event_time": "2025-01-15T14:30:00Z",
+    "market": "NYSE",
+    "data_status": "ok",
+    
+    "t0_bar": {
+        "timestamp": "2025-01-15T14:31:00Z",
+        "open": 580.50,
+        "alignment_method": "next_bar_open",
+        "gap_seconds": 60
+    },
+    
+    "watchlist": [
+        {"ticker": "TSLA", "change_pct": 2.45, "price": 594.73, "sector": "consumer", ...}
+    ],
+    
+    "biggest_movers": [
+        {"ticker": "NVDA", "change_pct": 5.12, "price": 145.30, "sector": "technology"},
+        {"ticker": "AMD", "change_pct": 3.87, "price": 178.20, "sector": "technology"},
+        ...
+    ],
+    
+    "reactions": {
+        "1m": {...},
+        "5m": {...},
+        "15m": {...},
+        "1h": {...},
+        "4h": {...},
+        "1d": {...}
+    },
+    
+    "sector_impact": {
+        "technology": {"direction": "bullish", "avg_move_pct": 1.25, "total_movers": 15}
+    },
+    
+    "summary": {
+        "biggest_mover": "NVDA",
+        "biggest_move_pct": 5.12,
+        "avg_move_pct": 0.85,
+        "positive_movers": 42,
+        "negative_movers": 18
+    }
+}
+```
+
+## T0 Bar Alignment
+
+The engine uses proper bar alignment for accurate reaction measurement:
+
+- **Event during market hours**: Uses the next bar's OPEN after the event timestamp
+- **Event outside market hours**: Uses the next market open as T0
+
+This ensures reactions are measured from the first actually tradeable price.
+
+## Universe Utilities
+
+Query the built-in ticker universe directly:
+
+```python
+from market_reaction import (
+    get_all_symbols,
+    get_symbols_by_sector,
+    get_sector_for_symbol,
+    get_ticker_info
+)
+
+symbols = get_all_symbols()                    # ~250 symbols
+tech = get_symbols_by_sector("technology")     # ~45 tech stocks
+sector = get_sector_for_symbol("NVDA")         # "technology"
+info = get_ticker_info("NVDA")                 # {"symbol": "NVDA", "name": "NVIDIA Corporation", "sector": "technology"}
+```
+
+## Configuration
+
+### Archive Configuration
+
+```python
+from market_data import ArchiveConfig
+
+# S3 (recommended for production)
+config = ArchiveConfig.s3(bucket="my-bucket", prefix="md-archive")
+
+# Local filesystem (for development)
+config = ArchiveConfig.local(root="/path/to/archive")
+```
+
+### Data Fetching
+
+Without `polygon_api_key`, the engine runs in read-only mode using only cached data. Provide an API key to automatically fetch missing data:
+
+```python
+result = get_market_reaction(
+    event_datetime=event_time,
+    tickers=["TSLA"],
+    barvault_config=config,
+    polygon_api_key="YOUR_KEY"  # enables fetching missing data
+)
+```
+
+## API Reference
+
+### `get_market_reaction()`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `event_datetime` | `datetime` | Yes | Event timestamp (UTC) |
+| `tickers` | `list[str]` | Yes | Watchlist tickers to analyze |
+| `include_biggest_movers` | `str` | No | Sector name, `"market"`, or `None` |
+| `biggest_movers_limit` | `int` | No | Max biggest movers to return (default: 10) |
+| `market` | `str` | No | Market for calendar (default: `"NYSE"`) |
+| `barvault_config` | `ArchiveConfig` | Yes | barvault archive configuration |
+| `polygon_api_key` | `str` | No | Polygon API key for fetching missing data |
+| `compute_correlations` | `bool` | No | Compute correlations for unexpected movers (default: `True`) |
+
+## License
+
+MIT
+
