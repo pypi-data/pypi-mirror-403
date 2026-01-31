@@ -1,0 +1,1 @@
+"""AnimAID CLI entry points."""
