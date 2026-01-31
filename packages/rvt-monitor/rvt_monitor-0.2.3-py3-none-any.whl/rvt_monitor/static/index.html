@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RVT-Monitor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>RVT-Monitor</h1>
+    </header>
+
+    <!-- Connection -->
+    <div class="card">
+      <h2>Connection</h2>
+      <div class="button-group">
+        <button id="btn-scan" class="btn btn-primary">Scan</button>
+        <select id="device-select" disabled>
+          <option value="">Select a device</option>
+        </select>
+        <button id="btn-connect" class="btn btn-success" disabled>Connect</button>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card" id="controls-card">
+      <h2>Controls</h2>
+      <div class="button-group controls">
+        <button id="btn-up" class="btn btn-control btn-up" disabled>UP</button>
+        <button id="btn-down" class="btn btn-control btn-down" disabled>DOWN</button>
+        <button id="btn-stop" class="btn btn-danger" disabled>STOP</button>
+      </div>
+    </div>
+
+    <!-- Device Info -->
+    <div id="device-info" class="card">
+      <h2>Device Info</h2>
+      <div class="info-grid">
+        <div class="info-item">
+          <label>Status</label>
+          <span id="connection-status" class="status-text disconnected">Disconnected</span>
+        </div>
+        <div class="info-item">
+          <label>Name</label>
+          <span id="device-name">-</span>
+        </div>
+        <div class="info-item">
+          <label>Manufacturer</label>
+          <span id="device-manufacturer">-</span>
+        </div>
+        <div class="info-item">
+          <label>Model</label>
+          <span id="device-model">-</span>
+        </div>
+        <div class="info-item">
+          <label>Serial</label>
+          <span id="device-serial">-</span>
+        </div>
+        <div class="info-item">
+          <label>Protocol</label>
+          <span id="device-protocol">-</span>
+        </div>
+        <div class="info-item">
+          <label>Hardware</label>
+          <span id="device-hardware">-</span>
+        </div>
+        <div class="info-item">
+          <label>Firmware</label>
+          <span id="device-firmware">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ceily Status Table -->
+    <div id="ceily-status-card" class="card" style="display: none;">
+      <h2>Ceily Status</h2>
+      <table class="status-table">
+        <tbody>
+          <tr>
+            <th>Motion</th>
+            <td id="ceily-motion-state">-</td>
+            <th>MCU Temp</th>
+            <td><span id="ceily-mcu-temp">-</span> °C</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Speed Ctrl</th>
+            <td id="ceily-speed-control-state">-</td>
+            <th>Motion Phase</th>
+            <td id="ceily-motion-phase">-</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Position</th>
+            <td><span id="ceily-position">-</span> mm (<span id="ceily-position-pct">-</span>%)</td>
+            <th>Remain</th>
+            <td><span id="ceily-remain-distance">-</span> mm</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Cur Vel</th>
+            <td><span id="ceily-current-velocity">-</span></td>
+            <th>Cmd Vel</th>
+            <td><span id="ceily-command-velocity">-</span></td>
+          </tr>
+          <tr class="p2-only">
+            <th>Torque</th>
+            <td><span id="ceily-torque">-</span></td>
+            <th>Pos Verified</th>
+            <td id="ceily-position-verified">-</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Learning</th>
+            <td id="ceily-model-learning">-</td>
+            <th>Limit SW</th>
+            <td id="ceily-limit-switch">-</td>
+          </tr>
+          <tr class="p1-only" style="display: none;">
+            <th>Limit SW</th>
+            <td id="ceily-limit-switch-p1">-</td>
+            <th>Position</th>
+            <td><span id="ceily-position-p1">-</span> mm</td>
+          </tr>
+          <tr class="p1-only" style="display: none;">
+            <th>Velocity</th>
+            <td><span id="ceily-velocity-p1">-</span></td>
+            <th>Torque</th>
+            <td><span id="ceily-torque-p1">-</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>ToF Sensors</h3>
+      <table class="status-table">
+        <tbody>
+          <tr>
+            <th>Front</th>
+            <td><span id="ceily-tof-front-state">-</span> | Object: <span id="ceily-tof-front-object">-</span></td>
+          </tr>
+          <tr>
+            <th>Left</th>
+            <td><span id="ceily-tof-left-state">-</span> | Object: <span id="ceily-tof-left-object">-</span></td>
+          </tr>
+          <tr>
+            <th>Right</th>
+            <td><span id="ceily-tof-right-state">-</span> | Object: <span id="ceily-tof-right-object">-</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Motor</h3>
+      <table class="status-table">
+        <tbody>
+          <tr>
+            <th>Servo</th>
+            <td id="ceily-servo-connected">-</td>
+            <th>Enable</th>
+            <td id="ceily-servo-enabled">-</td>
+          </tr>
+          <tr>
+            <th>Alarm</th>
+            <td id="ceily-alarm">-</td>
+            <th></th>
+            <td></td>
+          </tr>
+          <tr class="p2-only">
+            <th>Raw Vel</th>
+            <td><span id="ceily-raw-velocity">-</span></td>
+            <th>Raw Torque</th>
+            <td><span id="ceily-raw-torque">-</span></td>
+          </tr>
+          <tr class="p2-only">
+            <th>Current</th>
+            <td><span id="ceily-current">-</span> mA</td>
+            <th>Voltage</th>
+            <td><span id="ceily-voltage">-</span> V</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Temp</th>
+            <td><span id="ceily-temperature">-</span> °C</td>
+            <th></th>
+            <td></td>
+          </tr>
+          <tr class="p1-only" style="display: none;">
+            <th>Current</th>
+            <td><span id="ceily-current-p1">-</span> mA</td>
+            <th>Voltage</th>
+            <td><span id="ceily-voltage-p1">-</span> V</td>
+          </tr>
+          <tr class="p1-only" style="display: none;">
+            <th>Temp</th>
+            <td><span id="ceily-temperature-p1">-</span> °C</td>
+            <th></th>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Wally Status Table -->
+    <div id="wally-status-card" class="card" style="display: none;">
+      <h2>Wally Status</h2>
+      <table class="status-table">
+        <tbody>
+          <tr>
+            <th>Motion</th>
+            <td id="wally-motion-state">-</td>
+            <th>MCU Temp</th>
+            <td><span id="wally-mcu-temp">-</span> °C</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Speed Ctrl</th>
+            <td id="wally-speed-control-state">-</td>
+            <th>Motion Phase</th>
+            <td id="wally-motion-phase">-</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Position</th>
+            <td><span id="wally-position-mm">-</span> mm (<span id="wally-position-pct">-</span>%)</td>
+            <th>Remain</th>
+            <td><span id="wally-remain-distance">-</span> mm</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Cur Vel</th>
+            <td><span id="wally-current-velocity">-</span></td>
+            <th>Cmd Vel</th>
+            <td><span id="wally-command-velocity">-</span></td>
+          </tr>
+          <tr class="p2-only">
+            <th>Torque</th>
+            <td><span id="wally-torque">-</span></td>
+            <th>Pos Verified</th>
+            <td id="wally-position-verified">-</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Learning</th>
+            <td id="wally-model-learning">-</td>
+            <th>Limit SW</th>
+            <td id="wally-limit-switch">-</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Photo Sensor</th>
+            <td id="wally-photo-sensor">-</td>
+            <th></th>
+            <td></td>
+          </tr>
+          <tr class="p1-only" style="display: none;">
+            <th>Limit SW</th>
+            <td id="wally-limit-switch-p1">-</td>
+            <th></th>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Kinematics</h3>
+      <table class="status-table">
+        <tbody>
+          <tr>
+            <th>Position X</th>
+            <td><span id="wally-x">-</span> mm</td>
+            <th>Position Y</th>
+            <td><span id="wally-y">-</span> mm</td>
+          </tr>
+          <tr>
+            <th>Distance</th>
+            <td><span id="wally-distance">-</span> mm</td>
+            <th>Angle</th>
+            <td><span id="wally-angle">-</span>°</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>ToF Sensors</h3>
+      <table class="status-table">
+        <tbody>
+          <tr>
+            <th>Left</th>
+            <td>Status: <span id="wally-tof-left-status">-</span>, Dist: <span id="wally-tof-left-dist">-</span> mm</td>
+          </tr>
+          <tr>
+            <th>Right</th>
+            <td>Status: <span id="wally-tof-right-status">-</span>, Dist: <span id="wally-tof-right-dist">-</span> mm</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Left Motor</h3>
+      <table class="status-table">
+        <tbody>
+          <tr class="p2-only">
+            <th>Connected</th>
+            <td id="wally-ml-connected">-</td>
+            <th>Enable</th>
+            <td id="wally-ml-enabled">-</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Alarm</th>
+            <td id="wally-ml-alarm">-</td>
+            <th></th>
+            <td></td>
+          </tr>
+          <tr class="p1-only" style="display: none;">
+            <th>Alarm</th>
+            <td id="wally-ml-alarm-p1">-</td>
+            <th></th>
+            <td></td>
+          </tr>
+          <tr>
+            <th>Velocity</th>
+            <td><span id="wally-ml-velocity">-</span></td>
+            <th>Torque</th>
+            <td><span id="wally-ml-torque">-</span></td>
+          </tr>
+          <tr>
+            <th>Current</th>
+            <td><span id="wally-ml-current">-</span> mA</td>
+            <th>Voltage</th>
+            <td><span id="wally-ml-voltage">-</span> V</td>
+          </tr>
+          <tr>
+            <th>Temp</th>
+            <td><span id="wally-ml-temperature">-</span> °C</td>
+            <th></th>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Right Motor</h3>
+      <table class="status-table">
+        <tbody>
+          <tr class="p2-only">
+            <th>Connected</th>
+            <td id="wally-mr-connected">-</td>
+            <th>Enable</th>
+            <td id="wally-mr-enabled">-</td>
+          </tr>
+          <tr class="p2-only">
+            <th>Alarm</th>
+            <td id="wally-mr-alarm">-</td>
+            <th></th>
+            <td></td>
+          </tr>
+          <tr class="p1-only" style="display: none;">
+            <th>Alarm</th>
+            <td id="wally-mr-alarm-p1">-</td>
+            <th></th>
+            <td></td>
+          </tr>
+          <tr>
+            <th>Velocity</th>
+            <td><span id="wally-mr-velocity">-</span></td>
+            <th>Torque</th>
+            <td><span id="wally-mr-torque">-</span></td>
+          </tr>
+          <tr>
+            <th>Current</th>
+            <td><span id="wally-mr-current">-</span> mA</td>
+            <th>Voltage</th>
+            <td><span id="wally-mr-voltage">-</span> V</td>
+          </tr>
+          <tr>
+            <th>Temp</th>
+            <td><span id="wally-mr-temperature">-</span> °C</td>
+            <th></th>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Dimension Settings -->
+    <div id="dimension-card" class="card" style="display: none;">
+      <h2>Dimension Settings</h2>
+      <div class="button-group">
+        <button id="btn-read-dimensions" class="btn btn-primary">Read</button>
+        <button id="btn-save-dimensions" class="btn btn-success">Save to Flash</button>
+      </div>
+      <table id="dimension-table" class="status-table" style="margin-top: 16px;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Value</th>
+            <th>Unit</th>
+          </tr>
+        </thead>
+        <tbody id="dimension-tbody">
+          <tr><td colspan="3">Click "Read" to load dimensions</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- WiFi Settings -->
+    <div id="wifi-card" class="card" style="display: none;">
+      <h2>WiFi Settings</h2>
+      <div class="button-group">
+        <button id="btn-read-wifi" class="btn btn-primary">Read Status</button>
+      </div>
+      <div class="info-grid" style="margin-top: 16px;">
+        <div class="info-item">
+          <label>Current SSID</label>
+          <span id="wifi-current-ssid">-</span>
+        </div>
+        <div class="info-item">
+          <label>Status</label>
+          <span id="wifi-status" class="status-text disconnected">-</span>
+        </div>
+      </div>
+      <h3>Set WiFi Credentials</h3>
+      <div class="wifi-form">
+        <div class="form-group">
+          <label for="wifi-ssid">SSID</label>
+          <input type="text" id="wifi-ssid" placeholder="Enter SSID" maxlength="31">
+        </div>
+        <div class="form-group">
+          <label for="wifi-password">Password</label>
+          <input type="password" id="wifi-password" placeholder="Enter password" maxlength="63">
+        </div>
+        <button id="btn-set-wifi" class="btn btn-success">Apply</button>
+      </div>
+    </div>
+
+    <!-- Log Stream -->
+    <div class="card">
+      <h2>Log</h2>
+      <div id="log-container"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

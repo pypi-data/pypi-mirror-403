@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISV2 Motor Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h1 { margin-bottom: 20px; color: #00d4ff; }
+        h2 { margin: 20px 0 10px; color: #888; font-size: 14px; text-transform: uppercase; }
+
+        .container { max-width: 800px; margin: 0 auto; }
+
+        .card {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+        label { color: #888; font-size: 12px; display: block; margin-bottom: 4px; }
+
+        select, input, button {
+            padding: 10px 14px;
+            border: 1px solid #333;
+            border-radius: 6px;
+            font-size: 14px;
+            background: #0f0f23;
+            color: #eee;
+        }
+        select:focus, input:focus { outline: none; border-color: #00d4ff; }
+
+        input { width: 140px; }
+        input.wide { width: 200px; }
+
+        button {
+            background: #00d4ff;
+            color: #000;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover { background: #00b8e6; }
+        button:disabled { background: #333; color: #666; cursor: not-allowed; }
+        button.danger { background: #ff4757; color: #fff; }
+        button.danger:hover { background: #ff3344; }
+        button.success { background: #2ed573; color: #000; }
+
+        .status {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status.connected { background: #2ed573; color: #000; }
+        .status.disconnected { background: #ff4757; color: #fff; }
+
+        #log {
+            background: #0f0f23;
+            border-radius: 6px;
+            padding: 12px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .log-entry { margin-bottom: 2px; }
+        .log-entry.error { color: #ff4757; }
+        .log-entry.success { color: #2ed573; }
+        .log-entry.info { color: #00d4ff; }
+        .log-entry .time { color: #666; margin-right: 8px; }
+
+        .result-box {
+            background: #0f0f23;
+            border-radius: 6px;
+            padding: 12px;
+            font-family: monospace;
+            margin-top: 10px;
+        }
+        .result-box .label { color: #888; font-size: 11px; }
+        .result-box .value { color: #2ed573; font-size: 18px; font-weight: bold; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+
+        .preset-btn {
+            padding: 8px 16px;
+            margin: 4px;
+            background: #333;
+            border: 1px solid #444;
+        }
+        .preset-btn:hover { background: #444; border-color: #00d4ff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ISV2 Motor Config</h1>
+
+        <!-- Connection -->
+        <div class="card">
+            <div class="row">
+                <div>
+                    <label>Serial Port</label>
+                    <select id="portSelect">
+                        <option value="">Select port...</option>
+                    </select>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button id="refreshBtn" onclick="refreshPorts()">Refresh</button>
+                    <button id="connectBtn" onclick="connect()">Connect</button>
+                    <button id="disconnectBtn" onclick="disconnect()" class="danger" style="display:none">Disconnect</button>
+                </div>
+                <div style="margin-top: 20px; margin-left: auto;">
+                    <span id="connStatus" class="status disconnected">Disconnected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Motor Setting Sequence -->
+        <h2>Motor Setting</h2>
+        <div class="card">
+            <div class="row" style="margin-bottom: 12px;">
+                <div>
+                    <label>Target Baud Rate</label>
+                    <select id="targetBaudRate">
+                        <option value="0">0: 2400</option>
+                        <option value="1">1: 4800</option>
+                        <option value="2">2: 9600</option>
+                        <option value="3">3: 19200</option>
+                        <option value="4">4: 38400</option>
+                        <option value="5">5: 57600</option>
+                        <option value="6" selected>6: 115200</option>
+                    </select>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button onclick="runMotorSetting()" class="success control-btn" style="padding: 10px 24px; font-size: 16px;" disabled>RUN</button>
+                </div>
+            </div>
+            <div id="sequenceStatus" style="display:none; margin-top: 12px;">
+                <div class="result-box">
+                    <div class="label">Sequence Progress</div>
+                    <div class="value" id="sequenceProgress">-</div>
+                </div>
+            </div>
+            <p style="color:#888; font-size:12px; margin-top:10px;">
+                Sequence: Check Status → Factory Reset → Set Baud Rate → Save → Read Params → Read Status
+            </p>
+        </div>
+
+        <!-- Motor Control -->
+        <h2>Manual Control</h2>
+        <div class="card">
+            <div class="row">
+                <button onclick="saveToMotor()" class="success control-btn" disabled>Save to Motor (EEPROM)</button>
+                <button onclick="factoryReset()" class="danger control-btn" disabled>Factory Reset</button>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <h2>Motor Status</h2>
+        <div class="card">
+            <div class="row">
+                <button onclick="readStatus()" class="control-btn" disabled>Read Status</button>
+            </div>
+            <div class="grid" style="margin-top: 12px;">
+                <div class="result-box">
+                    <div class="label">Enabled</div>
+                    <div class="value" id="enabledStatus">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parameters -->
+        <h2>Parameters</h2>
+        <div class="card">
+            <div class="row" style="margin-bottom: 12px;">
+                <button onclick="readParams()" class="control-btn" disabled>Read All Parameters</button>
+            </div>
+            <div id="paramsTable" style="display:none;">
+                <table style="width:100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #333;">
+                            <th style="text-align:left; padding:8px; color:#888;">Parameter</th>
+                            <th style="text-align:left; padding:8px; color:#888;">Description</th>
+                            <th style="text-align:center; padding:8px; color:#888;">Value</th>
+                            <th style="text-align:left; padding:8px; color:#888;">Setting</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paramsBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Log -->
+        <h2>Log</h2>
+        <div class="card">
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+
+        function log(msg, type = '') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.innerHTML = `<span class="time">${time}</span>${msg}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function updateUI() {
+            const connBtn = document.getElementById('connectBtn');
+            const disconnBtn = document.getElementById('disconnectBtn');
+            const statusEl = document.getElementById('connStatus');
+
+            // Get all control buttons
+            const controlButtons = document.querySelectorAll('.control-btn');
+
+            if (isConnected) {
+                connBtn.style.display = 'none';
+                disconnBtn.style.display = 'inline-block';
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'status connected';
+                // Enable control buttons
+                controlButtons.forEach(btn => btn.disabled = false);
+            } else {
+                connBtn.style.display = 'inline-block';
+                disconnBtn.style.display = 'none';
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'status disconnected';
+                // Disable control buttons
+                controlButtons.forEach(btn => btn.disabled = true);
+            }
+        }
+
+        function initWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                log('WebSocket connected', 'info');
+                refreshPorts();
+                send({ type: 'check_connection' });
+            };
+
+            ws.onclose = () => {
+                log('WebSocket disconnected', 'error');
+                isConnected = false;
+                updateUI();
+                setTimeout(initWebSocket, 2000);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+        }
+
+        function handleMessage(data) {
+            switch (data.type) {
+                case 'connected':
+                    isConnected = true;
+                    updateUI();
+                    log(`Connected to ${data.port} @ ${data.baudrate} baud (addr: ${data.address})`, 'success');
+                    break;
+
+                case 'disconnected':
+                    isConnected = false;
+                    updateUI();
+                    log('Disconnected', 'info');
+                    break;
+
+                case 'ports_list':
+                    const select = document.getElementById('portSelect');
+                    select.innerHTML = '<option value="">Select port...</option>';
+                    data.ports.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.device;
+                        opt.textContent = `${p.device} - ${p.description}`;
+                        select.appendChild(opt);
+                    });
+                    // Auto-select first port if available
+                    if (data.ports.length > 0) {
+                        select.value = data.ports[0].device;
+                        log(`Auto-selected port: ${data.ports[0].device}`, 'info');
+                    }
+                    break;
+
+                case 'read_result':
+                    const resultEl = document.getElementById('rwResult');
+                    const resultVal = document.getElementById('rwResultValue');
+                    resultEl.style.display = 'block';
+                    resultVal.textContent = data.values.join(', ') + ` (${data.decimal.join(', ')})`;
+                    log(`Read ${data.address}: ${data.values.join(', ')}`, 'success');
+                    break;
+
+                case 'write_result':
+                    if (data.success) {
+                        log(`Write ${data.address} = ${data.value} OK`, 'success');
+                    } else {
+                        log(`Write ${data.address} failed`, 'error');
+                    }
+                    break;
+
+                case 'save_result':
+                    if (data.success) {
+                        log('Saved to EEPROM', 'success');
+                    } else {
+                        log('Save failed', 'error');
+                    }
+                    break;
+
+                case 'status_result':
+                    const enabledEl = document.getElementById('enabledStatus');
+                    enabledEl.textContent = data.enabled ? 'ON' : 'OFF';
+                    enabledEl.style.color = data.enabled ? '#2ed573' : '#ff4757';
+                    log(`Status: enabled=${data.enabled}`, 'info');
+                    break;
+
+                case 'params_result':
+                    const tbody = document.getElementById('paramsBody');
+                    tbody.innerHTML = '';
+                    document.getElementById('paramsTable').style.display = 'block';
+                    data.params.forEach(p => {
+                        const tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid #222';
+                        if (p.error) {
+                            tr.innerHTML = `
+                                <td style="padding:8px; color:#00d4ff;">${p.name}</td>
+                                <td colspan="3" style="padding:8px; color:#ff4757;">${p.error}</td>
+                            `;
+                        } else {
+                            tr.innerHTML = `
+                                <td style="padding:8px; color:#00d4ff;">${p.name}</td>
+                                <td style="padding:8px;">${p.description}</td>
+                                <td style="padding:8px; text-align:center;">${p.value}</td>
+                                <td style="padding:8px; color:#2ed573;">${p.mapped}</td>
+                            `;
+                        }
+                        tbody.appendChild(tr);
+                    });
+                    log(`Read ${data.params.length} parameters`, 'info');
+                    break;
+
+                case 'baudrate_result':
+                    const brText = data.baudrate ? `${data.baudrate} bps (value: ${data.value})` : `Unknown (value: ${data.value})`;
+                    document.getElementById('currentBaudRate').textContent = brText;
+                    log(`Baud rate: ${brText}`, 'info');
+                    break;
+
+                case 'set_baudrate_result':
+                    if (data.success) {
+                        log(`Baud rate set to ${data.baudrate} (value: ${data.value}). Save to motor and reconnect.`, 'success');
+                        readBaudRate();
+                    } else {
+                        log(`Failed to set baud rate`, 'error');
+                    }
+                    break;
+
+                case 'factory_reset_result':
+                    if (data.success) {
+                        log('Factory reset completed. Power cycle the motor.', 'success');
+                    } else {
+                        log('Factory reset failed', 'error');
+                    }
+                    break;
+
+                case 'sequence_progress':
+                    document.getElementById('sequenceStatus').style.display = 'block';
+                    document.getElementById('sequenceProgress').textContent = `Step ${data.step}/6: ${data.message}`;
+                    document.getElementById('sequenceProgress').style.color = '#00d4ff';
+                    log(`[${data.step}/6] ${data.message}`, 'info');
+                    break;
+
+                case 'sequence_error':
+                    document.getElementById('sequenceProgress').textContent = `Step ${data.step} FAILED: ${data.message}`;
+                    document.getElementById('sequenceProgress').style.color = '#ff4757';
+                    log(`[${data.step}/6] ERROR: ${data.message}`, 'error');
+                    break;
+
+                case 'sequence_complete':
+                    document.getElementById('sequenceProgress').textContent = data.message;
+                    document.getElementById('sequenceProgress').style.color = '#2ed573';
+                    log(data.message, 'success');
+                    // Update params table
+                    if (data.params) {
+                        handleMessage({type: 'params_result', params: data.params});
+                    }
+                    // Update status
+                    if (data.status) {
+                        handleMessage({type: 'status_result', enabled: data.status.enabled, ready: data.status.ready, alarm: data.status.alarm});
+                    }
+                    break;
+
+                case 'error':
+                    log(`Error: ${data.message}`, 'error');
+                    break;
+            }
+        }
+
+        function send(data) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+            }
+        }
+
+        function refreshPorts() {
+            send({ type: 'list_ports' });
+        }
+
+        function connect() {
+            const port = document.getElementById('portSelect').value;
+
+            if (!port) {
+                log('Please select a port', 'error');
+                return;
+            }
+
+            send({ type: 'connect', port, baudrate: 38400, address: 0x11 });
+        }
+
+        function disconnect() {
+            send({ type: 'disconnect' });
+        }
+
+        function readRegister() {
+            const address = document.getElementById('regAddr').value;
+            const count = parseInt(document.getElementById('regCount').value);
+            send({ type: 'read', address, count });
+        }
+
+        function writeRegister() {
+            const address = document.getElementById('regAddr').value;
+            const value = document.getElementById('regValue').value;
+            const bits = parseInt(document.getElementById('regBits').value);
+            send({ type: 'write', address, value, bits });
+        }
+
+        function readStatus() {
+            send({ type: 'status' });
+        }
+
+        function readParams() {
+            send({ type: 'read_params' });
+        }
+
+        function saveToEeprom() {
+            if (confirm('Save parameters to EEPROM?')) {
+                send({ type: 'save' });
+            }
+        }
+
+        function readBaudRate() {
+            send({ type: 'read_baudrate' });
+        }
+
+        function setBaudRate(value) {
+            const baudRates = {0: '2400', 1: '4800', 2: '9600', 3: '19200', 4: '38400', 5: '57600', 6: '115200'};
+            if (confirm(`Set baud rate to ${baudRates[value]} bps?\n\nAfter changing, save to motor and reconnect with new baud rate.`)) {
+                send({ type: 'set_baudrate', value: value });
+            }
+        }
+
+        function saveToMotor() {
+            if (confirm('Save all parameters to motor EEPROM?\n\nThis will persist settings after power cycle.')) {
+                send({ type: 'save' });
+            }
+        }
+
+        function factoryReset() {
+            if (confirm('⚠️ Factory Reset?\n\nThis will restore ALL parameters to default values.\nYou will need to power cycle the motor after reset.')) {
+                send({ type: 'factory_reset' });
+            }
+        }
+
+        function runMotorSetting() {
+            const baudrate = parseInt(document.getElementById('targetBaudRate').value);
+            const baudRates = {0: '2400', 1: '4800', 2: '9600', 3: '19200', 4: '38400', 5: '57600', 6: '115200'};
+
+            if (confirm(`Motor Setting Sequence:\n\n1. Check motor status\n2. Factory reset\n3. Set baud rate to ${baudRates[baudrate]}\n4. Save to motor\n5. Read parameters\n6. Read motor status\n\nProceed?`)) {
+                document.getElementById('sequenceStatus').style.display = 'block';
+                document.getElementById('sequenceProgress').textContent = 'Starting...';
+                document.getElementById('sequenceProgress').style.color = '#00d4ff';
+                send({ type: 'run_motor_setting', baudrate: baudrate });
+            }
+        }
+
+        // Initialize
+        window.onload = () => {
+            initWebSocket();
+        };
+    </script>
+</body>
+</html>
