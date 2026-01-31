@@ -1,0 +1,298 @@
+# API Reference
+
+<<API_SUMMARY>>
+
+---
+
+## Overview
+
+| Attribute | Value |
+|-----------|-------|
+| **Base URL** | <<BASE_URL>> |
+| **API Version** | <<API_VERSION>> |
+| **Protocol** | <<PROTOCOL>> |
+| **Format** | <<DATA_FORMAT>> |
+
+---
+
+## Authentication
+
+### Method
+
+<<AUTH_METHOD_DESCRIPTION>>
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+<<AUTH_HEADERS_TABLE>>
+
+### Token Format
+
+<<TOKEN_FORMAT>>
+
+### Example
+
+```bash
+<<AUTH_EXAMPLE>>
+```
+
+---
+
+## Endpoints Summary
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+<<ENDPOINTS_SUMMARY_TABLE>>
+
+---
+
+## Endpoint Details
+
+### <<ENDPOINT_1_NAME>>
+
+**`<<ENDPOINT_1_METHOD>> <<ENDPOINT_1_PATH>>`**
+
+<<ENDPOINT_1_DESCRIPTION>>
+
+#### Parameters
+
+| Name | Location | Type | Required | Description |
+|------|----------|------|----------|-------------|
+<<ENDPOINT_1_PARAMS_TABLE>>
+
+#### Request Body
+
+```json
+<<ENDPOINT_1_REQUEST_BODY>>
+```
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+<<ENDPOINT_1_BODY_FIELDS_TABLE>>
+
+#### Response
+
+**Success (<<ENDPOINT_1_SUCCESS_CODE>>)**
+
+```json
+<<ENDPOINT_1_SUCCESS_RESPONSE>>
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+<<ENDPOINT_1_RESPONSE_FIELDS_TABLE>>
+
+#### Example
+
+```bash
+<<ENDPOINT_1_CURL_EXAMPLE>>
+```
+
+---
+
+### <<ENDPOINT_2_NAME>>
+
+**`<<ENDPOINT_2_METHOD>> <<ENDPOINT_2_PATH>>`**
+
+<<ENDPOINT_2_DESCRIPTION>>
+
+#### Parameters
+
+| Name | Location | Type | Required | Description |
+|------|----------|------|----------|-------------|
+<<ENDPOINT_2_PARAMS_TABLE>>
+
+#### Response
+
+**Success (<<ENDPOINT_2_SUCCESS_CODE>>)**
+
+```json
+<<ENDPOINT_2_SUCCESS_RESPONSE>>
+```
+
+#### Example
+
+```bash
+<<ENDPOINT_2_CURL_EXAMPLE>>
+```
+
+---
+
+## Error Handling
+
+### Error Response Format
+
+```json
+{
+  "error": {
+    "code": "<<ERROR_CODE>>",
+    "message": "<<ERROR_MESSAGE>>",
+    "details": "<<ERROR_DETAILS>>",
+    "timestamp": "<<TIMESTAMP>>",
+    "requestId": "<<REQUEST_ID>>"
+  }
+}
+```
+
+### Error Codes
+
+| HTTP Status | Error Code | Description | Resolution |
+|-------------|------------|-------------|------------|
+<<ERROR_CODES_TABLE>>
+
+### Common Errors
+
+| Status | When | Example |
+|--------|------|---------|
+<<COMMON_ERRORS_TABLE>>
+
+---
+
+## Pagination
+
+### Request Parameters
+
+| Parameter | Type | Default | Max | Description |
+|-----------|------|---------|-----|-------------|
+<<PAGINATION_PARAMS_TABLE>>
+
+### Response Format
+
+```json
+{
+  "data": [...],
+  "pagination": {
+    "page": <<PAGE>>,
+    "pageSize": <<PAGE_SIZE>>,
+    "totalItems": <<TOTAL>>,
+    "totalPages": <<TOTAL_PAGES>>,
+    "hasNext": <<HAS_NEXT>>,
+    "hasPrev": <<HAS_PREV>>
+  }
+}
+```
+
+---
+
+## Filtering & Sorting
+
+### Filter Syntax
+
+<<FILTER_SYNTAX>>
+
+### Sort Syntax
+
+<<SORT_SYNTAX>>
+
+### Examples
+
+```bash
+<<FILTER_SORT_EXAMPLES>>
+```
+
+---
+
+## Rate Limiting
+
+### Limits
+
+| Tier | Requests/Minute | Burst |
+|------|-----------------|-------|
+<<RATE_LIMITS_TABLE>>
+
+### Headers
+
+| Header | Description |
+|--------|-------------|
+| `X-RateLimit-Limit` | Maximum requests per window |
+| `X-RateLimit-Remaining` | Requests remaining |
+| `X-RateLimit-Reset` | Window reset time (Unix timestamp) |
+| `Retry-After` | Seconds to wait (on 429) |
+
+### When Rate Limited
+
+<<RATE_LIMIT_HANDLING>>
+
+---
+
+## Versioning
+
+### Current Version
+
+**<<CURRENT_VERSION>>**
+
+### Supported Versions
+
+| Version | Status | Sunset Date |
+|---------|--------|-------------|
+<<VERSIONS_TABLE>>
+
+### Version Selection
+
+<<VERSION_SELECTION>>
+
+---
+
+## Webhooks
+
+### Available Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+<<WEBHOOKS_TABLE>>
+
+### Webhook Format
+
+```json
+<<WEBHOOK_PAYLOAD_FORMAT>>
+```
+
+### Signature Verification
+
+<<SIGNATURE_VERIFICATION>>
+
+---
+
+## SDKs & Client Libraries
+
+| Language | Package | Installation |
+|----------|---------|--------------|
+<<SDKS_TABLE>>
+
+---
+
+## Testing
+
+### Sandbox/Test Environment
+
+<<TEST_ENVIRONMENT>>
+
+### Test Credentials
+
+<<TEST_CREDENTIALS>>
+
+---
+
+## Changelog
+
+| Version | Date | Changes |
+|---------|------|---------|
+<<CHANGELOG_TABLE>>
+
+---
+
+## See Also
+
+- **Quick Start**: [Getting Started](../quickstart.md) - Installation and first steps
+- **Overview**: [Project Overview](../overview.md) - Architecture context
+- **Flows**: [Request Flows](../flows/README.md) - Detailed request flows
+- **Components**: [Components](../components/README.md) - Service implementations
+- **Models**: [Data Models](../models.md) - Request/response schemas
+- **Configuration**: [Config Guide](../configuration/README.md) - API configuration
+- **Errors**: [Error Handling](../errors.md) - API error responses and codes
+- **Examples**: [Usage Examples](../examples.md) - API usage examples
+
+---
+
+> Generated by [SpecKitAdv DeepWiki](https://github.com/veerabhadra-ponna/spec-kit-adv) | Stage: 08-api | <<TIMESTAMP>>
