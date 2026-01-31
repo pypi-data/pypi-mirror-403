@@ -1,0 +1,106 @@
+# colanderpy
+
+A simple version of the Sieve of Eratosthenes.
+
+Developed during "Python for Scientific Computing" course at CINECA
+
+## Install from source
+
+Clone repository
+```bash
+git clone https://gitlab.hpc.cineca.it/cineca-hpyc/colanderpy.git
+cd colanderpy
+```
+
+### Standard installation
+Install in editable mode for development:
+```bash
+pip install -e .
+```
+
+Or install with development dependencies (pytest):
+```bash
+pip install -e ".[dev]"
+```
+
+## Install directly from Git repository
+```bash
+pip install git+https://gitlab.hpc.cineca.it/cineca-hpyc/colanderpy.git
+```
+
+## Install from Python Package Index (PyPI)
+Once deployed to PyPI:
+```bash
+pip install colanderpy
+```
+
+## Install from GitLab Package Registry
+Once deployed to GitLab's private registry:
+```bash
+pip install colanderpy --index-url https://gitlab.hpc.cineca.it/api/v4/projects/471/packages/pypi/simple
+```
+
+## Usage
+
+### Prime number generator
+
+```bash
+$ sieve -n 42
+2 3 5 7 11 13 17 19 23 29 31 37 41
+```
+
+```bash
+$ sieve -h
+usage: sieve [-h] [-n LIMIT]
+
+The Sieve of Eratosthenes.
+
+Returns the list of prime numbers up to a maximum integer.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -n LIMIT, --limit LIMIT
+                        maximum integer up to which the prime numbers are searched. (default 100)
+```
+
+### Prime-counting function
+
+```bash
+$ prime-counting -n 42
+13
+```
+
+```bash
+$ prime-counting -h
+usage: prime-counting [-h] [-n LIMIT]
+
+Prime-counting function
+
+Counts the number of prime numbers less than or equal to an integer number.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -n LIMIT, --limit LIMIT
+                        maximum integer up to which the prime numbers are counted. (default 100)
+```
+
+## Run tests
+To run the test suite, use `pytest`:
+
+```bash
+pytest test/
+```
+
+With coverage:
+```bash
+pytest test/ --cov=colanderpy
+```
+## CI/CD
+This project uses GitLab CI/CD for continuous integration and deployment. The pipeline is defined in the `.gitlab-ci.yml` file located in the root directory of the repository.
+
+For more information on how CI/CD is implemented at CINECA, please refer to the documentation:
+https://docs.hpc.cineca.it/general/access.html#continuous-integration-ci-cd-at-cineca
+
+## Authors
+- Sergio Orlandini (s.orlandini@cineca.it)
+- Michele Mastropietro (m.mastropietro@cineca.it)
