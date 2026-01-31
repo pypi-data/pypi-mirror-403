@@ -1,0 +1,286 @@
+# React Native Godot Documentation MCP Server
+
+A powerful Model Context Protocol (MCP) server for intelligent access to React Native Godot documentation, examples, and implementation guides. This server enables LLMs to efficiently fetch and search documentation from the [react-native-godot](https://github.com/borndotcom/react-native-godot) repository by Born.com and Migeran.
+
+## 🚀 Features
+
+### Agent-Centric Design
+This MCP server follows best practices for agent-oriented tool design:
+- **Workflow-focused tools** that enable complete tasks, not just API wrapping
+- **Optimized for context efficiency** with configurable detail levels
+- **Actionable error messages** that guide agents toward solutions
+- **Natural task subdivisions** with intuitive tool naming
+
+### Available Tools
+
+#### 📖 `get_documentation`
+Fetch specific sections of React Native Godot documentation:
+- Overview, installation, initialization
+- API usage, threading, views
+- Export, debugging, custom builds
+- Configurable detail levels (concise/detailed/full)
+
+#### 🔍 `search_documentation`
+Intelligent search across all documentation:
+- Keyword-based search with relevance scoring
+- Returns most relevant sections
+- Perfect for finding specific topics or troubleshooting
+
+#### 💻 `get_example_code`
+Retrieve working code examples for:
+- Initialization and setup
+- API usage patterns
+- Signal handling
+- View embedding
+- Worklets and threading
+- Complete application examples
+
+#### 🛠️ `get_setup_instructions`
+Platform-specific setup guidance:
+- iOS and Android configurations
+- Debugging setup options
+- Custom build instructions
+- Step-by-step installation process
+
+#### 📚 `get_api_reference`
+Detailed API documentation for:
+- RTNGodot class methods
+- RTNGodotView component
+- runOnGodotThread function
+- Signals and callables
+- Property access patterns
+
+#### 🔧 `get_troubleshooting`
+Solutions for common issues:
+- Build errors
+- View display problems
+- Threading issues
+- Export problems
+- Performance optimization
+
+#### 📁 `get_file_from_repo`
+Direct access to repository files:
+- Example implementations
+- Configuration files
+- Build scripts
+- Native code
+
+## 📦 Installation
+
+### Prerequisites
+```bash
+# Python 3.8+
+python --version
+
+# Install MCP and FastMCP
+pip install mcp fastmcp
+```
+
+### Install Dependencies
+```bash
+pip install httpx pydantic
+```
+
+### Make Executable
+```bash
+chmod +x react_native_godot_mcp.py
+```
+
+## 🎯 Usage
+
+### Running the Server
+
+#### Standalone Mode
+```bash
+python react_native_godot_mcp.py
+```
+
+#### With MCP Inspector (for testing)
+```bash
+npx @modelcontextprotocol/inspector python react_native_godot_mcp.py
+```
+
+### Integration with Claude Desktop
+
+Add to your Claude configuration file:
+
+**MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "react-native-godot": {
+      "command": "python",
+      "args": ["/path/to/react_native_godot_mcp.py"],
+      "env": {}
+    }
+  }
+}
+```
+
+### Integration with Other MCP Clients
+
+The server uses stdio transport and can be integrated with any MCP-compatible client:
+
+```python
+# Example Python client usage
+from mcp import Client
+
+client = Client()
+client.connect_stdio(["python", "react_native_godot_mcp.py"])
+
+# Use tools
+result = await client.call_tool(
+    "get_documentation",
+    {"section": "initialization", "detail": "detailed"}
+)
+```
+
+## 💡 Example Queries
+
+### Get Started with React Native Godot
+```python
+# Fetch installation instructions
+get_setup_instructions(platform="both", include_debugging=True)
+
+# Get initialization example
+get_example_code(topic="initialization", platform="ios")
+```
+
+### Search for Specific Topics
+```python
+# Search for worklet information
+search_documentation(query="worklets threading", max_results=5)
+
+# Find signal handling docs
+search_documentation(query="connect signals JavaScript")
+```
+
+### Troubleshoot Issues
+```python
+# Get help with build errors
+get_troubleshooting(issue="build_error", platform="android")
+
+# Debug view problems
+get_troubleshooting(issue="view_not_showing")
+```
+
+### Deep Dive into API
+```python
+# Get RTNGodot API reference
+get_api_reference(topic="RTNGodot", include_examples=True)
+
+# Learn about signals
+get_api_reference(topic="signals")
+```
+
+## 🧪 Running Evaluations
+
+The repository includes comprehensive evaluation questions to test the MCP server's capabilities.
+
+### Using the Evaluation File
+
+1. The evaluation file (`react_native_godot_evaluation.xml`) contains 10 complex questions
+2. Each question tests the server's ability to find specific information
+3. Questions cover initialization, threading, debugging, API usage, and more
+
+### Running Evaluations with MCP
+
+```bash
+# Install evaluation tools
+pip install mcp-eval
+
+# Run evaluation
+mcp-eval run react_native_godot_mcp.py react_native_godot_evaluation.xml
+```
+
+### Manual Testing
+
+You can manually test each tool:
+
+```python
+# Test documentation fetching
+python -c "
+import asyncio
+from react_native_godot_mcp import get_documentation
+
+async def test():
+    result = await get_documentation(None, 'threading', 'markdown', 'detailed')
+    print(result)
+
+asyncio.run(test())
+"
+```
+
+## 🏗️ Architecture
+
+### Design Principles
+
+1. **Workflow-Oriented**: Tools are designed around common developer workflows
+2. **Context-Aware**: Adjustable detail levels to optimize token usage
+3. **Error-Resilient**: Graceful handling with actionable error messages
+4. **Format-Flexible**: Supports both Markdown and JSON responses
+
+### Response Formats
+
+All tools support two response formats:
+- **Markdown**: Human-readable, formatted documentation
+- **JSON**: Structured data for programmatic use
+
+### Detail Levels
+
+Three levels of detail for documentation:
+- **Concise**: Key points and headers only
+- **Detailed**: Standard documentation with examples
+- **Full**: Complete content including all details
+
+## 🔒 Security & Limits
+
+- **Character Limit**: 25,000 characters per response
+- **Request Timeout**: 30 seconds
+- **Max Search Results**: 20 per query
+- **Rate Limiting**: Respects GitHub API limits
+
+## 🤝 Contributing
+
+This MCP server is designed to be extensible. To add new features:
+
+1. Add new tool methods with `@mcp.tool` decorator
+2. Define Pydantic input models for validation
+3. Follow the existing patterns for error handling
+4. Add corresponding evaluation questions
+
+## 📄 License
+
+MIT License - Same as React Native Godot
+
+## 🙏 Credits
+
+- **React Native Godot**: Created by [Born](https://born.com) and [Migeran](https://migeran.com)
+- **MCP Server**: Built using the Model Context Protocol by Anthropic
+- **FastMCP**: Simplified MCP development framework
+
+## 📞 Support
+
+For React Native Godot questions:
+- [GitHub Issues](https://github.com/borndotcom/react-native-godot/issues)
+- [Migeran Support](https://migeran.com/contact) (commercial)
+
+For MCP server issues:
+- Open an issue in this repository
+- Check the evaluation results for capability verification
+
+## 🚦 Status
+
+- ✅ All documentation sections accessible
+- ✅ Intelligent search functionality
+- ✅ Complete example code coverage
+- ✅ Platform-specific guidance
+- ✅ Comprehensive troubleshooting
+- ✅ Direct file access from repository
+- ✅ 10 evaluation questions for testing
+
+---
+
+Built with ❤️ for the React Native and Godot communities
