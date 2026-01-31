@@ -1,0 +1,52 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+SPDX-FileCopyrightText: (c) 2021-2025 by mundialis GmbH & Co. KG
+
+SPDX-License-Identifier: Apache-2.0
+
+Test Module Lists and Self-Description
+"""
+
+__license__ = "Apache-2.0"
+__author__ = "Carmen Tawalika"
+__copyright__ = "Copyright 2021, mundialis"
+
+import json
+from flask import Response
+
+from actinia_api import URL_PREFIX
+
+from testsuite import (
+    ActiniaTestCase,
+    import_user_template,
+    delete_user_template,
+)
+
+
+class ActiniaModulesTest(ActiniaTestCase):
+    def test_read_user_module_get(self):
+        """Test HTTP GET /actinia_modules/<module> for kvdb based templates"""
+        import_user_template(self, "user_point_in_polygon")
+
+        respStatusCode = 200
+        json_path = "tests/resources/actinia_modules/point_in_polygon.json"
+        url_path = "/actinia_modules/user_point_in_polygon"
+
+        with open(json_path) as file:
+            expectedResp = json.load(file)
+        expectedResp["id"] = "user_point_in_polygon"
+        curr = expectedResp["categories"]
+        new = [s.replace("global-template", "user-template") for s in curr]
+        expectedResp["categories"] = new
+
+        resp = self.app.get(
+            URL_PREFIX + url_path, headers=self.user_auth_header
+        )
+
+        assert isinstance(resp, Response)
+        assert resp.status_code == respStatusCode
+        assert hasattr(resp, "json")
+        assert resp.json == expectedResp
+
+        delete_user_template(self, "user_point_in_polygon")

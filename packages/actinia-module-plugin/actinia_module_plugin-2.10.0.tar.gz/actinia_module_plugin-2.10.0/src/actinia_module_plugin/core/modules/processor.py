@@ -1,0 +1,190 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+SPDX-FileCopyrightText: (c) 2016-2025 Sören Gebbert & mundialis GmbH & Co. KG
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Code based on actinia_core: https://github.com/actinia-org/actinia-core
+actinia-core - an open source REST API for scalable, distributed, high
+performance processing of geographical data that uses GRASS GIS for
+computational tasks. For details, see https://actinia.mundialis.de/
+
+Module viewer to run GRASS tasks
+"""
+
+__license__ = "GPLv3"
+__author__ = "Anika Bettge"
+__copyright__ = "Copyright 2016-2025, Sören Gebbert, mundialis GmbH & Co. KG"
+__maintainer__ = "Anika Bettge"
+
+
+import os
+import shutil
+import pickle
+import uuid
+
+from actinia_core.core.common.config import global_config
+from actinia_processing_lib.ephemeral_processing import EphemeralProcessing
+from actinia_core.models.response_models import (
+    StringListProcessingResultResponseModel,
+)
+
+from actinia_module_plugin.core.common import start_job
+
+
+def initGrass(self):
+    """
+    * not using enqueue_job to get always a response
+    * the function creates a new project cause not all users can access
+    a project
+    """
+
+    # check if project exists
+    project_name = "project_for_listing_modules_" + str(uuid.uuid4())
+    # '/actinia_core/grassdb/project_for_listing_modules'
+    project = os.path.join(global_config.GRASS_DATABASE, project_name)
+    # Check the project path
+    if os.path.isdir(project):
+        msg = (
+            "Unable to create project. "
+            "Project <%s> exists in global database." % project_name
+        )
+        return self.get_error_response(message=msg)
+    # Check also for the user database
+    # '/actinia_core/userdata/superadmin/project_for_listing_modules'
+    project = os.path.join(
+        self.grass_user_data_base, self.user_group, project_name
+    )
+    # Check the project path
+    if os.path.isdir(project):
+        msg = (
+            "Unable to create project. "
+            "Project <%s> exists in user database." % project_name
+        )
+        return self.get_error_response(message=msg)
+
+    # create new project cause not each user can access a project
+    if not os.path.isdir(
+        os.path.join(self.grass_user_data_base, self.user_group)
+    ):
+        os.mkdir(os.path.join(self.grass_user_data_base, self.user_group))
+    os.mkdir(project)
+    mapset = os.path.join(project, "PERMANENT")
+    os.mkdir(mapset)
+    with open(os.path.join(mapset, "DEFAULT_WIND"), "w") as out:
+        wind = (
+            "proj:       3\nzone:       0\nnorth:      1N\n"
+            + "south:      0\neast:       1E\nwest:       0\ncols:       1"
+            + "\nrows:       1\ne-w resol:  1\nn-s resol:  1\ntop:        "
+            + "1.000000000000000\nbottom:     0.000000000000000\ncols3:   "
+            + "   1\nrows3:      1\ndepths:     1\ne-w resol3: 1\nn-s reso"
+            + "l3: 1\nt-b resol:  1"
+        )
+        out.write(wind)
+    with open(os.path.join(mapset, "MYNAME"), "w") as out:
+        out.write("")
+    with open(os.path.join(mapset, "PROJ_EPSG"), "w") as out:
+        out.write("epsg: 4326")
+    with open(os.path.join(mapset, "PROJ_INFO"), "w") as out:
+        out.write(
+            "name: WGS 84\ndatum: wgs84\nellps: wgs84\nproj: ll\n"
+            + "no_defs: defined\ntowgs84: 0.000,0.000,0.000"
+        )
+    with open(os.path.join(mapset, "PROJ_UNITS"), "w") as out:
+        out.write("unit: degree\nunits: degrees\nmeters: 1.0")
+    with open(os.path.join(mapset, "WIND"), "w") as out:
+        wind = (
+            "proj:       3\nzone:       0\nnorth:      1N\n"
+            + "south:      0\neast:       1E\nwest:       0\ncols:       1"
+            + "\nrows:       1\ne-w resol:  1\nn-s resol:  1\ntop:        "
+            + "1.000000000000000\nbottom:     0.000000000000000\ncols3:   "
+            + "   1\nrows3:      1\ndepths:     1\ne-w resol3: 1\nn-s reso"
+            + "l3: 1\nt-b resol:  1"
+        )
+        out.write(wind)
+
+    return project_name
+
+
+def deinitGrass(self, project_name):
+    """
+    * the function deletes above project
+    """
+    # remove project
+    project = os.path.join(global_config.GRASS_DATABASE, project_name)
+    if os.path.isdir(project):
+        shutil.rmtree(project)
+    project = os.path.join(
+        self.grass_user_data_base, self.user_group, project_name
+    )
+    if os.path.isdir(project):
+        shutil.rmtree(project)
+    # del
+    # self.user_credentials["permissions"]['accessible_datasets'][project_name]
+
+
+class EphemeralModuleLister(EphemeralProcessing):
+    """
+    Overwrites EphemeralProcessing from actinia_core to bypass permission
+    check for modules and temporary project, needed for self-description
+    """
+
+    def __init__(self, *args, pc):
+        EphemeralProcessing.__init__(self, *args)
+        self.response_model_class = StringListProcessingResultResponseModel
+        self.process_chain = pc
+
+    def _execute(self, skip_permission_check=True):
+        self._setup()
+
+        # Create the temporary database and link all available mapsets into it
+        self._create_temp_database()
+
+        process_list = self._validate_process_chain(
+            process_chain=self.process_chain, skip_permission_check=True
+        )
+
+        self._create_grass_environment(
+            grass_data_base=self.temp_grass_data_base, mapset_name="PERMANENT"
+        )
+
+        self._execute_process_list(process_list)
+
+        self.module_results = self.module_output_log[0]["stdout"]
+
+
+def run_process_chain(self, process_chain):
+    """
+    Used to list all GRASS modules, to describe a certain GRASS module
+    and to generate actinia module description out of containing GRASS modules.
+    ATTENTION! This call skips permission checks, so temporary project can be
+    used. If user is not allowed to use GRASS modules used here, this will be
+    allowed in these cases.
+    """
+
+    project_name = initGrass(self)
+
+    # self.user_credentials["permissions"]['accessible_datasets'][project_name]
+    # = ['PERMANENT']
+
+    rdc = self.preprocess(
+        has_json=False,
+        has_xml=False,
+        project_name=project_name,
+        mapset_name="PERMANENT",
+    )
+
+    def list_modules(*args, process_chain=process_chain):
+        processing = EphemeralModuleLister(*args, pc=process_chain)
+        processing.run()
+
+    if rdc:
+        start_job(self.job_timeout, list_modules, rdc)
+        _http_code, response_model = self.wait_until_finish()
+    else:
+        _http_code, response_model = pickle.loads(self.response_data)
+
+    deinitGrass(self, project_name)
+
+    return response_model
