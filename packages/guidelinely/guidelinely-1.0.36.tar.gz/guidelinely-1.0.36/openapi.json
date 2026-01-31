@@ -1,0 +1,3940 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Guidelinely API",
+        "summary": "API for environmental guideline calculations",
+        "description": "\n# Guidelinely API\n\nEnvironmental guideline calculation and search API.\n\n## Features\n\n* **Search Guidelines** - Find guidelines by parameter, media, and environmental context\n* **Calculate Values** - Get calculated guideline values based on pH, hardness, temperature\n* **Batch Operations** - Calculate multiple parameters efficiently\n* **Metadata** - Query available parameters, media types, and sources\n\n## Authentication\n\nCurrently no authentication required. Rate limiting may be implemented in future versions.\n\n## Data Format\n\nAll guideline values are returned in PostgreSQL `unitrange` format with proper units.\nExample: `[10 \u03bcg/L,100 \u03bcg/L]` represents a range from 10 to 100 micrograms per liter.\n\n## Environmental Context\n\nSome calculations require environmental parameters:\n- **pH**: 0-14 (dimensionless)\n- **Hardness**: \u22650 mg/L as CaCO\u2083\n- **Temperature**: -50 to 100\u00b0C\n- **Chloride**: \u22650 mg/L\n\n## Response Format\n\nAll endpoints return JSON with consistent structure:\n```json\n{\n  \"results\": [...],\n  \"context\": {...},\n  \"total_count\": 123\n}\n```\n\n## Error Handling\n\n- **400**: Validation error (invalid input)\n- **404**: Resource not found\n- **422**: Unprocessable entity (type error)\n- **500**: Server error\n\n## LaTeX Rendering\n\nThe API includes endpoints for rendering mathematical formulas to PNG or SVG format.\nFormulas must be base64-encoded LaTeX strings.\n            ",
+        "contact": {
+            "name": "Guidelinely Support",
+            "url": "https://github.com/thompson-aquatic/guidelines"
+        },
+        "license": {
+            "name": "Proprietary"
+        },
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/api/v1/health": {
+            "get": {
+                "tags": [
+                    "health",
+                    "health"
+                ],
+                "summary": "Lightweight health check",
+                "description": "Returns 200 OK if the service is running. Does not check dependencies.",
+                "operationId": "health_check_api_v1_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ready": {
+            "get": {
+                "tags": [
+                    "health",
+                    "health"
+                ],
+                "summary": "Readiness check with database connectivity",
+                "description": "Returns 200 OK if the service is ready to handle requests (database is accessible).",
+                "operationId": "readiness_check_api_v1_ready_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/guidelines/search": {
+            "get": {
+                "tags": [
+                    "metadata"
+                ],
+                "summary": "Search guidelines by any field",
+                "description": "Search for guidelines using flexible field-based filtering.\n\n**Searchable Fields:**\n\n*Guideline fields:*\n- `parameter`: Chemical parameter name\n- `parameter_specification`: Full parameter specification\n- `receptor`: Receptor type (aquatic_life, human_health, etc.)\n- `media`: Environmental media (surface_water, groundwater, soil, etc.)\n- `purpose`: Guideline purpose (protection, remediation, etc.)\n- `exposure_duration`: Exposure duration (acute, chronic, etc.)\n- `table`: Table identifier from source document\n- `application`: Application context\n- `basis`: Basis or rationale\n- `modifier`: Modifier text\n- `sector`: Sector classification\n- `grouping`: Parameter grouping\n- `use_case`: Use case description\n- `sample_fraction`: Sample fraction\n- `method_speciation`: Method speciation\n- `season`: Seasonal applicability\n- `location`: Location applicability\n- `narrative`: Narrative guidance text\n- `comment`: Additional comments\n\n*Source fields:*\n- `source_name`: Source organization name\n- `source_abbreviation`: Source abbreviation (e.g., AEPA, CCME)\n\n*Document fields:*\n- `document_name`: Document title\n- `document_abbreviation`: Document abbreviation (e.g., PAL, MDMER)\n\n**Search Behavior:**\n- All searches are case-insensitive substring matches\n- Multiple field filters use AND logic (all must match)\n- Multiple values for same field use OR logic\n- Empty/missing fields are ignored\n- Results limited to 500 guidelines\n\n**Examples:**\n- `?parameter=aluminum` \u2192 All aluminum guidelines\n- `?media=surface_water&receptor=aquatic_life` \u2192 Surface water guidelines for aquatic life\n- `?source_abbreviation=AEPA&purpose=protection` \u2192 Protection guidelines from AEPA\n- `?season=winter` \u2192 Guidelines applicable in winter\n- `?location=alberta` \u2192 Guidelines specific to Alberta",
+                "operationId": "search_guidelines_api_v1_guidelines_search_get",
+                "parameters": [
+                    {
+                        "name": "parameter",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by parameter name",
+                            "title": "Parameter"
+                        },
+                        "description": "Filter by parameter name"
+                    },
+                    {
+                        "name": "parameter_specification",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by full parameter specification",
+                            "title": "Parameter Specification"
+                        },
+                        "description": "Filter by full parameter specification"
+                    },
+                    {
+                        "name": "receptor",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by receptor type",
+                            "title": "Receptor"
+                        },
+                        "description": "Filter by receptor type"
+                    },
+                    {
+                        "name": "media",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by environmental media",
+                            "title": "Media"
+                        },
+                        "description": "Filter by environmental media"
+                    },
+                    {
+                        "name": "purpose",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by guideline purpose",
+                            "title": "Purpose"
+                        },
+                        "description": "Filter by guideline purpose"
+                    },
+                    {
+                        "name": "exposure_duration",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by exposure duration",
+                            "title": "Exposure Duration"
+                        },
+                        "description": "Filter by exposure duration"
+                    },
+                    {
+                        "name": "table",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by table identifier",
+                            "title": "Table"
+                        },
+                        "description": "Filter by table identifier"
+                    },
+                    {
+                        "name": "application",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by application context",
+                            "title": "Application"
+                        },
+                        "description": "Filter by application context"
+                    },
+                    {
+                        "name": "basis",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by basis/rationale",
+                            "title": "Basis"
+                        },
+                        "description": "Filter by basis/rationale"
+                    },
+                    {
+                        "name": "modifier",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by modifier",
+                            "title": "Modifier"
+                        },
+                        "description": "Filter by modifier"
+                    },
+                    {
+                        "name": "sector",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by sector",
+                            "title": "Sector"
+                        },
+                        "description": "Filter by sector"
+                    },
+                    {
+                        "name": "grouping",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by grouping",
+                            "title": "Grouping"
+                        },
+                        "description": "Filter by grouping"
+                    },
+                    {
+                        "name": "use_case",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by use case",
+                            "title": "Use Case"
+                        },
+                        "description": "Filter by use case"
+                    },
+                    {
+                        "name": "sample_fraction",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by sample fraction",
+                            "title": "Sample Fraction"
+                        },
+                        "description": "Filter by sample fraction"
+                    },
+                    {
+                        "name": "method_speciation",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by method speciation",
+                            "title": "Method Speciation"
+                        },
+                        "description": "Filter by method speciation"
+                    },
+                    {
+                        "name": "season",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by season",
+                            "title": "Season"
+                        },
+                        "description": "Filter by season"
+                    },
+                    {
+                        "name": "location",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by location",
+                            "title": "Location"
+                        },
+                        "description": "Filter by location"
+                    },
+                    {
+                        "name": "narrative",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by narrative text",
+                            "title": "Narrative"
+                        },
+                        "description": "Filter by narrative text"
+                    },
+                    {
+                        "name": "comment",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by comment",
+                            "title": "Comment"
+                        },
+                        "description": "Filter by comment"
+                    },
+                    {
+                        "name": "source_name",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by source name",
+                            "title": "Source Name"
+                        },
+                        "description": "Filter by source name"
+                    },
+                    {
+                        "name": "source_abbreviation",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by source abbreviation",
+                            "title": "Source Abbreviation"
+                        },
+                        "description": "Filter by source abbreviation"
+                    },
+                    {
+                        "name": "document_name",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by document name",
+                            "title": "Document Name"
+                        },
+                        "description": "Filter by document name"
+                    },
+                    {
+                        "name": "document_abbreviation",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by document abbreviation",
+                            "title": "Document Abbreviation"
+                        },
+                        "description": "Filter by document abbreviation"
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "description": "Maximum results to return",
+                            "default": 100,
+                            "title": "Limit"
+                        },
+                        "description": "Maximum results to return"
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of matching guidelines",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": [
+                                    {
+                                        "id": 123,
+                                        "parameter": "Aluminum",
+                                        "parameter_specification": "Aluminum, Dissolved",
+                                        "media": "Surface Water",
+                                        "receptor": "Aquatic Life",
+                                        "purpose": "Protection",
+                                        "source_name": "Alberta EPA",
+                                        "source_abbreviation": "AEPA",
+                                        "document_name": "PAL Guidelines",
+                                        "document_abbreviation": "PAL"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid field name provided"
+                    },
+                    "500": {
+                        "description": "Server error during search"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/parameters/search": {
+            "get": {
+                "tags": [
+                    "metadata"
+                ],
+                "summary": "Search for parameters",
+                "description": "Search for chemical parameters using case-insensitive substring matching.\n\n**Search Behavior:**\n- Empty query (`q=\"\"`) returns all available parameters\n- Partial matches work: \"ammon\" finds \"Ammonia\", \"Ammonia (Total)\", etc.\n- Case-insensitive: \"ALUMINUM\" finds \"Aluminum\"\n- Can be filtered by media type(s), source(s), and/or document(s)\n- Multiple filters can be combined (acts as AND logic between filter types)\n\n**Filtering Options:**\n- `media`: Filter by environmental media (surface_water, groundwater, soil, etc.)\n- `source`: Filter by source abbreviation (AEPA, CCME, etc.) - use `/sources` endpoint to get list\n- `document`: Filter by document abbreviation (PAL, MDMER, etc.) - use `/sources` endpoint to get list\n- Multiple values for same filter type use OR logic (e.g., `media=surface_water&media=groundwater`)\n\n**Common Use Cases:**\n- Autocomplete in user interfaces\n- Finding parameter variations (e.g., all ammonia types)\n- Discovering available parameters for specific media\n- Finding parameters from specific regulatory sources or documents\n\n**Examples:**\n- `?q=ammon` \u2192 Finds all ammonia-related parameters\n- `?q=metal` \u2192 Finds parameters with \"metal\" in the name\n- `?media=surface_water` \u2192 All surface water parameters\n- `?source=AEPA` \u2192 Parameters from Alberta EPA sources\n- `?document=PAL` \u2192 Parameters from PAL document\n- `?q=cop&media=surface_water&media=groundwater` \u2192 Copper in water bodies\n- `?q=aluminum&media=groundwater&source=AEPA&document=PAL` \u2192 Aluminum in groundwater from specific document",
+                "operationId": "search_parameters_api_v1_parameters_search_get",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "",
+                            "title": "Q"
+                        }
+                    },
+                    {
+                        "name": "media",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Media"
+                        }
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Source"
+                        }
+                    },
+                    {
+                        "name": "document",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Document"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of matching parameter names",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": [
+                                    "Ammonia",
+                                    "Ammonia (Total)",
+                                    "Ammonia (Unionized)"
+                                ]
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error during search"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/parameters": {
+            "get": {
+                "tags": [
+                    "metadata"
+                ],
+                "summary": "List all parameters",
+                "description": "Get complete list of all available chemical parameters in the database.\n\nReturns all unique parameter names that have associated guidelines.\nUse this endpoint to populate dropdowns or validate user input.\n\n**Note:** For searching or filtering, use `/parameters/search` instead.",
+                "operationId": "list_parameters_api_v1_parameters_get",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Complete list of parameter names",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": [
+                                    "Aluminum",
+                                    "Ammonia",
+                                    "Antimony",
+                                    "Arsenic",
+                                    "Benzene"
+                                ]
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/media": {
+            "get": {
+                "tags": [
+                    "metadata"
+                ],
+                "summary": "List all media types",
+                "description": "Get list of all available environmental media types.\n\nMedia types represent different environmental compartments where\nguidelines apply (water, soil, air, etc.).\n\n**Returns:** Dictionary mapping enum names (for API use) to display names (for UI).\n\n**Available Media Types:**\n- `surface_water`: Surface Water (lakes, rivers, streams)\n- `groundwater`: Groundwater (aquifers, wells)\n- `soil`: Soil (agricultural, residential, industrial)\n- `sediment`: Sediment (river/lake bottom)\n- `air`: Air (ambient, indoor, occupational)\n- `tissue_residue`: Tissue Residue (bioaccumulation)",
+                "operationId": "list_media_api_v1_media_get",
+                "responses": {
+                    "200": {
+                        "description": "Dictionary of media types",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": {
+                                    "surface_water": "Surface Water",
+                                    "groundwater": "Groundwater",
+                                    "soil": "Soil",
+                                    "sediment": "Sediment",
+                                    "air": "Air"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sources": {
+            "get": {
+                "tags": [
+                    "metadata"
+                ],
+                "summary": "List all sources with their documents",
+                "description": "Get list of all guideline sources and their associated documents.\n\nReturns a list of sources with nested document information including URLs.",
+                "operationId": "list_sources_api_v1_sources_get",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of sources with documents",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": [
+                                    {
+                                        "id": 1,
+                                        "name": "Alberta Environment and Protection Areas",
+                                        "abbreviation": "AEPA",
+                                        "documents": [
+                                            {
+                                                "id": 1,
+                                                "name": "Ambient Surface Water Quality Guidelines",
+                                                "url": "https://example.com/guidelines.pdf",
+                                                "abbreviation": "PAL"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/stats": {
+            "get": {
+                "tags": [
+                    "metadata"
+                ],
+                "summary": "Get database statistics",
+                "description": "Get statistics about the guideline database.\n\nReturns counts of sources, documents, guidelines, and parameters\nto provide overview of available data.",
+                "operationId": "get_stats_api_v1_stats_get",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Database statistics",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": {
+                                    "sources": 5,
+                                    "documents": 12,
+                                    "guidelines": 1500,
+                                    "parameters": 250
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/parameters/match": {
+            "post": {
+                "tags": [
+                    "metadata"
+                ],
+                "summary": "Match parameter names to database values",
+                "description": "Match parameter names using multi-strategy approach for handling naming inconsistencies.\n\n**Problem:** Parameter names vary across domains (chemistry vs environmental science),\ngeographies (US vs UK spelling), and languages. This endpoint helps map user\nparameter names to standardized database values.\n\n**Strategies:**\n\n1. **Simple Fuzzy Matching** (`strategy=\"simple\"`)\n   - Uses hardcoded abbreviation map (NH3 \u2192 Ammonia, Al \u2192 Aluminum, etc.)\n   - Performs case-insensitive substring matching\n   - Fast and predictable\n\n2. **Alias Table** (`strategy=\"alias\"`)\n   - Queries curated `parameter_alias` database table\n   - Supports translations, spelling variants, and abbreviations\n   - High-quality curated mappings\n\n3. **LLM Semantic Matching** (`strategy=\"llm\"`) - Future\n   - Uses Large Language Model for semantic understanding\n   - Handles complex chemical nomenclature\n   - Currently returns warning and falls back to simple matching\n\n4. **Auto** (`strategy=\"auto\"`, default)\n   - Tries strategies in sequence: simple \u2192 alias \u2192 LLM\n   - Returns best results from available strategies\n\n**Examples:**\n- Abbreviations: \"NH3\" \u2192 \"Ammonia\", \"Cu\" \u2192 \"Copper\"\n- Spelling variants: \"Aluminium\" \u2192 \"Aluminum\"\n- Partial names: \"ammon\" \u2192 \"Ammonia (Total)\", \"Ammonia (Unionized)\"\n\n**Response includes:**\n- Matched parameter specifications\n- Confidence scores (0.0-1.0)\n- Available media types for each parameter\n- Match type and strategy used",
+                "operationId": "match_parameters_api_v1_parameters_match_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParameterMatchRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "List of matches for each query parameter",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": {
+                                    "results": [
+                                        {
+                                            "query": "NH3",
+                                            "matches": [
+                                                {
+                                                    "parameter_specification": "Ammonia (Total), Total Any",
+                                                    "parameter": "Ammonia",
+                                                    "confidence": 0.95,
+                                                    "media_types": [
+                                                        "surface_water",
+                                                        "groundwater"
+                                                    ],
+                                                    "match_type": "abbreviation",
+                                                    "strategy_used": "simple"
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "total_queries": 1,
+                                    "timestamp": "2025-12-16T10:30:00Z"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request parameters"
+                    },
+                    "500": {
+                        "description": "Server error during matching"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/calculate": {
+            "post": {
+                "tags": [
+                    "guidelines"
+                ],
+                "summary": "Calculate guidelines for a parameter in specific media",
+                "description": "Calculate guideline values for a specific parameter in a given media type with\nmedia-specific environmental context.\n\nThis endpoint searches for guidelines matching the specified parameter and media type,\nthen calculates context-dependent values based on media-specific environmental parameters.\n\n**Multiple Contexts Support:**\nYou can provide multiple context objects to calculate guidelines under different conditions\nin a single request. Each result will include a `context_index` field indicating which\ncontext was used for that calculation.\n\n**Media-Specific Context:**\n- **Water (surface_water, groundwater)**: pH (1), hardness (mg/L), temperature (\u00b0C), chloride (mg/L)\n- **Soil**: pH (1), organic_matter (%), cation_exchange_capacity (meq/100g)\n- **Sediment**: pH (1), organic_matter (%), grain_size (mm)\n\n**Example Use Cases:**\n- Calculate aluminum in surface water at pH 7.0 and hardness 100 mg/L\n- Find lead guidelines in soil with pH 6.5 and 3% organic matter\n- Get copper guidelines in sediment with specific characteristics\n- Compare guidelines across multiple pH/hardness combinations\n\n**Unit Conversion:**\n- Optionally specify `target_unit` to convert guideline values to desired unit\n- Supports conversion between compatible units (e.g., mg/L \u2194 \u03bcg/L, mg/kg \u2194 \u03bcg/kg)\n\n**Response includes:**\n- Calculated guideline values (when calculation formulas exist)\n- Static guideline values (from database)\n- LaTeX formulas as SVG images (for calculated values)\n- Source and document information\n- Error details (if calculation fails)\n- context_index (when multiple contexts provided)\n\n**Error Handling:**\nWhen a guideline requires context parameters for calculation but they are not provided,\nthe guideline is still returned with error details in the `error` and `error_type` fields.\nThis allows you to see which guidelines require which parameters.\n\nCommon error types:\n- `validation`: Missing or invalid context parameters (e.g., \"Missing required parameters: pH, hardness\")\n- `not_found`: Referenced data not found\n- `calculation`: Calculation execution failed\n- `unexpected`: Unexpected system error",
+                "operationId": "calculate_guidelines_api_v1_calculate_post",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CalculationRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful calculation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": {
+                                    "results": [
+                                        {
+                                            "id": 123,
+                                            "parameter": "Aluminum",
+                                            "method_speciation": "Dissolved",
+                                            "sample_fraction": "Filtered",
+                                            "parameter_specification": "Aluminum (Dissolved)",
+                                            "receptor": "Aquatic Life",
+                                            "exposure_duration": "chronic",
+                                            "media": "surface_water",
+                                            "purpose": "long_term",
+                                            "table": "Table 2",
+                                            "application": "Freshwater guidelines",
+                                            "basis": "Chronic toxicity to aquatic organisms",
+                                            "use_case": "Protection",
+                                            "value": "(,87.0 \u03bcg/L]",
+                                            "upper": 87.0,
+                                            "unit": "\u03bcg/L",
+                                            "is_calculated": true,
+                                            "calculation_used": "aluminum_pal_2018_chronic",
+                                            "formula_svg": "<svg>...</svg>",
+                                            "source": "Alberta PAL 2018",
+                                            "source_abbreviation": "APAL",
+                                            "document": "PAL Technical Document",
+                                            "document_url": "https://...",
+                                            "document_abbreviation": "ASWQG",
+                                            "context_index": 0
+                                        },
+                                        {
+                                            "id": 125,
+                                            "parameter": "Aluminum",
+                                            "method_speciation": "Total",
+                                            "sample_fraction": "Unfiltered",
+                                            "parameter_specification": "Aluminum (Total)",
+                                            "receptor": "Aquatic Life",
+                                            "exposure_duration": "acute",
+                                            "media": "surface_water",
+                                            "purpose": "short_term",
+                                            "table": "Table 1",
+                                            "application": "Freshwater guidelines",
+                                            "basis": "Acute toxicity to aquatic organisms",
+                                            "use_case": "Protection",
+                                            "value": "(,100 \u03bcg/L]",
+                                            "unit": "\u03bcg/L",
+                                            "is_calculated": false,
+                                            "source": "Alberta PAL 2018",
+                                            "source_abbreviation": "APAL",
+                                            "document": "PAL Technical Document",
+                                            "document_url": "https://...",
+                                            "document_abbreviation": "ASWQG",
+                                            "error": "Missing required parameters: temperature, dissolved_oxygen",
+                                            "error_type": "validation",
+                                            "context_index": 0
+                                        }
+                                    ],
+                                    "context": {
+                                        "parameter": "Aluminum",
+                                        "media": "surface_water",
+                                        "context": {
+                                            "pH": "7.0 1",
+                                            "hardness": "100 mg/L"
+                                        },
+                                        "description": "pH=7.0, Hardness=100.0 mg/L"
+                                    },
+                                    "total_count": 2
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input parameters"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/v1/calculate/batch": {
+            "post": {
+                "tags": [
+                    "guidelines"
+                ],
+                "summary": "Batch calculate multiple parameters in single media",
+                "description": "Calculate guideline values for multiple parameters in a given media type with\nshared environmental context.\n\nThis endpoint is optimized for fetching guidelines for multiple parameters at once,\nwhich is more efficient than making multiple individual `/calculate` requests.\n\n**Multiple Contexts Support:**\nYou can provide multiple context objects to calculate guidelines under different conditions\nin a single request. Each result will include a `context_index` field indicating which\ncontext was used for that calculation.\n\n**Performance Benefits:**\n- Single database connection\n- Shared context building\n- Reduced network overhead\n- Faster for 3+ parameters\n\n**Per-Parameter Unit Conversion:**\nParameters can be specified as simple strings or with target units:\n```json\n{\n    \"parameters\": [\n        \"Aluminum\",\n        {\"name\": \"Copper\", \"target_unit\": \"\u03bcg/L\"},\n        {\"name\": \"Lead\", \"target_unit\": \"mg/L\"}\n    ],\n    \"media\": \"surface_water\",\n    \"context\": {\"pH\": \"7.0 1\", \"hardness\": \"100 mg/L\"}\n}\n```\n\n**Multiple Contexts Example:**\n```json\n{\n    \"parameters\": [\"Aluminum\", \"Copper\"],\n    \"media\": \"surface_water\",\n    \"context\": [\n        {\"pH\": \"7.0 1\", \"hardness\": \"100 mg/L\"},\n        {\"pH\": \"8.0 1\", \"hardness\": \"200 mg/L\"}\n    ]\n}\n```\n\n**Use Cases:**\n- Calculate all metal guidelines at once (Aluminum, Copper, Lead, Zinc)\n- Get water quality or soil guidelines\n- Generate multi-parameter reports with consistent units\n- Compare guidelines across multiple environmental conditions\n\n**Limits:**\n- Maximum 50 parameters per request\n- Single media type per request (simplifies context management)\n\n**Error Handling:**\nIndividual guidelines that fail to calculate (e.g., due to missing context parameters)\nare still included in the response with error details. This allows you to identify\nwhich guidelines require additional context parameters.",
+                "operationId": "calculate_guidelines_batch_api_v1_calculate_batch_post",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BatchCalculationRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful batch calculation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "example": {
+                                    "results": [
+                                        {
+                                            "id": 123,
+                                            "parameter": "Aluminum",
+                                            "method_speciation": "Dissolved",
+                                            "sample_fraction": "Filtered",
+                                            "parameter_specification": "Aluminum (Dissolved)",
+                                            "receptor": "Aquatic Life",
+                                            "exposure_duration": "chronic",
+                                            "media": "surface_water",
+                                            "purpose": "long_term",
+                                            "table": "Table 2",
+                                            "application": "Freshwater guidelines",
+                                            "basis": "Chronic toxicity to aquatic organisms",
+                                            "use_case": "Protection",
+                                            "value": "(,87.0 \u03bcg/L]",
+                                            "upper": 87.0,
+                                            "unit": "\u03bcg/L",
+                                            "is_calculated": true,
+                                            "calculation_used": "aluminum_pal_2018_chronic",
+                                            "formula_svg": "<svg>...</svg>",
+                                            "source": "Alberta PAL 2018",
+                                            "source_abbreviation": "APAL",
+                                            "document": "PAL Technical Document",
+                                            "document_url": "https://...",
+                                            "document_abbreviation": "ASWQG"
+                                        },
+                                        {
+                                            "id": 124,
+                                            "parameter": "Copper",
+                                            "method_speciation": "Dissolved",
+                                            "sample_fraction": "Filtered",
+                                            "parameter_specification": "Copper (Dissolved)",
+                                            "receptor": "Aquatic Life",
+                                            "exposure_duration": "chronic",
+                                            "media": "surface_water",
+                                            "purpose": "long_term",
+                                            "table": "Table 3",
+                                            "application": "Freshwater guidelines",
+                                            "basis": "Chronic toxicity to aquatic organisms",
+                                            "use_case": "Protection",
+                                            "value": "(,15.9 \u03bcg/L]",
+                                            "upper": 15.9,
+                                            "unit": "\u03bcg/L",
+                                            "is_calculated": true,
+                                            "calculation_used": "copper_pal_2018_chronic",
+                                            "formula_svg": "<svg>...</svg>",
+                                            "source": "Alberta PAL 2018",
+                                            "source_abbreviation": "APAL",
+                                            "document": "PAL Technical Document",
+                                            "document_url": "https://...",
+                                            "document_abbreviation": "ASWQG"
+                                        }
+                                    ],
+                                    "context": {
+                                        "parameters": [
+                                            "Aluminum",
+                                            "Copper"
+                                        ],
+                                        "media": "surface_water",
+                                        "context": {
+                                            "pH": "7.0 1",
+                                            "hardness": "100 mg/L"
+                                        },
+                                        "description": "pH=7.0, Hardness=100.0 mg/L"
+                                    },
+                                    "total_count": 2
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or too many parameters"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/v1/analytics/summary": {
+            "get": {
+                "tags": [
+                    "analytics",
+                    "analytics"
+                ],
+                "summary": "Get basic analytics summary",
+                "description": "Retrieve a complete analytics overview for a specified time period.\n\nIncludes:\n- Overall usage statistics\n- Top 10 most-used endpoints\n- Top 10 API keys by request count\n\n**Default Period:** Last 30 days\n\n**Authentication:** Requires valid API key",
+                "operationId": "get_analytics_summary_api_v1_analytics_summary_get",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 365,
+                            "minimum": 1,
+                            "description": "Number of days to analyze",
+                            "default": 30,
+                            "title": "Days"
+                        },
+                        "description": "Number of days to analyze"
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/analytics/endpoints": {
+            "get": {
+                "tags": [
+                    "analytics",
+                    "analytics"
+                ],
+                "summary": "Get endpoint usage statistics",
+                "description": "Retrieve usage statistics for all endpoints in the specified time period.\n\nResults are sorted by total request count (descending).\n\n**Authentication:** Requires valid API key",
+                "operationId": "get_endpoint_statistics_api_v1_analytics_endpoints_get",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 365,
+                            "minimum": 1,
+                            "default": 30,
+                            "title": "Days"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/analytics/user-agents": {
+            "get": {
+                "tags": [
+                    "analytics",
+                    "analytics"
+                ],
+                "summary": "Get User-Agent usage statistics",
+                "description": "Retrieve usage statistics grouped by User-Agent in the specified time period.\n\nResults are sorted by total request count (descending).\n\n**Authentication:** Requires valid API key with analytics permission",
+                "operationId": "get_user_agent_statistics_api_v1_analytics_user_agents_get",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 365,
+                            "minimum": 1,
+                            "default": 30,
+                            "title": "Days"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/analytics/keys": {
+            "get": {
+                "tags": [
+                    "analytics",
+                    "analytics"
+                ],
+                "summary": "Get API key usage statistics",
+                "description": "Retrieve usage statistics for all API keys in the specified time period.\n\nResults are sorted by total request count (descending).\n\n**Authentication:** Requires valid API key",
+                "operationId": "get_key_statistics_api_v1_analytics_keys_get",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 365,
+                            "minimum": 1,
+                            "default": 30,
+                            "title": "Days"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/analytics/timeseries": {
+            "get": {
+                "tags": [
+                    "analytics",
+                    "analytics"
+                ],
+                "summary": "Get time-series usage data",
+                "description": "Retrieve usage data grouped by time intervals.\n\nUseful for creating usage graphs and identifying trends.\n\n**Intervals:**\n- `hourly`: Data points for each hour\n- `daily`: Data points for each day\n\n**Authentication:** Requires valid API key",
+                "operationId": "get_timeseries_data_api_v1_analytics_timeseries_get",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 90,
+                            "minimum": 1,
+                            "default": 7,
+                            "title": "Days"
+                        }
+                    },
+                    {
+                        "name": "interval",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^(hourly|daily)$",
+                            "default": "daily",
+                            "title": "Interval"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/analytics/errors": {
+            "get": {
+                "tags": [
+                    "analytics",
+                    "analytics"
+                ],
+                "summary": "Get error statistics",
+                "description": "Retrieve statistics about API errors (4xx and 5xx responses).\n\nGroups errors by status code and provides counts and percentages.\n\n**Authentication:** Requires valid API key",
+                "operationId": "get_error_statistics_api_v1_analytics_errors_get",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 365,
+                            "minimum": 1,
+                            "default": 30,
+                            "title": "Days"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/upload": {
+            "post": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "Upload File",
+                "description": "Upload a CSV file and create a screening job.\n\nArgs:\n    file: CSV file to upload\n    name: Optional human-readable name for the job\n    storage: File storage service\n    db: Database session\n\nReturns:\n    Job upload response with preview",
+                "operationId": "upload_file_api_v1_screening_upload_post",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_upload_file_api_v1_screening_upload_post"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/jobs": {
+            "get": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "List Jobs",
+                "description": "List screening jobs.\n\nArgs:\n    status: Optional status filter\n    limit: Maximum number of jobs to return\n    db: Database session\n\nReturns:\n    List of jobs",
+                "operationId": "list_jobs_api_v1_screening_jobs_get",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Status"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 1000,
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/jobs/{job_id}": {
+            "get": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "Get Job",
+                "description": "Get job details.\n\nArgs:\n    job_id: Job UUID\n    db: Database session\n\nReturns:\n    Job details",
+                "operationId": "get_job_api_v1_screening_jobs__job_id__get",
+                "parameters": [
+                    {
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Job Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/jobs/{job_id}/configure": {
+            "post": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "Configure Job",
+                "description": "Configure job with field and parameter mappings.\n\nArgs:\n    job_id: Job UUID\n    config: Configuration request\n    db: Database session\n\nReturns:\n    Updated job details",
+                "operationId": "configure_job_api_v1_screening_jobs__job_id__configure_post",
+                "parameters": [
+                    {
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Job Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/JobConfigureRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/jobs/{job_id}/execute": {
+            "post": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "Execute Job",
+                "description": "Execute screening job.\n\nArgs:\n    job_id: Job UUID\n    storage: File storage service\n    calculator: Calculator controller\n    db: Database session\n\nReturns:\n    Updated job details",
+                "operationId": "execute_job_api_v1_screening_jobs__job_id__execute_post",
+                "parameters": [
+                    {
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Job Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/jobs/{job_id}/results": {
+            "get": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "Download Results",
+                "description": "Download screening results.\n\nArgs:\n    job_id: Job UUID\n    storage: File storage service\n    db: Database session\n\nReturns:\n    Streaming response with results file",
+                "operationId": "download_results_api_v1_screening_jobs__job_id__results_get",
+                "parameters": [
+                    {
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Job Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/field-mappings": {
+            "post": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "Create Field Mapping",
+                "description": "Create a new field mapping.",
+                "operationId": "create_field_mapping_api_v1_screening_field_mappings_post",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FieldMappingCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "List Field Mappings",
+                "description": "List field mappings.",
+                "operationId": "list_field_mappings_api_v1_screening_field_mappings_get",
+                "parameters": [
+                    {
+                        "name": "include_templates",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true,
+                            "title": "Include Templates"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/screening/parameter-mappings": {
+            "post": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "Create Parameter Mapping",
+                "description": "Create a new parameter mapping.",
+                "operationId": "create_parameter_mapping_api_v1_screening_parameter_mappings_post",
+                "parameters": [
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParameterMappingCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "screening"
+                ],
+                "summary": "List Parameter Mappings",
+                "description": "List parameter mappings.",
+                "operationId": "list_parameter_mappings_api_v1_screening_parameter_mappings_get",
+                "parameters": [
+                    {
+                        "name": "include_templates",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true,
+                            "title": "Include Templates"
+                        }
+                    },
+                    {
+                        "name": "X-API-KEY",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "APIKeyUsage": {
+                "properties": {
+                    "api_key_id": {
+                        "type": "integer",
+                        "title": "Api Key Id"
+                    },
+                    "api_key_name": {
+                        "type": "string",
+                        "title": "Api Key Name"
+                    },
+                    "total_requests": {
+                        "type": "integer",
+                        "title": "Total Requests"
+                    },
+                    "last_request": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Request"
+                    },
+                    "avg_response_time_ms": {
+                        "type": "number",
+                        "title": "Avg Response Time Ms"
+                    },
+                    "error_count": {
+                        "type": "integer",
+                        "title": "Error Count"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "api_key_id",
+                    "api_key_name",
+                    "total_requests",
+                    "last_request",
+                    "avg_response_time_ms",
+                    "error_count"
+                ],
+                "title": "APIKeyUsage",
+                "description": "Usage statistics for an API key."
+            },
+            "AnalyticsSummary": {
+                "properties": {
+                    "period_start": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Period Start"
+                    },
+                    "period_end": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Period End"
+                    },
+                    "overall_stats": {
+                        "$ref": "#/components/schemas/UsageStatistics"
+                    },
+                    "top_endpoints": {
+                        "items": {
+                            "$ref": "#/components/schemas/EndpointStatistics"
+                        },
+                        "type": "array",
+                        "title": "Top Endpoints"
+                    },
+                    "top_keys": {
+                        "items": {
+                            "$ref": "#/components/schemas/APIKeyUsage"
+                        },
+                        "type": "array",
+                        "title": "Top Keys"
+                    },
+                    "top_user_agents": {
+                        "items": {
+                            "$ref": "#/components/schemas/UserAgentStatistics"
+                        },
+                        "type": "array",
+                        "title": "Top User Agents"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "period_start",
+                    "period_end",
+                    "overall_stats",
+                    "top_endpoints",
+                    "top_keys",
+                    "top_user_agents"
+                ],
+                "title": "AnalyticsSummary",
+                "description": "Basic analytics summary."
+            },
+            "BatchCalculationRequest": {
+                "properties": {
+                    "parameters": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/ParameterWithUnit"
+                                },
+                                {
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Parameters",
+                        "description": "List of chemical parameters. Can be simple strings or objects with target_unit",
+                        "examples": [
+                            [
+                                "Aluminum",
+                                "Copper"
+                            ],
+                            [
+                                {
+                                    "name": "Aluminum",
+                                    "target_unit": "mg/L"
+                                },
+                                {
+                                    "name": "Copper",
+                                    "target_unit": "\u03bcg/L"
+                                }
+                            ]
+                        ]
+                    },
+                    "media": {
+                        "type": "string",
+                        "title": "Media",
+                        "description": "Media type (e.g., 'surface_water', 'groundwater', 'soil', 'sediment')",
+                        "examples": [
+                            "surface_water",
+                            "soil"
+                        ]
+                    },
+                    "include_formula_svg": {
+                        "type": "boolean",
+                        "title": "Include Formula Svg",
+                        "description": "Whether to include SVG formula representations in the response. Default is False to reduce response size.",
+                        "default": false
+                    },
+                    "context": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "items": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context",
+                        "description": "Media-specific environmental context parameters with units. Can be a single context object or a list of context objects for multiple calculations. For water: pH (1), hardness (mg/L), temperature (\u00b0C), chloride (mg/L). For soil: pH (1), organic_matter (%), cation_exchange_capacity (meq/100g).",
+                        "examples": [
+                            {
+                                "hardness": "100 mg/L",
+                                "pH": "7.0 1"
+                            },
+                            {
+                                "organic_matter": "5.0 %",
+                                "pH": "6.5 1"
+                            },
+                            [
+                                {
+                                    "hardness": "100 mg/L",
+                                    "pH": "7.0 1"
+                                },
+                                {
+                                    "hardness": "200 mg/L",
+                                    "pH": "8.0 1"
+                                }
+                            ]
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "parameters",
+                    "media"
+                ],
+                "title": "BatchCalculationRequest",
+                "description": "Request for batch guideline calculation with media-specific environmental context.",
+                "examples": [
+                    {
+                        "context": {
+                            "hardness": "100 mg/L",
+                            "pH": "7.0 1"
+                        },
+                        "media": "surface_water",
+                        "parameters": [
+                            "Aluminum",
+                            "Copper",
+                            "Ammonia"
+                        ]
+                    },
+                    {
+                        "context": {
+                            "organic_matter": "3.5 %",
+                            "pH": "6.5 1"
+                        },
+                        "media": "soil",
+                        "parameters": [
+                            {
+                                "name": "Lead",
+                                "target_unit": "mg/kg"
+                            },
+                            {
+                                "name": "Cadmium",
+                                "target_unit": "mg/kg"
+                            }
+                        ]
+                    },
+                    {
+                        "context": [
+                            {
+                                "hardness": "100 mg/L",
+                                "pH": "7.0 1"
+                            },
+                            {
+                                "hardness": "200 mg/L",
+                                "pH": "8.0 1"
+                            }
+                        ],
+                        "media": "surface_water",
+                        "parameters": [
+                            "Aluminum",
+                            "Copper"
+                        ]
+                    }
+                ]
+            },
+            "Body_upload_file_api_v1_screening_upload_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "format": "binary",
+                        "title": "File"
+                    },
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file"
+                ],
+                "title": "Body_upload_file_api_v1_screening_upload_post"
+            },
+            "CalculationRequest": {
+                "properties": {
+                    "parameter": {
+                        "type": "string",
+                        "title": "Parameter",
+                        "description": "Chemical parameter name (e.g., 'Aluminum', 'Ammonia')",
+                        "examples": [
+                            "Aluminum",
+                            "Ammonia",
+                            "Copper"
+                        ]
+                    },
+                    "media": {
+                        "type": "string",
+                        "title": "Media",
+                        "description": "Media type (e.g., 'surface_water', 'groundwater', 'soil', 'sediment')",
+                        "examples": [
+                            "surface_water",
+                            "groundwater",
+                            "soil"
+                        ]
+                    },
+                    "target_unit": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Target Unit",
+                        "description": "Optional unit to convert result to (e.g., 'mg/L', '\u03bcg/L')"
+                    },
+                    "include_formula_svg": {
+                        "type": "boolean",
+                        "title": "Include Formula Svg",
+                        "description": "Whether to include SVG formula representations in the response. Default is False to reduce response size.",
+                        "default": false
+                    },
+                    "context": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "items": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context",
+                        "description": "Media-specific environmental context parameters with units. Can be a single context object or a list of context objects for multiple calculations. For water: pH (1), hardness (mg/L), temperature (\u00b0C), chloride (mg/L). For soil: pH (1), organic_matter (%), cation_exchange_capacity (meq/100g).",
+                        "examples": [
+                            {
+                                "hardness": "100 mg/L",
+                                "pH": "7.0 1"
+                            },
+                            {
+                                "organic_matter": "5.0 %",
+                                "pH": "6.5 1"
+                            },
+                            [
+                                {
+                                    "hardness": "100 mg/L",
+                                    "pH": "7.0 1"
+                                },
+                                {
+                                    "hardness": "200 mg/L",
+                                    "pH": "8.0 1"
+                                }
+                            ]
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "parameter",
+                    "media"
+                ],
+                "title": "CalculationRequest",
+                "description": "Request for guideline calculation with media-specific environmental context.",
+                "examples": [
+                    {
+                        "context": {
+                            "hardness": "100 mg/L",
+                            "pH": "7.0 1"
+                        },
+                        "media": "surface_water",
+                        "parameter": "Aluminum"
+                    },
+                    {
+                        "context": {
+                            "organic_matter": "3.5 %",
+                            "pH": "6.5 1"
+                        },
+                        "media": "soil",
+                        "parameter": "Lead",
+                        "target_unit": "mg/kg"
+                    },
+                    {
+                        "context": [
+                            {
+                                "hardness": "100 mg/L",
+                                "pH": "7.0 1"
+                            },
+                            {
+                                "hardness": "200 mg/L",
+                                "pH": "8.0 1"
+                            }
+                        ],
+                        "media": "surface_water",
+                        "parameter": "Aluminum"
+                    }
+                ]
+            },
+            "CalculationResponse": {
+                "properties": {
+                    "results": {
+                        "items": {
+                            "$ref": "#/components/schemas/GuidelineResponse"
+                        },
+                        "type": "array",
+                        "title": "Results",
+                        "description": "List of matching guidelines"
+                    },
+                    "context": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Context",
+                        "description": "Calculation context used (parameter, media, context)"
+                    },
+                    "contexts": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "additionalProperties": true,
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Contexts",
+                        "description": "List of contexts when multiple contexts were provided. Each item contains 'index', 'context' (the parameters), and 'description'."
+                    },
+                    "total_count": {
+                        "type": "integer",
+                        "title": "Total Count",
+                        "description": "Total number of results"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "results",
+                    "context",
+                    "total_count"
+                ],
+                "title": "CalculationResponse",
+                "description": "Response from calculation endpoint.",
+                "examples": [
+                    {
+                        "context": {
+                            "context": {
+                                "hardness": "100 mg/L",
+                                "pH": "7.0 1"
+                            },
+                            "description": [
+                                "pH = 7.0",
+                                "Hardness = 100 mg/L"
+                            ],
+                            "media": "surface_water",
+                            "parameter": "Aluminum"
+                        },
+                        "results": [],
+                        "total_count": 0
+                    },
+                    {
+                        "context": {
+                            "media": "surface_water",
+                            "parameter": "Aluminum"
+                        },
+                        "contexts": [
+                            {
+                                "context": {
+                                    "hardness": "100 mg/L",
+                                    "pH": "7.0 1"
+                                },
+                                "description": [
+                                    "pH = 7.0",
+                                    "Hardness = 100 mg/L"
+                                ],
+                                "index": 0
+                            },
+                            {
+                                "context": {
+                                    "hardness": "200 mg/L",
+                                    "pH": "8.0 1"
+                                },
+                                "description": [
+                                    "pH = 8.0",
+                                    "Hardness = 200 mg/L"
+                                ],
+                                "index": 1
+                            }
+                        ],
+                        "results": [],
+                        "total_count": 0
+                    }
+                ]
+            },
+            "EndpointStatistics": {
+                "properties": {
+                    "endpoint": {
+                        "type": "string",
+                        "title": "Endpoint"
+                    },
+                    "total_requests": {
+                        "type": "integer",
+                        "title": "Total Requests"
+                    },
+                    "avg_response_time_ms": {
+                        "type": "number",
+                        "title": "Avg Response Time Ms"
+                    },
+                    "error_count": {
+                        "type": "integer",
+                        "title": "Error Count"
+                    },
+                    "success_rate": {
+                        "type": "number",
+                        "title": "Success Rate"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "endpoint",
+                    "total_requests",
+                    "avg_response_time_ms",
+                    "error_count",
+                    "success_rate"
+                ],
+                "title": "EndpointStatistics",
+                "description": "Statistics for a specific endpoint."
+            },
+            "FieldMappingCreate": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "title": "Name",
+                        "description": "Human-readable name for the mapping"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description",
+                        "description": "Optional description"
+                    },
+                    "mapping": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Mapping",
+                        "description": "Mapping dictionary: {system_field: csv_column}"
+                    },
+                    "user_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "User Id",
+                        "description": "User ID if user-specific"
+                    },
+                    "is_template": {
+                        "type": "boolean",
+                        "title": "Is Template",
+                        "description": "Whether this is a reusable template",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "mapping"
+                ],
+                "title": "FieldMappingCreate",
+                "description": "Request to create a field mapping."
+            },
+            "FieldMappingResponse": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "mapping": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Mapping"
+                    },
+                    "is_template": {
+                        "type": "boolean",
+                        "title": "Is Template"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "mapping",
+                    "is_template",
+                    "created_at"
+                ],
+                "title": "FieldMappingResponse",
+                "description": "Response containing field mapping details."
+            },
+            "GuidelineResponse": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id",
+                        "description": "Guideline database ID"
+                    },
+                    "parameter": {
+                        "type": "string",
+                        "title": "Parameter",
+                        "description": "Chemical parameter name"
+                    },
+                    "method_speciation": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Method Speciation",
+                        "description": "Method speciation"
+                    },
+                    "sample_fraction": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Sample Fraction",
+                        "description": "Sample fraction"
+                    },
+                    "parameter_specification": {
+                        "type": "string",
+                        "title": "Parameter Specification",
+                        "description": "Parameter specification combining name, speciation, and fraction"
+                    },
+                    "receptor": {
+                        "type": "string",
+                        "title": "Receptor",
+                        "description": "Receptor type"
+                    },
+                    "exposure_duration": {
+                        "type": "string",
+                        "title": "Exposure Duration",
+                        "description": "Exposure duration"
+                    },
+                    "media": {
+                        "type": "string",
+                        "title": "Media",
+                        "description": "Environmental media"
+                    },
+                    "purpose": {
+                        "type": "string",
+                        "title": "Purpose",
+                        "description": "Guideline purpose"
+                    },
+                    "table": {
+                        "type": "string",
+                        "title": "Table",
+                        "description": "Table identifier from source document"
+                    },
+                    "table_name": {
+                        "type": "string",
+                        "title": "Table Name",
+                        "description": "Table name from source document"
+                    },
+                    "application": {
+                        "type": "string",
+                        "title": "Application",
+                        "description": "Application or context for the guideline"
+                    },
+                    "basis": {
+                        "type": "string",
+                        "title": "Basis",
+                        "description": "Basis or rationale for the guideline"
+                    },
+                    "season": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Season",
+                        "description": "Season during which the guideline applies (if applicable)"
+                    },
+                    "location": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Location",
+                        "description": "Location where the guideline applies (if applicable)"
+                    },
+                    "value": {
+                        "type": "string",
+                        "title": "Value",
+                        "description": "Guideline value (range string)"
+                    },
+                    "lower": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Lower",
+                        "description": "Lower bound (None if unbounded)"
+                    },
+                    "upper": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upper",
+                        "description": "Upper bound (None if unbounded)"
+                    },
+                    "unit": {
+                        "type": "string",
+                        "title": "Unit",
+                        "description": "Unit of measurement"
+                    },
+                    "is_calculated": {
+                        "type": "boolean",
+                        "title": "Is Calculated",
+                        "description": "Whether value was calculated from context"
+                    },
+                    "calculation_used": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Calculation Used",
+                        "description": "Calculation function used (if calculated)"
+                    },
+                    "formula_svg": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Formula Svg",
+                        "description": "SVG representation of the calculation formula"
+                    },
+                    "narrative": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Narrative",
+                        "description": "Qualitative guidance text for narrative guidelines"
+                    },
+                    "use_case": {
+                        "type": "string",
+                        "title": "Use Case",
+                        "description": "Use case"
+                    },
+                    "source": {
+                        "type": "string",
+                        "title": "Source",
+                        "description": "Source document name"
+                    },
+                    "source_abbreviation": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Source Abbreviation",
+                        "description": "Source document abbreviation"
+                    },
+                    "document": {
+                        "type": "string",
+                        "title": "Document",
+                        "description": "Specific document"
+                    },
+                    "document_url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Url",
+                        "description": "URL to document (if available)"
+                    },
+                    "document_abbreviation": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Abbreviation",
+                        "description": "Document abbreviation"
+                    },
+                    "error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error",
+                        "description": "Error message if resolution failed"
+                    },
+                    "error_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error Type",
+                        "description": "Error type: validation, lookup, or unexpected"
+                    },
+                    "context_index": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Index",
+                        "description": "Index of the context used for this calculation (when multiple contexts provided)"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "parameter",
+                    "parameter_specification",
+                    "receptor",
+                    "exposure_duration",
+                    "media",
+                    "purpose",
+                    "table",
+                    "table_name",
+                    "application",
+                    "basis",
+                    "value",
+                    "unit",
+                    "is_calculated",
+                    "use_case",
+                    "source",
+                    "document"
+                ],
+                "title": "GuidelineResponse",
+                "description": "Guideline result with calculated or static value.",
+                "examples": [
+                    {
+                        "application": "Freshwater guidelines",
+                        "basis": "Chronic toxicity to aquatic organisms",
+                        "calculation_used": "aepa_pal_aluminum",
+                        "context_index": 0,
+                        "document": "Alberta PAL Guidelines",
+                        "exposure_duration": "chronic",
+                        "formula_svg": "<svg>...</svg>",
+                        "id": 123,
+                        "is_calculated": true,
+                        "media": "surface_water",
+                        "parameter": "Aluminum",
+                        "purpose": "long_term",
+                        "receptor": "Aquatic Life",
+                        "source": "Alberta EPA",
+                        "table": "Table 2",
+                        "table_name": "Chronic Aquatic Life Guidelines",
+                        "unit": "\u03bcg/L",
+                        "upper": 87.0,
+                        "use_case": "Protection",
+                        "value": "(,87.0 \u03bcg/L]"
+                    }
+                ]
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "JobConfigureRequest": {
+                "properties": {
+                    "field_mapping_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Field Mapping Id",
+                        "description": "ID of saved field mapping to use"
+                    },
+                    "field_mapping": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Field Mapping",
+                        "description": "Inline field mapping: {system_field: csv_column}"
+                    },
+                    "parameter_mapping_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parameter Mapping Id",
+                        "description": "ID of saved parameter mapping to use"
+                    },
+                    "parameter_mapping": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parameter Mapping",
+                        "description": "Inline parameter mapping: {user_param: guidelinely_param}"
+                    },
+                    "media": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Media",
+                        "description": "Media type for screening"
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "title": "Output Format",
+                        "description": "Output format: excel or csv",
+                        "default": "excel"
+                    }
+                },
+                "type": "object",
+                "title": "JobConfigureRequest",
+                "description": "Request to configure field and parameter mappings for a job."
+            },
+            "JobDetailResponse": {
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "title": "Job Id"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "row_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Row Count"
+                    },
+                    "columns": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Columns"
+                    },
+                    "field_mapping": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Field Mapping"
+                    },
+                    "parameter_mapping": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parameter Mapping"
+                    },
+                    "media": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Media"
+                    },
+                    "output_format": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Output Format"
+                    },
+                    "error_message": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error Message"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    },
+                    "started_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Started At"
+                    },
+                    "completed_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Completed At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "job_id",
+                    "status",
+                    "name",
+                    "row_count",
+                    "columns",
+                    "field_mapping",
+                    "parameter_mapping",
+                    "media",
+                    "output_format",
+                    "error_message",
+                    "created_at",
+                    "updated_at",
+                    "started_at",
+                    "completed_at"
+                ],
+                "title": "JobDetailResponse",
+                "description": "Detailed response containing job details."
+            },
+            "JobListResponse": {
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "title": "Job Id"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "row_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Row Count"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "job_id",
+                    "status",
+                    "name",
+                    "row_count",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "JobListResponse",
+                "description": "Response containing basic job information for lists."
+            },
+            "JobUploadResponse": {
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Job Id",
+                        "description": "Unique identifier for the screening job"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "Current job status"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Human-readable name for the job"
+                    },
+                    "row_count": {
+                        "type": "integer",
+                        "title": "Row Count",
+                        "description": "Number of rows in the CSV"
+                    },
+                    "columns": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Columns",
+                        "description": "List of column names from the CSV"
+                    },
+                    "preview_rows": {
+                        "items": {
+                            "additionalProperties": {
+                                "type": "string"
+                            },
+                            "type": "object"
+                        },
+                        "type": "array",
+                        "title": "Preview Rows",
+                        "description": "First few rows of the CSV for preview"
+                    },
+                    "detected_encoding": {
+                        "type": "string",
+                        "title": "Detected Encoding",
+                        "description": "Detected character encoding"
+                    },
+                    "file_size_bytes": {
+                        "type": "integer",
+                        "title": "File Size Bytes",
+                        "description": "Size of the uploaded file"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At",
+                        "description": "Timestamp when job was created"
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Expires At",
+                        "description": "Timestamp when job files will be deleted"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "job_id",
+                    "status",
+                    "name",
+                    "row_count",
+                    "columns",
+                    "preview_rows",
+                    "detected_encoding",
+                    "file_size_bytes",
+                    "created_at",
+                    "expires_at"
+                ],
+                "title": "JobUploadResponse",
+                "description": "Response after uploading a CSV file.",
+                "examples": [
+                    {
+                        "columns": [
+                            "Media",
+                            "Location",
+                            "SampleDate",
+                            "Parameter",
+                            "Value",
+                            "Unit"
+                        ],
+                        "created_at": "2025-12-27T10:30:00Z",
+                        "detected_encoding": "utf-8",
+                        "expires_at": "2025-12-28T10:30:00Z",
+                        "file_size_bytes": 2457600,
+                        "job_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "MCFN Water Quality Export",
+                        "preview_rows": [
+                            {
+                                "Location": "Cree Creek",
+                                "Media": "Water"
+                            }
+                        ],
+                        "row_count": 15234,
+                        "status": "uploaded"
+                    }
+                ]
+            },
+            "ParameterMappingCreate": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "title": "Name",
+                        "description": "Human-readable name for the mapping"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description",
+                        "description": "Optional description"
+                    },
+                    "mapping": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Mapping",
+                        "description": "Mapping dictionary: {user_parameter: guidelinely_parameter}"
+                    },
+                    "user_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "User Id",
+                        "description": "User ID if user-specific"
+                    },
+                    "is_template": {
+                        "type": "boolean",
+                        "title": "Is Template",
+                        "description": "Whether this is a reusable template",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "mapping"
+                ],
+                "title": "ParameterMappingCreate",
+                "description": "Request to create a parameter mapping."
+            },
+            "ParameterMappingResponse": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "mapping": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Mapping"
+                    },
+                    "is_template": {
+                        "type": "boolean",
+                        "title": "Is Template"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "mapping",
+                    "is_template",
+                    "created_at"
+                ],
+                "title": "ParameterMappingResponse",
+                "description": "Response containing parameter mapping details."
+            },
+            "ParameterMatchRequest": {
+                "properties": {
+                    "parameters": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "maxItems": 50,
+                        "minItems": 1,
+                        "title": "Parameters",
+                        "description": "List of parameter names to match (1-50 parameters)",
+                        "examples": [
+                            [
+                                "aluminum",
+                                "NH3",
+                                "copper"
+                            ],
+                            [
+                                "Al",
+                                "Cu",
+                                "Pb"
+                            ]
+                        ]
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "maximum": 1.0,
+                        "minimum": 0.0,
+                        "title": "Threshold",
+                        "description": "Confidence threshold (0.0-1.0). Lower values return more matches.",
+                        "default": 0.5
+                    },
+                    "include_media": {
+                        "type": "boolean",
+                        "title": "Include Media",
+                        "description": "Whether to include available media types for each match",
+                        "default": true
+                    },
+                    "strategy": {
+                        "type": "string",
+                        "title": "Strategy",
+                        "description": "Matching strategy: 'simple' (fuzzy), 'alias' (database), 'llm' (future), or 'auto' (tries multiple)",
+                        "default": "auto"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "parameters"
+                ],
+                "title": "ParameterMatchRequest",
+                "description": "Request for matching parameter names to database values.",
+                "examples": [
+                    {
+                        "include_media": true,
+                        "parameters": [
+                            "aluminum",
+                            "NH3"
+                        ],
+                        "strategy": "auto",
+                        "threshold": 0.5
+                    },
+                    {
+                        "include_media": false,
+                        "parameters": [
+                            "Al",
+                            "Cu",
+                            "Pb"
+                        ],
+                        "strategy": "alias",
+                        "threshold": 0.7
+                    }
+                ]
+            },
+            "ParameterWithUnit": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Chemical parameter name (e.g., 'Aluminum', 'Copper')"
+                    },
+                    "target_unit": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Target Unit",
+                        "description": "Optional unit to convert result to (e.g., 'mg/L', '\u03bcg/L')"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "title": "ParameterWithUnit",
+                "description": "Parameter name paired with optional target unit for conversion.",
+                "examples": [
+                    {
+                        "name": "Aluminum",
+                        "target_unit": "mg/L"
+                    },
+                    {
+                        "name": "Copper"
+                    }
+                ]
+            },
+            "TimeSeriesData": {
+                "properties": {
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Timestamp"
+                    },
+                    "request_count": {
+                        "type": "integer",
+                        "title": "Request Count"
+                    },
+                    "avg_response_time_ms": {
+                        "type": "number",
+                        "title": "Avg Response Time Ms"
+                    },
+                    "error_count": {
+                        "type": "integer",
+                        "title": "Error Count"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "timestamp",
+                    "request_count",
+                    "avg_response_time_ms",
+                    "error_count"
+                ],
+                "title": "TimeSeriesData",
+                "description": "Time-series data point."
+            },
+            "UsageStatistics": {
+                "properties": {
+                    "total_requests": {
+                        "type": "integer",
+                        "title": "Total Requests",
+                        "description": "Total number of requests"
+                    },
+                    "unique_keys": {
+                        "type": "integer",
+                        "title": "Unique Keys",
+                        "description": "Number of unique API keys used"
+                    },
+                    "avg_response_time_ms": {
+                        "type": "number",
+                        "title": "Avg Response Time Ms",
+                        "description": "Average response time in milliseconds"
+                    },
+                    "error_rate": {
+                        "type": "number",
+                        "title": "Error Rate",
+                        "description": "Percentage of requests that resulted in errors (4xx, 5xx)"
+                    },
+                    "requests_by_status": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Requests By Status",
+                        "description": "Request counts grouped by status code"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "total_requests",
+                    "unique_keys",
+                    "avg_response_time_ms",
+                    "error_rate",
+                    "requests_by_status"
+                ],
+                "title": "UsageStatistics",
+                "description": "Overall API usage statistics."
+            },
+            "UserAgentStatistics": {
+                "properties": {
+                    "user_agent": {
+                        "type": "string",
+                        "title": "User Agent"
+                    },
+                    "total_requests": {
+                        "type": "integer",
+                        "title": "Total Requests"
+                    },
+                    "avg_response_time_ms": {
+                        "type": "number",
+                        "title": "Avg Response Time Ms"
+                    },
+                    "error_count": {
+                        "type": "integer",
+                        "title": "Error Count"
+                    },
+                    "success_rate": {
+                        "type": "number",
+                        "title": "Success Rate"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "user_agent",
+                    "total_requests",
+                    "avg_response_time_ms",
+                    "error_count",
+                    "success_rate"
+                ],
+                "title": "UserAgentStatistics",
+                "description": "Statistics for a specific User-Agent."
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "metadata",
+            "description": "Query available parameters, media types, and data sources"
+        },
+        {
+            "name": "guidelines",
+            "description": "Calculate and search environmental guidelines"
+        }
+    ]
+}
