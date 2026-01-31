@@ -1,0 +1,143 @@
+# JSON Validator CLI
+
+A simple, lightweight command-line tool to validate JSON files and check them against JSON schemas.
+
+## Features
+
+- ✅ Validate JSON file syntax
+- ✅ Validate JSON against JSON Schema
+- ✅ Pretty-print JSON files
+- ✅ Clear error messages
+- ✅ Easy to use CLI interface
+
+## Installation
+
+### Install from PyPI (when published)
+
+```bash
+pip install jsonvalidator-cli
+```
+
+### Install from source
+
+```bash
+git clone https://github.com/bijesh-bits/jsonvalidator.git
+cd jsonvalidator
+pip install -e .
+```
+
+### For development
+
+```bash
+git clone https://github.com/bijesh-bits/jsonvalidator.git
+cd jsonvalidator
+pip install -e ".[dev]"
+```
+
+## Requirements
+
+- Python 3.8 or higher
+- jsonschema library (automatically installed)
+
+## Usage
+
+### Validate JSON syntax
+
+```bash
+jsonvalidator validate data.json
+```
+
+**Example output:**
+```
+✓ 'data.json' is valid JSON
+```
+
+### Validate against a JSON Schema
+
+```bash
+jsonvalidator validate data.json --schema schema.json
+```
+
+**Example output:**
+```
+✓ 'data.json' is valid according to schema 'schema.json'
+```
+
+### Pretty-print JSON
+
+```bash
+jsonvalidator format data.json
+```
+
+You can customize indentation:
+
+```bash
+jsonvalidator format data.json --indent 4
+```
+
+### Show version
+
+```bash
+jsonvalidator version
+```
+
+## Examples
+
+Create a sample JSON file:
+
+```json
+{
+  "name": "John Doe",
+  "age": 30,
+  "email": "john@example.com"
+}
+```
+
+Create a schema file:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {"type": "string"},
+    "age": {"type": "integer"},
+    "email": {"type": "string", "format": "email"}
+  },
+  "required": ["name", "email"]
+}
+```
+
+Then validate:
+
+```bash
+jsonvalidator validate user.json --schema user-schema.json
+```
+
+## Use Cases
+
+- **Quick JSON validation** during development
+- **CI/CD pipelines** - validate configuration files
+- **Data validation** - ensure JSON data meets requirements
+- **Learning tool** - understand JSON Schema validation
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
+
+## Authors
+
+Created by Code-Crafters as part of an Open Source Software course project at BITS Pilani.
+
+## Support
+
+- 🐛 Report bugs: [GitHub Issues](https://github.com/bijesh-bits/jsonvalidator/issues)
+- 💡 Feature requests: [GitHub Issues](https://github.com/bijesh-bits/jsonvalidator/issues)
+- 📖 Documentation: [GitHub Wiki](https://github.com/bijesh-bits/jsonvalidator/wiki)
