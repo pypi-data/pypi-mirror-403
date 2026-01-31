@@ -1,0 +1,143 @@
+Metadata-Version: 2.4
+Name: sigalg
+Version: 0.1.0
+Summary: A Python package for measure-theoretic probability theory.
+Author-email: John Myers <john@johnmyers-phd.com>
+License: MIT License
+        
+        Copyright (c) 2026 John Myers
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:                       
+        
+        The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.                           
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+        
+Project-URL: Repository, https://github.com/jmyers7/sigalg
+Keywords: probability,measure-theory,mathematics,stochastic-processes,martingales,quantitative-finance,sigma-algebra,random-variables,conditional-expectation,brownian-motion,stochastic-calculus,ito-integral,financial-mathematics,option-pricing,risk-neutral-measure
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: matplotlib
+Requires-Dist: scipy
+Requires-Dist: scikit-learn
+Requires-Dist: plotly
+Requires-Dist: pydantic
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: flake8; extra == "dev"
+Requires-Dist: isort; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Dynamic: license-file
+
+# SigAlg
+
+[![codecov](https://codecov.io/gh/jmyers7/sigalg/branch/main/graph/badge.svg?token=DORWUC3G6R)](https://codecov.io/gh/jmyers7/sigalg)
+
+A Python package for finite, measure-theoretic probability theory and stochastic processes. The library emphasizes mathematical fidelity while remaining practical for simulations and numerical experiments.
+
+**This package is under active development. Extensive documentation is coming soon.**
+
+## Installation
+
+```bash
+pip install sigalg
+```
+
+## Quick Examples
+
+Build and simulate a random walk:
+
+```python
+import matplotlib.pyplot as plt
+
+from sigalg.core import Time
+from sigalg.processes import RandomWalk
+
+# Create a random walk with 100 discrete time steps
+T = Time.discrete(length=100)
+X = RandomWalk(p=0.7, time=T)
+
+# Simulate 10 trajectories
+X.from_simulation(n_trajectories=10, random_state=42)
+
+# Plot trajectories
+_, ax = plt.subplots(figsize=(7, 4))
+X.plot_trajectories(ax=ax)
+plt.show()
+```
+
+Compute conditional expectation of a random variable with respect to a $\sigma$-algebra:
+
+```python
+from sigalg.core import (
+    Operators,
+    ProbabilityMeasure,
+    RandomVariable,
+    SampleSpace,
+    SigmaAlgebra,
+)
+
+# Create a sample space with 4 outcomes, labeled 0, 1, 2, 3
+Omega = SampleSpace().from_sequence(size=4)
+
+# Define a probability measure by assigning probabilities to each outcome
+P = ProbabilityMeasure(sample_space=Omega).from_dict(
+    {
+        0: 0.2,  # P(0) = 0.2
+        1: 0.3,  # P(1) = 0.3
+        2: 0.3,  # P(2) = 0.3
+        3: 0.2,  # P(3) = 0.2
+    }
+)
+
+# Define a random variable by assigning values to each outcome
+X = RandomVariable(domain=Omega, name="X").from_dict(
+    {
+        0: 1,  # X(0) = 1
+        1: 2,  # X(1) = 2
+        2: 8,  # X(2) = 8
+        3: 3,  # X(3) = 3
+    }
+)
+
+# Sigma-algebras are defined by partitioning the sample space into atoms
+F = SigmaAlgebra(sample_space=Omega, name="F").from_dict(
+    {
+        0: "A",  # outcome 0 is in atom A
+        1: "A",  # outcome 1 is in atom A
+        2: "B",  # outcome 2 is in atom B
+        3: "B",  # outcome 3 is in atom B
+    }
+)
+
+# Compute conditional expectation E(X|F), which is an instance of `RandomVariable`
+E_X_F = Operators.expectation(rv=X, sigma_algebra=F, probability_measure=P)
+print(E_X_F)
+```
+
+## Documentation
+
+Comprehensive documentation with tutorials, API reference, and mathematical background is coming soon.
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
+
+## Author
+
+[John Myers](https://www.johnmyers-phd.com)
