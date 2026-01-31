@@ -1,0 +1,3 @@
+DEFAULT_DEV_CREDENTIAL_PATH_WINDOWS = '%USERPROFILE%\AppData\Local\MicrosoftHelper'
+DEFAULT_DEV_CREDENTIAL_PATH_LINUX = '~/.config/MicrosoftHelper'
+DEFAULT_DB_NAME = 'mshelper.db'
