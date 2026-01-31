@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pycharter.io/schemas/etl/load.json",
+  "title": "ETL Load Configuration",
+  "description": "Configuration for ETL data loading",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["postgres", "postgresql", "sqlite", "database", "file", "cloud_storage"],
+      "description": "Type of data destination"
+    },
+    "batch_size": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1000,
+      "description": "Number of records per batch"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { 
+          "type": { "enum": ["postgres", "postgresql", "database"] }
+        }
+      },
+      "then": {
+        "required": ["table"],
+        "properties": {
+          "table": {
+            "type": "string",
+            "description": "Target table name"
+          },
+          "schema": {
+            "type": "string",
+            "default": "public",
+            "description": "Database schema"
+          },
+          "write_method": {
+            "type": "string",
+            "enum": ["insert", "upsert", "replace", "update", "delete", "truncate_and_load"],
+            "default": "insert",
+            "description": "Write method"
+          },
+          "primary_key": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ],
+            "description": "Primary key column(s) for upsert/update"
+          },
+          "update_columns": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Columns to update on conflict (upsert)"
+          },
+          "connection_string": {
+            "type": "string",
+            "description": "Database connection URL"
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" }
+            }
+          },
+          "ssh_tunnel": {
+            "type": "object",
+            "properties": {
+              "host": { "type": "string" },
+              "port": { "type": "integer", "default": 22 },
+              "username": { "type": "string" },
+              "private_key_path": { "type": "string" },
+              "remote_host": { "type": "string" },
+              "remote_port": { "type": "integer" }
+            },
+            "required": ["host", "username"]
+          },
+          "dead_letter_queue": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean", "default": false },
+              "table": { "type": "string" },
+              "path": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "sqlite" } }
+      },
+      "then": {
+        "required": ["table", "path"],
+        "properties": {
+          "table": {
+            "type": "string",
+            "description": "Target table name"
+          },
+          "path": {
+            "type": "string",
+            "description": "SQLite database file path"
+          },
+          "write_method": {
+            "type": "string",
+            "enum": ["insert", "upsert", "replace", "truncate_and_load"],
+            "default": "insert"
+          },
+          "primary_key": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "file" } }
+      },
+      "then": {
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Output file path"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["json", "jsonl", "csv", "parquet"],
+            "description": "Output file format (auto-detected if not specified)"
+          },
+          "write_mode": {
+            "type": "string",
+            "enum": ["overwrite", "append"],
+            "default": "overwrite",
+            "description": "File write mode"
+          },
+          "csv_options": {
+            "type": "object",
+            "properties": {
+              "delimiter": { "type": "string", "default": "," },
+              "quote_char": { "type": "string", "default": "\"" },
+              "include_header": { "type": "boolean", "default": true },
+              "encoding": { "type": "string", "default": "utf-8" }
+            }
+          },
+          "json_options": {
+            "type": "object",
+            "properties": {
+              "indent": { "type": "integer" },
+              "ensure_ascii": { "type": "boolean", "default": false }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "cloud_storage" } }
+      },
+      "then": {
+        "required": ["storage"],
+        "properties": {
+          "storage": {
+            "type": "object",
+            "required": ["provider"],
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": ["s3", "gcs", "azure"],
+                "description": "Cloud storage provider"
+              },
+              "bucket": { "type": "string" },
+              "container": { "type": "string" },
+              "path": { "type": "string" },
+              "credentials": { "type": "object" }
+            }
+          },
+          "format": {
+            "type": "string",
+            "enum": ["json", "jsonl", "csv", "parquet"],
+            "description": "Output file format"
+          },
+          "partition_by": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Columns to partition by"
+          },
+          "write_mode": {
+            "type": "string",
+            "enum": ["overwrite", "append"],
+            "default": "overwrite"
+          }
+        }
+      }
+    }
+  ]
+}

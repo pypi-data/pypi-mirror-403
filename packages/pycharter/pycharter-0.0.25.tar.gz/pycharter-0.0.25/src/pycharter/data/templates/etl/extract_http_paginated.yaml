@@ -1,0 +1,79 @@
+# Template: HTTP/API Extraction with Pagination
+# Copy to your pipeline directory as extract.yaml
+#
+# Supported pagination strategies:
+#   - page: Page number pagination (?page=1, ?page=2)
+#   - offset: Offset pagination (?offset=0, ?offset=100)
+#   - cursor: Cursor-based pagination (response contains next_cursor)
+#   - next_url: URL-based pagination (response contains next URL)
+#   - link_header: RFC 5988 Link header pagination
+
+title: http_paginated_extraction
+description: Extract from HTTP API with pagination
+version: "1.0.0"
+
+# Source type (required)
+type: http
+
+base_url: https://api.example.com
+api_endpoint: /v1/users
+method: GET
+
+params:
+  api_key: ${API_KEY}
+  limit: 100  # Records per page
+
+headers:
+  Accept: application/json
+
+batch_size: 1000
+response_format: json
+response_path: data.items  # Path to data array in response
+
+# Pagination configuration
+pagination:
+  enabled: true
+
+  # Strategy: page | offset | cursor | next_url | link_header
+  strategy: page
+
+  # Page-based pagination
+  page:
+    param_name: page     # Query param name
+    start: 1             # Starting page number
+    increment: 1         # Page increment
+
+  # Offset-based pagination (uncomment to use)
+  # offset:
+  #   param_name: offset
+  #   start: 0
+  #   increment_by: limit  # or a number like 100
+
+  # Cursor-based pagination (uncomment to use)
+  # cursor:
+  #   param_name: cursor
+  #   response_path: meta.next_cursor  # Path to cursor in response
+
+  # URL-based pagination (uncomment to use)
+  # next_url:
+  #   response_path: links.next  # Path to next URL in response
+
+  # Stop conditions
+  stop_conditions:
+    - type: fewer_records  # Stop when page returns fewer records than limit
+    - type: max_pages
+      value: 100           # Maximum pages to fetch
+    # - type: max_records
+    #   value: 10000       # Maximum total records
+    # - type: empty_response
+
+  # Delay between page requests (seconds)
+  page_delay: 0.1
+
+retry:
+  max_attempts: 3
+  backoff_factor: 2
+
+timeout:
+  connect: 10
+  read: 30

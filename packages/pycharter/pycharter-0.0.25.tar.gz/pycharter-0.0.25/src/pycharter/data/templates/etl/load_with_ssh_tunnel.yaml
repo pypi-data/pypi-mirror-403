@@ -1,0 +1,35 @@
+# Template: Load to Database via SSH Tunnel
+# Copy to your pipeline directory as load.yaml
+# Use when database is only accessible through a bastion/jump host
+
+title: load_ssh_tunnel
+description: Load to database through SSH tunnel
+version: "1.0.0"
+
+# Target type (required)
+type: postgres
+
+table: my_table
+schema: public
+write_method: upsert
+primary_key: id
+batch_size: 1000
+
+# Database connection (use localhost since tunnel forwards)
+database:
+  url: postgresql://user:pass@localhost:5433/database
+
+# SSH tunnel configuration
+ssh_tunnel:
+  enabled: true
+  host: bastion.example.com
+  port: 22
+  username: ${SSH_USER}
+  key_file: ~/.ssh/id_rsa
+
+  # Remote database endpoint
+  remote_host: db.internal.example.com
+  remote_port: 5432
+
+  # Local port for tunnel
+  local_port: 5433

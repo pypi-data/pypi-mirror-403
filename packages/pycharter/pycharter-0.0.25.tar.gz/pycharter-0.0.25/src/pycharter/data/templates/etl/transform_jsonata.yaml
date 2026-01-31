@@ -1,0 +1,51 @@
+# Template: JSONata Transformation
+# Copy to your pipeline directory as transform.yaml
+# Requires: pip install pyjsonata
+#
+# JSONata is a query and transformation language for JSON
+# Docs: https://jsonata.org/
+
+title: jsonata_transformation
+description: Transform data using JSONata expressions
+version: "1.0.0"
+
+# Mode: record (per-record) or batch (all records at once)
+jsonata:
+  mode: record
+
+  # JSONata expression
+  # Available variables:
+  #   $ - current record (in record mode) or array (in batch mode)
+  #   $now() - current timestamp
+  #   $uuid() - generate UUID
+
+  expression: |
+    {
+      "id": id,
+      "full_name": firstName & " " & lastName,
+      "email": $lowercase(email),
+      "age": $number(age),
+      "is_adult": age >= 18,
+      "tags": $split(tags_string, ","),
+      "created_at": $now()
+    }
+
+# Example: Batch mode for aggregations
+# jsonata:
+#   mode: batch
+#   expression: |
+#     {
+#       "total_records": $count($),
+#       "total_amount": $sum($.amount),
+#       "records": $
+#     }
+
+# Example: Filter and transform
+# jsonata:
+#   mode: batch
+#   expression: |
+#     $[status = "active"].{
+#       "id": id,
+#       "name": name,
+#       "score_normalized": score / 100
+#     }

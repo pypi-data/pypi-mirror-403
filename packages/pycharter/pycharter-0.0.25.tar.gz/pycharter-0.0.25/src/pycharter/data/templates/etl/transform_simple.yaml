@@ -1,0 +1,59 @@
+# Template: Simple Transformations
+# Copy to your pipeline directory as transform.yaml
+#
+# Transformation order: rename → convert → defaults → add → select → drop
+#
+# Usage with Pipeline:
+#   pipeline = (
+#       Pipeline(HTTPExtractor(...))
+#       | Rename({"old": "new"})
+#       | Convert({"price": float})
+#       | PostgresLoader(...)
+#   )
+
+title: simple_transformation
+description: Rename, convert, defaults, add, select, drop
+version: "1.0.0"
+
+transform:
+  # Rename fields
+  rename:
+    oldFieldName: new_field_name
+    userId: user_id
+    createdAt: created_at
+
+  # Convert field types
+  # Supported: int, integer, float, str, string, bool, boolean, datetime
+  convert:
+    price: float
+    quantity: int
+    is_active: bool
+    created_at: datetime
+
+  # Set default values for missing/null fields
+  defaults:
+    status: "pending"
+    region: "unknown"
+    count: 0
+
+  # Add new computed fields
+  # Supported expressions: ${field}, now(), uuid(), literal values
+  add:
+    full_name: "${first_name} ${last_name}"
+    processed_at: "now()"
+    record_id: "uuid()"
+    source: "api"
+
+  # Keep only these fields (omit to keep all)
+  select:
+    - id
+    - user_id
+    - full_name
+    - email
+    - status
+    - processed_at
+
+  # Remove these fields (applied after select)
+  drop:
+    - _internal_id
+    - _metadata

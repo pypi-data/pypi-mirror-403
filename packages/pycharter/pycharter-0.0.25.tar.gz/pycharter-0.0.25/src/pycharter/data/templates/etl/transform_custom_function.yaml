@@ -1,0 +1,58 @@
+# Template: Custom Function Transformation
+# Copy to your pipeline directory as transform.yaml
+#
+# Calls a Python function for complex transformations
+#
+# Your function signature:
+#   def my_transform(records: List[Dict], **kwargs) -> List[Dict]:
+#       return [transform_record(r) for r in records]
+
+title: custom_function_transformation
+description: Call custom Python function for transformation
+version: "1.0.0"
+
+transform:
+  # Simple operations applied first (optional)
+  rename:
+    userId: user_id
+
+  # Custom function called after simple operations
+  custom_function:
+    # Python module path (relative to working directory or installed package)
+    module: mypackage.transforms
+    # Function name to call
+    function: transform_records
+    # Optional keyword arguments passed to function
+    kwargs:
+      validate: true
+      enrich: true
+      default_region: "US"
+
+# Example custom function implementation:
+#
+# # mypackage/transforms.py
+# from typing import Any, Dict, List
+#
+# def transform_records(
+#     records: List[Dict[str, Any]],
+#     validate: bool = False,
+#     enrich: bool = False,
+#     default_region: str = "US",
+# ) -> List[Dict[str, Any]]:
+#     """Transform a batch of records."""
+#     result = []
+#     for record in records:
+#         # Add region if missing
+#         if "region" not in record:
+#             record["region"] = default_region
+#
+#         # Enrich with computed fields
+#         if enrich:
+#             record["full_name"] = f"{record.get('first', '')} {record.get('last', '')}".strip()
+#
+#         # Validate and skip invalid records
+#         if validate and not record.get("id"):
+#             continue
+#
+#         result.append(record)
+#     return result
