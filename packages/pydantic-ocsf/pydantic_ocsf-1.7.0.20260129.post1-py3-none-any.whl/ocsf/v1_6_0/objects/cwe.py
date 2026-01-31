@@ -1,0 +1,29 @@
+"""CWE object."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import Field
+
+from ocsf._base import OCSFBaseModel
+
+
+class Cwe(OCSFBaseModel):
+    """The CWE object represents a weakness in a software system that can be exploited by a threat actor to perform an attack. The CWE object is based on the <a target='_blank' href='https://cwe.mitre.org/'>Common Weakness Enumeration (CWE)</a> catalog.
+
+    See: https://schema.ocsf.io/1.6.0/objects/cwe
+    """
+
+    uid: str = Field(
+        ...,
+        description='The Common Weakness Enumeration unique number assigned to a specific weakness. A CWE Identifier begins "CWE" followed by a sequence of digits that acts as a unique identifier. For example: <code>CWE-123</code>.',
+    )
+    caption: str | None = Field(
+        default=None,
+        description="The caption assigned to the Common Weakness Enumeration unique identifier.",
+    )
+    src_url: Any | None = Field(
+        default=None,
+        description="URL pointing to the CWE Specification. For more information see <a target='_blank' href='https://cwe.mitre.org/'>CWE.</a>",
+    )
