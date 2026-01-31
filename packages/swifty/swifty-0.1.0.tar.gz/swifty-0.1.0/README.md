@@ -1,0 +1,78 @@
+# 🛠 Swifty Wallet SDK
+
+**Swifty SDK** is a powerful, developer-friendly framework designed to simplify financial data integration and infrastructure management. Developed by ***Swifty Labs***, it serves as the core engine for high-speed rate aggregation, seamless API interaction, and modern UI components.
+
+## Installation
+```python
+pip install swifty
+```
+
+## 🚀 Project Status
+Currently in **Pre-Alpha (v0.1.0)**. Active development focuses on core stability, multi-chain expansion, and high-performance indexing. The stable v1.0.0 release with full API documentation is expected in 2026-2027.
+
+## 🌟 Key Features
+
+### 📊 Advanced Rate Aggregation
+- **Multichain Intelligence**: *Full support for token architectures across **TON, Solana, Ethereum, and more**. Developers have total control over selecting specific networks and assets for monitoring.*
+- **Hybrid Pricing**: *Aggregation of market data from both **CEX** (Binance, Bybit) and **DEX** (via GeckoTerminal).*
+- **Forex Engine**: *Automated conversion between cryptocurrencies and global fiat currencies.*
+
+### 🔒 Security & Key Management
+- **Mnemonic-Based Infrastructure**: *Built-in logic for the secure generation and management of individual user mnemonic phrases.*
+- **Local Sovereignty**: *All cryptographic operations and key handlings are performed locally on your device.*
+- **Isolated Asset Logic**: *High-precision balance tracking and invoicing designed for both personal and multi-user architectures.*
+
+### ⚡ Performance & Reliability
+- **Anti-Ban Protection**: *Built-in 10-second global cooldown to prevent API rate-limiting and IP bans.*
+- **Forex Caching**: *Optimized 1-hour local cache for fiat rates to minimize external API dependency and increase speed.*
+- **Async-First Core**: *Fully asynchronous architecture powered by `aiohttp` for non-blocking execution.*
+
+### 🎨 Frontend Integration
+- **Mini App Optimized**: *Tailored for seamless integration with **Telegram Mini App (TMA)** interfaces.*
+- **UI Logic Ready**: *Pre-designed data structures to power responsive price charts, balances, and payment statuses.*
+
+## 🛠 Usage example SwiftyRates
+```python
+import asyncio
+from swifty import SwiftyRates
+
+# Initialize engine globally
+engine = SwiftyRates(
+    assets={
+        'ton': ['ton', 'not', 'evaa'],
+        'solana': ['sol', 'bonk', 'usdt'],
+        'bsc': ['bnb', 'cake']
+    },
+    fiats=['usd', 'gbp', 'eur']
+)
+
+def format_currency(value: float) -> str:
+    try:
+        val = float(value)
+        if val == 0: return "0.00"
+        if val < 0.01:
+            return f"{val:.6f}" 
+        return f"{val:,.2f}".replace(",", " ")
+    except Exception:
+        return "0.00"
+
+async def main():
+    print("[ 🔄 ] Updating rates from all providers...")
+    
+    success = await engine.update()
+
+    if success:
+        print("[ ✅ ] Rates synchronized successfully!")
+        
+        print(
+            "[ 📊 ] Current Market Prices:\n"
+            f"   └ [ TON: {format_currency(engine.get_price('ton'))}$ | BNB: {format_currency(engine.get_price('bnb'))}$ | SOL: {format_currency(engine.get_price('sol'))}$ ]\n"
+            f"   └ [ NOT: {format_currency(engine.get_price('not'))}$ | EVAA: {format_currency(engine.get_price('evaa'))}$ ]\n"
+            f"   └ [ BONK: {format_currency(engine.get_price('bonk'))}$ | USDT: {format_currency(engine.get_price('usdt'))}$ ]\n"
+            f"   └ [ CAKE: {format_currency(engine.get_price('cake'))}$ ]"
+        )
+    else:
+        print("[ ❌ ] Failed to update rates. Check your internet connection or API limits.")
+
+asyncio.run(main())
+```
