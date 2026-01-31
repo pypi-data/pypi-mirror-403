@@ -1,0 +1,962 @@
+# Multifactor ADK Backend
+
+[![Development Status](https://img.shields.io/badge/status-in%20development-yellow)](https://github.com/MultifactorAI/multifactor-adk-backend)
+
+An AI-powered engineering document processing pipeline that intelligently analyzes hardware engineering documents including schematics, datasheets, BOMs, and netlists. Built with Google's Gemini models, the system extracts structured data, generates documentation, and enables semantic search across processed documents.
+
+## 🚀 Features
+
+- **CLI-Based Pipeline**: Process entire directories of engineering documents with a single command
+- **Intelligent Document Analysis**: Automated classification, text extraction, and schema mapping
+- **BOM Generation**: Extract components from schematics and generate CSV Bill of Materials
+- **Datasheet Enrichment**: Automatically download component datasheets from BOMs
+- **Cheat Sheet Generation**: AI-generated documentation for MCU datasheets, errata, debug setup, and functional blocks
+- **RAG-Powered Queries**: Query processed documents using ChromaDB-backed Retrieval-Augmented Generation
+- **Web UI**: Interactive interface for document processing and agent interaction (optional)
+- **File Type Support**: PDF, EDIF, PADS, KiCad netlists, CSV BOMs, and more
+
+## 📋 Table of Contents
+
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Uninstalling](#uninstalling)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [MCP Server](#mcp-server)
+- [Pipeline](#pipeline)
+- [Output Directories](#output-directories)
+- [Data Storage](#data-storage)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+
+## 🚀 Quick Start
+
+**New to mfcli?** Check out our **[Quick Start Guide](QUICKSTART.md)** for step-by-step instructions to get up and running in minutes!
+
+The Quick Start Guide covers:
+- ✅ Installing Cline for VS Code
+- ✅ Installing mfcli with pipx (recommended)
+- ✅ Setting up API keys
+- ✅ Creating your first project
+- ✅ Processing your hardware documents
+- ✅ Querying your knowledge base with AI
+- ✅ Currently unsupported features and workarounds
+
+**[👉 Go to Quick Start Guide →](QUICKSTART.md)**
+
+---
+
+## 🏗️ Architecture
+
+The system uses a streamlined architecture with a single controller agent that orchestrates a sequential processing pipeline:
+
+```
+Controller Agent
+├── Tools:
+│   ├── run (Sequential pipeline execution)
+│   └── query_knowledgebase (RAG-based document queries)
+│
+└── Pipeline Stages:
+    ├── Pre-processing
+    │   ├── File classification & validation
+    │   ├── Text extraction
+    │   ├── Document sub-type detection (uses LLM when needed)
+    │   ├── Schema mapping (for structured documents)
+    │   ├── Data parsing
+    │   └── Data enrichment
+    │
+    └── Analysis & Generation
+        ├── Netlist-to-BOM mapping
+        └── File generation:
+            ├── BOM CSV files
+            └── JSON cheat sheets (MCU, errata, debug setup, functional blocks)
+```
+
+The pipeline processes files sequentially, making LLM calls only when necessary for tasks like document sub-classification and schema mapping, rather than using a hierarchy of sub-agents.
+
+## 📦 Prerequisites
+
+- **Python 3.12+**
+- **Required API Keys**:
+  - Google API Key (for Gemini models)
+  - OpenAI API Key (for embeddings)
+  - LlamaParse Cloud API Key (for document parsing)
+  - DigiKey API credentials (client ID & secret, for datasheet downloads)
+  - AWS credentials (for S3 storage, optional)
+- **Database**: SQLite (automatically managed)
+
+## 🔧 Installation
+
+### Quick Install (Recommended)
+
+The easiest way to install mfcli is using our automated installation script with **pipx**, which provides isolated dependency management while making the CLI globally available.
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/MultifactorAI/multifactor-adk-backend/main/install.ps1 | iex
+```
+
+**Linux/macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/MultifactorAI/multifactor-adk-backend/main/install.sh | bash
+```
+
+The script will:
+- ✅ Check Python 3.12 installation
+- ✅ Install pipx if needed
+- ✅ Install mfcli with isolated dependencies
+- ✅ Set up configuration directory
+- ✅ Make `mfcli` and `mfcli-mcp` commands globally available
+
+### Manual Installation
+
+If you prefer manual installation or the script doesn't work:
+
+#### Using pipx (Recommended)
+
+```bash
+# Install pipx if not already installed
+python -m pip install --user pipx
+python -m pipx ensurepath
+
+# Install mfcli from GitHub
+pipx install git+https://github.com/MultifactorAI/multifactor-adk-backend.git
+
+# Or install from PyPI (once published)
+pipx install mfcli
+```
+
+**Why pipx?**
+- ✅ Isolated dependencies - no conflicts with other Python packages
+- ✅ Global CLI access - available in any terminal
+- ✅ No virtual environment activation needed
+- ✅ MCP server compatible - works with external tools like Cline
+- ✅ Easy updates: `pipx upgrade mfcli`
+
+#### Using pip (For Development)
+
+```bash
+# Clone the repository
+git clone https://github.com/MultifactorAI/multifactor-adk-backend.git
+cd multifactor-adk-backend
+
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+
+# Install in development mode
+pip install -e .
+```
+
+**Note**: If you plan to use the MCP server with Cline/Claude Code, install with pipx instead to ensure global availability.
+
+### Verify Installation
+
+After installation, verify everything is working:
+
+```bash
+# Check mfcli is installed
+mfcli --help
+
+# Run system health check
+mfcli doctor
+```
+
+## 🗑️ Uninstalling
+
+If you need to uninstall mfcli, we provide automated scripts and tools to ensure a clean removal.
+
+### Important: Stop MCP Server First
+
+**Before uninstalling**, you must stop the MCP server if it's running. The MCP server (`mfcli-mcp`) runs as a background process when used with Cline or Claude Code. If it's still running, pipx cannot delete the virtual environment due to file locks.
+
+### Quick Pre-Uninstall Check
+
+Run this command to check for running processes and get uninstall guidance:
+
+```bash
+mfcli pre-uninstall
+```
+
+This will:
+- ✅ Check for running mfcli-mcp processes
+- ⚠️ Warn you if processes are still running
+- 📋 Provide step-by-step uninstall instructions
+
+### Automated Uninstall (Recommended)
+
+**Windows:**
+```powershell
+.\uninstall.ps1
+```
+
+**Linux/macOS:**
+```bash
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+The scripts will:
+- Check for running processes
+- Offer to stop them automatically
+- Uninstall mfcli via pipx
+- Fallback to manual cleanup if needed
+- Preserve your configuration data in `~/Multifactor`
+
+### Manual Uninstall
+
+1. **Close your IDE** (VS Code, Cline, etc.) to stop the MCP server
+2. **Wait 5-10 seconds** for processes to fully terminate
+3. **Run pipx uninstall**:
+
+```bash
+pipx uninstall mfcli
+```
+
+### Troubleshooting Permission Errors
+
+If you get "Access is denied" or "Permission denied" errors:
+
+1. **The MCP server is still running** - Close your IDE completely
+2. **Wait 10 seconds** for background processes to terminate
+3. **Check Task Manager/Activity Monitor** for remaining python processes
+4. **Use the uninstall script** which can force-stop processes
+5. **Restart your computer** if processes won't stop
+
+### Complete Documentation
+
+For detailed uninstall instructions, troubleshooting, and data removal:
+
+📖 **See [UNINSTALL.md](UNINSTALL.md)** for complete uninstallation guide
+
+**Note**: Uninstalling mfcli does NOT delete your configuration and data files in `~/Multifactor`. This preserves your API keys and project data for future reinstallation.
+
+## ⚙️ Configuration
+
+### Interactive Configuration Wizard (Recommended)
+
+The easiest way to configure mfcli is using the interactive wizard:
+
+```bash
+mfcli configure
+```
+
+This will guide you through setting up all required API keys with:
+- 🔗 Direct links to get each API key
+- ✅ Automatic validation of API keys
+- 📝 Smart defaults for vectorization settings
+- 💾 Automatic saving to the correct location
+
+### Manual Configuration
+
+Alternatively, create a `.env` file at:
+
+**Windows:** `C:\Users\<username>\Multifactor\.env`  
+**macOS/Linux:** `~/Multifactor/.env`
+
+```ini
+# API Keys (Required)
+google_api_key=your_google_api_key
+openai_api_key=your_openai_api_key
+llama_cloud_api_key=your_llamaparse_api_key
+digikey_client_id=your_digikey_client_id
+digikey_client_secret=your_digikey_client_secret
+
+# Vector Database Configuration
+chunk_size=1000
+chunk_overlap=200
+embedding_model=text-embedding-3-small
+embedding_dimensions=1536
+```
+
+### Check Configuration
+
+To verify your configuration at any time:
+
+```bash
+# Check configuration status
+mfcli configure --check
+
+# Run comprehensive system check
+mfcli doctor
+```
+
+### Required API Keys & How to Get Them
+
+- **Google API Key**: [Google AI Studio](https://aistudio.google.com/app/apikey)
+- **OpenAI API Key**: [OpenAI Platform](https://platform.openai.com/api-keys)
+- **LlamaParse API Key**: [LlamaIndex Cloud](https://cloud.llamaindex.ai/)
+- **DigiKey API**: [DigiKey Developer Portal](https://developer.digikey.com/)
+- **AWS Credentials**: [AWS IAM Console](https://console.aws.amazon.com/iam/) (optional)
+
+**Tip:** The `mfcli configure` wizard provides these links interactively and validates your keys!
+
+## 🚀 Usage
+
+### Command-Line Interface
+
+#### Getting Started with a Project
+
+To analyze hardware design files, follow these steps:
+
+**1. Navigate to your hardware design files directory:**
+
+```bash
+cd C:\Projects\hardware\board_v1
+```
+
+**2. Initialize the project:**
+
+```bash
+mfcli init
+```
+
+You'll be prompted to enter a project name (3-45 characters, alphanumeric with underscores/hyphens allowed). If your directory is a git repository, the repository name will be suggested as the default - simply press Enter to accept it or type a different name. This creates a `multifactor/` folder at the git root (or current directory) containing:
+- `design/` - **Place your hardware design files here for processing**
+- `config.json` - Project configuration with your project name
+- `file_docket.json` - File tracking and metadata
+- `generated_files/`, `hw_cheat_sheets/`, `data_sheets/`, etc. - Output folders
+
+**3. Place your files in the design folder:**
+
+```bash
+# Copy or move your hardware design files to the design folder
+# Example for git repo at C:\git\my-project\:
+copy *.pdf C:\git\my-project\multifactor\design\
+copy *.csv C:\git\my-project\multifactor\design\
+```
+
+**4. Run the pipeline:**
+
+```bash
+mfcli run
+```
+
+This will:
+- Process all supported files in the `multifactor/design/` directory
+- Skip files that have already been processed (matching MD5 checksum)
+- Prompt for confirmation if a file has been modified (different MD5)
+- Generate BOM CSV files (if schematics are found)
+- Download datasheets for BOM components
+- Generate cheat sheets for MCU datasheets, errata, and schematics
+- Store vector embeddings for RAG queries
+
+#### File Change Detection
+
+The pipeline tracks files using MD5 checksums stored in `multifactor/file_docket.json`. When you run the pipeline:
+
+- **New files**: Automatically processed
+- **Unchanged files**: Skipped (MD5 matches previous run)
+- **Modified files**: You'll be prompted:
+  ```
+  ======================================================================
+  File has been modified: schematic.pdf
+  Path: C:\Projects\hardware\board_v1\schematic.pdf
+  Old MD5: abc123...
+  New MD5: def456...
+  ======================================================================
+  Do you want to delete the old file data and process the new version? (yes/no):
+  ```
+  
+  - Answer **yes** to remove old data from the knowledge base and reprocess
+  - Answer **no** to skip the file and keep the old version
+
+This ensures efficient processing by only analyzing new or changed files, while maintaining data consistency in the knowledge base.
+
+### CLI Commands Reference
+
+The `mfcli` tool provides the following commands:
+
+- **`mfcli init`** - Initialize a new project in the current directory
+- **`mfcli run`** - Run the analysis pipeline on the current directory
+- **`mfcli web [--port PORT]`** - Start the web UI (default port: 9999)
+- **`mfcli add FILE [--purpose PURPOSE]`** - Add a file to ChromaDB knowledge base
+- **`mfcli ls`** - List all files that have been vectorized into the knowledge base
+- **`mfcli rm FILENAME [--yes]`** - Remove files from the knowledge base by filename
+- **`mfcli configure [--check]`** - Interactive setup wizard to configure API keys and settings
+- **`mfcli log-level LEVEL`** - Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- **`mfcli setup-mcp`** - Auto-configure MCP server for Cline and Claude Code
+- **`mfcli doctor`** - Run system health checks and diagnose issues
+- **`mfcli clean [--accept] [--all]`** - Clean all mfcli app data
+- **`mfcli pre-uninstall`** - Check for running processes before uninstallation
+
+#### Configure Logging Level
+
+Set the logging verbosity level for mfcli operations:
+
+```bash
+# Set to DEBUG for detailed troubleshooting
+mfcli log-level DEBUG
+
+# Set to INFO for normal operation (default)
+mfcli log-level INFO
+
+# Set to WARNING to only see warnings and errors
+mfcli log-level WARNING
+
+# Set to ERROR to only see errors
+mfcli log-level ERROR
+
+# Set to CRITICAL for only critical errors
+mfcli log-level CRITICAL
+```
+
+The log level setting is stored in your configuration file (`~/Multifactor/.env`) and will take effect on the next mfcli command. This is particularly useful when:
+- **DEBUG**: Troubleshooting issues or understanding detailed pipeline operations
+- **INFO**: Normal day-to-day operation with informative messages
+- **WARNING**: Production use where you only want to see potential issues
+- **ERROR**: When you only care about actual errors
+
+**Example:**
+```bash
+# Enable detailed logging for troubleshooting
+mfcli log-level DEBUG
+
+# Run the pipeline with verbose output
+mfcli run
+
+# Return to normal logging
+mfcli log-level INFO
+```
+
+#### Start Web UI
+
+Launch the interactive web interface:
+
+```bash
+mfcli web
+```
+
+**With custom port:**
+```bash
+mfcli web --port 8080
+```
+
+The web UI will be available at `http://localhost:9999/dev-ui/` (or your specified port).
+
+### Web UI Usage
+
+The web interface allows you to:
+- Upload and process individual files
+- Run the pipeline on directories
+- Query processed documents using natural language
+- View processing status and results
+
+**Example queries in web UI:**
+- "What components are in the processed schematic?"
+- "Tell me about the voltage ratings in the last datasheet"
+- "What are the errata for this MCU?"
+
+## 🔌 MCP Server
+
+This package includes a **Model Context Protocol (MCP) server** that exposes tools for AI assistants and development environments like Cline/Claude to interact with your engineering documentation knowledge base.
+
+### What is MCP?
+
+The Model Context Protocol (MCP) is a standard that allows AI assistants to securely access external tools and data sources. The mfcli MCP server provides AI-powered access to your processed engineering documents through the local ChromaDB vector database.
+
+### Available Tools
+
+The MCP server exposes the following tool:
+
+#### `query_local_rag`
+
+Query the local hardware knowledge base of processed engineering documents using natural language.
+
+**Parameters:**
+- `query` (required): Your search query (e.g., "MSPM0L130x", "power management", "IEC 61000-4-2")
+- `project_name` (optional): The name of the project to query. If not provided, uses the last known project name from previous queries.
+- `n_results` (optional): Number of results to return (1-20, default: 8)
+
+**Returns:**
+- Document chunks matching your query
+- Metadata (file names, document types)
+- Similarity scores (lower distance = more relevant)
+- ChromaDB database path
+- Project name that was used for the query
+
+**Note:** The function automatically remembers the last project name used, so you only need to specify `project_name` for the first query or when switching between projects.
+
+**Example queries:**
+- "MSPM0L130x specifications"
+- "What are the voltage requirements?"
+- "MCU pin configurations"
+- "Component datasheets for capacitors"
+
+### Configuration for Cline/Claude
+
+To use the MCP server with Cline (or other MCP-compatible clients), add the following configuration to your MCP settings file:
+
+**Configuration Location:**
+- **VS Code (Cline)**: `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`
+- **Cline standalone**: `~/.cline/mcp_settings.json`
+
+**Configuration:**
+
+```json
+{
+  "mcpServers": {
+    "mfcli-mcp": {
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "mfcli.mcp.server"]
+    }
+  }
+}
+```
+
+### Setup Instructions
+
+1. **Install mfcli system-wide** (see Installation section above):
+   ```bash
+   pip install .
+   ```
+
+2. **Process your engineering documents** to populate the knowledge base:
+   ```bash
+   cd /path/to/hardware/files
+   mfcli init
+   mfcli run
+   ```
+
+3. **Add the MCP configuration** to your Cline/Claude settings file (see Configuration above)
+
+4. **Restart Cline/Claude** to load the MCP server
+
+5. **Use the tool** in your AI assistant:
+   - Ask questions like: "Query the local RAG for MSPM0L130x in project test"
+   - The assistant will use the `query_local_rag` tool to search your documents
+
+### Troubleshooting MCP Server
+
+**Error**: `Module 'mfcli' not found`
+- **Solution**: Ensure mfcli is installed system-wide (not just in a virtual environment)
+  ```bash
+  deactivate  # Exit any virtual environment
+  pip install .
+  ```
+
+**Error**: `ChromaDB directory not found`
+- **Solution**: Run the pipeline at least once to create the vector database:
+  ```bash
+  mfcli init
+  mfcli run
+  ```
+
+**Error**: `MCP server timeout`
+- **Solution**: Increase the timeout value in your MCP settings (default: 60 seconds)
+
+**Server not connecting:**
+- Verify the MCP server configuration in your settings file
+- Check that Python is in your system PATH
+- Restart your IDE/editor after updating MCP settings
+
+### MCP Server Architecture
+
+The MCP server is implemented in `mfcli/mcp/` with the following structure:
+
+```
+mfcli/mcp/
+├── server.py              # MCP server entry point
+├── mcp_instance.py        # MCP server instance and tool definitions
+└── tools/
+    └── query_knowledgebase.py  # RAG query implementation
+```
+
+The server connects to your local ChromaDB instance (located in your system's application data directory) and provides semantic search capabilities over all processed engineering documents.
+
+## 🔄 Pipeline
+
+The pipeline processes engineering documents in two main phases:
+
+### Phase 1: Pre-processing
+
+For each file in the input directory:
+
+1. **Classification & Validation** (`classifier.py`)
+   - Determines file type (PDF, EDIF, CSV, etc.)
+   - Validates file integrity and MIME type
+   - Checks file size limits
+
+2. **Gemini File Upload** (PDFs only)
+   - Uploads PDF files to Gemini's Files API for vision-based processing
+
+3. **Text Extraction** (`extractor.py`)
+   - Extracts text content from documents
+   - Handles various formats (PDF, netlist formats, CSV)
+
+4. **Sub-type Classification** (`sub_classifier.py`)
+   - Determines document sub-type (e.g., schematic, BOM, datasheet, MCU datasheet, errata)
+   - Uses LLM analysis when necessary
+
+5. **Schema Mapping** (`schema_mapper.py`)
+   - Maps document structure to database schemas
+   - Skipped for schemaless files like schematics
+
+6. **Data Parsing** (`parser.py`)
+   - Parses structured data from documents
+   - Stores in SQLite database
+
+7. **Data Enrichment** (`data_enricher.py`)
+   - Enriches parsed data with additional information
+   - Downloads component datasheets for BOM entries
+
+### Phase 2: Analysis & Generation
+
+After all files are pre-processed:
+
+1. **Netlist-to-BOM Mapping** (`bom_netlist_mapper.py`)
+   - Maps netlist components to BOM entries
+   - Correlates design files with component lists
+
+2. **File Generation** (`generator.py`)
+   - **BOM CSV**: Extracts components from schematics, generates CSV with reference, value, quantity, manufacturer, MPN, description
+   - **Cheat Sheets**: Generates JSON cheat sheets for:
+     - MCU datasheets (register maps, peripherals, specs)
+     - MCU errata (known issues, workarounds)
+     - Debug setup (pin configurations, debugging instructions)
+     - Functional blocks (system architecture, block diagrams)
+
+### Supported File Types
+
+- **PDF**: Schematics, datasheets, MCU documentation, errata sheets
+- **EDIF**: Electronic Design Interchange Format netlists
+- **PADS**: PADS ASCII netlist format
+- **KiCad**: Legacy netlist (.net), SPICE circuit (.cir), and schematic (.kicad_sch) formats
+- **CSV**: Bill of Materials files
+
+## 📂 Output Directories
+
+The pipeline creates directories in two locations:
+
+### 1. User Application Data
+
+Platform-specific storage for global application data:
+
+**Windows:**
+```
+C:\Users\<username>\AppData\Local\Multifactor\
+└── chromadb/              # Vector embeddings database
+```
+
+**macOS:**
+```
+/Users/<username>/Library/Application Support/Multifactor/
+└── chromadb/              # Vector embeddings database
+```
+
+**Linux:**
+```
+~/.local/share/Multifactor/
+└── chromadb/              # Vector embeddings database
+```
+
+**Contents:**
+- `chromadb/` - Vector embeddings of processed documents for RAG queries
+
+### 2. Project Output Directories
+
+Created within a **"multifactor"** folder at the **git repository root** if you're in a git repo, or in the **current directory** if not:
+
+```
+<git_root_or_current_directory>/
+└── multifactor/                 # Parent folder for all project files and outputs
+    ├── config.json              # Project configuration (project name, etc.)
+    ├── file_docket.json         # File tracking and processing metadata
+    ├── design/                  # Place your hardware design files here for processing
+    ├── generated_files/         # BOM CSV files generated from schematics
+    ├── hw_cheat_sheets/         # JSON cheat sheets (MCU, errata, debug, functional blocks)
+    ├── data_sheets/             # Downloaded component datasheets (from BOM processing)
+    ├── pdf_parts/               # Extracted PDF parts for analysis
+    ├── fw_tasks/                # (Reserved for future use)
+    └── requirements/            # (Reserved for future use)
+```
+
+**Git Repository Example:**
+
+If you're in a git repository at `C:\git\my-hardware-project\` and run `mfcli init` from any subdirectory, all project folders will be created within a "multifactor" folder at the git root:
+
+- `C:\git\my-hardware-project\multifactor\config.json` - Project configuration
+- `C:\git\my-hardware-project\multifactor\file_docket.json` - File tracking
+- `C:\git\my-hardware-project\multifactor\design\` - Place source files here
+- `C:\git\my-hardware-project\multifactor\generated_files\` - Generated BOM files
+- `C:\git\my-hardware-project\multifactor\hw_cheat_sheets\` - Cheat sheets
+- `C:\git\my-hardware-project\multifactor\data_sheets\` - Downloaded datasheets
+- `C:\git\my-hardware-project\multifactor\pdf_parts\` - PDF parts
+
+**Non-Git Example:**
+
+If you're NOT in a git repository and run `mfcli init` from `C:\Projects\hardware\board_v1\`, all folders will be created within a "multifactor" folder in that same directory:
+
+- `C:\Projects\hardware\board_v1\multifactor\config.json` - Project configuration
+- `C:\Projects\hardware\board_v1\multifactor\file_docket.json` - File tracking
+- `C:\Projects\hardware\board_v1\multifactor\design\` - Place source files here
+- `C:\Projects\hardware\board_v1\multifactor\generated_files\` - Generated BOM files
+- `C:\Projects\hardware\board_v1\multifactor\hw_cheat_sheets\` - Cheat sheets
+- `C:\Projects\hardware\board_v1\multifactor\data_sheets\` - Downloaded datasheets
+- `C:\Projects\hardware\board_v1\multifactor\pdf_parts\` - PDF parts
+
+**Why This Structure?**
+
+This design ensures that all project-related files are organized within a single "multifactor" folder, making it easier to:
+- ✅ Keep all generated files contained in one location
+- ✅ Easy to add to .gitignore if you don't want to version-control outputs
+- ✅ Clean separation between source files and generated outputs
+- ✅ Avoid cluttering the repository root with multiple folders
+- ✅ Simple to backup or delete all mfcli outputs at once
+
+## 💾 Data Storage
+
+### SQLite Database
+
+Located at `sessions.db` in the project root (or path specified in `.env`).
+
+**Stores:**
+- Pipeline run metadata and status
+- File metadata and processing results
+- Parsed component data (BOMs, netlists, datasheets)
+- MCU information and errata
+- ADK session data and conversation history
+
+### ChromaDB Vector Store
+
+Located in the user application data directory.
+
+**Stores:**
+- Vector embeddings of processed documents
+- Enables semantic search and RAG queries
+- Uses OpenAI embeddings (text-embedding-3-small)
+
+### S3 Storage (Optional)
+
+If AWS credentials are configured:
+- Uploaded files
+- Generated outputs
+- Long-term document storage
+
+## 📁 Project Structure
+
+```
+multifactor-adk-backend/
+├── app/
+│   ├── agents/
+│   │   ├── controller/              # Main controller agent
+│   │   │   ├── agent.py            # Agent definition
+│   │   │   ├── config.yaml         # Agent configuration
+│   │   │   └── tools.py            # Agent tools
+│   │   └── tools/
+│   │       └── general.py          # Shared tools
+│   ├── alembic/                    # Database migrations
+│   ├── cli/
+│   │   └── main.py                 # CLI entry point (mfcli)
+│   ├── client/                     # External service clients
+│   │   ├── chroma_db.py           # ChromaDB vector store
+│   │   ├── gemini.py              # Gemini API client
+│   │   ├── llama_parse.py         # LlamaParse client
+│   │   └── vector_db.py           # Vector DB interface
+│   ├── constants/                  # Enums and constants
+│   ├── crud/                       # Database operations
+│   ├── digikey/                    # DigiKey API integration
+│   ├── models/                     # SQLAlchemy models
+│   ├── pipeline/
+│   │   ├── pipeline.py            # Main pipeline orchestration
+│   │   ├── classifier.py          # File classification
+│   │   ├── extractor.py           # Text extraction
+│   │   ├── sub_classifier.py      # Document sub-typing
+│   │   ├── schema_mapper.py       # Schema mapping
+│   │   ├── parser.py              # Data parsing
+│   │   ├── data_enricher.py       # Data enrichment
+│   │   ├── analysis/
+│   │   │   ├── bom_netlist_mapper.py
+│   │   │   └── generators/        # Output generators
+│   │   │       ├── generator.py   # Main generator
+│   │   │       ├── bom/          # BOM generation
+│   │   │       ├── debug_setup/  # Debug setup cheat sheets
+│   │   │       ├── functional_blocks/  # Functional block diagrams
+│   │   │       ├── mcu/          # MCU documentation
+│   │   │       └── mcu_errata/   # Errata cheat sheets
+│   │   ├── extractors/           # Format-specific extractors
+│   │   └── parsers/
+│   │       └── netlist/          # Netlist parsers (EDIF, KiCad, PADS)
+│   ├── tests/                     # Unit tests
+│   └── utils/                     # Utility functions
+│       ├── config.py
+│       ├── directory_manager.py   # Output directory management
+│       ├── logger.py
+│       └── ...
+├── .env                           # Environment configuration (create this)
+├── .gitignore
+├── alembic.ini                    # Alembic configuration
+├── pyproject.toml                 # Package configuration
+├── requirements.txt               # Python dependencies
+└── README.md                      # This file
+```
+
+## 🛠️ Development
+
+### Running the Pipeline
+
+First, navigate to your hardware files directory and initialize:
+
+```bash
+cd /path/to/hardware/files
+mfcli init
+mfcli run
+```
+
+### Starting the Web UI
+
+```bash
+mfcli web --port 9999
+```
+
+### Development Status
+
+⚠️ **This project is currently in development.** Features and APIs may change.
+
+### Publishing to PyPI
+
+This project is automatically published to PyPI when changes are merged into the `dev` branch. See [PYPI_PUBLISHING.md](PYPI_PUBLISHING.md) for details on:
+- How automated publishing works
+- PyPI configuration setup (trusted publishing or API tokens)
+- Version management and semantic versioning
+- Testing and troubleshooting
+- Manual publishing (if needed)
+
+**Quick version update workflow:**
+1. Update version in `pyproject.toml`
+2. Commit and push to a feature branch
+3. Create and merge PR to `dev`
+4. Automated workflow builds and publishes to PyPI
+
+### Database Migrations
+
+This project uses Alembic for database schema management.
+
+#### Create a New Migration
+```bash
+alembic revision -m "description of changes"
+```
+
+#### Apply Migrations
+```bash
+alembic upgrade head
+```
+
+#### Rollback Migration
+```bash
+alembic downgrade -1
+```
+
+### Logging
+
+Logs are configured in `utils/logger.py`. View logs for debugging:
+
+```python
+from mfcli.utils.logger import get_logger
+logger = get_logger(__name__)
+logger.info("Message")
+logger.error("Error message")
+```
+
+### Running Tests
+
+```bash
+pytest app/tests/
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### 1. Installation Issues
+
+**Error**: `ModuleNotFoundError: No module named 'google'`
+- **Solution**: Reinstall package: `pip install .`
+
+**Error**: `Command 'mfcli' not found`
+- **Solution**: Ensure virtual environment is activated and package is installed: `pip install .`
+
+#### 2. API Key Errors
+
+**Error**: `google.api_core.exceptions.Unauthenticated: 401 API key not valid`
+- **Solution**: Verify `google_api_key` in `.env` file
+- Get key from: https://aistudio.google.com/app/apikey
+
+**Error**: `OpenAI API error`
+- **Solution**: Check `openai_api_key` in `.env`
+- Ensure API key has billing enabled
+
+#### 3. ChromaDB Issues
+
+**Error**: `ChromaDB directory not found`
+- **Solution**: ChromaDB will be created automatically on first run in AppData folder
+
+**Error**: `Embedding dimension mismatch`
+- **Solution**: Delete ChromaDB directory and restart to rebuild with correct dimensions
+
+#### 4. Pipeline Processing Failures
+
+**Error**: `Could not find metadata file. Please initialize this repo with "mfcli init"`
+- **Solution**: You need to run `mfcli init` in your hardware files directory before running `mfcli run`
+
+**Error**: `File not found`
+- **Solution**: Make sure you're running `mfcli run` from within your hardware files directory (where you ran `mfcli init`)
+
+**Error**: `File extension is not supported`
+- **Solution**: Check that your files are in supported formats (PDF, EDIF, CSV, .net, .cir, .asc)
+
+**Error**: `No components extracted from schematic`
+- **Solution**: 
+  - Ensure schematic PDF is clear and readable
+  - Check that component designators are visible
+  - Verify file is an actual schematic (not layout or other document type)
+
+#### 5. Database Issues
+
+**Error**: `Database connection failed`
+- **Solution**: Check that SQLite database path in `.env` is valid
+- Run migrations: `alembic upgrade head`
+
+### Verify Configuration
+
+Run this Python snippet to verify your configuration:
+
+```python
+from mfcli.utils.config import get_config
+config = get_config()
+print(f"Google API Key set: {'Yes' if config.google_api_key else 'No'}")
+print(f"OpenAI API Key set: {'Yes' if config.openai_api_key else 'No'}")
+print(f"Database path: {config.sqlite_db_path}")
+```
+
+### Debug Mode
+
+For detailed debugging, check the console output when running `mfcli pipeline` or `mfcli web`. The application uses structured logging to help diagnose issues.
+
+### Getting Help
+
+- **Issues**: [GitHub Issues](https://github.com/MultifactorAI/multifactor-adk-backend/issues)
+- **Documentation**: Check this README and inline code documentation
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+This project is in active development. Contributions, issues, and feature requests are welcome!
+
+---
+
+**Built with [Google Gemini](https://ai.google.dev/) and [Google Agent Development Kit (ADK)](https://github.com/google/adk)**
