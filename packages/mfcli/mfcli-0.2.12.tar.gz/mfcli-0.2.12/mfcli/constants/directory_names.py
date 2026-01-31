@@ -1,0 +1,1 @@
+MF_PROJECT_CONFIG_DIR_NAME = "multifactor"
