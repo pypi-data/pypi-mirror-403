@@ -1,0 +1,176 @@
+# marlo-sdk
+
+The official Python SDK for [Marlo](https://marshmallo.ai) - the agent learning platform.
+
+Marlo enables AI agents to learn and improve autonomously in production. It captures agent behavior, evaluates outcomes, and turns failures into actionable learnings.
+
+[![PyPI version](https://img.shields.io/pypi/v/marlo-sdk.svg)](https://pypi.org/project/marlo-sdk/)
+[![Downloads](https://static.pepy.tech/badge/marlo-sdk)](https://pepy.tech/project/marlo-sdk)
+[![Downloads/month](https://static.pepy.tech/badge/marlo-sdk/month)](https://pepy.tech/project/marlo-sdk)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Installation
+
+```bash
+pip install marlo-sdk
+```
+
+## Quick Start
+
+```python
+import marlo
+
+# Initialize
+marlo.init(api_key="your-api-key")
+
+# Register your agent
+marlo.agent(
+    name="support-bot",
+    system_prompt="You are a customer support agent.",
+    tools=[{"name": "lookup_order", "description": "Find order by ID"}]
+)
+
+# Track a task
+with marlo.task(thread_id="thread-123", agent="support-bot") as task:
+    task.input("Where is my order?")
+
+    # Your agent logic here...
+
+    task.output("Your order ships tomorrow.")
+
+# Shutdown before exit
+marlo.shutdown()
+```
+
+## Why Marlo?
+
+Agents fail silently in production. The same mistakes repeat because failures aren't captured in a reusable form. Marlo solves this with a learning loop:
+
+1. **Capture** - Record LLM calls, tool calls, and outcomes
+2. **Evaluate** - Score task outcomes automatically
+3. **Learn** - Generate guidance from failures
+4. **Apply** - Inject learnings into future tasks
+
+## API
+
+### Initialize
+
+```python
+marlo.init(api_key)
+```
+
+### Register Agent
+
+```python
+marlo.agent(name, system_prompt, tools, mcp=None, model_config=None)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `str` | Unique agent identifier |
+| `system_prompt` | `str` | Agent's system prompt |
+| `tools` | `list[dict]` | Available tools |
+| `mcp` | `list[dict]` | MCP servers (optional) |
+| `model_config` | `dict` | Model settings (optional) |
+
+### Track Tasks
+
+```python
+with marlo.task(thread_id, agent, thread_name=None) as task:
+    task.input(text)           # User input
+    task.output(text)          # Agent response
+    task.llm(model=..., usage=..., messages=..., response=...)
+    task.tool(name, input, output, error=None)
+    task.reasoning(text)       # Chain-of-thought
+    task.error(message)        # Mark as failed
+```
+
+### Fetch Learnings
+
+```python
+with marlo.task(thread_id="user-123", agent="support-bot") as task:
+    task.input(user_message)
+
+    learnings = task.get_learnings()
+
+    if learnings:
+        learnings_text = learnings.get("learnings_text", "")
+        if learnings_text:
+            system_prompt += f"\n\nLearnings:\n{learnings_text}"
+```
+
+### Multi-Agent
+
+```python
+with marlo.task(thread_id="thread-1", agent="orchestrator") as parent:
+    parent.input("Research AI trends")
+
+    with parent.child(agent="researcher") as child:
+        child.input("Search for AI trends")
+        child.output("Found 3 sources...")
+
+    parent.output("Report complete")
+```
+
+### Shutdown
+
+```python
+marlo.shutdown()
+```
+
+## Full Example
+
+```python
+import marlo
+
+marlo.init(api_key="your-api-key")
+
+marlo.agent(
+    name="support-bot",
+    system_prompt="You are a customer support agent.",
+    tools=[{"name": "lookup_order", "description": "Find order by ID"}]
+)
+
+def handle_message(user_input: str, thread_id: str) -> str:
+    with marlo.task(thread_id=thread_id, agent="support-bot") as task:
+        task.input(user_input)
+
+        # Apply learnings from past interactions
+        learnings = task.get_learnings()
+        system_prompt = "You are a customer support agent."
+        if learnings:
+            learnings_text = learnings.get("learnings_text", "")
+            if learnings_text:
+                system_prompt += f"\n\nLearnings:\n{learnings_text}"
+
+        # Track tool call
+        task.tool("lookup_order", {"id": "123"}, {"status": "shipped"})
+
+        # Track LLM call
+        response = "Your order ships tomorrow."
+        task.llm(
+            model="gpt-4",
+            usage={"input_tokens": 100, "output_tokens": 25},
+            messages=[{"role": "user", "content": user_input}],
+            response=response
+        )
+
+        task.output(response)
+        return response
+
+marlo.shutdown()
+```
+
+## Requirements
+
+- Python 3.11+
+
+## Links
+
+- [Documentation](https://docs.marshmallo.ai)
+- [Dashboard](https://marshmallo.ai)
+- [TypeScript SDK](https://www.npmjs.com/package/@marshmallo/marlo)
+
+## License
+
+MIT
