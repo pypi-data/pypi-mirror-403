@@ -1,0 +1,52 @@
+# PyRadiomics Configuration for Abdominal Aortic Aneurysm (CTA)
+# Strategy: "Whole Aorta" mask input with emphasis on shape and tissue heterogeneity.
+
+setting:
+  # --- NORMALIZATION & DISCRETIZATION ---
+  # Critical for CT: Fixed bin width ensures 25 HU in Patient A = 25 HU in Patient B.
+  # We shift by 1000 so Air (-1000 HU) becomes 0, avoiding negative value errors in some filters.
+  binWidth: 25
+  voxelArrayShift: 1000
+  
+  # --- RESAMPLING ---
+  # Mandatory for 3D Filters (LoG). We force 1x1x1mm isotropic voxels.
+  # sitkBSpline is the highest quality interpolator (but slower than Linear).
+  interpolator: 'sitkBSpline'
+  resampledPixelSpacing: [1, 1, 1]
+  
+  # --- FILTER SETTINGS ---
+  # Pad the image boundary by 10 voxels during filtering to prevent "edge artifacts"
+  # from the LoG filter ruining the data at the top/bottom of the scan.
+  padDistance: 10
+
+  # --- MISC ---
+  # label: 1  # (Optional: Use this if your mask label is not 1)
+  # correctMask: True # (Optional: Use if your mask has slightly overlapping geometry)
+
+imageType:
+  # 1. The Baseline Image
+  Original: {}
+  
+  # 2. Laplacian of Gaussian (The "Blob" Detector)
+  # sigma: 1.0mm (Calcification specks), 3.0mm (Thrombus texture), 5.0mm (General heterogeneity)
+  LoG:
+    sigma: [1.0, 3.0, 5.0]
+
+featureClass:
+  # --- GEOMETRY (High Value for Growth Prediction) ---
+  # Captures Sphericity, Elongation, Surface Volume Ratio
+  shape:
+
+  # --- HISTOGRAM (High Value for "Whole Aorta" masks) ---
+  # Captures Skewness (Ratio of Lumen vs Thrombus), Kurtosis, Mean, Energy
+  firstorder:
+
+  # --- TEXTURE (High Value for LoG Images) ---
+  # Even on a "Whole Aorta" mask, these capture the "clumpiness" of the tissue.
+  glcm:  # Gray Level Co-occurrence Matrix
+  glrlm: # Gray Level Run Length Matrix
+  glszm: # Gray Level Size Zone Matrix (Good for detecting large uniform patches like Lumen)
+  gldm:  # Gray Level Dependence Matrix
+  
+  # --- EXCLUDED ---
+  # ngtdm: Usually less informative for vascular tissue.
