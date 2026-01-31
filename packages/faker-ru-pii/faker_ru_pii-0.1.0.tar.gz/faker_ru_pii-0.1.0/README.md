@@ -1,0 +1,220 @@
+### Faker Russian PII Data Generator
+
+A custom provider for the Faker library that generates realistic Russian personally identifiable information (PII) data for testing and development purposes. This extension adds comprehensive support for various Russian identity documents while maintaining data consistency and format compliance.
+
+Contributing: We welcome contributions! Please feel free to submit pull requests, report issues, or suggest new features.
+
+Note: This library is designed for testing and development purposes only. Generated data is fictional and should not be used for any official or legal purposes. Always comply with data protection regulations when handling PII data.
+
+### RuPassportProvider
+
+Extends Faker's base [`PassportProvider`](https://faker.readthedocs.io/en/master/providers/faker.providers.passport.html).
+
+#### EN
+Extends Faker's base `PassportProvider` with realistic Russian internal passport data:
+
+- Department code (6 digits, optionally formatted as XXX-XXX)
+- Passport series (4 digits)
+- Passport number (6 digits)
+- Issuing authority name (in Russian)
+- Combined representations (`series + number`, full string)
+
+All standard `PassportProvider` methods (e.g. `passport_number()`) are overridden to comply with Russian format.
+
+#### RU
+Расширяет базовый провайдер паспортов Faker, добавляя поля, специфичные для паспорта гражданина РФ:
+
+- Код подразделения (6 цифр, например: `160-754`)
+- Серия паспорта РФ (4 цифры, например: `1964`)
+- Номер паспорта РФ (6 цифр, например: `615017`)
+- Орган, выдавший паспорт
+- Комбинированные представления (серия + номер, полная строка)
+
+Методы базового провайдера (`passport_number()` и др.) переопределены в соответствии с российским форматом.
+
+```python
+>>> from faker_ru_pii import Faker
+>>> faker = Faker('ru_RU')
+>>> faker.passport_number()
+'615017'
+>>> faker.passport_series()
+'1964'
+>>> faker.department_code()
+'160-754'
+>>> faker.passport_issuing_authority()
+'Межрайонное отделение Управления МВД России по Красноярскому краю'
+>>> faker.passport_full()
+'Серия 1964 № 615017, выдан Отдел Управления по вопросам миграции МВД России по г. Москве, код подразделения 160-754'
+```
+
+### RuResidencePermitProvider
+#### EN
+
+Provider for generating Russian residence permit (вид на жительство) data:
+- Residence permit number (7 digits)
+- Residence permit series (2 digits)
+- Combined series and number representation
+
+#### RU
+
+Провайдер для данных вида на жительство в РФ:
+- Номер вида на жительство (7 цифр)
+- Серия вида на жительство (2 цифры)
+- Серия + номер вида на жительство
+
+```python
+>>> faker.residence_permit_number()
+'4961023'
+>>> faker.residence_permit_serial()
+'82'
+>>> faker.residence_permit_full()
+'90 5242988'
+```
+
+### RuForeignPassportProvider
+
+#### EN
+
+Provider for generating Russian international (foreign) passport data:
+- Foreign passport number (7 digits)
+- Combined series and number representation
+
+#### RU
+
+Провайдер для данных загранпаспорта гражданина РФ:
+- Номер загранпаспорта (7 цифр)
+- Серия + номер загранпаспорта
+
+```python
+>>> from faker_ru_pii import Faker
+>>> faker = Faker('ru_RU')
+>>> faker.foreign_passport_number()
+'8195671'
+>>> faker.foreign_passport_full()
+'85 6182615'
+```
+
+
+### RuBirthCertificateProvider
+
+#### EN
+
+Provider for generating Russian birth certificate data:
+- Birth certificate series (2 letters and 6 digits)
+- Birth certificate number (6 digits)
+- Combined series and number representation
+
+### RU
+
+Провайдер для данных свидетельства о рождении РФ:
+- Серия свидетельства о рождении (2 буквы + 6 цифр)
+- Номер свидетельства о рождении (6 цифр)
+- Серия + номер свидетельства о рождении
+
+```python
+>>> faker.birth_certificate_series()
+'IV-ПЮ'
+>>> faker.birth_certificate_number()
+'123456'
+>>> faker.birth_certificate_full()
+'IV-РЭ 567992'
+```
+
+### RuDriverLicenseProvider
+
+#### EN
+
+Provider for generating Russian driver's license data:
+- Driver's license number (6 digits)
+- Driver's license series (4 digits)
+- Combined series and number representation
+
+#### RU
+
+Провайдер для данных водительского удостоверения РФ:
+- Номер водительского удостоверения (6 цифр)
+- Серия водительского удостоверения (4 цифры)
+- Серия + номер водительского удостоверения
+
+```python
+>>> faker.driver_license_number()
+'615017'
+>>> faker.driver_license_series()
+'1964'
+>>> faker.driver_license_full()
+'1964 615017'
+```
+
+### RuEducationProvider
+
+#### EN
+
+Provider for generating Russian educational documents data:
+- Educational institution name (in Russian)
+- Diploma/certificate series for documents issued after 2014
+- Diploma/certificate series for documents issued before 2014
+- Diploma/certificate number
+
+### RU
+
+Провайдер для данных об образовании и дипломах:
+- Наименование учебного заведения (на русском языке)
+- Серия диплома/сертификата для документов, выданных после 2014 года
+- Серия диплома/сертификата для документов, выданных до 2014 года
+- Номер диплома/сертификата
+
+```python
+>>> faker.education_institution()
+'Московский физико-технический институт (национальный исследовательский университет)'
+>>> faker.diploma_series_number()
+'123456'
+>>> faker.diploma_series_number()
+'ВСА 123456'
+>>> faker.diploma_number()
+'789012'
+```
+
+### RuMigrationCardProvider
+
+#### EN
+
+Provider for generating Russian migration card data:
+- Migration card number
+- Combined series and number representation
+
+#### RU
+
+Провайдер для данных миграционной карты РФ:
+- Номер миграционной карты
+- Серия + номер миграционной карты
+
+```python
+>>> faker.migration_card_series_number()
+'4631 6763450'
+>>> faker.migration_card_number()
+'2578'
+```
+
+### RuMilitaryIdProvider
+#### EN
+
+Provider for generating Russian military ID (военный билет) data:
+- Military ID series and number combined
+- Military ID series
+- Military ID number
+
+#### RU
+
+Провайдер для данных военного билета РФ:
+- Серия + номер военного билета
+- Серия военного билета
+- Номер военного билета
+
+```python
+>>> faker.military_id_full()
+'АБ 1234567'
+>>> faker.military_id_series()
+'АБ'
+>>> faker.military_id_number()
+'1234567'
+```
