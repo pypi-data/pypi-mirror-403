@@ -1,0 +1,27 @@
+{{- if .Values.ingress.enabled -}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "qualpipe-webapp.fullname" . }}-ingress
+  labels:
+  {{- include "qualpipe-webapp.labels" . | nindent 4 }}
+  annotations: {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.ingressClassName | quote }}
+  tls:
+  - hosts:
+    - {{ .Values.ingress.host }}
+    secretName: {{ include "qualpipe-webapp.fullname" . }}-tls
+  rules:
+  - host: {{ .Values.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "qualpipe-webapp.fullname" . }}-frontend
+            port:
+              number: {{ .Values.frontend.service.port }}
+{{- end }}

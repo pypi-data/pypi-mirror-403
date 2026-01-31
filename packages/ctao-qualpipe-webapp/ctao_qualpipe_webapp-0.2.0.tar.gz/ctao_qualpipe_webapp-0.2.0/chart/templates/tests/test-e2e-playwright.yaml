@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "qualpipe-webapp.fullname" . }}-test-e2e"
+  labels:
+    {{- include "qualpipe-webapp.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  restartPolicy: Never
+  volumes:
+  - name: repo
+    hostPath:
+      path: /repo
+      type: Directory
+  containers:
+  - name: test-e2e-playwright
+    image: mcr.microsoft.com/playwright:v1.55.0-noble
+    workingDir: /repo
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -ex
+        cd /repo
+
+        # Install Playwright
+        npm i -D @playwright/test@1.55.0
+        npx playwright install
+
+        # Configure Playwright
+        export BASE_URL="http://{{ include "qualpipe-webapp.fullname" . }}-frontend:{{ .Values.frontend.service.port }}"
+        export PLAYWRIGHT_JUNIT_OUTPUT_NAME=/tmp/report.xml
+        export PLAYWRIGHT_HTML_OUTPUT_DIR=/tmp/html-report
+        export PLAYWRIGHT_HTML_OPEN=never
+
+        echo "================================================"
+        echo "Pre-flight health checks with retry"
+        echo "================================================"
+
+        # Function to test endpoint with retry
+        test_endpoint() {
+          local url=$1
+          local name=$2
+          local max_attempts=30
+          local attempt=0
+
+          while [ $attempt -lt $max_attempts ]; do
+            attempt=$((attempt + 1))
+            echo "[$attempt/$max_attempts] Testing $name at $url"
+
+            if curl -f --connect-timeout 5 --max-time 10 "$url" 2>/dev/null; then
+              echo "✅ $name is ready!"
+              return 0
+            fi
+
+            if [ $attempt -eq $max_attempts ]; then
+              echo "❌ ERROR: $name not ready after 2.5 minutes"
+              return 1
+            fi
+
+            sleep 5
+          done
+        }
+
+        # Test frontend health
+        test_endpoint \
+          "http://{{ include "qualpipe-webapp.fullname" . }}-frontend:{{ .Values.frontend.service.port }}/health" \
+          "Frontend"
+
+        # Test backend health
+        test_endpoint \
+          "http://{{ include "qualpipe-webapp.fullname" . }}-backend:{{ .Values.backend.service.port }}/v1/health" \
+          "Backend"
+
+        echo ""
+        echo "================================================"
+        echo "Running Playwright E2E tests"
+        echo "================================================"
+
+        # Run tests
+        npx playwright test src/qualpipe_webapp/frontend/tests_e2e_js/lst.test.js \
+          --project=firefox \
+          --reporter=list,junit,html
+
+        # Upload reports (ignore errors if testkit not available)
+        echo ""
+        echo "Uploading test reports..."
+        curl -T /tmp/report.xml http://testkit:8000/report.xml 2>/dev/null || echo "⚠️  Could not upload XML report"
+        tar czf /tmp/html-report.tar.gz -C /tmp html-report 2>/dev/null || echo "⚠️  Could not create HTML report archive"
+        curl -T /tmp/html-report.tar.gz http://testkit:8000/html-report.tar.gz 2>/dev/null || echo "⚠️  Could not upload HTML report"
+
+        echo ""
+        echo "✅ Test completed successfully!"
+    volumeMounts:
+    - name: repo
+      mountPath: /repo

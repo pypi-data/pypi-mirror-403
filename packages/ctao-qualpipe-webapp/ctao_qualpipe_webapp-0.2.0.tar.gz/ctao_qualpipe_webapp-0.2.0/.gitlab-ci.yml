@@ -1,0 +1,186 @@
+include:
+  - project: "cta-computing/common/aiv-toolkit"
+    ref: 041f722443dc85acf97541120a65404553bda97f
+    file: "ci-functions.yml"
+  - "aiv-config.yml"
+
+stages:
+  - prepare
+  - lint
+  - build
+  - tests
+  - sonarqube
+  - report
+  - doc
+  - publish
+  - changelog
+
+build-prepare:
+  stage: build
+  image: harbor.cta-observatory.org/proxy_cache/python:3.12
+  script:
+    - pixi --version || echo "Pixi not installed"
+    - curl -fsSL https://pixi.sh/install.sh | bash
+    - export PATH="$HOME/.pixi/bin:$PATH"
+    - pixi --version || echo "Pixi not installed"
+    - pixi run setup
+
+  artifacts:
+    paths:
+      - src/qualpipe_webapp/backend/generated
+      - src/qualpipe_webapp/backend/requirements.txt
+      - src/qualpipe_webapp/frontend/static
+      - src/qualpipe_webapp/frontend/requirements.txt
+
+build:
+  parallel:
+    matrix:
+      - IMAGE: ["frontend", "backend"]
+  needs:
+    - git-info
+    - build-prepare
+  variables:
+    CI_HARBOR_REGISTRY_IMAGE:
+      harbor.cta-observatory.org/dpps/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
+    AIV_DOCKER_IMAGE_CONTEXT: src/qualpipe_webapp/${IMAGE}
+
+test:
+  stage: tests
+  image: harbor.cta-observatory.org/proxy_cache/python:3.12
+  needs: [pre-commit-hooks, pylint]
+
+  before_script:
+    - python --version
+    - pip install -e .[test]
+    - mkdir -p src/qualpipe_webapp/backend/generated
+    - mkdir -p src/qualpipe_webapp/frontend/static
+    - echo "Generating code models..."
+    - python -m qualpipe_webapp.backend.codegen.generate_data_models --module
+      qualpipe.core.criterion --out-generated
+      src/qualpipe_webapp/backend/generated --out-schemas
+      src/qualpipe_webapp/frontend/static
+    - echo "Code generation completed successfully"
+
+  script:
+    - mkdir -pv test
+    - >-
+      pytest -v --color=yes
+      --doctest-modules --doctest-glob='docs/**/*.rst'
+      --ignore-glob='src/qualpipe_webapp/_dev_version/*'
+      --cov --cov-report=xml:test/coverage.xml
+      --junitxml=test/report.xml
+      --log-cli-level=INFO
+
+  after_script: []
+
+  artifacts:
+    paths:
+      - test/coverage.xml
+      - test/report.xml
+
+js-unittests:
+  stage: tests
+  image: harbor.cta-observatory.org/proxy_cache/python:3.12
+  needs:
+    - job: pre-commit-hooks
+      artifacts: true
+
+  variables:
+    MOCHA_FILE: js-unittests/report.xml
+
+  before_script:
+    # Install Node.js on Debian
+    - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+    - apt-get install -y nodejs
+    - python --version
+    - node --version
+    - npm --version
+    - pip install -e .[test]
+    - mkdir -p src/qualpipe_webapp/backend/generated
+    - mkdir -p src/qualpipe_webapp/frontend/static
+    - echo "Generating code models..."
+    - python -m qualpipe_webapp.backend.codegen.generate_data_models --module
+      qualpipe.core.criterion --out-generated
+      src/qualpipe_webapp/backend/generated --out-schemas
+      src/qualpipe_webapp/frontend/static
+    - echo "Code generation completed successfully"
+    - npm ci --no-audit --no-fund
+    - node --version
+    - npm --version
+    - npm run generate-js-schemas
+    - echo "Schema generation completed successfully"
+    - mkdir -p js-unittests
+
+  script:
+    - npm run coverage
+
+  artifacts:
+    paths:
+      - coverage
+      - js-unittests
+    reports:
+      junit: js-unittests/report.xml
+
+build-docs:
+  stage: build
+  image: ${PYTHON_IMAGE}
+
+  before_script:
+    - apt update && apt install -y pandoc
+    - python --version
+    - pip install .[doc]
+    # Ensure output directories exist for code generation
+    - mkdir -p src/qualpipe_webapp/backend/generated
+    - mkdir -p src/qualpipe_webapp/frontend/static
+    # Generate required code models for documentation
+    - echo "Generating code models for docs..."
+    - python -m qualpipe_webapp.backend.codegen.generate_data_models --module
+      qualpipe.core.criterion --out-generated
+      src/qualpipe_webapp/backend/generated --out-schemas
+      src/qualpipe_webapp/frontend/static
+    - echo "Code generation completed successfully"
+
+k8s-upgrade-integration-tests:
+  rules:
+    - when: never
+
+
+collect-test-artifacts:
+  needs:
+    - job: test
+      artifacts: true
+    - job: js-unittests
+      artifacts: true
+    - job: collect-manual-tests
+      artifacts: true
+    - job: k8s-integration-tests
+      artifacts: true
+  script:
+    - aiv-report -v merge-junit */report.xml --output report.xml
+    # this line is meant to be customized, see https://gitlab.cta-observatory.org/cta-computing/dpps/aiv/dpps-aiv-toolkit/-/blob/main/ci-test.yml?ref_type=heads#L117
+    - cp -fv test/coverage.xml coverage.xml
+
+sonarqube:
+  needs:
+    - job: test
+      artifacts: true
+    - job: js-unittests
+      artifacts: true
+  variables:
+    # TODO: remove when toolkit is updated to no longer set this variable
+    # should just be taken from sonar-project.properties
+    SONAR_HOST_URL: "https://sonar-ctao.zeuthen.desy.de"
+  # two tokens only needed while sonar pr is not merged, can also be removed after
+  script:
+    - sonar-scanner --debug -Dsonar.token="$SONAR_TOKEN_CTAO"
+
+pypi:
+  dependencies: []
+  before_script:
+  - apt-get update
+  - apt-get install -y git-lfs
+  - pip install -U twine build
+  script:
+  - git checkout $CI_COMMIT_TAG
+  - python -m build ${PYTHON_PROJECT_DIR}
+  - twine upload ${PYTHON_PROJECT_DIR}/dist/*

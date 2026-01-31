@@ -1,0 +1,139 @@
+# Default values for qualpipe-webapp
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Development mode configuration
+# This section is only used when developing with editable volumes
+dev:
+  # Backend development settings
+  backend:
+    editable:
+      # Enable editable mode to mount local source code into the container
+      # This allows live code reloading during development
+      enabled: false
+      # Local path to the backend source code (relative to project root)
+      path: "src/qualpipe_webapp/backend"
+
+    # Development data directory to mount into the backend container as /app/data.
+    # This should already contain the expected on-disk structure:
+    #   <hostPath>/ctao-north/YYYY-MM-DD/*.h5
+    #   <hostPath>/ctao-south/YYYY-MM-DD/*.h5
+    # Backend tests stage this directory automatically after they run.
+    data:
+      # Path relative to repo root (which is mounted into kind nodes at /repo)
+      hostPath: "data/k8s"
+
+  # Frontend development settings
+  frontend:
+    editable:
+      # Enable editable mode to mount local source code into the container
+      # This allows live code reloading during development
+      enabled: false
+      # Local path to the frontend source code (relative to project root)
+      path: "src/qualpipe_webapp/frontend"
+
+# Backend service configuration
+backend:
+  # Container image settings
+  image:
+    # Docker image repository for the backend service
+    repository: harbor.cta-observatory.org/dpps/qualpipe-webapp-backend
+    # Image tag to use. If empty, defaults to .Chart.AppVersion
+    tag: ""
+    # Image pull policy. Options: Always, IfNotPresent, Never
+    pullPolicy: IfNotPresent
+
+  # Number of backend pod replicas to run
+  replicaCount: 1
+
+  # Kubernetes service configuration
+  service:
+    # Service type. Options: ClusterIP, NodePort, LoadBalancer
+    # ClusterIP: Only accessible within the cluster (recommended for production)
+    # NodePort: Exposes the service on each node's IP at a static port
+    # LoadBalancer: Exposes the service externally using a cloud provider's load balancer
+    type: ClusterIP
+    # Port on which the backend service listens
+    port: 8000
+    # Port to which container traffic is forwarded
+    targetPort: 8000
+
+  # Resource limits and requests for the backend pods
+  resources:
+    limits:
+      # Maximum CPU allocation (1000m = 1 CPU core)
+      cpu: 1000m
+      # Maximum memory allocation
+      memory: 1Gi
+    requests:
+      # Minimum CPU guaranteed to the pod
+      cpu: 100m
+      # Minimum memory guaranteed to the pod
+      memory: 128Mi
+
+  # Environment variables for the backend container
+  env:
+    - name: PYTHONUNBUFFERED
+      value: "1"
+
+# Frontend service configuration
+frontend:
+  # Container image settings
+  image:
+    # Docker image repository for the frontend service
+    repository: harbor.cta-observatory.org/dpps/qualpipe-webapp-frontend
+    # Image tag to use. If empty, defaults to .Chart.AppVersion
+    tag: ""
+    # Image pull policy. Options: Always, IfNotPresent, Never
+    pullPolicy: IfNotPresent
+
+  # Number of frontend pod replicas to run
+  replicaCount: 1
+
+  # Kubernetes service configuration
+  service:
+    # Service type. Options: ClusterIP, NodePort, LoadBalancer
+    # ClusterIP: Only accessible within the cluster (recommended for production)
+    type: ClusterIP
+    # Port on which the frontend service listens
+    port: 8001
+    # Port to which container traffic is forwarded
+    targetPort: 8001
+
+  # Resource limits and requests for the frontend pods
+  resources:
+    limits:
+      # Maximum CPU allocation (1000m = 1 CPU core)
+      cpu: 1000m
+      # Maximum memory allocation
+      memory: 1Gi
+    requests:
+      # Minimum CPU guaranteed to the pod
+      cpu: 100m
+      # Minimum memory guaranteed to the pod
+      memory: 128Mi
+
+  # Environment variables for the frontend container
+  env:
+    - name: PYTHONUNBUFFERED
+      value: "1"
+
+# Ingress configuration for external access
+ingress:
+  # Enable or disable ingress resource creation
+  enabled: true
+
+  # Annotations to add to the ingress resource
+  # Example: cert-manager annotations for automatic TLS certificates
+  # kubernetes.io/tls-acme: "true"
+  annotations: {}
+
+  # Hostname for accessing the application
+  # You may need to add this to /etc/hosts for local development
+  # Example: 127.0.0.1 qualpipe.local
+  host: qualpipe.local
+
+  # IngressClass to use for this ingress
+  # Set to your cluster's ingress controller class (e.g., "nginx", "traefik")
+  # null means use the default ingress class
+  ingressClassName: null

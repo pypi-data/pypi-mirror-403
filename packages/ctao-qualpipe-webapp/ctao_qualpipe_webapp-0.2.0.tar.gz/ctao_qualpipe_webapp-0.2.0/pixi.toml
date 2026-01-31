@@ -1,0 +1,506 @@
+[workspace]
+name = "qualpipe-webapp"
+version = "0.1.0"
+description = "CTAO DPPS QualPipe Web Application"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+python = ">=3.12"
+pip = "*"
+uv = ">=0.5.11,<0.6"
+# HDF5 and PyTables for data processing
+hdf5 = "*"
+pytables = "*"
+# Kubernetes/Helm tools
+kubernetes-kind = "*"
+kubernetes-client = "*"
+kubernetes-helm = "*"
+nodejs = "*"
+numpy = "*"
+numba = "*"
+h5py = ">=3.0"
+hdf5plugin = "*"
+
+[pypi-dependencies]
+ctao-qualpipe-webapp = { path = ".", editable = true }
+
+[tasks]
+# Install dependencies
+install = { cmd = "pip install -e ." }
+install-all = { cmd = "pip install -e '.[all]'" }
+
+# Prepare local/kind-mounted data directory for the backend FileBackend.
+# Runs a dedicated pytest that forces the staging fixture.
+stage-dev-data = { cmd = "pytest -q src/qualpipe_webapp/backend/tests/test_stage_dev_data.py" }
+
+# Base parameterized tasks (used by both dev and prod)
+_helm-install = { cmd = '''
+sh -c ". ./setup-env.sh && \
+    VALUES_FILE=\${VALUES_FILE:-chart/values.yaml} && \
+    VALUES_DEV_FILE=\${VALUES_DEV_FILE} && \
+    IMAGE_LOAD_TASK=\${IMAGE_LOAD_TASK} && \
+    echo \"Installing Helm chart with values: \$VALUES_FILE \$VALUES_DEV_FILE\" && \
+    echo \"Using image tag: \$TAG\" && \
+    HELM_CMD=\"helm install qualpipe-webapp ./chart --namespace \$NAMESPACE --create-namespace --values \$VALUES_FILE\" && \
+    if [ -n \"\$VALUES_DEV_FILE\" ]; then HELM_CMD=\"\$HELM_CMD --values \$VALUES_DEV_FILE\"; fi && \
+    HELM_CMD=\"\$HELM_CMD --set backend.image.tag=\$TAG --set frontend.image.tag=\$TAG --wait --timeout 10m\" && \
+    eval \$HELM_CMD && \
+    echo '✅ Helm chart installed'"
+''' }
+
+_helm-upgrade = { cmd = '''
+sh -c ". ./setup-env.sh && \
+    VALUES_FILE=\${VALUES_FILE:-chart/values.yaml} && \
+    VALUES_DEV_FILE=\${VALUES_DEV_FILE} && \
+    echo \"Upgrading Helm chart with values: \$VALUES_FILE \$VALUES_DEV_FILE\" && \
+    echo \"Using image tag: \$TAG\" && \
+    HELM_CMD=\"helm upgrade --install qualpipe-webapp ./chart --namespace \$NAMESPACE --values \$VALUES_FILE\" && \
+    if [ -n \"\$VALUES_DEV_FILE\" ]; then HELM_CMD=\"\$HELM_CMD --values \$VALUES_DEV_FILE\"; fi && \
+    HELM_CMD=\"\$HELM_CMD --set backend.image.tag=\$TAG --set frontend.image.tag=\$TAG --wait --timeout 10m\" && \
+    eval \$HELM_CMD && \
+    echo '✅ Helm chart upgraded'"
+''' }
+
+# Requirements compilation
+compile-requirements-backend = { cmd = """
+uv pip compile pyproject.toml \
+   -o src/qualpipe_webapp/backend/requirements.txt \
+   --no-emit-package ctao-qualpipe-webapp
+""" }
+
+compile-requirements-backend-dev = { cmd = """
+uv pip compile pyproject.toml \
+   --extra webdev \
+   -o src/qualpipe_webapp/backend/requirements-dev.txt \
+   --no-emit-package ctao-qualpipe-webapp
+""" }
+
+compile-requirements-frontend = { cmd = """
+uv pip compile pyproject.toml \
+   --extra frontend \
+   -o src/qualpipe_webapp/frontend/requirements.txt \
+   --no-emit-package ctao-qualpipe-webapp
+""" }
+
+compile-requirements-frontend-dev = { cmd = """
+uv pip compile pyproject.toml \
+   --extra frontend \
+   --extra webdev \
+   --extra test \
+   -o src/qualpipe_webapp/frontend/requirements-dev.txt \
+   --no-emit-package ctao-qualpipe-webapp
+""" }
+
+compile-requirements = { depends-on = [
+    "compile-requirements-backend",
+    "compile-requirements-frontend",
+], cmd = "echo '✅ Backend and frontend requirements compiled successfully'" }
+
+compile-requirements-dev = { depends-on = [
+    "compile-requirements-backend-dev",
+    "compile-requirements-frontend-dev",
+], cmd = "echo '✅ Backend- and frontend- dev requirements compiled successfully'" }
+
+npm-install = { cmd = "npm install && npm audit fix --audit-level=moderate" }
+
+# Pre-commit hooks
+pre-commit-install = { cmd = "pre-commit install" }
+
+# Coverage report
+generate-coverage-html = { cmd = "pytest src/qualpipe_webapp/frontend/tests/ --cov=src/qualpipe_webapp/frontend --cov-report=html --cov-report=term-missing" }
+view-coverage = { cmd = "open htmlcov/index.html || xdg-open htmlcov/index.html || echo 'Open htmlcov/index.html in your browser'" }
+
+# Code generation
+generate-codegen = { cmd = """
+python -m qualpipe_webapp.backend.codegen.generate_data_models \
+   --module qualpipe.core.criterion \
+   --out-generated src/qualpipe_webapp/backend/generated \
+   --out-schemas src/qualpipe_webapp/frontend/static
+""" }
+
+generate-frontend-schema = { cmd = "npm run generate-js-schemas" }
+
+# Docker build
+build-backend = { depends-on = ["generate-codegen"], cmd = '''
+sh -c ". ./setup-env.sh && \
+    echo '\nBuilding backend image...' && \
+    docker build -t \$BACKEND_IMAGE \
+        --build-arg REQUIREMENTS=requirements.txt \
+        -f src/qualpipe_webapp/backend/Dockerfile \
+        src/qualpipe_webapp/backend && \
+    echo '✅ Backend image built successfully'"
+''' }
+
+build-frontend = { depends-on = ["generate-codegen"], cmd = '''
+sh -c ". ./setup-env.sh && \
+    echo 'Building frontend image...' && \
+    docker build -t \$FRONTEND_IMAGE \
+        --build-arg REQUIREMENTS=requirements.txt \
+        -f src/qualpipe_webapp/frontend/Dockerfile \
+        src/qualpipe_webapp/frontend && \
+    echo '✅ Frontend image built successfully'"
+''' }
+
+build-backend-dev = { depends-on = ["generate-codegen"], cmd = '''
+sh -c ". ./setup-env.sh && \
+    echo '\nBuilding backend dev image...' && \
+    docker build -t \$BACKEND_DEV_IMAGE \
+        --build-arg REQUIREMENTS=requirements-dev.txt \
+        -f src/qualpipe_webapp/backend/Dockerfile \
+        src/qualpipe_webapp/backend && \
+    echo '✅ Backend dev image built successfully'"
+''' }
+
+build-frontend-dev = { depends-on = ["generate-codegen"], cmd = '''
+sh -c ". ./setup-env.sh && \
+    echo 'Building frontend dev image...' && \
+    docker build -t \$FRONTEND_DEV_IMAGE \
+        --build-arg REQUIREMENTS=requirements-dev.txt \
+        -f src/qualpipe_webapp/frontend/Dockerfile \
+        src/qualpipe_webapp/frontend && \
+    echo '✅ Frontend dev image built successfully'"
+''' }
+
+build-images = { depends-on = [
+    "build-backend",
+    "build-frontend",
+], cmd = "echo '✅ Backend- and Frontend- images built successfully'" }
+
+build-images-dev = { depends-on = [
+    "build-backend-dev",
+    "build-frontend-dev",
+], cmd = "echo '✅ Backend- and Frontend- dev images built successfully'" }
+
+# Kind cluster management
+kind-create = { cmd = '''
+sh -c ". ./setup-env.sh && \
+    echo \"Creating kind cluster: \$KIND_CLUSTER_NAME...\" && \
+    (kind create cluster --name \$KIND_CLUSTER_NAME --config kind-dev-config.yml || true) && \
+    kubectl cluster-info --context kind-\$KIND_CLUSTER_NAME"
+''' }
+
+kind-delete = { cmd = '''
+sh -c ". ./setup-env.sh && \
+    echo '\nDeleting kind cluster: \$KIND_CLUSTER_NAME...' && \
+	kind delete cluster --name \$KIND_CLUSTER_NAME"
+''' }
+
+kind-load-images = { cmd = '''
+sh -c ". ./setup-env.sh && \
+	echo '\nLoading images into kind cluster...' && \
+	kind load docker-image \$BACKEND_IMAGE --name \$KIND_CLUSTER_NAME && \
+	kind load docker-image \$FRONTEND_IMAGE --name \$KIND_CLUSTER_NAME"
+''' }
+
+kind-load-dev-images = { cmd = '''
+sh -c ". ./setup-env.sh && \
+	echo '\nLoading dev images into kind cluster...' && \
+	kind load docker-image \$BACKEND_DEV_IMAGE --name \$KIND_CLUSTER_NAME && \
+	kind load docker-image \$FRONTEND_DEV_IMAGE --name \$KIND_CLUSTER_NAME"
+''' }
+
+kind-status = { cmd = '''
+sh -c "
+	echo '\n   === STATUS: ===' && \
+    echo '\n=== Kind Cluster ===' && \
+	kind get clusters || echo 'No Kind clusters running' && \
+	echo '' && \
+	echo '=== Docker Containers ===' && \
+	docker ps --filter name=dpps-local || echo 'No Docker containers running' && \
+	echo '' && \
+	echo '=== Kubernetes Nodes ===' && \
+	kubectl get nodes 2>/dev/null || echo 'Cluster node not accessible' && \
+	echo '' && \
+	echo '=== Pods ===' && \
+	kubectl get pods 2>/dev/null || echo 'Cluster pods not accessible' && \
+    echo '' && \
+	echo '=== Services ===' && \
+	kubectl get svc 2>/dev/null || echo 'Cluster service not accessible' && \
+    echo '' && \
+	echo '=== Ingress ===' && \
+	kubectl get ingress 2>/dev/null || echo 'Cluster ingress pods not accessible'
+    "
+''' }
+
+kind-clean-failed = { cmd = '''
+sh -c ". ./setup-env.sh && \
+	echo '\n=== CLEANING UP PREVIOUS FAILED INSTALLATIONS ===' && \
+	helm uninstall qualpipe-webapp --namespace \$NAMESPACE 2>/dev/null || true && \
+	sleep 2 && \
+	kubectl delete ingress --all --namespace \$NAMESPACE 2>/dev/null || true && \
+	sleep 2 && \
+	echo 'Checking for remaining ingresses...' && \
+	kubectl get ingress -n \$NAMESPACE || echo 'No ingresses found (good! ✅)'"
+''' }
+
+# Helm chart management
+helm-install = { depends-on = [
+    "kind-clean-failed",
+    "kind-load-images"
+], env = { VALUES_FILE = "chart/values.yaml" }, cmd = "pixi run _helm-install" }
+
+helm-dev-install = { depends-on = [
+    "kind-clean-failed",
+    "kind-load-dev-images"
+], env = { VALUES_FILE = "chart/values.yaml", VALUES_DEV_FILE = "chart/values-dev.yaml" }, cmd = "pixi run _helm-install" }
+
+helm-uninstall = { cmd = '''
+sh -c ". ./setup-env.sh && \
+	echo '\nUninstalling Helm chart...' && \
+	helm uninstall qualpipe-webapp --namespace \$NAMESPACE || true"
+''' }
+
+helm-upgrade = { depends-on = ["kind-load-images"], env = { VALUES_FILE = "chart/values.yaml" }, cmd = "pixi run _helm-upgrade" }
+
+helm-dev-upgrade = { depends-on = ["kind-load-dev-images"], env = { VALUES_FILE = "chart/values.yaml", VALUES_DEV_FILE = "chart/values-dev.yaml" }, cmd = "pixi run _helm-upgrade" }
+
+# Ingress controller install
+ingress-install = { cmd = '''
+sh -c "
+    echo '\nInstalling NGINX Ingress Controller for kind...' && \
+    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml && \
+    echo 'Waiting for Ingress Controller...' && \
+    until kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller 2>/dev/null | grep -q 'controller'; do \
+        echo '⏳ Waiting for controller pod to be created...'; \
+        sleep 5; \
+    done && \
+    kubectl wait \
+        --namespace ingress-nginx \
+        --for=condition=ready pod \
+        --selector=app.kubernetes.io/component=controller \
+        --timeout=180s && \
+    echo '✅ Ingress Controller installed and ready'
+"
+''' }
+
+# Workflows
+setup = { depends-on = [
+    "install",
+    "generate-codegen",
+    "compile-requirements",
+    "npm-install",
+    "generate-frontend-schema",
+], cmd = "echo '✅ Setup successful!'" }
+
+dev-setup = { depends-on = [
+    "install-all",
+    "generate-codegen",
+    "compile-requirements-dev",
+    "npm-install",
+    "generate-frontend-schema",
+    "pre-commit-install",
+], cmd = "echo '✅ Dev setup successful !'" }
+
+dev-up = { depends-on = [
+    "kind-create",
+    "build-images-dev",
+    "ingress-install",
+    "stage-dev-data",
+    "helm-dev-install",
+], cmd = '''
+sh -c "
+    echo '\n========================================' && \
+	echo '✅ Development environment is ready!' && \
+	echo '========================================' && \
+	echo '' && \
+	echo '🌐 Access the application:' && \
+	echo '   Frontend: http://qualpipe.local:8080/home' && \
+	echo '   Backend:  http://qualpipe.local:8080/api/docs' && \
+	echo '' && \
+	echo '💡 Note: Using kind extraPortMappings (no port-forward needed)' && \
+	echo '' && \
+	echo '📝 Useful commands:' && \
+	echo '   pixi run kind-status           # Check status' && \
+	echo '   pixi run kind-logs-backend     # Backend logs' && \
+	echo '   pixi run kind-logs-frontend    # Frontend logs' && \
+	echo '   pixi run dev-restart           # Re-build & re-deploy' && \
+	echo '   pixi run all-tests             # Run all tests'
+    "
+''' }
+
+up = { depends-on = [
+    "setup",
+    "kind-create",
+    "build-images",
+    "ingress-install",
+    "helm-install",
+], cmd = '''
+sh -c "
+    echo '\n========================================' && \
+    echo '=     Prod environment ready!' && \
+    echo '=  ✅ QualPipe-WebApp is deployed!' && \
+	echo '========================================' && \
+	echo '' && \
+	echo '🌐 Access the application:' && \
+	echo '   Frontend: http://qualpipe.local:8080/home' && \
+	echo '   Backend:  http://qualpipe.local:8080/api/docs' && \
+	echo '' && \
+	echo '🔍 Check status:' && \
+	echo '   pixi run kind-status'
+    "
+''' }
+
+restart = { depends-on = [
+    "helm-uninstall",
+    "build-images",
+    "helm-install",
+], cmd = '''
+sh -c "
+    echo '\n✅ Services restarted' && \
+	echo '' && \
+	echo '🌐 Access:' && \
+	echo '   Frontend: http://qualpipe.local:8080/home' && \
+	echo '   Backend:  http://qualpipe.local:8080/api/docs'
+    "
+''' }
+
+dev-restart = { depends-on = [
+    "helm-uninstall",
+    "build-images-dev",
+    "helm-dev-install",
+], cmd = '''
+sh -c "
+    echo '\n✅ Services restarted with latest dev images' && \
+	echo '' && \
+	echo '🌐 Access:' && \
+	echo '   Frontend: http://qualpipe.local:8080/home' && \
+	echo '   Backend:  http://qualpipe.local:8080/api/docs'
+    "
+''' }
+
+dev-restart-no-build = { depends-on = [
+    "helm-uninstall",
+    "helm-dev-install",
+], cmd = '''
+sh -c "
+    echo '\n✅ Services restarted with latest dev images' && \
+	echo '' && \
+	echo '🌐 Access:' && \
+	echo '   Frontend: http://qualpipe.local:8080/home' && \
+	echo '   Backend:  http://qualpipe.local:8080/api/docs'
+    "
+''' }
+
+dev-up-no-build = { depends-on = [
+    "kind-create",
+    "ingress-install",
+    "stage-dev-data",
+    "helm-dev-install",
+], cmd = '''
+sh -c "
+    echo '\n========================================' && \
+	echo '✅ Development environment is ready!' && \
+	echo '========================================' && \
+	echo '' && \
+	echo '🌐 Access the application:' && \
+	echo '   Frontend: http://qualpipe.local:8080/home' && \
+	echo '   Backend:  http://qualpipe.local:8080/api/docs' && \
+	echo '' && \
+	echo '💡 Note: Using kind extraPortMappings (no port-forward needed)' && \
+	echo '' && \
+	echo '📝 Useful commands:' && \
+	echo '   pixi run kind-status         # Check status' && \
+	echo '   pixi run kind-logs-backend   # Backend logs' && \
+	echo '   pixi run kind-logs-frontend  # Frontend logs' && \
+	echo '   pixi run dev-restart         # Re-build & re-deploy' && \
+	echo '   pixi run all-tests           # Run tests'
+	"
+''' }
+
+# Cleaning:
+# Stop pods
+stop = { depends-on = [
+    "helm-uninstall",
+], cmd = "echo '✅ Helm chart uninstalled'" }
+# Stop pods and delete cluster
+stop-and-delete = { depends-on = [
+    "kind-delete",
+], cmd = "echo '✅ Pods stopped and cluster shutted down.'" }
+# Remove dangling docker images
+prune = { cmd = "docker system prune -f" }
+# Full cleanup (including Docker images)
+clean-all = { depends-on = ["kind-delete"], cmd = '''
+sh -c ". ./setup-env.sh && \
+    echo '\n🧼 Cleaning Docker images...' && \
+    docker rmi \$BACKEND_IMAGE 2>/dev/null || true && \
+    docker rmi \$FRONTEND_IMAGE 2>/dev/null || true && \
+    docker rmi \$BACKEND_DEV_IMAGE 2>/dev/null || true && \
+    docker rmi \$FRONTEND_DEV_IMAGE 2>/dev/null || true && \
+    docker system prune -f && \
+    echo '✅ Cleanup complete'"
+''' }
+
+# Playwright test browser installation
+browser-install = { cmd = "npx playwright install" }
+
+# Testing
+test-backend = { cmd = "pytest src/qualpipe_webapp/backend/tests/" }
+test-frontend-py = { cmd = "pytest src/qualpipe_webapp/frontend/tests/" }
+test-frontend-js = { cmd = "npm run unitTest" }
+test-frontend-e2e = { depends-on = [
+    "browser-install",
+], cmd = "npx playwright test" }
+all-tests = { depends-on = [
+    "test-backend",
+    "test-frontend-py",
+    "test-frontend-js",
+    "browser-install",
+], cmd = "npx playwright test" }
+
+# Linting and formatting
+format = { cmd = "python -m ruff format src/" }
+lint = { cmd = "python -m ruff check src/" }
+lint-fix = { cmd = "python -m ruff check --fix src/" }
+
+# Debugging
+check-backend = { cmd = "curl -s http://qualpipe.local:8080/api/v1/health | python3 -m json.tool" }
+check-frontend = { cmd = "curl -s http://qualpipe.local:8080/health | python3 -m json.tool" }
+check = { depends-on = [
+    "check-backend",
+    "check-frontend",
+], cmd = "echo '✅ Backend and Frontend are healthy!'" }
+kind-logs-backend = { cmd = "kubectl logs -n default -l app.kubernetes.io/component=backend -f" }
+kind-logs-frontend = { cmd = "kubectl logs -n default -l app.kubernetes.io/component=frontend -f" }
+kind-logs = { depends-on = [
+    "kind-logs-backend",
+    "kind-logs-frontend",
+], cmd = "echo '✅ Backend and Frontend logs streaming'" }
+
+dev-health = { cmd = '''
+sh -c "
+    echo '\n=== HEALTH CHECK ==='; \
+    echo ''; \
+    set -e; \
+    front_ok=0; back_ok=0; api_ok=0; pods_ok=0; \
+    echo ' 1️⃣  Frontend health (via Ingress):'; \
+    curl -s http://qualpipe.local:8080/health | python3 -m json.tool 2>/dev/null && front_ok=1 && echo '   ✅ OK' || echo '   ❌ FAILED'; \
+    echo ''; \
+    echo ' 2️⃣  Backend health (via Frontend proxy):'; \
+    curl -s http://qualpipe.local:8080/api/v1/health | python3 -m json.tool 2>/dev/null && back_ok=1 && echo '   ✅ OK' || echo '   ❌ FAILED'; \
+    echo ''; \
+    echo ' 3️⃣  API endpoint (sample data):'; \
+    code=$(curl -s -o /dev/null -w '%{http_code}' 'http://qualpipe.local:8080/api/v1/data?site=North&date=2025-10-22&ob=239&telescope_type=LST&telescope_id=1'); \
+    if [ \"${code}\" = \"200\" ]; then api_ok=1; echo '   ✅ OK'; else echo '   ❌ FAILED'; fi; \
+    echo ''; \
+    echo ' 4️⃣  Pod status:'; \
+    kubectl get pods -n default --no-headers | grep 'qualpipe-webapp' | grep -q 'Running' && pods_ok=1 && echo '   ✅ All pods running' || echo '   ❌ Some pods not running'; \
+    echo ''; \
+    if [ \"${front_ok:-0}\" -eq 1 ] && [ \"${back_ok:-0}\" -eq 1 ] && [ \"${api_ok:-0}\" -eq 1 ] && [ \"${pods_ok:-0}\" -eq 1 ]; then \
+        echo '✅ All checks passed!'; \
+    else \
+        echo '⚠️  Some checks failed, run pixi run kind-status for details'; \
+    fi
+"
+''' }
+
+[environments]
+default = { features = ["dev"], solve-group = "qualpipe-webapp" }
+qualpipe-webapp-dev = { features = ["dev"], solve-group = "qualpipe-webapp" }
+qualpipe-webapp = { solve-group = "qualpipe-webapp" }
+
+[feature.dev.dependencies]
+pytest = "*"
+ruff = "*"
+pre-commit = "*"
+pytest-cov = "*"

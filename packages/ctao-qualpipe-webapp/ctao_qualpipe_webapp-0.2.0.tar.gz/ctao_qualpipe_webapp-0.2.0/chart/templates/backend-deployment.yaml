@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "qualpipe-webapp.fullname" . }}-backend
+  labels:
+    {{- include "qualpipe-webapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "qualpipe-webapp.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "qualpipe-webapp.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      volumes:
+      {{- if .Values.dev.backend.editable.enabled }}
+      - name: repo
+        hostPath:
+          type: Directory
+          path: /repo/{{ .Values.dev.backend.editable.path }}
+      {{- end }}
+      - name: data
+        hostPath:
+          type: DirectoryOrCreate
+          path: /repo/{{ .Values.dev.backend.data.hostPath | default "data/k8s" }}
+      containers:
+      - name: backend
+        image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        env:
+        {{- range .Values.backend.env }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        volumeMounts:
+        {{- if .Values.dev.backend.editable.enabled }}
+        - name: repo
+          mountPath: /app/backend
+        {{- end }}
+        - name: data
+          mountPath: /app/data
+        resources:
+          {{- toYaml .Values.backend.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /v1/health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /v1/health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
