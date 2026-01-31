@@ -1,0 +1,156 @@
+if __name__ == '__main__':
+    import sys
+    sys.path.append(sys.path[0] + '/..')
+
+from bs4 import BeautifulSoup, Tag
+from curl_cffi import requests
+from urllib.parse import quote
+import time
+import random
+
+from letterboxdpy.utils.utils_file import JsonFile
+from fastfingertips.terminal_utils import get_input
+from letterboxdpy.constants.project import DOMAIN
+from letterboxdpy.core.exceptions import (
+    PageLoadError,
+    InvalidResponseError,
+    PrivateRouteError
+)
+
+class Scraper:
+    """A class for scraping and parsing web pages."""
+
+    _session = None
+    headers = {
+        "referer": DOMAIN,
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept-encoding": "gzip, deflate, br",
+        "accept-language": "en-US,en;q=0.9",
+        "connection": "keep-alive"
+    }
+    builder = "lxml"
+    timeout = (10, 30)  # (connect, read) in seconds; set None to disable
+
+    def __init__(self, domain: str = headers['referer'], user_agent: str | None = None):
+        """Initialize the scraper with the specified domain and user-agent."""
+        self.headers = self.headers.copy()
+        self.headers["referer"] = domain
+        if user_agent:
+            self.headers["user-agent"] = user_agent
+
+    @classmethod
+    def instance(cls):
+        """Returns a singleton session instance."""
+        if cls._session is None:
+            cls._session = requests.Session()
+        return cls._session
+
+    @classmethod
+    def get_page(cls, url: str) -> BeautifulSoup:
+        """Fetch, check, and parse the HTML content from the specified URL."""
+        response = cls._fetch(url)
+        cls._check_for_errors(url, response)
+        return cls._parse_html(response)
+
+    @classmethod
+    def _fetch(cls, url: str) -> requests.Response:
+        """Fetch the HTML content from the specified URL using a session with retry logic."""
+        max_retries = 3
+        last_exception = None
+        response = None
+        
+        for attempt in range(max_retries):
+            try:
+                session = cls.instance()
+                response = session.get(url, headers=cls.headers, timeout=cls.timeout, impersonate="chrome")
+                
+                # If we get a 403, it might be a temporary block, try one more time after a short delay
+                if response.status_code == 403 and attempt < max_retries - 1:
+                    time.sleep(1 + random.random())
+                    continue
+                    
+                return response
+            except requests.errors.RequestsError as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    time.sleep(1 + attempt + random.random())
+                    continue
+                break
+        
+        if last_exception:
+            raise PageLoadError(url, str(last_exception))
+            
+        if response is not None:
+            return response
+            
+        raise PageLoadError(url, "Failed to fetch page after multiple attempts")
+
+    @classmethod
+    def _check_for_errors(cls, url: str, response: requests.Response) -> None:
+        """Check the response for errors and raise an exception if found."""
+        if response.status_code != 200:
+            error_message = cls._get_error_message(response)
+            formatted_error_message = cls._format_error(url, response, error_message)
+            if response.status_code == 403:
+                raise PrivateRouteError(formatted_error_message)
+            raise InvalidResponseError(formatted_error_message)
+
+    @classmethod
+    def _get_error_message(cls, response: requests.Response) -> str:
+        """Extract the error message from the response, if available."""
+        dom = BeautifulSoup(response.text, cls.builder)
+        message_section = dom.find("section", {"class": "message"})
+        
+        if isinstance(message_section, Tag):
+            strong = message_section.find("strong")
+            if strong:
+                return strong.get_text()
+                
+        return "Unknown error occurred"
+
+    @classmethod
+    def _format_error(cls, url: str, response: requests.Response, message: str) -> str:
+        """Format the error message for logging or raising exceptions."""
+        return JsonFile.stringify({
+            'code': response.status_code,
+            'reason': str(response.reason),
+            'url': url,
+            'message': message
+        }, indent=2)
+
+    @classmethod
+    def _parse_html(cls, response: requests.Response) -> BeautifulSoup:
+        """Parse the HTML content from the response."""
+        try:
+            return BeautifulSoup(response.text, cls.builder)
+        except Exception as e:
+            raise InvalidResponseError(f"Error parsing response: {e}")
+
+def parse_url(url: str) -> BeautifulSoup:
+    """Fetch and parse the HTML content from the specified URL using the Scraper class."""
+    return Scraper.get_page(url)
+
+def url_encode(query: str, safe: str = '') -> str:
+    """URL encode the given query."""
+    return quote(query, safe=safe)
+
+if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding='utf-8') # type: ignore
+
+    input_domain = ''
+    while not len(input_domain.strip()):
+        input_domain = get_input('Enter url: ', index=0)
+
+    print(f"Parsing {input_domain}...")
+
+    parsed_dom = parse_url(input_domain)
+    
+    title_text = "No Title"
+    if parsed_dom.title and parsed_dom.title.string:
+        title_text = parsed_dom.title.string
+        
+    print(f"Title: {title_text}")
+
+    input("Click Enter to see the DOM...")
+    print(f"HTML: {parsed_dom.prettify()}")
+    print("*" * 20 + "\nDone!")
