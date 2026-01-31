@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/diff.css') }}?v={{ range(1, 10000) | random }}">
+{% endblock %}
+
+{% block content %}
+
+<div class="hero" style="padding: 1.5rem 0;">
+    <h1><i class="bi bi-file-diff me-2"></i>Review Changes</h1>
+    <p class="subtitle">Module: <strong>{{ module_name }}</strong></p>
+</div>
+
+{% if file_path %}
+<div class="mb-3">
+    <span class="file-path"><i class="bi bi-file-code me-1"></i>{{ file_path }}</span>
+</div>
+{% endif %}
+
+{% if diff %}
+<div class="diff-container">
+    <div class="diff-header">
+        <h5><i class="bi bi-git me-2"></i>Changes Preview</h5>
+        <div class="diff-toggle">
+            <button class="btn active" onclick="showUnified()" id="btn-unified">
+                <i class="bi bi-list"></i> Unified
+            </button>
+            <button class="btn" onclick="showSplit()" id="btn-split">
+                <i class="bi bi-layout-split"></i> Side by Side
+            </button>
+        </div>
+    </div>
+
+    <!-- Unified diff view -->
+    <div class="diff-unified" id="diff-unified">
+        {% for line in diff.split('\n') %}
+        {% if line.startswith('+++') or line.startswith('---') or line.startswith('@@') %}
+        <div class="diff-line header">{{ line }}</div>
+        {% elif line.startswith('+') %}
+        <div class="diff-line addition">{{ line }}</div>
+        {% elif line.startswith('-') %}
+        <div class="diff-line deletion">{{ line }}</div>
+        {% else %}
+        <div class="diff-line context">{{ line }}</div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Side-by-side diff view -->
+    <div class="diff-split" id="diff-split">
+        <div class="diff-split-pane left">
+            <div class="pane-header old"><i class="bi bi-file-minus me-1"></i>Original</div>
+            <div class="pane-content">
+                {% for line in diff.split('\n') %}
+                {% if line.startswith('---') or line.startswith('@@') %}
+                <div class="diff-line header">{{ line }}</div>
+                {% elif line.startswith('-') and not line.startswith('---') %}
+                <div class="diff-line deletion">{{ line[1:] }}</div>
+                {% elif line.startswith('+') and not line.startswith('+++') %}
+                <div class="diff-line empty">&nbsp;</div>
+                {% elif not line.startswith('+++') %}
+                <div class="diff-line context">{{ line[1:] if line.startswith(' ') else line }}</div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="diff-split-pane right">
+            <div class="pane-header new"><i class="bi bi-file-plus me-1"></i>Modified</div>
+            <div class="pane-content">
+                {% for line in diff.split('\n') %}
+                {% if line.startswith('+++') or line.startswith('@@') %}
+                <div class="diff-line header">{{ line }}</div>
+                {% elif line.startswith('+') and not line.startswith('+++') %}
+                <div class="diff-line addition">{{ line[1:] }}</div>
+                {% elif line.startswith('-') and not line.startswith('---') %}
+                <div class="diff-line empty">&nbsp;</div>
+                {% elif not line.startswith('---') %}
+                <div class="diff-line context">{{ line[1:] if line.startswith(' ') else line }}</div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="action-buttons">
+    <a href="/module/{{ module_name }}{% if file_path %}?file={{ file_path | urlencode }}{% endif %}"
+        class="btn-cancel">
+        <i class="bi bi-x-lg"></i> Cancel
+    </a>
+    <form action="/api/confirm_save" method="post" style="margin: 0;">
+        <input type="hidden" name="change_key" value="{{ change_key }}">
+        <button type="submit" class="btn-confirm">
+            <i class="bi bi-check-lg"></i> Confirm & Save
+        </button>
+    </form>
+</div>
+
+{% else %}
+<div class="diff-container">
+    <div class="no-changes">
+        <i class="bi bi-check-circle-fill"></i>
+        <h4>No Changes Detected</h4>
+        <p>The source file content is identical to your edits.</p>
+    </div>
+</div>
+
+<div class="action-buttons">
+    <a href="/module/{{ module_name }}{% if file_path %}?file={{ file_path | urlencode }}{% endif %}"
+        class="btn-cancel">
+        <i class="bi bi-arrow-left"></i> Back to Editor
+    </a>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/modules/diff.js') }}"></script>
+{% endblock %}
