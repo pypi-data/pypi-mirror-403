@@ -1,0 +1,432 @@
+Metadata-Version: 2.4
+Name: iflow-mcp_wunrry_gen-http-sql-mcp
+Version: 0.1.0
+Summary: A universal SQL MCP server supporting multiple database engines
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastmcp>=2.11.3
+Requires-Dist: mysql-connector-python>=9.4.0
+Requires-Dist: psycopg2-binary>=2.9.0
+Requires-Dist: pyodbc>=5.0.0
+Requires-Dist: sqlalchemy>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Dynamic: license-file
+
+# Universal SQL MCP Server
+
+A Model Context Protocol (MCP) server that provides secure access to multiple SQL database engines. This server enables AI assistants and other MCP clients to interact with various SQL databases through a standardized interface.
+
+## Supported Databases
+
+- **MySQL** - Full support with comprehensive schema information
+- **PostgreSQL** - Full support with comprehensive schema information  
+- **SQLite** - Full support, perfect for local development and testing
+- **SQL Server** - Full support with ODBC connectivity
+
+
+## Features
+
+- **Multi-Database Support**: Works with MySQL, PostgreSQL, SQLite, and SQL Server
+- **Database Schema Inspection**: Get comprehensive information about all tables, columns, indexes, and constraints
+- **Safe Query Execution**: Execute SELECT queries with built-in security restrictions
+- **Controlled Write Operations**: Execute INSERT and UPDATE operations with proper security controls
+- **Connection Testing**: Verify database connectivity and configuration
+- **Environment-based Configuration**: Secure configuration through environment variables
+- **Comprehensive Logging**: Detailed logging for monitoring and debugging
+- **Database-Specific Optimizations**: Tailored queries and features for each database engine
+
+
+## Tools Provided
+
+### 1. `get_database_schema`
+Retrieves comprehensive information about all tables in the database including:
+- Table names and comments
+- Column definitions with data types, constraints, and comments
+- Index information (primary keys, unique indexes, regular indexes)
+- Table statistics (estimated row count, storage size)
+
+### 2. `execute_sql_query`
+Executes SQL SELECT queries safely with the following restrictions:
+- Only SELECT statements are allowed
+- Dangerous keywords (DROP, DELETE, UPDATE, etc.) are blocked
+- Returns results as structured data with metadata
+
+### 3. `execute_write_operation` (Optional)
+Executes SQL write operations (INSERT and UPDATE) safely with the following restrictions:
+- Only INSERT and UPDATE statements are allowed
+- DELETE, DROP, TRUNCATE, ALTER, CREATE operations are blocked
+- Returns affected row count and last insert ID (for INSERT operations)
+- Provides transaction safety with automatic commit
+- **Note**: This tool is only available when `ENABLE_WRITE_OPERATIONS=true` is set in the configuration
+
+### 4. `test_database_connection`
+Tests the database connection to ensure proper configuration and connectivity.
+
+## Quick Start
+
+### Try the Demo (SQLite)
+
+The fastest way to see the Universal SQL MCP Server in action:
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd gen-http-sql-mcp
+
+# Install dependencies
+pip install fastmcp mysql-connector-python psycopg2-binary pyodbc sqlalchemy python-dotenv
+
+# Run the demo (creates a SQLite database with sample data)
+python demo.py
+
+# Start the MCP server
+python main.py
+```
+
+The demo creates a SQLite database with sample users and orders, then demonstrates all MCP tools.
+
+## Installation
+
+1. Clone this repository:
+```bash
+git clone <repository-url>
+cd gen-http-sql-mcp
+```
+
+2. Install dependencies:
+```bash
+# Using pip
+pip install fastmcp mysql-connector-python psycopg2-binary pyodbc sqlalchemy python-dotenv
+
+# Or using uv
+uv sync
+```
+
+3. **Optional**: Install database-specific drivers only if needed:
+```bash
+# For MySQL only
+pip install fastmcp mysql-connector-python python-dotenv
+
+# For PostgreSQL only  
+pip install fastmcp psycopg2-binary python-dotenv
+
+# For SQLite only (no additional drivers needed)
+pip install fastmcp python-dotenv
+
+# For SQL Server only
+pip install fastmcp pyodbc python-dotenv
+```
+
+
+## Configuration
+
+1. Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+2. Edit the `.env` file with your database credentials:
+
+### MySQL Configuration
+```env
+DB_TYPE=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_database
+```
+
+### PostgreSQL Configuration
+```env
+DB_TYPE=postgresql
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_database
+```
+
+### SQLite Configuration
+```env
+DB_TYPE=sqlite
+DB_NAME=/path/to/your/database.db
+# Note: SQLite doesn't require host, port, user, or password
+```
+
+### SQL Server Configuration
+```env
+DB_TYPE=sqlserver
+DB_HOST=localhost
+DB_PORT=1433
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_database
+DB_DRIVER=ODBC Driver 17 for SQL Server
+```
+
+### Common Optional Settings
+```env
+# Optional: Connection pool settings (not applicable for SQLite)
+DB_POOL_SIZE=5
+DB_MAX_OVERFLOW=10
+
+# Optional: Connection timeout settings (in seconds)
+DB_CONNECT_TIMEOUT=10
+DB_READ_TIMEOUT=30
+DB_WRITE_TIMEOUT=30
+
+# Optional: Enable write operations (INSERT/UPDATE) - set to true to enable
+ENABLE_WRITE_OPERATIONS=false
+```
+
+
+### Configuration Options
+
+- **DB_TYPE**: Specifies the database engine to use
+  - `mysql`: MySQL database (requires mysql-connector-python)
+  - `postgresql`: PostgreSQL database (requires psycopg2-binary)
+  - `sqlite`: SQLite database (built-in Python support)
+  - `sqlserver`: SQL Server database (requires pyodbc)
+
+- **ENABLE_WRITE_OPERATIONS**: Controls whether the `execute_write_operation` tool is available
+  - `false` (default): Only read-only operations are allowed (SELECT queries only)
+  - `true`: Enables INSERT and UPDATE operations through the `execute_write_operation` tool
+  - For security reasons, DELETE, DROP, TRUNCATE, ALTER, and CREATE operations are always blocked
+
+- **Request Logging Configuration**:
+  - **ENABLE_REQUEST_LOGGING**: Enable basic request logging (`true` by default)
+  - **ENABLE_DETAILED_REQUEST_LOGGING**: Enable detailed request logging with headers and payloads (`false` by default)
+  - **REQUEST_LOG_LEVEL**: Log level for request logging (`INFO` by default)
+  - **MAX_PAYLOAD_LOG_LENGTH**: Maximum length of logged payloads (`2000` by default)
+  - **LOG_LEVEL**: General application log level (`INFO` by default)
+
+### Database-Specific Notes
+
+- **SQLite**: Only requires `DB_NAME` (file path). Connection pooling settings are ignored.
+- **SQL Server**: May require additional ODBC driver installation and `DB_DRIVER` specification.
+- **PostgreSQL**: Uses `psycopg2-binary` for optimal performance and compatibility.
+- **MySQL**: Uses the official `mysql-connector-python` driver.
+
+
+## Usage
+
+### Running the Server
+
+Start the MCP server:
+```bash
+uv run python main.py
+```
+
+The server will:
+1. Load configuration from environment variables
+2. Test the database connection
+3. Start the MCP server and listen for requests
+
+### Using with MCP Clients
+
+This server implements the Model Context Protocol and can be used with any MCP-compatible client. The server provides three tools that can be called by MCP clients.
+
+#### Example Tool Calls
+
+1. **Get Database Schema**:
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_database_schema"
+  }
+}
+```
+
+2. **Execute SQL Query** (works with all database types):
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "execute_sql_query",
+    "arguments": {
+      "sql_query": "SELECT * FROM users LIMIT 10"
+    }
+  }
+}
+```
+
+3. **Execute Write Operation** (works with all database types):
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "execute_write_operation",
+    "arguments": {
+      "sql_query": "INSERT INTO users (name, email) VALUES ('John Doe', 'john@example.com')"
+    }
+  }
+}
+```
+
+### Database-Specific Query Examples
+
+**PostgreSQL with RETURNING clause:**
+```sql
+INSERT INTO users (name, email) VALUES ('Jane Doe', 'jane@example.com') RETURNING id;
+```
+
+**SQLite with autoincrement:**
+```sql
+INSERT INTO users (name, email) VALUES ('Bob Smith', 'bob@example.com');
+```
+
+**SQL Server with OUTPUT clause:**
+```sql
+INSERT INTO users (name, email) OUTPUT INSERTED.id VALUES ('Alice Johnson', 'alice@example.com');
+```
+
+
+4. **Test Connection**:
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "test_database_connection"
+  }
+}
+```
+
+## Security Features
+
+- **Controlled Write Access**: Only INSERT and UPDATE operations are permitted for write operations
+- **Read Access**: SELECT queries are available through dedicated tool
+- **Query Validation**: Dangerous SQL keywords (DELETE, DROP, TRUNCATE, etc.) are blocked
+- **Operation Separation**: Read and write operations are handled by separate tools
+- **Environment Variables**: Sensitive configuration is stored in environment variables
+- **Connection Management**: Proper connection handling with timeouts and cleanup
+- **Transaction Safety**: Write operations include automatic commit and error handling
+
+## Project Structure
+
+```
+gen-http-sql-mcp/
+├── main.py              # Main server entry point
+├── database.py          # Universal database connection and management
+├── tools.py             # MCP tools implementation
+├── .env.example         # Environment configuration template
+├── pyproject.toml       # Project dependencies and metadata
+└── README.md           # This file
+```
+
+## Database Engine Support Details
+
+### MySQL
+- Full schema introspection with table comments, column details, and index information
+- Supports connection pooling and timeout configurations
+- Uses `mysql-connector-python` for optimal compatibility
+
+### PostgreSQL  
+- Comprehensive schema information including table and column comments
+- Advanced index information and constraint details
+- Uses `psycopg2-binary` for high performance
+
+### SQLite
+- Complete table and column information
+- Index details and primary key information
+- Perfect for development, testing, and lightweight applications
+- No additional driver installation required
+
+### SQL Server
+- Full table and column schema information
+- Supports both Windows and SQL Server authentication
+- Uses ODBC connectivity via `pyodbc`
+- Configurable ODBC driver selection
+
+
+## Dependencies
+
+- **fastmcp**: FastMCP framework for building MCP servers
+- **mysql-connector-python**: Official MySQL driver for Python
+- **psycopg2-binary**: PostgreSQL adapter for Python
+- **pyodbc**: ODBC database connectivity for SQL Server
+- **sqlalchemy**: SQL toolkit and Object-Relational Mapping library
+- **python-dotenv**: Environment variable loading
+- **sqlite3**: Built-in Python SQLite support (no additional installation needed)
+
+
+## Error Handling
+
+The server includes comprehensive error handling:
+- Database connection errors are logged and reported
+- Invalid SQL queries are rejected with clear error messages
+- Configuration validation ensures required parameters are present
+- Graceful shutdown on interruption
+
+## Logging
+
+The server provides comprehensive logging capabilities:
+
+### Basic Logging
+- Connection status and database information
+- Query execution results and performance
+- Error messages with context
+- Server startup and shutdown events
+
+### Request Logging
+The server includes advanced request logging middleware to help debug client connection issues:
+
+#### Simple Request Logging (Default)
+```bash
+# Enabled by default, shows basic request information
+ENABLE_REQUEST_LOGGING=true
+```
+
+#### Detailed Request Logging (Debug Mode)
+```bash
+# Enable detailed logging with headers and payloads
+ENABLE_DETAILED_REQUEST_LOGGING=true
+REQUEST_LOG_LEVEL=DEBUG
+MAX_PAYLOAD_LOG_LENGTH=5000
+LOG_LEVEL=DEBUG
+```
+
+### Docker Debug Environment
+For debugging client connection issues, use the debug environment:
+
+```bash
+# Start debug environment with detailed logging
+make debug
+
+# View debug logs
+make logs-debug
+
+# View only MCP server debug logs
+make logs-debug-mcp
+```
+
+The debug environment enables:
+- Detailed request/response logging
+- HTTP headers logging
+- Request payload logging
+- Response payload logging
+- Execution timing
+- Client information tracking
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+
+## Support
+
+For issues and questions:
+1. Check the logs for error messages
+2. Verify your database configuration
+3. Ensure your database server is accessible
+4. Create an issue in the repository
