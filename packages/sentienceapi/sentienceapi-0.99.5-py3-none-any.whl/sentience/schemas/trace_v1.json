@@ -1,0 +1,380 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sentience.ai/schemas/trace/v1",
+  "title": "Sentience Agent Trace Event",
+  "description": "Schema for Sentience agent trace events in JSONL format",
+  "type": "object",
+  "required": ["v", "type", "ts", "run_id", "seq", "data"],
+  "properties": {
+    "v": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["run_start", "step_start", "snapshot", "snapshot_taken", "llm_called", "llm_response", "action", "action_executed", "verification", "recovery", "step_end", "run_end", "error"],
+      "description": "Event type"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "ts_ms": {
+      "type": "integer",
+      "description": "Unix timestamp in milliseconds"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "UUID for the agent run"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing sequence number"
+    },
+    "step_id": {
+      "type": ["string", "null"],
+      "description": "Step identifier in 'step-N' format where N is the step index (present for step-scoped events)"
+    },
+    "step_index": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Step index (0-based), present for step-scoped events"
+    },
+    "data": {
+      "type": "object",
+      "description": "Event-specific payload",
+      "oneOf": [
+        {
+          "description": "run_start data",
+          "properties": {
+            "agent": {"type": "string"},
+            "llm_model": {"type": ["string", "null"]},
+            "config": {"type": "object"}
+          }
+        },
+        {
+          "description": "step_start data",
+          "required": ["step_id", "step_index", "goal", "attempt"],
+          "properties": {
+            "step_id": {"type": "string"},
+            "step_index": {"type": "integer"},
+            "goal": {"type": "string"},
+            "attempt": {"type": "integer"},
+            "pre_url": {"type": ["string", "null"]}
+          }
+        },
+        {
+          "description": "snapshot or snapshot_taken data",
+          "properties": {
+            "step_id": {"type": ["string", "null"]},
+            "step_index": {"type": ["integer", "null"], "minimum": 0, "description": "Step index for Studio compatibility"},
+            "snapshot_id": {"type": ["string", "null"]},
+            "snapshot_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "snapshot_digest_loose": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "url": {"type": ["string", "null"]},
+            "element_count": {"type": "integer"},
+            "timestamp": {"type": ["string", "null"]},
+            "diagnostics": {
+              "type": ["object", "null"],
+              "properties": {
+                "confidence": {"type": ["number", "null"]},
+                "reasons": {"type": "array", "items": {"type": "string"}},
+                "metrics": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "ready_state": {"type": ["string", "null"]},
+                    "quiet_ms": {"type": ["number", "null"]},
+                    "node_count": {"type": ["integer", "null"]},
+                    "interactive_count": {"type": ["integer", "null"]},
+                    "raw_elements_count": {"type": ["integer", "null"]}
+                  },
+                  "additionalProperties": true
+                },
+                "captcha": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "detected": {"type": "boolean"},
+                    "provider_hint": {
+                      "type": ["string", "null"],
+                      "enum": ["recaptcha", "hcaptcha", "turnstile", "arkose", "awswaf", "unknown", null]
+                    },
+                    "confidence": {"type": "number"},
+                    "evidence": {
+                      "type": "object",
+                      "properties": {
+                        "text_hits": {"type": "array", "items": {"type": "string"}},
+                        "selector_hits": {"type": "array", "items": {"type": "string"}},
+                        "iframe_src_hits": {"type": "array", "items": {"type": "string"}},
+                        "url_hits": {"type": "array", "items": {"type": "string"}}
+                      }
+                    }
+                  },
+                  "required": ["detected", "confidence", "evidence"]
+                }
+              },
+              "additionalProperties": true
+            },
+            "elements": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {"type": "integer"},
+                  "role": {"type": "string"},
+                  "text": {"type": ["string", "null"]},
+                  "importance": {"type": "number"},
+                  "importance_score": {"type": "number"},
+                  "bbox": {
+                    "type": "object",
+                    "properties": {
+                      "x": {"type": "number"},
+                      "y": {"type": "number"},
+                      "width": {"type": "number"},
+                      "height": {"type": "number"}
+                    },
+                    "required": ["x", "y", "width", "height"]
+                  },
+                  "visual_cues": {
+                    "type": "object",
+                    "properties": {
+                      "is_primary": {"type": "boolean"},
+                      "is_clickable": {"type": "boolean"},
+                      "background_color_name": {"type": ["string", "null"]}
+                    }
+                  },
+                  "in_viewport": {"type": "boolean"},
+                  "is_occluded": {"type": "boolean"},
+                  "z_index": {"type": "integer"},
+                  "fused_rank_index": {"type": ["integer", "null"]},
+                  "heuristic_index": {"type": ["integer", "null"]},
+                  "ml_probability": {"type": ["number", "null"]},
+                  "ml_score": {"type": ["number", "null"]},
+                  "diff_status": {
+                    "type": ["string", "null"],
+                    "enum": ["ADDED", "REMOVED", "MODIFIED", "MOVED", null],
+                    "description": "Diff status for Diff Overlay feature. ADDED: new element, REMOVED: element was removed, MODIFIED: element changed, MOVED: element position changed, null: no change"
+                  }
+                },
+                "required": ["id", "role", "importance", "bbox", "visual_cues"]
+              }
+            },
+            "screenshot_base64": {"type": ["string", "null"]},
+            "screenshot_format": {"type": ["string", "null"], "enum": ["png", "jpeg", null]}
+          }
+        },
+        {
+          "description": "llm_called data",
+          "required": ["step_id", "response_text", "response_hash"],
+          "properties": {
+            "step_id": {"type": "string"},
+            "model": {"type": ["string", "null"]},
+            "temperature": {"type": "number"},
+            "system_prompt_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "user_prompt_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "response_text": {"type": "string"},
+            "response_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "usage": {
+              "type": "object",
+              "properties": {
+                "prompt_tokens": {"type": "integer"},
+                "completion_tokens": {"type": "integer"},
+                "total_tokens": {"type": "integer"}
+              }
+            }
+          }
+        },
+        {
+          "description": "step_end data (StepResult)",
+          "required": ["step_id", "step_index", "goal", "attempt", "pre", "llm", "exec", "post", "verify"],
+          "properties": {
+            "v": {"type": "integer", "const": 1},
+            "step_id": {"type": "string"},
+            "step_index": {"type": "integer"},
+            "goal": {"type": "string"},
+            "attempt": {"type": "integer"},
+            "pre": {
+              "type": "object",
+              "required": ["snapshot_digest"],
+              "properties": {
+                "url": {"type": ["string", "null"]},
+                "snapshot_digest": {"type": "string"},
+                "snapshot_digest_loose": {"type": "string"}
+              }
+            },
+            "llm": {
+              "type": "object",
+              "required": ["response_text", "response_hash"],
+              "properties": {
+                "response_text": {"type": "string"},
+                "response_hash": {"type": "string"},
+                "usage": {
+                  "type": "object",
+                  "properties": {
+                    "prompt_tokens": {"type": "integer"},
+                    "completion_tokens": {"type": "integer"},
+                    "total_tokens": {"type": "integer"}
+                  }
+                }
+              }
+            },
+            "action": {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {"type": "string", "enum": ["click", "type", "press", "finish", "navigate", "scroll"]},
+                "element_id": {"type": "integer"},
+                "text": {"type": "string"},
+                "key": {"type": "string"},
+                "url": {"type": "string"},
+                "raw": {"type": "string"}
+              }
+            },
+            "exec": {
+              "type": "object",
+              "required": ["success", "outcome", "duration_ms"],
+              "properties": {
+                "success": {"type": "boolean"},
+                "outcome": {"type": "string"},
+                "action": {"type": "string"},
+                "element_id": {"type": "integer"},
+                "text": {"type": "string"},
+                "key": {"type": "string"},
+                "url_changed": {"type": ["boolean", "null"]},
+                "duration_ms": {"type": "integer"},
+                "error": {"type": ["string", "null"]},
+                "bounding_box": {
+                  "type": "object",
+                  "properties": {
+                    "x": {"type": "number"},
+                    "y": {"type": "number"},
+                    "width": {"type": "number"},
+                    "height": {"type": "number"}
+                  }
+                }
+              }
+            },
+            "post": {
+              "type": "object",
+              "properties": {
+                "url": {"type": ["string", "null"]},
+                "snapshot_digest": {"type": "string"},
+                "snapshot_digest_loose": {"type": "string"}
+              }
+            },
+            "verify": {
+              "type": "object",
+              "required": ["passed"],
+              "properties": {
+                "policy": {"type": "string"},
+                "passed": {"type": "boolean"},
+                "signals": {
+                  "type": "object",
+                  "properties": {
+                    "url_changed": {"type": "boolean"},
+                    "error": {"type": ["string", "null"]},
+                    "elements_found": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": {"type": "string"},
+                          "bounding_box": {
+                            "type": "object",
+                            "properties": {
+                              "x": {"type": "number"},
+                              "y": {"type": "number"},
+                              "width": {"type": "number"},
+                              "height": {"type": "number"}
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "assertions": {
+                      "type": "array",
+                      "description": "Assertion results from agent verification loop",
+                      "items": {
+                        "type": "object",
+                        "required": ["label", "passed"],
+                        "properties": {
+                          "label": {"type": "string", "description": "Human-readable assertion label"},
+                          "passed": {"type": "boolean", "description": "Whether the assertion passed"},
+                          "required": {"type": "boolean", "description": "If true, assertion gates step success"},
+                          "reason": {"type": "string", "description": "Explanation (especially when failed)"},
+                          "details": {"type": "object", "description": "Additional structured data for debugging"}
+                        }
+                      }
+                    },
+                    "task_done": {"type": "boolean", "description": "True if task completion assertion passed"},
+                    "task_done_label": {"type": "string", "description": "Label of the task completion assertion"}
+                  }
+                }
+              }
+            },
+            "recovery": {
+              "type": ["object", "null"],
+              "properties": {
+                "attempted": {"type": "boolean"},
+                "success": {"type": "boolean"},
+                "strategy": {"type": "string"},
+                "attempts": {"type": "array"}
+              }
+            }
+          }
+        },
+        {
+          "description": "verification data",
+          "required": ["step_id", "passed"],
+          "properties": {
+            "step_id": {"type": "string"},
+            "passed": {"type": "boolean"},
+            "kind": {
+              "type": "string",
+              "enum": ["assert", "task_done", "captcha"],
+              "description": "Type of verification event"
+            },
+            "label": {"type": "string", "description": "Human-readable label for the assertion"},
+            "required": {"type": "boolean", "description": "If true, assertion gates step success"},
+            "reason": {"type": "string", "description": "Explanation (especially when failed)"},
+            "details": {"type": "object", "description": "Additional structured data for debugging"},
+            "signals": {"type": "object"}
+          }
+        },
+        {
+          "description": "recovery data",
+          "required": ["step_id", "strategy"],
+          "properties": {
+            "step_id": {"type": "string"},
+            "strategy": {"type": "string"},
+            "attempt": {"type": "integer"}
+          }
+        },
+        {
+          "description": "run_end data",
+          "required": ["steps"],
+          "properties": {
+            "steps": {"type": "integer"},
+            "status": {
+              "type": "string",
+              "enum": ["success", "failure", "partial", "unknown"],
+              "description": "Final execution status"
+            }
+          }
+        },
+        {
+          "description": "error data",
+          "required": ["step_id", "error"],
+          "properties": {
+            "step_id": {"type": "string"},
+            "attempt": {"type": "integer"},
+            "error": {"type": "string"}
+          }
+        }
+      ]
+    }
+  }
+}
