@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SortedCollections — Engine & Optimizations</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <div class="container nav-inner">
+        <div class="brand">SortedCollections</div>
+        <nav class="nav-links">
+          <a href="index.html">Overview</a>
+          <a href="install.html">Install</a>
+          <a href="api.html">API</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy fade-in">
+          <div class="eyebrow">Backend Architecture</div>
+          <h1>Ranked B+ Tree core, engineered for hot paths.</h1>
+          <p class="lead">
+            SortedCollections is a CPython extension that implements a ranked B+ tree and exposes
+            SortedDict / SortedSet with predictable performance. The tree is optimized for locality,
+            reduced dispatch overhead, and fast range operations.
+          </p>
+          <div class="cta-row">
+            <a class="btn" href="install.html">Get started</a>
+            <a class="btn secondary" href="api.html">API reference</a>
+          </div>
+        </div>
+        <div class="hero-card fade-in">
+          <div class="ribbon">Performance Summary</div>
+          <p style="margin-top: 12px; color: var(--muted)">
+            Core features in the current build:
+          </p>
+          <ul style="margin: 10px 0 0 18px; color: var(--muted)">
+            <li>Ranked B+ tree with subtree sizes for O(log M) index & bisect.</li>
+            <li>Leaf-linked iterators for O(1) step traversal.</li>
+            <li>Specialized internal nodes (no values array) for higher fanout.</li>
+            <li>Bulk-loading for union/intersection/difference in O(M).</li>
+            <li>Cache-line aligned nodes and freelist reuse.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-title">
+          <h2>Backend Design</h2>
+          <span>Structure</span>
+        </div>
+        <div class="detail-grid">
+          <div class="detail">
+            <h3>B+ Tree Layout</h3>
+            <p class="lead">
+              Internal nodes contain only separator keys and child pointers. All keys and values live
+              in leaf nodes. Leaf nodes are linked to support fast sequential iteration and range scans.
+            </p>
+            <ul>
+              <li>Internal fanout is larger than leaf capacity.</li>
+              <li>Separator keys are copied from the first key of each right child.</li>
+              <li>Leaf values are the authoritative source for data.</li>
+            </ul>
+          </div>
+          <div class="detail">
+            <h3>Ranked Indexing</h3>
+            <p class="lead">
+              Each node tracks subtree sizes for O(log M) rank selection and counting. This powers
+              bisect operations and index access without linear scans.
+            </p>
+            <ul>
+              <li>subtree_size counts only keys in leaves.</li>
+              <li>Rank-select is used by views and set slicing.</li>
+              <li>Counting uses subtree sizes to skip whole subtrees.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-title">
+          <h2>Optimization Highlights</h2>
+          <span>Implementation notes</span>
+        </div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Fast Compare Paths</h3>
+            <p>Cached type rich-compare pointers reduce overhead in search/merge loops.</p>
+          </div>
+          <div class="card">
+            <h3>Iterator Fast Path</h3>
+            <p>Leaf iterators avoid Python-level dispatch, yielding O(1) per step.</p>
+          </div>
+          <div class="card">
+            <h3>Bulk Loading</h3>
+            <p>Union/intersection/difference build bottom-up in linear time.</p>
+          </div>
+          <div class="card">
+            <h3>Memory Locality</h3>
+            <p>64-byte aligned nodes and freelist recycling reduce allocator churn.</p>
+          </div>
+          <div class="card">
+            <h3>Rank-Select APIs</h3>
+            <p>O(log M) access for views and slice-based operations.</p>
+          </div>
+          <div class="card">
+            <h3>LTO & PGO</h3>
+            <p>Build-time optimizations enabled by default in setup.py.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-title">
+          <h2>Comprehensive Optimization List</h2>
+          <span>Back-end checklist</span>
+        </div>
+        <div class="detail-grid">
+          <div class="detail">
+            <h3>Structural Architecture</h3>
+            <ul>
+              <li>B+ Tree layout: values stored in leaves, internal nodes are routing only.</li>
+              <li>Specialized internal/leaf structs (internal nodes omit values array).</li>
+              <li>Leaf-linked list for O(1) step iteration.</li>
+              <li>SoA layout for keys/values arrays.</li>
+              <li>Higher internal branching factor (internal min degree 64, leaf 32).</li>
+            </ul>
+          </div>
+          <div class="detail">
+            <h3>Algorithmic & Complexity</h3>
+            <ul>
+              <li>Ranked invariants (subtree_size) for O(log M) indexing/bisect.</li>
+              <li>Intra-node binary search for routing and lookup.</li>
+              <li>O(M) bulk-loading for sorted sequences.</li>
+              <li>Linear-time set operations (merge + bulk-load).</li>
+            </ul>
+          </div>
+          <div class="detail">
+            <h3>Memory & Performance</h3>
+            <ul>
+              <li>Comparison fast paths: identity check + cached tp_richcompare.</li>
+              <li>Separate freelists for internal/leaf nodes (cap 128 each).</li>
+              <li>64-byte cache-line aligned node allocation.</li>
+              <li>Lazy iterators with leaf-linked traversal.</li>
+            </ul>
+          </div>
+          <div class="detail">
+            <h3>Integration & Safety</h3>
+            <ul>
+              <li>Capsule C-API for direct backend calls (btree._C_API).</li>
+              <li>PGO and LTO build configuration.</li>
+              <li>Recursion guards on recursive traversals.</li>
+              <li>“Thin ice” refcount handling during mutations.</li>
+              <li><strong>Note:</strong> Free-threaded (PEP 703) mutex guards are not yet implemented.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-title">
+          <h2>What’s next</h2>
+          <span>Roadmap</span>
+        </div>
+        <div class="detail">
+          <p class="lead">
+            Possible future work includes SIMD-friendly numeric key variants, adaptive node fill factors,
+            and fused range queries that stream results without materialization.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="container">
+        SortedCollections — CPython extension for sorted data structures.
+      </div>
+    </footer>
+  </body>
+</html>
