@@ -1,0 +1,24 @@
+services:
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        PYTHON_VERSION: "3.11"
+        ALPINE_VERSION: "alpine3.19"
+    image: podkit-test-runner:latest
+    container_name: podkit-test-runner
+    volumes:
+      # Mount Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount test workspace (persists between runs for debugging)
+      - ${HOME}/.podkit/test:/test_workspace
+    working_dir: /workspace
+    environment:
+      TEST_IMAGE: ${TEST_IMAGE:-podkit-test-runner:latest}
+      TEST_WORKSPACE: /test_workspace
+      TEST_WORKSPACE_HOST: ${HOME}/.podkit/test
+      TEST_CONTAINER_PREFIX: podkit-test
+      TEST_TIMEOUT: 300
+      PYTHONUNBUFFERED: 1
+    command: pytest tests/integration/ -v --tb=short

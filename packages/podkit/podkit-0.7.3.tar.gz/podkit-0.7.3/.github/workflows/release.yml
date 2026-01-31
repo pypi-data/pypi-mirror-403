@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch full history for setuptools_scm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install build dependencies
+        run: uv sync --all-extras
+
+      - name: Build Python package
+        run: uv run python -m build
+
+      - name: Check Python package contents
+        run: |
+          ls -la dist/
+          uv run python -m twine check dist/*
+
+      - name: Publish Python package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true

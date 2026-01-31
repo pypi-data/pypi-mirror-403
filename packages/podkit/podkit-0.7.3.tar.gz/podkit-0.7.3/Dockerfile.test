@@ -1,0 +1,21 @@
+ARG BASE_IMAGE=python:3.11-alpine3.19
+FROM ${BASE_IMAGE}
+
+RUN apk add --no-cache docker-cli bash curl coreutils lsof procps
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+WORKDIR /workspace
+
+COPY pyproject.toml ./
+COPY podkit/ ./podkit/
+COPY tests/ ./tests/
+
+# Use BuildKit cache mount to speed up dependency installation
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -e ".[dev]"
+
+RUN mkdir -p /test_workspace
+
+CMD ["pytest"]
