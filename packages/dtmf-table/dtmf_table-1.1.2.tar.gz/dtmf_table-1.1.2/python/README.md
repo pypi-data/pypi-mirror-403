@@ -1,0 +1,171 @@
+<div align="center">
+
+# DTMF Table (Python)
+
+[![Crates.io][crate-img]][crate] [![Docs.rs][docs-img]][docs] [![PyPI][pypi-img]][pypi] [![PyDocs][docs-img-py]][docs-python] [![License: MIT][license-img]][license]
+
+</div>
+
+A lightweight, dependency-free Python implementation of the standard **DTMF (Dual-Tone Multi-Frequency)** keypad used in telephony systems.
+
+This library provides safe mappings between keypad keys and their canonical low/high frequencies, together with practical runtime helpers for resolving noisy frequency estimates produced by FFT-based audio pipelines.
+
+The API is intentionally small, predictable, and suitable for both batch analysis and real-time signal processing.
+
+---
+
+## Features
+
+* **Canonical forward and reverse mappings** between DTMF keys and frequencies
+* **Closed key representation**
+  Invalid keys cannot be constructed; all validation happens at creation time
+* **Zero external dependencies**
+* Runtime helpers:
+
+  * Tolerance-based reverse lookup (e.g. from FFT peak estimates)
+  * Nearest snapping for noisy frequency measurements
+  * Iteration over all keys and tones
+
+---
+
+## Installation
+
+```bash
+pip install dtmf-table
+```
+
+---
+
+## Quick Example
+
+```python
+from dtmf_table import DtmfTable, DtmfKey
+
+# Construct a table instance
+table = DtmfTable()
+
+# Forward lookup from key to canonical frequencies
+key = DtmfKey.from_char('8')
+low, high = key.freqs()
+assert (low, high) == (852, 1336)
+
+# Reverse lookup with tolerance (e.g. from FFT bin centres)
+key = table.from_pair_tol_f64(770.2, 1335.6, 6.0)
+assert key.to_char() == '5'
+
+# Nearest snapping for noisy estimates
+key, snapped_low, snapped_high = table.nearest_u32(768, 1342)
+assert key.to_char() == '5'
+assert (snapped_low, snapped_high) == (770, 1336)
+```
+
+---
+
+## Design Rationale
+
+DTMF tone mappings are fixed, tiny (a 4×4 keypad), and stable.
+Rather than exposing a mutable lookup table or relying on dynamic configuration, the mapping is encoded directly in the library and validated eagerly.
+
+This yields:
+
+* Deterministic behaviour with no hidden state
+* Early detection of invalid keys and invalid frequency pairs
+* Predictable performance characteristics for tight audio loops
+
+While Python cannot provide compile-time guarantees, the API enforces the same invariants at runtime.
+
+---
+
+## API Overview
+
+### Core Types
+
+#### `DtmfKey`
+
+Represents a valid DTMF keypad key.
+
+* `DtmfKey.from_char(char) -> DtmfKey`
+  Create a key from a character. Raises if invalid.
+
+* `key.to_char() -> str`
+  Convert a key back to its character representation.
+
+* `key.freqs() -> (int, int)`
+  Return the canonical `(low_freq, high_freq)` pair.
+
+---
+
+#### `DtmfTable`
+
+Provides lookup and matching utilities.
+
+* `DtmfTable.lookup_key(key) -> (int, int)`
+  Forward lookup: key → frequencies.
+
+* `DtmfTable.from_pair_exact(low, high) -> Optional[DtmfKey]`
+  Reverse lookup requiring an exact frequency match.
+
+* `DtmfTable.from_pair_normalised(f1, f2) -> Optional[DtmfKey]`
+  Reverse lookup ignoring frequency order.
+
+* `DtmfTable.from_pair_tol_f64(f1, f2, tol) -> Optional[DtmfKey]`
+  Reverse lookup allowing tolerance in Hz.
+
+* `DtmfTable.nearest_u32(f1, f2) -> (DtmfKey, int, int)`
+  Snap noisy integer frequency estimates to the nearest canonical pair.
+
+* `DtmfTable.nearest_f64(f1, f2) -> (DtmfKey, float, float)`
+  Float variant of nearest snapping.
+
+* `DtmfTable.all_keys() -> list[DtmfKey]`
+  Return all valid keys.
+
+* `DtmfTable.all_tones() -> list[(DtmfKey, int, int)]`
+  Return all keys with their canonical frequencies.
+
+---
+
+## Integration Example
+
+A typical audio workflow looks like:
+
+* Extract an audio segment
+* Compute an FFT magnitude spectrum
+* Identify two dominant frequency peaks
+* Resolve the DTMF key using tolerance or snapping
+
+```python
+# freq1 and freq2 are the peak frequencies extracted from your FFT
+key = table.from_pair_tol_f64(freq1, freq2, 5.0)
+if key is not None:
+    print(f"Detected key: {key.to_char()}")
+```
+
+This keeps the signal-processing logic decoupled from keypad semantics while remaining simple to integrate.
+
+---
+
+## Documentation
+
+* **Python API**: [https://jmg049.github.io/dtmf_table/](https://jmg049.github.io/dtmf_table/)
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+[crate]: https://crates.io/crates/dtmf_table
+[crate-img]: https://img.shields.io/crates/v/dtmf_table?style=for-the-badge&color=009E73&label=crates.io
+
+[docs]: https://docs.rs/dtmf_table
+[docs-img]: https://img.shields.io/badge/docs.rs-online-009E73?style=for-the-badge&labelColor=gray
+
+[license-img]: https://img.shields.io/crates/l/dtmf_table?style=for-the-badge&label=license&labelColor=gray  
+[license]: https://github.com/jmg049/dtmf_table/blob/main/LICENSE
+
+[pypi]: https://pypi.org/project/dtmf-table/
+[pypi-img]: https://img.shields.io/pypi/v/dtmf-table?style=for-the-badge&color=009E73&label=PyPI
+
+[docs-python]: https://jmg049.github.io/dtmf_table/
+[docs-img-py]: https://img.shields.io/pypi/v/dtmf-table?style=for-the-badge&color=009E73&label=PyDocs
