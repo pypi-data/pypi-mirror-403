@@ -1,0 +1,314 @@
+Metadata-Version: 2.4
+Name: algotrading-core
+Version: 0.1.1
+Summary: Shared core package: schemas, preprocessing, features, and utils for the algorithmic trading platform
+Requires-Python: <4,>=3.11
+Requires-Dist: numpy<3,>=1.24
+Requires-Dist: pandas<3,>=2.0
+Requires-Dist: pydantic<3,>=2.0
+Requires-Dist: pyyaml<7,>=6.0
+Description-Content-Type: text/markdown
+
+# algotrading-core
+
+Shared core package for the algorithmic trading platform: **schemas**, **preprocessing**, **feature engineering**, and **utilities**. Single source of truth consumed by `algotrading-research` and `algotrading-backend` via pip—no duplicated core logic.
+
+Aligned with [CODE_STRUCTURE_GUIDE.md](../CODE_STRUCTURE_GUIDE.md) (Core Layer) and [source/DEVELOPMENT_PHASES_GUIDE.md](../source/DEVELOPMENT_PHASES_GUIDE.md) (Phases 1–2).
+
+---
+
+## Role in the platform
+
+The platform uses a **multi-repository** layout:
+
+| Repository              | Role                         | Depends on core |
+|-------------------------|------------------------------|------------------|
+| **algotrading-core**    | Schemas, preprocessing, features, utils | — |
+| **algotrading-research**| Offline research, training, backtesting | ✅ |
+| **algotrading-backend** | Signals, inference, API      | ✅ |
+| **algotrading-execution** | MT5 execution (signals only) | ❌ |
+
+Core is **versioned and published** (private PyPI or Git). Research and backend pin a version and use the same feature logic for training and live inference.
+
+---
+
+## Package structure
+
+```
+src/algotrading_core/
+├── schemas/           # Pydantic data models (Phase 1)
+│   ├── candle.py     # OHLCV candle schema
+│   ├── feature.py    # Feature schema
+│   ├── model.py      # Model artifact schema
+│   └── (config)       # Configuration schemas
+├── preprocessing/    # Data validation & transformation (Phase 2)
+│   ├── candles.py    # Candle validation, cleaning
+│   ├── adjustments.py # Future contract adjustments
+│   └── transformers.py # Aggregation, pipelines
+├── features/         # Feature engineering (Phase 2)
+│   ├── base.py       # Base feature generator (abstract)
+│   ├── levels.py     # Support/resistance levels
+│   ├── time_features.py # Time-based (e.g. trig encoding)
+│   ├── volatility.py # Volatility features
+│   └── aggregated.py # Aggregated timeframe features
+└── utils/            # Shared utilities (Phase 1)
+    ├── datetime_utils.py
+    └── path_utils.py
+```
+
+- **Phase 1** (Foundation): schemas + utils + config loaders.  
+- **Phase 2** (Data & preprocessing): preprocessing + feature base and concrete generators.
+
+---
+
+## Installation
+
+**Requires**: Python ≥3.11.
+
+### From local path (development)
+
+```bash
+uv add /path/to/algotrading-core
+# or
+pip install -e /path/to/algotrading-core
+```
+
+### From Git
+
+```bash
+uv add "algotrading-core @ git+https://github.com/org/algotrading-core.git@v0.1.0"
+```
+
+### From private PyPI
+
+Configure your private index (see [Publishing to private PyPI](#publishing-to-private-pypi) for index URL and auth), then:
+
+```bash
+pip install algotrading-core==0.1.0
+```
+
+---
+
+## Publishing to private PyPI
+
+The package uses **semantic versioning** (e.g. `1.0.0`). To publish a release to a private PyPI server:
+
+### 1. Bump version
+
+Edit `version` in `pyproject.toml` (e.g. `0.1.0` → `0.2.0`). Tag the release in Git:
+
+```bash
+git tag v0.2.0
+```
+
+### 2. Build the package
+
+```bash
+make build
+# or: uv run python -m build
+```
+
+This produces `dist/algotrading-core-<version>.tar.gz` and `dist/algotrading_core-<version>-py3-none-any.whl`.
+
+### 3. Configure credentials for your private index
+
+**Option A — `.pypirc` (recommended)**  
+Create or edit `~/.pypirc`:
+
+```ini
+[distutils]
+index-servers =
+    private
+
+[private]
+repository = https://your-private-pypi.example.com/pypi/
+username = your-username
+password = your-password-or-token
+```
+
+**Option B — Environment variables**
+
+```bash
+export TWINE_USERNAME=your-username
+export TWINE_PASSWORD=your-password-or-token
+export TWINE_REPOSITORY_URL=https://your-private-pypi.example.com/pypi/
+```
+
+### 4. Upload
+
+```bash
+make publish
+# Uses .pypirc repo name "private" by default. Override: make publish REPO=myrepo
+# Or use URL directly: make publish REPO_URL=https://your-private-pypi.example.com/pypi/
+```
+
+Replace `your-private-pypi.example.com` with your actual private PyPI host (e.g. CodeArtifact, Artifactory, or self-hosted PyPI).
+
+**Consumers** of the package must configure pip to use the same index (e.g. `pip.conf` or `pip install --index-url https://.../pypi/ algotrading-core`).
+
+---
+
+## Usage
+
+Consumers import from the package; no copy-paste of core code.
+
+```python
+from algotrading_core.schemas import Candle, Feature
+from algotrading_core.preprocessing.candles import preprocess_candles
+from algotrading_core.features.base import FeatureGenerator
+from algotrading_core.features.levels import LevelsFeatureGenerator
+from algotrading_core.utils.datetime_utils import parse_interval
+```
+
+Research uses these for **training and backtesting**; the backend uses the **same** code for **live feature generation** and inference.
+
+---
+
+## Development
+
+### Setup
+
+```bash
+cd algotrading-core
+uv sync
+```
+
+### Commands (Makefile)
+
+| Target    | Action                          |
+|----------|----------------------------------|
+| `make lint`   | Ruff + black check              |
+| `make format` | Black + ruff --fix              |
+| `make test`   | Pytest                          |
+| `make coverage` | Pytest with coverage (≥75%)   |
+| `make check`  | Lint + test (CI gate)           |
+
+### Versioning
+
+Use **semantic versioning** (e.g. `0.1.0`, `1.0.0`). Tag releases so consumers can pin:
+
+- `algotrading-core>=0.1.0,<1.0.0` in research/backend `pyproject.toml`.
+
+---
+
+## Phases related to algotrading-core
+
+The following phases from [source/DEVELOPMENT_PHASES_GUIDE.md](../source/DEVELOPMENT_PHASES_GUIDE.md) are implemented in this repository. Full guide: discovery tips, code examples, and phase-by-phase implementation.
+
+---
+
+### Phase 1: Foundation & Core Package Setup
+
+**Goal**: Establish shared core package as its own repository and project infrastructure.
+
+**Duration**: 1–2 weeks.
+
+**Tasks**:
+1. **Create core repository (`algotrading-core`)**
+   - Dedicated repo with installable package structure: `src/algotrading_core/` (src layout)
+   - Set up schemas, preprocessing, features, utils
+   - Define Pydantic schemas for all data types
+   - Create base classes and interfaces
+   - Configure `pyproject.toml` (package name, version, dependencies: pandas, numpy, pydantic, etc.)
+
+2. **Publish core package**
+   - Publish to private PyPI (see [Publishing to private PyPI](#publishing-to-private-pypi)), or document Git URL for pip install
+   - Use semantic versioning (e.g. `1.0.0`) for releases
+
+3. **Set up consumer repositories**
+   - In `algotrading-research` and `algotrading-backend`: add dependency on `algotrading-core` in `pyproject.toml` (version range or Git URL)
+   - Configure development tools (black, ruff, pytest) in each repo
+
+4. **Implement core utilities** (in this repo)
+   - Date/time utilities
+   - Path utilities
+   - Logging setup
+   - Configuration loaders
+
+5. **Create data schemas** (in this repo)
+   - `Candle` schema (OHLCV data)
+   - `Feature` schema
+   - `Signal` schema
+   - `Config` schemas
+
+**Deliverables**:
+- ✅ `algotrading-core` package with schemas and utilities, published (private index or Git)
+- ✅ Research and backend depend on `algotrading-core` via pip; no copied core code
+- ✅ Working dependency management in all repos
+- ✅ Logging infrastructure
+- ✅ Configuration system
+
+**Files to create** (Phase 1):
+```
+algotrading-core/
+├── src/algotrading_core/
+│   ├── schemas/
+│   │   ├── candle.py
+│   │   ├── feature.py
+│   │   ├── model.py
+│   │   └── config.py
+│   └── utils/
+│       ├── datetime_utils.py
+│       ├── path_utils.py
+│       └── config_loader.py
+```
+
+---
+
+### Phase 2: Data Layer & Preprocessing
+
+**Goal**: Implement data ingestion, validation, and preprocessing.
+
+**Duration**: 2–3 weeks.
+
+**Tasks**:
+1. **Implement preprocessing functions**
+   - Candle preprocessing (validation, cleaning)
+   - Future contract adjustments
+   - Data aggregation logic
+   - Data transformation pipelines
+
+2. **Create data validation layer**
+   - Schema validation
+   - Data quality checks
+   - Missing data handling
+
+3. **Implement feature engineering base**
+   - Base feature generator class
+   - Support/resistance level calculation
+   - Time-based features (trigonometric encoding)
+   - Volatility features
+   - Aggregated timeframe features
+
+**Deliverables**:
+- ✅ Preprocessing functions
+- ✅ Data validation
+- ✅ Feature generation functions
+- ✅ Unit tests for all functions
+
+**Files to create** (Phase 2, under `src/algotrading_core/`):
+```
+src/algotrading_core/
+├── preprocessing/
+│   ├── candles.py
+│   ├── adjustments.py
+│   └── transformers.py
+└── features/
+    ├── base.py
+    ├── levels.py
+    ├── time_features.py
+    ├── volatility.py
+    └── aggregated.py
+```
+
+---
+
+For **discovering what to put in core** (extract from existing app vs start minimal), code examples, and the rest of the platform phases, see [source/DEVELOPMENT_PHASES_GUIDE.md](../source/DEVELOPMENT_PHASES_GUIDE.md).
+
+---
+
+## References
+
+- [CODE_STRUCTURE_GUIDE.md](../CODE_STRUCTURE_GUIDE.md) — Layered architecture, Core Layer, phases.
+- [source/DEVELOPMENT_PHASES_GUIDE.md](../source/DEVELOPMENT_PHASES_GUIDE.md) — Platform repos, Phase 1–2 tasks, repository layout.
+- [.cursor/rules/algotrading-standards.mdc](.cursor/rules/algotrading-standards.mdc) — Code style, SOLID, testing (when opened in Cursor).
