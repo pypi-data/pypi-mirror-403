@@ -1,0 +1,247 @@
+"""API endpoints for Unified Alerts.
+
+Provides REST API for:
+- Listing all alerts from all sources
+- Alert summary and statistics
+- Acknowledging and resolving alerts
+- Alert correlation queries
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..core.unified_alerts import UnifiedAlertsService
+from ..db import get_db_session
+from ..schemas.unified_alerts import (
+    AcknowledgeAlertRequest,
+    AlertCorrelation,
+    AlertCorrelationResponse,
+    AlertCountResponse,
+    AlertSeverity,
+    AlertSource,
+    AlertStatus,
+    AlertSummary,
+    BulkAlertActionRequest,
+    BulkAlertActionResponse,
+    ResolveAlertRequest,
+    UnifiedAlertListResponse,
+    UnifiedAlertResponse,
+)
+
+router = APIRouter(prefix="/alerts", tags=["alerts"])
+
+
+def get_service(session: AsyncSession = Depends(get_db_session)) -> UnifiedAlertsService:
+    """Get unified alerts service instance."""
+    return UnifiedAlertsService(session)
+
+
+# =============================================================================
+# Alert List Endpoints
+# =============================================================================
+
+
+@router.get("", response_model=UnifiedAlertListResponse)
+async def list_alerts(
+    source: AlertSource | None = None,
+    severity: AlertSeverity | None = None,
+    status: AlertStatus | None = None,
+    source_name: str | None = Query(None, description="Filter by source name (partial match)"),
+    time_range_hours: int | None = Query(24, ge=1, le=720, description="Time range in hours"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    service: UnifiedAlertsService = Depends(get_service),
+) -> UnifiedAlertListResponse:
+    """List all unified alerts from all sources.
+
+    Aggregates alerts from:
+    - Model monitoring
+    - Drift monitoring
+    - Anomaly detection
+    - Validation failures
+    """
+    alerts, total = await service.get_all_alerts(
+        source=source,
+        severity=severity,
+        status=status,
+        source_name=source_name,
+        time_range_hours=time_range_hours,
+        offset=offset,
+        limit=limit,
+    )
+
+    return UnifiedAlertListResponse(
+        items=alerts,
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get("/summary", response_model=AlertSummary)
+async def get_alert_summary(
+    time_range_hours: int = Query(24, ge=1, le=720, description="Time range for summary"),
+    service: UnifiedAlertsService = Depends(get_service),
+) -> AlertSummary:
+    """Get alert summary statistics.
+
+    Returns counts by severity, source, status, and trend data.
+    """
+    return await service.get_alert_summary(time_range_hours=time_range_hours)
+
+
+@router.get("/count", response_model=AlertCountResponse)
+async def get_alert_count(
+    status: AlertStatus | None = Query(None, description="Filter by status"),
+    service: UnifiedAlertsService = Depends(get_service),
+) -> AlertCountResponse:
+    """Get quick alert count (for badges).
+
+    Returns just the count of alerts matching the criteria.
+    """
+    _, total = await service.get_all_alerts(
+        status=status,
+        time_range_hours=24,
+        limit=1,  # We only need the count
+    )
+
+    return AlertCountResponse(
+        count=total,
+        status_filter=status.value if status else "all",
+    )
+
+
+@router.get("/{alert_id}", response_model=UnifiedAlertResponse)
+async def get_alert(
+    alert_id: str,
+    service: UnifiedAlertsService = Depends(get_service),
+) -> UnifiedAlertResponse:
+    """Get a specific alert by unified ID."""
+    alert = await service.get_alert_by_id(alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    return alert
+
+
+# =============================================================================
+# Bulk Action Endpoints (must be before /{alert_id} routes to avoid path conflict)
+# =============================================================================
+
+
+@router.post("/bulk/acknowledge", response_model=BulkAlertActionResponse)
+async def bulk_acknowledge_alerts(
+    request: BulkAlertActionRequest,
+    service: UnifiedAlertsService = Depends(get_service),
+) -> BulkAlertActionResponse:
+    """Bulk acknowledge multiple alerts."""
+    success, failed, failed_ids = await service.bulk_acknowledge(
+        request.alert_ids,
+        request.actor,
+        request.message,
+    )
+
+    return BulkAlertActionResponse(
+        success_count=success,
+        failed_count=failed,
+        failed_ids=failed_ids,
+    )
+
+
+@router.post("/bulk/resolve", response_model=BulkAlertActionResponse)
+async def bulk_resolve_alerts(
+    request: BulkAlertActionRequest,
+    service: UnifiedAlertsService = Depends(get_service),
+) -> BulkAlertActionResponse:
+    """Bulk resolve multiple alerts."""
+    success, failed, failed_ids = await service.bulk_resolve(
+        request.alert_ids,
+        request.actor,
+        request.message,
+    )
+
+    return BulkAlertActionResponse(
+        success_count=success,
+        failed_count=failed,
+        failed_ids=failed_ids,
+    )
+
+
+# =============================================================================
+# Alert Action Endpoints
+# =============================================================================
+
+
+@router.post("/{alert_id}/acknowledge", response_model=UnifiedAlertResponse)
+async def acknowledge_alert(
+    alert_id: str,
+    request: AcknowledgeAlertRequest,
+    service: UnifiedAlertsService = Depends(get_service),
+) -> UnifiedAlertResponse:
+    """Acknowledge an alert.
+
+    Note: Not all alert types support acknowledgement.
+    Validation and anomaly alerts are derived from their source data.
+    """
+    alert = await service.acknowledge_alert(alert_id, request.actor, request.message)
+    if not alert:
+        raise HTTPException(
+            status_code=404,
+            detail="Alert not found or not eligible for acknowledgement",
+        )
+
+    return alert
+
+
+@router.post("/{alert_id}/resolve", response_model=UnifiedAlertResponse)
+async def resolve_alert(
+    alert_id: str,
+    request: ResolveAlertRequest,
+    service: UnifiedAlertsService = Depends(get_service),
+) -> UnifiedAlertResponse:
+    """Resolve an alert.
+
+    Note: Not all alert types support resolution.
+    Validation and anomaly alerts are derived from their source data.
+    """
+    alert = await service.resolve_alert(alert_id, request.actor, request.message)
+    if not alert:
+        raise HTTPException(
+            status_code=404,
+            detail="Alert not found or not eligible for resolution",
+        )
+
+    return alert
+
+
+# =============================================================================
+# Correlation Endpoints
+# =============================================================================
+
+
+@router.get("/{alert_id}/correlations", response_model=AlertCorrelationResponse)
+async def get_alert_correlations(
+    alert_id: str,
+    time_window_hours: int = Query(1, ge=1, le=24, description="Correlation time window"),
+    service: UnifiedAlertsService = Depends(get_service),
+) -> AlertCorrelationResponse:
+    """Get correlated alerts for a given alert.
+
+    Finds alerts that are related by:
+    - Same source (data source, model)
+    - Similar time frame
+    - Similar severity
+    """
+    correlations = await service.get_alert_correlations(
+        alert_id,
+        time_window_hours=time_window_hours,
+    )
+
+    total_correlated = sum(len(c.related_alerts) for c in correlations)
+
+    return AlertCorrelationResponse(
+        correlations=correlations,
+        total_correlated=total_correlated,
+    )
