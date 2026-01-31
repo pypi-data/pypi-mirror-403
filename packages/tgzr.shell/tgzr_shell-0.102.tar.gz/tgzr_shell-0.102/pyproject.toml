@@ -1,0 +1,111 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"] 
+build-backend = "hatchling.build"
+
+[project]
+name = "tgzr.shell"
+dynamic = ["version"]
+description = 'tgzr command line interface'
+readme = "README.md"
+requires-python = ">=3.9"
+license = "GPL-3.0-or-later"
+keywords = []
+authors = [
+  { name = "Dee", email = "dee.sometech@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+dependencies = [
+  "pydantic-settings>=2.8.1",
+  "eval_type_backport", # until we drop support for 3.9
+  "tgzr.cli>=0.100",
+  "tgzr.package_management>=0.100",
+  "tgzr.shell_brokers.jsbroker>=0.100",
+  "tgzr.shell_services.settings>=0.100",
+  "tgzr.nice>=0.100", #FIXME: find a way to avoid needing this in cli_plugin.app_cli
+]
+
+[project.optional-dependencies]
+nicegui = [
+    "nicegui>=2.24.2",
+    "pywebview[qt]>=6.1",
+    "tgzr.nice>=0.100",
+]
+qt = [
+    "pyside6>=6.6.3.1",
+    "qtpy>=2.4.3",
+]
+
+[project.entry-points."tgzr.shell.connection_plugin"]
+tgzr_org_connection = "tgzr.shell.connection_plugins.tgzr_org:TGZROrgConnectionPlugin"
+default_connection = "tgzr.shell.connection_plugins.default_connection:DefaultConnectionPlugin"
+
+[project.entry-points."tgzr.cli.plugin"]
+shell_cli = "tgzr.shell.cli_plugin:install_cli"
+
+[project.entry-points."tgzr.shell.app_plugin"]
+tgzr_system_apps = "tgzr.shell.system_apps.register:register_apps"
+#TODO: this must have its own package bc it needs nicegui: tgzr_shell_doc = "tgzr.shell.doc_app.app:app"
+
+[project.entry-points."tgzr.shell.settings_provider"]
+memory_settings = "tgzr.shell.settings.default_plugins.memory_settings:MemorySettingsPlugin"
+
+[project.urls]
+Documentation = "https://github.com/open-tgzr/tgzr.shell#readme"
+Issues = "https://github.com/open-tgzr/tgzr.shell/issues"
+Source = "https://github.com/open-tgzr/tgzr.shell"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "./src/tgzr/shell/_version.py"
+
+[tool.hatch.build]
+# this is needed bc it is otherwise not included in the build:
+artifacts = ['_version.py']
+packages = ["src/tgzr"]
+
+[tool.hatch.build.targets.wheel]
+# this is needed bc it is otherwise not included in the build:
+artifacts = ['_version.py']
+packages = ["src/tgzr"]
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/tgzr/shell tests}"
+
+[tool.coverage.run]
+source_pkgs = ["tgzr.shell", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/tgzr/shell/_version.py",
+]
+
+[tool.coverage.paths]
+tgzr.shell = ["src/tgzr/shell", "*/tgzr.shell/src/tgzr/shell"]
+tests = ["tests", "*/tgzr/shell/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+
