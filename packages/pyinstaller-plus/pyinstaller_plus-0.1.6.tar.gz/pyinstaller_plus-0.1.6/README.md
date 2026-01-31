@@ -1,0 +1,115 @@
+# pyinstaller-plus
+  
+`pyinstaller-plus` 是对 PyInstaller 完全兼容的升级版本，有以下关键特性，补齐了pyinstaller在分发方便的不足
+
+1. 打包安装包，基于inno setup
+2. 自动增量更新
+3. 直链分发
+4. DAU等核心指标监控
+5. 激活校验功能（请前往[distromate](https://www.distromate.net)创建app使用SDK快速接入指南接入sdk）
+
+## 如何安装
+
+```bash
+pip install pyinstaller-plus
+```
+  
+## 使用方式  
+  
+使用方式与pyinstaller完全兼容，唯一区别新增两个参数
+
+-p publish模式，发布安装包和增量包
+
+--dm-version 发布的版本，例如1.0.0
+
+**仅打包模式**（与pyinstaller完全一致）
+```bash  
+pyinstaller-plus your.spec
+```  
+  
+**打包发布构建**：
+
+> 建议使用应用详情页的SDK快速接入指南，AI一键实现配置和打包
+> ![image.png](https://obsidian-static.s3.bitiful.net/2026/01/20260129212930746.png)
+
+
+**以下介绍方案为手动集成方案**
+
+1.登录
+
+```bash  
+distromate login
+```  
+
+
+2.创建app
+
+![image.png](https://obsidian-static.s3.bitiful.net/2026/01/20260129205358055.png)
+
+3.在项目根目录创建distromate.yml配置文件
+
+```yaml
+appid: your appid  
+name: QuestionDownload  
+description: 题库下载工具  
+
+package:
+  name: questiondownload
+  executable: dist/download_question_gui.exe
+  target: dist
+  publisher: QuestionDownload Publisher
+  language: chinese
+  
+# 更新时保留的文件
+preservePaths:  
+  - config  
+  - data  
+  
+# 打包时忽略文件  
+ignores:  
+  - "*.log"  
+  - temp/  
+  - "__pycache__/"  
+  - "*.pyc"
+```
+
+
+4.打包上传
+
+```bash  
+pyinstaller-plus -p --dm-version 1.2.3 your.spec
+```  
+
+```
+[pyinstaller-plus] $ distromate publish -v 1.10.6
+https://distromate-static.s3.bitiful.net/launcher/1.0.2/meta.json
+Warning: 未设置图标文件，将使用默认图标
+Building update package...
+  Compressed: 35.8 MB -> 35.0 MB (97.9%)
+Building setup package...
+Uploading questiondownload-Setup-1.10.6.exe 100% [==============================] (38/38 MB, 6.4 MB/s)               
+Uploaded questiondownload-Update-1.10.6.bin (cached)                                                                 
+Uploading questiondownload-Update-1.10.6.manifest.json 100% [==============================] (5.9/5.9 kB, 17 kB/s)
+Published questiondownload:1.10.6
+下载链接: https://api.distromate.net/api/applications/pvlrkj4y/installer
+(QuestionDownload) PS C:\Users\yangs\PycharmProjects\2510\QuestionDownload> 
+```
+
+5. 打包完成
+
+打包后的文件位于dm-out/目录，上传的链接为
+https://api.distromate.net/api/applications/pvlrkj4y/installer
+
+## 使用效果
+
+安装界面
+
+![image.png](https://obsidian-static.s3.bitiful.net/2026/01/20260129213203222.png)
+
+更新界面
+
+![image.png](https://obsidian-static.s3.bitiful.net/2026/01/20260129213234073.png)
+
+管理界面，丰富指标
+
+![image.png](https://obsidian-static.s3.bitiful.net/2026/01/20260129213327102.png)
