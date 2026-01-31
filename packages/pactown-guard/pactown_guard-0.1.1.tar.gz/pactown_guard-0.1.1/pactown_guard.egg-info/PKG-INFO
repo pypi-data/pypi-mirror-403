@@ -1,0 +1,306 @@
+Metadata-Version: 2.4
+Name: pactown-guard
+Version: 0.1.1
+Summary: Interactive diagnostics/triage guard for Pactown on VPS
+License: Proprietary
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+
+![img.png](back2.png)
+# Pactown - Executable Markdown SaaS Platform
+
+
+**Deploy URL:** `[app]{sep}[username].DOMAIN` (domyślnie `sep = -`, np. `3-tom-sapletta-com.pactown.com`)
+
+Platforma SaaS umożliwiająca użytkownikom tworzenie i uruchamianie aplikacji poprzez edytor Markdown z integracją LLM (OpenRouter) i płatnościami.
+
+![img_1.png](front.png)
+## Quick Start
+
+```bash
+# 1. Sklonuj repo
+git clone https://github.com/wronai/pactown-com.git
+cd pactown-com
+
+# 2. Skonfiguruj środowisko
+make config
+
+# 3. Zainstaluj na serwerze VPS (Podman + Quadlet)
+make install
+
+# 4. Zainicjalizuj Traefik i środowisko
+make quadlet-init
+
+# 5. Uruchom wszystkie serwisy
+make up
+
+# 6. Sprawdź status
+make status
+```
+
+## Wymagania Serwera
+
+- **VPS:** 8GB RAM, 8 vCPU (np. Hetzner CX31 ~€17/msc)
+- **OS:** Ubuntu 22.04/24.04 lub Fedora 39+
+- **Domena:** pactown.com z wildcard DNS (`*.pactown.com`)
+- **Porty:** 80, 443
+
+## Dlaczego Podman Quadlet zamiast Docker Swarm?
+
+| Cecha | Docker Swarm | Podman Quadlet |
+|-------|--------------|----------------|
+| Daemonless | ❌ Wymaga dockerd | ✅ Bez demona |
+| Rootless | ⚠️ Eksperymentalny | ✅ Natywny |
+| Systemd integration | ❌ Osobne zarządzanie | ✅ Natywne |
+| Security isolation | ⚠️ Shared daemon | ✅ Per-user namespaces |
+| Auto-restart | ✅ | ✅ Via systemd |
+| Memory footprint | ~100MB daemon | ~0MB (on-demand) |
+| Multi-tenant | ⚠️ Labels | ✅ User namespaces |
+
+**Pactown** wykorzystuje wewnętrzny moduł `pactown.deploy.quadlet` z pełnym wsparciem dla:
+- Sanityzacji nazw, zmiennych, ścieżek (security)
+- Generowania Traefik jako Quadlet
+- Izolacji tenantów przez user namespaces
+- Walidacji volume mounts
+
+## Architektura
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    pactown.com (Traefik Quadlet)                │
+├─────────────────────────────────────────────────────────────────┤
+│  *.pactown.com → Wildcard SSL (Let's Encrypt)                   │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐     │
+│  │   Web    │  │   API    │  │  Editor  │  │ User Apps    │     │
+│  │ :3000    │  │  :8000   │  │  :3001   │  │ :10000-20000 │     │
+│  │ Next.js  │  │ FastAPI  │  │ TipTap   │  │ markpact     │     │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────────┘     │
+│       │              │             │              │              │
+│  [Quadlet]      [Quadlet]     [Quadlet]       [Quadlet]         │
+│       │              │             │              │              │
+│       ▼              ▼             ▼              ▼              │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │       systemd user services (rootless containers)        │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              PostgreSQL + Redis (Quadlet)                │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Ważne elementy implementacji:
+
+- **[Auth (sesja)]** `access_token` jako **httpOnly cookie** (token nie jest przekazywany w URL i nie jest trzymany w `localStorage`).
+- **[Runner status realtime]** Dashboard korzysta z **SSE** (`GET /runner/status/stream`) zamiast polling.
+- **[Admin auth]** `admin_token` jako **httpOnly cookie**.
+
+## Struktura Projektu
+
+```
+pactown-com/
+├── Makefile              # Wszystkie komendy (make quadlet-*)
+├── scripts/              # Skrypty wywoływane przez Makefile
+│   ├── config.sh         # Interaktywna konfiguracja
+│   ├── install.sh        # Instalacja Podman
+│   ├── up.sh             # Uruchamianie serwisów
+│   ├── dev.sh            # Tryb development
+│   ├── test.sh           # Runner testów
+│   └── diag-remote.sh    # Diagnostyka produkcji
+├── quadlet/              # Pliki jednostek Quadlet
+├── .env.example          # Template konfiguracji
+├── backend/
+│   ├── app/
+│   │   ├── main.py       # FastAPI app
+│   │   ├── routers/auth.py # OAuth2 (Google, GitHub)
+│   │   ├── config.py     # Pydantic Settings
+│   │   └── ...           
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   ├── e2e/              # Testy Playwright
+│   │   └── oauth.spec.ts # Testy OAuth
+│   └── package.json
+├── infra/scripts/        # Skrypty infrastruktury
+│   ├── diagnostics.sh    # Pełna diagnostyka
+│   └── init-quadlet.sh   # Inicjalizacja Quadlet
+└── docs/                 # Dokumentacja
+```
+
+## Komendy Makefile
+
+| Komenda | Opis |
+|---------|------|
+| `make config` | Interaktywna konfiguracja .env |
+| `make install` | Instalacja Podman + zależności |
+| `make dev` | Tryb development (docker-compose) |
+| `make build` | Zbuduj obrazy `localhost/pactown-api:latest` i `localhost/pactown-web:latest` |
+| `make pull` | Pobierz obrazy z registry i otaguj jako `localhost/*` |
+| `make up` | Uruchom produkcję (Quadlet) |
+| `make down` | Zatrzymaj serwisy |
+| `make restart` | Restart wszystkich serwisów |
+| `make status` | Status serwisów |
+| `make logs` | Logi serwisów |
+| `make diag` | Diagnostyka systemu |
+| `make diag-remote` | Diagnostyka produkcji (DNS, SSL) |
+| `make test` | Testy API + frontend |
+| `make test-oauth` | Testy OAuth (Playwright) |
+| `make deploy` | Deploy produkcyjny |
+
+## Dokumentacja (repo)
+
+- `docs/README.md` (menu): `./docs/README.md`
+- CLI + mapowanie API→shell (curl/make): `./docs/CLI_API.md`
+- Produkcja (VPS): przykłady komend `make` / `pactowncom`: `./docs/CLI_API.md#produkcja-vps`
+
+## Pactown Guard (pactown-guard)
+
+`pactown-guard` to **transparentny** guard do diagnostyki VPS: uruchamiasz go ręcznie i dostajesz interaktywny shell.
+
+### Szybkie użycie (z repo)
+
+```bash
+python3 infra/scripts/pactown_guard.py --prod
+```
+
+Po uruchomieniu zobaczysz podsumowanie i prompt:
+
+```text
+pactown-guard>
+```
+
+### Komendy w shellu
+
+- **`help`**
+  Pokaż dostępne komendy.
+- **`diag`**
+  Uruchom ponownie diagnostykę (`infra/scripts/diagnostics.sh --json`).
+- **`suggest`**
+  Pokaż propozycje bezpiecznych akcji (bez wykonywania zmian).
+- **`apply`**
+  Zastosuj proponowane akcje, ale **zawsze pyta o potwierdzenie** dla każdej z nich.
+- **`restart <service>`**
+  Restart pojedynczej usługi `systemd --user` (tylko z allowlisty; z potwierdzeniem).
+- **`logs <service>`**
+  Podejrzyj logi `journalctl --user -u <service>`.
+- **`triage`**
+  Otwórz sesję `tmux` z logami (domyślnie `pactown-triage`).
+- **`exit` / `quit`**
+  Wyjście.
+
+### Instalacja komendy `pactown-guard` (w PATH)
+
+Po `make install` instalacja jest robiona automatycznie w trybie editable (`pip --user -e .`).
+Jeśli chcesz to zrobić ręcznie:
+
+```bash
+pactown-guard install
+```
+
+### Aktualizacja `pactown-guard`
+
+Najprościej:
+
+```bash
+pactown-guard update
+```
+
+Domyślnie (gdy jesteś w repo) zrobi `git pull` + reinstalację `-e`.
+Jeśli uruchamiasz poza repo, wykona update z PyPI.
+
+### Opcjonalny systemd timer (niezalecane jako domyślne)
+
+Guard jest projektowany jako narzędzie manualne. Jeśli chcesz uruchamiać go okresowo:
+
+```bash
+make guard-init
+make guard-enable-timer
+make guard-status
+```
+
+Wyłączenie timera:
+
+```bash
+make guard-disable
+```
+
+### Publikacja paczki (PyPI)
+
+```bash
+make publish
+```
+
+Wymaga ustawionych poświadczeń (np. `TWINE_USERNAME`, `TWINE_PASSWORD`).
+
+## Funkcjonalności MVP
+
+### 1. Social Login
+- [x] Google OAuth2 → [docs/AUTH.md](docs/AUTH.md)
+- [x] GitHub OAuth2 → [docs/AUTH.md](docs/AUTH.md)
+- [ ] Facebook OAuth2 (opcjonalnie)
+
+### 2. Markdown Editor (TipTap)
+- [x] WYSIWYG editing
+- [x] Code blocks z syntax highlighting
+- [x] `markpact:*` codeblocks
+- [x] Live preview
+
+### 3. LLM Integration (OpenRouter)
+- [x] Generowanie projektów z opisu
+- [x] Auto-fix błędów runtime
+- [x] Darmowe modele (nemotron)
+
+### 4. Płatności
+- [x] Stripe (karty, BLIK via P24)
+- [ ] Tpay (natywne polskie płatności)
+
+### 5. User Services
+- [x] Dynamiczne tworzenie subdomen
+- [x] Konfigurowalny separator subdomen (`SUBDOMAIN_SEPARATOR`: `-` lub `.`)
+- [x] Izolacja kontenerów
+- [x] Health checks
+
+### 6. Diagnostyka / zgłaszanie problemów
+
+- [x] Dashboard: synchronizacja stanu UI z parametrami URL (m.in. `view`, `project`, `terminal`, `terminal_tab`, `settings`)
+- [x] Dashboard: ślad działań użytkownika jako token `trace` + `trace_id` (korelacja logów)
+- [x] Dashboard: „Zgłoś problem” (modal) z możliwością dołączenia zrzutu ekranu
+- [x] Backend: `POST /users/me/issue-report` zapisuje zgłoszenie w `activity_log` oraz (opcjonalnie) screenshot w katalogu logów użytkownika
+
+## Changelog / Roadmap
+
+- [CHANGELOG.md](CHANGELOG.md)
+- [TODO.md](TODO.md)
+- [CONTRIBUTION.md](CONTRIBUTION.md)
+
+## Konfiguracja DNS
+
+```bash
+# Dodaj rekordy DNS dla pactown.com:
+A     @        → <IP_SERWERA>
+A     *        → <IP_SERWERA>
+AAAA  @        → <IPv6_SERWERA> (opcjonalnie)
+AAAA  *        → <IPv6_SERWERA> (opcjonalnie)
+```
+
+## Dokumentacja
+
+| Dokument | Opis |
+|----------|------|
+| [docs/AUTH.md](docs/AUTH.md) | Konfiguracja OAuth (Google, GitHub, Clerk) |
+| [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | Szczegóły implementacji (cookies auth, SSE runner status, proxy, admin/public pages, cache env) |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Pełna konfiguracja .env |
+| [docs/DEV_SETUP.md](docs/DEV_SETUP.md) | Setup środowiska dev |
+| [docs/SECURITY.md](docs/SECURITY.md) | Bezpieczeństwo i best practices |
+| [docs/SERVICE_PROVIDER.md](docs/SERVICE_PROVIDER.md) | Wymagania dla providera usług / hostingu (pod skalowanie runnerów) |
+| [docs/IAC.md](docs/IAC.md) | Infrastructure as Code |
+
+## Licencja
+
+ 2026 Softreck. Wszelkie prawa zastrzeżone.
+
+---
+
+*Ostatnia aktualizacja: Styczeń 2026*
