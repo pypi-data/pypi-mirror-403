@@ -1,0 +1,81 @@
+name: 'Skill Readiness Scan'
+description: 'Scan AI Agent Skills for production readiness, best practices compliance, and operational quality'
+author: 'Nik Kale'
+
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  path:
+    description: 'Path to skill directory to scan'
+    required: true
+
+  fail-on:
+    description: 'Minimum severity to fail the action (critical, high, medium, low)'
+    required: false
+    default: 'high'
+
+  format:
+    description: 'Output format (summary, json, markdown, sarif)'
+    required: false
+    default: 'sarif'
+
+  output:
+    description: 'Output file path for report'
+    required: false
+    default: 'skill-readiness-results.sarif'
+
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.11'
+
+outputs:
+  readiness-score:
+    description: 'Readiness score (0-100)'
+    value: ${{ steps.scan.outputs.score }}
+
+  readiness-label:
+    description: 'Readiness label (Production Ready, Needs Improvement, etc.)'
+    value: ${{ steps.scan.outputs.label }}
+
+  finding-count:
+    description: 'Total number of findings'
+    value: ${{ steps.scan.outputs.findings }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install skill-readiness-analyzer
+      shell: bash
+      run: pip install skill-readiness-analyzer
+
+    - name: Run scan
+      id: scan
+      shell: bash
+      run: |
+        skill-readiness scan "${{ inputs.path }}" \
+          --format "${{ inputs.format }}" \
+          --output "${{ inputs.output }}" \
+          --fail-on "${{ inputs.fail-on }}" || EXIT_CODE=$?
+
+        RESULT=$(skill-readiness scan "${{ inputs.path }}" --format json 2>/dev/null || echo '{}')
+
+        echo "score=$(echo "$RESULT" | jq -r '.readiness_score // 0')" >> $GITHUB_OUTPUT
+        echo "label=$(echo "$RESULT" | jq -r '.readiness_label // "Unknown"')" >> $GITHUB_OUTPUT
+        echo "findings=$(echo "$RESULT" | jq -r '.findings | length // 0')" >> $GITHUB_OUTPUT
+
+        exit ${EXIT_CODE:-0}
+
+    - name: Upload SARIF results
+      if: inputs.format == 'sarif' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.output }}
+        category: skill-readiness
