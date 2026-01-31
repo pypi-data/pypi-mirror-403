@@ -1,0 +1,150 @@
+# langchain-cloro
+
+This package contains the LangChain integration for [Cloro.dev](https://cloro.dev).
+
+## Installation
+
+```bash
+pip install langchain-cloro
+```
+
+## Setup
+
+You'll need a Cloro API key. Get one at [https://cloro.dev](https://cloro.dev).
+
+Set the API key as an environment variable:
+
+```bash
+export CLORO_API_KEY="your-api-key-here"
+```
+
+Or pass it directly when initializing:
+
+```python
+from langchain_cloro import CloroSearchRun
+
+tool = CloroSearchRun(cloro_api_key="your-api-key-here")
+```
+
+## Usage
+
+### With an Agent
+
+```python
+from langchain.agents import initialize_agent, AgentType
+from langchain_openai import OpenAI
+from langchain_cloro import CloroSearchRun
+
+llm = OpenAI(temperature=0)
+search = CloroSearchRun()
+
+agent = initialize_agent(
+    [search],
+    llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True,
+)
+
+agent.run("What are the latest developments in AI?")
+```
+
+### Direct Tool Usage
+
+```python
+from langchain_cloro import CloroSearchRun
+
+tool = CloroSearchRun()
+
+# Simple search
+results = tool.invoke({"query": "Python programming tips"})
+
+# Search with custom parameters
+results = tool.invoke({
+    "query": "machine learning tutorials",
+    "num_results": 5,
+})
+```
+
+### With LCEL
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_openai import ChatOpenAI
+from langchain_cloro import CloroSearchRun
+
+search = CloroSearchRun()
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "Answer the question based on the search results:\n\n{results}"),
+    ("user", "{question}")
+])
+
+chain = {
+    "results": lambda x: search.invoke({"query": x["question"]}),
+    "question": lambda x: x["question"]
+} | prompt | ChatOpenAI() | StrOutputParser()
+
+response = chain.invoke({"question": "What is LangChain?"})
+print(response)
+```
+
+## API Reference
+
+### CloroSearchRun
+
+Main search tool for Cloro.dev API.
+
+**Parameters:**
+- `cloro_api_key` (str, optional): Cloro API key. Defaults to `CLORO_API_KEY` environment variable.
+- `timeout` (float, optional): Request timeout in seconds. Defaults to 10.0.
+
+**Methods:**
+
+##### `_run`
+
+Execute a search query.
+
+```python
+_run(
+    query: str,
+    num_results: int = 10,
+    **kwargs: dict
+) -> str
+```
+
+**Parameters:**
+- `query` (str): The search query string.
+- `num_results` (int): Number of results to return. Default: 10.
+- `**kwargs`: Additional search parameters to pass to the Cloro API.
+
+**Returns:**
+- `str`: JSON string of search results.
+
+## Development
+
+### Running Tests
+
+```bash
+# Unit tests
+pytest tests/unit_tests
+
+# Linting
+ruff check .
+ruff format .
+```
+
+## Contributing
+
+This package follows LangChain's contribution guidelines. See:
+- [LangChain Contributing Guide](https://docs.langchain.com/oss/python/contributing/overview)
+
+## License
+
+MIT
+
+## Links
+
+- Documentation: [https://docs.cloro.dev](https://docs.cloro.dev)
+- Source: [https://github.com/cloro-dev/langchain-cloro](https://github.com/cloro-dev/langchain-cloro)
+- Cloro API: [https://cloro.dev](https://cloro.dev)
