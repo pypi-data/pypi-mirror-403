@@ -1,0 +1,127 @@
+# LocalStream
+
+<div align="center">
+
+![Version](https://img.shields.io/pypi/v/localstream?style=for-the-badge&logo=pypi&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.11%2B-FFE873?style=for-the-badge&logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+![License](https://img.shields.io/badge/license-Apache%202.0-success?style=for-the-badge)
+
+**A high-performance, resilient Python CLI client for the [slipstream-rust](https://github.com/Mygod/slipstream-rust) DNS tunnel.**
+
+</div>
+
+---
+
+## 📖 Overview
+
+**LocalStream** simplifies the usage of standard DNS tunneling. It provides a robust, menu-driven interface to manage connections, supporting both **System-wide VPN** (via `tun2proxy`) and **SOCKS5 Proxy** modes. Whether you need to secure your entire system or just specific applications, LocalStream handles the complexity for you.
+
+## ✨ Features
+
+- 🚀 **High Performance**: Optimized for Windows and Linux with minimal resource overhead.
+- 🛡️ **VPN Mode**: Full system-wide traffic tunneling (requires Administrator privileges).
+- 🔌 **Proxy Mode**: Flexible SOCKS5 proxy on local port `5201` (default).
+- 🔄 **Auto-Reconnect**: Intelligent connection watchdog that keeps you online.
+- ⏰ **Auto-Restart**: Scheduled connection restarts for improved stability.
+- 🔐 **TLS Fragmentation**: Bypass DPI by fragmenting TLS handshakes.
+- 📦 **Config Import/Export**: Share encrypted configurations easily.
+- 📦 **Smart Dependency Management**: Automatically downloads and manages `slipstream-client`, `tun2proxy`, and `wintun` drivers.
+
+## 📥 Installation
+
+Install easily via pip:
+
+```bash
+pip install localstream
+```
+
+For development (editable mode):
+
+```bash
+pip install -e .
+```
+
+## 🚀 Usage
+
+To start the application, simply run:
+
+```bash
+LocalStream
+```
+
+> **⚠️ Important**: To use **VPN Mode**, you must run with elevated privileges:
+> - **Windows**: Run terminal as **Administrator**
+> - **Linux**: The app will automatically request `sudo` when needed
+
+### 🎮 Controls
+
+- **Menu Navigation**: Follow the on-screen prompts (Enter numbers `1`, `2`, `3`...).
+- **Disconnect**: Press `Ctrl+C` to safely stop the connection and return to the menu.
+- **Force Restart**: Press `Ctrl+D` to force a reconnection attempt.
+
+## ⚙️ Configuration
+
+Configuration is automatically created at first run in `~/.localstream/config.json`. You can also edit it via the CLI menu.
+
+```json
+{
+  "server_ip": "203.0.113.2",
+  "server_port": 53,
+  "local_port": 5201,
+  "domain": "s.example.com",
+  "keep_alive_interval": 200,
+  "congestion_control": "bbr",
+  "enable_fragmentation": false,
+  "auto_restart_minutes": 0
+}
+```
+
+### 🔧 Advanced Settings
+
+Access via **Settings → Advanced Settings**:
+
+| Option | Description |
+|--------|-------------|
+| Keep-Alive Interval | Heartbeat frequency (default: 200ms) |
+| Congestion Control | BBR (recommended) or Cubic |
+| TLS Fragmentation | Bypass DPI by fragmenting packets |
+| Auto Restart | Restart connection every X minutes |
+
+## 🛠️ Requirements
+
+- **Operating System**: Windows 10/11 or Linux (Ubuntu, Debian, Fedora, Arch...)
+- **Runtime**: Python 3.11 or higher
+- **Permissions**: Administrator/sudo rights (only for VPN mode)
+
+## 📋 Changelog
+
+### v1.0.5
+- TLS Fragmentation to bypass DPI
+- Auto-restart timer for stability
+- Improved keep-alive (200ms default)
+- BBR congestion control by default
+
+### v1.0.4
+- Config import/export with encryption
+- Locked profiles feature
+
+### v1.0.3
+- Config file sharing via `.local` format
+
+## 🤝 Contributing
+
+We welcome contributions! Please check out our [CONTRIBUTING.md](CONTRIBUTING.md) guide for guidelines on how to proceed.
+
+## 🔒 Security
+
+We take security seriously. Please review our [SECURITY.md](SECURITY.md) policy for reporting vulnerabilities.
+
+## 📄 License
+
+This project is licensed under the **Apache-2.0 License**. See the [LICENSE](LICENSE) file for full details.
+
+---
+<div align="center">
+    <i>Built with ❤️ by the LocalStream Team</i>
+</div>
