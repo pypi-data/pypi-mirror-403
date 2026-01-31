@@ -1,0 +1,104 @@
+[project]
+name = "lumberjackth"
+version = "1.3.0"
+description = "A modern CLI and Python client for Mozilla Treeherder"
+readme = "README.md"
+license = "MPL-2.0"
+authors = [
+    { name = "Jonathan Moss", email = "jmoss@mozilla.com" }
+]
+keywords = ["mozilla", "treeherder", "ci", "testing", "firefox"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Testing",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.3.1",
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+    "rich>=14.3.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/jwmossmoz/lumberjackth"
+Documentation = "https://github.com/jwmossmoz/lumberjackth#readme"
+Repository = "https://github.com/jwmossmoz/lumberjackth"
+Issues = "https://github.com/jwmossmoz/lumberjackth/issues"
+
+[project.scripts]
+lumberjack = "lumberjackth.cli:main"
+lj = "lumberjackth.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.6.17,<0.7.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [{ include-group = "lint" }, { include-group = "test" }, { include-group = "audit" }]
+lint = ["ruff", "ty"]
+test = ["pytest", "pytest-cov", "pytest-asyncio", "respx"]
+audit = ["pip-audit"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",       # pydocstyle - skip docstring enforcement for now
+    "COM812",  # conflicts with formatter
+    "ISC001",  # conflicts with formatter
+    "ANN401",  # allow Any for flexible API kwargs
+    "FBT001",  # boolean args are fine for CLI flags
+    "PLR0913", # allow many args for API methods
+    "PLR2004", # allow magic numbers for time formatting
+    "TC003",   # don't require TYPE_CHECKING imports
+    "EM101",   # allow string literals in exceptions
+    "EM102",   # allow f-string literals in exceptions
+    "TRY003",  # allow long messages in exceptions
+    "BLE001",  # allow catching blind exceptions for JSON parsing
+    "SIM108",  # don't require ternary for URL building
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "PLR2004", "ANN", "SLF001", "SIM117"]
+"src/lumberjackth/cli.py" = ["FBT001", "PLR2004"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--cov=lumberjackth --cov-report=term-missing --cov-fail-under=75"
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.terminal]
+error-on-warning = true
+
+[tool.ty.rules]
+possibly-unresolved-reference = "error"
+unused-ignore-comment = "warn"
+
+[tool.coverage.run]
+source = ["src/lumberjackth"]
+branch = true
+omit = ["src/lumberjackth/cli.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
