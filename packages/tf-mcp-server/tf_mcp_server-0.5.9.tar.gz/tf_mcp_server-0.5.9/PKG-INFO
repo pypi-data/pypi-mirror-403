@@ -1,0 +1,356 @@
+Metadata-Version: 2.4
+Name: tf-mcp-server
+Version: 0.5.9
+Summary: MCP server for ToothFairyAI documentation
+Author-email: ToothFairyAI <support@toothfairyai.com>
+License-Expression: MIT
+Requires-Python: >=3.10
+Requires-Dist: fastmcp>=0.4.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: python-frontmatter>=1.0.0
+Requires-Dist: toothfairyai>=0.5.5
+Requires-Dist: uvicorn>=0.30.0
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# ToothFairyAI Documentation MCP Server
+
+A Model Context Protocol (MCP) server that exposes ToothFairyAI documentation, API specifications, and integration guides for AI assistants.
+
+## Features
+
+- **Documentation Resources**: Access 47+ markdown documentation pages
+- **API Specifications**: OpenAPI specs for main API, agents API, and voice API (90 endpoints)
+- **Full-Text Search**: Search across all documentation and API endpoints
+- **Dual Transport Support**: Run as HTTP server (remote) or stdio (local)
+- **Health Checks**: Built-in `/health` and `/info` endpoints (HTTP mode)
+
+## Quick Start
+
+### Local Development (HTTP Mode)
+
+```bash
+cd tf_mcp_server
+python -m venv venv
+source venv/bin/activate
+pip install fastmcp uvicorn pydantic python-frontmatter
+
+# Run the server (HTTP mode - default)
+python -m tf_mcp_server.server
+```
+
+### Local Development (stdio Mode)
+
+For use with local MCP clients like Claude Code:
+
+```bash
+cd tf_mcp_server
+source venv/bin/activate
+
+# Run with stdio transport
+python -m tf_mcp_server.server --stdio
+
+# Or set environment variable
+MCP_TRANSPORT=stdio python -m tf_mcp_server.server
+```
+
+### Docker Deployment
+
+```bash
+# From repository root
+docker build -t tf-mcp-server -f tf_mcp_server/Dockerfile.full .
+docker run -p 8000:8000 tf-mcp-server
+```
+
+## AWS ECS Deployment (Production)
+
+Deployment is automated via GitHub Actions. The workflow triggers on pushes to `development` branch when changes are made to:
+- `tf_mcp_server/**`
+- `docs/tf_docs/docs/**`
+- `docs/api_docs/public/**`
+
+### GitHub Actions Workflow
+
+See: [.github/workflows/deployMcpServer-dev.yml](../.github/workflows/deployMcpServer-dev.yml)
+
+The workflow:
+1. Builds Docker image from `tf_mcp_server/Dockerfile`
+2. Pushes to ECR repository `tf-mcp-server`
+3. Updates ECS task definition
+4. Deploys to `tf-dev-cluster`
+
+### AWS Prerequisites
+
+Before the workflow can run, create these resources in AWS:
+
+1. **ECR Repository**: `tf-mcp-server`
+2. **ECS Task Definition**: `tf-mcp-server-dev-service`
+   - Container name: `tf-mcp-server-dev-container`
+   - Port: 8000
+   - Health check: `curl -f http://localhost:8000/health || exit 1`
+3. **ECS Service**: `tf-mcp-server-dev-service`
+   - Cluster: `tf-dev-cluster`
+   - Desired count: 1
+
+### Manual Deployment
+
+To deploy manually or set up initial infrastructure:
+
+```bash
+cd tf_mcp_server/aws
+
+# Set your AWS configuration
+export AWS_REGION=ap-southeast-2
+export VPC_ID=vpc-xxxxxxxxx
+export SUBNET_IDS=subnet-xxx,subnet-yyy
+
+# Deploy everything
+./deploy.sh all
+```
+
+### Management Commands
+
+```bash
+./deploy.sh status   # Get service status and endpoint URL
+./deploy.sh logs     # View live logs
+./deploy.sh destroy  # Delete all resources
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_TRANSPORT` | `http` | Transport type: `stdio` or `http` |
+| `MCP_HOST` | `0.0.0.0` | Host to bind the server (HTTP mode only) |
+| `MCP_PORT` | `8000` | Port to bind the server (HTTP mode only) |
+| `DOCS_PATH` | `docs/tf_docs/docs` | Path to markdown documentation |
+| `API_DOCS_PATH` | `docs/api_docs/public` | Path to API documentation |
+| `BASE_PATH` | (auto-detected) | Base path to repository root |
+
+## HTTP Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/sse` | GET | SSE endpoint for MCP clients (Claude Code) |
+| `/health` | GET | Health check for load balancers |
+| `/info` | GET | Server information and stats |
+
+### Health Check Response
+
+```json
+{
+  "status": "healthy",
+  "server": "ToothFairyAI Documentation MCP",
+  "docs_loaded": 47,
+  "api_specs_loaded": 3
+}
+```
+
+## Connecting MCP Clients
+
+### Claude Code (CLI) Configuration
+
+To use the ToothFairyAI MCP server with Claude Code:
+
+#### Option 1: Local stdio (Recommended)
+
+Run the server locally using stdio transport for the most reliable connection:
+
+**CLI Command**
+
+```bash
+claude mcp add toothfairy-docs -- python -m tf_mcp_server.server --stdio
+```
+
+**Manual configuration**
+
+Edit your Claude config file (`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "toothfairy-docs": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "tf_mcp_server.server", "--stdio"],
+      "cwd": "/path/to/tooth-fairy-website-1/tf_mcp_server"
+    }
+  }
+}
+```
+
+#### Option 2: Remote SSE
+
+Connect to the hosted remote server. Choose the endpoint closest to you:
+
+**⚠️ IMPORTANT:** Only AU endpoints are currently available. EU and US endpoints are coming soon.
+
+| Environment | Region | Endpoint | Status |
+|-------------|--------|----------|--------|
+| Development | AU | `https://mcp.toothfairylab.link/sse` | ✅ Available |
+| Production | AU | `https://mcp.toothfairyai.com/sse` | ✅ Available |
+| Production | EU | `https://mcp.eu.toothfairyai.com/sse` | ❌ **Not Available** |
+| Production | US | `https://mcp.us.toothfairyai.com/sse` | ❌ **Not Available** |
+
+**CLI Command** (example for AU production)
+
+```bash
+claude mcp add toothfairy-docs "https://mcp.toothfairyai.com/sse" -t sse
+```
+
+**Manual configuration**
+
+```json
+{
+  "mcpServers": {
+    "toothfairy-docs": {
+      "type": "sse",
+      "url": "https://mcp.toothfairyai.com/sse"
+    }
+  }
+}
+```
+
+> **Note:** Use `type: "sse"` for remote connections. Replace the URL with your preferred regional endpoint.
+
+**Verify the connection**
+
+After adding the server, verify it's configured:
+
+```bash
+claude mcp list
+```
+
+Or within Claude Code, type `/mcp` to see connected servers.
+
+**Start using the tools**
+
+Once connected, Claude Code can automatically use these tools when you ask about ToothFairyAI:
+
+| Tool | Example Prompt |
+|------|----------------|
+| `search_docs` | "Search ToothFairyAI docs for how to create an agent" |
+| `search_api_endpoints` | "Find API endpoints related to conversations" |
+| `list_doc_categories` | "What documentation categories are available?" |
+| `get_doc_by_topic` | "Get the documentation about webhooks" |
+
+**Example Usage:**
+
+```
+> How do I integrate ToothFairyAI agents into my application?
+
+Claude will automatically search the docs and provide relevant information.
+```
+
+### Claude Desktop Configuration
+
+Add to your `claude_desktop_config.json`:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+#### Option 1: Local stdio (Recommended)
+
+```json
+{
+  "mcpServers": {
+    "toothfairy-docs": {
+      "command": "python",
+      "args": ["-m", "tf_mcp_server.server", "--stdio"],
+      "cwd": "/path/to/tooth-fairy-website-1/tf_mcp_server"
+    }
+  }
+}
+```
+
+#### Option 2: Remote SSE
+
+Use one of the available endpoints:
+- ✅ AU Production: `https://mcp.toothfairyai.com/sse` (Available)
+- ❌ EU Production: `https://mcp.eu.toothfairyai.com/sse` (Not Available)
+- ❌ US Production: `https://mcp.us.toothfairyai.com/sse` (Not Available)
+- ✅ Development: `https://mcp.toothfairylab.link/sse` (Available)
+
+```json
+{
+  "mcpServers": {
+    "toothfairy-docs": {
+      "url": "https://mcp.toothfairyai.com/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+### Programmatic Access
+
+```python
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+
+# Use available endpoint: mcp.toothfairyai.com (AU - available) or mcp.toothfairylab.link (development)
+# Note: mcp.eu.toothfairyai.com and mcp.us.toothfairyai.com are not available
+async with sse_client(url="https://mcp.toothfairyai.com/sse") as (read, write, _):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+        tools = await session.list_tools()
+        result = await session.call_tool("search_docs", {"query": "agents"})
+```
+
+## MCP Resources
+
+### Documentation
+
+- `toothfairy://docs/list` - List all documentation pages
+- `toothfairy://docs/{category}/{slug}` - Get a specific doc page
+
+### API Specifications
+
+- `toothfairy://api/list` - List all API specs
+- `toothfairy://api/{name}` - Get OpenAPI spec (main, agents, voice)
+- `toothfairy://api/{name}/endpoints` - Get endpoints summary
+- `toothfairy://api/integration-guide` - Voice API integration guide
+
+## MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_docs(query, limit, source)` | Search all documentation |
+| `search_api_endpoints(query, limit)` | Search API endpoints |
+| `list_doc_categories()` | List documentation categories |
+| `get_doc_by_topic(topic)` | Get doc content by topic |
+
+## MCP Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `api_usage_guide(endpoint)` | Generate guide for an API endpoint |
+| `feature_guide(feature)` | Generate guide for a feature |
+
+## Future: SDK Integration
+
+This server is designed to be extended with API tools using the `toothfairyai` Python SDK:
+
+```python
+from toothfairyai import ToothFairyClient
+
+@mcp.tool()
+def send_to_agent(agent_id: str, message: str) -> dict:
+    client = ToothFairyClient(api_key=..., workspace_id=...)
+    response = client.chat.send_to_agent(message, agent_id)
+    return {"response": response.agent_response}
+```
+
+## References
+
+- [AWS MCP Servers](https://github.com/awslabs/mcp)
+- [Deploy MCP on Lambda](https://dev.to/aws-builders/deploy-a-minimal-mcp-server-on-aws-lambda-with-serverless-framework-3e42)
+- [Hosting MCP on Lambda for Free](https://dev.to/zhizhiarv/hosting-remote-mcp-server-on-aws-lambda-for-nearly-free-2h8j)
+- [AWS Guidance for MCP](https://aws.amazon.com/solutions/guidance/deploying-model-context-protocol-servers-on-aws/)
+
+## License
+
+MIT
