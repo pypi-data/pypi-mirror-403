@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Principal Engineer Audit - Optix MCP Server</title>
+  <meta name="description" content="Code quality and maintainability analysis for cyclomatic complexity, DRY violations, and coupling.">
+  <link rel="stylesheet" href="../assets/css/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="../assets/js/docs.js"></script>
+</head>
+<body x-data="docsApp()">
+  <div class="docs-layout">
+    <div class="sidebar-overlay" :class="{ 'open': sidebarOpen }" @click="closeSidebar()"></div>
+
+    <aside class="sidebar" :class="{ 'open': sidebarOpen }">
+      <div class="sidebar-header">
+        <a href="../index.html" class="logo">
+          <div class="logo-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="21.17" y1="8" x2="12" y2="8"></line><line x1="3.95" y1="6.06" x2="8.54" y2="14"></line><line x1="10.88" y1="21.94" x2="15.46" y2="14"></line></svg>
+          </div>
+          <span class="logo-text">Optix</span>
+          <span class="logo-badge">Docs</span>
+        </a>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Getting Started</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="../index.html" class="nav-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>Overview</a></li>
+            <li class="nav-item"><a href="../quick-start.html" class="nav-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Quick Start</a></li>
+            <li class="nav-item"><a href="../concepts.html" class="nav-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>Core Concepts</a></li>
+            <li class="nav-item"><a href="../configuration.html" class="nav-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v6m0 6v10"></path></svg>Configuration</a></li>
+          </ul>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Audit Tools</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="index.html" class="nav-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Tool Reference</a></li>
+            <ul class="nav-nested">
+              <li class="nav-item"><a href="security-audit.html" class="nav-link">Security Audit</a></li>
+              <li class="nav-item"><a href="a11y-audit.html" class="nav-link">Accessibility Audit</a></li>
+              <li class="nav-item"><a href="devops-audit.html" class="nav-link">DevOps Audit</a></li>
+              <li class="nav-item"><a href="principal-audit.html" class="nav-link active">Principal Audit</a></li>
+              <li class="nav-item"><a href="support-tools.html" class="nav-link">Support Tools</a></li>
+            </ul>
+          </ul>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Resources</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="../examples/index.html" class="nav-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Examples</a></li>
+            <li class="nav-item"><a href="../architecture.html" class="nav-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>Architecture</a></li>
+          </ul>
+        </div>
+      </nav>
+      <div class="sidebar-footer"><span class="version-info">v1.0.0</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="header">
+        <div class="header-left">
+          <button class="mobile-nav-toggle" @click="toggleSidebar()">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+          <nav class="breadcrumb">
+            <a href="../index.html">Docs</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="index.html">Tools</a>
+            <span class="breadcrumb-sep">/</span>
+            <span class="breadcrumb-current">Principal Audit</span>
+          </nav>
+        </div>
+        <div class="header-right">
+          <div class="search-container">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" class="search-input" placeholder="Search docs..." x-model="searchQuery" @focus="onSearchFocus()" @keydown="handleSearchKeydown($event)">
+            <span class="search-shortcut">Ctrl K</span>
+            <div class="search-results" x-show="showResults" x-cloak>
+              <template x-for="(result, index) in searchResults" :key="result.url">
+                <a :href="result.url" class="search-result-item" :class="{ 'selected': index === selectedIndex }" @click="goToResult(result)" @mouseenter="selectedIndex = index">
+                  <div class="search-result-title">
+                    <span x-text="result.title"></span>
+                    <span class="search-result-category" x-text="result.category"></span>
+                  </div>
+                  <div class="search-result-description" x-text="result.description"></div>
+                </a>
+              </template>
+              <div class="search-hint">
+                <span><kbd>↑</kbd><kbd>↓</kbd> to navigate</span>
+                <span><kbd>Enter</kbd> to select</span>
+                <span><kbd>Esc</kbd> to close</span>
+              </div>
+            </div>
+          </div>
+          <a href="https://github.com/ravnhq/ravn-labs-optix-2" target="_blank" class="github-link" title="View on GitHub">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          </a>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="page-header">
+          <h1 class="page-title">Principal Engineer Audit</h1>
+          <p class="page-description">Code quality and maintainability analysis from a principal engineer's perspective.</p>
+        </div>
+
+        <nav class="toc">
+          <div class="toc-title">On this page</div>
+          <ul class="toc-list"></ul>
+        </nav>
+
+        <div class="callout callout-info">
+          <svg class="callout-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <div class="callout-content">
+            <div class="callout-title">5-Step Workflow</div>
+            <p class="callout-text">This tool analyzes code quality across 5 dimensions critical for long-term maintainability.</p>
+          </div>
+        </div>
+
+        <h2 id="overview">Overview</h2>
+        <p>The <code>principal_audit</code> tool evaluates codebase quality from an experienced engineer's perspective. It identifies complexity hotspots, code duplication, tight coupling, and maintainability risks that impact long-term development velocity.</p>
+
+        <h2 id="steps">Workflow Steps</h2>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <div class="step-title">Complexity Analysis</div>
+              <div class="step-description">Cyclomatic complexity, cognitive complexity, and deeply nested code paths.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <div class="step-title">DRY Violation Detection</div>
+              <div class="step-description">Duplicate code blocks, copy-paste patterns, and opportunities for abstraction.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <div class="step-title">Coupling Analysis</div>
+              <div class="step-description">Module dependencies, circular references, and component coupling metrics.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">4</div>
+            <div class="step-content">
+              <div class="step-title">Separation of Concerns</div>
+              <div class="step-description">Mixed responsibilities, god classes/functions, and architectural boundaries.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">5</div>
+            <div class="step-content">
+              <div class="step-title">Maintainability Assessment</div>
+              <div class="step-description">Overall maintainability scoring, technical debt indicators, and final report.</div>
+            </div>
+          </div>
+        </div>
+
+        <h2 id="parameters">Parameters</h2>
+
+        <table class="param-table">
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="param-name">step_number</span><br><span class="param-type">integer</span></td>
+              <td><span class="param-required">Required</span></td>
+              <td colspan="2">Current step number (1-5)</td>
+            </tr>
+            <tr>
+              <td><span class="param-name">next_step_required</span><br><span class="param-type">boolean</span></td>
+              <td><span class="param-required">Required</span></td>
+              <td colspan="2">Set to <code>false</code> on step 5</td>
+            </tr>
+            <tr>
+              <td><span class="param-name">files_examined</span><br><span class="param-type">array[string]</span></td>
+              <td><span class="param-required">Required</span></td>
+              <td colspan="2">Source files examined</td>
+            </tr>
+            <tr>
+              <td><span class="param-name">confidence</span><br><span class="param-type">string</span></td>
+              <td><span class="param-required">Required</span></td>
+              <td colspan="2">Confidence level</td>
+            </tr>
+            <tr>
+              <td><span class="param-name">continuation_id</span><br><span class="param-type">string</span></td>
+              <td><span class="param-optional">After step 1</span></td>
+              <td colspan="2">UUID from step 1 response</td>
+            </tr>
+            <tr>
+              <td><span class="param-name">principal_findings</span><br><span class="param-type">array[object]</span></td>
+              <td><span class="param-optional">Optional</span></td>
+              <td colspan="2">Code quality findings</td>
+            </tr>
+            <tr>
+              <td><span class="param-name">principal_assessments</span><br><span class="param-type">object</span></td>
+              <td><span class="param-optional">Optional</span></td>
+              <td colspan="2">Positive quality observations</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 id="finding-format">Finding Format</h2>
+
+        <div class="code-block">
+          <div class="code-block-header">
+            <span class="code-block-lang">json</span>
+          </div>
+          <pre><code>{
+  "category": "complexity",
+  "severity": "high",
+  "description": "Function exceeds complexity threshold",
+  "affected_files": [
+    {
+      "file_path": "src/services/payment.py",
+      "line_start": 45,
+      "line_end": 120,
+      "function_name": "process_payment"
+    }
+  ],
+  "remediation": "Extract conditional branches into separate functions",
+  "confidence": "high",
+  "complexity_score": 25
+}</code></pre>
+        </div>
+
+        <h3>Categories</h3>
+        <ul>
+          <li><strong>complexity</strong> - High cyclomatic/cognitive complexity</li>
+          <li><strong>dry_violation</strong> - Duplicate or copy-pasted code</li>
+          <li><strong>coupling</strong> - Tight coupling between modules</li>
+          <li><strong>separation_of_concerns</strong> - Mixed responsibilities</li>
+          <li><strong>maintainability_risk</strong> - General maintainability issues</li>
+        </ul>
+
+        <h2 id="metrics">Quality Metrics</h2>
+
+        <h3>Complexity Thresholds</h3>
+        <table>
+          <thead>
+            <tr><th>Metric</th><th>Good</th><th>Warning</th><th>Critical</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Cyclomatic Complexity</td><td>&lt; 10</td><td>10-20</td><td>&gt; 20</td></tr>
+            <tr><td>Cognitive Complexity</td><td>&lt; 15</td><td>15-25</td><td>&gt; 25</td></tr>
+            <tr><td>Function Length (LOC)</td><td>&lt; 50</td><td>50-100</td><td>&gt; 100</td></tr>
+            <tr><td>Nesting Depth</td><td>&lt; 4</td><td>4-6</td><td>&gt; 6</td></tr>
+          </tbody>
+        </table>
+
+        <h3>DRY Violations</h3>
+        <table>
+          <thead>
+            <tr><th>Duplication %</th><th>Severity</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>&gt; 80% similar</td><td><span class="badge badge-critical">Critical</span></td></tr>
+            <tr><td>60-80% similar</td><td><span class="badge badge-high">High</span></td></tr>
+            <tr><td>40-60% similar</td><td><span class="badge badge-medium">Medium</span></td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="example">Example Usage</h2>
+
+        <div class="code-block">
+          <div class="code-block-header">
+            <span class="code-block-lang">MCP Tool Call</span>
+          </div>
+          <pre><code>principal_audit(
+  step_number=1,
+  next_step_required=true,
+  files_examined=["src/services/order.py", "src/services/payment.py"],
+  confidence="medium",
+  project_root_path="/path/to/project",
+  principal_findings=[
+    {
+      "category": "complexity",
+      "severity": "high",
+      "description": "Function has cyclomatic complexity of 28",
+      "affected_files": [
+        {
+          "file_path": "src/services/order.py",
+          "line_start": 100,
+          "line_end": 250,
+          "function_name": "calculate_order_total"
+        }
+      ],
+      "remediation": "Break down into smaller functions handling tax, discounts, and shipping separately",
+      "confidence": "high",
+      "complexity_score": 28
+    }
+  ],
+  principal_assessments={
+    "Architecture": "Clean service layer separation"
+  }
+)</code></pre>
+        </div>
+
+        <h2 id="output">Output</h2>
+        <p>Generates <code>reports/NNN_PRINCIPAL_AUDIT_REPORT.md</code> with:</p>
+        <ul>
+          <li>Complexity hotspots with metrics</li>
+          <li>DRY violations with similarity percentages</li>
+          <li>Coupling analysis and dependency graphs</li>
+          <li>Refactoring recommendations prioritized by impact</li>
+          <li>Overall maintainability score</li>
+        </ul>
+
+        <footer class="footer">
+          <div class="footer-content">
+            <span class="footer-text">Built by RAVN</span>
+            <div class="footer-links">
+              <a href="https://github.com/ravnhq/ravn-labs-optix-2" class="footer-link">GitHub</a>
+              <a href="../architecture.html" class="footer-link">Architecture</a>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
