@@ -1,0 +1,95 @@
+name: Generate Supported Integration Versions
+
+on:
+  workflow_dispatch: # can be triggered manually
+
+jobs:
+  generate-supported-versions:
+    name: Generate supported integration versions
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python 3.9
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.9"
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.10"
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmariadb-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install packaging
+          pip install requests
+          pip install riot==0.20.1
+          pip install wrapt==1.16.0
+
+      - name: Install ddtrace
+        run: |
+          pip install -e .
+
+      - run: python scripts/freshvenvs.py generate
+
+      - name: Generate table
+        run: python scripts/generate_table.py
+
+      - run: git diff
+
+      - uses: DataDog/dd-octo-sts-action@acaa02eee7e3bb0839e4272dacb37b8f3b58ba80 # v1.0.3
+        id: octo-sts
+        with:
+          scope: DataDog/dd-trace-py
+          policy: self.generate-supported-versions.create-pr
+
+      - name: Create Pull Request
+        id: pr
+        uses: peter-evans/create-pull-request@98357b18bf14b5342f975ff684046ec3b2a07725 # v8.0.0
+        with:
+          token: ${{ steps.octo-sts.outputs.token }}
+          branch: "update-supported-versions"
+          commit-message: "Update supported versions table"
+          delete-branch: true
+          base: main
+          title: "chore: update supported versions"
+          labels: changelog/no-changelog
+          body: |
+            Generates / updates the supported versions table for integrations.
+            This should be tied to releases, or triggered manually.
+            Workflow runs: [Generate Supported Integration Versions](https://github.com/DataDog/dd-trace-py/actions/workflows/generate-supported-versions.yml)
