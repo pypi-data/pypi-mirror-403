@@ -1,0 +1,78 @@
+{#
+SPDX-FileCopyrightText: 2019-2025 Helmholtz Centre Potsdam GFZ German Research Centre for Geosciences
+SPDX-FileCopyrightText: 2020-2021 Helmholtz-Zentrum Geesthacht GmbH
+SPDX-FileCopyrightText: 2021-2025 Helmholtz-Zentrum hereon GmbH
+
+SPDX-License-Identifier: Apache-2.0
+#}
+
+from typing import Dict
+from typing import Any
+
+{%- set params = [] %}
+{%- if config.field_params %}{% set _ = params.append("field_params") %}{% endif %}
+{%- if config.validators %}{% set _ = params.append("validators") %}{% endif %}
+{%- if config.serializers %}{% set _ = params.append("serializers") %}{% endif %}
+{% if params %}
+@configure("""
+{{ config.model_dump_json(indent=4, include=set(params)) }}
+""")
+{% endif -%}
+class {{ config.name }}:
+    """
+    {% filter indent(4) -%}
+    {{ config.doc }}
+    {%- endfilter %}
+    """
+
+    def __init__{{ config.signature }}:
+        """
+        {% filter indent(8) -%}
+        {{ config.init_doc }}
+        {%- endfilter %}
+        """
+        self._request_base: Dict[str, Any] = {
+            "class_name": "{{ config.name }}",
+            {%- for param in config.signature.parameters %}
+            {%- if param != "self" %}
+            "{{ param }}": {{ param }},
+            {%- endif %}
+            {%- endfor %}
+        }
+
+    {%- for method_config in config.method_configs %}
+
+    {%- set params = [] %}
+    {%- if method_config.field_params %}{% set _ = params.append("field_params") %}{% endif %}
+    {%- if method_config.validators %}{% set _ = params.append("validators") %}{% endif %}
+    {%- if method_config.serializers %}{% set _ = params.append("serializers") %}{% endif %}
+    {%- if method_config.return_validators %}{% set _ = params.append("return_validators") %}{% endif %}
+    {%- if method_config.return_serializer %}{% set _ = params.append("return_serializer") %}{% endif %}
+    {% if params %}
+    @configure("""
+    {% filter indent(4) -%}
+    {{ method_config.model_dump_json(indent=4, include=set(params)) }}
+    {%- endfilter %}
+    """)
+    {% endif -%}
+    def {{ method_config.name }}{{ method_config.signature }}:
+        """
+        {% filter indent(8) -%}
+        {{ method_config.doc }}
+        {%- endfilter %}
+        """
+        request = self._request_base.copy()
+        request["function"] = {
+            "func_name": "{{ method_config.name }}",
+            {%- for param in method_config.signature.parameters %}
+            {%- if param != "self" %}
+            "{{ param }}": {{ param }}{% if not loop.last %},{% endif %}
+            {%- endif %}
+            {%- endfor %}
+        }
+
+        model = BackendModule.model_validate(request)
+        response = model.compute()
+
+        return response.root  # type: ignore
+    {%- endfor %}

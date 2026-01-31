@@ -1,0 +1,36 @@
+{#
+SPDX-FileCopyrightText: 2019-2025 Helmholtz Centre Potsdam GFZ German Research Centre for Geosciences
+SPDX-FileCopyrightText: 2020-2021 Helmholtz-Zentrum Geesthacht GmbH
+SPDX-FileCopyrightText: 2021-2025 Helmholtz-Zentrum hereon GmbH
+
+SPDX-License-Identifier: Apache-2.0
+#}
+
+{%- set params = [] %}
+{%- if config.field_params %}{% set _ = params.append("field_params") %}{% endif %}
+{%- if config.validators %}{% set _ = params.append("validators") %}{% endif %}
+{%- if config.serializers %}{% set _ = params.append("serializers") %}{% endif %}
+{%- if config.return_validators %}{% set _ = params.append("return_validators") %}{% endif %}
+{%- if config.return_serializer %}{% set _ = params.append("return_serializer") %}{% endif %}
+{% if params %}
+@configure("""
+{{ config.model_dump_json(indent=4, include=set(params)) }}
+""")
+{% endif -%}
+def {{ config.name }}{{ config.signature }}:
+    """
+    {% filter indent(4) -%}
+    {{ config.doc }}
+    {%- endfilter %}
+    """
+    request = {
+        "func_name": "{{ config.name }}",
+        {%- for param in config.signature.parameters %}
+        "{{ param }}": {{ param }}{% if not loop.last %},{% endif %}
+        {%- endfor %}
+    }
+
+    model = BackendModule.model_validate(request)
+    response = model.compute()
+
+    return response.root  # type: ignore
