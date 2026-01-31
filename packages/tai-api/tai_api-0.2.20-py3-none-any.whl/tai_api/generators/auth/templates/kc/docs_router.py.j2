@@ -1,0 +1,46 @@
+"""
+Endpoints de documentación protegida con HTTP Basic Auth
+Generado automáticamente por tai-api
+"""
+import os
+import secrets
+from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+
+router = APIRouter(tags=["docs"])
+
+# Configuración de seguridad para documentación
+security = HTTPBasic()
+DOCS_USERNAME = "admin"
+DOCS_PASSWORD = os.getenv("API_DOCS_PWD", "admin")
+
+def verify_docs_credentials(credentials: HTTPBasicCredentials):
+    """Verifica las credenciales para acceder a la documentación"""
+    correct_username = secrets.compare_digest(credentials.username, DOCS_USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, DOCS_PASSWORD)
+    if not (correct_username and correct_password):
+        return False
+    return True
+
+@router.get("/docs", include_in_schema=False)
+async def get_docs(credentials: HTTPBasicCredentials = Depends(security)):
+    """Documentación Swagger UI protegida con HTTP Basic Auth"""
+    if not verify_docs_credentials(credentials):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales incorrectas",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="{{ project_name }} - Docs")
+
+@router.get("/redoc", include_in_schema=False)
+async def get_redoc(credentials: HTTPBasicCredentials = Depends(security)):
+    """Documentación ReDoc protegida con HTTP Basic Auth"""
+    if not verify_docs_credentials(credentials):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales incorrectas",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return get_redoc_html(openapi_url="/openapi.json", title="{{ project_name }} - ReDoc")
