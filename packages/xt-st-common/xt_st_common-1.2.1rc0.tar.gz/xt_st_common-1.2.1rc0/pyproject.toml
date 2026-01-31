@@ -1,0 +1,137 @@
+[project]
+name = "xt-st-common"
+dynamic = ["version"]
+description = "Common Streamlit framework used by Exploration Toolkit"
+authors = [
+  { name = "Alex Hunt", email = "alex.hunt@csiro.au" },
+  { name = "Sam Bradley", email = "sam.bradley@csiro.au" },
+  { name = "John Hille", email = "john.hille@csiro.au" },
+]
+requires-python = ">3.10, <4.0"
+readme = "README.md"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "pydantic-settings>=2.1.0,<3",
+  "pyjwt[crypto]>=2.6.0,<3",
+  "streamlit>=1.37.0",
+  "streamlit-js-eval>=0.1.5,<0.2",
+  "chardet>=4.0.0, <6.0",
+  "streamlit-tree-select>=0.0.5,<0.0.6",
+  "plotly>= 4.14.3",
+  "natsort>=8.4.0,<9",
+  "pydantic>=2.5.2,<3",
+  "pydantic-extra-types>=2.2.0,<3",
+]
+
+[project.optional-dependencies]
+databases = ["pymongo>=4.3.3", "pymongo-auth-aws>=1.1.0", "botocore>=1.33.13"]
+storage = ["minio>=7.1.14,<8"]
+
+[dependency-groups]
+dev = [
+  "pre-commit>=3.2.2,<4",
+  "pytest>=7.3.1,<8",
+  "coverage[toml]>=7.2.3,<8",
+  "pytest-cov>=4.0.0,<5",
+  "ruff>=0.1.7",
+  "pytest-mock>=3.10.0,<4",
+  "poethepoet>=0.40.0",
+  "python-dotenv>=1.0.0,<2",
+  "pydocstringformatter>=0.7.3,<0.8",
+]
+
+[tool.poe.executor]
+type = "uv"
+
+[tool.poe.tasks]
+
+clean = { cmd = "rm -rf .venv .coverage .mypy_cache .pytest_cache .ruff_cache dist ./**/__pycache__ docs/build/ dist docs/build docs/source/_static docs/source/wpf.*.rst", help = "Clean up build artifacts" }
+lint = { cmd = "pre-commit run", help = "Run pre-commit hooks" }
+install = { cmd = "uv sync --all-extras", help = "Install all dependencies with dev group" }
+update = { cmd = "uv lock --upgrade && uv sync --all-extras", help = "Update all dependencies" }
+lint-ruff = { cmd = "ruff check src/xt_st_common --fix", help = "Run Ruff linter and apply fixes" }
+format-ruff = { cmd = "ruff src/xt_st_common --fix", help = "Run Ruff linter and apply fixes" }
+format-docs = { cmd = "pydocstringformatter  src/xt_st_common", help = "Run docs formatter and apply fixes" }
+format = { sequence = [
+  "lint-ruff",
+  "format-docs",
+  "format-ruff",
+], help = "Run all formatters" }
+test-deps-up = { cmd = "docker compose -f test/docker-compose.yml up  -d" }
+test-deps-down = { cmd = "docker compose -f test/docker-compose.yml down " }
+_test = { cmd = "pytest --cov-report term-missing --cov=src/xt_st_common", help = "Run unit tests, won't work if docker is not up" }
+_wait = { script = "xt_st_common.utils:wait" }
+test = { sequence = [
+  "test-deps-up",
+  "_wait",
+  "_test",
+  "test-deps-down",
+], ignore_fail = "return_non_zero", help = "Run all tests" }
+release-tag = { cmd = "python scripts/release.py", help = "Create a release tag for staging or production" }
+
+[build-system]
+requires = ["setuptools>=61", "setuptools_scm[toml]>=7.1.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["xt_st_common", "streamlit_plotly_events"]
+
+[tool.setuptools_scm]
+write_to = "src/_version.py"
+fallback_version = "0.0.0"
+
+[tool.pydocstringformatter]
+write = true
+max-line-length = 120
+strip-whitespaces = true
+split-summary-body = false
+numpydoc-section-hyphen-length = false
+linewrap-full-docstring = true
+
+[tool.ruff]
+ignore = [
+  # zip=strict only valid for py3.10+
+  "B905",
+  "B008",
+  "D",
+]
+line-length = 120
+select = [
+  "B",
+  "D",
+  "E",
+  "F",
+  "Q",
+  "W",
+  "I",
+  "N",
+  #"S",
+  "A",
+  "C4",
+  "DTZ",
+  "PIE",
+  "PT",
+  "RET",
+  "SIM",
+  #"ARG", # We make use of 'unused' cache parameters
+  "PTH",
+  "PD",
+  "PLE",
+  #"PLR",
+  "NPY",
+  "RUF",
+]
+
+[tool.ruff.flake8-quotes]
+inline-quotes = "double"
+
+[tool.ruff.per-file-ignores]
+"**/__init__.py" = ["F401"]
+"src/streamlit_plotly_events/__init__.py" = ["N816"]
