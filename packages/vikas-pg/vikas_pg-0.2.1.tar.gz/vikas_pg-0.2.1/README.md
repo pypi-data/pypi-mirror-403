@@ -1,0 +1,238 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aravindhgowham/vikas_pg/main/vikas_pg/images/logo.png">
+</p>
+
+# vikas_pg
+`vikas_pg` is a lightweight and light speed response 5x faster, async PostgreSQL library for Python built on `asyncpg`.  
+It provides **connection pooling** and easy-to-use methods for **SELECT, INSERT, UPDATE** operations with optional dynamic column fetching.
+
+## Create a virtual environment
+Python Version Compatibility
+Supported versions: 3.8, 3.9, 3.10, 3.11, 3.12, 3.14
+```bash
+py -3.10 -m venv .venv310           
+```
+Note: Python 3.14.0rc2 is not supported. Please use a stable release.
+
+## Installation
+```bash 
+pip install vikas_pg 
+```
+please chek the package is correctly installed or not by the given bellow command: 
+
+```bash
+pip show vikas_pg
+```
+cmd to check the package :
+```bash
+vikas_pg
+```
+
+## Environment Setup(.env)
+
+vikas_pg automatically reads database configuration from a .env file. Do not modify these variable names. 
+vikas_pg automaticall detects and load the .env file.
+
+```bash
+DB_TYPE="postgres" 
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=123456
+DB_SCHEMA=public
+DB_NAME=postgres
+max_connection=10
+min_connection=20
+```
+
+Do not change the keys, vikas_pg relies on these exact variable names.
+You can change the values if your database configuration is different.
+The package will automatically pick up these variables when you call db.open_connection() or any CRUD operation.
+*Tip: Keep this .env file in the same folder where you run your Python scripts, or ensure it accessible in your environment.
+
+
+
+# Basic Usage
+```bash
+from vikas_pg import Accelerate
+db = Accelerate()
+```
+
+
+# Quick Start
+```bash
+async def main():
+    # Open connection pool
+    await db.open_connection()
+
+    # Do database operations here
+
+    # Close pool safely
+    await db.shutdown()
+
+asyncio.run(main())
+```
+
+# CRUD Operations
+
+# Select Query 
+``` bash
+from vikas_pg import Accelerate
+import time
+import asyncio
+
+db = Accelerate()
+
+async def select_operation():
+    #please replace actuall parameters.
+    rows = await db.select(
+        table='client',
+        schema='public',
+        columns=['id', 'name'],
+        where={'id':'003'}
+    )
+    print("output :", rows)
+
+async def main():
+    await db.open_connection()
+    try:
+        while True:
+            input(">>> Enter to Run")
+            start = time.time()
+            await select_operation()
+            print("response time:", f"{time.time() - start:.10f}")
+
+    finally:
+        await db.shutdown()
+        print("Finall Closed connection.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+
+# Insert Query
+``` bash
+from vikas_pg import Accelerate
+import asyncio
+
+db = Accelerate(minimum_Connection=10,Maximum_Connection=20,max_query=50000)
+
+async def insert_operation():
+    result = await db.insert(
+        table='client',
+        schema='public',
+        values=[{
+            'id': '001',
+            'name': 'Lucifer',
+            'type': 'software Engineer',
+            'place': 'california, United State'
+        },
+        {
+            'id': '002',
+            'name': 'xxx',
+            'type': 'yyy',
+            'place': 'zzz'
+        }]
+    )
+    print("insertion response:", result)
+
+async def main():
+    try:
+        await db.open_connection()
+        await insert_operation()
+
+    finally:
+        await db.shutdown()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+# Configuration Parameter 
+   # minimum_Connection:
+        The minimum number of idle database connections the pool will maintain at all times.These connections are pre-opened and ready to use.
+        min_connection (int, default=10)
+
+   # maximum_Connection:
+        The maximum number of connections the pool can hold (both idle + in-use).If all connections are busy  requests will wait until a connection is free.
+        Setting too high  can overwhelm the database server.
+        Setting too low limits concurrency and can cause slow API response.
+        max_connection (int, default=20)
+    
+   # max_query:
+        Number of queries a single connection can execute before it is recycled/closed and replaced.
+        
+        Why it matters:
+            Prevents long-lived connections from running into memory leaks, stale connections, or transaction issues.
+            After hitting max_queries, the connection is reset automatically.
+
+        max_queries (int, default=50,000)
+        Maximum queries a single connection can execute before being recycled. Useful for long-running applications to prevent stale or overloaded connections.
+
+# Update Query
+```bash
+from vikas_pg import Accelerate
+import asyncio
+import time
+
+db = Accelerate()
+
+async def update_operation():
+    result = await db.update(
+        table='client',
+        schema='public',
+        values={
+            'name': 'Jhon'
+        },
+        where={
+            'id': '002'
+        }
+    )
+    print("output (rows updated):", result)
+
+
+async def main():
+    await db.open_connection()
+
+    try:
+        while True:
+            input(">>> Run")
+            start = time.perf_counter()
+
+            await update_operation()
+
+            elapsed = time.perf_counter() - start
+            print(f"response time: {elapsed:.10f} sec ({elapsed*1000:.3f} ms)")
+
+    finally:
+        await db.shutdown()
+        print("Finally Closed connection pool.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Performance Notes
+Persistent Connections
+When running in a long-lived application (FastAPI, continuous scripts), connection pooling provides significant performance benefits:
+
+First query: ~10-50ms (includes connection setup)
+Subsequent queries: ~1-5ms (uses pooled connections)
+
+You might see super fast response times (like 1 to 2 milliseconds) when running queries repeatedly in a live environment, 
+such as:
+    1.A FastAPI server
+    2.A script with a while True loop
+
+This happens because the database connection stays open in the pool, so queries are executed immediately.
+If you run the script only once, the connection has to open and close right away, so it looks slower.
+For best results, refer to the SELECT query example in this documentation.
+
+## Best Practices
+Keep connections open during application lifetime
+Reuse the same Accelerate instance across your application
+
+
+## Support
+For issues or feature requests, please contact the package maintainer or refer to the official documentation. 
