@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "wms-pytest"
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  initContainers:
+    {{- include "wms.initContainer.certKeys" . | nindent 8 }}
+  containers:
+  - name: test
+    image: "{{ .Values.image.repository_prefix }}-client:{{ .Values.image.tag | default .Chart.AppVersion }}"
+    workingDir: /home/dirac/wms/
+
+    command:
+    - bash
+    - -c
+    - |
+      set -xe
+
+      source ${DIRAC_DIR}/diracos/diracosrc
+      export DIRAC_CFG=/home/dirac/diracos/etc/dirac.cfg
+      mkdir -pv /home/dirac/diracos/etc/grid-security/certificates/
+      cp -fv /etc/grid-security/certificates/* /home/dirac/diracos/etc/grid-security/certificates/
+
+      dirac-proxy-init -K /home/dirac/.globus/userkey.pem -C /home/dirac/.globus/usercert.pem --cfg ${DIRAC_CFG} --nocs -ddd
+      dirac-configure -F --cfg ${DIRAC_CFG} -C {{ include "wms.master-cs-url" . }} --DiracxUrl={{ tpl .Values.diracx.diracx.settings.DIRACX_SERVICE_AUTH_TOKEN_ISSUER . }} -V {{ .Values.diracServer.voName }} -K {{ .Values.diracServer.diracx.legacyExchangeApiKey }} -ddd
+
+      {{ if .Values.dev.mount_repo }}
+      pip install .[test]
+
+      {{ if .Values.dev.run_tests }}
+      python3 -m pytest \
+        -svv \
+        -o cache_dir=$PWD/.pytest-cache \
+        --cov \
+        --cov-report=xml:/tmp/coverage.xml \
+        --junitxml=/tmp/report.xml \
+        --color=yes \
+        --log-cli-level=DEBUG
+
+      curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
+      curl -T /tmp/report.xml http://testkit:8000/report.xml
+      {{ end }}
+      {{ end }}
+
+      {{ if .Values.dev.sleep }}
+      sleep infinity
+      {{ end }}
+
+
+    volumeMounts:
+    {{- if .Values.diracServer.initContainers.certKeys.volumeMounts }}
+    {{- toYaml .Values.diracServer.initContainers.certKeys.volumeMounts | nindent 4 }}
+    {{- end }}
+    {{ if .Values.dev.mount_repo }}
+    - name: repo
+      mountPath: /home/dirac/wms/
+    {{ end }}
+    {{ include "dpps.common-cert-mounts" . | nindent 4 }}
+
+  volumes:
+  {{ if .Values.dev.mount_repo }}
+  - name: repo
+    hostPath:
+      path: /repo
+      type: Directory
+  {{ end }}
+  {{- if .Values.diracServer.initContainers.certKeys.volumes }}
+  {{- toYaml .Values.diracServer.initContainers.certKeys.volumes | nindent 2 }}
+  {{- end }}
+  {{ include "dpps.common-cert-volumes" . | nindent 2 }}
+  {{ include "dpps.common-hostkey-volumes" (dict "root" . "secretFullName" .Values.diracClient.hostkey.secretFullName "suffix" "dirac-client") | nindent 2 }}
+
+  restartPolicy: Never

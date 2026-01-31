@@ -1,0 +1,260 @@
+{{- $chartName := include "wms.name" . -}}
+{{- $fullName := include "wms.fullname" . -}}
+{{- if .Values.diracServer.masterCS.enabled }}
+{{- $hostName := include "wms.master-short-name" . }}
+{{- $appName := printf "%s-%s" $chartName $hostName -}}
+{{- $svcName := include "wms.master-full-name" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svcName }}
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  # The cluster IP must be none to make it a headless service
+  # which is required for a Stateful set
+  # https://kubernetes.io/docs/concepts/services-networking/service/#headless-services
+  clusterIP: None
+  selector:
+    app: {{ $appName }}
+    release: {{ .Release.Name }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.diracServer.masterCS.port }}
+---
+
+# The master CS is defined as a StatefulSet in order
+# to make sure that there is only one running
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $svcName }}
+  labels:
+    app: {{ $appName }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: 1
+  serviceName: {{ $svcName }}
+  selector:
+    matchLabels:
+      app: {{ $appName }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $appName }}
+        release: {{ .Release.Name }}
+    spec:
+      terminationGracePeriodSeconds: 10
+      initContainers:
+        - name: wait-for-mariadb
+          image: {{ .Values.image.repository_prefix }}-server:{{ .Values.image.tag | default .Chart.AppVersion }}
+          command:
+            - bash
+            - -c
+            - |
+              # wait for database to be ready
+              while true; do
+                if mysqladmin -h $MYSQL_HOST -u$DB_USER ping; then
+                  break
+                fi
+                echo "Waiting for database to be ready"
+                sleep 10
+              done
+          envFrom:
+          - configMapRef:
+              name: {{ .Release.Name }}-dirac-env
+          env:
+          - name: MYSQL_HOST
+            value: {{ .Values.diracDatabases.host }}
+          - name: DB_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.diracDatabases.secretName }}
+                key: DB_USER
+          - name: MYSQL_PWD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.diracDatabases.secretName }}
+                key: DB_PASSWORD
+        {{- include "wms.initContainer.certKeys" . | nindent 8 }}
+        - name: fix-perms
+          image: harbor.cta-observatory.org/proxy_cache/alpine:3.22.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Ensuring permissions for shared /local_cs_store volume..."
+              chmod -R 777 /local_cs_store
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: local-cs-store-volume
+              mountPath: /local_cs_store
+      containers:
+      - name: {{ .Chart.Name }}-{{ $hostName }}
+        image: {{ .Values.image.repository_prefix }}-server:{{ .Values.image.tag | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.diracServer.masterCS.port }}
+        command:
+          - bash
+          - -c
+          - |
+            set -xe
+
+            echo "$(date -Is) Starting"
+
+            cp $DIRAC_CFG_MASTER_CS /opt/dirac/etc/dirac.cfg
+            chmod 764 /opt/dirac/etc/dirac.cfg
+
+            source /opt/dirac/bashrc
+            # Use (almost) all configuration files
+            ALL_CFG_OPTS=""
+            # Here we need to exclude the files containing duplicated cfg section
+            EXCLUDE_FILES={{ .Values.diracServer.configmap.excludeFromMasterCSStartup }}
+
+            for cfg in $(ls /configurations/*.cfg); do
+              exclude=False
+              for file in "${EXCLUDE_FILES[@]}"; do
+                if [[ "$cfg" == "$DIRAC_CFG_PATH/$file" ]]; then
+                  exclude=True
+                  echo "File $cfg excluded."
+                  break
+                fi
+              done
+              if [[ $exclude == False ]]; then
+                echo "Include $cfg"
+                ALL_CFG_OPTS+=" --cfg ${cfg}"
+              fi
+            done
+            {{- if .Values.diracServer.masterCS.tornado }}
+            export DIRAC_USE_TORNADO_IOLOOP=yes
+            tornado-start-CS ${ALL_CFG_OPTS} -ddd
+            find /opt/dirac/ -wholename '*/log/current' | xargs tail -f
+            {{- else }}
+            exec dirac-service ${ALL_CFG_OPTS} -ddd Configuration/Server
+            {{- end }}
+
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.diracServer.masterCS.port }}
+          periodSeconds: 15
+          failureThreshold: 4
+
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.diracServer.masterCS.port }}
+          periodSeconds: 15
+          failureThreshold: 4
+        env:
+        - name: MASTER_CS
+          value: "true"
+        - name: DIRAC_COMPONENT
+          value: "Configuration/Server"
+        {{- if or .Values.iam.enabled .Values.iam_external.enabled }}
+        - name: IAM_CONFIG_PATH
+          value: /config/config.yaml
+        {{- end }}
+        {{- if .Values.diracx.enabled }}
+        - name: DIRACX_CS_PATH
+          value: /local_cs_store/initialRepo
+        {{- end }}
+        # Databases secrets:
+        - name: DB_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.diracDatabases.secretName }}
+              key: DB_ROOT_USER
+        - name: DB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.diracDatabases.secretName }}
+              key: DB_ROOT_PASSWORD
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.diracDatabases.secretName }}
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.diracDatabases.secretName }}
+              key: DB_PASSWORD
+        # Add an extra configuration file
+        # specific to the master. It contains
+        # basically what is needed for bootstrap
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+        volumeMounts:
+        {{ include "dpps.common-cert-mounts" . | nindent 8 }}
+        {{- if .Values.diracServer.masterCS.extraVolumeMounts }}
+        {{- toYaml .Values.diracServer.masterCS.extraVolumeMounts | nindent 8 }}
+        {{- end }}
+        {{- if .Values.diracServer.initContainers.certKeys.volumeMounts }}
+        {{- toYaml .Values.diracServer.initContainers.certKeys.volumeMounts | nindent 8 }}
+        {{- end }}
+        # Mount all files from dirac-config
+        - name: dirac-config
+          mountPath: /configurations
+        {{- if .Values.rucio.enabled }}
+        - name: rucio-config
+          mountPath: /opt/rucio/etc
+        {{- end }}
+        {{- if .Values.diracx.developer.enabled }}
+        - name: local-cs-store-volume
+          mountPath: /local_cs_store
+        {{- end }}
+        {{- if or .Values.iam.enabled .Values.iam_external.enabled }}
+        - name: sync-iam-users-script
+          subPath: sync_iam_users.py
+          mountPath: /home/dirac/sync_iam_users.py
+        - name: iam-config
+          mountPath: /config
+        {{- end }}
+      volumes:
+      {{- if .Values.diracServer.initContainers.certKeys.volumes }}
+      {{- toYaml .Values.diracServer.initContainers.certKeys.volumes | nindent 6 }}
+      {{- end }}
+      {{ include "dpps.common-cert-volumes" . | nindent 6 }}
+      {{- if .Values.diracServer.masterCS.extraVolumes }}
+      {{- toYaml .Values.diracServer.masterCS.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{ include "dpps.common-hostkey-volumes" (dict "root" . "secretFullName" .Values.diracServer.masterCS.hostkey.secretFullName "suffix" $hostName ) | nindent 6 }}
+      - name: dirac-config
+        configMap:
+          name: "{{ .Values.diracServer.configmap.name | default (printf "%s-dirac-config" .Release.Name) }}"
+      {{- if or .Values.iam.enabled .Values.iam_external.enabled }}
+      - name: iam-config
+        configMap:
+          name: indigo-iam-config
+      - name: sync-iam-users-script
+        configMap:
+          name: sync-iam-users
+          defaultMode: 0755
+      {{- end }}
+      {{- if .Values.diracx.developer.enabled }}
+      - name: local-cs-store-volume
+        persistentVolumeClaim:
+          claimName: pvc-cs-store
+      {{- end }}
+      {{- if .Values.rucio.enabled }}
+      - name: rucio-config
+        configMap:
+          name: "{{ tpl .Values.rucio.rucioConfig . }}"
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

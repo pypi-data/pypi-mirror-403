@@ -1,0 +1,123 @@
+{{ if .Values.diracCE.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wms.fullname" . }}-dirac-ce
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "wms.selectorLabels" . | nindent 6 }}
+      component: dirac-ce
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "wms.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        component: dirac-ce
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {}
+      initContainers:
+        {{- include "wms.initContainer.certKeys" . | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          privileged: true
+          capabilities:
+              drop:
+              - ALL
+          allowPrivilegeEscalation: true
+        image: "{{ .Values.image.repository_prefix }}-ce:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+        ports:
+          - name: ssh
+            containerPort: 22
+            protocol: TCP
+
+        livenessProbe:
+          exec:
+            command:
+            - "true"
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+        readinessProbe:
+          exec:
+            command:
+            - "true"
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+        resources:
+          {{- toYaml .Values.diracCE.resources | nindent 12 }}
+        volumeMounts:
+        {{- if .Values.diracServer.initContainers.certKeys.volumeMounts }}
+        {{- toYaml .Values.diracServer.initContainers.certKeys.volumeMounts | nindent 8 }}
+        {{- end }}
+        {{ include "dpps.common-cert-mounts" . | nindent 8 }}
+        {{- if .Values.diracCE.extraVolumeMounts }}
+        {{- toYaml .Values.diracCE.extraVolumeMounts  | nindent 8 }}
+        {{- end }}
+        {{ if .Values.rucio.enabled }}
+        - name: rucio-config
+          mountPath: /opt/rucio/etc
+        {{ end }}
+      volumes:
+      {{- if .Values.diracServer.initContainers.certKeys.volumes }}
+      {{- toYaml .Values.diracServer.initContainers.certKeys.volumes | nindent 6 }}
+      {{- end }}
+      {{ include "dpps.common-cert-volumes" . | nindent 6 }}
+      {{ include "dpps.common-hostkey-volumes" (dict "root" . "secretFullName" .Values.diracCE.hostkey.secretFullName "suffix" "dirac-ce") | nindent 6 }}
+      {{- if .Values.diracCE.extraVolumes }}
+      {{- toYaml .Values.diracCE.extraVolumes  | nindent 6 }}
+      {{- end }}
+      {{ if .Values.rucio.enabled }}
+      - name: rucio-config
+        configMap:
+          name: {{ tpl .Values.rucio.rucioConfig . }}
+      {{ end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dirac-ce
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: ssh
+      port: 22
+      targetPort: 22
+      protocol: TCP
+  selector:
+    {{- include "wms.selectorLabels" . | nindent 4 }}
+    component: dirac-ce
+
+{{ end }}

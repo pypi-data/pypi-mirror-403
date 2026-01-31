@@ -1,0 +1,79 @@
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wms.fullname" . }}
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "wms.selectorLabels" . | nindent 4 }}
+# Minio alias service
+{{ if .Values.minio_alias_service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # TODO: check if templating is possible inside minio chart
+  name: {{ .Values.minio_alias_service.name }}
+  labels:
+    app: minio
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  ports:
+  - name: http
+    port: 9000
+    protocol: TCP
+    targetPort: 9000
+  selector:
+    app: minio
+    release: {{ .Release.Name }}
+  type: ClusterIP
+{{- end }}
+{{ if and .Values.iam.enabled .Values.iam_alias_service.enabled }}
+# IAM alias service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.iam_alias_service.name }}
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/component: login-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: dpps-iam
+{{- end }}
+{{ if .Values.diracx_alias_service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.diracx_alias_service.name }}
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: diracx
+{{- end }}

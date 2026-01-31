@@ -1,0 +1,468 @@
+{{- if .Values.diracServer.configmap.create }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Values.diracServer.configmap.name | default (printf "%s-dirac-config" .Release.Name) }}"
+data:
+  diracx.cfg: |
+    DiracX
+    {
+      DisabledVO = None
+      LegacyClientEnabled
+      {
+        WorkloadManagement
+        {
+          JobMonitoring = False
+          JobStateUpdate = False
+        }
+      }
+      CsSync
+      {
+        VOs
+        {
+          {{ .Values.diracServer.voName }}
+          {
+            DefaultGroup = dirac_user
+            IdP
+            {
+              ClientID = <client_id>
+              {{ if .Values.iam_external.enabled -}}
+              URL = {{ .Values.iam_external.loginServiceURL }}
+              {{- else if .Values.iam.enabled -}}
+              URL = http://wms-dpps-iam-login-service
+              {{- end }}
+            }
+            UserSubjects
+            {
+            }
+          }
+        }
+      }
+      URL = {{ tpl .Values.diracx.diracx.settings.DIRACX_SERVICE_AUTH_TOKEN_ISSUER . }}
+      LegacyExchangeApiKey = {{ .Values.diracServer.diracx.legacyExchangeApiKey }}
+    }
+
+  registry.cfg: |
+    Registry
+    {
+      DefaultGroup = dirac_user
+      Hosts
+      {
+        {{ include "wms.master-full-name" . }}
+        {
+          DN = /CN={{ include "wms.master-short-name" . }}
+          Properties = TrustedHost
+          Properties += CSAdministrator
+          Properties += JobAdministrator
+          Properties += FullDelegation
+          Properties += ProxyManagement
+          Properties += Operator
+          Properties += SiteManager
+          Properties += ProductionManagement
+          Properties += ServiceAdministrator
+        }
+        {{ include "wms.fullname" . }}-dirac-web-app
+        {
+          DN = /CN=dirac-web-app
+          Properties = TrustedHost
+          Properties += CSAdministrator
+          Properties += JobAdministrator
+          Properties += FullDelegation
+          Properties += ProxyManagement
+          Properties += Operator
+          Properties += SiteManager
+          Properties += ProductionManagement
+          Properties += ServiceAdministrator
+        }
+        {{- $root := . -}}
+        {{- range $svcName, $svcVal := .Values.diracServer.diracComponents }}
+        {{- $svcNameKebab := include "wms.kebab" $svcName }}
+        {{- if not (hasPrefix "_" $svcName) }}
+        {{ include "wms.dirac-service-name" (dict "root" $root "comp" $svcName ) }}
+        {
+          DN = /CN={{ include "wms.dirac-comp-suffix" (include "wms.kebab" $svcName) }}
+          Properties = TrustedHost
+          Properties += CSAdministrator
+          Properties += JobAdministrator
+          Properties += FullDelegation
+          Properties += ProxyManagement
+          Properties += Operator
+          Properties += SiteManager
+          Properties += ProductionManagement
+          Properties += ServiceAdministrator
+        }
+        {{- end }}
+        {{- end }}
+      }
+      Users
+      {
+        {{- $root := . -}}
+        {{- range $userName, $userProps := .Values.diracServer.diracConfig.registry.users }}
+        {{ $userName }}
+        {
+          DN = {{ $userProps.DN }}
+          CA = {{ $userProps.CA }}
+          {{- if $userProps.email }}
+          Email = {{ $userProps.email }}
+          {{- end }}
+        }
+        {{- end }}
+      }
+      Groups
+      {
+        {{- range $groupName, $groupConfig := .Values.diracServer.diracConfig.registry.groups }}
+        {{ $groupName }}
+        {
+          {{- $firstUser := true }}
+          {{- range $user := $groupConfig.users }}
+          {{- if $firstUser }}
+          Users = {{ $user }}
+          {{- $firstUser = false }}
+          {{- else }}
+          Users += {{ $user }}
+          {{- end }}
+          {{- end }}
+          {{- $firstProp := true }}
+          {{- range $prop := $groupConfig.properties }}
+          {{- if $firstProp }}
+          Properties = {{ $prop }}
+          {{- $firstProp = false }}
+          {{- else }}
+          Properties += {{ $prop }}
+          {{- end }}
+          {{- end }}
+        }
+        {{- end }}
+      }
+      VO
+      {
+        {{ .Values.diracServer.voName }}
+        {
+          VOAdmin = dpps_user
+          VOMSName = {{ .Values.diracServer.voName }}
+          VOAdminGroup = dpps_group
+          DefaultGroup = dpps_group
+          {{ if .Values.iam_external.enabled -}}
+          IdProvider = {{ trimPrefix "http://" .Values.iam_external.loginServiceURL }}
+          {{- else if .Values.iam.enabled -}}
+          IdProvider = wms-dpps-iam-login-service
+          {{- end }}
+        }
+      }
+    }
+
+  resources.cfg: |
+    Resources
+    {
+      FileCatalogs
+      {
+        {{- tpl .Values.diracServer.diracConfig.resources.fileCatalog . | trim | nindent 8 }}
+      }
+      StorageElements
+      {
+        {{- tpl .Values.diracServer.diracConfig.resources.storageElements . | trim | nindent 8 }}
+      }
+      Sites
+      {
+        {{- tpl .Values.diracServer.diracConfig.resources.sites . | trim | nindent 8 }}
+      }
+    }
+
+  operations.cfg: |
+    Operations
+    {
+      Defaults
+      {
+        Pilot
+        {
+          Version = 3.0.11
+          Project = CTA
+          Extensions = CTA
+          PreInstalledEnvPrefix = /ctadirac/
+          # TODO: not sure where to point if there is no web app
+          pilotFileServer = {{ if .Values.diracServer.webApp.enabled }}{{ include "wms.fullname" . }}-dirac-web-app:8443{{- else -}}{{ include "wms.fullname" . }}-master-cs:{{ .Values.diracServer.masterCS.port }}{{- end }}
+          GenericPilotDN = /CN=DPPS User
+          GenericPilotGroup = dpps_genpilot
+        }
+        JobDescription
+        {
+          MaxCPUTime = 3456000
+          DefaultCPUTime = 1728000
+        }
+        Services
+        {
+          Catalogs
+          {
+            RucioFileCatalog
+            {
+              AccessType = Read-Write
+              Status = Active
+              Master = True
+            }
+          }
+        }
+        DataManagement
+        {
+          RegistrationProtocols = srm
+          RegistrationProtocols += dips
+          RegistrationProtocols += root
+          RegistrationProtocols += gsiftp
+          RegistrationProtocols += https
+          AccessProtocols = srm
+          AccessProtocols += dips
+          AccessProtocols += root
+          AccessProtocols += gsiftp
+          AccessProtocols += https
+          WriteProtocols = srm
+          WriteProtocols += dips
+          WriteProtocols += root
+          WriteProtocols += gsiftp
+          WriteProtocols += https
+        }
+        InputDataPolicy
+        {
+          Default = DIRAC.WorkloadManagementSystem.Client.DownloadInputData
+          Download = DIRAC.WorkloadManagementSystem.Client.DownloadInputData
+          Protocol = DIRAC.WorkloadManagementSystem.Client.InputDataByProtocol
+          InputDataModule = DIRAC.WorkloadManagementSystem.Client.InputDataResolution
+        }
+        ResourceStatus
+        {
+          Config
+          {
+            State = InActive
+            Cache = 300
+            RecordLogs = Active
+            StatusTypes
+            {
+              default = all
+              StorageElement = ReadAccess
+              StorageElement += WriteAccess
+              StorageElement += CheckAccess
+              StorageElement += RemoveAccess
+            }
+          }
+        }
+      }
+    }
+
+  # systems.cfg: |
+  {{- $root := . }}
+  {{- range $compName, $compVal := .Values.diracServer.diracComponents }}
+  {{- if not (hasPrefix "_" $compName) }}
+  {{ $compName }}.cfg: |
+    {{- if $compVal.config }}
+    {{- tpl $compVal.config $ | nindent 4 }}
+    {{- else }}
+    {{- /* Default config for {{ $compName }} */ -}}
+    {{- include (printf "wms.%s.defaultConfig" $compName) $root | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
+
+  # Define default VO
+  DIRAC.cfg: |
+    DIRAC
+    {
+      VirtualOrganization = {{ .Values.diracServer.voName }}
+      Security
+      {
+        CertFile = /opt/dirac/etc/grid-security/hostcert.pem
+        CertKey = /opt/dirac/etc/grid-security/hostkey.pem
+        CALocation = /opt/dirac/etc/grid-security/certificates/
+      }
+    }
+
+  baseDirac.cfg: |
+    LocalInstallation
+    {
+      VirtualOrganization = {{ .Values.diracServer.voName }}
+      SiteName = test.dpps.cta-observatory.org
+      ConfigurationMaster = no
+      ConfigurationServer = {{ include "wms.master-cs-url" . }}
+    }
+    LocalSite
+    {
+      Site = test.dpps.cta-observatory.org
+    }
+
+  # Master CS configuration
+  masterCS.cfg: |
+    LocalInstallation
+    {
+      Database
+      {
+        User = {{ .Values.diracDatabases.user }}
+        Password = {{ .Values.diracDatabases.password }}
+        RootPwd = {{ .Values.diracDatabases.rootPassword }}
+        Host = {{ .Values.diracDatabases.host }}
+        Port = {{ .Values.diracDatabases.port }}
+      }
+      NoSQLDatabase
+      {
+        User = admin
+        Password = admin
+        Host = opensearch-cluster-master
+        Port = 9200
+        SSL = Yes
+      }
+      Security
+      {
+        UseServerCertificate = true
+      }
+    }
+    DIRAC
+    {
+      VirtualOrganization = {{ .Values.diracServer.voName }}
+      NoSetup = True
+      Hostname = {{ include "wms.master-full-name" . }}
+      Configuration
+      {
+        Master = yes
+        Site = test.dpps.cta-observatory.org
+        Name = {{ .Values.diracServer.configurationName }}
+        MasterServer = {{ include "wms.master-cs-url" . }}
+      }
+    }
+    LocalSite
+    {
+      Site = test.dpps.cta-observatory.org
+    }
+    Systems
+    {
+      Configuration
+      {
+        Services
+        {
+          Server
+          {
+            {{- if .Values.diracServer.masterCS.tornado }}
+            HandlerPath = DIRAC/ConfigurationSystem/Service/TornadoConfigurationHandler
+            {{- else }}
+            HandlerPath = DIRAC/ConfigurationSystem/Service/ConfigurationHandler.py
+            {{- end }}
+            MaxThreads = 500
+            Port = {{ .Values.diracServer.masterCS.port }}
+            Authorization
+            {
+              Default = all
+              commitNewData = CSAdministrator
+              rollbackToVersion = CSAdministrator
+              getVersionContents = ServiceAdministrator
+              getVersionContents += CSAdministrator
+            }
+          }
+        }
+      }
+      WorkloadManagement
+      {
+        Databases
+        {
+          JobParametersDB
+          {
+            User = admin
+            Password = admin
+            Host = opensearch-cluster-master
+            Port = 9200
+            SSL = True
+            ca_certs = /etc/grid-security/certificates/dpps_test_ca.pem
+          }
+        }
+      }
+      Monitoring
+      {
+        Databases
+        {
+          MonitoringDB
+          {
+            User = admin
+            Password = admin
+            Host = opensearch-cluster-master
+            Port = 9200
+            SSL = True
+            ca_certs = /etc/grid-security/certificates/dpps_test_ca.pem
+          }
+        }
+      }
+    }
+    WebApp
+    {
+      Balancer = None
+      StaticResourceLinkDir = /opt/dirac/webRoot/resources
+      StaticDirs = pilot
+    }
+
+  webApp.cfg: |
+    LocalInstallation
+    {
+      InstallType = server
+      TargetPath = /opt/dirac
+      Extensions = WebApp
+      WebPortal = yes
+      WebApp = yes
+      # Note: This service is only needed, if does not exist on the machine used to install the WebApp
+      UseServerCertificate = yes
+      SkipCADownload = yes
+      ConfigurationMaster = no
+      ConfigurationServer = {{ include "wms.master-cs-url" . }}
+    }
+    DIRAC
+    {
+      VirtualOrganization = {{ .Values.diracServer.voName }}
+      Configuration
+      {
+        Servers = {{ include "wms.master-cs-url" . }}
+      }
+      Security
+      {
+      }
+      Extensions = WebApp
+    }
+    WebApp
+    {
+      Balancer = None
+      StaticResourceLinkDir = /opt/dirac/webRoot/resources
+      StaticDirs = pilot
+    }
+
+  diracx_auth_db.sql: |
+    CREATE DATABASE IF NOT EXISTS `DiracXAuthDB`;
+    GRANT ALTER, CREATE, SELECT, INSERT, UPDATE, DELETE, INDEX, CREATE TEMPORARY TABLES, LOCK TABLES ON DiracXAuthDB.* TO 'Dirac'@'%';
+
+    FLUSH PRIVILEGES;
+
+    USE DiracXAuthDB;
+
+    CREATE TABLE IF NOT EXISTS DeviceFlows (
+        UserCode VARCHAR(255) PRIMARY KEY,
+        Status ENUM('PENDING', 'ERROR', 'READY', 'DONE') DEFAULT 'PENDING',
+        CreationTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ClientID VARCHAR(255),
+        Scope VARCHAR(1024),
+        DeviceCode VARCHAR(128) UNIQUE,
+        IDToken JSON
+    );
+
+    CREATE TABLE IF NOT EXISTS AuthorizationFlows (
+        UUID CHAR(36) PRIMARY KEY,
+        Status ENUM('PENDING', 'ERROR', 'READY', 'DONE') DEFAULT 'PENDING',
+        ClientID VARCHAR(255),
+        CreationTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        Scope VARCHAR(1024),
+        CodeChallenge VARCHAR(255),
+        CodeChallengeMethod VARCHAR(8),
+        RedirectURI VARCHAR(255),
+        Code VARCHAR(255),
+        IDToken JSON
+    );
+
+    CREATE TABLE IF NOT EXISTS RefreshTokens (
+        JTI CHAR(36) PRIMARY KEY,
+        Status ENUM('CREATED', 'REVOKED') DEFAULT 'CREATED',
+        CreationTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        Scope VARCHAR(1024),
+        Sub VARCHAR(1024),
+        PreferredUsername VARCHAR(255)
+    );
+{{- end }}

@@ -1,0 +1,46 @@
+{{- if $.Values.diracServer.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wms.fullname" . }}-bootstrap-dirac-configure-{{ .Release.Revision  }}
+  labels:
+    app: {{ include "wms.fullname" . }}-bootstrap-dirac-configure-{{ .Release.Revision  }}
+  annotations: {}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ include "wms.fullname" . }}-bootstrap-dirac-configure-{{ .Release.Revision  }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ include "wms.fullname" . }}-bootstrap-dirac-configure
+        image: {{ .Values.diracServer.bootstrap.image }}
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -ex
+            echo "Waiting for master CS StatefulSet to be ready..."
+            until kubectl rollout status statefulset/{{ include "wms.master-full-name" . }} --timeout=5s; do
+              echo "Still waiting..."
+              sleep 5
+            done
+            echo "Master CS ready, configuring installed components"
+
+            kubectl exec statefulset/{{ include "wms.master-full-name" . }} -- bash -c '
+              source /opt/dirac/bashrc
+              export DIRAC_NO_CFG=1
+              for cfg_file in $(ls /configurations/*.cfg); do
+                if [[ "$cfg_file" != "/configurations/masterCS.cfg" && "$cfg_file" != "/configurations/diracBase.cfg" ]]; then
+                    echo "configure file $cfg_file..."
+                    python /home/dirac/configure.py $cfg_file -c yes
+                fi
+              done
+              # delete eventual LocalInstallation section
+              python /home/dirac/delete_section.py -c yes LocalInstallation
+            '
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+{{- end -}}
