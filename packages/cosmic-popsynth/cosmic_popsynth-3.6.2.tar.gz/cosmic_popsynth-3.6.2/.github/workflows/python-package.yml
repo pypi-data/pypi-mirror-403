@@ -1,0 +1,51 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Unit Test COSMIC
+
+on: [pull_request]
+
+jobs:
+  build:
+  
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Cache pip
+      uses: actions/cache@v4
+      with:
+        # This path is specific to Ubuntu
+        path: ~/.cache/pip
+        # Look to see if there is a cache hit for the corresponding requirements file
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          ${{ runner.os }}-
+    - name: Install dependencies and package
+      run: |
+        # upgrade apt-get and install system dependencies
+        sudo apt-get update
+        sudo apt-get install gfortran swig libhdf5-serial-dev meson python3-dev
+
+        # upgrade pip and install dependencies
+        python -m pip install -U pip setuptools wheel packaging flake8
+        pip install numpy ninja pytest
+        pip install -r requirements.txt
+        python -m pip install .
+        
+    - name: Test with pytest
+      run: |
+        bash ci/compile_benchmark.sh
+        pytest --cov=./src/cosmic --cov-report=xml
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5

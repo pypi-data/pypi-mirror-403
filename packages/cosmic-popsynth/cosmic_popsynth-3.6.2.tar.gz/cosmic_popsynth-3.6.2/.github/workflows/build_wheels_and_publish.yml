@@ -1,0 +1,92 @@
+name: Build wheel and publish
+
+on: 
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
+  CIBW_ARCHS_LINUX: "x86_64"
+  CIBW_SKIP: "*-win32 *musllinux*"
+  CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+  CIBW_BEFORE_BUILD: pip install numpy --config-settings=setup-args="-Dallow-noblas=true"
+  CIBW_BUILD_VERBOSITY: "1"
+  CIBW_BEFORE_ALL_LINUX: yum install -y gcc-gfortran
+  CIBW_ENVIRONMENT_LINUX: "FC=gfortran F77=gfortran"
+  CIBW_ENVIRONMENT_MACOS: "FC=gfortran F77=gfortran MACOSX_DEPLOYMENT_TARGET=14.0"
+
+jobs:
+  build-wheels-and-dist:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # this step only uses a single python version since cibuildwheel
+    # builds multiple versions in one go on linux
+    - uses: actions/setup-python@v5
+      name: Install Python
+      with:
+        python-version: "3.12"
+
+    - name: Install hdf5 (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install hdf5
+        
+    - name: Install numpy
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install numpy h5py versioneer
+
+    - name: Install dependencies
+      run: |
+        python -m pip install setuptools wheel build meson-python ninja meson pytest cibuildwheel
+
+    - name: Set up Fortran (macOS)
+      if: runner.os == 'macOS'
+      uses: fortran-lang/setup-fortran@v1
+      with:
+        compiler: gcc
+        version: '13'
+        
+    - name: Build source and wheels distribution on Linux
+      run: |
+        python -m build --sdist --outdir dist
+        python -m cibuildwheel --output-dir dist
+        
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dist-${{ matrix.os }}
+        path: ./dist/*
+
+  publish:
+    needs: [build-wheels-and-dist]
+    name: Publish Python 🐍 distributions 📦 to PyPI
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Collect distributions
+      run: |
+        mkdir -p dist
+        find artifacts -type f -name '*.whl' -exec cp {} dist/ \;
+        find artifacts -type f -name '*.tar.gz' -exec cp {} dist/ \;
+
+    - name: Publish distribution 📦 to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.pypi_password }}
