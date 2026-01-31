@@ -1,0 +1,44 @@
+# Copyright 2025 - Oumi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from typing_extensions import override
+
+from oumi.core.configs import InferenceConfig
+from oumi.core.types.conversation import Conversation
+from oumi.inference.remote_inference_engine import RemoteInferenceEngine
+
+
+class DeepSeekInferenceEngine(RemoteInferenceEngine):
+    """Engine for running inference against the DeepSeek API.
+
+    Documentation: https://api-docs.deepseek.com
+    """
+
+    base_url = "https://api.deepseek.com/v1/chat/completions"
+    """The base URL for the DeepSeek API."""
+
+    api_key_env_varname = "DEEPSEEK_API_KEY"
+    """The environment variable name for the DeepSeek API key."""
+
+    @override
+    def infer_batch(
+        self,
+        _conversations: list[Conversation],
+        _inference_config: InferenceConfig | None = None,
+    ) -> str:
+        """Batch inference is not implemented for DeepSeek."""
+        raise NotImplementedError(
+            "Batch inference is not implemented for DeepSeek. "
+            "Please open an issue on GitHub if you'd like this feature."
+        )
