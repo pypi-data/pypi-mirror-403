@@ -1,0 +1,126 @@
+from logging import getLogger
+
+import numpy as np
+
+from .compression import BitshuffleLZ4, NoCompression, LZ4
+
+_logger = getLogger(__name__)
+
+
+def deserialize_number(numpy_array):
+    """
+    Return single value arrays as a scalar.
+    :param numpy_array: Numpy array containing a number to deserialize.
+    :return: Array or scalar, based on array size.
+    """
+    if numpy_array is None:
+        return numpy_array
+
+    if len(numpy_array) == 1:
+        return numpy_array[0]
+    else:
+        return numpy_array
+
+
+def deserialize_string(numpy_array):
+    """
+    Return string that is serialized as a numpy array.
+    :param numpy_array: Array to deserialize (UTF-8 is assumed)
+    :return: String.
+    """
+    return numpy_array.tobytes().decode()
+
+
+def serialize_numpy_scalar(value, dtype=None):
+    """
+    Serialize a numpy scalar as numpy array of shape (1,).
+    :param value: Value to serialize.
+    :param dtype: Ignored. Here just to have a consistent interface.
+    :return: Numpy array.
+    """
+    return np.array([value], dtype=value.dtype)
+
+
+def serialize_python_number(value, dtype):
+    """
+    Serialize a python number as numpy array of shape (1,).
+    :param value: Value to serialize.
+    :param dtype: Numpy dtype of value.
+    :return: Numpy array.
+    """
+    return np.array([value], dtype=dtype)
+
+
+def serialize_python_string(value, dtype):
+    """
+    Serialize string as numpy array.
+    :param value: Value to serialize.
+    :param dtype: Numpy dtype of UTF-8 ("u1") is assumed.
+    :return: Numpy array.
+    """
+    return np.frombuffer(value.encode(), dtype)
+
+
+def serialize_python_list(value, dtype):
+    """
+    Serialize python list as ndarray.
+    :param value: List to serialize.
+    :param dtype: Numpy dtype of values in list.
+    :return: Numpy array.
+    """
+    return np.array(value, dtype=dtype)
+
+
+# Compression string to compression provider mapping.
+compression_provider_mapping = {
+    None: NoCompression,
+    "none": NoCompression,
+    "lz4": LZ4,
+    "bitshuffle_lz4": BitshuffleLZ4
+}
+
+
+# Channel type to numpy dtype and serializer mapping.
+# channel_type: (dtype, deserializer)
+channel_type_deserializer_mapping = {
+    # Default value if no channel_type specified.
+    None: ("f8", deserialize_number),
+    "int8": ("i1", deserialize_number),
+    "uint8": ("u1", deserialize_number),
+    "int16": ("i2", deserialize_number),
+    "uint16": ("u2", deserialize_number),
+    "int32": ("i4", deserialize_number),
+    "uint32": ("u4", deserialize_number),
+    "int64": ("i8", deserialize_number),
+    "uint64": ("u8", deserialize_number),
+    "float32": ("f4", deserialize_number),
+    "float64": ("f8", deserialize_number),
+    "string": ("u1", deserialize_string),
+    "bool": ("?", deserialize_number)
+}
+
+
+# Value to send to channel type and serializer mapping.
+# type(value): (dtype, channel_type, serializer, shape)
+channel_type_scalar_serializer_mapping = {
+    # Default value if no channel_type specified.
+    type(None): ("f8", "float64", serialize_python_number, [1]),
+    float: ("f8", "float64", serialize_python_number, [1]),
+    int: ("i8", "int64", serialize_python_number, [1]),
+    str: ("u1", "string", serialize_python_string, [1]),
+    np.int8: ("i1", "int8", serialize_numpy_scalar, [1]),
+    np.uint8: ("u1", "uint8", serialize_numpy_scalar, [1]),
+    np.int16: ("i2", "int16", serialize_numpy_scalar, [1]),
+    np.uint16: ("u2", "uint16", serialize_numpy_scalar, [1]),
+    np.int32: ("i4", "int32", serialize_numpy_scalar, [1]),
+    np.uint32: ("u4", "uint32", serialize_numpy_scalar, [1]),
+    np.int64: ("i8", "int64", serialize_numpy_scalar, [1]),
+    np.uint64: ("u8", "uint64", serialize_numpy_scalar, [1]),
+    np.float32: ("f4", "float32", serialize_numpy_scalar, [1]),
+    np.float64: ("f8", "float64", serialize_numpy_scalar, [1]),
+    bool: ("?", "bool", serialize_python_number, [1]),
+    np.bool_: ("?", "bool", serialize_numpy_scalar, [1])
+}
+
+
+

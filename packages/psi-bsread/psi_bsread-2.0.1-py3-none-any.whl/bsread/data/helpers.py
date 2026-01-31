@@ -1,0 +1,194 @@
+import sys
+import traceback
+from logging import getLogger, DEBUG
+
+import numpy as np
+
+from .serialization import (channel_type_deserializer_mapping,
+                            channel_type_scalar_serializer_mapping,
+                            compression_provider_mapping,
+                            serialize_python_list)
+
+
+_logger = getLogger(__name__)
+
+
+def get_channel_encoding(value):
+    """
+    Return the channel encoding. Default is the system provided, otherwise is the ndarray provided.
+    :param value: Value to determine the byteorder of.
+    :return: "little" or "big" endian.
+    """
+    if isinstance(value, np.ndarray):
+        if value.dtype.byteorder == ">":
+            return "big"
+
+    return sys.byteorder
+
+
+def get_channel_specs(value):
+    """
+    Get the bsread channel specification from the value to be sent.
+    :param value: Value of which to determine the channel type.
+    :raise ValueError if the channel type is unsupported.
+    :return: Tuple of (channel_type, shape)
+    """
+    _dtype, channel_type, _serializer, shape = get_extended_channel_specs(value)
+    return channel_type, shape
+
+
+def get_extended_channel_specs(value):
+    """
+    Get the bsread channel specification from the value to be sent.
+    :param value: Value of which to determine the channel type.
+    :raise ValueError if the channel type is unsupported.
+    :return: Tuple of (dtype, channel_type, serializer, shape)
+    """
+    if value is None:
+        _logger.debug("Channel value is None - Unable to determine type of channel - default to type=float64 shape=[1]")
+
+    # Determine ndarray channel specs
+    if isinstance(value, np.ndarray):
+        # dtype and shape already in ndarray.
+        dtype = value.dtype.type
+
+        # Numpy is slowest dimension first, but bsread is fastest dimension first.
+        shape = list(value.shape)[::-1]
+
+        # Object already serialized.
+        serializer = None
+
+        # We need to retrieve only channel type.
+        channel_type = channel_type_scalar_serializer_mapping[dtype][1]
+
+    # Determine list channel specs
+    elif isinstance(value, list):
+        # Lists are serialized as numpy ndarray.
+        # It can be assumed that users do not hold large data as lists but properly use numpy in such cases.
+        # Thus, for supposed small data, numpy can be used to figure out dtype and shape automatically via a conversion.
+        #TODO: avoid converting twice
+        value_as_array = np.array(value)
+
+        dtype, channel_type, _serializer, shape = get_extended_channel_specs(value_as_array)
+        serializer = serialize_python_list
+
+        if value_as_array.size > 1e6:
+            _logger.warning(f"Channel value is a quite large list ({value_as_array.size} elements) - Consider using a numpy array instead")
+
+    # Determine scalars channel specs
+    else:
+        dtype, channel_type, serializer, shape = channel_type_scalar_serializer_mapping[type(value)]
+
+    # Shape can also be a function to evaluate the shape.
+    if callable(shape):
+        shape = shape(value)
+
+    return dtype, channel_type, serializer, shape
+
+
+def get_channel_reader(channel):
+    """
+    Construct a value reader for the provided channel.
+    :param channel: Channel to construct the value reader for.
+    :return: Value reader.
+    """
+    # If no channel type is specified, float64 is assumed.
+    channel_type = channel["type"].lower() if "type" in channel else None
+    if channel_type is None:
+        _logger.warning("'type' channel field not found. Parse as 64-bit floating-point number float64 (default).")
+        channel_type = "float64"
+
+    name = channel["name"]
+    compression = channel["compression"] if "compression" in channel else None
+    shape = channel["shape"] if "shape" in channel else None
+    endianness = channel["encoding"]
+
+    value_reader = get_value_reader(channel_type, compression, shape, endianness, name)
+    return value_reader
+
+
+def get_serialization_type(channel_type):
+    default_serialization_type = "uint8"
+
+    # If the type is unknown, NoneProvider should be used.
+    if channel_type not in channel_type_deserializer_mapping:
+        _logger.warning(f'Channel type "{channel_type}" not found in mapping. Using {default_serialization_type}.')
+        # If the channel is not supported, always return None.
+        return channel_type_deserializer_mapping[default_serialization_type][0]
+
+    return channel_type_deserializer_mapping[channel_type][0]
+
+
+def get_value_reader(channel_type, compression, shape=None, endianness="", value_name=None):
+    """
+    Get the correct value reader for the specific channel type and compression.
+    :param channel_type: Channel type.
+    :param compression: Compression on the channel.
+    :param shape: Shape of the data.
+    :param endianness: Encoding of the channel: < (small endian) or > (big endian)
+    :param value_name: Name of the value to decode. For logging.
+    :return: Object capable of reading the data, when get_value() is called on it.
+    """
+    # If the type is unknown, NoneProvider should be used.
+    if channel_type not in channel_type_deserializer_mapping:
+        _logger.warning(f"Channel type '{channel_type}' not found in mapping.")
+        # If the channel is not supported, always return None.
+        return lambda x: None
+
+    # If the compression is unknown, NoneProvider should be used.
+    if compression not in compression_provider_mapping:
+        _logger.warning(f"Channel compression '{compression}' not supported.")
+        # If the channel compression is not supported, always return None.
+        return lambda x: None
+
+    decompressor = compression_provider_mapping[compression].unpack_data
+    dtype, serializer = channel_type_deserializer_mapping[channel_type]
+    # Expand the dtype with the correct endianness.
+    dtype = endianness + dtype
+
+    def value_reader(raw_data):
+        try:
+            # Decompress and deserialize the received value.
+            if raw_data:
+                numpy_array = decompressor(raw_data, dtype, shape)
+                return serializer(numpy_array)
+            else:
+                return None
+
+        except Exception as e:
+            # We do not want to throw exceptions in case we cannot decode a channel.
+            _logger.warning(f'Unable to decode value_name "{value_name}" - returning None. Exception: {traceback.format_exc()}')
+            if _logger.isEnabledFor(DEBUG):
+                _logger.debug(f'Decoding failed: value name "{value_name}" with dtype="{channel_type}", shape="{shape}", compression="{compression}", raw_data_length="{len(raw_data)}" and raw_data="{raw_data}". Exception: {e}')
+            return None
+
+    return value_reader
+
+def get_value_bytes(value, compression=None, channel_type=None):
+    """
+    Based on the value, get the compressed bytes.
+    :param value: Value to compress.
+    :param compression: Compression to use.
+    :param channel_type: dtype to use for channel serialization. If not specified, derive from value.
+    :return: Bytes ready to be sent over the channel.
+    """
+    if compression not in compression_provider_mapping:
+        error_message = f"Channel compression '{compression}' not supported."
+        _logger.error(error_message)
+        raise ValueError(error_message)
+
+    dtype, _, serializer, _ = get_extended_channel_specs(value)
+    compressor = compression_provider_mapping[compression].pack_data
+
+    if channel_type:
+        dtype = get_serialization_type(channel_type)
+
+    if serializer:
+        value = serializer(value, dtype)
+
+    compressed_bytes_array = compressor(value, dtype)
+
+    return compressed_bytes_array
+
+
+
