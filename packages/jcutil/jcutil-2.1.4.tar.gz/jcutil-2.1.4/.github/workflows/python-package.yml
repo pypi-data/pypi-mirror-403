@@ -1,0 +1,159 @@
+name: Python Package
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      publish_to_pypi:
+        description: '发布到PyPI'
+        required: false
+        type: boolean
+        default: false
+      publish_to_pypitest:
+        description: '发布到PyPI Test'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    
+    services:
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      mongodb:
+        image: mongo
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install hatchling
+        pip install pytest pytest-asyncio
+        pip install ruff uv
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install -e .
+    
+    - name: Lint with ruff
+      run: |
+        # 执行代码风格检查并自动修复
+        python -m uv pip install --system ruff
+        python -m ruff check . --fix
+        # 检查是否还有未修复的问题
+        python -m ruff check .
+    
+    - name: Test with pytest
+      run: |
+        pytest tests
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Store built package
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist
+        path: dist/
+        retention-days: 5
+
+  publish-test:
+    needs: build
+    runs-on: ubuntu-latest
+    # 发布标签或手动触发发布到PyPI Test时执行
+    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_to_pypitest == 'true')
+    
+    steps:
+    - name: Download built package
+      uses: actions/download-artifact@v3
+      with:
+        name: dist
+        path: dist/
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install uv
+
+    - name: Publish to PyPI Test
+      env:
+        UV_PYPI_USERNAME: ${{ secrets.PYPI_TEST_USERNAME }}
+        UV_PYPI_PASSWORD: ${{ secrets.PYPI_TEST_PASSWORD }}
+      run: |
+        uv publish --repository-url https://test.pypi.org/legacy/ dist/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # 发布标签或手动触发发布时执行
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_to_pypi == 'true')
+    
+    steps:
+    - name: Download built package
+      uses: actions/download-artifact@v3
+      with:
+        name: dist
+        path: dist/
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install uv
+    
+    - name: Publish to PyPI
+      env:
+        UV_PYPI_USERNAME: ${{ secrets.PYPI_USERNAME }}
+        UV_PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      run: |
+        uv publish dist/* 
