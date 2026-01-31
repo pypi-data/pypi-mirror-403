@@ -1,0 +1,229 @@
+[build-system]
+requires = ["maturin>=1.6,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "wasp2"
+version = "1.3.0"
+description = "Allele-specific analysis of next-generation sequencing data with high-performance multi-format variant support (VCF/cyvcf2/PGEN)"
+readme = "README.md"
+authors = [
+    {name = "Aaron Ho"},
+    {name = "Jeff Jaureguy", email = "jeffpjaureguy@gmail.com"},
+    {name = "McVicker Lab"},
+]
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = [
+    "bioinformatics",
+    "genomics",
+    "allele-specific",
+    "ngs",
+    "sequencing",
+    "wasp",
+    "allelic-imbalance",
+    "plink2",
+    "pgen",
+    "vcf",
+    "cyvcf2",
+    "high-performance",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "numpy>=1.21.0",
+    "pandas>=1.5.0,<3.0.0",  # Pin <2.0 for anndata compatibility
+    "polars>=0.19.0",
+    "scipy>=1.10.0",
+    "pysam>=0.21.0",
+    "pybedtools>=0.9.0",
+    "anndata>=0.8.0,<0.12.0",  # Pin <0.10 for pandas <2.0 compatibility
+    "scanpy>=1.9.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-benchmark>=4.0",
+    "memory-profiler>=0.61",
+    "mypy>=1.0",
+    "basedpyright>=1.18.0",
+    "ruff>=0.9.0",
+    "pre-commit>=3.0",
+    "build>=0.10",
+    "twine>=4.0",
+    "maturin>=1.4",
+    # Security tools
+    "bandit[toml]>=1.8.0",
+    "pip-audit>=2.7.0",
+]
+benchmark = [
+    "pytest-benchmark>=4.0",
+    "memory-profiler>=0.61",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+]
+docs = [
+    "sphinx>=7.0",
+    "pydata-sphinx-theme>=0.15",
+    "sphinx-autodoc-typehints>=1.25",
+    "nbsphinx>=0.9",
+    "myst-parser>=2.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-design>=0.5",
+    "ipython>=8.0",
+]
+rust = [
+    "maturin>=1.0",
+]
+plink = [
+    "Pgenlib>=0.90",
+]
+cyvcf2 = [
+    "cyvcf2>=0.31.0",
+]
+
+[project.scripts]
+wasp2-count = "counting.__main__:app"
+wasp2-map = "mapping.__main__:app"
+wasp2-analyze = "analysis.__main__:app"
+
+[project.urls]
+Homepage = "https://github.com/Jaureguy760/WASP2-final"
+Documentation = "https://Jaureguy760.github.io/WASP2-final/"
+Repository = "https://github.com/Jaureguy760/WASP2-final"
+Issues = "https://github.com/Jaureguy760/WASP2-final/issues"
+
+# Note: [tool.setuptools] is not used when building with maturin
+# Maturin handles package discovery via [tool.maturin.python-packages]
+# The setuptools config below is kept as reference if ever switching to pure Python builds:
+# [tool.setuptools]
+# package-dir = {"" = "src"}
+# [tool.setuptools.packages.find]
+# where = ["src"]
+# include = ["counting*", "mapping*", "analysis*", "wasp2*"]
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+python-source = "src"
+python-packages = ["counting", "mapping", "analysis", "wasp2"]
+bindings = "pyo3"
+strip = true
+include = ["LICENSE", "README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --strict-markers --tb=short"
+markers = [
+    "unit: unit tests",
+    "integration: integration tests",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "rust: tests requiring Rust backend",
+    "benchmark: performance benchmark tests",
+    "requires_plink2: marks tests that require plink2",
+    "requires_bcftools: marks tests that require bcftools",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+files = ["src"]
+
+[tool.basedpyright]
+pythonVersion = "3.10"
+include = ["src"]
+exclude = ["**/__pycache__", "build", "dist", ".venv"]
+typeCheckingMode = "standard"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+reportUnusedImport = false  # Handled by Ruff
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # Pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E712",   # comparison to True/False (pandas boolean indexing style)
+    "E722",   # bare except (reviewed case-by-case)
+    "E731",   # lambda assignment (sometimes clearer)
+    "E741",   # ambiguous variable name (l, O, I) - common in math/bio code
+    "B008",   # function calls in argument defaults (needed for typer)
+    "B905",   # zip without strict (would break existing logic)
+    "SIM102", # collapsible-if (sometimes less readable)
+    "SIM105", # suppressible-exception (contextlib.suppress less explicit)
+    "SIM108", # ternary instead of if-else (sometimes less readable)
+    "SIM115", # context manager for open (already handled in most cases)
+    "SIM116", # dict lookup instead of if-else (case-dependent)
+    "SIM117", # nested with statements (pytest context managers)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F841"]  # unused variables OK in tests
+
+[tool.ruff.lint.isort]
+known-first-party = ["wasp2", "counting", "mapping", "analysis"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+
+# Bandit security linter configuration
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build", "dist"]
+skips = [
+    "B101",  # assert_used - OK in tests and CLI validation
+    "B404",  # import_subprocess - needed for external tool calls
+    "B603",  # subprocess_without_shell_equals_true - intentional for safety
+    "B607",  # start_process_with_partial_path - expected for samtools/bcftools CLI calls
+]
+targets = ["src"]
