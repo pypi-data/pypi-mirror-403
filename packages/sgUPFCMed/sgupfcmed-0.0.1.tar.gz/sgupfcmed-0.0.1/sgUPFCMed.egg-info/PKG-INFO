@@ -1,0 +1,106 @@
+Metadata-Version: 2.4
+Name: sgUPFCMed
+Version: 0.0.1
+Summary: A library for String Grammar Unsupervised Possibilistic Fuzzy C-Medians
+Author-email: Computational Intelligence Research Laboratory <cilabcmu@gmail.com>
+License: MIT
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Dynamic: license-file
+
+# What is String Grammar Fuzzy Clustering?
+
+String Grammar Fuzzy Clustering is a clustering framework designed for syntactic or structural pattern recognition, where each data instance is represented not as a numeric vector but as a string that encodes structural information.
+
+Unlike conventional numerical clustering method (e.g., Fuzzy C-Means), which assume that data have a fixed-length feature vector whereas structural clustering method operates directly on string data whose lengths and internal structures may vary.
+
+In this approach, each pattern is described by a sequence of primitives (symbols) defined by grammatical rules. This is similar to how a sentence is formed from characters following syntax rules.
+
+To measure similarity between strings, the method employs the Levenshtein distance[1], which counts the minimum number of edit operations (insertions, deletions, substitutions) required to transform on string into another.
+
+The "fuzzy" aspect of this framework allows each string to belong to multiple clusters, with a membership degree that reflects how strongly it is associated with each cluster. This provides a more flexible and realistic clustering behavior compared to traditional "hard" clustering, which forces each sample to belong to only one group.
+
+# About This Library
+
+This Python library introduces an algorithm belonging to the String Grammar Fuzzy Clustering framework, namely the String Grammar Unsupervised Possibilistic Fuzzy C-Medians (sgUPFCMed).
+
+## String Grammar Unsupervised Possibilistic Fuzzy C-Medians (sgUPFCMed)[2]
+
+The sgUPFCMed algorithm is an unsupervised clustering algorithm for string data. The sgUPFCMed is developed based on the Unsupervised Possibilistic Fuzzy C-Means (UPFCM) [3]. The algorithm jointly utilizes fuzzy membership value and possibilistic typicality value, as defined in the objective function. While fuzzy membership value satisfies a probabilistic constraint among clusters, typicality value is a possibilistic value of a string in a cluster. As a result, string that is far from all cluster prototypes tends to receive low typicality value. Similarly to the sgPFCMed [4]  a modified fuzzy median string is used to calculate each cluster prototype.
+
+**Key Features:**
+
+- Jointly incorporates fuzzy membership and possibilistic typicality to improve clustering robustness.
+- Enforces probabilistic constraints through fuzzy membership while allowing independent typicality assignment.
+- Reduces the influence of noise and outliers by using possibilistic typicality.
+- Uses the Levenshtein distance to measure dissimilarity between strings.
+- Represents each cluster prototype using a modified fuzzy median string.
+- Suitable for unsupervised clustering of unlabeled string data with varying lengths.
+
+
+**\*\*Please be noted that this sgUPFCMed can be used for academic and research purposes only. Please also cite this paper [2].\*\***
+
+## Reference
+
+[1] S. K. Fu, Syntactic Pattern Recognition and Applications, 1982, Prentice-Hall, Zbl0521.68091.
+
+[2] Atcharin Klomsae, Sansanee Auephanwiriyakul, and Nipon Theera-Umpon. “String Grammar Unsupervised Possibilistic Fuzzy C-Medians for Gait Pattern Classification in Patients with Neurodegenerative Diseases”, Computational Intelligence and Neuroscience, Vol. 2018, Article ID 1869565, June 2018.
+
+[3] Wu, X., Wu, B., Sun, J., and Fu, H., “Unsupervised Possibilistic Fuzzy Clustering,” Journal of Information & Computational Science, Vol 7, No.5, pp. 1075-1080, 2010.
+
+[4] Atcharin Klomsae, Sansanee Auephanwiriyakul, and Nipon Theera-Umpon, “A string grammar possibilistic-fuzzy C-medians”, Soft Computing , vol. 23, no. 17, pp. 7637 – 7653, 2019: http://doi.org/10.1007/s00500-018-3392-6.
+
+# Installation
+
+You can install the library using pip:
+
+```bash
+pip install sgUPFCMed
+```
+
+# USAGE
+
+## Example Code
+
+```python
+import random
+from sgUPFCMed import SGUPFCMed # Import the clustering class
+
+if __name__ == "__main__":
+    # Set random seed for reproducibility
+    random.seed(42)
+
+    # Define a list of strings to cluster
+    data = ["book", "back", "boon", "cook", "look", "cool", "kick", "lack", "rack", "tack"]
+
+    # Create the model with 2 clusters and fuzzifier m=2.0
+    model = SGUPFCMed(C=2, m=2.0, a=1, b=4, eta=2.0)
+
+    # Fit the model on the data
+    model.fit(data)
+
+    # Print the final prototype strings representing each cluster
+    print("Prototypes:", model.prototypes())
+
+    # Print the fuzzy membership matrix for each input string
+    print("\nMembership Matrix (U):")
+    for s, u in zip(data, model.membership()):
+        print(f"{s:>6} → {[val for val in u]}")
+
+    # Print the fuzzy typicality matrix for each input string
+    print("\nTypicality Matrix:")
+    for s, t in zip(data, model.typicality()):
+        print(f"{s:>6} → {[val for val in t]}")
+
+    # Define new strings to classify using the trained model
+    new_data = ["hack", "rook", "cook"]
+
+    # Predict the cluster index (0 or 1) for each new string
+    preds = model.predict(new_data, model.prototypes())
+    print("\nPredictions:")
+    for s, c in zip(new_data, preds):
+        print(f"{s} → Cluster {c+1}")
+```
