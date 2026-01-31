@@ -1,0 +1,20 @@
+from typing import ClassVar, Optional
+
+from rhesis.sdk.clients import Endpoints
+from rhesis.sdk.entities.base_collection import BaseCollection
+from rhesis.sdk.entities.base_entity import BaseEntity
+
+ENDPOINT = Endpoints.PROMPTS
+
+
+class Prompt(BaseEntity):
+    endpoint: ClassVar[Endpoints] = ENDPOINT
+    content: Optional[str] = None
+    language_code: Optional[str] = "en"  # Default to "en" to match backend schema
+    expected_response: Optional[str] = None
+    id: Optional[str] = None
+
+
+class Prompts(BaseCollection):
+    endpoint = ENDPOINT
+    entity_class = Prompt
