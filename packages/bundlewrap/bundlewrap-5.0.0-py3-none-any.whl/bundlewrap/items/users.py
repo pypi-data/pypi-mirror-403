@@ -1,0 +1,343 @@
+from shlex import quote
+from string import ascii_lowercase, digits
+
+from bundlewrap.exceptions import BundleError
+from bundlewrap.items import BUILTIN_ITEM_ATTRIBUTES, Item
+from bundlewrap.utils.crypto import bcrypt
+from bundlewrap.utils.text import force_text, mark_for_translation as _
+
+_ATTRIBUTE_NAMES = {
+    'full_name': _("full name"),
+    'gid': _("GID"),
+    'groups': _("groups"),
+    'home': _("home dir"),
+    'password_hash': _("password hash"),
+    'shell': _("shell"),
+    'uid': _("UID"),
+}
+
+_ATTRIBUTE_OPTIONS = {
+    'full_name': "-c",
+    'gid': "-g",
+    'groups': "-G",
+    'home': "-d",
+    'password_hash': "-p",
+    'shell': "-s",
+    'uid': "-u",
+}
+
+_USERNAME_VALID_CHARACTERS = ascii_lowercase + digits + "-_"
+
+
+def _group_name_for_gid(node, gid):
+    """
+    Returns the group name that matches the gid.
+    """
+    group_output = node.run("grep -e ':{}:[^:]*$' /etc/group".format(gid), may_fail=True)
+    if group_output.return_code != 0:
+        return None
+    else:
+        return group_output.stdout_text.split(":")[0]
+
+
+def _groups_for_user(node, username):
+    """
+    Returns the list of group names for the given username on the given
+    node.
+    """
+    groups = node.run("id -Gn {}".format(username)).stdout_text.strip().split(" ")
+    primary_group = node.run("id -gn {}".format(username)).stdout_text.strip()
+    groups.remove(primary_group)
+    return groups
+
+
+def _parse_passwd_line(line, entries):
+    """
+    Parses a line from /etc/passwd and returns the information as a
+    dictionary.
+    """
+
+    result = dict(zip(
+        entries,
+        line.strip().split(":"),
+    ))
+    result['full_name'] = result['gecos'].split(",")[0]
+    return result
+
+
+class User(Item):
+    """
+    A user account.
+    """
+    BUNDLE_ATTRIBUTE_NAME = "users"
+    ITEM_ATTRIBUTES = {
+        'delete': False,
+        'full_name': None,
+        'gid': None,
+        'groups': None,
+        'home': None,
+        'password': None,
+        'password_hash': None,
+        'salt': None,
+        'shell': None,
+        'uid': None,
+        'use_shadow': None,
+    }
+    ITEM_TYPE_NAME = "user"
+
+    @classmethod
+    def block_concurrent(cls, node_os, node_os_version):
+        # https://github.com/bundlewrap/bundlewrap/issues/367
+        if node_os in ('openbsd', 'freebsd'):
+            return [cls.ITEM_TYPE_NAME]
+        else:
+            return []
+
+    def __repr__(self):
+        return "<User name:{} uid:{} gid:{} shell:{} delete:{}>".format(
+            self.name,
+            self.attributes['uid'],
+            self.attributes['gid'],
+            self.attributes['shell'],
+            self.attributes['delete'],
+        )
+
+    @property
+    def expected_state(self):
+        if self.attributes['delete']:
+            return None
+
+        state = self.attributes.copy()
+        del state['delete']
+        del state['password']
+        del state['salt']
+        del state['use_shadow']
+
+        for key in list(state.keys()):
+            if state[key] is None:
+                del state[key]
+
+        if 'groups' in state:
+            state['groups'] = set(state['groups'])
+
+        return state
+
+    def fix(self, status):
+        if self.node.os == 'freebsd':
+            # FreeBSD implements the user{add,mod,del} commands using pw(8).
+            command = "pw "
+        else:
+            command = ""
+
+        if status.must_be_deleted:
+            command += "userdel {}"
+            self.run(command.format(self.name), may_fail=True)
+        else:
+            command += "useradd " if status.must_be_created else "usermod "
+
+            stdin = None
+            for attr, option in sorted(_ATTRIBUTE_OPTIONS.items()):
+                if (attr in status.keys_to_fix or status.must_be_created) and \
+                    self.attributes[attr] is not None:
+                    if attr == 'groups':
+                        value = ",".join(self.attributes[attr])
+                    elif attr == 'password_hash' and self.node.os == 'freebsd':
+                        # On FreeBSD, pw useradd/usermod -p sets the password expiry time.
+                        # Using -H <n> we pass the password hash using file descriptor <n> instead.
+                        option = '-H'
+                        value = '0'  # FD 0 = stdin
+                        stdin = self.attributes[attr].encode()
+                    else:
+                        value = str(self.attributes[attr])
+                    command += "{} {} ".format(option, quote(value))
+
+            if self.node.os == 'freebsd':
+                # FreeBSD expects <name> to be the first argument to
+                # `pw useradd/mod`, however we can also pass it using -n
+                # instead. Then it is positionally independent.
+                command += "-n "
+
+            command += f"{self.name}"
+            self.run(command, data_stdin=stdin, may_fail=True)
+
+    def display_on_create(self, expected_state):
+        for attr_name, attr_display_name in _ATTRIBUTE_NAMES.items():
+            if attr_name == attr_display_name:
+                # Don't change anything; the `del` below would
+                # always remove the key entirely!
+                continue
+            if attr_name in expected_state:
+                expected_state[attr_display_name] = expected_state[attr_name]
+                del expected_state[attr_name]
+        return expected_state
+
+    def display_on_fix(self, expected_state, actual_state, keys):
+        for attr_name, attr_display_name in _ATTRIBUTE_NAMES.items():
+            if attr_name == attr_display_name:
+                # Don't change anything; the `del`s below would
+                # always remove the key entirely!
+                continue
+            try:
+                keys.remove(attr_name)
+            except KeyError:
+                pass
+            else:
+                keys.add(attr_display_name)
+                expected_state[attr_display_name] = expected_state[attr_name]
+                actual_state[attr_display_name] = actual_state[attr_name]
+                del expected_state[attr_name]
+                del actual_state[attr_name]
+        return (expected_state, actual_state, keys)
+
+    def get_auto_attrs(self, items):
+        deps = set()
+        groups = self.attributes['groups'] or []
+        for item in items:
+            if item.ITEM_TYPE_NAME == "group":
+                if not (item.name in groups or (
+                    self.attributes['gid'] in [item.attributes['gid'], item.name] and
+                    self.attributes['gid'] is not None
+                )):
+                    # we don't need to depend on this group
+                    continue
+                elif item.attributes['delete']:
+                    raise BundleError(_(
+                        "{item1} (from bundle '{bundle1}') depends on item "
+                        "{item2} (from bundle '{bundle2}') which is set to be deleted"
+                    ).format(
+                        item1=self.id,
+                        bundle1=self.bundle.name,
+                        item2=item.id,
+                        bundle2=item.bundle.name,
+                    ))
+                else:
+                    deps.add(item.id)
+        return {
+            'needs': deps,
+        }
+
+    @property
+    def actual_state(self):
+        # verify content of /etc/passwd
+        if self.node.os in self.node.OS_FAMILY_BSD:
+            password_command = "grep -ae '^{}:' /etc/master.passwd"
+        else:
+            password_command = "grep -ae '^{}:' /etc/passwd"
+        passwd_grep_result = self.run(
+            password_command.format(self.name),
+            may_fail=True,
+        )
+        if passwd_grep_result.return_code != 0:
+            return None
+
+        if self.node.os in self.node.OS_FAMILY_BSD:
+            entries = (
+                'username',
+                'passwd_hash',
+                'uid',
+                'gid',
+                'class',
+                'change',
+                'expire',
+                'gecos',
+                'home',
+                'shell',
+            )
+        else:
+            entries = ('username', 'passwd_hash', 'uid', 'gid', 'gecos', 'home', 'shell')
+
+        actual_state = _parse_passwd_line(passwd_grep_result.stdout_text, entries)
+
+        if self.attributes['gid'] is not None and not self.attributes['gid'].isdigit():
+            actual_state['gid'] = _group_name_for_gid(self.node, actual_state['gid'])
+
+        if self.attributes['password_hash'] is not None:
+            if self.attributes['use_shadow'] and self.node.os not in self.node.OS_FAMILY_BSD:
+                # verify content of /etc/shadow unless we are on OpenBSD
+                shadow_grep_result = self.run(
+                    "grep -e '^{}:' /etc/shadow".format(self.name),
+                    may_fail=True,
+                )
+                if shadow_grep_result.return_code != 0:
+                    actual_state['password_hash'] = None
+                else:
+                    actual_state['password_hash'] = shadow_grep_result.stdout_text.split(":")[1]
+            else:
+                actual_state['password_hash'] = actual_state['passwd_hash']
+        del actual_state['passwd_hash']
+
+        # verify content of /etc/group
+        actual_state['groups'] = set(_groups_for_user(self.node, self.name))
+
+        return actual_state
+
+    def patch_attributes(self, attributes):
+        if attributes.get('password', None) is not None:
+            # This is the default in OpenBSD.
+            #
+            # Linux PAM appears to use 5 by default. It's probably
+            # reasonable to ignore this and use 8 on Linux as well.
+            #
+            # (The Linux PAM crypt algo is configured in some file in
+            # /etc/pam.d, probably a line like "password pam_unix.so
+            # blowfish".)
+            cost = 8
+
+            salt = force_text(attributes.get('salt', None))
+
+            attributes['password_hash'] = bcrypt(
+                force_text(attributes['password']),
+                cost=cost,
+                salt=salt,
+            )
+
+        if 'use_shadow' not in attributes:
+            attributes['use_shadow'] = self.node.use_shadow_passwords
+
+        for attr in ('gid', 'uid'):
+            if isinstance(attributes.get(attr), int):
+                attributes[attr] = str(attributes[attr])
+
+        return attributes
+
+    @classmethod
+    def validate_attributes(cls, bundle, item_id, attributes):
+        if attributes.get('delete', False):
+            for attr in attributes.keys():
+                if attr not in ['delete'] + list(BUILTIN_ITEM_ATTRIBUTES.keys()):
+                    raise BundleError(_(
+                        "{item} from bundle '{bundle}' cannot have other "
+                        "attributes besides 'delete'"
+                    ).format(item=item_id, bundle=bundle.name))
+
+        if 'password_hash' in attributes and (
+            'password' in attributes or
+            'salt' in attributes
+        ):
+            raise BundleError(_(
+                "{item} in bundle '{bundle}': 'password_hash' "
+                "cannot be used with 'password' or 'salt'"
+            ).format(bundle=bundle.name, item=item_id))
+
+        if 'salt' in attributes and 'password' not in attributes:
+            raise BundleError(
+                _("{}: salt given without a password").format(item_id)
+            )
+
+    @classmethod
+    def validate_name(cls, bundle, name):
+        for char in name:
+            if char not in _USERNAME_VALID_CHARACTERS:
+                raise BundleError(_(
+                    "Invalid character in username '{user}': {char} (bundle '{bundle}')"
+                ).format(bundle=bundle.name, char=char, user=name))
+
+        if name.endswith("_") or name.endswith("-"):
+            raise BundleError(_(
+                "Username '{user}' must not end in dash or underscore (bundle '{bundle}')"
+            ).format(bundle=bundle.name, user=name))
+
+        if len(name) > 30:
+            raise BundleError(_(
+                "Username '{user}' is longer than 30 characters (bundle '{bundle}')"
+            ).format(bundle=bundle.name, user=name))
