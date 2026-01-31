@@ -1,0 +1,54 @@
+name: "Create Pull Request with AI"
+description: "AI-powered PR creation with intelligent analysis and suggestions"
+
+params:
+  draft: false
+
+hooks:
+  - before_push
+  - after_pr
+
+steps:
+  # Use the commit-ai workflow (respects project override for linting/testing)
+  - id: commit_changes
+    name: "Commit changes with AI"
+    workflow: "commit-ai"
+
+  - id: get_head_branch
+    name: "Get Head Branch"
+    plugin: git
+    step: get_current_branch
+
+  - id: branch_diff_summary
+    name: "Show Branch Changes Summary"
+    plugin: git
+    step: show_branch_diff_summary
+
+  # AI generates PR title and description from branch commits
+  - id: ai_pr_description
+    name: "AI PR Description"
+    plugin: github
+    step: ai_suggest_pr_description
+
+  - hook: before_push
+
+  # Fallback to manual prompts if AI was rejected
+  - id: prompt_pr_title
+    name: "Prompt for PR Title"
+    plugin: github
+    step: prompt_for_pr_title
+
+  - id: prompt_pr_body
+    name: "Prompt for PR Body"
+    plugin: github
+    step: prompt_for_pr_body
+
+  - id: create_pr
+    name: "Create Pull Request"
+    plugin: github
+    step: create_pr
+    requires:
+      - pr_title
+      - pr_head_branch
+
+  - hook: after_pr

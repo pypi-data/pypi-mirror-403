@@ -1,0 +1,104 @@
+import importlib.util
+from pathlib import Path
+from typing import Callable, Dict, Any, Optional, List
+from dataclasses import dataclass
+
+from titan_cli.engine.context import WorkflowContext
+from titan_cli.engine.results import WorkflowResult
+
+# Define a type alias for a Step Function
+StepFunction = Callable[[WorkflowContext, Dict[str, Any]], WorkflowResult]
+
+@dataclass
+class StepInfo:
+    """
+    Metadata for a discovered project step.
+    """
+    name: str
+    path: Path
+    
+class BaseStepSource:
+    """
+    Base class for discovering and loading Python step functions.
+    """
+    EXCLUDED_FILES = {"__init__.py", "__pycache__"}
+
+    def __init__(self, steps_dir: Path):
+        self._steps_dir = steps_dir
+        self._step_info_cache: Optional[List[StepInfo]] = None
+        self._step_function_cache: Dict[str, StepFunction] = {}
+
+    def discover(self) -> List[StepInfo]:
+        """
+        Discovers all available step files in the project's .titan/steps directory.
+        """
+        if self._step_info_cache is not None:
+            return self._step_info_cache
+
+        if not self._steps_dir.is_dir():
+            self._step_info_cache = []
+            return []
+
+        discovered = []
+        for step_file in self._steps_dir.glob("*.py"):
+            if step_file.name not in self.EXCLUDED_FILES:
+                step_name = step_file.stem
+                discovered.append(StepInfo(name=step_name, path=step_file))
+        
+        self._step_info_cache = discovered
+        return discovered
+
+    def get_step(self, step_name: str) -> Optional[StepFunction]:
+        """
+        Retrieves a step function by name, loading it from its file if necessary.
+        Searches all Python files in the directory for the function.
+        """
+        if step_name in self._step_function_cache:
+            return self._step_function_cache[step_name]
+
+        if not self._steps_dir.is_dir():
+            return None
+
+        # Search all Python files for the function
+        for step_file in self._steps_dir.glob("*.py"):
+            if step_file.name in self.EXCLUDED_FILES:
+                continue
+
+            try:
+                # Use a unique module name to avoid conflicts
+                module_name = f"_titan_step_{step_file.stem}_{id(step_file)}"
+                spec = importlib.util.spec_from_file_location(module_name, step_file)
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+
+                    # Look for the function in this module
+                    step_func = getattr(module, step_name, None)
+                    if callable(step_func):
+                        self._step_function_cache[step_name] = step_func
+                        return step_func
+
+            except Exception:
+                # Continue searching other files
+                continue
+
+        return None
+
+
+class ProjectStepSource(BaseStepSource):
+    """
+    Discovers and loads Python step functions from a project's .titan/steps/ directory.
+    """
+    def __init__(self, project_root: Path):
+        steps_dir = project_root / ".titan" / "steps"
+        super().__init__(steps_dir)
+        self._project_root = project_root
+
+
+class UserStepSource(BaseStepSource):
+    """
+    Discovers and loads Python step functions from user's ~/.titan/steps/ directory.
+    """
+    def __init__(self):
+        steps_dir = Path.home() / ".titan" / "steps"
+        super().__init__(steps_dir)
