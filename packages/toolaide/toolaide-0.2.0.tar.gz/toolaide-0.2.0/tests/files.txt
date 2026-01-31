@@ -1,0 +1,114 @@
+LISTING FILES
+list files recursively
+ - default is recursively, starting from the project folder
+list files only in current folder
+ - give non-recursive as parameter
+list files in a given folder
+ - give a specific folder as parameter
+list files in symlinked folders
+ - hard and soft
+ - TBD: I'd favour traversing these
+ - SEE: _safe_path in common section
+try to search a non-existing path
+ - does not exist
+ - no permissions
+try to search with a file name
+ - TBD: should the tool detect that it's a file and use basename?
+TBD: list dotfile .env .git .gitignore .nvenvrc ...
+# TODO: volume scenarios: deep nesting and huge folders with 100+ files
+# - the search needs to be eventually performant (think ag/rg)
+
+SEARCHING FILES
+search for text recursively
+ - default is recursively, starting from the project folder
+ - default is case-INsensitive
+search for text recursively starting from a given folder
+ - give a start folder as a parameter
+search for text with a file pattern
+ - *.py
+ - combine with recursive and non-recursive
+search for term in code files
+ - search(pattern, *.py)
+ - same as above
+search in a binary file
+ - should work if searching for embedded strings
+search for text as case-sensitive
+ - give case-sensitive as parameter
+# TODO: search for a regular expression pattern
+# - not yet implemented? A lot of patterns to check...
+# - special characters like . and ( ) in pattern
+# TODO: search multi-line text
+# - not yet implemented
+try to search text with no matches
+ - empty results or "no match found"
+try to search in an empty file
+ - must not crash
+
+READING FILES
+read file contents
+ - assume full path given from project folder
+read huge file contents
+ - TBD: what to do when the read will exhaust context?
+read binary file contents
+ - TBD: detect binary file and give out only stats?
+ - TBD: use e.g. file command to determine type?
+read unicode file
+ - the tool should assume UTF-8 by default
+# TODO: read special encoding files
+# - should we detect the encoding with file program?
+try to read a non-existing file
+ - does not exist
+ - no permissions
+try to read a zero legth file
+ - create with: touch empty_file
+try to read protected system files
+ - no permisions
+ - outside project root folder
+try to read special system files
+ - /dev/null, /dev/random, stdin (all typically outside project root)
+
+WRITING FILES
+write new file contents
+ - assume full path given from project folder
+write new file in non-existing subdirectory
+ - create a folder as needed
+ - TBD: should the tool/model ask for approval?
+write existing file contents
+ - replaces file contents
+write existing file with same content
+ - the file hash must not change (ok, to truncate and re-write)
+write valid json/yaml/xml/python/typescript/c to a file
+ - must not break syntax
+ - TBD: there are a ton of tests here (similar to regexp in search)
+ - TBD: check with language server?
+write binary data to file
+ - read an image and write to another file
+write special characters to file
+ - multi line text \n (and \r\n or \m) default should be \n
+write empty content (truncate)
+ - clear contents -> size becomes zero
+try to write to a directory name
+ - the tool should not create a file with the name of a directory
+try to write a write-protected file within project folder
+ - file location ok, permission check fails
+try to write sensitive system files
+ - /etc/hosts
+ - no permissions
+
+COMMON
+path traversal for all tools
+ - ../../something traverse outside project root
+ - /etc/hosts absolute path outside project root
+ - these need to be unit tests for the _safe_path util
+
+special characters in paths
+ - spaces
+ - unicode
+
+symlinked files
+ - TBD: probably need some logic to protect /etc and other sensitive paths
+ - needs to be deny by default, causing the model to ask for permission
+ - TBD: how to convey permission to tools?
+
+empty path
+ - TBD: I think this needs to be an error?
