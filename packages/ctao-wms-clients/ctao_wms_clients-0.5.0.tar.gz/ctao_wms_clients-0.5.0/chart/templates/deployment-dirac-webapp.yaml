@@ -1,0 +1,146 @@
+{{- if .Values.diracServer.webApp.enabled }}
+{{- $fullName := include "wms.fullname" . -}}
+{{- $chartName := include "wms.name" . -}}
+{{- $hostname := coalesce .Values.diracServer.webApp.hostname "dirac-web-app" -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}-{{ $hostname }}
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $chartName }}-{{ $hostname }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "wms.labels" . | nindent 8 }}
+        app: {{ $chartName }}-{{ $hostname }}
+        release: {{ .Release.Name }}
+        component: {{ $hostname }}
+    spec:
+      # The container is now running as "dirac" user
+      # create an initContainer to copy ssh keys
+      initContainers:
+        {{ include "wms.initContainer.certKeys" . | nindent 6 }}
+      # The container and tags are defined in the values.yaml
+      containers:
+      - name: {{ $chartName }}-{{ $hostname }}
+        image: "{{ .Values.image.repository_prefix }}-web:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+          - name: http
+            containerPort: 8080
+            protocol: TCP
+          - name: https
+            containerPort: 8443
+            protocol: TCP
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          periodSeconds: 15
+          failureThreshold: 4
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          periodSeconds: 15
+          failureThreshold: 4
+        command:
+          - bash
+          - -c
+          - |
+            set -xe
+
+            echo "$(date -Is) Starting"
+            source /opt/dirac/bashrc
+
+            # dirac-install-web-portal installs the service and waits for it to be started by runit
+            # since we do not run runit init here, we need to start the app when it is available
+            # it would be better to run webapp directly but it seems install script really relies on runit
+            (while true; do runsv /opt/dirac/startup/Web_WebApp/ || echo "waiting"; sleep 5; done)&
+
+            cat $DIRAC_CFG_PATH/webApp.cfg > /opt/dirac/etc/webApp.cfg
+            cat /opt/dirac/etc/webApp.cfg > /opt/dirac/etc/dirac.cfg
+            dirac-install-web-portal --cfg /opt/dirac/etc/dirac.cfg
+
+            {{- if .Values.diracServer.diracComponents.pilotSync }}
+            mkdir -p /opt/dirac/webRoot/www/pilot/
+            chown -R dirac:dirac /opt/dirac/webRoot
+            chmod 666 -R /opt/dirac/webRoot/www/pilot/
+            cat $DIRAC_CFG_PATH/pilotSync.cfg >> /opt/dirac/etc/dirac.cfg
+            echo "Running $DIRAC_EXEC_CMD $DIRAC_COMPONENT"
+            exec $DIRAC_EXEC_CMD $DIRAC_COMPONENT --cfg /opt/dirac/etc/dirac.cfg -ddd
+            {{- else }}
+            find /opt/dirac/ -wholename '*/log/current' | xargs tail -f
+            {{- end }}
+
+        env:
+        - name: DIRAC_COMPONENT
+          value: {{ .Values.diracServer.diracComponents.pilotSync.cmd }}
+        - name: DIRAC_EXEC_CMD
+          value: dirac-agent
+        # Environment variable shared by all pods
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+        # Volue mount points
+        volumeMounts:
+        {{- if .Values.diracServer.initContainers.certKeys.volumeMounts }}
+        {{- toYaml .Values.diracServer.initContainers.certKeys.volumeMounts | nindent 8 }}
+        {{- end }}
+        {{ include "dpps.common-cert-mounts" . | nindent 8 }}
+        {{- if .Values.diracServer.webApp.extraVolumeMounts }}
+        {{- toYaml .Values.diracServer.webApp.extraVolumeMounts | nindent 8 }}
+        {{- end }}
+        - name: dirac-config
+          subPath: webApp.cfg
+          mountPath: /configurations/webApp.cfg
+        - name: dirac-config
+          subPath: baseDirac.cfg
+          mountPath: /configurations/baseDirac.cfg
+        {{- if .Values.diracServer.diracComponents.pilotSync }}
+        - name: dirac-config
+          subPath: pilotSync.cfg
+          mountPath: /configurations/pilotSync.cfg
+        {{- end }}
+      volumes:
+      - name: dirac-config
+        configMap:
+          name: "{{ .Values.diracServer.configmap.name | default (printf "%s-dirac-config" .Release.Name) }}"
+      {{ include "dpps.common-cert-volumes" . | nindent 6 }}
+      {{- if .Values.diracServer.webApp.extraVolumes }}
+      {{- toYaml .Values.diracServer.webApp.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- if .Values.diracServer.initContainers.certKeys.volumes }}
+      {{- toYaml .Values.diracServer.initContainers.certKeys.volumes | nindent 6 }}
+      {{- end }}
+      {{ include "dpps.common-hostkey-volumes" (dict "root" . "secretFullName" .Values.diracServer.webApp.hostkey.secretFullName "suffix" "dirac-web-app") | nindent 6 }}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-{{ $hostname }}
+  labels:
+    {{- include "wms.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    {{- include "wms.selectorLabels" . | nindent 4 }}
+    component: {{ $hostname }}
+  ports:
+    - protocol: TCP
+      port: 8443
+      targetPort: 8443
+      name: https
+
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      name: http
+{{- end }}

@@ -1,0 +1,58 @@
+{{- if and $.Values.diracServer.bootstrap.firstProxy $.Values.diracServer.bootstrap.enabled }}
+{{- $fullName := include "wms.fullname" . -}}
+{{- $diracxUrl := tpl .Values.diracx.diracx.settings.DIRACX_SERVICE_AUTH_TOKEN_ISSUER . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wms.fullname" . }}-bootstrap-first-proxy-{{ .Release.Revision  }}
+  labels:
+    app: {{ include "wms.fullname" . }}-bootstrap-first-proxy-{{ .Release.Revision  }}
+  annotations: {}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ include "wms.fullname" . }}-bootstrap-first-proxy-{{ .Release.Revision  }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ include "wms.fullname" . }}-bootstrap-first-proxy
+        image: {{ .Values.diracServer.bootstrap.image }}
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -ex
+            echo "Waiting for bootstrap sync IAM users Job to complete..."
+            kubectl wait --for=condition=complete job/{{ include "wms.fullname" . }}-sync-iam-users-{{ .Release.Revision  }} --timeout=600s || (echo "failed to wait for bootstrap syncIAM users job";  exit 1)
+
+            echo "Wait for mandatory service for proxy generation to be ready"
+            {{- $waitList := list "systemAdmin" "bundleDelivery" "proxyManager" -}}
+
+            {{- range $i, $svcName := $waitList }}
+              {{- if index $.Values.diracServer.diracComponents $svcName }}
+            echo "Wait for {{ $svcName }}"
+            kubectl wait deployment/{{ include "wms.dirac-service-name" (dict "root" $ "comp" $svcName) }} --for=condition=Available=True --timeout=20s || (echo "failed to wait for {{ include "wms.kebab" $svcName }} deployment";  exit 1)
+            echo "{{ $svcName }} ready"
+              {{- end }}
+            {{- end }}
+
+            echo "Wait for DiracX to be ready"
+            until kubectl rollout status deployment/{{ tpl .Values.diracx_deployment_fullname $ }} --timeout=10s; do
+              echo "Still waiting for DiracX..."
+              sleep 5
+            done
+
+            echo "Trying to configure proxy"
+            kubectl exec statefulset/{{ include "wms.master-full-name" . }} -- bash -c '
+              set -e
+              export DIRACOS="/opt/dirac"
+              dirac-configure -F --cfg $DIRACOS/etc/dirac.cfg -C {{ include "wms.master-cs-url" . }} --DiracxUrl={{ $diracxUrl }} -ddd
+              dirac-proxy-init -K /home/dirac/.globus/userkey.pem -C /home/dirac/.globus/usercert.pem -g dpps_genpilot --cfg $DIRACOS/etc/dirac.cfg -ddd
+              echo "First proxy created."
+            '
+
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+{{- end }}

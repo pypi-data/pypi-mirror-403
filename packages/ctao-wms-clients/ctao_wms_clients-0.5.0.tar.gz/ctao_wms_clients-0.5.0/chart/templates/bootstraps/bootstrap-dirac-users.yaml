@@ -1,0 +1,48 @@
+{{- if and $.Values.diracServer.bootstrap.syncIamUsers $.Values.diracServer.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wms.fullname" . }}-sync-iam-users-{{ .Release.Revision  }}
+  labels:
+    app: {{ include "wms.fullname" . }}-sync-iam-users-{{ .Release.Revision  }}
+  annotations: {}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: {{ include "wms.fullname" . }}-sync-iam-users-{{ .Release.Revision  }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ include "wms.fullname" . }}-sync-iam-users
+        image: {{ .Values.diracServer.bootstrap.image }}
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -ex
+            {{- if .Values.iam.enabled }}
+            echo "Waiting for iam bootstrap"
+            kubectl wait --for=condition=complete job/{{ include "wms.fullname" . }}-{{ .Values.iam.nameOverride }}-bootstrap-{{ .Release.Revision }} --timeout=1200s || (echo "failed to wait for bootstrap IAM job";  exit 1)
+            {{- end }}
+
+            echo "Waiting for bootstrap diracx CS sync job to complete..."
+            kubectl wait --for=condition=complete job/{{ include "wms.fullname" . }}-bootstrap-sync-diracx-cs-{{ .Release.Revision  }} --timeout=600s || (echo "failed to wait for bootstrap sync diracx CS job";  exit 1)
+
+            echo "Syncing IAM users to DIRAC..."
+
+            # retry
+            while true; do
+              if kubectl exec statefulset/{{ include "wms.master-full-name" . }} -- bash -c '
+                source /opt/dirac/bashrc
+                cd /local_cs_store/initialRepo/
+                python /home/dirac/sync_iam_users.py -c yes
+              '; then
+                echo "Sync completed successfully"
+                break
+              fi
+              echo "Sync failed, retrying in 10s..."
+              sleep 10
+            done
+{{- end }}

@@ -1,0 +1,35 @@
+{{- if and $.Values.diracServer.bootstrap.componentMonitoring $.Values.diracServer.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wms.fullname" . }}-bootstrap-component-monitoring-{{ .Release.Revision  }}
+  labels:
+    app: {{ include "wms.fullname" . }}-bootstrap-component-monitoring-{{ .Release.Revision  }}
+  annotations: {}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ include "wms.fullname" . }}-bootstrap-component-monitoring-{{ .Release.Revision  }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ include "wms.fullname" . }}-bootstrap-component-monitoring
+        image: {{ .Values.diracServer.bootstrap.image }}
+        command:
+          - bash
+          - -c
+          - |
+            set -ex
+            echo "Waiting for bootstrap configure dirac job to complete..."
+            kubectl wait --for=condition=complete job/{{ include "wms.fullname" . }}-bootstrap-dirac-configure-{{ .Release.Revision  }} --timeout=600s || (echo "failed to wait for bootstrap job dirac-configure";  exit 1)
+
+            echo "Installing InstalledComponentsDB"
+            kubectl exec statefulset/{{ include "wms.master-full-name" . }} -- bash -c '
+              source /opt/dirac/bashrc
+              dirac-install-db -c yes --cfg /opt/dirac/etc/{{ $.Values.diracServer.configurationName }}.cfg -ddd InstalledComponentsDB
+            '
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+{{- end }}
