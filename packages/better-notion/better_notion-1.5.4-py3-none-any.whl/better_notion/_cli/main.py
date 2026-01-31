@@ -1,0 +1,149 @@
+"""
+Main entry point for Better Notion CLI.
+
+This module defines the main CLI application using AsyncTyper.
+"""
+from __future__ import annotations
+
+import typer
+
+from better_notion._cli.async_typer import AsyncTyper
+from better_notion._cli.commands import (
+    auth,
+    blocks,
+    comments,
+    config,
+    databases,
+    pages,
+    plugins,
+    search,
+    update,
+    users,
+    workspace,
+)
+from better_notion._cli.response import __version__, format_success
+
+# Create the main CLI app
+app = AsyncTyper()
+
+# Register command groups
+app.add_typer(auth.app, name="auth")
+app.add_typer(pages.app, name="pages")
+app.add_typer(databases.app, name="databases")
+app.add_typer(blocks.app, name="blocks")
+app.add_typer(plugins.app, name="plugin")
+app.add_typer(search.app, name="search")
+app.add_typer(users.app, name="users")
+app.add_typer(comments.app, name="comments")
+app.add_typer(workspace.app, name="workspace")
+app.add_typer(config.app, name="config")
+app.add_typer(update.app, name="update")
+
+# Load and register official plugins
+def _load_official_plugins():
+    """Load and register official plugins, respecting their enabled/disabled state."""
+    try:
+        from better_notion.plugins.official import OFFICIAL_PLUGINS
+        from better_notion.plugins.loader import PluginLoader
+        from better_notion.plugins.state import PluginStateManager
+
+        loader = PluginLoader()
+        state_manager = PluginStateManager()
+
+        for plugin_class in OFFICIAL_PLUGINS:
+            try:
+                plugin = plugin_class()
+                info = plugin.get_info()
+                plugin_name = info.get('name')
+
+                # Check if plugin is disabled
+                if not state_manager.is_enabled(plugin_name):
+                    # Skip loading this plugin
+                    continue
+
+                # Register the plugin's commands
+                plugin.register_commands(app)
+
+                # Store plugin for later reference
+                if not hasattr(app, '_loaded_plugins'):
+                    app._loaded_plugins = {}
+                app._loaded_plugins[plugin_name] = plugin
+            except Exception as e:
+                # Log but don't fail if a plugin fails to load
+                pass
+    except ImportError:
+        # No official plugins available
+        pass
+
+
+# Load official plugins at startup
+_load_official_plugins()
+
+
+@app.command()
+def version(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
+) -> None:
+    """
+    Show the CLI version.
+
+    Displays the version information for the Better Notion CLI.
+    """
+    from better_notion._cli.display import is_human_mode, print_rich_info
+
+    use_json = json_output or not is_human_mode()
+
+    version_info = {
+        "name": "Better Notion CLI",
+        "version": __version__
+    }
+
+    if use_json:
+        import json
+        typer.echo(json.dumps({
+            "success": True,
+            "meta": {
+                "version": __version__,
+                "timestamp": None,
+                "rate_limit": {
+                    "remaining": None,
+                    "reset_at": None
+                }
+            },
+            "data": version_info
+        }, indent=2))
+    else:
+        from rich.console import Console
+        console = Console()
+        console.print(f"[bold blue]Better Notion CLI[/bold blue] version [bold green]{__version__}[/bold green]")
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+) -> None:
+    """
+    Better Notion CLI - Command-line interface for Notion API.
+
+    A CLI for interacting with Notion, designed for AI agents.
+
+    \b
+    Features:
+    - JSON-only output for programmatic parsing
+    - Structured error codes for reliable error handling
+    - Async command support for better performance
+    - Idempotency support for safe retries
+
+    \b
+    Getting Started:
+    1. Configure authentication: notion auth login
+    2. Check status: notion auth status
+    3. Get a page: notion pages get <page_id>
+
+    For more help on a specific command, run: notion <command> --help
+    """
+    ctx.ensure_object(dict)
+
+
+if __name__ == "__main__":
+    app()
