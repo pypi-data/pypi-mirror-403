@@ -1,0 +1,198 @@
+# server.py
+import threading
+from typing import Dict, Optional
+
+import rpyc
+from arbol import aprint
+from rpyc.utils.helpers import classpartial
+from rpyc.utils.server import ThreadedServer
+
+from litemind.utils.free_port import find_free_port
+
+
+class ObjectService(rpyc.Service):
+    """
+    RPyC service that exposes registered objects.
+    """
+
+    def __init__(self, exposed_objects: Dict[str, object]):
+        super().__init__()
+        self._exposed_objects = exposed_objects
+        aprint(f"🏗️ ObjectService initialized with {len(exposed_objects)} objects")
+
+    def on_connect(self, conn):
+        super().on_connect(conn)
+        aprint("🔗 Client connected")
+
+    def on_disconnect(self, conn):
+        super().on_disconnect(conn)
+        aprint("🔌 Client disconnected")
+
+    def exposed_get_object(self, name: str):
+        """Return an object by its registered name (or None if absent)."""
+        try:
+            obj = self._exposed_objects.get(name)
+            if obj is not None:
+                aprint(f"📤 Serving object '{name}' to client")
+                # Wrap the object to handle RPyC netref arguments
+                return _ServerWrapper(obj)
+            else:
+                aprint(
+                    f"❓ Object '{name}' not found in {list(self._exposed_objects.keys())}"
+                )
+            return obj
+        except Exception as e:
+            aprint(f"❌ Error serving object '{name}': {e}")
+            return None
+
+    def exposed_list_objects(self):
+        """Return list of available object names."""
+        return list(self._exposed_objects.keys())
+
+    def exposed_ping(self):
+        """Simple ping method for testing."""
+        return "pong"
+
+
+class Server:
+    """A simple, elegant server for exposing litemind objects."""
+
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None):
+        """
+        Initializes the server.
+
+        Args:
+            host (str): The hostname to bind to.
+            port (int): The port to listen on.
+        """
+
+        # Get free port if needed:
+        if host is None or port is None:
+            hostname, free_port = find_free_port()
+            host = host or hostname
+            port = port or free_port
+
+        self.host = host
+        self.port = port
+        self._exposed_objects: Dict[str, object] = {}
+        self._server = None
+        self._thread = None
+        aprint("✨ LiteMind RPC Server initialized. Ready to expose objects.")
+
+    def get_port(self) -> int:
+        return self.port
+
+    def expose(self, name: str, obj: object):
+        """
+        Makes an object available to remote clients under a specific name.
+
+        Args:
+            name (str): The name to register the object under.
+            obj (object): The object instance to expose.
+        """
+        aprint(f"  📦 Exposing '{name}': {obj}")
+        self._exposed_objects[name] = obj
+
+    def start(self, block=True):
+        """
+        Starts the RPC server.
+
+        Args:
+            block (bool): If True (default), the server runs forever.
+                          If False, it runs in a background thread.
+        """
+
+        # Use classpartial to create a service class with the exposed objects
+        service_class = classpartial(ObjectService, self._exposed_objects)
+
+        try:
+            self._server = ThreadedServer(
+                service_class,  # Pass the partial class
+                hostname=self.host,
+                port=self.port,
+                protocol_config={
+                    "allow_pickle": True,  # Required for complex objects like Messages
+                    "allow_all_attrs": True,  # Required for attribute access on netrefs
+                    "allow_public_attrs": True,
+                    "sync_request_timeout": 300,  # 5 minutes for long-running API calls
+                },
+            )
+
+            aprint(f"\n🚀 Server starting on {self.host}:{self.port}")
+            if block:
+                self._server.start()
+            else:
+                # Start in a non-blocking background thread
+                self._thread = threading.Thread(target=self._server.start, daemon=True)
+                self._thread.start()
+                aprint("   Server running in the background.")
+
+                # Give the server a moment to fully start
+                import time
+
+                time.sleep(0.3)  # Increased wait time
+
+        except Exception as e:
+            aprint(f"❌ Failed to start server: {e}")
+            raise
+
+    def close(self):
+        """Stops the server."""
+        try:
+            if self._server:
+                aprint("🛑 Server shutting down.")
+                self._server.close()
+
+            if self._thread and self._thread.is_alive():
+                self._thread.join(timeout=1.0)
+
+        except Exception as e:
+            aprint(f"⚠️ Error during server shutdown: {e}")
+
+    def is_running(self) -> bool:
+        """Check if the server is currently running."""
+        return self._server is not None and (
+            self._thread is None or self._thread.is_alive()
+        )
+
+
+class _ServerWrapper:
+    """
+    Server-side wrapper that materializes RPyC netref arguments before passing
+    them to the wrapped object. Uses obtain() to ensure complex objects are
+    properly copied by value.
+    """
+
+    def __init__(self, wrapped_obj):
+        self._wrapped_obj = wrapped_obj
+
+    def __call__(self, *args, **kwargs):
+        """Materialize remote arguments and call the wrapped object."""
+        import rpyc.utils.classic
+
+        # Materialize all arguments from netrefs to local copies
+        processed_args = []
+        for arg in args:
+            try:
+                # obtain() pulls remote objects by value
+                processed_args.append(rpyc.utils.classic.obtain(arg))
+            except Exception:
+                # Fallback if obtain fails
+                processed_args.append(arg)
+
+        processed_kwargs = {}
+        for key, value in kwargs.items():
+            try:
+                processed_kwargs[key] = rpyc.utils.classic.obtain(value)
+            except Exception:
+                processed_kwargs[key] = value
+
+        return self._wrapped_obj(*processed_args, **processed_kwargs)
+
+    def __getattr__(self, name):
+        """Forward all other attribute access to the wrapped object."""
+        return getattr(self._wrapped_obj, name)
+
+    def __getitem__(self, key):
+        """Forward item access to the wrapped object (for dict-like objects)."""
+        return self._wrapped_obj[key]
