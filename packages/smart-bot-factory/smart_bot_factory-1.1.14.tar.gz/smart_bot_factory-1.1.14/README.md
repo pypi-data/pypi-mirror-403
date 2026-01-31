@@ -1,0 +1,1961 @@
+# Smart Bot Factory
+
+## Библиотека для создания умных Telegram ботов с AI, аналитикой и гибкой архитектурой
+
+## 📋 Содержание
+
+- [Smart Bot Factory](#smart-bot-factory)
+  - [Библиотека для создания умных Telegram ботов с AI, аналитикой и гибкой архитектурой](#библиотека-для-создания-умных-telegram-ботов-с-ai-аналитикой-и-гибкой-архитектурой)
+  - [📋 Содержание](#-содержание)
+  - [🚀 Установка](#-установка)
+  - [⚡ Быстрый старт](#-быстрый-старт)
+    - [1. Создание бота через CLI](#1-создание-бота-через-cli)
+    - [2. Минимальный код бота](#2-минимальный-код-бота)
+  - [🎮 CLI Команды](#-cli-команды)
+    - [Создание бота](#создание-бота)
+    - [Управление ботами](#управление-ботами)
+    - [Настройка](#настройка)
+    - [Тестирование](#тестирование)
+    - [Утилиты](#утилиты)
+  - [🏗️ Архитектура](#️-архитектура)
+    - [BotBuilder - Основной класс](#botbuilder---основной-класс)
+    - [EventRouter - Роутер событий](#eventrouter---роутер-событий)
+    - [RagRouter - RAG инструменты](#ragrouter---rag-инструменты)
+    - [ToolRouter - Обычные инструменты](#toolrouter---обычные-инструменты)
+  - [🌐 Парсинг сайтов и RAG](#-парсинг-сайтов-и-rag)
+    - [Парсинг сайтов](#парсинг-сайтов)
+    - [Векторное хранилище (RAG)](#векторное-хранилище-rag)
+  - [📦 Декораторы](#-декораторы)
+    - [`event_handler` - Обработчики событий](#event_handler---обработчики-событий)
+    - [`schedule_task` - Запланированные задачи](#schedule_task---запланированные-задачи)
+    - [`global_handler` - Глобальные обработчики](#global_handler---глобальные-обработчики)
+  - [🎣 Хуки для кастомизации](#-хуки-для-кастомизации)
+    - [Доступные хуки](#доступные-хуки)
+  - [📱 Telegram роутеры](#-telegram-роутеры)
+    - [Создание роутера](#создание-роутера)
+    - [Множественная регистрация](#множественная-регистрация)
+  - [🧪 Тестирование](#-тестирование)
+    - [Через CLI](#через-cli)
+    - [Через BotBuilder](#через-botbuilder)
+    - [Формат тестов (YAML)](#формат-тестов-yaml)
+  - [🔄 Миграция с прошлой версии](#-миграция-с-прошлой-версии)
+    - [Основные изменения](#основные-изменения)
+    - [Пример миграции](#пример-миграции)
+    - [Ключевые отличия](#ключевые-отличия)
+  - [🔧 Расширенные возможности](#-расширенные-возможности)
+    - [Кастомный PromptLoader](#кастомный-promptloader)
+    - [Полная замена обработки событий](#полная-замена-обработки-событий)
+    - [Доступ к aiogram Bot](#доступ-к-aiogram-bot)
+    - [UTM-триггеры](#utm-триггеры)
+  - [📚 Полный пример](#-полный-пример)
+  - [📖 Структура проекта](#-структура-проекта)
+  - [⚙️ Конфигурация (.env)](#️-конфигурация-env)
+  - [🎯 Сравнение декораторов](#-сравнение-декораторов)
+  - [🔑 Ключевые концепции](#-ключевые-концепции)
+    - [`send_ai_response=True`](#send_ai_responsetrue)
+    - [`once_only=True`](#once_onlytrue)
+    - [`smart_check=True`](#smart_checktrue)
+    - [`event_type` - Привязка ко времени события](#event_type---привязка-ко-времени-события)
+  - [📞 Поддержка](#-поддержка)
+  - [📄 Лицензия](#-лицензия)
+
+---
+
+## 🚀 Установка
+
+```bash
+pip install smart_bot_factory
+```
+
+Или через `uv`:
+
+```bash
+uv add smart_bot_factory
+```
+
+---
+
+## ⚡ Быстрый старт
+
+### 1. Создание бота через CLI
+
+```bash
+# Создать структуру нового бота
+sbf create my-bot
+
+# Настроить .env файл
+sbf config my-bot
+
+# Запустить бота
+sbf run my-bot
+```
+
+### 2. Минимальный код бота
+
+```python
+"""my-bot.py"""
+import asyncio
+from smart_bot_factory.router import EventRouter
+from smart_bot_factory.message import send_message_by_human
+from smart_bot_factory.creation import BotBuilder
+
+# Инициализация
+event_router = EventRouter("my-bot")
+bot_builder = BotBuilder("my-bot")
+
+@event_router.event_handler("collect_phone", once_only=True)
+async def handle_phone(user_id: int, phone: str):
+    """ИИ создает: {"тип": "collect_phone", "инфо": "+79001234567"}"""
+    await send_message_by_human(
+        user_id=user_id,
+        message_text=f"✅ Телефон {phone} сохранен"
+    )
+    return {"status": "success"}
+
+async def main():
+    bot_builder.register_routers(event_router)
+    await bot_builder.start()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+---
+
+## 🎮 CLI Команды
+
+### Создание бота
+
+```bash
+# Создать нового бота из базового шаблона
+sbf create my-bot
+
+# Скопировать существующего бота
+sbf copy best-valera new-valera
+```
+
+**💡 Команда `copy` - создает нового бота на основе существующего:**
+
+- ✅ Копирует код бота с автозаменой `bot_id`
+- ✅ Копирует все промпты
+- ✅ Копирует тесты и файлы
+- ✅ Создает новый `.env` (не копирует токены)
+
+### Управление ботами
+
+```bash
+# Показать список ботов
+sbf list
+
+# Запустить бота
+sbf run my-bot
+
+# Удалить бота
+sbf rm my-bot
+
+# Удалить без подтверждения
+sbf rm my-bot --force
+```
+
+### Настройка
+
+```bash
+# Открыть .env файл в редакторе
+sbf config my-bot
+
+# Управление промптами
+sbf prompts my-bot                    # Список промптов
+sbf prompts my-bot --edit system      # Редактировать промпт
+sbf prompts my-bot --add custom       # Добавить новый промпт
+```
+
+### Тестирование
+
+```bash
+# Запустить все тесты
+sbf test my-bot
+
+# Запустить конкретный файл
+sbf test my-bot --file test_booking.yaml
+
+# Подробный вывод
+sbf test my-bot -v
+
+# Увеличить количество параллельных потоков
+sbf test my-bot --max-concurrent 10
+```
+
+### Утилиты
+
+```bash
+# Показать путь к проекту
+sbf path
+
+# Создать UTM ссылку
+sbf link
+```
+
+**Генератор UTM-ссылок (`sbf link`):**
+
+Интерактивный инструмент для создания UTM-ссылок на Telegram бота.
+
+**Как использовать:**
+
+1. Запустите команду `sbf link`
+2. Введите username бота (без @)
+3. Укажите UTM-метки (можно пропускать, нажав Enter):
+   - `utm_source` - источник трафика (например: `vk`, `instagram`, `google`)
+   - `utm_medium` - канал (например: `cpc`, `social`, `email`)
+   - `utm_campaign` - название кампании (например: `summer2025`, `new_year`)
+   - `utm_content` - контент (например: `banner`, `post`)
+   - `utm_term` - ключевое слово
+   - `segment` - сегмент пользователей (например: `premium`, `vip`)
+
+**Пример:**
+
+```bash
+$ sbf link
+🔗 Генератор UTM-ссылок для Telegram
+==================================================
+Введите username бота (без @): my_bot
+
+📊 Введите UTM-метки (нажмите Enter для пропуска):
+utm_source (источник): vk
+utm_medium (канал): social
+utm_campaign (кампания): summer2025
+utm_content (контент): 
+utm_term (ключевое слово): 
+🎯 Сегментация (нажмите Enter для пропуска):
+seg (сегмент): premium
+
+📏 Размер OK: 45 символов
+
+✅ Сгенерированная ссылка:
+🔗 https://t.me/my_bot?start=source-vk_medium-social_campaign-summer2025_seg-premium
+```
+
+**Формат ссылки:**
+
+Ссылка создается в формате:
+```
+https://t.me/BOT_USERNAME?start=source-VALUE_medium-VALUE_campaign-VALUE_seg-VALUE
+```
+
+**Ограничения:**
+
+- Максимальная длина строки после `start=` - **64 символа**
+- Если ссылка превышает лимит, сократите значения UTM-меток
+
+**Использование ссылки:**
+
+1. Скопируйте сгенерированную ссылку
+2. Используйте её в рекламе, постах, email-рассылках
+3. При переходе по ссылке и нажатии `/start` бот получит UTM-метки
+4. Можно настроить UTM-триггеры для специальных сообщений (см. раздел [UTM-триггеры](#utm-триггеры))
+
+**Примеры ссылок:**
+
+```bash
+# Простая ссылка с источником и кампанией
+https://t.me/my_bot?start=source-vk_campaign-summer2025
+
+# С несколькими параметрами
+https://t.me/my_bot?start=source-instagram_medium-story_campaign-new_year
+
+# С сегментом
+https://t.me/my_bot?start=source-google_campaign-premium_seg-vip
+```
+
+---
+
+## 🏗️ Архитектура
+
+### BotBuilder - Основной класс
+
+`BotBuilder` - центральный класс для создания и управления ботом. Он управляет всеми компонентами: клиентами, менеджерами, роутерами и инструментами.
+
+**Основные методы:**
+
+```python
+bot_builder = BotBuilder("my-bot")
+
+# Регистрация роутеров
+bot_builder.register_routers(event_router)              # EventRouter
+bot_builder.register_telegram_router(telegram_router)  # aiogram.Router
+bot_builder.register_rag(rag_router)                   # RagRouter
+bot_builder.register_tool_set(tool_router)              # ToolRouter
+
+# Регистрация отдельных инструментов
+bot_builder.register_tool(some_tool)                    # LangChain Tool
+bot_builder.register_tools(tool1, tool2, tool3)        # Несколько инструментов
+
+# Кастомизация (до build())
+bot_builder.set_prompt_loader(custom_loader)
+bot_builder.set_event_processor(custom_processor)
+
+# Хуки для обработки сообщений
+@bot_builder.validate_message
+@bot_builder.enrich_prompt
+@bot_builder.enrich_context
+@bot_builder.process_response
+@bot_builder.filter_send
+@bot_builder.on_start
+
+# Сборка и запуск
+await bot_builder.build()   # Явная сборка (опционально)
+await bot_builder.start()   # Автоматически вызывает build() если нужно
+
+# Тестирование выполняется через CLI: sbf test my-bot
+```
+
+**Жизненный цикл:**
+
+1. **Инициализация** - создание `BotBuilder(bot_id)`
+2. **Регистрация** - добавление роутеров, инструментов, хуков
+3. **Сборка** - `build()` инициализирует все компоненты (вызывается автоматически в `start()`)
+4. **Запуск** - `start()` запускает бота и начинает обработку сообщений
+
+### EventRouter - Роутер событий
+
+`EventRouter` - роутер для организации обработчиков событий, задач и глобальных обработчиков.
+
+```python
+from smart_bot_factory.router import EventRouter
+
+event_router = EventRouter("my-bot")
+
+# Регистрация обработчиков
+@event_router.event_handler("collect_phone")
+@event_router.schedule_task("follow_up", delay="24h")
+@event_router.global_handler("announcement", delay="2h")
+
+# Регистрация в BotBuilder
+bot_builder.register_routers(event_router)
+```
+
+### RagRouter - RAG инструменты
+
+`RagRouter` - упрощенный роутер для регистрации RAG-инструментов с векторным поиском.
+
+```python
+from smart_bot_factory.rag import RagRouter, VectorStore
+
+# Создание векторного хранилища
+vectorstore = VectorStore(bot_id="my-bot")
+
+# Создание роутера
+rag_router = RagRouter("my_rag")
+
+# Регистрация инструмента
+@rag_router.tool
+async def get_info_from_rag(query: str, section: Optional[str] = None) -> str:
+    """Запрос информации из RAG-системы.
+    
+    Args:
+        query: Запрос к RAG-системе.
+        section: Раздел для фильтрации (опционально).
+    """
+    results = await vectorstore.asimilarity_search(
+        query, k=5, filter={"section": section} if section else {}
+    )
+    return format_results(results)
+
+# Регистрация в BotBuilder
+bot_builder.register_rag(rag_router)
+```
+
+**Пример полного файла `rag_tools.py`:**
+
+```python
+from typing import Optional
+from smart_bot_factory.rag import RagRouter, VectorStore
+
+vectorstore = VectorStore(bot_id="my-bot")
+rag_router = RagRouter("my_rag")
+
+@rag_router.tool
+async def get_info_from_rag(query: str, section: Optional[str] = None) -> str:
+    """Запрос информации из RAG-системы."""
+    results = await vectorstore.asimilarity_search(
+        query, k=5, filter={"section": section.split("|")} if section else {}
+    )
+    return "\n\n".join([doc.page_content for doc in results])
+```
+
+### ToolRouter - Обычные инструменты
+
+`ToolRouter` - универсальный роутер для сбора и регистрации обычных LangChain-инструментов.
+
+```python
+from smart_bot_factory.utils import ToolRouter
+
+tool_router = ToolRouter("common_tools")
+
+@tool_router.tool
+def calculate_price(service: str, quantity: int) -> str:
+    """Рассчитывает цену услуги.
+    
+    Args:
+        service: Название услуги
+        quantity: Количество
+    """
+    prices = {"консультация": 1000, "лечение": 5000}
+    total = prices.get(service, 0) * quantity
+    return f"Стоимость: {total}₽"
+
+# Регистрация в BotBuilder
+bot_builder.register_tool_set(tool_router)
+```
+
+---
+
+## 🌐 Парсинг сайтов и RAG
+
+### Парсинг сайтов
+
+`SiteParser` - инструмент для парсинга веб-сайтов с очисткой текста через LLM.
+
+**Основные возможности:**
+
+- Парсинг одной или нескольких страниц
+- Автоматическая очистка текста через LLM
+- Поиск ссылок в sitemap
+- Сохранение результатов в файлы
+- Параллельная обработка
+
+**Пример использования:**
+
+```python
+import asyncio
+from smart_bot_factory.site_parser import SiteParser, search_sitemap
+
+# Создание парсера с дополнительными инструкциями
+additional_prompt = (
+    "Убери контактную информацию в начале страницы. "
+    "Убери список услуг в конце страницы."
+)
+
+parser = SiteParser(
+    bot_id="my-bot",
+    additional_instructions=additional_prompt
+)
+
+async def main():
+    # Поиск ссылок в sitemap
+    links = search_sitemap("https://example.com/sitemap.xml")
+    print(f"Найдено ссылок: {len(links)}")
+    
+    # Парсинг всех ссылок с сохранением в файлы
+    files = await parser.parser(
+        links[:10],  # Первые 10 ссылок
+        max_workers=5,  # Одновременно обрабатывать 5 страниц
+        to_files=True  # Сохранить в файлы
+    )
+    
+    # Файлы сохраняются в bots/my-bot/parser/
+    print(f"Сохранено файлов: {len(files)}")
+    
+    # Или получить текст напрямую
+    text = await parser.parser("https://example.com/page")
+    print(f"Длина текста: {len(text)}")
+
+asyncio.run(main())
+```
+
+**Методы:**
+
+- `parser(url, max_workers=5, to_files=False)` - парсинг URL или списка URL
+- `search_sitemap(url, regex=None, limit=None)` - поиск ссылок в sitemap с фильтрацией
+
+### Векторное хранилище (RAG)
+
+`VectorStore` - векторное хранилище на базе Supabase для RAG-поиска.
+
+**Автоматическая настройка:**
+
+- Автоматически загружает настройки из `.env` файла бота
+- Проверяет наличие таблицы и функции в Supabase
+- Генерирует SQL файлы для создания таблицы/функции при отсутствии
+
+**Пример использования:**
+
+```python
+from smart_bot_factory.rag import VectorStore
+from langchain_core.documents import Document
+
+# Создание векторного хранилища
+vectorstore = VectorStore(bot_id="my-bot")
+
+# Добавление документов из файлов
+from pathlib import Path
+
+parser_dir = Path("bots/my-bot/parser")
+documents = []
+
+for txt_file in parser_dir.glob("*.txt"):
+    content = txt_file.read_text(encoding="utf-8")
+    
+    # Создаем документ с метаданными
+    doc = Document(
+        page_content=content,
+        metadata={
+            "source": txt_file.stem,
+            "section": "services",  # Для фильтрации
+            "category": "medical"
+        }
+    )
+    documents.append(doc)
+
+# Добавляем документы в векторное хранилище
+# Автоматически создаются embeddings и сохраняются в Supabase
+vectorstore.add_documents(documents)
+
+# Поиск по запросу
+results = await vectorstore.asimilarity_search(
+    query="стоимость консультации",
+    k=5,  # Количество результатов
+    filter={"section": "services"},  # Фильтр по метаданным
+    score=0.6  # Минимальный порог релевантности
+)
+
+for doc in results:
+    print(f"Текст: {doc.page_content[:100]}...")
+    print(f"Метаданные: {doc.metadata}")
+```
+
+**Методы VectorStore:**
+
+- `add_documents(documents)` - добавление документов
+- `add_texts(texts, metadatas=None)` - добавление текстов
+- `asimilarity_search(query, k=4, filter=None, score=None)` - асинхронный поиск
+- `similarity_search(query, k=4, filter=None)` - синхронный поиск
+
+**Полный пример: парсинг → RAG**
+
+```python
+import asyncio
+from pathlib import Path
+from smart_bot_factory.site_parser import SiteParser, search_sitemap
+from smart_bot_factory.rag import VectorStore
+from langchain_core.documents import Document
+
+async def parse_and_index():
+    # 1. Парсинг сайта
+    parser = SiteParser(
+        bot_id="my-bot",
+        additional_instructions="Убери контакты и списки услуг"
+    )
+    
+    links = search_sitemap("https://example.com/sitemap.xml")
+    files = await parser.parser(links[:20], to_files=True)
+    
+    # 2. Загрузка в векторное хранилище
+    vectorstore = VectorStore(bot_id="my-bot")
+    parser_dir = Path("bots/my-bot/parser")
+    
+    documents = []
+    for txt_file in parser_dir.glob("*.txt"):
+        content = txt_file.read_text(encoding="utf-8")
+        
+        # Извлекаем категорию из имени файла
+        category = txt_file.stem.split("-")[0] if "-" in txt_file.stem else "general"
+        
+        doc = Document(
+            page_content=content,
+            metadata={
+                "source": txt_file.stem,
+                "category": category,
+                "section": "services"
+            }
+        )
+        documents.append(doc)
+    
+    # 3. Добавляем в векторное хранилище
+    vectorstore.add_documents(documents)
+    print(f"✅ Добавлено {len(documents)} документов в RAG")
+
+asyncio.run(parse_and_index())
+```
+
+**Использование в RAG-роутере:**
+
+```python
+from smart_bot_factory.rag import RagRouter, VectorStore
+
+vectorstore = VectorStore(bot_id="my-bot")
+rag_router = RagRouter("my_rag")
+
+@rag_router.tool
+async def get_info_from_rag(query: str, section: Optional[str] = None) -> str:
+    """Запрос информации из RAG-системы.
+    
+    Args:
+        query: Запрос к RAG-системе
+        section: Раздел для фильтрации (опционально)
+    """
+    filter_dict = {}
+    if section:
+        filter_dict["section"] = section.split("|")  # Поддержка нескольких разделов
+    
+    results = await vectorstore.asimilarity_search(
+        query, 
+        k=5, 
+        filter=filter_dict if filter_dict else None,
+        score=0.55  # Минимальный порог релевантности
+    )
+    
+    return "\n\n".join([doc.page_content for doc in results])
+
+# Регистрация в боте
+bot_builder.register_rag(rag_router)
+```
+
+**Настройка Supabase:**
+
+При первом использовании `VectorStore` автоматически:
+
+1. Проверяет наличие таблицы `vectorstore` в Supabase
+2. Проверяет наличие функции `match_vectorstore` для поиска
+3. Если отсутствуют - генерирует SQL файлы в `sql_functions/`
+4. Выполните SQL файлы в Supabase для создания таблицы и функции
+
+**Структура таблицы:**
+
+```sql
+CREATE TABLE vectorstore (
+    id UUID PRIMARY KEY,
+    content TEXT,
+    embedding vector(1536),  -- для text-embedding-3-small
+    metadata JSONB
+);
+```
+
+---
+
+## 📦 Декораторы
+
+### `event_handler` - Обработчики событий
+
+**Назначение:** Обрабатывают события от ИИ немедленно (как только ИИ создает событие).
+
+**Сигнатура:**
+
+```python
+@event_router.event_handler(
+    event_type: str,                # Тип события
+    notify: bool = False,           # Уведомлять админов
+    once_only: bool = True,         # Выполнять только 1 раз
+    send_ai_response: bool = True   # Отправлять ответ от ИИ
+)
+async def handler(user_id: int, event_data: str):
+    # Ваш код
+    return {"status": "success"}
+```
+
+**Параметры:**
+
+- **`event_type`** (обязательный) - Уникальное имя события
+- **`notify`** (по умолчанию `False`) - Отправлять уведомление админам после выполнения
+- **`once_only`** (по умолчанию `True`) - Если `True`, событие выполнится только 1 раз для пользователя
+- **`send_ai_response`** (по умолчанию `True`) - Если `False`, ИИ НЕ отправит сообщение после выполнения обработчика
+
+**Как работает:**
+
+1. ИИ создает событие в JSON: `{"тип": "collect_phone", "инфо": "+79001234567"}`
+2. Обработчик вызывается **немедленно**
+3. Событие сохраняется в БД со статусом `completed`
+4. Если `once_only=True` - повторные события блокируются
+
+**Примеры:**
+
+```python
+# Базовый пример
+@event_router.event_handler("collect_phone")
+async def save_phone(user_id: int, phone_number: str):
+    """Сохраняет телефон клиента"""
+    await send_message_by_human(
+        user_id=user_id,
+        message_text=f"✅ Телефон {phone_number} сохранен"
+    )
+    return {"status": "success", "phone": phone_number}
+
+# С уведомлением админов
+@event_router.event_handler("new_lead", notify=True, once_only=True)
+async def process_lead(user_id: int, lead_info: str):
+    """Обрабатывает нового лида"""
+    # Админы получат уведомление автоматически
+    return {"status": "lead_created", "info": lead_info}
+
+# Может выполняться многократно
+@event_router.event_handler("ask_question", once_only=False)
+async def handle_question(user_id: int, question: str):
+    """Обрабатывает вопросы (может быть много)"""
+    # Логика обработки
+    return {"status": "answered"}
+
+# БЕЗ отправки ответа от ИИ
+@event_router.event_handler("silent_event", send_ai_response=False)
+async def handle_silent(user_id: int, event_data: str):
+    """
+    Выполняет логику БЕЗ отправки сообщения от ИИ
+    Используйте когда хотите только собрать данные без ответа пользователю
+    """
+    await send_message_by_human(user_id, "✅ Данные сохранены")
+    return {"status": "saved"}
+```
+
+---
+
+### `schedule_task` - Запланированные задачи
+
+**Назначение:** Выполняются через заданное время после создания события.
+
+**Сигнатура:**
+
+```python
+@event_router.schedule_task(
+    task_name: str,                     # Название задачи
+    delay: Union[str, int],             # Задержка: "1h 30m" или секунды
+    notify: bool = False,               # Уведомлять админов
+    smart_check: bool = True,           # Умная проверка активности
+    once_only: bool = True,             # Выполнять только 1 раз
+    event_type: Union[str, Callable] = None,  # Источник времени события
+    send_ai_response: bool = True       # Отправлять ответ от ИИ
+)
+async def handler(user_id: int, user_data: str):
+    # Ваш код
+    return {"status": "sent"}
+```
+
+**Параметры:**
+
+- **`task_name`** (обязательный) - Уникальное имя задачи
+- **`delay`** (обязательный) - Задержка выполнения:
+  - Строка: `"1h 30m"`, `"2h"`, `"45m"`, `"30s"`
+  - Число: `3600` (секунды)
+- **`notify`** (по умолчанию `False`) - Уведомлять админов
+- **`smart_check`** (по умолчанию `True`) - Умная проверка:
+  - Отменяет задачу если пользователь перешел на новый этап
+  - Переносит задачу если пользователь был активен
+- **`once_only`** (по умолчанию `True`) - Выполнять только 1 раз для пользователя
+- **`event_type`** (опционально) - Источник времени события:
+  - **Строка**: `"appointment_booking"` - ищет событие в БД и вычисляет время
+  - **Функция**: `async def(user_id, user_data) -> datetime` - кастомная логика
+- **`send_ai_response`** (по умолчанию `True`) - Если `False`, ИИ НЕ отправит сообщение после выполнения задачи
+
+**Формула времени с `event_type`:**
+
+```text
+reminder_time = event_datetime - delay
+```
+
+**Примеры:**
+
+```python
+# Простое напоминание через 24 часа
+@event_router.schedule_task("follow_up", delay="24h")
+async def send_follow_up(user_id: int, reminder_text: str):
+    """
+    ИИ создает: {"тип": "follow_up", "инфо": "Не забудьте про запись"}
+    Выполнится через 24 часа
+    """
+    await send_message_by_human(
+        user_id=user_id,
+        message_text=f"👋 {reminder_text}"
+    )
+    return {"status": "sent"}
+
+# Напоминание относительно события из БД
+@event_router.schedule_task(
+    "booking_reminder",
+    delay="2h",  # За 2 часа до записи
+    event_type="appointment_booking"  # Ищет в БД событие типа "appointment_booking"
+)
+async def remind_booking(user_id: int, user_data: str):
+    """
+    ИИ создает событие: {"тип": "appointment_booking", "инфо": "дата: 2025-10-15, время: 19:00"}
+    Затем создает: {"тип": "booking_reminder", "инфо": ""}
+    
+    Логика:
+    1. Находит в БД последнее событие "appointment_booking" для user_id
+    2. Парсит из него datetime: 2025-10-15 19:00
+    3. Вычисляет: reminder_time = 19:00 - 2h = 17:00
+    4. Отправляет напоминание в 17:00
+    """
+    await send_message_by_human(
+        user_id=user_id,
+        message_text="⏰ Напоминаю о записи через 2 часа!"
+    )
+    return {"status": "sent"}
+
+# Напоминание с кастомной функцией получения времени
+async def get_booking_from_api(user_id: int, user_data: str) -> datetime:
+    """Получает время записи из внешнего API"""
+    from yclients_api import get_next_booking
+    booking = await get_next_booking(user_id)
+    return booking['datetime']  # datetime объект
+
+@event_router.schedule_task(
+    "api_reminder",
+    delay="1h",
+    event_type=get_booking_from_api  # Функция вместо строки
+)
+async def send_api_reminder(user_id: int, user_data: str):
+    """
+    ИИ создает: {"тип": "api_reminder", "инфо": ""}
+    
+    Логика:
+    1. Вызывается get_booking_from_api(user_id, "")
+    2. Функция возвращает datetime из API
+    3. Вычисляется: reminder_time = api_datetime - 1h
+    4. Отправляется в вычисленное время
+    """
+    await send_message_by_human(user_id, "⏰ Напоминание из API!")
+    return {"status": "sent"}
+
+# Без smart_check (отправить в любом случае)
+@event_router.schedule_task("important_reminder", delay="12h", smart_check=False)
+async def important_reminder(user_id: int, text: str):
+    """Отправится в любом случае, даже если пользователь активен"""
+    await send_message_by_human(user_id, f"🔔 {text}")
+    return {"status": "sent"}
+```
+
+---
+
+### `global_handler` - Глобальные обработчики
+
+**Назначение:** Выполняются для всех пользователей одновременно.
+
+**Сигнатура:**
+
+```python
+@event_router.global_handler(
+    handler_type: str,                  # Тип обработчика
+    delay: Union[str, int],             # Задержка
+    notify: bool = False,               # Уведомлять админов
+    once_only: bool = True,             # Выполнять только 1 раз
+    event_type: Union[str, Callable] = None,  # Источник времени
+    send_ai_response: bool = True       # Отправлять ответ от ИИ
+)
+async def handler(handler_data: str):
+    # Ваш код
+    return {"status": "sent"}
+```
+
+**Отличия от `schedule_task`:**
+
+- **Нет `user_id`** - работает глобально
+- **Нет `smart_check`** - не привязан к активности пользователя
+- Одно выполнение = одна рассылка всем
+
+**Примеры:**
+
+```python
+# Рассылка всем через 2 часа
+@event_router.global_handler("promo_announcement", delay="2h", notify=True)
+async def send_promo(announcement_text: str):
+    """
+    ИИ создает: {"тип": "promo_announcement", "инфо": "Скидка 20%!"}
+    Отправится всем через 2 часа
+    """
+    await send_message_to_users_by_stage(
+        stage="all",
+        message_text=f"🎉 {announcement_text}",
+        bot_id="my-bot"
+    )
+    return {"status": "sent", "recipients": "all"}
+
+# С кастомной функцией времени
+async def get_promo_end_time(handler_data: str) -> datetime:
+    """Получает время окончания акции из CRM"""
+    from crm_api import get_active_promo
+    promo = await get_active_promo()
+    return promo['end_datetime']
+
+@event_router.global_handler(
+    "promo_ending_notification",
+    delay="2h",
+    event_type=get_promo_end_time
+)
+async def notify_promo_ending(handler_data: str):
+    """Уведомление всем за 2 часа до окончания акции"""
+    await send_message_to_users_by_stage(
+        stage="all",
+        message_text="⏰ Акция заканчивается через 2 часа!",
+        bot_id="my-bot"
+    )
+    return {"status": "sent"}
+```
+
+---
+
+## 🎣 Хуки для кастомизации
+
+Хуки позволяют внедрять свою логику в стандартную обработку сообщений без переписывания всей функции.
+
+### Доступные хуки
+
+```python
+bot_builder = BotBuilder("my-bot")
+
+# 1. Валидация сообщения (ДО обработки AI)
+@bot_builder.validate_message
+async def check_spam(message_text: str, message_obj):
+    if "спам" in message_text.lower():
+        await message_obj.answer("⛔ Спам запрещен")
+        return False  # Блокировать обработку
+    return True  # Продолжить
+
+# 2. Обогащение системного промпта
+@bot_builder.enrich_prompt
+async def add_client_info(system_prompt: str, user_id: int):
+    session = await supabase_client.get_active_session(user_id)
+    phone = session.get('metadata', {}).get('phone')
+    
+    if phone:
+        return f"{system_prompt}\n\nТелефон клиента: {phone}"
+    return system_prompt
+
+# 3. Обогащение контекста для AI
+@bot_builder.enrich_context
+async def add_external_data(messages: list):
+    # Добавляем данные из внешнего API
+    messages.append({
+        "role": "system",
+        "content": "Дополнительная информация из CRM..."
+    })
+    return messages
+
+# 4. Обработка ответа AI
+@bot_builder.process_response
+async def modify_response(response_text: str, ai_metadata: dict, user_id: int):
+    # Модифицируем ответ
+    if "цена" in response_text.lower():
+        response_text += "\n\n💰 Актуальные цены на сайте"
+    return response_text, ai_metadata
+
+# 5. Фильтры отправки
+@bot_builder.filter_send
+async def block_during_booking(user_id: int):
+    if is_processing_booking(user_id):
+        return True  # Блокировать отправку
+    return False  # Разрешить
+
+# 6. Кастомная логика после /start
+@bot_builder.on_start
+async def custom_start(user_id: int, session_id: str, message, state):
+    """Вызывается ПОСЛЕ стандартного /start"""
+    keyboard = InlineKeyboardMarkup(...)
+    await message.answer("Выберите действие:", reply_markup=keyboard)
+```
+
+---
+
+## 📱 Telegram роутеры
+
+Подключайте чистые `aiogram.Router` для кастомных команд, callback'ов и фильтров.
+
+### Создание роутера
+
+```python
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+
+# Создаем aiogram Router
+telegram_router = Router(name="my_commands")
+
+@telegram_router.message(Command("price", "цена"))
+async def price_handler(message: Message):
+    """Команда /price"""
+    await message.answer(
+        "💰 Наши цены:\n"
+        "• Услуга 1 - 1000₽\n"
+        "• Услуга 2 - 2000₽"
+    )
+
+@telegram_router.message(Command("catalog"))
+async def catalog_handler(message: Message):
+    """Команда /catalog с кнопками"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔥 Акции", callback_data="promo")],
+        [InlineKeyboardButton(text="📅 Записаться", callback_data="book")]
+    ])
+    await message.answer("Выберите:", reply_markup=keyboard)
+
+@telegram_router.callback_query(F.data == "book")
+async def handle_booking(callback: CallbackQuery):
+    """Обработка кнопки"""
+    await callback.answer("Записываю...")
+    await callback.message.answer("Напишите желаемую дату")
+
+@telegram_router.message(F.text.lower().contains("помощь"))
+async def help_handler(message: Message):
+    """Реагирует на слово 'помощь'"""
+    await message.answer("Чем могу помочь?")
+
+# Регистрация в боте
+bot_builder.register_telegram_router(telegram_router)
+```
+
+### Множественная регистрация
+
+```python
+commands_router = Router(name="commands")
+callbacks_router = Router(name="callbacks")
+filters_router = Router(name="filters")
+
+# Регистрируем все сразу
+bot_builder.register_telegram_routers(
+    commands_router,
+    callbacks_router,
+    filters_router
+)
+```
+
+**⚠️ Важно:** Пользовательские роутеры подключаются **ПЕРВЫМИ** (высший приоритет), поэтому ваши команды обрабатываются раньше стандартных.
+
+---
+
+## 🧪 Тестирование
+
+Система тестирования позволяет проверять работу бота через автоматизированные сценарии. Тесты выполняются последовательно, каждый шаг проверяет ответ бота на наличие ожидаемых ключевых слов и отсутствие запрещенных.
+
+### Запуск тестов
+
+```bash
+# Запустить все тесты из папки bots/my-bot/tests/
+sbf test my-bot
+
+# Конкретный файл сценариев
+sbf test my-bot --file test_booking.yaml
+
+# Подробный вывод (verbose)
+sbf test my-bot -v
+
+# Увеличить количество параллельных потоков (по умолчанию 5)
+sbf test my-bot --max-concurrent 10
+```
+
+**Как работает:**
+
+1. Команда автоматически загружает файл бота (`my-bot.py`)
+2. Выполняет функцию `main()` для регистрации всех компонентов
+3. Автоматически вызывает `build()` если нужно
+4. Запускает тесты с использованием всех настроек бота (роутеры, инструменты, хуки)
+5. Генерирует отчеты в `bots/my-bot/reports/`
+
+### Формат тестов (YAML)
+
+**Структура файла:**
+
+```yaml
+# bots/my-bot/tests/test_booking.yaml
+scenarios:
+  - name: "Название сценария"
+    steps:
+      - user_input: "Вопрос пользователя"
+        expected_keywords:
+          - ["синоним1", "синоним2"]  # Группа синонимов
+          - "обязательное слово"       # Одиночное слово
+        forbidden_keywords:
+          - "запрещенное слово"        # Слова, которых НЕ должно быть
+      
+      - user_input: "Следующий вопрос"
+        expected_keywords:
+          - ["запись", "записаться"]
+          - "дата"
+        forbidden_keywords: []  # Можно оставить пустым
+```
+
+**Полный пример:**
+
+```yaml
+# bots/my-bot/tests/quick_scenarios.yaml
+scenarios:
+  - name: "Новый пациент"
+    steps:
+      - user_input: "Привет, хочу записаться на консультацию"
+        expected_keywords:
+          - ["привет", "здравствуйте", "добро пожаловать"]
+          - ["запись", "записаться", "записаться на прием"]
+          - ["консультация", "прием", "визит"]
+        forbidden_keywords:
+          - "ошибка"
+          - "не могу"
+      
+      - user_input: "Какие у вас цены?"
+        expected_keywords:
+          - ["цена", "стоимость", "стоит", "сколько"]
+          - ["услуг", "процедур", "прием"]
+        forbidden_keywords:
+          - "не знаю"
+          - "неизвестно"
+      
+      - user_input: "Когда можно прийти?"
+        expected_keywords:
+          - ["когда", "дата", "время", "расписание"]
+          - ["прийти", "приехать", "записаться"]
+        forbidden_keywords: []
+
+  - name: "Студент спрашивает про скидки"
+    steps:
+      - user_input: "Я студент, есть ли скидки?"
+        expected_keywords:
+          - ["студент", "обучающийся"]
+          - ["скидки", "льготы", "преференции"]
+          - ["есть", "предусмотрены", "доступны"]
+        forbidden_keywords:
+          - "полная стоимость"
+          - "без скидок"
+```
+
+### Поддержка синонимов
+
+Система поддерживает гибкую проверку ключевых слов через синонимы:
+
+```yaml
+expected_keywords:
+  # Одиночное слово - должно быть найдено точно
+  - "привет"
+  
+  # Группа синонимов - достаточно найти ЛЮБОЕ из слов
+  - ["привет", "здравствуйте", "добро пожаловать"]
+  
+  # Смешанный формат - комбинация одиночных слов и групп
+  - "помочь"
+  - ["информация", "данные", "подробности"]
+  - "консультация"
+```
+
+**Как работает проверка:**
+
+1. Для каждой группы синонимов: если найдено **хотя бы одно** слово - группа считается найденной
+2. Для одиночных слов: слово должно быть найдено точно
+3. Шаг считается пройденным, если найдены **все** группы/слова из `expected_keywords` и **не найдены** слова из `forbidden_keywords`
+
+### Запрещенные ключевые слова
+
+`forbidden_keywords` - слова, которых **не должно быть** в ответе бота:
+
+```yaml
+forbidden_keywords:
+  - "ошибка"
+  - "не могу"
+  - "не знаю"
+  - ["поздно", "не успеете", "время вышло"]  # Группа запрещенных слов
+```
+
+Если хотя бы одно запрещенное слово найдено - шаг считается проваленным.
+
+### Отчеты
+
+После выполнения тестов автоматически генерируются отчеты:
+
+**Консольный отчет:**
+```
+📊 РЕЗУЛЬТАТЫ: MY-BOT
+✅ Сценариев пройдено: 8/10 (80.0%)
+📝 Шагов пройдено: 45/50 (90.0%)
+```
+
+**Подробный отчет в файле:**
+- Сохраняется в `bots/my-bot/reports/test_YYYYMMDD_HHMMSS.txt`
+- Содержит полные ответы бота для каждого шага
+- Показывает найденные и пропущенные ключевые слова
+- Указывает запрещенные слова, если они были найдены
+
+### Как работает тестирование
+
+1. **Создание тестовой сессии** - для каждого сценария создается уникальная сессия в Supabase
+2. **Последовательное выполнение шагов** - каждый шаг отправляется боту и проверяется ответ
+3. **Проверка ключевых слов** - система ищет ожидаемые слова и проверяет отсутствие запрещенных
+4. **Генерация отчета** - результаты сохраняются в файл и выводятся в консоль
+
+**Важно:**
+
+- Каждый сценарий выполняется в отдельной сессии
+- Тесты выполняются параллельно (по умолчанию 5 одновременно)
+- Используются реальные компоненты бота (OpenAI, Supabase, промпты)
+- Все хуки и обработчики работают как в реальном боте
+
+### Примеры использования
+
+**Тестирование конкретного сценария:**
+
+```bash
+sbf test my-bot --file booking_scenarios.yaml
+```
+
+**Тестирование с подробным выводом:**
+
+```bash
+sbf test my-bot -v
+```
+
+Вы увидите:
+- Каждый шаг теста
+- Ответ бота на каждом шаге
+- Найденные и пропущенные ключевые слова
+- Время выполнения каждого шага
+
+**Интеграция в CI/CD:**
+
+```bash
+# В скрипте автоматизации
+sbf test my-bot --max-concurrent 10
+
+# Проверка кода выхода
+if [ $? -ne 0 ]; then
+    echo "Тесты провалены"
+    exit 1
+fi
+```
+
+---
+
+## 🔄 Миграция с прошлой версии
+
+### Основные изменения
+
+1. **Новая архитектура с BotBuilder**
+   - Все компоненты регистрируются через `BotBuilder`
+   - Автоматическая инициализация при `start()`
+   - Централизованное управление всеми компонентами
+
+2. **Роутеры вместо глобальных декораторов**
+   - `EventRouter` для событий, задач и глобальных обработчиков
+   - `RagRouter` для RAG-инструментов
+   - `ToolRouter` для обычных инструментов
+   - Несколько роутеров можно использовать одновременно
+
+3. **Улучшенное тестирование**
+   - Тестирование через CLI команду `sbf test`
+   - Автоматическая загрузка и инициализация всех компонентов
+   - Использование всех настроек бота (роутеры, инструменты, хуки)
+
+4. **Изменения в структуре кода**
+   - Обязательная функция `main()` для регистрации компонентов
+   - Регистрация роутеров через `bot_builder.register_routers()`
+   - Запуск через `await bot_builder.start()`
+
+### Пошаговая миграция
+
+#### Шаг 1: Изменение импортов
+
+**Было:**
+```python
+from smart_bot_factory.core.decorators import (
+    event_handler,
+    schedule_task,
+    global_handler
+)
+```
+
+**Стало:**
+```python
+from smart_bot_factory.router import EventRouter
+from smart_bot_factory.creation import BotBuilder
+```
+
+#### Шаг 2: Создание роутера и BotBuilder
+
+**Было:**
+```python
+# Декораторы работали глобально
+@event_handler("collect_phone")
+async def handle_phone(user_id: int, phone: str):
+    pass
+```
+
+**Стало:**
+```python
+# Создаем роутер и BotBuilder
+event_router = EventRouter("my-bot")
+bot_builder = BotBuilder("my-bot")
+
+# Используем декораторы роутера
+@event_router.event_handler("collect_phone")
+async def handle_phone(user_id: int, phone: str):
+    pass
+```
+
+#### Шаг 3: Миграция event_handler
+
+**Было:**
+```python
+from smart_bot_factory.core.decorators import event_handler
+
+@event_handler("collect_phone", notify=True, once_only=True)
+async def handle_phone(user_id: int, phone: str):
+    await send_message_by_human(user_id, f"✅ Телефон {phone} сохранен")
+    return {"status": "success"}
+```
+
+**Стало:**
+```python
+from smart_bot_factory.router import EventRouter
+from smart_bot_factory.creation import BotBuilder
+
+event_router = EventRouter("my-bot")
+bot_builder = BotBuilder("my-bot")
+
+@event_router.event_handler("collect_phone", notify=True, once_only=True)
+async def handle_phone(user_id: int, phone: str):
+    await send_message_by_human(user_id, f"✅ Телефон {phone} сохранен")
+    return {"status": "success"}
+```
+
+**✅ Параметры остались те же:** `notify`, `once_only`, `send_ai_response`
+
+#### Шаг 4: Миграция schedule_task
+
+**Было:**
+```python
+from smart_bot_factory.core.decorators import schedule_task
+
+@schedule_task("follow_up", delay="24h", smart_check=True)
+async def send_follow_up(user_id: int, reminder_text: str):
+    await send_message_by_human(user_id, f"👋 {reminder_text}")
+    return {"status": "sent"}
+```
+
+**Стало:**
+```python
+@event_router.schedule_task("follow_up", delay="24h", smart_check=True)
+async def send_follow_up(user_id: int, reminder_text: str):
+    await send_message_by_human(user_id, f"👋 {reminder_text}")
+    return {"status": "sent"}
+```
+
+**✅ Параметры остались те же:** `delay`, `smart_check`, `once_only`, `notify`, `event_type`, `send_ai_response`
+
+#### Шаг 5: Миграция global_handler
+
+**Было:**
+```python
+from smart_bot_factory.core.decorators import global_handler
+
+@global_handler("promo_announcement", delay="2h", notify=True)
+async def send_promo(announcement_text: str):
+    await send_message_to_users_by_stage(
+        stage="all",
+        message_text=f"🎉 {announcement_text}",
+        bot_id="my-bot"
+    )
+    return {"status": "sent"}
+```
+
+**Стало:**
+```python
+@event_router.global_handler("promo_announcement", delay="2h", notify=True)
+async def send_promo(announcement_text: str):
+    await send_message_to_users_by_stage(
+        stage="all",
+        message_text=f"🎉 {announcement_text}",
+        bot_id="my-bot"
+    )
+    return {"status": "sent"}
+```
+
+**✅ Параметры остались те же:** `delay`, `once_only`, `notify`, `event_type`, `send_ai_response`
+
+#### Шаг 6: Изменение функции main()
+
+**Было:**
+```python
+async def main():
+    # Ручная инициализация компонентов
+    from smart_bot_factory.config import Config
+    from smart_bot_factory.integrations.supabase_client import SupabaseClient
+    # ... много кода инициализации ...
+    
+    # Запуск бота
+    await dp.start_polling(bot)
+```
+
+**Стало:**
+```python
+async def main():
+    # Регистрация роутеров
+    bot_builder.register_routers(event_router)
+    
+    # Можно добавить другие компоненты
+    # bot_builder.register_rag(rag_router)
+    # bot_builder.register_tool_set(tool_router)
+    # bot_builder.register_telegram_router(telegram_router)
+    
+    # Автоматическая инициализация и запуск
+    await bot_builder.start()
+```
+
+### Полный пример миграции
+
+**Было (старая версия):**
+
+```python
+"""my-bot.py"""
+import asyncio
+from smart_bot_factory.core.decorators import (
+    event_handler,
+    schedule_task,
+    global_handler
+)
+from smart_bot_factory.message import send_message_by_human
+
+@event_handler("collect_phone", notify=True, once_only=True)
+async def handle_phone(user_id: int, phone: str):
+    await send_message_by_human(user_id, f"✅ Телефон {phone} сохранен")
+    return {"status": "success"}
+
+@schedule_task("follow_up", delay="24h")
+async def send_follow_up(user_id: int, text: str):
+    await send_message_by_human(user_id, f"👋 {text}")
+    return {"status": "sent"}
+
+@global_handler("announcement", delay="2h")
+async def send_announcement(text: str):
+    # Логика рассылки
+    return {"status": "sent"}
+
+async def main():
+    # Много кода инициализации...
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**Стало (новая версия):**
+
+```python
+"""my-bot.py"""
+import asyncio
+from smart_bot_factory.router import EventRouter
+from smart_bot_factory.creation import BotBuilder
+from smart_bot_factory.message import send_message_by_human
+
+# Инициализация
+event_router = EventRouter("my-bot")
+bot_builder = BotBuilder("my-bot")
+
+@event_router.event_handler("collect_phone", notify=True, once_only=True)
+async def handle_phone(user_id: int, phone: str):
+    await send_message_by_human(user_id, f"✅ Телефон {phone} сохранен")
+    return {"status": "success"}
+
+@event_router.schedule_task("follow_up", delay="24h")
+async def send_follow_up(user_id: int, text: str):
+    await send_message_by_human(user_id, f"👋 {text}")
+    return {"status": "sent"}
+
+@event_router.global_handler("announcement", delay="2h")
+async def send_announcement(text: str):
+    # Логика рассылки
+    return {"status": "sent"}
+
+async def main():
+    # Регистрация роутеров
+    bot_builder.register_routers(event_router)
+    
+    # Автоматическая инициализация и запуск
+    await bot_builder.start()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Ключевые отличия
+
+| Старая версия | Новая версия |
+|---------------|--------------|
+| `from smart_bot_factory.core.decorators import event_handler` | `from smart_bot_factory.router import EventRouter` |
+| `@event_handler(...)` | `@event_router.event_handler(...)` |
+| `@schedule_task(...)` | `@event_router.schedule_task(...)` |
+| `@global_handler(...)` | `@event_router.global_handler(...)` |
+| Ручная инициализация компонентов | Автоматическая через `BotBuilder` |
+| Разрозненные компоненты | Централизованное управление через `BotBuilder` |
+| Отдельное тестирование | Через CLI команду `sbf test` |
+| Много кода в `main()` | Минимальный код: `register_routers()` + `start()` |
+
+### Важные замечания
+
+1. **Параметры декораторов не изменились** - все параметры (`notify`, `once_only`, `send_ai_response`, `delay`, `smart_check`, `event_type`) работают так же
+
+2. **Логика обработчиков не меняется** - код внутри функций остается прежним
+
+3. **Обязательная регистрация роутеров** - не забудьте вызвать `bot_builder.register_routers(event_router)` в `main()`
+
+4. **Можно использовать несколько роутеров:**
+   ```python
+   event_router1 = EventRouter("events")
+   event_router2 = EventRouter("tasks")
+   
+   bot_builder.register_routers(event_router1, event_router2)
+   ```
+
+5. **Обратная совместимость** - старые декораторы из `smart_bot_factory.event.decorators.registry` все еще работают, но рекомендуется мигрировать на роутеры
+
+### Частые проблемы при миграции
+
+**Проблема 1: Обработчики не выполняются**
+
+**Решение:** Убедитесь, что вызвали `bot_builder.register_routers(event_router)` в `main()`
+
+**Проблема 2: Импорты не найдены**
+
+**Решение:** Измените импорты:
+- `smart_bot_factory.core.decorators` → `smart_bot_factory.router`
+- Добавьте `from smart_bot_factory.creation import BotBuilder`
+
+**Проблема 3: Бот не запускается**
+
+**Решение:** Убедитесь, что вызываете `await bot_builder.start()` вместо старой логики запуска
+
+**Проблема 4: Тесты не работают**
+
+**Решение:** Используйте `sbf test my-bot` для запуска тестов
+
+---
+
+## 🔧 Расширенные возможности
+
+### Кастомный PromptLoader
+
+Создайте свой загрузчик промптов с автоматическим определением пути:
+
+```python
+from smart_bot_factory.utils import UserPromptLoader
+
+# Автоматически найдет bots/my-bot/prompts
+custom_loader = UserPromptLoader("my-bot")
+
+# Или наследуйтесь для кастомизации
+class MyPromptLoader(UserPromptLoader):
+    def __init__(self, bot_id):
+        super().__init__(bot_id)
+        self.extra_file = self.prompts_dir / 'extra.txt'
+
+my_loader = MyPromptLoader("my-bot")
+
+# Установите ДО build()
+bot_builder.set_prompt_loader(my_loader)
+```
+
+### Полная замена обработки событий
+
+Замените стандартную функцию `process_events`:
+
+```python
+from smart_bot_factory.message import get_bot
+from smart_bot_factory.core.decorators import execute_event_handler
+
+async def my_process_events(session_id, events, user_id):
+    """Моя кастомная обработка событий"""
+    bot = get_bot()
+    
+    for event in events:
+        event_type = event.get('тип')
+        
+        if event_type == 'booking':
+            # Ваша кастомная логика
+            telegram_user = await bot.get_chat(user_id)
+            name = telegram_user.first_name
+            # ... обработка
+        else:
+            # Стандартная обработка остальных
+            await execute_event_handler(event_type, user_id, event.get('инфо'))
+
+# Установите ДО build()
+bot_builder.set_event_processor(my_process_events)
+```
+
+### Доступ к aiogram Bot
+
+Получите прямой доступ к `aiogram.Bot`:
+
+```python
+from smart_bot_factory.message import get_bot
+
+@event_router.event_handler("check_user")
+async def get_user_info(user_id: int, event_data: str):
+    """Получает информацию из Telegram"""
+    bot = get_bot()
+    
+    # Используем любые методы aiogram Bot
+    telegram_user = await bot.get_chat(user_id)
+    name = telegram_user.first_name
+    username = telegram_user.username
+    
+    await bot.send_message(user_id, f"Привет, {name}!")
+    return {"name": name, "username": username}
+```
+
+### UTM-триггеры
+
+UTM-триггеры позволяют отправлять специальные сообщения при `/start` с определенными UTM-метками. Если UTM-данные совпадают с зарегистрированным триггером, отправляется сообщение из файла, а стандартная логика `/start` пропускается.
+
+**Как работает:**
+
+1. Пользователь переходит по ссылке с UTM-метками: `https://t.me/my_bot?utm_source=vk&utm_campaign=summer2025`
+2. Пользователь нажимает `/start`
+3. Система проверяет UTM-метки из ссылки
+4. Если найдено совпадение с триггером - отправляется сообщение из файла
+5. Стандартная логика `/start` пропускается
+
+**Регистрация триггера:**
+
+```python
+# Триггер для конкретной кампании
+bot_builder.register_utm_trigger(
+    message='summer_campaign.txt',  # Файл в bots/my-bot/utm_message/
+    source='vk',                     # utm_source должен быть 'vk'
+    campaign='summer2025'            # utm_campaign должен быть 'summer2025'
+)
+
+# Триггер для сегмента
+bot_builder.register_utm_trigger(
+    message='premium_welcome.txt',
+    segment='premium'  # Параметр segment из ссылки
+)
+
+# Триггер с несколькими параметрами
+bot_builder.register_utm_trigger(
+    message='new_year.txt',
+    source='instagram',
+    medium='story',
+    campaign='new_year'
+)
+```
+
+**Параметры:**
+
+- **`message`** (обязательный) - Имя файла с сообщением в `bots/my-bot/utm_message/`
+- **`source`** (опционально) - Целевое значение `utm_source`
+- **`medium`** (опционально) - Целевое значение `utm_medium`
+- **`campaign`** (опционально) - Целевое значение `utm_campaign`
+- **`content`** (опционально) - Целевое значение `utm_content`
+- **`term`** (опционально) - Целевое значение `utm_term`
+- **`segment`** (опционально) - Целевое значение `segment`
+
+**Примеры ссылок:**
+
+```bash
+# Для первого триггера (source='vk', campaign='summer2025')
+https://t.me/my_bot?utm_source=vk&utm_campaign=summer2025
+
+# Для второго триггера (segment='premium')
+https://t.me/my_bot?segment=premium
+
+# Для третьего триггера (source='instagram', medium='story', campaign='new_year')
+https://t.me/my_bot?utm_source=instagram&utm_medium=story&utm_campaign=new_year
+```
+
+**Структура файлов:**
+
+```
+bots/
+└── my-bot/
+    └── utm_message/
+        ├── summer_campaign.txt
+        ├── premium_welcome.txt
+        └── new_year.txt
+```
+
+**Содержимое файла `summer_campaign.txt`:**
+
+```
+🎉 Летняя акция!
+
+Скидка 20% на все услуги до конца лета!
+
+Используйте промокод: SUMMER2025
+```
+
+**Полный пример:**
+
+```python
+from smart_bot_factory.creation import BotBuilder
+
+bot_builder = BotBuilder("my-bot")
+
+# Регистрируем триггеры ДО build()
+bot_builder.register_utm_trigger(
+    message='summer_campaign.txt',
+    source='vk',
+    campaign='summer2025'
+)
+
+bot_builder.register_utm_trigger(
+    message='premium_welcome.txt',
+    segment='premium'
+)
+
+async def main():
+    bot_builder.register_routers(event_router)
+    await bot_builder.start()
+```
+
+**Важно:**
+
+- Файлы должны находиться в `bots/my-bot/utm_message/`
+- Если UTM-метки совпадают - стандартная логика `/start` **полностью пропускается**
+- Если совпадений нет - выполняется стандартная логика `/start`
+- Можно зарегистрировать несколько триггеров с разными условиями
+
+---
+
+## 📚 Полный пример
+
+```python
+"""advanced-bot.py - Продвинутый пример"""
+
+import asyncio
+from typing import Optional
+
+from smart_bot_factory.router import EventRouter
+from smart_bot_factory.message import send_message_by_human
+from smart_bot_factory.creation import BotBuilder
+from smart_bot_factory.rag import RagRouter, VectorStore
+from smart_bot_factory.utils import ToolRouter
+
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message
+
+# Инициализация
+event_router = EventRouter("advanced-bot")
+telegram_router = Router(name="commands")
+bot_builder = BotBuilder("advanced-bot")
+
+# RAG
+vectorstore = VectorStore(bot_id="advanced-bot")
+rag_router = RagRouter("advanced_rag")
+
+@rag_router.tool
+async def get_info_from_rag(query: str, section: Optional[str] = None) -> str:
+    """Запрос информации из RAG-системы."""
+    results = await vectorstore.asimilarity_search(query, k=5)
+    return "\n\n".join([doc.page_content for doc in results])
+
+# Обычные инструменты
+tool_router = ToolRouter("common")
+
+@tool_router.tool
+def calculate_price(service: str, quantity: int) -> str:
+    """Рассчитывает цену услуги."""
+    prices = {"консультация": 1000, "лечение": 5000}
+    return f"Стоимость: {prices.get(service, 0) * quantity}₽"
+
+# ========== СОБЫТИЯ ==========
+
+@event_router.event_handler("collect_phone", notify=True, once_only=True)
+async def save_phone(user_id: int, phone: str):
+    await send_message_by_human(user_id, f"✅ Телефон {phone} сохранен")
+    return {"status": "success"}
+
+# ========== ЗАДАЧИ ==========
+
+@event_router.schedule_task("follow_up", delay="24h")
+async def send_follow_up(user_id: int, text: str):
+    await send_message_by_human(user_id, f"👋 {text}")
+    return {"status": "sent"}
+
+# ========== TELEGRAM КОМАНДЫ ==========
+
+@telegram_router.message(Command("price"))
+async def price_cmd(message: Message):
+    await message.answer("💰 Цены: ...")
+
+# ========== ХУКИ ==========
+
+@bot_builder.validate_message
+async def check_business_hours(message_text: str, message_obj):
+    """Проверка рабочих часов"""
+    from datetime import datetime
+    hour = datetime.now().hour
+    if hour < 9 or hour > 21:
+        await message_obj.answer("Мы работаем с 9:00 до 21:00")
+        return False
+    return True
+
+@bot_builder.enrich_prompt
+async def add_client_data(system_prompt: str, user_id: int):
+    """Добавляет данные клиента в промпт"""
+    # Ваша логика получения данных
+    return system_prompt
+
+# ========== ЗАПУСК ==========
+
+async def main():
+    # Регистрация
+    bot_builder.register_routers(event_router)
+    bot_builder.register_telegram_router(telegram_router)
+    bot_builder.register_rag(rag_router)
+    bot_builder.register_tool_set(tool_router)
+    
+    # Сборка и запуск
+    await bot_builder.start()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+---
+
+## 📖 Структура проекта
+
+```text
+project/
+├── bots/
+│   └── my-bot/
+│       ├── prompts/              # Промпты для AI
+│       │   ├── system_prompt.txt
+│       │   ├── welcome_message.txt
+│       │   └── final_instructions.txt
+│       ├── tests/                # YAML тесты
+│       │   └── test_scenarios.yaml
+│       ├── welcome_files/       # Файлы приветствия
+│       ├── files/                # Файлы для отправки
+│       ├── utm_message/          # UTM-триггеры
+│       └── .env                  # Конфигурация
+├── my-bot.py                     # Код бота
+├── rag_tools.py                  # RAG инструменты (опционально)
+└── .env                          # Глобальная конфигурация (опционально)
+```
+
+---
+
+## ⚙️ Конфигурация (.env)
+
+```bash
+# Telegram
+TELEGRAM_BOT_TOKEN=your_token_here
+
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_key_here
+
+# OpenAI
+OPENAI_API_KEY=sk-your-key
+OPENAI_MODEL=gpt-5-mini
+OPENAI_MAX_TOKENS=1500
+OPENAI_TEMPERATURE=0.7
+
+# Промпты (каталог)
+PROMT_FILES_DIR=prompts
+
+# Файл после приветствия с подписью
+WELCOME_FILE_URL=welcome_files/
+WELCOME_FILE_MSG=welcome_file_msg.txt
+
+# Администраторы (Telegram ID через запятую)
+ADMIN_TELEGRAM_IDS=123456789,987654321
+ADMIN_SESSION_TIMEOUT_MINUTES=30
+
+# Режим отладки (показывать JSON)
+DEBUG_MODE=false
+
+# Дополнительные настройки
+MAX_CONTEXT_MESSAGES=50
+LOG_LEVEL=INFO
+MESSAGE_PARSE_MODE=Markdown
+
+# Настройки продаж
+LEAD_QUALIFICATION_THRESHOLD=7
+SESSION_TIMEOUT_HOURS=24
+
+# ⚠️ ВАЖНО: BOT_ID теперь НЕ нужен в .env!
+# Bot ID автоматически определяется из имени файла запускалки
+# Например: python my-bot.py → BOT_ID = my-bot
+```
+
+---
+
+## 🎯 Сравнение декораторов
+
+| Декоратор | Когда выполняется | Для кого | Ключевые параметры |
+|-----------|-------------------|----------|--------------------|
+| `@event_handler` | Немедленно | 1 пользователь | `event_type`, `notify`, `once_only`, `send_ai_response` |
+| `@schedule_task` | Через время | 1 пользователь | `task_name`, `delay`, `event_type`, `smart_check`, `once_only`, `notify`, `send_ai_response` |
+| `@global_handler` | Через время | Все пользователи | `handler_type`, `delay`, `event_type`, `once_only`, `notify`, `send_ai_response` |
+
+---
+
+## 🔑 Ключевые концепции
+
+### `send_ai_response=True`
+
+Контролирует отправку сообщения от ИИ после выполнения обработчика:
+
+- **`True`** (по умолчанию) - ИИ отправит сообщение пользователю после выполнения обработчика
+- **`False`** - ИИ НЕ отправит сообщение (используйте когда нужна только фоновая обработка или когда отправляете сообщение вручную)
+
+**Когда использовать `send_ai_response=False`:**
+
+- Когда нужно только собрать данные без ответа пользователю
+- Когда вы сами отправляете сообщение через `send_message_by_human()`
+- Для фоновых задач без взаимодействия с пользователем
+
+### `once_only=True`
+
+Гарантирует выполнение события только 1 раз для пользователя:
+
+- **При сохранении**: Проверяет БД, если есть - не сохраняет
+- **При выполнении**: Проверяет БД, если есть `completed` - отменяет
+
+### `smart_check=True`
+
+Умная проверка для запланированных задач:
+
+- **Отменяет** задачу если пользователь перешел на новый этап
+- **Переносит** задачу если пользователь был недавно активен
+
+### `event_type` - Привязка ко времени события
+
+Планирует задачу относительно времени события:
+
+**Строка** - ищет в БД:
+
+```python
+@event_router.schedule_task("reminder", delay="2h", event_type="appointment")
+async def remind(user_id: int, text: str):
+    # 1. ИИ создает событие: {"тип": "appointment", "инфо": "дата: 2025-10-15, время: 19:00"}
+    # 2. ИИ создает задачу: {"тип": "reminder", "инфо": ""}
+    # 3. Ищется в БД событие "appointment" для user_id
+    # 4. Парсится datetime: 2025-10-15 19:00
+    # 5. Вычисляется: 19:00 - 2h = 17:00
+    # 6. Задача выполняется в 17:00
+    pass
+```
+
+**Функция** - кастомная логика:
+
+```python
+async def get_time_from_api(user_id: int, user_data: str) -> datetime:
+    booking = await external_api.get_booking(user_id)
+    return booking['datetime']
+
+@event_router.schedule_task("api_reminder", delay="1h", event_type=get_time_from_api)
+async def remind(user_id: int, text: str):
+    # 1. ИИ создает: {"тип": "api_reminder", "инфо": ""}
+    # 2. Вызывается get_time_from_api(user_id, "")
+    # 3. Функция возвращает datetime из API
+    # 4. Вычисляется: api_datetime - 1h
+    # 5. Задача выполняется в вычисленное время
+    pass
+```
+
+---
+
+## 📞 Поддержка
+
+- Документация: [GitHub](https://github.com/your-repo)
+- Issues: [GitHub Issues](https://github.com/your-repo/issues)
+
+---
+
+## 📄 Лицензия
+
+MIT
