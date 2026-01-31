@@ -1,0 +1,102 @@
+include:
+  - project: 'cta-computing/common/aiv-toolkit'
+    ref: cc0b701bd879c79097cd6dc49191729b41341f4f
+    file: "ci-functions.yml"
+  - "aiv-config.yml"
+
+stages:
+  - prepare
+  - lint
+  - build
+  - sign
+  - tests
+  - sonarqube
+  - publish
+  - report
+  - changelog
+
+
+#  full test for report, including summary and coverage xml artifacts
+test:
+  stage: tests
+  image: harbor.cta-observatory.org/proxy_cache/python:3.12
+
+  before_script:
+    - python --version
+    - pip install -e .[test]
+    - apt update --yes && apt install --yes nodejs
+
+  script:
+    - >-
+      pytest -v --color=yes
+      --doctest-modules --doctest-glob='docs/**/*.rst'
+      --ignore-glob='src/datapipe/_dev_version/*'
+      --cov --cov-report=xml:test/coverage.xml
+      --junitxml=test/report.xml
+      --log-cli-level=INFO
+
+  after_script: []
+
+  artifacts:
+    paths:
+      - test/coverage.xml
+      - test/report.xml
+
+
+collect-test-artifacts:
+  needs:
+    - job: collect-manual-tests
+      artifacts: true
+    - job: test
+      artifacts: true
+
+# unit tests using a matrix of python versions
+unittests:
+  stage: tests
+  parallel:
+    matrix:
+      - PYTHON_VERSION:
+        - "3.12"
+        - "3.13"
+
+  image: "harbor.cta-observatory.org/proxy_cache/python:$PYTHON_VERSION"
+
+  before_script:
+    - apt update --yes
+    - apt install --yes nodejs # needed for cwl with JS
+    - python --version
+    - pip install -e .[test]
+
+  script:
+    - >-
+      pytest -v --color=yes
+      --doctest-modules
+      --doctest-glob='docs/**/*.rst' --ignore-glob='src/datapipe/_dev_version/*'
+
+
+k8s-integration-tests:
+  rules:
+    - when: never
+
+k8s-upgrade-integration-tests:
+  rules:
+    - when: never
+
+publish-chart:
+  rules:
+    - when: never
+
+build-docs:
+  variables:
+    EXTRA_APT_PACKAGES: "graphviz nodejs"
+
+
+sonarqube:
+  variables:
+    # TODO: remove when toolkit is updated to no longer set this variable
+    # should just be taken from sonar-project.properties
+    SONAR_HOST_URL: "https://sonar-ctao.zeuthen.desy.de"
+
+  # two tokens only needed while sonar pr is not merged, can also be removed after
+  script:
+    - sonar-scanner --debug -Dsonar.token="$SONAR_TOKEN_CTAO"
