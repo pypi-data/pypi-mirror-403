@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xsl:stylesheet version="2.0"
+  xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+  xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+  xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+  xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+  xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"
+  xmlns:number="urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0"
+  xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" 
+  xmlns:chart="urn:oasis:names:tc:opendocument:xmlns:chart:1.0" 
+  xmlns:dr3d="urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0" 
+  xmlns:math="http://www.w3.org/1998/Math/MathML" 
+  xmlns:form="urn:oasis:names:tc:opendocument:xmlns:form:1.0" 
+  xmlns:script="urn:oasis:names:tc:opendocument:xmlns:script:1.0" 
+  xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0" 
+  xmlns:ooo="http://openoffice.org/2004/office" 
+  xmlns:ooow="http://openoffice.org/2004/writer" 
+  xmlns:oooc="http://openoffice.org/2004/calc" 
+  xmlns:dom="http://www.w3.org/2001/xml-events" 
+  xmlns:xforms="http://www.w3.org/2002/xforms" 
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+  xmlns:rpt="http://openoffice.org/2005/report" 
+  xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2" 
+  xmlns:xhtml="http://www.w3.org/1999/xhtml" 
+  xmlns:grddl="http://www.w3.org/2003/g/data-view#" 
+  xmlns:officeooo="http://openoffice.org/2009/office" 
+  xmlns:tableooo="http://openoffice.org/2009/table" 
+  xmlns:drawooo="http://openoffice.org/2010/draw" 
+  xmlns:calcext="urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0" 
+  xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0" 
+  xmlns:field="urn:openoffice:names:experimental:ooo-ms-interop:xmlns:field:1.0" 
+  xmlns:formx="urn:openoffice:names:experimental:ooxml-odf-interop:xmlns:form:1.0" 
+  xmlns:css3t="http://www.w3.org/TR/css3-text/"		
+  exclude-result-prefixes="formx config of svg dr3d calcext loext form field script chart">
+    
+<!-- styles inline -->
+<xsl:template match="text:span[starts-with(@text:style-name,'TEI_5f_') and ends-with(@text:style-name,'inline')]" mode="preserve">
+    <text:span>
+        <xsl:copy-of select="@*"/>
+        <xsl:apply-templates/>
+    </text:span>
+</xsl:template>
+        
+<!-- tabulations -->
+<xsl:template match="text:tab">
+    <xsl:variable name="currentStyle" select="parent::text:p/@text:style-name"/>
+    <xsl:choose>
+        <xsl:when test="parent::text:p[@text:style-name='TEI_5f_verse']">
+            <xsl:copy-of select="."/>
+        </xsl:when>
+        <xsl:when test="ancestor::text:p[starts-with(@text:style-name,'TEI_5f_linguistic')] or preceding::style:style[@style:name=$currentStyle][starts-with(@style:parent-style-name,'TEI_5f_linguistic')]">
+            <xsl:copy-of select="."/>
+        </xsl:when>
+        <xsl:otherwise/>
+    </xsl:choose>
+</xsl:template>
+    
+<xsl:template match="loext:content-control">
+    <xsl:apply-templates/>
+</xsl:template>
+    
+<!-- fieldmark-start : tabulations -->
+<!--
+<xsl:template match="field:fieldmark-start">
+    <xsl:variable name="value">
+        <xsl:value-of select="substring-before(substring-after(child::field:param[@field:name='vnd.oasis.opendocument.field.code']/@field:value,' '),' ')"/>
+    </xsl:variable>
+    <ref>
+        <xsl:attribute name="target"><xsl:value-of select="concat('#',$value)"/></xsl:attribute></ref>
+</xsl:template>
+-->
+
+<!--
+<xsl:template match="field:fieldmark-start[child::field:param[starts-with(@field:value,'NOTEREF')]]">
+    <xsl:variable name="value">
+        <xsl:value-of select="substring-before(substring-after(child::field:param[@field:name='vnd.oasis.opendocument.field.code']/@field:value,' '),' ')"/>
+    </xsl:variable>
+    <ref type="note">
+        <xsl:attribute name="type">
+            <xsl:choose>
+                <xsl:when test="">note</xsl:when>
+                <xsl:otherwise>##</xsl:otherwise>
+            </xsl:choose>
+        </xsl:attribute>
+        value = <xsl:value-of select="$value"/>
+    </ref>
+</xsl:template>
+-->
+    
+<xsl:template match="field:fieldmark-end"/>
+
+</xsl:stylesheet>
