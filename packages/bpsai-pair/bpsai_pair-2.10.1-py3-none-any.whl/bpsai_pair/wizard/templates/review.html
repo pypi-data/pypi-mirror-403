@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block title %}Review Your Project - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="review-page">
+    <div class="page-header">
+        <h2>Review Your Project</h2>
+        <p class="page-description">Review the files and configuration before creating your project.</p>
+    </div>
+
+    <div class="review-sections">
+        <div class="review-section">
+            <h3>Files to be created</h3>
+            <div class="file-tree" id="file-tree">
+                <div class="file-tree-loading">Loading file preview...</div>
+            </div>
+        </div>
+
+        <div class="review-section">
+            <h3>Config Preview</h3>
+            <pre class="config-preview" id="config-preview"><code>Loading config preview...</code></pre>
+        </div>
+
+        {% if integrations %}
+        <div class="review-section integration-section">
+            <h3>
+                <span class="tier-badge tier-{{ tier }}">{{ tier_display }}</span>
+                Integrations Available
+            </h3>
+            <p class="integration-hint">Your tier includes integrations. Add them now or configure later.</p>
+
+            <div class="integration-list">
+                {% for integration in integrations %}
+                <label class="integration-option">
+                    <input type="checkbox"
+                           name="integration"
+                           value="{{ integration.id }}"
+                           {% if integration_status[integration.id] %}checked disabled{% endif %}
+                           class="integration-checkbox">
+                    <span class="integration-content">
+                        {% if integration_status[integration.id] %}
+                        <span class="integration-status configured">&#10003;</span>
+                        {% else %}
+                        <span class="integration-status pending">&#9675;</span>
+                        {% endif %}
+                        <span class="integration-info">
+                            <span class="integration-name">{{ integration.name }}</span>
+                            <span class="integration-desc">{{ integration.description }}</span>
+                        </span>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+
+            <button type="button"
+                    class="btn btn-secondary btn-sm"
+                    id="configure-integrations-btn"
+                    onclick="configureSelectedIntegrations()">
+                Configure Selected
+            </button>
+        </div>
+        {% endif %}
+
+        <div id="backup-notice" class="backup-notice hidden">
+            <span class="backup-icon">&#9888;</span>
+            <p>Existing <code>.paircoder/</code> directory will be backed up before overwriting.</p>
+        </div>
+
+        <div id="progress-section" class="progress-section hidden">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p class="progress-text" id="progress-text">Creating project...</p>
+        </div>
+
+        <div id="error-message" class="status-message error hidden"></div>
+    </div>
+
+    <div class="navigation-buttons">
+        <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+        <button type="button" class="btn btn-primary" id="create-btn" onclick="createProject()">
+            Create Project
+        </button>
+    </div>
+</section>
+
+<script>
+// Load previews on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadFilePreview();
+    loadConfigPreview();
+    updateConfigureButton();
+});
+
+function loadFilePreview() {
+    fetch('/api/preview/files')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.files) {
+                renderFileTree(data.files);
+            } else if (data.error === 'No project data') {
+                showNoProjectDataError();
+            } else {
+                document.getElementById('file-tree').innerHTML =
+                    '<p class="error-text">Could not load file preview.</p>';
+            }
+        })
+        .catch(() => {
+            document.getElementById('file-tree').innerHTML =
+                '<p class="error-text">Could not load file preview.</p>';
+        });
+}
+
+function showNoProjectDataError() {
+    document.getElementById('file-tree').innerHTML =
+        '<p class="error-text">No project configured yet.</p>';
+    document.getElementById('config-preview').querySelector('code').textContent =
+        'No configuration available.';
+    document.getElementById('error-message').innerHTML =
+        '<strong>No project data found.</strong><br>' +
+        'Please complete the setup first:<br><br>' +
+        '<a href="/wizard/chat" class="btn btn-secondary">Go to Guided Setup</a> ' +
+        '<a href="/wizard/project" class="btn btn-secondary">Go to Quick Setup</a>';
+    document.getElementById('error-message').classList.remove('hidden');
+    document.getElementById('create-btn').disabled = true;
+}
+
+function renderFileTree(files) {
+    var container = document.getElementById('file-tree');
+    var html = '';
+    files.forEach(function(f) {
+        var isDir = f.endsWith('/');
+        var depth = (f.match(/\//g) || []).length - (isDir ? 1 : 0);
+        var indent = depth > 0 ? 'style="padding-left: ' + (depth * 1.25) + 'rem"' : '';
+        var icon = isDir ? '&#128193;' : '&#128196;';
+        var name = f.split('/').filter(Boolean).pop();
+        html += '<div class="file-tree-item" ' + indent + '>' +
+            '<span class="file-icon">' + icon + '</span>' +
+            '<span class="file-name">' + (name || f) + '</span></div>';
+    });
+    container.innerHTML = html;
+}
+
+function loadConfigPreview() {
+    fetch('/api/preview/config')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.config_yaml) {
+                document.getElementById('config-preview').querySelector('code').textContent =
+                    data.config_yaml;
+            }
+        })
+        .catch(() => {
+            document.getElementById('config-preview').querySelector('code').textContent =
+                'Could not load config preview.';
+        });
+}
+
+function createProject() {
+    var btn = document.getElementById('create-btn');
+    var progress = document.getElementById('progress-section');
+    var errorEl = document.getElementById('error-message');
+    var fill = document.getElementById('progress-fill');
+    var text = document.getElementById('progress-text');
+
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    progress.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+
+    // Animate progress
+    fill.style.width = '30%';
+    text.textContent = 'Creating project files...';
+
+    fetch('/api/create', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                fill.style.width = '100%';
+                text.textContent = 'Project created!';
+                setTimeout(function() {
+                    window.location.href = data.next_url || '/wizard/success';
+                }, 600);
+            } else {
+                fill.style.width = '0%';
+                progress.classList.add('hidden');
+                errorEl.textContent = 'Error: ' + (data.error || 'Failed to create project');
+                errorEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Create Project';
+            }
+        })
+        .catch(function(err) {
+            fill.style.width = '0%';
+            progress.classList.add('hidden');
+            errorEl.textContent = 'Failed to create project. Please try again.';
+            errorEl.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'Create Project';
+        });
+}
+
+function navigateBack() {
+    // Check session track to determine back navigation
+    fetch('/api/state')
+        .then(r => r.json())
+        .then(data => {
+            if (data.track === 'guided') {
+                window.location.href = '/wizard/chat';
+            } else {
+                window.location.href = '/wizard/mcp';
+            }
+        })
+        .catch(function() {
+            window.location.href = '/wizard/mcp';
+        });
+}
+
+// Integration configuration functions
+function updateConfigureButton() {
+    var btn = document.getElementById('configure-integrations-btn');
+    if (!btn) return;
+
+    var checkboxes = document.querySelectorAll('.integration-checkbox:not(:disabled)');
+    var checked = document.querySelectorAll('.integration-checkbox:checked:not(:disabled)');
+
+    btn.disabled = checked.length === 0;
+    btn.textContent = checked.length > 0
+        ? 'Configure Selected (' + checked.length + ')'
+        : 'Configure Selected';
+}
+
+function configureSelectedIntegrations() {
+    var checkboxes = document.querySelectorAll('.integration-checkbox:checked:not(:disabled)');
+    var selected = [];
+    checkboxes.forEach(function(cb) {
+        selected.push(cb.value);
+    });
+
+    if (selected.length === 0) {
+        return;
+    }
+
+    fetch('/api/review/configure-integrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ integrations: selected })
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.next_url) {
+                window.location.href = data.next_url;
+            } else {
+                var errorEl = document.getElementById('error-message');
+                errorEl.textContent = 'Error: ' + (data.error || 'Failed to start configuration');
+                errorEl.classList.remove('hidden');
+            }
+        })
+        .catch(function() {
+            var errorEl = document.getElementById('error-message');
+            errorEl.textContent = 'Failed to start integration configuration.';
+            errorEl.classList.remove('hidden');
+        });
+}
+
+// Update button state when checkboxes change
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('integration-checkbox')) {
+        updateConfigureButton();
+    }
+});
+</script>
+{% endblock %}
