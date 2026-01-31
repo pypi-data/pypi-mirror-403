@@ -1,0 +1,239 @@
+[build-system]
+requires = ["hatchling", "hatch-mkdocs"]
+build-backend = "hatchling.build"
+
+[project]
+readme = "README.md"
+requires-python = ">=3.9"
+name = "mopipe"
+dynamic = ["version"]
+description = "MoPipe is a Python package for creating a motion capture data analysis pipeline."
+license = "MIT"
+keywords = []
+authors = [
+  { name = "zeyus (https://zeyus.com, https://github.com/zeyus)" },
+  { name = "Interacting Minds Centre, Aarhus University (https://interactingminds.au.dk)" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "pandas",
+  "scipy",
+  "joblib",
+  "StrEnum; python_version < '3.11'",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/au-imclab/mopipe"
+Documentation = "https://au-imclab.github.io/mopipe/"
+Issues = "https://github.com/au-imclab/mopipe/issues"
+Source = "https://github.com/au-imclab/mopipe"
+Changelog = "https://github.com/au-imclab/mopipe/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/mopipe/__about__.py"
+
+[tool.hatch.envs.default]
+dependencies = [
+  "coverage[toml]>=6.5",
+  "pytest",
+  "pandas",
+  "joblib",
+  "StrEnum; python_version < '3.11'",
+]
+installer = "uv"
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+[[tool.hatch.envs.all.matrix]]
+python = ["3.9", "3.10", "3.11"]
+
+[tool.hatch.envs.lint]
+detached = true
+dependencies = [
+  "black>=23.1.0",
+  "mypy>=1.0.0",
+  "ruff>=0.0.243",
+  "pandas",
+  "pandas-stubs",
+  "types_openpyxl",
+  "joblib",
+  "joblib-stubs",
+  "scipy",
+  "StrEnum; python_version < '3.11'",
+]
+
+[tool.hatch.envs.lint.scripts]
+typing = "mypy --install-types --non-interactive {args:src/mopipe tests}"
+style = [
+  "ruff check {args:.}",
+  "black --check --diff {args:.}",
+]
+
+fmt = [
+  "black {args:.}",
+  "ruff check --fix {args:.}",
+  "style",
+]
+
+all = [
+  "style",
+  "typing",
+]
+
+[tool.hatch.envs.docs]
+detached = true
+dependencies = [
+    "markdown-callouts",
+    "mkdocs",
+    "mkdocs-autorefs",
+    "mkdocs-material",
+    "pymdown-extensions",
+    "novella",
+    "pydoc-markdown[novella]",
+
+]
+
+[tool.hatch.envs.docs.scripts]
+gen-docs = "pydoc-markdown {args}"
+html-docs = "novella -d _docs --site-dir ../docs {args}"
+
+[[tool.pydoc-markdown.loaders]]
+type = "python"
+search_path = [ "src" ]
+
+[tool.pydoc-markdown.renderer]
+type = "mkdocs"
+output_directory = "_docs"
+content_directory_name = "content"
+site_name = "mopipe documentation"
+# plugins = ["autorefs"]
+# markdown_extensions = ["callouts", "pymdownx.superfences"]
+pages = [
+  { title = "Mopipe Documentation Home", name = "index", source = "README.md" },
+  { title = "Premade Segments", name = "segment", contents = [ "mopipe.segment.*" ] },
+  { title = "Analysis Pipeline", name = "pipeline", contents = [ "mopipe.core.analysis.pipeline.*" ] },
+  { title = "Reader", name = "reader", contents = [ "mopipe.core.data.reader.*" ] },
+  { title = "Collator", name = "collator", contents = [ "mopipe.core.data.collator.*" ] },
+  { title = "Experiment", name = "experiment", contents = [ "mopipe.core.data.experiment.*" ] },
+  { title = "Segment Types", name = "segmenttypes", contents = [ "mopipe.core.segments.segmenttypes.*" ] },
+  { title = "Base Segment", name = "seg", contents = [ "mopipe.core.segments.seg.*" ] },
+  { title = "IO", name = "io", contents = [ "mopipe.core.segments.io.*", "mopipe.core.segments.inputs.*", "mopipe.core.segments.outputs.*" ] },
+  { title = "QTM", name = "qtm", contents = [ "mopipe.core.common.qtm.*" ] },
+  { title = "Data Structures", name = "datastructs", contents = [ "mopipe.core.common.datastructs.*", "mopipe.core.data.empirical.*" ] },
+  { title = "Other", name = "other", contents = [ "mopipe.core.common.util.*", "mopipe.core.analysis.rqa.*" ] },
+]
+
+[tool.black]
+target-version = ["py39"]
+line-length = 120
+skip-string-normalization = true
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+lint.select = [
+  "A",
+  "ARG",
+  "B",
+  "C",
+  "DTZ",
+  "E",
+  "EM",
+  "F",
+  "FBT",
+  "I",
+  "ICN",
+  "ISC",
+  "N",
+  "PLC",
+  "PLE",
+  "PLR",
+  "PLW",
+  "Q",
+  "RUF",
+  "S",
+  "T",
+  "TID",
+  "UP",
+  "W",
+  "YTT",
+]
+lint.ignore = [
+  # Allow non-abstract empty methods in abstract base classes
+  "B027",
+  # Allow boolean positional values in function calls, like `dict.get(... True)`
+  "FBT003",
+  # Ignore checks for possible passwords
+  "S105", "S106", "S107",
+  # Ignore complexity
+  "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
+]
+lint.unfixable = [
+  # Don't touch unused imports
+  "F401",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mopipe"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use magic values, assertions, and relative imports
+"tests/**/*" = ["PLR2004", "S101", "TID252"]
+# Examples can use print statements
+"examples/**/*" = ["T201"]
+
+[tool.coverage.run]
+source_pkgs = ["mopipe", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/mopipe/__about__.py",
+]
+
+[tool.coverage.paths]
+mopipe = ["src/mopipe", "*/mopipe/src/mopipe"]
+tests = ["tests", "*/mopipe/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
