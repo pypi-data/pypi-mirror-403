@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""
+Infra CLI - Utility commands for the infra framework.
+
+Usage:
+    appinfra scaffold my-project --with-db
+    appinfra scaffold my-api --with-db --with-server
+    appinfra --help
+"""
+
+import sys
+from pathlib import Path
+
+# Add project root to path for running as script (before package is installed)
+_project_root = Path(__file__).parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+import appinfra
+from appinfra.app import App, AppBuilder
+from appinfra.cli.tools.code_quality import CodeQualityTool
+from appinfra.cli.tools.completion_tool import CompletionTool
+from appinfra.cli.tools.config_tool import ConfigTool
+from appinfra.cli.tools.docs_tool import DocsTool
+from appinfra.cli.tools.doctor_tool import DoctorTool
+from appinfra.cli.tools.etc_path_tool import EtcPathTool
+from appinfra.cli.tools.scaffold_tool import ScaffoldTool
+from appinfra.cli.tools.scripts_path_tool import ScriptsPathTool
+from appinfra.cli.tools.version_tool import VersionTool
+
+# All CLI tools
+_TOOLS = [
+    CodeQualityTool,
+    CompletionTool,
+    ConfigTool,
+    DoctorTool,
+    DocsTool,
+    ScaffoldTool,
+    ScriptsPathTool,
+    EtcPathTool,
+    VersionTool,
+]
+
+
+def _build_app() -> "App":
+    """Build the CLI application with all tools registered."""
+    builder = (
+        AppBuilder("appinfra")
+        .with_description("Infra framework utility commands")
+        .without_standard_args()
+        .with_standard_args(etc_dir=True, log_level=True, quiet=True)
+        .version.with_semver(appinfra.__version__)
+        .with_build_info()
+        .done()
+        .advanced.with_argument(
+            "-v",
+            action="version",
+            version=f"appinfra {appinfra.__version__}",
+        )
+        .done()
+    )
+    for tool_cls in _TOOLS:
+        builder = builder.tools.with_tool(tool_cls()).done()
+    return builder.logging.with_level("info").done().build()
+
+
+def main() -> int:
+    """Main entry point for infra CLI."""
+    return _build_app().main()
+
+
+if __name__ == "__main__":
+    exit(main())
