@@ -1,0 +1,264 @@
+# IChing Divination | 易经解卦
+
+[![CI](https://github.com/leether/iching-divination/actions/workflows/ci.yml/badge.svg)](https://github.com/leether/iching-divination/actions)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI](https://img.shields.io/badge/pypi-v1.0.0-blue.svg)](https://pypi.org/project/iching-divination/)
+
+A Python implementation of the **Three-Coin Divination** method (三硬币起卦法) from the I Ching (易经) - the ancient Chinese Book of Changes.
+
+易经三硬币起卦法的 Python 实现，提供准确的卦象计算。
+
+---
+
+## ✨ Features | 特性
+
+- 🎯 **Accurate Calculation**: Precise implementation of traditional divination rules
+- 🐍 **Pure Python**: No external dependencies, Python 3.8+
+- 🔧 **CLI & API**: Use as command-line tool or Python library
+- 🧪 **Well Tested**: Comprehensive test suite with 100% core logic coverage
+- 📚 **Complete**: Supports all 64 hexagrams (六十四卦)
+- 🌏 **Bilingual**: Documentation in English and Chinese
+
+---
+
+## 🚀 Quick Start | 快速开始
+
+### Installation | 安装
+
+```bash
+# Clone the repository
+git clone https://github.com/leether/iching-divination.git
+cd iching-divination
+
+# Run setup
+./setup.sh
+```
+
+Or simply use directly without installation:
+
+```bash
+python3 iching_divination/divine.py 687766
+```
+
+### CLI Usage | 命令行使用
+
+```bash
+# Basic usage
+./divine 687766
+
+# Or with python
+python3 iching_divination/divine.py 687766
+```
+
+**Example Output:**
+
+```
+==================================================
+☯ IChing Divination Result
+==================================================
+
+📊 Input: [6, 8, 7, 7, 6, 6]
+
+Yao Analysis:
+  初爻 (1st): 6 → ⚋ (Old Yin) 🔥 Moving
+  二爻 (2nd): 8 → ⚋ (Young Yin)
+  三爻 (3rd): 7 → ⚊ (Young Yang)
+  四爻 (4th): 7 → ⚊ (Young Yang)
+  五爻 (5th): 6 → ⚋ (Old Yin) 🔥 Moving
+  上爻 (6th): 6 → ⚋ (Old Yin) 🔥 Moving
+
+--------------------------------------------------
+📜 Original Hexagram (本卦)
+--------------------------------------------------
+  Lower Trigram: 艮 (Mountain)
+  Upper Trigram: 震 (Thunder)
+  Name: 雷山小过 (Xiǎo Guò / Small Excess)
+
+--------------------------------------------------
+🔄 Changed Hexagram (变卦)
+--------------------------------------------------
+  Lower Trigram: 离 (Fire)
+  Upper Trigram: 乾 (Heaven)
+  Name: 天火同人 (Tóng Rén / Fellowship)
+
+  Moving Yaos: 初爻, 五爻, 上爻
+==================================================
+```
+
+### Python API | Python 接口
+
+```python
+from scripts.divine import calculate_hexagram
+
+# Calculate hexagram
+result = calculate_hexagram([6, 8, 7, 7, 6, 6])
+
+print(result['ben_gua'])    # 雷山小过
+print(result['bian_gua'])   # 天火同人
+print(result['moving_yaos']) # ['初爻', '五爻', '上爻']
+```
+
+---
+
+## 📖 Three-Coin Method | 三硬币起卦法
+
+### The Process | 起卦过程
+
+1. Throw three coins six times | 投掷三枚硬币六次
+2. Record results from bottom to top | 从下到上记录结果
+3. Convert to numbers | 转换为数字
+
+### Number Meanings | 数字含义
+
+| Number | Name | Symbol | Yin/Yang | Moving? | Change |
+|--------|------|--------|----------|---------|--------|
+| **6** | 老阴 (Old Yin) | ⚋ | Yin | ✅ Yes | Yin → Yang |
+| **7** | 少阳 (Young Yang) | ⚊ | Yang | ❌ No | - |
+| **8** | 少阴 (Young Yin) | ⚋ | Yin | ❌ No | - |
+| **9** | 老阳 (Old Yang) | ⚊ | Yang | ✅ Yes | Yang → Yin |
+
+**Memory Aid**: 6 and 9 are "old" (mature/extreme) and therefore change. 7 and 8 are "young" (stable).
+
+### Hexagram Structure | 卦象结构
+
+```
+上爻 (6th)        ← Top
+五爻 (5th)
+四爻 (4th)        ← Upper Trigram (上卦)
+─────────────
+三爻 (3rd)
+二爻 (2nd)
+初爻 (1st)        ← Lower Trigram (下卦) ← Bottom
+```
+
+**Rule**: First three numbers = Lower Trigram | Last three numbers = Upper Trigram
+
+---
+
+## 🧪 Testing | 测试
+
+```bash
+# Run all tests
+python3 -m pytest tests/ -v
+
+# Run specific test
+python3 -m pytest tests/test_divine.py::TestHexagramCalculation -v
+```
+
+---
+
+## 📚 The 64 Hexagrams | 六十四卦
+
+The system includes all 64 hexagrams from the I Ching:
+
+| # | Name | Chinese | Meaning |
+|---|------|---------|---------|
+| 1 | The Creative | 乾为天 | Force |
+| 2 | The Receptive | 坤为地 | Field |
+| ... | ... | ... | ... |
+| 62 | Small Excess | 雷山小过 | Preponderance of the Small |
+| 63 | After Completion | 水火既济 | Already Fulfilled |
+| 64 | Before Completion | 火水未济 | Not Yet Fulfilled |
+
+See [HEXAGRAMS.md](HEXAGRAMS.md) for the complete list.
+
+---
+
+## 🔧 Technical Details | 技术细节
+
+### Algorithm | 算法
+
+```
+Input: 6 numbers (6,7,8,9)
+       ↓
+Step 1: Convert to yao symbols
+       6,8,7,7,6,6 → ⚋,⚋,⚊,⚊,⚋,⚋
+       ↓
+Step 2: Split into trigrams
+       Lower: ⚋,⚋,⚊ (positions 1-3)
+       Upper: ⚊,⚋,⚋ (positions 4-6)
+       ↓
+Step 3: Lookup trigram names
+       Lower ⚋⚋⚊ → 艮 (Mountain)
+       Upper ⚊⚋⚋ → 震 (Thunder)
+       ↓
+Step 4: Form hexagram
+       震 + 艮 → 雷山小过 (Small Excess)
+       ↓
+Step 5: Calculate changed hexagram (if moving yaos exist)
+       Moving yaos (6,9) flip yin/yang
+       Generate new trigrams and hexagram
+```
+
+### Code Quality | 代码质量
+
+- Type hints for all functions
+- Comprehensive docstrings
+- 100% test coverage for core logic
+- PEP 8 compliant
+
+---
+
+## 🤝 Contributing | 贡献
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解贡献指南。
+
+### Development Setup | 开发设置
+
+```bash
+# Clone repo
+git clone https://github.com/leether/iching-divination.git
+cd iching-divination
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/ -v
+```
+
+---
+
+## ⚠️ Important Notes | 重要说明
+
+### For AI Assistants | 给 AI 助手的提示
+
+> ⚠️ **WARNING**: When using this tool for divination calculations, **always use the script** - never calculate hexagrams manually!
+>
+> AI models are prone to errors in:
+> - Trigram mapping (e.g., confusing 震 vs 艮)
+> - Yao order (bottom vs top)
+> - Hexagram naming
+>
+> **Always run**: `./divine <numbers>` or `python3 scripts/divine.py <numbers>`
+
+---
+
+## 📜 License | 许可证
+
+[MIT License](LICENSE) © 2025 leether
+
+---
+
+## 🙏 Acknowledgments | 致谢
+
+- The ancient sages who created the I Ching
+- The traditional three-coin method practitioners
+- All contributors to this project
+
+---
+
+<div align="center">
+
+**[⬆ Back to Top](#iching-divination--易经解卦)**
+
+☯ *May the wisdom of the I Ching guide your path* ☯
+
+</div>
