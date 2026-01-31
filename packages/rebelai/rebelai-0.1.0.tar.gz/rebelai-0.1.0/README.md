@@ -1,0 +1,193 @@
+# RebelAI
+
+Convert visual meshes to physics-ready MuJoCo models.
+
+RebelAI takes 3D mesh files (like those from World Labs) and converts them to physics-ready [MuJoCo](https://mujoco.org/) models with proper collision geometry. It automatically handles convex decomposition, mass properties, and MJCF generation.
+
+## Installation
+
+```bash
+pip install rebelai
+```
+
+## Quick Start
+
+### Generate from Text (World Labs API)
+
+```python
+import rebelai
+import mujoco
+
+# Set your API key (or use WORLD_LABS_API_KEY env var)
+model = rebelai.generate("kitchen table with mugs", api_key="wl_xxx")
+
+# Simulate with full MuJoCo API
+data = mujoco.MjData(model)
+for _ in range(1000):
+    mujoco.mj_step(model, data)
+```
+
+### Load from File
+
+```python
+import rebelai
+
+# Load existing mesh file
+model = rebelai.load("scene.glb")
+```
+
+## World Labs Integration
+
+RebelAI integrates with the [World Labs](https://worldlabs.ai) API to generate 3D scenes from text prompts.
+
+### Setup
+
+Set your API key as an environment variable:
+
+```bash
+export WORLD_LABS_API_KEY="wl_your_api_key_here"
+```
+
+Or pass it directly:
+
+```python
+model = rebelai.generate("red sports car", api_key="wl_xxx")
+```
+
+### Generation Options
+
+```python
+from rebelai import generate, ConversionConfig, CollisionMethod
+
+# Configure physics conversion
+config = ConversionConfig(
+    collision_method=CollisionMethod.CONVEX_DECOMPOSITION,
+    density=500.0,
+)
+
+model = generate(
+    prompt="wooden desk with computer",
+    config=config,
+    quality="high",      # 'draft', 'standard', or 'high'
+    style="realistic",   # Optional style preset
+    max_wait=300,        # Max seconds to wait
+)
+```
+
+### Error Handling
+
+```python
+from rebelai import (
+    generate,
+    WorldLabsAuthError,
+    WorldLabsAPIError,
+    WorldLabsTimeoutError,
+)
+
+try:
+    model = generate("office chair")
+except WorldLabsAuthError:
+    print("Invalid or missing API key")
+except WorldLabsTimeoutError:
+    print("Generation took too long")
+except WorldLabsAPIError as e:
+    print(f"API error: {e}")
+```
+
+## Configuration
+
+Customize the conversion process with `ConversionConfig`:
+
+```python
+from rebelai import load, ConversionConfig, CollisionMethod
+
+config = ConversionConfig(
+    collision_method=CollisionMethod.CONVEX_DECOMPOSITION,
+    coacd_threshold=0.08,  # Coarser = fewer hulls, faster simulation
+    density=500.0,         # kg/m^3 for mass calculation
+)
+
+model = load("scene.glb", config=config)
+```
+
+### Collision Methods
+
+| Method | Description | Use Case |
+|--------|-------------|----------|
+| `CONVEX_DECOMPOSITION` | Decomposes mesh into multiple convex hulls using CoACD | Complex, concave objects (default) |
+| `CONVEX_HULL` | Single convex hull wrapping the mesh | Simple convex-ish objects |
+| `BOUNDING_BOX` | Axis-aligned bounding box | Fast prototyping |
+| `PRIMITIVES` | Fit geometric primitives (box, sphere, cylinder) | Simple objects |
+| `PASSTHROUGH` | Use mesh directly (must be convex) | Pre-processed convex meshes |
+
+### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `collision_method` | `CONVEX_DECOMPOSITION` | Method for generating collision geometry |
+| `coacd_threshold` | `0.05` | CoACD quality (0-1, lower = more accurate, more hulls) |
+| `coacd_max_convex_hull` | `32` | Maximum convex hulls from decomposition |
+| `density` | `1000.0` | Default density in kg/m³ for mass calculation |
+| `friction` | `(1.0, 0.005, 0.0001)` | MuJoCo friction (slide, spin, roll) |
+| `simplify` | `False` | Simplify meshes before processing |
+| `target_faces` | `1000` | Target face count when simplifying |
+
+## Supported Formats
+
+- **GLTF/GLB** - Recommended for scenes from World Labs
+- **OBJ** - Wavefront OBJ
+- **STL** - Stereolithography
+- **PLY** - Polygon File Format
+
+## API Reference
+
+### `rebelai.generate(prompt, api_key=None, config=None, ...)`
+
+Generate a 3D scene from text using World Labs API and convert to MuJoCo model.
+
+**Parameters:**
+- `prompt`: Text description of the scene
+- `api_key`: World Labs API key (or set `WORLD_LABS_API_KEY` env var)
+- `config`: Optional `ConversionConfig`
+- `quality`: Generation quality ('draft', 'standard', 'high')
+- `style`: Optional style preset
+- `max_wait`: Maximum seconds to wait for generation
+
+**Returns:** `mujoco.MjModel`
+
+### `rebelai.load(source, config=None, file_type=None)`
+
+Load a mesh file and convert to a MuJoCo model.
+
+**Parameters:**
+- `source`: Path to mesh file, or raw bytes
+- `config`: Optional `ConversionConfig`
+- `file_type`: Format hint (e.g., 'glb'), required for bytes input
+
+**Returns:** `mujoco.MjModel`
+
+### `rebelai.to_mjcf(source, config=None, file_type=None)`
+
+Convert a mesh to MJCF XML without loading into MuJoCo.
+
+**Returns:** `str` (MJCF XML)
+
+## Development
+
+```bash
+# Clone and install in development mode
+git clone https://github.com/rebelai/rebelai
+cd rebelai
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/
+
+# Format code
+black src/ tests/
+ruff check src/ tests/
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
