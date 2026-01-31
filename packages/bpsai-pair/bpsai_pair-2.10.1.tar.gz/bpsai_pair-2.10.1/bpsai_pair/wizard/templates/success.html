@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Project Created - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="success-page">
+    <div class="success-header">
+        <div class="success-icon" aria-label="checkmark">&#10003;</div>
+        <h2>Project Created!</h2>
+        <p class="success-subtitle">Your PairCoder project is ready to go.</p>
+    </div>
+
+    <div class="next-steps">
+        <h3>Next Steps</h3>
+        <ol class="steps-list">
+            <li class="step-item">
+                <div class="step-command-label">Check project status</div>
+                <code class="step-command">bpsai-pair status</code>
+            </li>
+            {% if tier == 'pro' or tier == 'team' or tier == 'enterprise' %}
+            <li class="step-item">
+                <div class="step-command-label">Connect Trello board</div>
+                <code class="step-command">bpsai-pair trello connect</code>
+            </li>
+            {% endif %}
+            {% if tier == 'enterprise' %}
+            <li class="step-item">
+                <div class="step-command-label">Set up workspace</div>
+                <code class="step-command">bpsai-pair workspace init</code>
+            </li>
+            {% endif %}
+            <li class="step-item">
+                <div class="step-command-label">Create your first plan</div>
+                <code class="step-command">bpsai-pair plan new my-feature</code>
+            </li>
+            <li class="step-item">
+                <div class="step-command-label">Read the getting started guide</div>
+                <a href="https://docs.paircoder.ai/getting-started" class="docs-link">Documentation &rarr;</a>
+            </li>
+        </ol>
+    </div>
+
+    {% if tier == 'solo' %}
+    <div class="upgrade-prompt">
+        <div class="upgrade-prompt-icon">&#9889;</div>
+        <div class="upgrade-prompt-content">
+            <h4>Upgrade to Pro</h4>
+            <p>Unlock Trello sync, GitHub integration, token budgets, and more.</p>
+            <button class="btn-upgrade-prompt" onclick="showUpgradeModal()">Upgrade Now &rarr;</button>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="success-actions">
+        <button type="button" class="btn btn-secondary" id="open-ide-btn" onclick="openIDE()">Open in IDE</button>
+        <button type="button" class="btn btn-secondary" id="open-terminal-btn" onclick="openTerminal()">Open Terminal</button>
+        <button type="button" class="btn btn-primary" onclick="closeWizard()">Close Wizard</button>
+    </div>
+    <div id="editor-toast" class="editor-toast hidden"></div>
+</section>
+
+<script>
+function showEditorToast(msg, isError) {
+    var toast = document.getElementById('editor-toast');
+    toast.textContent = msg;
+    toast.className = 'editor-toast' + (isError ? ' editor-toast-error' : ' editor-toast-success');
+    setTimeout(function() { toast.className = 'editor-toast hidden'; }, 4000);
+}
+
+function openIDE() {
+    fetch('/api/open-editor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({editor: 'ide'}) })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showEditorToast('Opened ' + data.editor, false);
+            } else {
+                showEditorToast(data.error || 'No supported editor found', true);
+            }
+        })
+        .catch(function() { showEditorToast('Failed to contact server', true); });
+}
+
+function openTerminal() {
+    fetch('/api/open-editor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({editor: 'terminal'}) })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showEditorToast('Opened terminal', false);
+            } else {
+                showEditorToast(data.error || 'No supported terminal found', true);
+            }
+        })
+        .catch(function() { showEditorToast('Failed to contact server', true); });
+}
+
+function closeWizard() {
+    window.close();
+    setTimeout(function() {
+        document.body.innerHTML = '<div style="text-align:center;padding:4rem;color:#b8b8c8;font-family:sans-serif;"><h2>You can close this tab.</h2></div>';
+    }, 500);
+}
+</script>
+{% endblock %}
