@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+__all__ = [
+    "PlotBody",
+    "PlotFrame",
+    "PlotLine",
+    "PlotPoint",
+    "PlotTracedPoint",
+    "PlotVector",
+    "Scene3D",
+]
+
+from symmeplot.matplotlib.plot_objects import (
+    PlotBody,
+    PlotFrame,
+    PlotLine,
+    PlotPoint,
+    PlotTracedPoint,
+    PlotVector,
+)
+from symmeplot.matplotlib.scene import Scene3D
