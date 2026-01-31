@@ -1,0 +1,279 @@
+Metadata-Version: 2.4
+Name: pmdt
+Version: 1.1.2
+Summary: Project Management Digital Twin
+Author-email: Filippo Maria Ottaviani <filippo.ottaviani@polito.it>
+License: MIT
+Project-URL: Homepage, https://github.com/filippomariaottaviani
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=1.24
+Requires-Dist: pandas>=2.0
+Dynamic: license-file
+
+# PMDT — Project Management Digital Twin
+
+A lightweight, pure‑Python toolkit for building and analyzing “digital twins” of projects:
+
+- **Calendars** (working days, holidays, workday math)
+- **CPM scheduling** (ES/EF/LS/LF, slack, criticality, FS/SS/FF/SF links with lag)
+- **Cost model** (direct + overhead/indirect)
+- **EVM / Earned Schedule** style performance tracking (PV/EV/AC, CPI/SPI, ES, SV(t), SPI(t), time & cost EACs)
+- **Monte Carlo** schedule/cost simulation with percentile summaries
+- **Portfolio** rollups across multiple projects (+ optional “AI” forecasting helper)
+
+---
+
+## Requirements
+
+Core module:
+
+- Python **3.10+**
+- `numpy`
+- `pandas`
+
+Optional (only for `Portfolio.init_aip()`):
+
+- `scikit-learn`
+
+Install basics:
+
+```bash
+pip install numpy pandas
+# optional:
+pip install scikit-learn
+```
+
+---
+
+## Core concepts
+
+### Calendar
+Defines working days (0=Mon … 6=Sun), holidays, and “workday/networkdays” utilities.
+
+- Default `working_days` is **all 7 days**; pass Mon–Fri explicitly if needed.
+
+### Resource
+Represents labor/material/cost with a unit cost and (currently non-enforced) availability.
+
+- `resource_type` in `{"work","material","cost"}`
+
+### Activity
+A task with:
+
+- Dependencies (`predecessors`)
+- Resources & duration (supports **effort-driven** duration scaling)
+- Costs (direct + overhead)
+- Tracking records (planned + actual/progress)
+- Monte Carlo distribution parameters (duration & cost)
+
+### ControlAccount
+Auto-created per activity-resource allocation. Holds cost tracking (AC) and EVA metrics.
+
+### Project
+A collection of activities with:
+
+- CPM schedule (`project.schedule()`)
+- Time-phased baseline (PMB / PV curve)
+- Resource usage time series
+- EVA rollups + Earned Schedule style metrics
+- Monte Carlo simulation (`project.mc()`)
+
+### Portfolio
+A set of projects with portfolio-level EVA dataframe, and optional ML-based helper (`init_aip`).
+
+---
+
+## Quickstart
+
+Create a small project, schedule it, and view dataframes:
+
+```python
+from pmdt import Calendar, Resource, Activity, Project
+
+cal = Calendar(
+    name="Mon-Fri",
+    working_days=[0, 1, 2, 3, 4],
+    holidays=[20251225],  # YYYYMMDD int, or date/datetime/ISO strings
+)
+
+dev = Resource(name="Dev", resource_type="work", unit_cost=120.0)   # €/day (example)
+mat = Resource(name="Parts", resource_type="material", unit_cost=50.0)
+
+a1 = Activity(
+    name="Design",
+    baseline_duration=5,
+    baseline_resources={"Dev": (dev, 1.0)},
+    resources={"Dev": (dev, 1.0)},
+)
+
+a2 = Activity(
+    name="Build",
+    baseline_duration=3,
+    baseline_resources={"Dev": (dev, 1.0), "Parts": (mat, 10)},
+    resources={"Dev": (dev, 1.0), "Parts": (mat, 10)},
+    predecessors={"Design": (a1, "fs", 0)},  # FS + 0 day lag
+)
+
+proj = Project(
+    name="Demo",
+    activities=[a1, a2],
+    calendar=cal,
+    start_date=20260105,     # YYYYMMDD
+    tracking_freq="D",       # pandas date_range freq: D/W/M/...
+)
+
+proj.schedule()
+
+print(proj.df_project())
+print(proj.df_activities())
+print(proj.df_resources())
+print(proj.df_controlaccounts())
+```
+
+---
+
+## Dependencies (links)
+
+Activities store predecessors as:
+
+```python
+predecessors = {
+  "SomeKey": (predecessor_activity, rel_type, lag_days)
+}
+```
+
+Supported `rel_type` values used by CPM:
+
+- `"fs"`: Finish → Start
+- `"ff"`: Finish → Finish
+- `"ss"`: Start → Start
+- `"sf"`: Start → Finish
+
+`lag_days` is a float; positive pushes successors later, negative pulls earlier.
+
+---
+
+## Earned Value + Earned Schedule tracking
+
+### How tracking works
+When you create/schedule a project it initializes tracking “records” at `tracking_dates`.
+Keys are **YYYYMMDD integers** derived from those dates.
+
+Planned values (PV) are computed; actual progress and cost are inputs:
+
+- **WP** (work performed, 0–1) is stored on each **Activity** record
+- **AC** (actual cost) is stored on each **ControlAccount** record
+
+Then `proj.df_eva()` recalculates all derived fields and updates project rollups.
+
+### Minimal example: update progress and cost
+
+```python
+# pick a tracking date key that exists in proj.records
+date_key = 20260112
+
+# 40% complete on "Build"
+proj.activities["Build"].records[date_key]["WP"] = 0.40
+
+# add cost on the Build-Dev control account
+ca_name = "Build-Dev"  # ActivityName-ResourceName by default
+proj.control_accounts[ca_name].records[date_key]["AC"] = 1500.0
+
+df_eva = proj.df_eva()
+print(df_eva.tail())
+```
+
+### Useful columns you’ll see
+Typical EVA columns include:
+
+- `PV`, `EV`, `AC`, `CV`, `SV`, `CPI`, `SPI`
+- `EAC_CV`, `EAC_CPI`
+- time EACs like `EAC(t)_SPI[Days]` / `EAC(t)_SPI[Date]`
+- Earned Schedule fields at project level: `ES[Days]`, `SV(t)`, `SPI(t)`, etc.
+
+---
+
+## Performance Measurement Baseline (PMB / PV curve)
+
+Generate time-phased PV:
+
+```python
+proj.pmb()
+df_daily_pv = proj.df_pmb_project      # daily PV
+df_cum_pv   = proj.df_pmb_project_cuml # cumulative PV
+```
+
+---
+
+## Resource usage
+
+Compute daily resource usage (units per day):
+
+```python
+proj.resource_usage()
+print(proj.df_resource_usage.head())       # daily usage by resource
+print(proj.df_resource_usage_cuml.head())  # cumulative
+```
+
+---
+
+## Monte Carlo simulation
+
+Each activity supports separate distributions for duration and cost.
+
+Supported distributions include:
+`fixed`, `uniform`, `exponential`, `normal`, `log-normal`,
+`triangular`, `pert`, `beta`, `gamma`, `weibull`, `discrete`.
+
+Example: triangular duration + normal cost
+
+```python
+for a in proj.activities.values():
+    a.duration_distribution = "triangular"
+    a.duration_params = {"left": 3, "mode": 5, "right": 9}
+
+    a.cost_distribution = "normal"
+    a.cost_mean = a.total_cost
+    a.cost_stdev = 200.0
+
+proj.mc(n_simulations=2000, track_pmb=True)
+
+print(proj.df_mc.describe(percentiles=[0.05, 0.5, 0.95]))
+print(proj.df_mc_pmb_project.head())        # PV percentiles per time bucket (if track_pmb=True)
+print(proj.df_mc_pmb_project_cuml.head())   # cumulative PV percentiles
+```
+
+---
+
+## Portfolio
+
+```python
+from pmdt import Portfolio
+
+pf = Portfolio([proj], name="My Portfolio")
+print(pf.df_projects())
+print(pf.df_eva().tail())
+```
+
+### Optional: AI-powered helper (`init_aip`)
+`Portfolio.init_aip()` is an experimental helper that prepares EVA data, optionally interpolates by WP steps,
+and runs leave-one-project-out modeling using scikit‑learn.
+
+```python
+# requires: pip install scikit-learn
+df0, df1, df2, df3, df4, df_out, dfr_model, dfr_wp, dfr_project = pf.init_aip(
+    target="cost",          # or "time"
+    method="direct",        # or "indirect"
+    model="LinearRegression"  # or "MLPRegressor"
+)
+```
+
+---
+
+## Notes & limitations
+
+- CPM scheduling does **not** level resources; `Resource.availability` is currently informational.
+- Records are easiest to work with if you keep date keys consistent with the project’s `tracking_dates`
+  (use the existing YYYYMMDD keys created by the project).
