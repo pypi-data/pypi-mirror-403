@@ -1,0 +1,53 @@
+"""Context management for passing data through agent workflow."""
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from github_standup_agent.config import StandupConfig
+
+
+@dataclass
+class StandupContext:
+    """
+    Context passed to all tools and agents via RunContextWrapper.
+
+    This is NOT sent to the LLM - it's for sharing state between tools.
+    """
+
+    # Configuration
+    config: StandupConfig
+
+    # Request parameters
+    days_back: int = 1
+
+    # Data collected during the run (populated by tools)
+    collected_prs: list[dict[str, Any]] = field(default_factory=list)
+    collected_issues: list[dict[str, Any]] = field(default_factory=list)
+    collected_commits: list[dict[str, Any]] = field(default_factory=list)
+    collected_reviews: list[dict[str, Any]] = field(default_factory=list)
+    collected_activity_feed: list[dict[str, Any]] = field(default_factory=list)
+
+    # Detail caches (populated by get_pr_details, get_issue_details)
+    # Keys are "repo#number" format, e.g., "owner/repo#123"
+    pr_details_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
+    issue_details_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # Current standup being generated/refined
+    current_standup: str | None = None
+
+    # GitHub username (auto-detected or from config)
+    github_username: str | None = None
+
+    # Custom style instructions (loaded from config and/or style.md file)
+    style_instructions: str | None = None
+
+    # Slack data (populated by tools)
+    collected_slack_standups: list[dict[str, Any]] = field(default_factory=list)
+    slack_thread_ts: str | None = None  # Thread timestamp for posting replies
+    slack_channel_id: str | None = None  # Resolved channel ID
+
+    # Confirmation tracking for publish safety
+    slack_publish_confirmed: bool = False
+
+    # Standup content staged for Slack publish (preserved during confirmation flow)
+    slack_standup_to_publish: str | None = None
