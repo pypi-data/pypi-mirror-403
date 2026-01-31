@@ -1,0 +1,113 @@
+"""Shared province code mappings for Spanish documents.
+
+This module contains province code mappings used across different Spanish identification
+documents. Two sets are provided:
+- STANDARD_PROVINCES: Codes 01-52 (used by NSS, DIR3, etc.)
+- EXTENDED_PROVINCES: Codes 01-99 (used by CIF)
+"""
+
+# Province code mappings for standard documents (codes 01-52)
+# Used by NSS, DIR3, and most Spanish identification documents
+STANDARD_PROVINCES: dict[str, str] = {
+    "01": "Álava",
+    "02": "Albacete",
+    "03": "Alicante",
+    "04": "Almería",
+    "05": "Ávila",
+    "06": "Badajoz",
+    "07": "Baleares",
+    "08": "Barcelona",
+    "09": "Burgos",
+    "10": "Cáceres",
+    "11": "Cádiz",
+    "12": "Castellón",
+    "13": "Ciudad Real",
+    "14": "Córdoba",
+    "15": "A Coruña",
+    "16": "Cuenca",
+    "17": "Girona",
+    "18": "Granada",
+    "19": "Guadalajara",
+    "20": "Guipúzcoa",
+    "21": "Huelva",
+    "22": "Huesca",
+    "23": "Jaén",
+    "24": "León",
+    "25": "Lleida",
+    "26": "La Rioja",
+    "27": "Lugo",
+    "28": "Madrid",
+    "29": "Málaga",
+    "30": "Murcia",
+    "31": "Navarra",
+    "32": "Ourense",
+    "33": "Asturias",
+    "34": "Palencia",
+    "35": "Las Palmas",
+    "36": "Pontevedra",
+    "37": "Salamanca",
+    "38": "Santa Cruz de Tenerife",
+    "39": "Cantabria",
+    "40": "Segovia",
+    "41": "Sevilla",
+    "42": "Soria",
+    "43": "Tarragona",
+    "44": "Teruel",
+    "45": "Toledo",
+    "46": "Valencia",
+    "47": "Valladolid",
+    "48": "Vizcaya",
+    "49": "Zamora",
+    "50": "Zaragoza",
+    "51": "Ceuta",
+    "52": "Melilla",
+}
+
+# Province code mappings for CIF (extended set, codes 01-99)
+# Note: Codes with * indicate additional provincial codes used for CIF
+EXTENDED_PROVINCES: dict[str, str] = {
+    **STANDARD_PROVINCES,
+    "53": "Alicante*",
+    "54": "Alicante*",
+    "55": "Girona*",
+    "56": "Córdoba*",
+    "57": "Baleares*",
+    "58": "Barcelona*",
+    "59": "Barcelona*",
+    "60": "Barcelona*",
+    "61": "Barcelona*",
+    "62": "Barcelona*",
+    "63": "Barcelona*",
+    "64": "Barcelona*",
+    "70": "A Coruña*",
+    "71": "Guipúzcoa*",
+    "72": "Cádiz*",
+    "73": "Murcia*",
+    "74": "Asturias*",
+    "75": "Santa Cruz de Tenerife*",
+    "76": "Las Palmas*",
+    "77": "Tarragona*",
+    "78": "Madrid*",
+    "79": "Madrid*",
+    "80": "Madrid*",
+    "81": "Madrid*",
+    "82": "Madrid*",
+    "83": "Madrid*",
+    "84": "Madrid*",
+    "85": "Madrid*",
+    "91": "Sevilla*",
+    "92": "Málaga*",
+    "93": "Málaga*",
+    "94": "Pontevedra*",
+    "95": "Vizcaya*",
+    "96": "Valencia*",
+    "97": "Valencia*",
+    "98": "Valencia*",
+    "99": "Zaragoza*",
+}
+
+
+__all__ = [
+    "STANDARD_PROVINCES",
+    "EXTENDED_PROVINCES",
+]
