@@ -1,0 +1,32 @@
+#!/bin/bash
+
+if [ ${DIB_DEBUG_TRACE:-0} -gt 0 ]; then
+    set -x
+fi
+set -eu
+set -o pipefail
+
+if [[ ${GENTOO_OVERLAYS} != '' ]]; then
+    if mountpoint -q /dev/shm; then
+        echo "/dev/shm found in /proc/self/mountinfo"
+    elif [[ -k /dev/shm ]]; then
+        echo "/dev/shm exists and is stickied"
+    else
+        fix_shm
+    fi
+
+    if [[ ! -f ${PORTDIR}/profiles ]]; then
+        emerge-webrsync -q
+    fi
+
+    emerge ${GENTOO_EMERGE_DEFAULT_OPTS} --oneshot openssl openssh
+    emerge ${GENTOO_EMERGE_DEFAULT_OPTS} --oneshot eselect-repository
+    # enable the various overlays, ignore failures (overlay my already be enabled)
+    set +e
+    for OVERLAY in ${GENTOO_OVERLAYS}; do
+        eselect repository enable "${OVERLAY}"
+    done
+    set -e
+
+    unfix_shm
+fi
