@@ -1,0 +1,67 @@
+# mermaid-rs
+
+Python bindings for [mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer) - a fast native Rust Mermaid diagram renderer.
+
+## Features
+
+- **Fast**: 500-1000x faster than mermaid-cli (no browser required)
+- **13 diagram types**: flowchart, sequence, class, state, ER, pie, xy chart, quadrant, gantt, timeline, journey, mindmap, git graph
+- **Pure Rust**: ~3ms cold start vs ~2500ms for mermaid-cli
+- **Low memory**: ~15MB vs ~300MB for mermaid-cli
+
+## Installation
+
+```bash
+pip install mermaid-rs
+```
+
+## Usage
+
+```python
+import mermaid_rs
+
+# Simple rendering
+svg = mermaid_rs.render("""
+flowchart LR
+    A[Start] --> B{Decision}
+    B -->|Yes| C[OK]
+    B -->|No| D[Cancel]
+""")
+
+# With options
+svg = mermaid_rs.render(
+    "flowchart TD; A-->B-->C",
+    theme="modern",  # or "mermaid_default"
+    node_spacing=60.0,
+    rank_spacing=80.0,
+)
+
+# With timing info
+svg, parse_us, layout_us, render_us, total_us = mermaid_rs.render_with_timing(
+    "flowchart LR; A-->B"
+)
+print(f"Rendered in {total_us/1000:.2f}ms")
+
+# List supported diagrams
+print(mermaid_rs.supported_diagram_types())
+```
+
+## Supported Diagram Types
+
+- **Flowcharts** (`flowchart` / `graph`): TD, TB, LR, RL, BT directions
+- **Sequence Diagrams** (`sequenceDiagram`)
+- **Class Diagrams** (`classDiagram`)
+- **State Diagrams** (`stateDiagram-v2`)
+- **ER Diagrams** (`erDiagram`)
+- **Pie Charts** (`pie`)
+- **XY Charts** (`xychart`)
+- **Quadrant Charts** (`quadrantChart`)
+- **Gantt** (`gantt`)
+- **Timeline** (`timeline`)
+- **Journey** (`journey`)
+- **Mindmap** (`mindmap`)
+- **Git Graph** (`gitGraph`)
+
+## License
+
+MIT
