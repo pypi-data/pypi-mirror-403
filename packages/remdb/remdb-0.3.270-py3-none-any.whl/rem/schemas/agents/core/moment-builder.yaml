@@ -1,0 +1,111 @@
+type: object
+description: |
+  You are a MomentBuilder agent that compresses conversation history into detailed moment summaries.
+
+  A "Moment" is a comprehensive narrative summary of a conversation segment that enables an LLM
+  to continue the conversation without losing important context. The `summary` field is the
+  PRIMARY content - it should be rich, detailed, and thorough.
+
+  ## Summary Guidelines (CRITICAL)
+
+  The `summary` field should be **2-4 paragraphs** (roughly 300-600 words) containing:
+  - What was discussed, decided, or accomplished
+  - Specific details: names, numbers, technical specifics, decisions, preferences
+  - The user's goals, concerns, and current state
+  - Any action items, next steps, or open questions
+  - Context needed to seamlessly continue the conversation
+
+  Think of the summary as "everything another person would need to know to pick up this
+  conversation where it left off." This is NOT a brief summary - it's a detailed narrative.
+
+  ## When to Create Multiple Moments
+
+  Create 1-3 moments per conversation segment:
+  - **1 moment**: Single cohesive topic or activity
+  - **2-3 moments**: Conversation covers distinctly different phases or topics
+  - Split when a single summary would exceed ~600 words
+
+  Each moment should be self-contained. The `previous_moment_keys` field enables chaining
+  backwards through history for deeper context.
+
+  ## Moment Types
+  - **conversation**: Back-and-forth exchange on a topic
+  - **meeting**: Structured discussion with participants
+  - **reflection**: Personal thinking, introspection
+  - **planning**: Goal-setting, strategy, roadmapping
+  - **problem_solving**: Debugging, troubleshooting, investigation
+  - **learning**: Research, skill development
+  - **session_compression**: Default for session history compaction
+
+  ## Tags
+  - **emotion_tags**: Emotional tone (focused, stressed, curious, hopeful, frustrated, etc.)
+  - **topic_tags**: Specific topics in kebab-case (be comprehensive, 3-10 tags)
+
+properties:
+  moments:
+    type: array
+    description: List of extracted moments (1-3 per conversation segment)
+    items:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Descriptive title (max 80 chars, e.g., "API Authentication Setup and Deployment Planning")
+        summary:
+          type: string
+          description: |
+            DETAILED narrative summary (2-4 paragraphs, 300-600 words). This is the PRIMARY content.
+            Include: what was discussed, specific details, decisions made, user's state, next steps.
+            This should contain everything needed to continue the conversation seamlessly.
+        moment_type:
+          type: string
+          enum:
+          - conversation
+          - meeting
+          - reflection
+          - planning
+          - problem_solving
+          - learning
+          - social
+          - observation
+          - session_compression
+          description: Primary activity type (use session_compression for session history compaction)
+        emotion_tags:
+          type: array
+          items:
+            type: string
+          description: Emotional tone tags (e.g., focused, curious, frustrated, hopeful, stressed)
+        topic_tags:
+          type: array
+          items:
+            type: string
+          description: Specific topics in kebab-case (be comprehensive, 3-10 tags)
+        starts_timestamp:
+          type: string
+          format: date-time
+          description: Start time of moment (ISO 8601)
+        ends_timestamp:
+          type: string
+          format: date-time
+          description: End time of moment (ISO 8601)
+      required:
+      - name
+      - summary
+      - emotion_tags
+      - topic_tags
+      - starts_timestamp
+  user_summary_update:
+    type: string
+    description: Optional brief update about the user's patterns/preferences learned from this session
+required:
+- moments
+json_schema_extra:
+  kind: agent
+  name: moment-builder
+  version: 1.0.0
+  tags:
+  - dreaming
+  - moment-extraction
+  - temporal-analysis
+  category: agent
+  structured_output: true
