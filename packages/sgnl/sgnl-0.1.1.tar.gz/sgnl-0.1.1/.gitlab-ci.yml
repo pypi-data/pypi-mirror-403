@@ -1,0 +1,124 @@
+stages:
+  - .pre
+  - build
+  - container
+  - test
+  - publish
+  - deploy
+  - .post
+
+
+include:
+  - component: git.ligo.org/computing/gitlab/components/python/sdist@2
+  - component: git.ligo.org/computing/gitlab/components/python/wheel@2
+  - component: git.ligo.org/computing/gitlab/components/python/code-quality@2
+    inputs:
+      requirements: ".[lint]"
+  - component: git.ligo.org/computing/gitlab/components/python/dependency-scanning@2
+#  - component: git.ligo.org/computing/gitlab/components/python/type-checking@2
+  - component: git.ligo.org/computing/gitlab/components/python/test@2
+    inputs:
+      install_extra: test
+      python_versions:
+        - "3.11"
+        - "3.12"
+  - component: git.ligo.org/computing/gitlab/components/mkdocs/build@1
+    inputs:
+      image: python:3.12
+      project_dir: "."
+      requirements: ".[docs]"
+  - component: git.ligo.org/computing/gitlab/components/mkdocs/pages@1
+    inputs:
+      pages_when: "default"
+  - component: git.ligo.org/computing/gitlab/components/docker/build@2
+    inputs:
+      stage:      container
+      dockerfile: container/Dockerfile
+      image_tag:  $CI_COMMIT_SHA
+  - component: git.ligo.org/computing/gitlab/components/docker/push@2
+    inputs:
+      pull_image_tag:  $CI_COMMIT_SHA
+      stage:           publish
+
+sdist:
+  cache: []
+  before_script:
+    - export SETUPTOOLS_SCM_DEBUG=1
+
+wheel:
+  cache: []
+
+flake8-code_quality:
+  image: python:3.12
+  before_script:
+    - echo "Installing SGN Family libraries"
+    - |
+      pip install --no-cache-dir -r build_requirements.txt
+      
+
+python_test:
+  before_script:
+    - echo "Manually installing system dependencies"
+    - |
+      apt-get update
+      apt-get install git-lfs
+    - echo "Manually installing dependencies"
+    - |
+      pip install lalsuite
+      pip install --no-cache-dir torch
+      pip install --no-cache-dir gwpy
+    - echo "Installing SGN Family libraries excluding Strike"
+    - |
+      pip install --no-cache-dir -r build_requirements.txt
+    - echo "Setting up strike data"
+    - |
+      strike-config set --setup
+
+
+check_makefile:
+  image: python:3.11
+  stage: test
+  script:
+    - echo "Installing system dependencies"
+    - |
+      apt-get update
+      apt-get install -yqq make git-lfs
+    - echo "Installing Python dependencies"
+    - |
+      pip install lalsuite
+      pip install --no-cache-dir torch
+      pip install --no-cache-dir gwpy
+    - echo "Installing SGN Family libraries"
+    - |
+      pip install --no-cache-dir -r build_requirements.txt
+    - echo "Setting up strike data"
+    - |
+      strike-config set --setup
+    - echo "Installing package with dev dependencies"
+    - |
+      pip install ".[dev]"
+    - echo "Running make all"
+    - make all
+
+mkdocs:
+  before_script:
+    - echo "Manually installing dependencies"
+    - |
+      pip install --no-cache-dir lalsuite
+      pip install --no-cache-dir torch
+      pip install --no-cache-dir gwpy
+    - echo "Installing SGN Family libraries"
+    - |
+      pip install --no-cache-dir -r build_requirements.txt
+
+##
+## This is requred by git.ligo.org/computing/gitlab/components/docker/push
+## to add a docker tag corresponding to the gitlab tag and "latest"
+## when a tag is committed.
+##
+docker_push_gitlab:
+  rules:
+    # Run on all branches
+    - if: $CI_COMMIT_BRANCH
+    # Run on all tags
+    - if: $CI_COMMIT_TAG

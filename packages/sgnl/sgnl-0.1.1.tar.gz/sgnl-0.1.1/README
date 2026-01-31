@@ -1,0 +1,40 @@
+  The Bug
+
+  When using argparse with action="append" and nargs="+", direct arguments create a list of lists:
+  # -i file1.db file2.db  →  options.input_database_file = [["file1.db", "file2.db"]]
+
+  The flattening logic expects this structure:
+  options.input_database_file = [url for sublist in options.input_database_file for url in sublist]
+  # Result: ["file1.db", "file2.db"]  ✓
+
+  But cache entries are added as plain strings:
+  options.input_database_file += [CacheEntry(line).path for line in open(cache)]
+  # Result: [["file1.db", "file2.db"], "/path/to/cached.db"]
+
+  When flattening iterates over a string, it gets individual characters:
+  # Iterating "for url in '/path/to/cached.db'" gives: '/', 'p', 'a', 't', 'h', ...
+
+  Sample Command Lines
+
+  WORKS - Direct arguments only:
+  sgnl-assign-far -i file1.db file2.db -o out1.db out2.db --input-rankingstatpdf-file ranking.xml.gz
+
+  WORKS - Multiple -i flags (still all nested lists):
+  sgnl-assign-far -i file1.db -i file2.db -o out1.db out2.db --input-rankingstatpdf-file ranking.xml.gz
+
+  FAILS - Cache file only:
+  sgnl-assign-far --input-database-cache inputs.cache -o out.db --input-rankingstatpdf-file ranking.xml.gz
+  # Cache entries become strings, flattening iterates over characters
+
+  FAILS - Mixed direct + cache:
+  sgnl-assign-far -i file1.db --input-database-cache inputs.cache -o out1.db out2.db --input-rankingstatpdf-file ranking.xml.gz
+  # [["file1.db"], "/path/from/cache.db"] - cache path becomes character array
+
+  The Fix
+
+  Wrap cache entries in a list so they match the nested structure:
+  # Before (buggy):
+  options.input_database_file += [CacheEntry(line).path for line in open(cache)]
+
+  # After (fixed):
+  options.input_database_file += [[CacheEntry(line).path] for line in open(cache)]

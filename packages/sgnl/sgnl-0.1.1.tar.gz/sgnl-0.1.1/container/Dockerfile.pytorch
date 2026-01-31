@@ -1,0 +1,25 @@
+FROM  pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+##
+## Install system packages.
+##
+RUN apt update && \
+    apt install -y build-essential git-lfs kafkacat curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /usr/local/src
+
+COPY . sgnl/
+RUN git lfs install && \
+    git clone https://git.ligo.org/greg/strike.git && \
+    git clone https://git.ligo.org/greg/stillsuit.git && \
+    git clone https://git.ligo.org/greg/sgn.git && \
+    git clone https://git.ligo.org/greg/sgn-ts.git && \
+    git clone https://git.ligo.org/greg/sgn-ligo.git && \
+    git clone https://git.ligo.org/greg/sgn-event.git && \
+    (cd stillsuit && pip3 --no-cache-dir install .) && \
+    (cd strike && pip3 --no-cache-dir install .) && \
+    (cd sgn && pip3 --no-cache-dir install .) && \
+    (cd sgn-event && pip3 --no-cache-dir install .) && \
+    (cd sgn-ts && pip3 --no-cache-dir install .) && \
+    (cd sgn-ligo && pip3 --no-cache-dir install .) && \
+    (cd sgnl && pip3 --no-cache-dir install .[dag])

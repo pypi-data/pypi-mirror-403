@@ -1,0 +1,125 @@
+# Supported types (https://www.sqlite.org/datatype3.html)
+#
+#   NULL. The value is a NULL value.
+#   INTEGER. The value is a signed integer, stored in 0, 1, 2, 3, 4, 6, or 8 bytes depending on the magnitude of the value.
+#   REAL. The value is a floating point value, stored as an 8-byte IEEE floating point number.
+#   TEXT. The value is a text string, stored using the database encoding (UTF-8, UTF-16BE or UTF-16LE).
+#   BLOB. The value is a blob of data, stored exactly as it was input.
+#
+#   Reserved column names start with "_" or "__",
+#   - "_": required to be provided by the user, e.g., "_filter_id"
+#   - "__": will be filled in by stillsuit, e.g., "__trigger_id", "__trigger_map_id",
+#           "__simulation_id", "__event_id"
+#
+process:
+  columns:
+    - {name: "__process_id", type: INTEGER, constraints: PRIMARY KEY}
+    - {name: "end_time", type: INTEGER}
+    - {name: "ifos", type: TEXT}
+    - {name: "is_online", type: INTEGER}
+    - {name: "node", type: TEXT}
+    - {name: "program", type: TEXT}
+    - {name: "start_time", type: INTEGER}
+    - {name: "unix_procid", type: INTEGER}
+    - {name: "username", type: TEXT}
+  relationships: []
+  static: True
+
+process_params:
+  columns:
+    - {name: "__param_id", type: INTEGER, constraints: PRIMARY KEY}
+    - {name: "param", type: TEXT}
+    - {name: "program", type: TEXT}
+    - {name: "value", type: TEXT}
+  relationships: []
+  static: True
+
+filter:
+  columns:
+    - {name: "_filter_id", type: INTEGER, constraints: UNIQUE}
+    - {name: "bank_id", type: INTEGER}
+    - {name: "subbank_id", type: INTEGER}
+    - {name: "end_time_delta", type: INTEGER}
+    - {name: "mass1", type: REAL}
+    - {name: "mass2", type: REAL}
+    - {name: "spin1x", type: REAL}
+    - {name: "spin1y", type: REAL}
+    - {name: "spin1z", type: REAL}
+    - {name: "spin2x", type: REAL}
+    - {name: "spin2y", type: REAL}
+    - {name: "spin2z", type: REAL}
+    - {name: "template_duration", type: INTEGER}
+  relationships: []
+  static: True
+
+segment:
+  columns:
+    - {name: "__segment_id", type: INTEGER, constraints: PRIMARY KEY}
+    - {name: "start_time", type: INTEGER}
+    - {name: "end_time", type: INTEGER}
+    - {name: "ifo", type: TEXT, size: 2}
+    - {name: "name", type: TEXT, size: 15}
+  relationships: []
+  static: True
+
+simulation:
+  columns:
+    - {name: "_simulation_id", type: INTEGER, constraints: UNIQUE}
+    - {name: "coa_phase", type: REAL}
+    - {name: "distance", type: REAL}
+    - {name: "f_final", type: REAL}
+    - {name: "f_lower", type: REAL}
+    - {name: "geocent_end_time", type: INTEGER}
+    - {name: "inclination", type: REAL}
+    - {name: "polarization", type: REAL}
+    - {name: "mass1", type: REAL}
+    - {name: "mass2", type: REAL}
+    - {name: "snr_H1", type: REAL}
+    - {name: "snr_L1", type: REAL}
+    - {name: "snr_V1", type: REAL}
+    - {name: "spin1x", type: REAL}
+    - {name: "spin1y", type: REAL}
+    - {name: "spin1z", type: REAL}
+    - {name: "spin2x", type: REAL}
+    - {name: "spin2y", type: REAL}
+    - {name: "spin2z", type: REAL}
+    - {name: "waveform", type: TEXT}
+  relationships: []
+  static: True
+
+trigger:
+  columns:
+    - {name: "__trigger_id", type: INTEGER, constraints: PRIMARY KEY}
+    - {name: "_filter_id", type: INTEGER}
+    - {name: "epoch_start", type: INTEGER}
+    - {name: "epoch_end", type: INTEGER}
+    - {name: "ifo", type: TEXT, size: 2}
+    - {name: "time", type: INTEGER}
+    - {name: "snr", type: REAL}
+    - {name: "chisq", type: REAL}
+    - {name: "phase", type: REAL}
+    - {name: "chisq_weighted_snr", type: REAL}
+  relationships: [{"filter": "_filter_id"}]
+  static: False
+
+event:
+  columns:
+    - {name: "__event_id", type: INTEGER, constraints: PRIMARY KEY}
+    - {name: "_simulation_id", type: INTEGER}
+    - {name: "time", type: INTEGER}
+    - {name: "network_snr", type: REAL}
+    - {name: "network_chisq_weighted_snr", type: REAL}
+    - {name: "likelihood", type: REAL, default: 0.0}
+    - {name: "false_alarm_probability", type: REAL}
+    - {name: "combined_far", type: REAL}
+  relationships: []
+  static: False
+
+trigger_map:
+  columns:
+    - {name: "__trigger_map_id", type: INTEGER, constraints: PRIMARY KEY}
+    - {name: "__event_id", type: INTEGER}
+    - {name: "__trigger_id", type: INTEGER}
+  relationships: [{"event": "__event_id", "trigger": "__trigger_id"}]
+  indices: {"trigger_map_index1":["__event_id",], "trigger_map_index2":["__trigger_id",], "trigger_map_index3":["__trigger_id","__event_id"]}
+  static: False
