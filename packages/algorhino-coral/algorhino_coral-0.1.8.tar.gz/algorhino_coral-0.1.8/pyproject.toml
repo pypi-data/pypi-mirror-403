@@ -1,0 +1,277 @@
+[build-system]
+requires = ["setuptools>=80.9.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "algorhino-coral"
+version = "0.1.8"
+description = "Shared types and utilities for evalaution"
+requires-python = ">=3.13"
+
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+
+readme = { file = "README.md", content-type = "text/markdown" }
+
+authors = [
+  { name = "Victor Gabillon", email = "victorgabillon@gmail.com" }
+]
+
+dependencies = [
+"torch",
+    "valanga>=0.1.13",
+    "PyYAML",
+    "dacite",
+    "rich",
+    "chess",
+
+
+]
+
+
+
+
+[project.optional-dependencies]
+test = [
+    # Testing dependencies
+    "pytest>=8.4.1",
+    "coverage",
+    "pytest-cov>=6.0.0"
+]
+
+
+lint = [
+  "ruff>=0.14.1",
+  "pylint>=3.3.8",
+]
+
+typecheck = [
+  "mypy>=1.18.2",
+  "pyright[nodejs]>=1.1.408",
+  "types-PyYAML>=6.0.12.12",
+]
+
+
+dev = [
+    # Development dependencies (includes test)
+    "tox>=4.30.2",
+    "types-PyYAML>=6.0.12.12",
+
+    # Linting & formatting
+    "ruff>=0.14.1",
+    "pylint>=3.3.8",
+    "black>=25.1.0",
+
+    # Type checking
+    "mypy>=1.18.2",
+    "pyright>=1.1.406",
+
+    # Building & publishing
+    "build",
+    "twine",
+
+    # Documentation
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints",
+
+    # Pre-commit hooks
+    "pre-commit"
+
+
+]
+
+
+
+
+
+[tool.pytest.ini_options]
+addopts = "--cov=coral"
+testpaths = [
+    "tests"
+]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
+ignore_missing_imports = true
+show_error_codes = true
+warn_unreachable = true
+no_implicit_reexport = true
+
+# Disallow untyped definitions and calls
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+
+# None and optional handling
+no_implicit_optional = true
+
+# Configuring warnings
+warn_unused_ignores = true
+warn_no_return = true
+warn_return_any = true
+warn_redundant_casts = true
+
+# Misc things
+strict_equality = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "PySide6",
+    "PySide6.*"
+]
+ignore_missing_imports = true
+follow_imports = 'skip'
+
+
+
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+# Enable import sorting (alphabetical + group order)
+lint.select = ["I", "F", "E", "B", "TCH"]  # I = imports, F = pyflakes, E = pycodestyle, TCH = type-checking, B = black
+
+# Allow auto-fixing for imports and type-checking imports
+lint.fixable = ["I", "TCH", "F401"]
+
+# Ignore rules you don't care about
+lint.ignore = [ "E501"]
+
+# Optional: add your first-party package to extend the known group
+[tool.ruff.lint.per-file-ignores]
+# If needed, can add file-specific ignores
+
+[tool.black]
+line-length = 88
+target-version = ['py313']
+
+[tool.pylint]
+py-version = "3.13"
+extension-pkg-whitelist = ["PyQt5", "PySide6"]
+
+[tool.pylint.format]
+max-line-length = 88
+
+#[tool.pylint.messages_control]
+disable = ["C0301","W0511","R0903",    "unnecessary-ellipsis","R0902"]
+
+[tool.pylint.typecheck]
+# Optional: same as init-hook in .pylintrc
+init-hook = "import sys; sys.path.append('.')"
+
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingImports = true
+reportUnusedImport = true
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportPrivateImportUsage = false
+
+
+#################### TOX ####################
+
+[tool.tox]
+min_version = "4.30.2"
+env_list = ["py313", "lint", "typecheck", "build"]
+isolated_build = true
+
+[tool.tox.env_run_base]
+base_python = ["python3.13"]
+set_env = { PIP_NO_CACHE_DIR = "1" }
+
+# ----------------
+# Tests (realistic)
+# ----------------
+[tool.tox.env.py313]
+description = "Run tests"
+extras = ["test"]
+commands_pre = [
+  ["python", "-m", "pip", "install", "--upgrade", "pip"],
+  # CPU-only torch (keeps CI stable and lighter)
+  ["python", "-m", "pip", "install", "--only-binary=:all:", "--index-url", "https://download.pytorch.org/whl/cpu", "torch"],
+]
+commands = [
+  ["pytest", "{posargs}"],
+]
+
+# ----------------
+# Lint (fast)
+# ----------------
+[tool.tox.env.lint]
+description = "ruff + pylint (fast, no package build/install)"
+package = "skip"
+deps = [
+  # runtime deps needed for imports/type inference in pylint
+  "torch",
+  "PyYAML",
+  "dacite",
+  "rich",
+  "chess",
+  # IMPORTANT: replace local file path with a normal dependency for CI.
+  # If valanga is published, use "valanga>=0.1.2".
+  # If not, install from VCS or let CI install it separately.
+    "valanga>=0.1.13",
+
+  # tools
+  "ruff>=0.14.1",
+  "pylint>=3.3.8",
+]
+set_env = { PYTHONPATH = "{toxinidir}/src" }
+commands = [
+  ["python", "-m", "ruff", "check", "src", "tests"],
+  ["python", "-m", "ruff", "format", "--check", "src", "tests"],
+  ["python", "-m", "pylint", "src/coral"],
+]
+
+# ----------------
+# Typecheck (fast)
+# ----------------
+[tool.tox.env.typecheck]
+description = "mypy + pyright (fast, no package build/install)"
+package = "skip"
+deps = [
+  # runtime deps to avoid import noise
+  "torch",
+  "PyYAML",
+  "dacite",
+  "rich",
+  "chess",
+    "valanga>=0.1.13",
+
+  # tools
+  "mypy>=1.18.2",
+  "pyright[nodejs]>=1.1.408",
+  "types-PyYAML>=6.0.12.12",
+]
+set_env = { MYPYPATH = "{toxinidir}/src" }
+commands = [
+  ["python", "-m", "mypy", "--config-file", "pyproject.toml", "src/coral"],
+  ["python", "-m", "pyright", "src/coral"],
+]
+
+# ----------------
+# Build (release)
+# ----------------
+[tool.tox.env.build]
+description = "Build sdist/wheel and validate metadata"
+package = "skip"
+deps = [
+  "build",
+  "twine",
+]
+commands = [
+  ["python", "-m", "build", "--sdist", "--wheel", "--outdir", "dist/"],
+  ["python", "-m", "twine", "check", "dist/*"],
+]
+
+#################### END TOX ####################
