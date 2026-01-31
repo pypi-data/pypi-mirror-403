@@ -1,0 +1,259 @@
+Metadata-Version: 2.4
+Name: obj2xml-rs
+Version: 0.2.0
+Classifier: Programming Language :: Rust
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+License-File: LICENSE
+Summary: High-performance, memory-efficient XML to Dict, Dict to XML for Python, written in Rust.
+Keywords: xml,dict,json,python,rust,obj2xml,obj2xml-rs,efficient
+Author-email: Muhammad Ali <usermalikhan@gmail.com>
+License: Apache-2.0
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: Homepage, https://github.com/m-ali-ubit/obj2xml-rs
+Project-URL: Issues, https://github.com/m-ali-ubit/obj2xml-rs/issues
+Project-URL: Repository, https://github.com/m-ali-ubit/obj2xml-rs
+
+# Obj2XML-rs
+
+[![PyPI version](https://img.shields.io/pypi/v/obj2xml-rs.svg)](https://pypi.org/project/obj2xml-rs/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/obj2xml-rs.svg)](https://pypi.org/project/obj2xml-rs/)
+
+**High-performance, memory-efficient XML serializer and parser for Python, written in Rust.**
+
+A fast, deterministic, streaming-capable JSON↔XML tool with Python ergonomics. `obj2xml-rs` is a drop-in replacement for
+libraries like `xmltodict` but designed for speed, scalability, and correctness.
+It leverages Rust's zero-copy optimizations and streaming capabilities to handle massive datasets without exhausting system memory.
+
+### Features
+*   **Blazing Fast**: Built on `quick-xml` with Zero-Copy (`Cow<str>`) optimizations. 5-15x faster than pure Python.
+*   **True Streaming**: Supports Python Generators and Iterators. Writes huge XML files item-by-item directly to disk.
+*   **Robust Error Context**: Exceptions include the full XML path (e.g., `Error at root/users/[3]/@id`).
+*   **Safe**: Includes cycle detection to prevent infinite recursion crashes.
+*   **Professional Spec**: Supports Namespaces, CDATA, Comments, Processing Instructions, and deterministic attribute sorting.
+*   **Pythonic**: Supports `default` handlers for custom types (like `datetime`), similar to `json.dump`.
+---
+### Installation
+
+```bash
+pip install obj2xml-rs
+```
+---
+### Quick Start
+
+#### 1. Unparse (Dict → XML)
+
+```python
+import obj2xml_rs
+
+data = {
+    "root": {
+        "@id": "123",
+        "name": "Rust",
+        "features": ["Fast", "Safe"]
+    }
+}
+print(obj2xml_rs.unparse(data, pretty=True))
+```
+**Output:**
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<root id="123">
+  <name>Rust</name>
+  <features>Fast</features>
+  <features>Safe</features>
+</root>
+```
+#### 2. Parse (XML → Dict)
+
+```python
+xml = '<root id="1"><item>A</item><item>B</item></root>'
+data = obj2xml_rs.parse(xml)
+print(data)
+# {'root': {'@id': '1', 'item': ['A', 'B']}}
+```
+#### 3. Streaming (Low Memory Write)
+
+Generate XML from a generator. Writes to file incrementally.
+```python
+def huge_data():
+    for i in range(1_000_000):
+        yield {"row": {"id": i, "val": f"data_{i}"}}
+
+obj2xml_rs.unparse(
+    huge_data(), 
+    output="large.xml", 
+    streaming=True, 
+    item_name="row"
+)
+```
+---
+### Specification & Behavior
+This section defines how Python structures map to XML.
+#### 1. Reserved Keys
+
+The following keys have special meaning in a dictionary:
+
+|    Key    |                             Description                             | Example                                                         |
+|:---------:|:-------------------------------------------------------------------:|:----------------------------------------------------------------|
+|   @key    |                 XML Attribute (prefix configurable)                 | {"@id": 1} → <tag id="1">                                       |
+|   #text   |                        Element text content                         | {"tag": {"#text": "Hello"}} → <tag>Hello</tag>                  |
+| #comment  |                             XML Comment                             | {"#comment": "Note"} → <!--Note-->                              |
+|   ?key    |                       Processing Instruction                        | {"?xml-stylesheet": "href..."} → <?xml-stylesheet href...?>     |
+|   #tail   | Text content appearing immediately after the element's closing tag. | {"b": {"#text": "Bold", "#tail": " text"}} → < b>Bold</ b> text |
+| __cdata__ |                            CDATA Wrapper                            | {"#text": {"__cdata__": "x<y"}} → <![CDATA[x<y]]>               |
+
+#### 2. Element Mapping & Lists
+*   **Dict Keys**: Map directly to XML Element names.
+*   **Lists**: Keys containing a list generate repeated elements with the same name.
+    ```python
+    {"items": {"item": [1, 2]}} 
+    # <items><item>1</item><item>2</item></items>
+    ```
+*   **Root Primitives**: If the input is a list of primitives, they are wrapped in `item_name`.
+    ```python
+    unparse([1, 2], item_name="n", full_document=False)
+    # <n>1</n><n>2</n>
+    ```
+
+#### 3. Attributes & Sorting
+*   Keys starting with `attr_prefix` (default `"@"`) become attributes.
+*   **Values**: Any serializable value is accepted. Dicts/Lists in attributes are stringified.
+*   **Sorting**: Attributes follow Python insertion order by default. Use `sort_attributes=True` for deterministic output (attributes sorted lexicographically).
+
+#### 4. Namespaces
+Namespaces can be declared in three ways:
+
+1.  **Static (Root Scope)**: Best practice for clean XML.
+    ```python
+    unparse(data, namespaces={"soap": "http://example.com/soap"})
+    # <root xmlns:soap="http://example.com/soap"> ...
+    ```
+2.  **Inline Declarations**:
+    ```python
+    {"root": {"@xmlns:x": "urn:x", "x:child": 1}}
+    ```
+3.  **Dynamic Assignment**:
+    ```python
+    {"tag": {"@ns": "urn:auto"}}
+    # Automatically generates prefixes (ns0, ns1...)
+    ```
+
+#### 5. Advanced Nodes
+*   **CDATA**: Use the `__cdata__` key inside a text node.
+*   **Comments**: Use `#comment`.
+*   **Processing Instructions**: Keys starting with `?`.
+    ```python
+    {"root": {"?xml-stylesheet": 'type="text/xsl" href="style.xsl"'}}
+    ```
+
+#### 6. Constraints & Validation policies
+*   **XML Names**: No validation of XML name syntax is performed. If you pass `{"<invalid>": 1}`, invalid XML will be generated.
+*   **Mixed Content**: Mixed `#text` and child elements are allowed.
+    ```python
+    {"p": {"#text": "Hello", "b": "World"}} 
+    # Valid: <p>Hello<b>World</b></p>
+    ```
+*   **Root Rules**:
+   *   `full_document=True` (default): Requires exactly one root element.
+   *   `full_document=False`: Allows multiple roots (XML Fragment).
+
+### Error Handling
+
+Errors are actionable and include the full path to the problematic node.
+```python
+def fail_serializer(obj):
+    raise ValueError("Bad data")
+
+data = {"users": [{"name": "Alice", "meta": {"@date": object()}}]}
+
+try:
+    unparse(data, default=fail_serializer)
+except ValueError as e:
+    print(e)
+```
+
+**Output:**
+```text
+Custom serialization failed: Bad data (at users/[0]/meta/@date)
+```
+*   **Circular References**: A `RecursionError` is raised if an object references itself.
+
+### API Reference
+
+#### Unparse (Write)
+```python
+def unparse(
+   input: Union[Dict, Iterable, Any],
+   *,
+   output: Optional[Union[str, IO]] = None,
+   encoding: str = "utf-8",
+   full_document: bool = True,
+   attr_prefix: str = "@",
+   cdata_key: str = "#text",
+   pretty: bool = False,
+   indent: str = "  ",
+   compat: str = "native",
+   streaming: bool = False,
+   default: Optional[Callable[[Any], str]] = None,
+   item_name: str = "item",
+   sort_attributes: bool = False,
+   namespaces: Optional[Dict[str, str]] = None
+) -> str:
+```
+
+#### Parse (Read)
+```python
+def parse(
+    xml_input: Union[str, bytes, IO],
+    *,
+    encoding: Optional[str] = None,
+    attr_prefix: str = "@",
+    cdata_key: str = "#text",
+    force_cdata: bool = False,
+    process_namespaces: bool = False,
+    namespace_separator: str = ":",
+    strip_whitespace: bool = True,
+    force_list: Optional[Iterable[str]] = None,
+    process_comments: bool = False
+) -> Dict[str, Any]:
+```
+
+### CLI Usage
+
+**JSON to XML (Unparse)**
+```bash
+# Basic
+python -m obj2xml_rs unparse input.json -o output.xml --pretty
+
+# Streaming from Pipe
+cat huge.json | python -m obj2xml_rs unparse --stream --item-name "record" > out.xml
+```
+
+**XML to JSON (Parse)**
+```bash
+# Convert XML file to JSON
+python -m obj2xml_rs parse data.xml -o data.json --pretty
+
+# Force specific tags to be lists
+python -m obj2xml_rs parse data.xml --force-list item user
+```
+
+### Python XML Library Comparison Matrix
+|     Feature      |                              obj2xml-rs                               |          xmltodict           |                     xmltodict-rs                      |             dicttoxml             | quick-xmltodict |
+|:----------------:|:---------------------------------------------------------------------:|:----------------------------:|:-----------------------------------------------------:|:---------------------------------:|:----------------|
+|     Language     |                              Rust (PyO3)                              |            Python            |                      Rust (PyO3)                      |              Python               | Rust (PyO3)     |
+|   Capabilities   |                              Read & Write                             |         Read & Write         |                     Read & Write                      |            Write Only             | Read Only       |
+|   Write Speed    |                                 High                                  |             Low              |                         High                          |                Low                | N/A             |
+|Write Memory Model|                         Streaming / Zero-Copy                         |    In-Memory Object Graph    |                   In-Memory String                    |         In-Memory String          | N/A             |
+|  Stream Writing  |                           Yes (Generators)                            |              No              |                          No                           |                No                 | N/A             |
+|  Async Support   |                             Yes (asyncio)                             |              No              |                          No                           |                No                 | N/A             |
+| Cycle Detection  | Yes, detects cycles early and<br/>raises path-aware Python exceptions |No — fails with RecursionError|No — causes interpreter crash (SIGSEGV) on cyclic input|  No — fails with RecursionError   | N/A             |
+|  Error Context   |                              Path-Aware                               |           Generic            |                        Generic                        |              Generic              | N/A             |
+|    Attributes    |                            Deterministicc                             |       Insertion Order        |                    Insertion Order                    |Non-deterministic unless pre-sorted| N/A             |
+|    Namespaces    |                                  Yes                                  |             Yes              |                          Yes                          |              Limited              | N/A             |
+
+### 📄 License
+This project is licensed under the Apache License 2.0.
+
