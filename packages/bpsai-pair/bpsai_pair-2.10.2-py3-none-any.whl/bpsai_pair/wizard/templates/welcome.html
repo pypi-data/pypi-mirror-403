@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="welcome-page">
+    <div class="welcome-header">
+        <h2>Welcome to PairCoder</h2>
+        <p class="value-prop">AI-augmented pair programming for developers and vibe-coders who ship fast.</p>
+    </div>
+
+    <div class="prerequisites">
+        <h3>Before we begin, please confirm: <span class="required-label">(required)</span></h3>
+        <div class="checklist">
+            <label class="checkbox-item">
+                <input type="checkbox" id="prereq-ide" class="prereq-checkbox" onchange="updatePrereqState()">
+                <span>I have VS Code (or another IDE) installed</span>
+                <span class="prereq-tooltip" title="PairCoder integrates with your IDE for the best experience">?</span>
+            </label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="prereq-claude" class="prereq-checkbox" onchange="updatePrereqState()">
+                <span>I have Claude Code installed and working</span>
+                <span class="prereq-tooltip prereq-critical" title="Required for Guided Setup chat to function">?</span>
+            </label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="prereq-project" class="prereq-checkbox" onchange="updatePrereqState()">
+                <span>I have a project folder ready</span>
+                <span class="prereq-tooltip" title="PairCoder will create configuration files in your project">?</span>
+            </label>
+        </div>
+        <p id="prereq-warning" class="prereq-warning hidden">
+            Please confirm all prerequisites before continuing
+        </p>
+        <p class="prereq-help">
+            Not ready? <a href="https://paircoder.ai/#/docs/getting-started" target="_blank" rel="noopener">See our Getting Started Guide</a>
+        </p>
+    </div>
+
+    <div class="track-selection">
+        <h3>How would you like to set up?</h3>
+
+        <div class="track-options">
+            <button class="track-card" data-track="guided" onclick="selectTrack('guided')">
+                <span class="track-icon">💬</span>
+                <div class="track-info">
+                    <h4>Guided Setup</h4>
+                    <p>I have an idea but need help figuring out what to build</p>
+                </div>
+            </button>
+
+            <button class="track-card" data-track="quick" onclick="selectTrack('quick')">
+                <span class="track-icon">⚡</span>
+                <div class="track-info">
+                    <h4>Quick Setup</h4>
+                    <p>I know what I'm building, just configure PairCoder</p>
+                </div>
+            </button>
+        </div>
+
+        {% if has_existing_project %}
+        <div class="existing-project">
+            <button class="btn btn-secondary" onclick="selectTrack('update')">
+                ✏️ Update Existing Project
+            </button>
+            <p class="existing-hint">Detected existing .paircoder configuration</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<script>
+// Track prerequisite checkbox states
+function getPrereqState() {
+    return {
+        ide: document.getElementById('prereq-ide').checked,
+        claude: document.getElementById('prereq-claude').checked,
+        project: document.getElementById('prereq-project').checked
+    };
+}
+
+function allPrereqsChecked() {
+    var state = getPrereqState();
+    return state.ide && state.claude && state.project;
+}
+
+function updatePrereqState() {
+    var warning = document.getElementById('prereq-warning');
+    var trackCards = document.querySelectorAll('.track-card');
+
+    if (allPrereqsChecked()) {
+        warning.classList.add('hidden');
+        trackCards.forEach(function(card) {
+            card.classList.remove('disabled');
+        });
+    } else {
+        trackCards.forEach(function(card) {
+            card.classList.add('disabled');
+        });
+    }
+}
+
+function selectTrack(track) {
+    var prereqState = getPrereqState();
+    var warning = document.getElementById('prereq-warning');
+
+    // Guided track requires all prerequisites (especially Claude Code for chat)
+    if (track === 'guided') {
+        if (!allPrereqsChecked()) {
+            warning.classList.remove('hidden');
+            warning.textContent = 'Guided Setup requires all prerequisites, especially Claude Code for the chat feature';
+            return;
+        }
+    }
+
+    // Quick setup: warn but allow if not all checked
+    if (track === 'quick' && !allPrereqsChecked()) {
+        if (!prereqState.claude) {
+            // Claude Code is critical - still warn
+            var proceed = confirm(
+                'Claude Code is not confirmed as installed. ' +
+                'PairCoder works best with Claude Code. Continue anyway?'
+            );
+            if (!proceed) return;
+        } else if (!prereqState.ide || !prereqState.project) {
+            // Other prereqs - just warn
+            warning.classList.remove('hidden');
+            warning.textContent = 'Note: Some prerequisites are not confirmed';
+            // Continue anyway after brief delay to show warning
+        }
+    }
+
+    // Update track: allow without prereqs (updating existing project)
+    if (track === 'update') {
+        // No prereq check for updates
+    }
+
+    fetch('/api/select-track', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({track: track})
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (!data.success) {
+            alert('Error: ' + (data.error || 'Failed to select track'));
+            return;
+        }
+        if (track === 'update') {
+            return loadExistingConfig();
+        }
+        window.location.href = data.next_url || '/step/1';
+    })
+    .catch(function(err) {
+        console.error('Track selection error:', err);
+        alert('Failed to select track. Please try again.');
+    });
+}
+
+function loadExistingConfig() {
+    fetch('/api/load-existing', { method: 'POST' })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/project';
+        } else {
+            alert('Error loading config: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(function(err) {
+        console.error('Config load error:', err);
+        alert('Failed to load existing config. Please try again.');
+    });
+}
+
+// Initialize state on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updatePrereqState();
+});
+</script>
+{% endblock %}
