@@ -1,0 +1,80 @@
+[project]
+name = "bonepick"
+dynamic = ["version"]
+description = "CLI tool for training efficient CPU-based text quality classifiers and annotating data for distillation of classifiers."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Luca Soldaini", email = "luca@soldaini.net" }
+]
+dependencies = [
+    "torch>=2.9.1",
+    "click",
+    "datasets>=4,<5",
+    "model2vec[train]>=0.7.0",
+    "smart-open[s3]>=7.1.0",
+    "msgspec",
+    "backports-weakref>=1.0.post1",
+    "backports-zstd>=1.2.0",
+    "jq>=1.10.0",
+    "tqdm>=4.66.5",
+    "tokenizers>=0.22.1",
+    "plsfix>=0.1.8",
+    "pyyaml>=6.0.3",
+    "lazy-imports>=1.2.0",
+    "anyascii>=0.3.3",
+]
+
+[project.scripts]
+bonepick = "bonepick.__init__:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/bonepick/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bonepick"]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'"},
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[project.optional-dependencies]
+annotate = [
+    "lm-deluge>=0.0.95,<0.1.0",
+    "platformdirs",
+    "fastmcp",
+    "pydantic<2.12.0",
+    "rich>=13.0.0",
+    "scikit-learn>=1.3.0",
+]
+distill = [
+    "model2vec[distill]>=0.7.0",
+    "tokenlearn>=0.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.14.11",
+]
+
+[tool.ruff]
+line-length = 115
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
