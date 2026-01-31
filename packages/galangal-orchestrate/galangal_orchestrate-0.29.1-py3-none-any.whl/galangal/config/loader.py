@@ -1,0 +1,163 @@
+"""
+Configuration loading and management.
+"""
+
+from pathlib import Path
+
+import yaml
+from pydantic import ValidationError as PydanticValidationError
+
+from galangal.config.schema import GalangalConfig
+from galangal.exceptions import ConfigError
+
+# Global config cache
+_config: GalangalConfig | None = None
+_project_root: Path | None = None
+
+
+def reset_caches() -> None:
+    """Reset all global caches. Used between tests to ensure clean state."""
+    global _config, _project_root
+    _config = None
+    _project_root = None
+
+
+def find_project_root(start_path: Path | None = None) -> Path:
+    """
+    Find the project root by looking for .galangal/ directory.
+    Falls back to git root, then current directory.
+    """
+    if start_path is None:
+        start_path = Path.cwd()
+
+    current = start_path.resolve()
+
+    # Walk up looking for .galangal/
+    while current != current.parent:
+        if (current / ".galangal").is_dir():
+            return current
+        if (current / ".git").is_dir():
+            # Found git root, use this as fallback
+            return current
+        current = current.parent
+
+    # Fall back to start path
+    return start_path.resolve()
+
+
+def get_project_root() -> Path:
+    """Get the cached project root."""
+    global _project_root
+    if _project_root is None:
+        _project_root = find_project_root()
+    return _project_root
+
+
+def set_project_root(path: Path) -> None:
+    """Set the project root (for testing)."""
+    global _project_root, _config
+    _project_root = path.resolve()
+    _config = None  # Reset config cache
+
+
+def load_config(project_root: Path | None = None) -> GalangalConfig:
+    """
+    Load configuration from .galangal/config.yaml.
+
+    Returns default config if file doesn't exist.
+    Raises ConfigError if file exists but is invalid.
+    """
+    global _config, _project_root
+
+    if project_root is not None:
+        _project_root = project_root.resolve()
+    elif _project_root is None:
+        _project_root = find_project_root()
+
+    config_path = _project_root / ".galangal" / "config.yaml"
+
+    if not config_path.exists():
+        _config = GalangalConfig()
+        return _config
+
+    try:
+        data = yaml.safe_load(config_path.read_text()) or {}
+    except yaml.YAMLError as e:
+        raise ConfigError(f"Invalid YAML in {config_path}: {e}") from e
+
+    try:
+        _config = GalangalConfig.model_validate(data)
+        return _config
+    except PydanticValidationError as e:
+        raise ConfigError(f"Invalid configuration in {config_path}: {e}") from e
+
+
+def get_config() -> GalangalConfig:
+    """Get the cached configuration, loading if necessary."""
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
+
+
+def get_tasks_dir() -> Path:
+    """Get the tasks directory path.
+
+    Always returns an absolute path inside the project root.
+    Validates that the configured tasks_dir doesn't escape the project root.
+    """
+    config = get_config()
+    project_root = get_project_root()
+    tasks_dir = (project_root / config.tasks_dir).resolve()
+
+    # Ensure tasks_dir is inside project root (prevent path traversal)
+    try:
+        tasks_dir.relative_to(project_root)
+    except ValueError:
+        # tasks_dir is outside project root - use default
+        tasks_dir = project_root / "galangal-tasks"
+
+    return tasks_dir
+
+
+def get_done_dir() -> Path:
+    """Get the done tasks directory path."""
+    return get_tasks_dir() / "done"
+
+
+def get_active_file() -> Path:
+    """Get the active task marker file path."""
+    return get_tasks_dir() / ".active"
+
+
+def get_prompts_dir() -> Path:
+    """Get the project prompts override directory."""
+    return get_project_root() / ".galangal" / "prompts"
+
+
+def is_initialized() -> bool:
+    """Check if galangal has been initialized in this project.
+
+    Returns:
+        True if .galangal/config.yaml exists.
+    """
+    config_path = get_project_root() / ".galangal" / "config.yaml"
+    return config_path.exists()
+
+
+def require_initialized() -> bool:
+    """Check if initialized and print error if not.
+
+    Use this at the start of commands that require initialization.
+
+    Returns:
+        True if initialized, False if not (error already printed).
+    """
+    if is_initialized():
+        return True
+
+    from galangal.ui.console import print_error, print_info
+
+    print_error("Galangal has not been initialized in this project.")
+    print_info("Run 'galangal init' first to set up your project.")
+    return False
