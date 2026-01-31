@@ -1,0 +1,81 @@
+name: pypi
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build_sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build release sdist
+        run: |
+          python -m pip install build
+          python -m build
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: temet-sdist
+          path: dist/
+
+  build_wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        #os: [ubuntu-latest, macos-13, macos-latest, windows-latest, ubuntu-24.04-arm, windows-11-arm]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build release wheels
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install cibuildwheel
+          python -m cibuildwheel --output-dir dist/
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v5
+        with:
+          name: temet-dists-${{ strategy.job-index }}
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+
+    needs: [build_sdist, build_wheels]
+
+    permissions:
+      # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write
+
+    # Dedicated environments with protections for publishing are strongly recommended.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/temet/
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v6
+        with:
+          #name: temet-sdist
+          pattern: temet-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
