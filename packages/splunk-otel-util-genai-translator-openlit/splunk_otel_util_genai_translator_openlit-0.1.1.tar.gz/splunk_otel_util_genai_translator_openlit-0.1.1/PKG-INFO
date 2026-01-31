@@ -1,0 +1,139 @@
+Metadata-Version: 2.4
+Name: splunk-otel-util-genai-translator-openlit
+Version: 0.1.1
+Summary: openlit -> GenAI translator emitter for OpenTelemetry GenAI
+Project-URL: Homepage, https://github.com/open-telemetry/opentelemetry-python-contrib
+Project-URL: Repository, https://github.com/open-telemetry/opentelemetry-python-contrib
+License-Expression: Apache-2.0
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.9
+Requires-Dist: opentelemetry-api>=1.31.0
+Requires-Dist: opentelemetry-instrumentation~=0.52b1
+Requires-Dist: opentelemetry-sdk>=1.31.0
+Requires-Dist: opentelemetry-semantic-conventions~=0.52b1
+Requires-Dist: splunk-otel-util-genai>=0.1.4
+Provides-Extra: test
+Requires-Dist: pytest>=7.0.0; extra == 'test'
+Description-Content-Type: text/x-rst
+
+OpenTelemetry GenAI OpenLit Translator
+=========================================
+
+This package automatically translates openlit sdk instrumented spans into OpenTelemetry GenAI semantic conventions.
+It intercepts spans with ```gen_ai.*``` openlit specific attributes and creates corresponding spans with ``gen_ai.*`` semantic convention compliant attributes,
+enabling seamless integration between openlit instrumentation and GenAI observability tools.
+
+Mapping Table
+-------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 50 50
+
+   * - Old Key (OpenLit)
+     - New Key (OTel SemConv)
+   * - ``gen_ai.completion.0.content``
+     - ``gen_ai.output.messages``
+   * - ``gen_ai.prompt.0.content``
+     - ``gen_ai.input.messages``
+   * - ``gen_ai.prompt``
+     - ``gen_ai.input.messages``
+   * - ``gen_ai.completion``
+     - ``gen_ai.output.messages``
+   * - ``gen_ai.content.prompt``
+     - ``gen_ai.input.messages``
+   * - ``gen_ai.content.completion``
+     - ``gen_ai.output.messages``
+   * - ``gen_ai.request.embedding_dimension``
+     - ``gen_ai.embeddings.dimension.count``
+   * - ``gen_ai.token.usage.input``
+     - ``gen_ai.usage.input_tokens``
+   * - ``gen_ai.token.usage.output``
+     - ``gen_ai.usage.output_tokens``
+   * - ``gen_ai.llm.provider``
+     - ``gen_ai.provider.name``
+   * - ``gen_ai.llm.model``
+     - ``gen_ai.request.model``
+   * - ``gen_ai.llm.temperature``
+     - ``gen_ai.request.temperature``
+   * - ``gen_ai.llm.max_tokens``
+     - ``gen_ai.request.max_tokens``
+   * - ``gen_ai.llm.top_p``
+     - ``gen_ai.request.top_p``
+   * - ``gen_ai.operation.type``
+     - ``gen_ai.operation.name``
+   * - ``gen_ai.output_messages``
+     - ``gen_ai.output.messages``
+   * - ``gen_ai.session.id``
+     - ``gen_ai.conversation.id``
+   * - ``gen_ai.openai.thread.id``
+     - ``gen_ai.conversation.id``
+   * - ``gen_ai.tool.args``
+     - ``gen_ai.tool.call.arguments``
+   * - ``gen_ai.tool.result``
+     - ``gen_ai.tool.call.result``
+   * - ``gen_ai.vectordb.name``
+     - ``db.system.name``
+   * - ``gen_ai.vectordb.search.query``
+     - ``db.query.text``
+   * - ``gen_ai.vectordb.search.results_count``
+     - ``db.response.returned_rows``
+
+
+Installation
+------------
+.. code-block:: bash
+
+   pip install opentelemetry-util-genai-openlit-translator
+
+Quick Start (Automatic Registration)
+-------------------------------------
+The easiest way to use the translator is to simply import it - no manual setup required!
+
+.. code-block:: python
+
+   from openai import OpenAI
+   import openlit
+   from dotenv import load_dotenv
+   import os
+   import traceback
+
+   load_dotenv()
+
+   try:
+      openlit.init(otlp_endpoint="http://0.0.0.0:4318")
+
+      client = OpenAI(
+         api_key=os.getenv("OPENAI_API_KEY")
+      )
+
+      chat_completion = client.chat.completions.create(
+         messages=[
+               {
+                  "role": "user",
+                  "content": "What is LLM Observability?",
+               }
+         ],
+         model="gpt-3.5-turbo",
+      )
+      print("response:", chat_completion.choices[0].message.content)
+   except Exception as e:
+      print(f"An error occurred: {e}")
+      traceback.print_exc()
+
+
+Tests
+-----
+.. code-block:: bash
+
+   pytest util/opentelemetry-util-genai-openlit-translator/tests
+
