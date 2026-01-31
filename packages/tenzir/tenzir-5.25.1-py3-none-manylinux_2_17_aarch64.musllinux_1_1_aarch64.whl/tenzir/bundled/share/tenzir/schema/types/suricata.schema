@@ -1,0 +1,786 @@
+type suricata.component.common = record {
+  timestamp: time,
+  flow_id: uint64 #index=hash,
+  pcap_cnt: uint64,
+  vlan: list<uint64>,
+  in_iface: string,
+  src_ip: ip,
+  src_port: uint64,
+  dest_ip: ip,
+  dest_port: uint64,
+  proto: string,
+  event_type: string,
+  app_proto: string,
+  app_proto_orig: string,
+  app_proto_tc: string,
+  app_proto_ts: string,
+  icmp_type: uint64,
+  icmp_code: uint64,
+  response_icmp_type: uint64,
+  response_icmp_code: uint64,
+  traffic: record {
+    id: list<string>,
+    label: list<string>,
+  },
+  community_id: string #index=hash
+}
+
+type suricata.component.flow = record {
+  pkts_toserver: uint64,
+  pkts_toclient: uint64,
+  bytes_toserver: uint64,
+  bytes_toclient: uint64,
+  start: time,
+  end: time,
+  age: uint64,
+  state: string,
+  reason: string,
+  alerted: bool,
+  wrong_thread: bool,
+  bypass: string,
+  bypassed: record {
+    pkts_toserver: uint64,
+    pkts_toclient: uint64,
+    bytes_toserver: uint64,
+    bytes_toclient: uint64
+  },
+  tcp: suricata.component.tcp,
+  emergency: bool
+}
+
+type suricata.component.app_proto = record {
+  app_proto: string
+}
+
+type suricata.component.ja3 = record {
+  hash: string #index=hash,
+  string: string,
+}
+
+type suricata.component.quic_extensions = record {
+  name: string,
+  type: uint64,
+  values: list<string>,
+}
+
+type suricata.component.tcp = record {
+  ack: bool,
+  cwr: bool,
+  ecn: bool,
+  fin: bool,
+  psh: bool,
+  rst: bool,
+  state: string,
+  syn: bool,
+  tc_gap: bool,
+  tc_max_regions: uint64,
+  tcp_flags: string,
+  tcp_flags_tc: string,
+  tcp_flags_ts: string,
+  ts_gap: bool,
+  ts_max_regions: uint64,
+  urg: bool
+}
+
+type suricata.quic = suricata.component.common + record {
+  quic: record {
+    version: string,
+    sni: string,
+    ua: string,
+    ja3: suricata.component.ja3,
+    ja3s: suricata.component.ja3,
+    cyu: list<suricata.component.ja3>,
+    extensions: list<suricata.component.quic_extensions>,
+  }
+}
+
+type suricata.alert = suricata.component.common + record {
+  alert: record {
+    app_proto: string,
+    action: enum {
+      allowed,
+      blocked
+    },
+    gid: uint64 #index=hash,
+    signature_id: uint64 #index=hash,
+    rev: uint64,
+    signature: string,
+    category: string,
+    severity: uint64,
+    source: record {
+      ip: ip,
+      port: uint64
+    },
+    target: record {
+      ip: ip,
+      port: uint64
+    }
+  },
+  flow: suricata.component.flow,
+  payload: blob,
+  payload_printable: string,
+  stream: uint64,
+  packet: blob,
+  packet_info: record {
+    linktype: uint64
+  }
+}
+
+type suricata.anomaly = suricata.component.common + record {
+  tx_id: uint64 #index=hash,
+  anomaly: record {
+    type: string,
+    event: string,
+    code: uint64,
+    layer: string
+  }
+}
+
+type suricata.dcerpc_interface = record {
+  uuid: string #index=hash,
+  version: string,
+  ack_result: uint64
+}
+
+type suricata.dcerpc = suricata.component.common + record {
+  dcerpc: record {
+    request: string,
+    response: string,
+    call_id: uint64,
+    rpc_version: string,
+//    interfaces: list<suricata.dcerpc_interface>,
+    req: record {
+      opnum: uint64,
+      frag_cnt: uint64,
+      stub_data_size: uint64
+    },
+    res: record {
+      frag_cnt: uint64,
+      stub_data_size: uint64
+    }
+  }
+}
+
+// At the time of writing no canonical documentation exists for dhcp events.
+// The fields can be derived from the logging code in:
+// https://github.com/OISF/suricata/blob/master/rust/src/dhcp/logger.rs
+type suricata.dhcp = suricata.component.common + record {
+  dhcp: record {
+    type: string, // consider switching to enum { request, reply, <unknown> }
+    id: uint64 #index=hash,
+    client_mac: string #index=hash,
+    assigned_ip: ip,
+    client_ip: ip,
+    dhcp_type: enum {
+      discover,
+      offer,
+      request,
+      decline,
+      ack,
+      nak,
+      release,
+      inform,
+      unknown
+    },
+    // In requests:
+    client_id: string #index=hash,
+    hostname: string,
+    requested_ip: ip,
+    params: list<string>,
+    // In replies:
+    relay_ip: ip,
+    next_server_ip: ip,
+    lease_time: uint64,
+    rebinding_time: uint64,
+    renewal_time: uint64,
+    subnet_mask: ip,
+    routers: list<ip>,
+    dns_servers: list<ip>
+  }
+}
+
+type suricata.soa_record = record {
+  mname: string,
+  rname: string,
+  serial: uint64,
+  refresh: uint64,
+  retry: uint64,
+  expire: uint64,
+  minimum: uint64
+}
+
+type suricata.srv_record = record {
+  priority: uint64,
+  weight: uint64,
+  port: uint64,
+  name: string
+}
+
+type suricata.sshfp_record = record {
+  fingerprint: string,
+  algo: uint64,
+  type: uint64
+}
+
+type suricata.dns_answer_detail = record {
+  rrname: string,
+  rrtype: string,
+  ttl: uint64,
+  rdata: string,
+  soa: suricata.soa_record,
+  sshfp: suricata.sshfp_record,
+  srv: suricata.srv_record
+}
+
+type suricata.dns = suricata.component.common + record {
+  dns: record {
+    version: uint64,
+    type: enum {
+      answer,
+      query
+    },
+    id: uint64 #index=hash,
+    flags: string,
+    qr: bool,
+    rd: bool,
+    ra: bool,
+    aa: bool,
+    tc: bool,
+    rrname: string,
+    rrtype: string,
+    rcode: string,
+    ttl: uint64,
+    tx_id: uint64 #index=hash,
+    grouped: record{
+      A: list<ip>,
+      NS: list<string>,
+      AAAA: list<ip>,
+      CNAME: list<string>,
+      TXT: list<string>,
+      MX: list<string>,
+      PTR: list<string>,
+      SOA: list<suricata.soa_record>,
+      SSHFP: list<suricata.sshfp_record>,
+      SRV: list<suricata.srv_record>
+    },
+    answers: list<suricata.dns_answer_detail>
+  }
+}
+
+type suricata.ftp = suricata.component.common + record{
+  ftp: record{
+    command: string #index=hash,
+    command_data: string  #index=hash,
+    reply: list<string>,
+    completion_code: list<string>,
+    dynamic_port: uint64,
+    mode: string,
+    reply_received: string
+  }
+}
+
+type suricata.ftp_data = suricata.component.common + record{
+  ftp_data: record{
+    filename: string #index=hash,
+    command: string  #index=hash
+  }
+}
+
+type suricata.http = suricata.component.common + record {
+  http: record {
+    hostname: string,
+    url: string,
+    http_port: uint64,
+    http_user_agent: string,
+    http_content_type: string,
+    http_method: string,
+    http_refer: string,
+    protocol: string,
+    status: uint64,
+    redirect: string,
+    length: uint64
+  },
+  tx_id: uint64 #index=hash
+}
+
+type suricata.fileinfo = suricata.component.common + record {
+  fileinfo: record {
+    filename: string,
+    magic: string,
+    gaps: bool,
+    state: string,
+    md5: string #index=hash,
+    sha1: string #index=hash,
+    sha256: string #index=hash,
+    stored: bool,
+    file_id: uint64 #index=hash,
+    size: uint64,
+    tx_id: uint64 #index=hash
+  },
+  http: record {
+    hostname: string,
+    url: string,
+    http_port: uint64,
+    http_user_agent: string,
+    http_content_type: string,
+    http_method: string,
+    http_refer: string,
+    protocol: string,
+    status: uint64,
+    redirect: string,
+    length: uint64
+  },
+  app_proto: string
+}
+
+type suricata.flow = suricata.component.common + record {
+  flow: suricata.component.flow,
+}
+
+type suricata.ikev2 = suricata.component.common + record {
+  tx_id: uint64 #index=hash,
+  ikev2: record {
+    version_major: uint64,
+    version_minor: uint64,
+    exchange_type: uint64,
+    message_id: uint64,
+    init_spi: string,
+    resp_spi: string,
+    role: string,
+    errors: uint64,
+    payload: list<string>,
+    notify: list<string>
+  }
+}
+
+type suricata.krb5 = suricata.component.common + record {
+  krb5: record {
+    encryption: string,
+    error_code: string,
+    cname: string,
+    msg_type: string,
+    weak_encryption: bool,
+    realm: string,
+    failed_request: string,
+    sname: string
+  },
+  host: string
+}
+
+type suricata.topicitem = record {
+  topic: string,
+  qos: uint64
+}
+
+type suricata.mqtt = suricata.component.common + record {
+  mqtt: record {
+    publish: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      topic: string,
+      message_id: uint64,
+      message: string,
+//    properties: map<string, string>,
+    },
+    pubrec: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      message_id: uint64,
+      reason_code: uint64,
+//    properties: map<string, string>,
+    },
+    pubrel: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      message_id: uint64,
+      reason_code: uint64,
+//    properties: map<string, string>,
+    },
+    pubcomp: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      message_id: uint64,
+      reason_code: uint64,
+//    properties: map<string, string>,
+    },
+    connect: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      protocol_string: string,
+      protocol_version: uint64,
+      flags: record {
+        username: bool,
+        password: bool,
+        will_retain: bool,
+        will: bool,
+        clean_session: bool
+      },
+      client_id: string,
+      username: string,
+      password: string,
+      will: record {
+        topic: string,
+        message: string,
+//      properties: map<string, string>,
+      },
+//    properties: map<string, string>,
+    },
+    connack: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      session_present: bool,
+      return_code: uint64,
+//    properties: map<string, string>,
+    },
+    subscribe: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      message_id: uint64,
+//    topics: list<suricata.topicitem>,
+//    properties: map<string, string>,
+    },
+    suback: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      message_id: uint64,
+      qos_granted: list<uint64>,
+//    properties: map<string, string>,
+    },
+    unsubscribe: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      message_id: uint64,
+      topics: list<string>,
+//    properties: map<string, string>,
+    },
+    unsuback: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      message_id: uint64
+    },
+    auth: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      reason_code: uint64,
+//    properties: map<string, string>,
+    },
+    disconnect: record {
+      qos: uint64,
+      retain: bool,
+      dup: bool,
+      truncated: bool,
+      skipped_length: uint64,
+      reason_code: uint64,
+//    properties: map<string, string>,
+    }
+  }
+}
+
+type suricata.netflow = suricata.component.common + record {
+  netflow: record {
+    pkts: uint64,
+    bytes: uint64,
+    start: time,
+    end: time,
+    age: uint64
+  },
+  app_proto: string
+}
+
+type suricata.nfs = suricata.component.common + record {
+  tx_id: uint64 #index=hash,
+  rpc: record {
+    xid: uint64,
+    status: string,
+    auth_type: string,
+    creds: record {
+      machine_name: string,
+      uid: uint64,
+      gid: uint64
+    }
+  },
+  nfs: record {
+    version: uint64,
+    procedure: string,
+    filename: string,
+    hhash: string,
+    id: uint64,
+    file_tx: bool,
+    type: string,
+    status: string,
+    write: record {
+      first: bool,
+      last: bool,
+      last_xid: uint64,
+      chunks: uint64
+    },
+    rename: record {
+      from: string,
+      to: string
+    },
+    read: record {
+      first: bool,
+      last: bool,
+      last_xid: uint64,
+      chunks: uint64
+    }
+  }
+}
+
+type suricata.packet = suricata.component.common + record {
+  packet: string,
+  packet_info: record {
+    linktype: uint64
+  }
+}
+
+type suricata.rdp = suricata.component.common + record {
+  rdp: record {
+    tx_id: uint64,
+    event_type: string,
+    protocol: string,
+    flags: list<string>,
+    error_code: uint64,
+    reason: string,
+    cookie: string,
+    client: record {
+      version: string,
+      desktop_width: uint64,
+      desktop_height: uint64,
+      physical_width: uint64,
+      physical_height: uint64,
+      desktop_orientation: uint64,
+      scale_factor: uint64,
+      device_scale_factor: uint64,
+      color_depth: uint64,
+      keyboard_layout: string,
+      keyboard_type: string,
+      keyboard_subtype: uint64,
+      build: string,
+      client_name: string,
+      function_keys: uint64,
+      product_id: string,
+      capabilities: list<string>,
+      connection_hint: string,
+      ime: string,
+      id: string
+    },
+    server_supports: list<string>,
+    x509_serials: list<string>,
+    channels: list<string>
+  }
+}
+
+// versions are strings because they are in the RFB spec and the EVE-JSON:
+// - https://tools.ietf.org/html/rfc6143#section-7.1.1
+// - https://suricata.readthedocs.io/en/suricata-6.0.1/output/eve/eve-json-format.html#event-type-rfb
+type suricata.rfb = suricata.component.common + record {
+  rfb: record {
+    client_protocol_version: record {
+      major: string,
+      minor: string
+    },
+    server_protocol_version: record {
+      major: string,
+      minor: string
+    },
+    authentication: record {
+      security_type: uint64,
+      vnc: record {
+        challenge: string,
+        response: string
+      },
+      security_result: string
+    },
+    server_security_failure_reason: string,
+    screen_shared: bool,
+    framebuffer: record {
+      width: uint64,
+      height: uint64,
+      name: string,
+      pixel_format: record {
+        bits_per_pixel: uint64,
+        depth: uint64,
+        big_endian: bool,
+        true_color: bool,
+        red_max: uint64,
+        green_max: uint64,
+        blue_max: uint64,
+        red_shift: uint64,
+        green_shift: uint64,
+        blue_shift: uint64
+      }
+    }
+  }
+}
+
+type suricata.sip = suricata.component.common + record {
+  sip: record {
+    method: string,
+    uri: string,
+    version: string,
+    request_line: string,
+    response_line: string,
+    code: string,
+    reason: string
+  }
+}
+
+type suricata.smb = suricata.component.common + record {
+  smb: record {
+    id: uint64,
+    dialect: string,
+    command: string,
+    status: string,
+    status_code: string,
+    session_id: uint64,
+    tree_id: uint64,
+    client_dialects: list<string>,
+    request: record {
+      native_lm: string,
+      native_os: string
+    },
+    response: record {
+      native_lm: string,
+      native_os: string
+    },
+    access: string,
+    client_guid: string,
+    fuid: string #index=hash,
+    directory: string,
+    kerberos: record {
+      realm: string
+    },
+    accessed: uint64,
+    function: string,
+    set_info: record {
+      info_level: string,
+      class: string
+    },
+    share: string,
+    modified: uint64,
+    ntlmssp: record {
+      host: string,
+      domain: string,
+      user: string
+    },
+    changed: uint64,
+    size: uint64,
+    disposition: string,
+    server_guid: string,
+    filename: string,
+    created: uint64,
+    rename: record {
+      to: string,
+      from: string
+    },
+    named_pipe: string,
+    service: record {
+      request: string,
+      response: string
+    },
+    share_type: string
+  },
+  host: string
+}
+
+type suricata.ssh = suricata.component.common + record {
+  ssh: record {
+    client: record {
+      software_version: string,
+      proto_version: string
+    },
+    server: record {
+      software_version: string,
+      proto_version: string
+    }
+  },
+  host: string
+}
+
+type suricata.smtp = suricata.component.common + record {
+  tx_id: uint64 #index=hash,
+  smtp: record {
+    helo: string,
+    mail_from: string,
+    rcpt_to: list<string>
+  },
+  email: record {
+    status: string,
+    from: string,
+    to: list<string>,
+    attachment: list<string>,
+    url: list<string>
+  }
+}
+
+type suricata.snmp = suricata.component.common + record {
+  tx_id: uint64 #index=hash,
+  snmp: record {
+    version: uint64,
+    pdu_type: string,
+    vars: list<string>,
+    community: string
+  }
+}
+
+type suricata.tftp = suricata.component.common + record {
+  tx_id: uint64 #index=hash,
+  tftp: record {
+    packet: string,
+    file: string,
+    mode: string
+  }
+}
+
+type suricata.tls = suricata.component.common + record {
+  tls: record {
+    sni: string,
+    session_resumed: bool,
+    subject: string,
+    issuerdn: string,
+    serial: string,
+    fingerprint: string,
+    ja3: suricata.component.ja3,
+    ja3s: suricata.component.ja3,
+    notbefore: time,
+    notafter: time
+  }
+}
+
+type suricata.stats = record {
+  timestamp: time
+}
