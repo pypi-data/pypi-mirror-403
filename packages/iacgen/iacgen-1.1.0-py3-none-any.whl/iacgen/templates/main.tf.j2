@@ -1,0 +1,107 @@
+# Root Terraform configuration for iacgen
+# This file wires together the generated modules based on the
+# BlueprintConfig. For now it only instantiates the VPC module
+# when enabled; additional modules (EKS, ALB, services, ALB)
+# will be added in later tasks.
+
+terraform {
+  required_version = ">= 1.5.0"
+}
+
+provider "aws" {
+  region = "{{ region }}"
+}
+
+# Kubernetes provider is configured when an EKS cluster is present. It uses the
+# EKS cluster's endpoint and certificate authority data. Credentials are
+# expected to come from the environment (e.g. AWS IAM auth).
+{% if has_eks %}
+provider "kubernetes" {
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+}
+{% endif %}
+
+# VPC module (optional)
+{% if has_vpc %}
+module "vpc" {
+  source = "./modules/vpc"
+
+  cidr_block         = {{ vpc.cidr_block | terraform_quote }}
+  availability_zones = {{ vpc.availability_zones }}
+  environment        = {{ environment | terraform_quote }}
+}
+{% endif %}
+
+# EKS module (optional, can use generated or existing VPC)
+{% if has_eks %}
+module "eks" {
+  source = "./modules/eks"
+
+  {% if has_vpc %}
+  # Generated VPC -> use module outputs
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  {% else %}
+  # Existing VPC -> use blueprint values
+  vpc_id             = {{ eks.existing_vpc_id | terraform_quote }}
+  private_subnet_ids = {{ eks.existing_private_subnet_ids | terraform_list }}
+  {% endif %}
+
+  # Cluster and node group configuration from blueprint
+  cluster_version       = {{ eks.cluster_version | terraform_quote }}
+  node_instance_type    = {{ eks.node_instance_type | terraform_quote }}
+  node_desired_capacity = {{ eks.node_desired_size }}
+  node_min_size         = {{ eks.node_min_size }}
+  node_max_size         = {{ eks.node_max_size }}
+
+  environment = {{ environment | terraform_quote }}
+}
+{% endif %}
+
+# Service modules (one per configured service)
+{% if has_services %}
+{% for service in services %}
+module "service_{{ service.name }}" {
+  source = "./modules/service/{{ service.name }}"
+
+  # Namespace & environment
+  namespace        = {{ environment | terraform_quote }}
+  environment      = {{ environment | terraform_quote }}
+
+  # Core service configuration from ServiceConfig
+  image            = {{ "nginx:latest" | terraform_quote }}
+  replicas         = {{ service.replicas }}
+  port             = {{ service.port }}
+  cpu_limit        = {{ service.cpu | terraform_quote }}
+  memory_limit     = {{ service.memory | terraform_quote }}
+
+  # Service modules depend on the EKS control plane when present
+  {% if has_eks %}
+  depends_on = [module.eks]
+  {% endif %}
+}
+{% endfor %}
+{% endif %}
+
+# ALB module (optional, can use generated or existing VPC)
+{% if has_alb %}
+module "alb" {
+  source = "./modules/alb"
+
+  {% if has_vpc %}
+  # Use generated VPC outputs for ALB placement
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.public_subnet_ids
+  depends_on = [module.vpc]
+  {% else %}
+  # Use existing VPC details for ALB placement
+  vpc_id     = {{ alb.existing_vpc_id | terraform_quote }}
+  subnet_ids = {{ alb.existing_subnet_ids | terraform_list }}
+  {% endif %}
+
+  environment     = {{ environment | terraform_quote }}
+  # Optional: configure ACM certificate ARN for HTTPS
+  certificate_arn = ""
+}
+{% endif %}
