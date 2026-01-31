@@ -1,0 +1,314 @@
+---
+name: Autofix
+"on":
+  workflow_call:
+    inputs:
+      gitignore-location:
+        description: 'File path of the .gitignore to update, relative to the root of the repository.'
+        required: false
+        type: string
+        default: ./.gitignore
+      gitignore-extra-categories:
+        description: 'List of additional categories to add to .gitignore file.'
+        type: string
+        required: false
+      gitignore-extra-content:
+        description: 'Additional content to append at the end of the generated .gitignore file.'
+        required: false
+        type: string
+        default: |
+          junit.xml
+
+          # Claude Code
+          .claude/
+  push:
+    branches:
+      - main
+
+# Defaults sets in workflow_call.inputs or workflow_dispatch.inputs are not propagated to other events.
+# We have to manually manage them: https://github.com/orgs/community/discussions/39357#discussioncomment-7500641
+env:
+  gitignore-location: >-
+    ${{ inputs.gitignore-location == null && './.gitignore' || inputs.gitignore-location }}
+  gitignore-extra-content: >-
+    ${{ inputs.gitignore-extra-content == null && 'junit.xml
+
+    # Claude Code
+
+    .claude/' || inputs.gitignore-extra-content }}
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.event.head_commit.message, '[changelog] Release') }}
+
+jobs:
+
+  project-metadata:
+    name: Project metadata
+    runs-on: ubuntu-slim
+    outputs:
+      gitignore_exists: ${{ steps.project-metadata.outputs.gitignore_exists }}
+      python_files: ${{ steps.project-metadata.outputs.python_files }}
+      json_files: ${{ steps.project-metadata.outputs.json_files }}
+      doc_files: ${{ steps.project-metadata.outputs.doc_files }}
+      markdown_files: ${{ steps.project-metadata.outputs.markdown_files }}
+      is_python_project: ${{ steps.project-metadata.outputs.is_python_project }}
+      blacken_docs_params: ${{ steps.project-metadata.outputs.blacken_docs_params }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run gha-utils metadata
+        id: project-metadata
+        run: |
+          uvx 'gha-utils==5.4.0' metadata --output "$GITHUB_OUTPUT"
+
+  format-python:
+    name: Format Python
+    needs:
+      - project-metadata
+    if: needs.project-metadata.outputs.python_files || needs.project-metadata.outputs.doc_files
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run autopep8
+        if: needs.project-metadata.outputs.python_files
+        # Ruff is not wrapping comments: https://github.com/astral-sh/ruff/issues/7414
+        # We use autopep8 to only wrap long-line comments:
+        #  - E501 is "Try to make lines fit within --max-line-length characters."
+        #  - --aggressive is requires to force autopep8 to consider comments.
+        # Explicit list of files is provided, as autopep8 is not able to handle find files in ".github" subdirectory.
+        run: >
+          uvx 'autopep8==2.3.2' --recursive --in-place --max-line-length 88 --select E501 --aggressive
+          ${{ needs.project-metadata.outputs.python_files }}
+      - name: Install Ruff and init config
+        # Initialize [tool.ruff] in pyproject.toml if it doesn't exist.
+        # Projects with existing ruff config will keep their settings.
+        run: |
+          uv tool install 'ruff==0.14.14'
+          uvx 'gha-utils==5.5.0' bundled init ruff pyproject.toml
+      # XXX Ruff is planning to support linting and formatting in one unified command at one point.
+      #     See: https://github.com/astral-sh/ruff/issues/8232
+      - name: Run Ruff
+        run: |
+          ruff check --output-format github
+          ruff format --output-format github
+      - name: Run blacken-docs
+        # Ignore failing command: blacken-docs returns 1 if it finds a file that needs to be reformatted:
+        # https://github.com/adamchainz/blacken-docs/blob/79ef671/blacken_docs.py#L207-L211
+        # TODO: replace blacken-docs by ruff. See: https://github.com/astral-sh/ruff/issues/8237
+        # https://github.com/astral-sh/ruff/issues/3792
+        run: >
+          uvx --with 'black==25.12.0' 'blacken-docs==1.20.0'
+          --line-length 88
+          ${{ needs.project-metadata.outputs.blacken_docs_params }}
+          ${{ needs.project-metadata.outputs.doc_files }}
+          || true
+      - id: pr-metadata
+        uses: kdeldycke/workflows/.github/actions/pr-metadata@main
+      - uses: peter-evans/create-pull-request@v8.0.0
+        with:
+          assignees: ${{ github.actor }}
+          commit-message: "[autofix] Format Python"
+          title: "[autofix] Format Python"
+          body: ${{ steps.pr-metadata.outputs.body }}
+          labels: "🤖 ci"
+          branch: format-python
+
+  format-pyproject:
+    name: Format pyproject.toml
+    needs:
+      - project-metadata
+    if: fromJSON(needs.project-metadata.outputs.is_python_project)
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run pyproject-fmt
+        # pyproject-fmt returns exit code 1 when it reformats the file.
+        # We ignore this since changes are expected in an autofix workflow.
+        run: |
+          uvx 'pyproject-fmt==2.11.1' pyproject.toml || true
+      - id: pr-metadata
+        uses: kdeldycke/workflows/.github/actions/pr-metadata@main
+      - uses: peter-evans/create-pull-request@v8.0.0
+        with:
+          assignees: ${{ github.actor }}
+          commit-message: "[autofix] Format pyproject.toml"
+          title: "[autofix] Format `pyproject.toml`"
+          body: ${{ steps.pr-metadata.outputs.body }}
+          labels: "🤖 ci"
+          branch: format-pyproject
+
+  format-markdown:
+    name: Format Markdown
+    needs:
+      - project-metadata
+    if: needs.project-metadata.outputs.markdown_files
+    # Cannot use "ubuntu-slim" because shfmt is not available there.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      # https://mdformat.readthedocs.io/en/stable/users/plugins.html
+      - name: Install mdformat
+        # XXX mdformat-pelican is capped at mdformat<0.8.0 so it block the whole ecosystem from upgrading:
+        # https://github.com/gaige/mdformat-pelican/pull/8
+        run: >
+          uv tool install
+          --with 'mdformat_admon==2.1.1'
+          --with 'mdformat-config==0.2.1'
+          --with 'mdformat_deflist==0.1.4'
+          --with 'mdformat_footnote==0.1.2'
+          --with 'mdformat-front-matters==2.0.0'
+          --with 'mdformat-gfm==1.0.0'
+          --with 'mdformat_gfm_alerts==2.0.0'
+          --with 'mdformat_myst==0.3.0'
+          --with 'mdformat-pelican @ git+https://github.com/kdeldycke/mdformat-pelican@fix-mdformat-1.0.0'
+          --with 'mdformat_pyproject==0.1.1'
+          --with 'mdformat-recover-urls==0.0.2'
+          --with 'mdformat-ruff==0.1.3'
+          --with 'mdformat-shfmt==0.2.0'
+          --with 'mdformat_simple_breaks==0.1.0'
+          --with 'mdformat-toc==0.5.0'
+          --with 'mdformat-web==0.2.0'
+          --with 'ruff==0.14.14'
+          'mdformat==1.0.0'
+      - name: Install shfmt
+        run: |
+          sudo apt install --yes shfmt
+      - name: mdformat --version
+        run: |
+          mdformat --version
+      - name: Auto-format Markdown
+        run: >
+          for file in ${{ needs.project-metadata.outputs.markdown_files }}; do
+          mdformat --strict-front-matter "$file";
+          done
+      - name: Markdown fixes for Awesome Lists
+        if: startsWith(github.event.repository.name, 'awesome-')
+        # Remove forbidden TOC entries: https://github.com/sindresorhus/awesome-lint/blob/v2.2.2/rules/toc.js#L14-L18
+        # Also remove the title of the section containing the TOC (i.e. "Contents") to fix the following error:
+        # ✖  26:1  ToC item "Contents" does not match corresponding heading "Meta"  remark-lint:awesome-toc
+        #
+        # mdformat-toc has pending PRs to support this feature:
+        # https://github.com/hukkin/mdformat-toc/issues/17
+        # https://github.com/hukkin/mdformat-toc/pull/20
+        run: >
+          find ./ -type f \( -name 'readme.md' -or -name 'readme.*.md' \) -print
+          -exec gawk -i inplace '!/^- \[(Contents|Contributing|Footnotes|Related Lists)\]\(#.+\)$/{print}' "{}" \;
+      - id: pr-metadata
+        uses: kdeldycke/workflows/.github/actions/pr-metadata@main
+      - uses: peter-evans/create-pull-request@v8.0.0
+        with:
+          assignees: ${{ github.actor }}
+          commit-message: "[autofix] Format Markdown"
+          title: "[autofix] Format Markdown"
+          body: ${{ steps.pr-metadata.outputs.body }}
+          labels: "📚 documentation"
+          branch: format-markdown
+
+  format-json:
+    name: Format JSON
+    needs:
+      - project-metadata
+    if: needs.project-metadata.outputs.json_files
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Setup Biome
+        uses: biomejs/setup-biome@v2.7.0
+        with:
+          version: 2.3.12
+      - name: Format JSON
+        # Allow comments and trailing commas for JSONC files.
+        # Biome auto-detects well-known JSONC files (tsconfig.json, etc.).
+        run: >
+          biome format --write
+          --no-errors-on-unmatched
+          --json-parse-allow-comments=true
+          --json-parse-allow-trailing-commas=true
+          ${{ needs.project-metadata.outputs.json_files }}
+      - id: pr-metadata
+        uses: kdeldycke/workflows/.github/actions/pr-metadata@main
+      - uses: peter-evans/create-pull-request@v8.0.0
+        with:
+          assignees: ${{ github.actor }}
+          commit-message: "[autofix] Format JSON"
+          title: "[autofix] Format JSON"
+          body: ${{ steps.pr-metadata.outputs.body }}
+          labels: "🤖 ci"
+          branch: format-json
+
+  update-gitignore:
+    name: Update .gitignore
+    needs:
+      - project-metadata
+    if: fromJSON(needs.project-metadata.outputs.gitignore_exists)
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Install git ignore-io
+        # Update the list manually so the first call below will not introduce these extra log messages:
+        #   -----Initial gitignore.io list----
+        #   -----Save to /home/runner/.gi_list-----
+        run: |
+          sudo apt update
+          sudo apt install --yes git-extras
+          git ignore-io --update-list
+      - name: Generate .gitignore
+        run: >
+          git ignore-io ${{ inputs.gitignore-extra-categories }}
+          certificates
+          emacs
+          git
+          gpg
+          linux
+          macos
+          node
+          nohup
+          python
+          rust
+          ssh
+          vim
+          virtualenv
+          visualstudiocode
+          windows > "${{ env.gitignore-location }}"
+      - name: Append extra content to .gitignore
+        if: env.gitignore-extra-content
+        run: |
+          tee -a "${{ env.gitignore-location }}" <<-EOF
+
+          ${{ env.gitignore-extra-content }}
+          EOF
+      - id: pr-metadata
+        uses: kdeldycke/workflows/.github/actions/pr-metadata@main
+      - uses: peter-evans/create-pull-request@v8.0.0
+        with:
+          assignees: ${{ github.actor }}
+          commit-message: "[autofix] Update .gitignore"
+          title: "[autofix] Update `.gitignore`"
+          body: ${{ steps.pr-metadata.outputs.body }}
+          labels: "🤖 ci"
+          branch: update-gitignore
+
+  sync-bumpversion:
+    name: Sync bumpversion config
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Initialize bumpversion config
+        run: |
+          uvx 'gha-utils==5.5.0' bundled init bumpversion pyproject.toml
+      - id: pr-metadata
+        uses: kdeldycke/workflows/.github/actions/pr-metadata@main
+      - uses: peter-evans/create-pull-request@v8.0.0
+        with:
+          assignees: ${{ github.actor }}
+          commit-message: "[autofix] Sync bumpversion config"
+          title: "[autofix] Sync bumpversion config"
+          body: ${{ steps.pr-metadata.outputs.body }}
+          labels: "🤖 ci"
+          branch: sync-bumpversion

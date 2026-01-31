@@ -1,0 +1,40 @@
+---
+name: Debug
+"on":
+  workflow_call:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/debug.yaml
+
+jobs:
+
+  project-metadata:
+    name: Project metadata
+    runs-on: ubuntu-slim
+    outputs:
+      build_targets: ${{ steps.extend-matrix.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v7.2.0
+      - name: Run gha-utils metadata
+        id: project-metadata
+        run: |
+          uvx 'gha-utils==5.4.0' --verbosity DEBUG metadata --output "$GITHUB_OUTPUT"
+      - name: Extend matrix with ubuntu-slim
+        id: extend-matrix
+        run: |
+          targets=$(echo '${{ steps.project-metadata.outputs.build_targets }}' | jq -c '. + [{"os":"ubuntu-slim"}]')
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  dump-context:
+    name: ${{ matrix.os }} info dump
+    needs:
+      - project-metadata
+    if: needs.project-metadata.outputs.build_targets
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.project-metadata.outputs.build_targets) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: crazy-max/ghaction-dump-context@v2.3.0
