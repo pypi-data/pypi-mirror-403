@@ -1,0 +1,431 @@
+Metadata-Version: 2.4
+Name: timeless-memory-mcp
+Version: 0.1.3
+Summary: Timeless Memory - 個人記憶系統 MCP Server（SQLite FTS5 全文檢索）
+Project-URL: Homepage, https://github.com/chenwei/timeless-memory-mcp
+Project-URL: Repository, https://github.com/chenwei/timeless-memory-mcp
+Project-URL: Issues, https://github.com/chenwei/timeless-memory-mcp/issues
+Author: chenwei
+License-Expression: MIT
+Keywords: ai,fts5,google-chat,knowledge-management,mcp,memory
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.10
+Requires-Dist: google-api-python-client>=2.0
+Requires-Dist: google-auth-oauthlib>=1.0
+Requires-Dist: google-auth>=2.0
+Requires-Dist: mcp>=1.0.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: pyyaml>=6.0
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.23; extra == 'dev'
+Requires-Dist: pytest>=7.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Timeless Memory MCP
+
+個人記憶系統 MCP Server - SQLite FTS5 全文檢索
+
+## 特點
+
+- **SQLite FTS5 索引**：快速精確的全文檢索
+- **支援中文搜尋**：FTS5 + LIKE fallback
+- **實體圖譜**：支援人物、專案、主題等實體及其關係
+- **別名展開**：自動展開實體別名進行智能搜尋
+- **精簡工具**：7 個統一工具，語義分組清晰
+- **Google Chat 整合**：並行下載與轉換
+
+## 工具總覽
+
+系統提供 **7 個統一工具**，每個工具透過 `action` 參數支援多種操作：
+
+| 工具 | 操作數 | 用途 |
+|------|--------|------|
+| `memory` | 6 | 記憶的建立、更新、刪除、列表、搜尋、瀏覽 |
+| `entity` | 9 | 實體的完整生命週期管理 |
+| `relation` | 4 | 實體間關係的建立與查詢 |
+| `memory_entity` | 3 | 記憶與實體的雙向連結 |
+| `resolver` | 4 | 實體名稱解析與待確認處理 |
+| `system` | 6 | 系統設定、統計、索引管理 |
+| `chat` | 6 | Google Chat 整合（下載、轉換、同步）|
+
+**總計：38 個操作整合為 7 個工具**
+
+## 安裝
+
+### 使用 uvx（推薦）
+
+無需安裝，直接執行：
+
+```bash
+uvx timeless-memory-mcp
+```
+
+### 使用 pip
+
+```bash
+pip install timeless-memory-mcp
+```
+
+### 從原始碼安裝
+
+```bash
+cd timeless-memory-mcp
+pip install -e .
+```
+
+## 快速開始
+
+### MCP 使用範例（在 Cursor 中）
+
+```python
+# 建立記憶
+memory(action="create", content="今天學到新知識", tags=["學習"])
+
+# 搜尋記憶
+memory(action="search", query="知識")
+
+# 建立人物實體
+entity(action="create", entity_type="person", name="謝承緯", 
+       role="老師", aliases=["承緯", "CW"])
+
+# 搜尋實體別名（自動展開）
+memory(action="search", query="@謝承緯")
+
+# 查看統計
+system(action="stats")
+```
+
+### 建議使用流程（初次使用或每次更新）
+
+以下流程建議在**初次使用**或**每次更新資料後**執行：
+
+1. **init**：清空並重建索引  
+   ```python
+   system(action="init")  # 清空重建索引
+   ```
+
+2. **sync chat**：同步 Google Chat  
+   ```python
+   chat(action="sync")
+   ```
+
+3. **建立人物實體**：依需求建立人物等實體  
+   ```python
+   entity(action="create", entity_type="person", name="...", ...)
+   ```
+
+4. **知識圖譜與關聯**：建立實體間關聯性  
+   ```python
+   relation(action="create", from_id="...", relation_type="...", to_id="...")
+   ```
+
+5. **每月摘要索引**：列出缺漏摘要、取得月度資料、由 Agent 生成後儲存  
+   ```python
+   chat(action="list_months")  # 列出需建立摘要的聊天室/月份
+   chat(action="get_month_data", space_name="...", year_month="YYYY-MM")  # 取得該月資料
+   chat(action="save_summary", space_name="...", year_month="YYYY-MM", summary_content="...")  # 儲存摘要
+   ```
+
+### Cursor MCP 設定
+
+在 `~/.cursor/mcp.json` 中加入：
+
+**基本配置（使用 uvx）**
+
+```json
+{
+  "mcpServers": {
+    "timeless-memory": {
+      "command": "uvx",
+      "args": ["timeless-memory-mcp"],
+      "env": {
+        "TIMELESS_HOME": "/Users/你的使用者名稱/Documents/timeless-memory",
+        "GOOGLE_CHAT_CREDENTIALS_FILE": "/Users/你的使用者名稱/Documents/timeless-memory/sources/google-chat/credentials.json"
+      }
+    }
+  }
+}
+```
+
+**簡化配置（使用預設路徑）**
+
+如果憑證放在預設路徑 `~/Documents/timeless-memory/sources/google-chat/credentials.json`：
+
+```json
+{
+  "mcpServers": {
+    "timeless-memory": {
+      "command": "uvx",
+      "args": ["timeless-memory-mcp"]
+    }
+  }
+}
+```
+
+**說明**：
+- `TIMELESS_HOME`：記憶系統根目錄（預設：`~/Documents/timeless-memory`）
+- `GOOGLE_CHAT_CREDENTIALS_FILE`：Google OAuth 憑證路徑
+- 憑證需從 [Google Cloud Console](https://console.cloud.google.com/) 下載
+
+### Google Chat 整合
+
+新增 `chat` 工具支援 Google Chat 同步：
+
+```python
+# 完整同步流程（下載 + 轉換）
+chat(action="sync", max_workers=5)
+
+# 只下載原始資料
+chat(action="download", max_workers=10)
+
+# 只轉換已下載的資料
+chat(action="convert")
+
+# 列出所有 Spaces
+chat(action="list_spaces")
+
+# 查看同步狀態
+chat(action="status")
+
+# 初始化 OAuth 認證
+chat(action="init_auth")
+```
+
+**憑證設定**：
+
+Google Chat 需要 OAuth 憑證，支援三種設定方式：
+
+1. **預設路徑（推薦）**：將 `credentials.json` 放到
+   ```
+   ~/Documents/timeless-memory/sources/google-chat/credentials.json
+   ```
+
+2. **環境變數（檔案路徑）**：設定 `GOOGLE_CHAT_CREDENTIALS_FILE`
+
+3. **環境變數（JSON 內容）**：設定 `GOOGLE_CHAT_CREDENTIALS`
+
+詳細設定方式請參考 [Google Chat 憑證設定指南](GOOGLE_CHAT_CREDENTIALS_GUIDE.md)
+
+**目錄結構**：
+```
+~/Documents/timeless-memory/
+├── data/
+│   └── google-chat/          # Google Chat 記憶（MD 檔案）
+└── sources/
+    └── google-chat/          # 原始資料（JSONL + OAuth）
+        ├── credentials.json  # OAuth 憑證
+        ├── token.json        # OAuth token（自動生成）
+        └── {SpaceName}_{SpaceID}/
+```
+
+## 主要功能
+
+### 1. 記憶管理
+
+使用 `memory` 工具：
+- **create** - 建立記憶，支援 Markdown 格式，自動分類
+- **search** - 雙索引搜尋，支援過濾條件和別名展開
+- **update** - 修改內容和元資料
+- **delete** - 從雙索引同步移除
+- **list** - 列出記憶
+- **browse** - 瀏覽分類
+
+### 2. 實體圖譜
+
+使用 `entity` 工具：
+- **實體類型**：person, project, topic, place, event, organization
+- **別名管理**：為實體設定多個別名
+- **智能解析**：自動識別文本中的實體
+
+使用 `relation` 工具：
+- **關係建立**：實體之間的關係（teaches, works_on 等）
+- **關係查詢**：查找實體的關聯網絡
+
+使用 `memory_entity` 工具：
+- **雙向連結**：記憶與實體的關聯
+- **快速查詢**：找到某人相關的所有記憶
+
+## 資料目錄
+
+預設路徑：`~/Documents/timeless-memory/`
+
+```
+~/Documents/timeless-memory/
+├── data/                # Markdown 記憶檔案
+│   ├── google-chat/    # Google Chat 記憶
+│   └── 記憶核心/
+│       ├── 語義記憶/   # 知識、概念、偏好
+│       ├── 情節記憶/   # 事件、經歷、對話
+│       └── 程序記憶/   # 流程、方法、技能
+├── sources/            # 原始資料來源
+│   └── google-chat/   # Google Chat 原始資料
+│       ├── credentials.json
+│       ├── token.json
+│       └── {SpaceName}_{SpaceID}/
+└── .database/         # SQLite 索引
+    └── memories.db
+```
+
+## 環境變數
+
+- `TIMELESS_HOME` - 主目錄（預設：`~/Documents/timeless-memory`）
+- `TIMELESS_DATA_DIR` - 資料目錄
+- `TIMELESS_DB_PATH` - SQLite 資料庫路徑
+
+## 架構說明
+
+### SQLite FTS5 全文檢索
+
+- 全文檢索
+- 精確匹配
+- 過濾條件
+- 關係查詢
+- 支援中文搜尋（FTS5 + LIKE fallback）
+
+### 統一程式碼架構
+
+```
+timeless-memory-mcp/
+├── src/timeless_memory/
+│   ├── core/              # 核心業務邏輯
+│   │   ├── manager_factory.py   # 統一 Manager 初始化
+│   │   ├── query_utils.py       # 查詢工具（別名展開）
+│   │   ├── memory_manager.py
+│   │   ├── index_manager.py     # SQLite FTS5 索引
+│   │   └── entity_manager.py
+│   ├── integrations/      # 外部服務整合
+│   │   └── google_chat/  # Google Chat 整合
+│   └── mcp_server.py     # MCP 介面（7 個統一工具）
+```
+
+**設計原則**：
+
+- **統一介面**：使用 `action` 參數統一所有操作
+- **語意分組**：相關功能集中在同一個工具
+- **降低複雜度**：從 40 個工具精簡為 7 個
+- **減少錯誤**：Agent 更容易選對工具
+
+## 常見使用情境
+
+### 情境 1：開發過程記錄
+
+```python
+# 建立技術筆記
+memory(
+    action="create",
+    content="解決了 React 重複渲染問題，使用 useMemo 優化",
+    category="程序記憶",
+    tags=["React", "效能優化"],
+    authority=8
+)
+
+# 之後搜尋
+memory(action="search", query="React 效能", category="程序記憶")
+```
+
+### 情境 2：人物關係管理
+
+```python
+# 1. 建立人物實體
+entity(
+    action="create",
+    entity_type="person",
+    name="謝承緯",
+    role="催眠老師",
+    aliases=["承緯", "CW", "謝老師"]
+)
+
+# 2. 建立主題實體
+entity(action="create", entity_type="topic", name="催眠療癒")
+
+# 3. 建立關係
+relation(
+    action="create",
+    from_id="person-謝承緯",
+    relation_type="teaches",
+    to_id="topic-催眠療癒"
+)
+
+# 4. 搜尋相關記憶（自動展開別名）
+memory(action="search", query="@謝承緯")
+```
+
+### 情境 3：知識圖譜探索
+
+```python
+# 查詢某人的所有關係
+relation(action="get_related", entity_id="person-謝承緯")
+
+# 查詢某人相關的所有記憶
+memory_entity(action="get_memories", entity_id="person-謝承緯", limit=20)
+```
+
+## 優化成果
+
+### 工具數量演進
+
+| 版本 | 工具數量 | 減少幅度 |
+|------|---------|---------|
+| 原始版本 | 40 | - |
+| 移除低頻功能 | 32 | -20% |
+| **合併同類工具** | **7** | **-82.5%** |
+
+### 效益統計
+
+✅ **降低複雜度**：工具從 40 → 7（減少 82.5%）  
+✅ **提高準確率**：Agent 選錯工具的機率大幅降低  
+✅ **統一介面**：所有工具使用一致的 `action` 參數  
+✅ **保持功能**：38 個操作全部保留  
+✅ **易於理解**：語意分組更清晰  
+✅ **單一索引**：移除 Markdown 索引，只用 SQLite FTS5  
+
+### Agent 使用體驗改善
+
+**之前（40 個工具）**：
+- 😰 要記住 40 個不同的工具名稱
+- 😰 容易選錯相似功能的工具
+- 😰 參數命名不一致
+- 😰 雙索引維護成本高
+
+**現在（7 個工具）**：
+- ✅ 只需記住 7 個工具名稱
+- ✅ 語意分組清晰（記憶用 memory、實體用 entity、聊天用 chat）
+- ✅ 統一的 action 參數風格
+- ✅ 內建錯誤提示（顯示 available_actions）
+- ✅ 單一 SQLite 索引，快速準確
+
+## 開發與貢獻
+
+### 本地開發
+
+```bash
+# 安裝開發依賴
+pip install -e ".[dev]"
+
+# 執行 MCP Server（開發模式）
+python -m timeless_memory.mcp_server
+```
+
+### 新增功能
+
+在現有工具中新增 action：
+
+1. 在對應的工具函式中加入新的 `elif action == "new_action"`
+2. 實作操作邏輯
+3. 更新文件中的 `available_actions`
+
+## 授權
+
+MIT License
+
+## 相關連結
+
+- [Google Chat 憑證設定指南](GOOGLE_CHAT_CREDENTIALS_GUIDE.md) - Google Chat OAuth 設定
