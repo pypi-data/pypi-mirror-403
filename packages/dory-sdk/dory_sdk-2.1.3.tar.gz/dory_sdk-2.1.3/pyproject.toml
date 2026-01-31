@@ -1,0 +1,187 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dory-sdk"
+version = "2.1.3"
+description = "Python SDK for building stateful processors with zero-downtime migration, auto-initialization, and smart instrumentation"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Dory Team", email = "dory@example.com"}
+]
+keywords = [
+    "kubernetes",
+    "stateful",
+    "migration",
+    "orchestration",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Typing :: Typed",
+]
+dependencies = [
+    "aiohttp>=3.8.0",
+    "pydantic>=2.0.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Core optional features
+kubernetes = [
+    "kubernetes>=28.0.0",
+]
+s3 = [
+    "boto3>=1.28.0",
+]
+
+# SDK v2.0+ features
+tracing = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
+]
+resilience = [
+    # Circuit breakers, retry logic already in core
+]
+monitoring = [
+    # Metrics and observability (Prometheus included in core)
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+]
+
+# Convenience groups
+production = [
+    "kubernetes>=28.0.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
+]
+all = [
+    "kubernetes>=28.0.0",
+    "boto3>=1.28.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+]
+
+[project.scripts]
+dory = "dory.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/example/dory-sdk"
+Documentation = "https://dory-sdk.readthedocs.io"
+Repository = "https://github.com/example/dory-sdk"
+Issues = "https://github.com/example/dory-sdk/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dory = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = [
+    "-v",
+    "--cov=dory",
+    "--cov-report=html",
+    "--cov-report=term",
+    "--cov-report=xml",
+    "--cov-branch",
+    "--cov-fail-under=18",
+    "--tb=short",
+]
+markers = [
+    "slow: slow tests",
+    "integration: integration tests",
+    "unit: unit tests",
+    "requires_k8s: requires Kubernetes",
+    "requires_s3: requires S3",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+show_error_codes = true
+disallow_any_generics = false
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "W",    # pycodestyle warnings
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "RET",  # flake8-return
+    "PTH",  # flake8-use-pathlib
+    "ERA",  # eradicate (commented code)
+    "PL",   # pylint
+    "PERF", # perflint
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501",    # line too long (handled by black)
+    "PLR0913", # too many arguments
+    "PLR2004", # magic value comparison
+]
+exclude = [
+    ".git",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "*.egg-info",
+    "htmlcov",
+    "dist",
+    "build",
+]
+
+[tool.ruff.per-file-ignores]
+"tests/**/*.py" = ["PLR2004", "S101"]
+"__init__.py" = ["F401"]
+
+[tool.ruff.isort]
+known-first-party = ["dory"]
+force-single-line = false
+lines-after-imports = 2
+
