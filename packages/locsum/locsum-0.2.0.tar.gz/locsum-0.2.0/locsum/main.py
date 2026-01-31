@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+
+"""
+Copyright (c) 2026 Monsieur Linux
+
+Licensed under the MIT License. See the LICENSE file for details.
+"""
+
+# Standard library imports
+import argparse
+import glob
+import logging
+import os
+import re
+import shutil
+import sys
+import time
+import tomllib
+import warnings
+from datetime import datetime
+from pathlib import Path
+
+# Third-party library imports
+import markdown_it
+import ollama
+#import torch
+from weasyprint import HTML
+import whisper
+
+# Add project root to sys.path so script can be called directly w/o 'python3 -m'
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Local imports
+from locsum import __version__
+
+CONFIG = {}
+
+# Get a logger for this script
+logger = logging.getLogger(__name__)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('filenames', nargs='+', metavar='FILE',
+                        help='audio/video file to process')
+    parser.add_argument('-l', '--language', metavar='LANG',
+                        help='set the language of the audio')
+    parser.add_argument('-r', '--reset-config', action='store_true',
+                        help='reset configuration file to default')
+    parser.add_argument('-t', '--tiny', action='store_true',
+                        help='use tiny models for testing')
+    parser.add_argument('-v', '--version', action='version', 
+                        version=f'%(prog)s {__version__}')
+    parser.add_argument('-w', '--filter-warnings', action='store_true',
+                        help='suppress warnings from torch')
+    args = parser.parse_args()
+
+    try:
+        load_config(args.reset_config)
+    except FileNotFoundError as e:
+        print(f'Error: Failed to load config: {e}')
+        return
+
+    if args.filter_warnings:
+        # Suppress all CUDA-related warnings
+        warnings.filterwarnings("ignore", category=UserWarning, module="torch.cuda")
+
+        # Or suppress all warnings from torch
+        #warnings.filterwarnings("ignore", module="torch")
+
+    all_start_time = time.time()
+    filenames = []
+
+    if sys.platform == "win32":
+        # On Windows, expand glob patterns (e.g. *.mp4)
+        for pattern in args.filenames:
+            filenames.extend(glob.glob(pattern))
+    else:
+        # On Linux, use filenames as-is (no glob expansion needed)
+        filenames = args.filenames
+
+    for filename in filenames:
+        print(f'Processing {filename}')
+        start_time = time.time()
+        extension = get_file_extension(filename)
+        transcript_text = None
+        summary_text = None
+        next_step = 'txt'
+        
+        if extension == 'txt':
+            # Processing a 'txt' file, so skip to summarization
+            next_step = 'md'
+        elif extension == 'md':
+            # Processing a 'md' file, so skip to pdf generation
+            next_step = 'pdf'
+
+        if next_step == 'txt':
+            # Assume audio file, attempt transcription
+            txt_file = replace_extension(filename, 'txt')
+            transcript_text = transcribe(filename, args.language, args.tiny)
+            write_file(txt_file, transcript_text)
+            next_step = 'md'
+
+        if next_step == 'md':
+            # Generate a summary from the transcription
+            md_file = replace_extension(filename, 'md')
+            if not transcript_text:
+                # We are starting with a 'txt' file
+                transcript_text = read_file(filename)
+            summary_text = summarize(transcript_text, args.tiny)
+            write_file(md_file, summary_text)
+            next_step = 'pdf'
+
+        if next_step == 'pdf':
+            # Generate a pdf from the summary
+            pdf_file = replace_extension(filename, 'pdf')
+            #pdf_file = cleanup_filename(pdf_file)
+            if not summary_text:
+                # We are starting with a 'md' file
+                summary_text = read_file(filename)
+            write_pdf(pdf_file, summary_text)
+
+        exec_time = time.time() - start_time
+        print(f'File processed in {format_time(exec_time)}')
+
+    all_exec_time = time.time() - all_start_time
+    print(f'All files processed in {format_time(all_exec_time)}')
+
+
+def transcribe(filename, language, tiny):
+    # Transcribe with Whisper
+    if not language:
+        # No language argument provided, so use config file default
+        language = CONFIG['whisper']['default_language']
+
+    if tiny:
+        whisper_model = CONFIG['whisper']['tiny']['model']
+    elif language == 'en':
+        whisper_model = CONFIG['whisper']['model_english']
+    else:
+        whisper_model = CONFIG['whisper']['model_multilang']
+
+    # It isn't necessary to import torch and explicitely load the model to CUDA.
+    # Whisper library handles device detection automatically.
+    model = whisper.load_model(whisper_model)
+    print(f'Transcribing with {whisper_model} model on {model.device} device')
+    start_time = time.time()
+    result = model.transcribe(filename, language=language)
+    exec_time = time.time() - start_time
+    print(f'Done in {format_time(exec_time)}')
+
+    return result['text']
+
+
+def summarize(transcript, tiny):
+    # Summarize with Ollama
+    if tiny:
+        llm_model = CONFIG['ollama']['tiny']['model']
+        llm_prompt = CONFIG['ollama']['tiny']['prompt']
+    else:
+        llm_model = CONFIG['ollama']['model']
+        llm_prompt = CONFIG['ollama']['prompt']
+
+    print(f'Summarizing with {llm_model} model')
+    start_time = time.time()
+
+    response = ollama.chat(model=llm_model, messages=[
+      {
+        'role': 'user',
+        'content': f'{llm_prompt} {transcript}',
+      },
+    ])
+
+    exec_time = time.time() - start_time
+    print(f'Done in {format_time(exec_time)}')
+    summary = response['message']['content']  # TODO: use response.message.content?
+
+    return summary
+
+
+def write_pdf(pdf_file, md_content):
+    # Parse markdown
+    md = markdown_it.MarkdownIt()
+    html_content = md.render(md_content)
+    date = datetime.now().strftime('%Y-%m-%d')
+    header = get_file_stem(pdf_file) + ' / ' + date
+
+    # CSS styling
+    css = read_file(PROJECT_ROOT / 'locsum' / 'pdf.css')
+    
+    # HTML code
+    html = """
+    <html>
+    <head>
+        <style>
+            @page {
+                size: letter;
+                
+                @top-center {
+                    content: " """ + header + """ ";
+                    font-size: 6pt;
+                }
+                
+                @bottom-center {
+                    content: counter(page) " / " counter(pages);
+                    font-size: 6pt;
+                }
+            }
+        </style>
+        <style>""" + css + """</style>
+    </head>
+    <body>
+        """ + html_content + """
+    </body>
+    </html>
+    """
+    
+    HTML(string=html).write_pdf(pdf_file)
+    logger.debug(f'Wrote to {pdf_file}')
+
+
+def format_time(seconds):
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+
+
+def write_file(filename, content):
+    with open(filename, 'w') as file:
+        file.write(content)
+    logger.debug(f'Wrote to {filename}')
+
+
+def read_file(filename):
+    with open(filename, 'r', encoding='utf-8') as file:
+        content = file.read()
+    logger.debug(f'Read from {filename}')
+    return content
+
+
+def get_head_tail(s, head_len=40, tail_len=40, sep="..."):
+    return (s[:head_len] + sep + s[-tail_len:])
+
+
+def get_file_extension(filename):
+    p = Path(filename)
+    return p.suffix[1:]  # Remove the leading dot
+
+
+def get_file_stem(filename):
+    p = Path(filename)
+    return p.stem
+
+
+def replace_extension(filename, extension = ''):
+    p = Path(filename)
+    return f'{p.parent}/{p.stem}.{extension}'
+
+
+def cleanup_filename(filename):
+    p = Path(filename)
+    stem = re.sub(r"[^a-zA-Z0-9 .,'_-]", '-', p.stem)
+    return f'{p.parent}/{stem}{p.suffix}'
+
+
+def load_config(reset_config = False):
+    global CONFIG
+
+    app_name = 'locsum'
+    config_file = 'config.toml'
+
+    config_dir = get_config_dir(app_name)
+    user_config_file = config_dir / config_file
+    default_config_file = PROJECT_ROOT / app_name / config_file
+
+    if not user_config_file.exists() or reset_config:
+        if default_config_file.exists():
+            shutil.copy2(default_config_file, user_config_file)
+            logger.debug(f'Config initialized at {user_config_file}')
+        else:
+            raise FileNotFoundError(f'Default config missing at {default_config_file}')
+    else:
+        logger.debug(f'Found config file at {user_config_file}')
+
+    with open(user_config_file, 'rb') as f:
+        CONFIG = tomllib.load(f)
+
+
+def get_config_dir(app_name):
+    if sys.platform == "win32":
+        # Windows: Use %APPDATA% (%USERPROFILE%\AppData\Roaming)
+        config_dir = Path(os.environ.get("APPDATA", "")) / app_name
+    elif sys.platform == "darwin":
+        # macOS: Use ~/Library/Preferences
+        config_dir = Path.home() / "Library" / "Preferences" / app_name
+    else:
+        # Linux and other Unix-like: Use ~/.config or XDG_CONFIG_HOME if set
+        config_home = os.environ.get("XDG_CONFIG_HOME", "")
+        if config_home:
+            config_dir = Path(config_home) / app_name
+        else:
+            config_dir = Path.home() / ".config" / app_name
+    
+    # Create the directory if it doesn't exist
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
+    return config_dir
+
+
+def setup_logging(level=logging.DEBUG):
+    """Configure logging for this module"""
+    # print() is for user consumption, logging is for developer consumption
+    #logger.handlers.clear()  # Remove any existing handlers from your logger
+    if not logger.handlers:  # Prevent duplicate handlers
+        # TODO: Optionaly make the call to basicConfig if I need to
+        handler = logging.StreamHandler()  # pass sys.stdout?
+        handler.setLevel(level)
+        formatter = logging.Formatter('%(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(level)
+        logger.propagate = False  # Don't bubble up to root
+
+
+if __name__ == '__main__':
+    #setup_logging()  # Try this instead if messages are not displayed
+
+    # Configure the root logger
+    logging.basicConfig(level=logging.WARNING,
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%H:%M:%S')
+
+    # Set level for all existing loggers (notably from ttFont module)
+    for name in logging.Logger.manager.loggerDict:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    # Configure this script's logger
+    logger.setLevel(logging.DEBUG)
+
+    main()
