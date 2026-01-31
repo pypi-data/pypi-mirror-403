@@ -1,0 +1,118 @@
+Metadata-Version: 2.1
+Name: pyavif
+Version: 0.0.1
+Summary: AVIF bindings for Python with NumPy support
+Author-Email: Andrey Volodin <andrey@gracia.ai>
+Classifier: License :: OSI Approved :: BSD License
+Project-URL: Homepage, https://github.com/gracia-labs/pyavif
+Requires-Python: >=3.9
+Requires-Dist: numpy>=1.20.0
+Provides-Extra: test
+Requires-Dist: pytest>=6.0; extra == "test"
+Requires-Dist: pytest-cov>=2.10; extra == "test"
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-cov>=2.10; extra == "dev"
+Requires-Dist: ipython; extra == "dev"
+Requires-Dist: jupyter; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"
+Description-Content-Type: text/markdown
+
+# pyavif
+
+AVIF bindings for Python with NumPy support.
+
+## Installation
+
+```bash
+pip install numpy
+pip install .
+```
+
+## Basic Usage
+
+### Decoding
+
+```python
+from pyavif import Decoder, DecoderCodec
+
+# Create decoder with default codec (DAV1D - fastest decoder)
+decoder = Decoder()
+decoder.init("image.avif", decoder_threads=1)
+image = decoder.get_image(0)  # Returns numpy array (H, W, C)
+
+# Or specify a different codec
+decoder = Decoder()
+decoder.init("image.avif", decoder_threads=1, codec=DecoderCodec.AOM)
+```
+
+### Encoding
+
+```python
+import numpy as np
+from pyavif import Encoder, EncoderOptions, EncoderCodec
+
+# Create encoder
+opts = EncoderOptions()
+# Use alternative codec
+opts.codec = EncoderCodec.RAV1E
+encoder = Encoder("output.avif", width=256, height=256, channels=3, depth=8, options=opts)
+
+# Add frame and finish
+image = np.zeros((256, 256, 3), dtype=np.uint8)
+encoder.add_frame(image)
+
+# finish when done
+encoder.finish()
+```
+
+## Advanced
+
+### Batch Encoding
+
+```python
+from pyavif import BatchEncoder, EncoderOptions
+
+opts = EncoderOptions()
+output_paths = ["out1.avif", "out2.avif", "out3.avif"]
+batch_encoder = BatchEncoder(output_paths, opts)
+
+# Add frames for all files at once
+frames = [image1, image2, image3]  # Same-length list as output_paths
+batch_encoder.add_image_batch(frames, duration=1)
+
+batch_encoder.finish_all()
+```
+
+### Encoder Options
+
+```python
+from pyavif import EncoderOptions, EncoderCodec
+
+opts = EncoderOptions()
+opts.codec = EncoderCodec.RAV1E  # RAV1E, AOM (default: AOM)
+opts.quality = 85               # 0-100 (default: 80)
+opts.speed = 6                  # 0-10, higher = faster (default: AVIF_SPEED_DEFAULT)
+opts.quality_alpha = 100        # Alpha channel quality (default: AVIF_QUALITY_LOSSLESS)
+opts.timescale = 30             # Animation timescale in fps (default: 30)
+opts.max_threads = 4            # Thread count (default: 1)
+```
+
+
+## Building libavif
+
+We ship prebuilt static libavif artifacts in `lib/` to keep installs simple. If you
+need to rebuild them, use the scripts below. They clone `libavif` at `v1.3.0`, build
+static libraries with RAV1E, DAV1D, AOM, and libyuv, and refresh headers in
+`lib/include/avif`.
+
+- Linux (manylinux_2_28, glibc 2.28+): `bash scripts/build_libavif_linux.sh` (Docker required)
+- macOS: `bash scripts/build_libavif_macos.sh` (requires CMake, Rust, nasm, meson, ninja)
+- Windows: `pwsh scripts/build_libavif_windows.ps1` (requires CMake, Rust, NASM, Perl, Meson/Ninja)
+
+Set `LIBAVIF_VERSION` to override the libavif tag.
+
+### CI Wheels
+
+GitHub Actions builds wheels via cibuildwheel using `.github/workflows/build_wheels.yml`.
+Trigger the workflow manually or on a version tag (for example `v0.0.1`).
