@@ -1,0 +1,304 @@
+Metadata-Version: 2.4
+Name: fractal-repositories
+Version: 1.3.1
+Summary: Fractal Repositories is an implementation of the repository pattern of Domain Driven Design (DDD) for building SOLID logic for your Python applications.
+Keywords: database,query,projection,aggregation,sql,mongodb,firestore,elasticsearch
+Author-email: Douwe van der Meij <douwe@karibu-online.nl>
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Database
+License-File: LICENSE
+Requires-Dist: fractal-specifications
+Requires-Dist: django>=5.2.7 ; extra == "all"
+Requires-Dist: duckdb>=0.9.0 ; extra == "all"
+Requires-Dist: google-cloud-firestore>=2.0.0 ; extra == "all"
+Requires-Dist: psycopg2-binary>=2.9.0 ; extra == "all"
+Requires-Dist: pymongo>=4.0.0 ; extra == "all"
+Requires-Dist: sqlalchemy>=2.0 ; extra == "all"
+Requires-Dist: django>=5.2.7 ; extra == "dev"
+Requires-Dist: duckdb>=0.9.0 ; extra == "dev"
+Requires-Dist: pytest<8 ; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0 ; extra == "dev"
+Requires-Dist: black>=23.0.0 ; extra == "dev"
+Requires-Dist: ruff>=0.1.0 ; extra == "dev"
+Requires-Dist: mypy>=1.0.0 ; extra == "dev"
+Requires-Dist: isort>=5.13.2 ; extra == "dev"
+Requires-Dist: sqlalchemy>=2.0 ; extra == "dev"
+Requires-Dist: mock-firestore>=0.11.0 ; extra == "dev"
+Requires-Dist: cloud-storage-mocker>=0.3.4 ; extra == "dev"
+Requires-Dist: pymongo>=4.0.0 ; extra == "dev"
+Requires-Dist: mongomock>=4.3.0 ; extra == "dev"
+Requires-Dist: pydantic>=2.12.3 ; extra == "dev"
+Requires-Dist: pytest-mock>=3.15.1 ; extra == "dev"
+Requires-Dist: firebase-admin>=7.1.0 ; extra == "dev"
+Requires-Dist: psycopg2-binary>=2.9.0 ; extra == "dev"
+Requires-Dist: django>=5.2.7 ; extra == "django"
+Requires-Dist: duckdb>=0.9.0 ; extra == "duckdb"
+Requires-Dist: google-cloud-firestore>=2.0.0 ; extra == "firestore"
+Requires-Dist: pymongo>=4.0.0 ; extra == "mongo"
+Requires-Dist: psycopg2-binary>=2.9.0 ; extra == "postgres"
+Requires-Dist: sqlalchemy>=2.0 ; extra == "sqlalchemy"
+Project-URL: Documentation, https://github.com/douwevandermeij/fractal-repositories#readme
+Project-URL: Homepage, https://github.com/douwevandermeij/fractal-repositories
+Project-URL: Issues, https://github.com/douwevandermeij/fractal-repositories/issues
+Project-URL: Repository, https://github.com/douwevandermeij/fractal-repositories
+Provides-Extra: all
+Provides-Extra: dev
+Provides-Extra: django
+Provides-Extra: duckdb
+Provides-Extra: firestore
+Provides-Extra: mongo
+Provides-Extra: postgres
+Provides-Extra: sqlalchemy
+
+# Fractal Repositories
+
+> Fractal Repositories is an implementation of the repository pattern of Domain Driven Design (DDD) for building SOLID logic for your Python applications.
+
+[![PyPI Version][pypi-image]][pypi-url]
+[![Build Status][build-image]][build-url]
+[![Code Coverage][coverage-image]][coverage-url]
+[![Code Quality][quality-image]][quality-url]
+
+<!-- Badges -->
+
+[pypi-image]: https://img.shields.io/pypi/v/fractal-repositories
+[pypi-url]: https://pypi.org/project/fractal-repositories/
+[build-image]: https://github.com/douwevandermeij/fractal-repositories/actions/workflows/build.yml/badge.svg
+[build-url]: https://github.com/douwevandermeij/fractal-repositories/actions/workflows/build.yml
+[coverage-image]: https://codecov.io/gh/douwevandermeij/fractal-repositories/branch/main/graph/badge.svg
+[coverage-url]: https://codecov.io/gh/douwevandermeij/fractal-repositories
+[quality-image]: https://api.codeclimate.com/v1/badges/2286ddcfaf5e815d61a5/maintainability
+[quality-url]: https://codeclimate.com/github/douwevandermeij/fractal-repositories
+
+## Installation
+
+```sh
+pip install fractal-repositories
+```
+
+## Development
+
+Setup the development environment by running:
+
+```sh
+make deps
+pre-commit install
+```
+
+Happy coding.
+
+Occasionally you can run:
+
+```sh
+make lint
+```
+
+This is not explicitly necessary because the git hook does the same thing.
+
+**Do not disable the git hooks upon commit!**
+
+## Usage
+
+To get started, define an Entity you would like to store:
+
+```python
+from dataclasses import dataclass
+
+from fractal_repositories.core.entity import Entity
+
+
+@dataclass
+class DemoModel(Entity):
+    id: str
+    name: str
+```
+
+Next, define the generic Repository:
+
+```python
+from abc import ABC
+
+from fractal_repositories.core.repositories import Repository
+
+
+class DemoRepository(Repository[DemoModel], ABC):
+    entity = DemoModel
+```
+
+Now choose your target storage system, e.g., Google Firestore and define the adapter:
+
+```python
+from fractal_repositories.contrib.gcp.firestore.mixins import FirestoreRepositoryMixin
+
+
+class FirestoreDemoRepository(DemoRepository, FirestoreRepositoryMixin[DemoModel]):
+    ...
+```
+
+## Contrib
+
+Fractal Repositories comes with ready to use adapter mixins for:
+* Django
+* SQLAlchemy
+* PostgreSQL
+* MongoDB
+* DuckDB
+* Google Firestore
+* Google Cloud Storage
+
+## Examples
+
+### DuckDB (In-process Analytical Database)
+
+DuckDB is an in-process SQL OLAP database management system, perfect for analytical workloads and embedded analytics.
+
+```python
+from dataclasses import dataclass
+from fractal_repositories.core.entity import Entity
+from fractal_repositories.core.repositories import Repository
+from fractal_repositories.contrib.duckdb import DuckDBRepositoryMixin
+from fractal_specifications.generic.specification import Specification
+
+
+@dataclass
+class User(Entity):
+    id: str
+    name: str
+    email: str
+
+
+class UserRepository(Repository[User], DuckDBRepositoryMixin[User]):
+    entity = User
+
+
+# In-memory database (great for testing)
+repo = UserRepository(database=":memory:", table="users")
+
+# Or file-based database for persistence
+# repo = UserRepository(database="analytics.db", table="users")
+
+# Add entities
+user = User(id="1", name="Alice", email="alice@example.com")
+repo.add(user)
+
+# Query with specifications
+found_user = repo.find_one(Specification.parse(id="1"))
+
+# Find all users
+all_users = list(repo.find())
+
+# Count users
+user_count = repo.count()
+
+# Update
+user.email = "newemail@example.com"
+repo.update(user)
+
+# Remove
+repo.remove_one(Specification.parse(id="1"))
+```
+
+### MongoDB
+
+```python
+from fractal_repositories.contrib.mongo import MongoRepositoryMixin
+
+
+class MongoUserRepository(UserRepository, MongoRepositoryMixin[User]):
+    pass
+
+
+repo = MongoUserRepository(
+    host="localhost",
+    port="27017",
+    username="user",
+    password="pass",
+    database="mydb",
+    collection="users"
+)
+```
+
+### Google Firestore
+
+```python
+from fractal_repositories.contrib.gcp.firestore import FirestoreRepositoryMixin
+
+
+class FirestoreUserRepository(UserRepository, FirestoreRepositoryMixin[User]):
+    pass
+
+
+repo = FirestoreUserRepository(
+    collection="users",
+    service_account_path="/path/to/service-account.json"
+)
+```
+
+### PostgreSQL
+
+```python
+from fractal_repositories.contrib.postgresql import PostgresRepositoryMixin
+
+
+class PostgresUserRepository(UserRepository, PostgresRepositoryMixin[User]):
+    pass
+
+
+repo = PostgresUserRepository(
+    postgres_host="localhost",
+    postgres_port="5432",
+    postgres_db="mydb",
+    postgres_user="user",
+    postgres_password="pass",
+    table="users"
+)
+```
+
+### Django
+
+```python
+from fractal_repositories.contrib.django import DjangoModelRepositoryMixin
+
+
+class DjangoUserRepository(UserRepository, DjangoModelRepositoryMixin[User]):
+    pass
+
+
+# Assuming you have a Django model
+from myapp.models import UserModel
+
+repo = DjangoUserRepository(django_model=UserModel)
+```
+
+### SQLAlchemy
+
+```python
+from fractal_repositories.contrib.sqlalchemy.mixins import SqlAlchemyRepositoryMixin
+
+
+class SqlAlchemyUserRepository(UserRepository, SqlAlchemyRepositoryMixin[User]):
+    pass
+
+
+# Use with your SQLAlchemy session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+engine = create_engine("sqlite:///example.db")
+Session = sessionmaker(bind=engine)
+session = Session()
+
+repo = SqlAlchemyUserRepository(session=session, model=YourSqlAlchemyModel)
+```
+
