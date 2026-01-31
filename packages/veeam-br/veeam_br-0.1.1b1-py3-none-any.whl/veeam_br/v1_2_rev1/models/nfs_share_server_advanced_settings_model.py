@@ -1,0 +1,85 @@
+from collections.abc import Mapping
+from typing import Any, TypeVar, Union
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..models.enfs_share_server_processing_mode import ENFSShareServerProcessingMode
+from ..types import UNSET, Unset
+
+T = TypeVar("T", bound="NFSShareServerAdvancedSettingsModel")
+
+
+@_attrs_define
+class NFSShareServerAdvancedSettingsModel:
+    """
+    Attributes:
+        processing_mode (Union[Unset, ENFSShareServerProcessingMode]):
+        direct_backup_failover_enabled (Union[Unset, bool]):
+        storage_snapshot_path (Union[Unset, str]):
+    """
+
+    processing_mode: Union[Unset, ENFSShareServerProcessingMode] = UNSET
+    direct_backup_failover_enabled: Union[Unset, bool] = UNSET
+    storage_snapshot_path: Union[Unset, str] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        processing_mode: Union[Unset, str] = UNSET
+        if not isinstance(self.processing_mode, Unset):
+            processing_mode = self.processing_mode.value
+
+        direct_backup_failover_enabled = self.direct_backup_failover_enabled
+
+        storage_snapshot_path = self.storage_snapshot_path
+
+        field_dict: dict[str, Any] = {}
+        field_dict.update(self.additional_properties)
+        field_dict.update({})
+        if processing_mode is not UNSET:
+            field_dict["processingMode"] = processing_mode
+        if direct_backup_failover_enabled is not UNSET:
+            field_dict["directBackupFailoverEnabled"] = direct_backup_failover_enabled
+        if storage_snapshot_path is not UNSET:
+            field_dict["storageSnapshotPath"] = storage_snapshot_path
+
+        return field_dict
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        d = dict(src_dict)
+        _processing_mode = d.pop("processingMode", UNSET)
+        processing_mode: Union[Unset, ENFSShareServerProcessingMode]
+        if isinstance(_processing_mode, Unset):
+            processing_mode = UNSET
+        else:
+            processing_mode = ENFSShareServerProcessingMode(_processing_mode)
+
+        direct_backup_failover_enabled = d.pop("directBackupFailoverEnabled", UNSET)
+
+        storage_snapshot_path = d.pop("storageSnapshotPath", UNSET)
+
+        nfs_share_server_advanced_settings_model = cls(
+            processing_mode=processing_mode,
+            direct_backup_failover_enabled=direct_backup_failover_enabled,
+            storage_snapshot_path=storage_snapshot_path,
+        )
+
+        nfs_share_server_advanced_settings_model.additional_properties = d
+        return nfs_share_server_advanced_settings_model
+
+    @property
+    def additional_keys(self) -> list[str]:
+        return list(self.additional_properties.keys())
+
+    def __getitem__(self, key: str) -> Any:
+        return self.additional_properties[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.additional_properties[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self.additional_properties[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.additional_properties

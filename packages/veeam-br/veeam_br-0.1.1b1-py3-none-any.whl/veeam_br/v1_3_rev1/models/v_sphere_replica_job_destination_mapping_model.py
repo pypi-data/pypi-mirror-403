@@ -1,0 +1,203 @@
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, TypeVar, Union
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..types import UNSET, Unset
+
+if TYPE_CHECKING:
+    from ..models.agent_object_model import AgentObjectModel
+    from ..models.cloud_director_object_model import CloudDirectorObjectModel
+    from ..models.hyper_v_object_model import HyperVObjectModel
+    from ..models.v_sphere_replica_job_destination_files_mapping_model import (
+        VSphereReplicaJobDestinationFilesMappingModel,
+    )
+    from ..models.vmware_object_model import VmwareObjectModel
+
+
+T = TypeVar("T", bound="VSphereReplicaJobDestinationMappingModel")
+
+
+@_attrs_define
+class VSphereReplicaJobDestinationMappingModel:
+    """Mapping rule.
+
+    Attributes:
+        vm_object (Union['AgentObjectModel', 'CloudDirectorObjectModel', 'HyperVObjectModel', 'VmwareObjectModel']):
+            Inventory object properties.
+        configuration_files_datastore_mapping (Union['AgentObjectModel', 'CloudDirectorObjectModel',
+            'HyperVObjectModel', 'VmwareObjectModel']): Inventory object properties.
+        disk_files_mapping (Union[Unset, list['VSphereReplicaJobDestinationFilesMappingModel']]): Array of disk mapping
+            rules (disk name, disk datastore and provisioning type).
+    """
+
+    vm_object: Union["AgentObjectModel", "CloudDirectorObjectModel", "HyperVObjectModel", "VmwareObjectModel"]
+    configuration_files_datastore_mapping: Union[
+        "AgentObjectModel", "CloudDirectorObjectModel", "HyperVObjectModel", "VmwareObjectModel"
+    ]
+    disk_files_mapping: Union[Unset, list["VSphereReplicaJobDestinationFilesMappingModel"]] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        from ..models.cloud_director_object_model import CloudDirectorObjectModel
+        from ..models.hyper_v_object_model import HyperVObjectModel
+        from ..models.vmware_object_model import VmwareObjectModel
+
+        vm_object: dict[str, Any]
+        if isinstance(self.vm_object, VmwareObjectModel):
+            vm_object = self.vm_object.to_dict()
+        elif isinstance(self.vm_object, CloudDirectorObjectModel):
+            vm_object = self.vm_object.to_dict()
+        elif isinstance(self.vm_object, HyperVObjectModel):
+            vm_object = self.vm_object.to_dict()
+        else:
+            vm_object = self.vm_object.to_dict()
+
+        configuration_files_datastore_mapping: dict[str, Any]
+        if isinstance(self.configuration_files_datastore_mapping, VmwareObjectModel):
+            configuration_files_datastore_mapping = self.configuration_files_datastore_mapping.to_dict()
+        elif isinstance(self.configuration_files_datastore_mapping, CloudDirectorObjectModel):
+            configuration_files_datastore_mapping = self.configuration_files_datastore_mapping.to_dict()
+        elif isinstance(self.configuration_files_datastore_mapping, HyperVObjectModel):
+            configuration_files_datastore_mapping = self.configuration_files_datastore_mapping.to_dict()
+        else:
+            configuration_files_datastore_mapping = self.configuration_files_datastore_mapping.to_dict()
+
+        disk_files_mapping: Union[Unset, list[dict[str, Any]]] = UNSET
+        if not isinstance(self.disk_files_mapping, Unset):
+            disk_files_mapping = []
+            for disk_files_mapping_item_data in self.disk_files_mapping:
+                disk_files_mapping_item = disk_files_mapping_item_data.to_dict()
+                disk_files_mapping.append(disk_files_mapping_item)
+
+        field_dict: dict[str, Any] = {}
+        field_dict.update(self.additional_properties)
+        field_dict.update(
+            {
+                "vmObject": vm_object,
+                "configurationFilesDatastoreMapping": configuration_files_datastore_mapping,
+            }
+        )
+        if disk_files_mapping is not UNSET:
+            field_dict["diskFilesMapping"] = disk_files_mapping
+
+        return field_dict
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.agent_object_model import AgentObjectModel
+        from ..models.cloud_director_object_model import CloudDirectorObjectModel
+        from ..models.hyper_v_object_model import HyperVObjectModel
+        from ..models.v_sphere_replica_job_destination_files_mapping_model import (
+            VSphereReplicaJobDestinationFilesMappingModel,
+        )
+        from ..models.vmware_object_model import VmwareObjectModel
+
+        d = dict(src_dict)
+
+        def _parse_vm_object(
+            data: object,
+        ) -> Union["AgentObjectModel", "CloudDirectorObjectModel", "HyperVObjectModel", "VmwareObjectModel"]:
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_inventory_object_model_type_0 = VmwareObjectModel.from_dict(data)
+
+                return componentsschemas_inventory_object_model_type_0
+            except:  # noqa: E722
+                pass
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_inventory_object_model_type_1 = CloudDirectorObjectModel.from_dict(data)
+
+                return componentsschemas_inventory_object_model_type_1
+            except:  # noqa: E722
+                pass
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_inventory_object_model_type_2 = HyperVObjectModel.from_dict(data)
+
+                return componentsschemas_inventory_object_model_type_2
+            except:  # noqa: E722
+                pass
+            if not isinstance(data, dict):
+                raise TypeError()
+            componentsschemas_inventory_object_model_type_3 = AgentObjectModel.from_dict(data)
+
+            return componentsschemas_inventory_object_model_type_3
+
+        vm_object = _parse_vm_object(d.pop("vmObject"))
+
+        def _parse_configuration_files_datastore_mapping(
+            data: object,
+        ) -> Union["AgentObjectModel", "CloudDirectorObjectModel", "HyperVObjectModel", "VmwareObjectModel"]:
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_inventory_object_model_type_0 = VmwareObjectModel.from_dict(data)
+
+                return componentsschemas_inventory_object_model_type_0
+            except:  # noqa: E722
+                pass
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_inventory_object_model_type_1 = CloudDirectorObjectModel.from_dict(data)
+
+                return componentsschemas_inventory_object_model_type_1
+            except:  # noqa: E722
+                pass
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_inventory_object_model_type_2 = HyperVObjectModel.from_dict(data)
+
+                return componentsschemas_inventory_object_model_type_2
+            except:  # noqa: E722
+                pass
+            if not isinstance(data, dict):
+                raise TypeError()
+            componentsschemas_inventory_object_model_type_3 = AgentObjectModel.from_dict(data)
+
+            return componentsschemas_inventory_object_model_type_3
+
+        configuration_files_datastore_mapping = _parse_configuration_files_datastore_mapping(
+            d.pop("configurationFilesDatastoreMapping")
+        )
+
+        disk_files_mapping = []
+        _disk_files_mapping = d.pop("diskFilesMapping", UNSET)
+        for disk_files_mapping_item_data in _disk_files_mapping or []:
+            disk_files_mapping_item = VSphereReplicaJobDestinationFilesMappingModel.from_dict(
+                disk_files_mapping_item_data
+            )
+
+            disk_files_mapping.append(disk_files_mapping_item)
+
+        v_sphere_replica_job_destination_mapping_model = cls(
+            vm_object=vm_object,
+            configuration_files_datastore_mapping=configuration_files_datastore_mapping,
+            disk_files_mapping=disk_files_mapping,
+        )
+
+        v_sphere_replica_job_destination_mapping_model.additional_properties = d
+        return v_sphere_replica_job_destination_mapping_model
+
+    @property
+    def additional_keys(self) -> list[str]:
+        return list(self.additional_properties.keys())
+
+    def __getitem__(self, key: str) -> Any:
+        return self.additional_properties[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.additional_properties[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self.additional_properties[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.additional_properties
