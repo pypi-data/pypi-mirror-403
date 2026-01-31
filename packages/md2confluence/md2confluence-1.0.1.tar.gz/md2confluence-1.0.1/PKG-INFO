@@ -1,0 +1,153 @@
+Metadata-Version: 2.4
+Name: md2confluence
+Version: 1.0.1
+Summary: Sync Markdown documentation to Confluence Cloud
+License: MIT
+Project-URL: Repository, https://pypi.org/project/md2confluence/
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.32.0
+Dynamic: license-file
+
+# md2confluence
+
+<p align="center">
+  <img src="img/MD2C.png" alt="md2confluence" width="400">
+</p>
+
+[![Python](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square&logo=python)](https://www.python.org/)
+[![PyPI](https://img.shields.io/pypi/v/md2confluence?style=flat-square&logo=pypi)](https://pypi.org/project/md2confluence/)
+[![Version](https://img.shields.io/badge/version-1.0.1-green?style=flat-square)](https://pypi.org/project/md2confluence/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
+A Python tool to sync Markdown documentation to Confluence Cloud.
+
+## Features
+
+- **Markdown to Confluence conversion** - Headers, lists, tables, code blocks, info panels, task lists, and more
+- **Image handling** - Automatically uploads local images as attachments
+- **Config-driven** - Define document mappings in a simple config file
+- **Dry-run mode** - Preview changes before syncing
+- **Retry logic** - Exponential backoff for transient failures
+- **Rate limiting** - Avoid API throttling
+- **Edge case handling** - Configurable behavior for missing files, failed uploads, etc.
+
+## Installation
+
+```bash
+# From PyPI (recommended)
+pip install md2confluence
+
+# For development
+git clone <repository-url>
+cd md2confluence
+pip install -e .
+```
+
+## Dependencies
+
+- Python 3.9+
+- `requests` library (installed automatically)
+
+## Quick Start
+
+1. Install:
+
+   ```bash
+   pip install md2confluence
+   ```
+
+2. Set environment variables:
+
+   ```bash
+   export CONFLUENCE_API_TOKEN="your-api-token"
+   export CONFLUENCE_USER_EMAIL="your-email@example.com"  # For basic auth
+   ```
+
+3. Create a config file (`.confluence-sync.conf`):
+
+   ```bash
+   CONFLUENCE_BASE_URL="https://your-domain.atlassian.net/wiki"
+   CONFLUENCE_SPACE_KEY="DOCS"
+   CONFLUENCE_TECH_PARENT_ID="123456789"
+   
+   # Document mappings: "Title|path/to/file.md|parent_page_id"
+   CONFLUENCE_DOC_README="README|README.md|${CONFLUENCE_TECH_PARENT_ID}"
+   ```
+
+4. Run the sync:
+
+   ```bash
+   md2confluence
+   ```
+
+## Usage
+
+```bash
+# Sync all configured documents
+python md2confluence.py
+
+# Dry-run (preview without changes)
+python md2confluence.py --dry-run
+
+# List configured documents
+python md2confluence.py --list
+
+# Verify config and connectivity
+python md2confluence.py --verify
+
+# Sync a single document
+python md2confluence.py --single "Page Title" path/to/doc.md parent_page_id
+
+# Convert markdown to Confluence format (stdin)
+echo "# Hello" | python md2confluence.py --stdin
+```
+
+## Configuration
+
+See `confluence-sync.conf.example` for all available options.
+
+### Authentication
+
+Supports two auth modes:
+
+- **Basic auth**: `CONFLUENCE_USER_EMAIL` + `CONFLUENCE_API_TOKEN`
+- **Bearer auth**: `CONFLUENCE_API_TOKEN` only (OAuth tokens)
+
+Auto-detected based on whether `CONFLUENCE_USER_EMAIL` is set.
+
+### Document Mappings
+
+Define documents to sync using `CONFLUENCE_DOC_*` variables:
+
+```bash
+CONFLUENCE_DOC_MYPAGE="Page Title|path/to/file.md|parent_page_id"
+```
+
+### Edge Case Handling
+
+| Option | Values | Default |
+| -------- | -------- | --------- |
+| `CONFLUENCE_MISSING_FILE_BEHAVIOR` | skip, fail | skip |
+| `CONFLUENCE_IMAGE_FAILURE_BEHAVIOR` | placeholder, skip, fail | placeholder |
+| `CONFLUENCE_TITLE_SPECIAL_CHARS` | sanitize, encode, fail | sanitize |
+
+## Markdown Support
+
+- Headers (h1-h6)
+- Bold, italic, strikethrough
+- Ordered and unordered lists
+- Nested lists
+- Task lists (checkboxes)
+- Tables
+- Fenced code blocks with syntax highlighting
+- Inline code
+- Links (inline and reference-style)
+- Images (uploaded as attachments)
+- Blockquotes → Confluence panels (Note/Warning/Tip/Info)
+- Horizontal rules
+
+## License
+
+MIT
