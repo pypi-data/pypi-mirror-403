@@ -1,0 +1,2 @@
+import{n as e,j as r}from"./render-CcJq83Ld.js";import{L as o}from"./Layout-D7vcbkk2.js";import{A as s}from"./Alert-rWDWC83z.js";import"./Container-DAQjPzX-.js";const t=()=>r.jsx(o,{children:error_message?r.jsxs(s,{severity:"error",sx:{maxWidth:800,margin:"20px auto"},children:[error_message," (ref: ",ref,")"]}):r.jsx(s,{severity:"success",sx:{maxWidth:800,margin:"0 auto",backgroundColor:"background.light"},children:success_message})});e({children:r.jsx(t,{})});
+//# sourceMappingURL=command_result-Dzq9yMyl.js.map
