@@ -1,0 +1,1211 @@
+# YetAnotherSchema
+
+**Version:** 0.1.0 POC  
+**Philosophy:** "Values are free ions, not tables. Everything else is a view."
+
+A semantic database for auditable data with append-only corrections, full traceability, and on-demand views.
+
+---
+
+## 🎯 What is YetAnotherSchema?
+
+YetAnotherSchema is a database system designed for domains where data integrity, auditability, and traceability are paramount (clinical research, financial trading, IoT monitoring, etc.).
+
+### The Problem with Traditional Databases
+
+**Example 1: Employee Database**
+
+In traditional databases, values collected once are duplicated everywhere they're needed:
+
+```
+Traditional Database:
+  payroll table:
+    emp_id | birth_date  | salary
+    E001   | 1990-05-15  | 75000
+    
+  benefits table:
+    emp_id | birth_date  | plan
+    E001   | 1990-05-15  | Premium
+    
+  reviews table:
+    emp_id | birth_date  | rating | year
+    E001   | 1990-05-15  | 4.5    | 2024
+    E001   | 1990-05-15  | 4.7    | 2025
+```
+
+**Issues:**
+- Birth date collected once at hiring, but duplicated in 4+ places
+- If birth date was entered incorrectly, you'd need to update multiple tables
+- Data integrity issues (what if payroll has 1990-05-15 but benefits has 1990-05-16?)
+- Massive storage waste when values appear in hundreds of contexts
+
+**Example 2: Product Catalog**
+
+```
+Traditional Database:
+  orders table:
+    order_id | product_id | product_weight | quantity
+    ORD001   | PROD123    | 2.5 kg        | 1
+    ORD002   | PROD123    | 2.5 kg        | 2
+    ORD003   | PROD123    | 2.5 kg        | 1
+    # Product weight duplicated for every order!
+```
+
+**Issues:**
+- Product weight measured once, but duplicated for every order
+- If weight was measured incorrectly, you'd need to update thousands of order records
+- No history of when the weight was corrected
+
+### The YetAnotherSchema Solution
+
+Values are stored once, contexts map to them:
+
+**Example 1: Employee Database**
+
+```
+values table:
+  value_id | field      | raw_value  | created_timestamp
+  1        | birth_date | 1990-05-15 | 2020-01-10 09:00
+  2        | salary     | 75000      | 2020-01-10 09:05
+  3        | salary     | 80000      | 2024-01-15 10:00
+
+context_relationships table:
+  context_key                | field      | value_id
+  emp_id=E001,context=payroll| birth_date | 1  # Same birth_date!
+  emp_id=E001,context=payroll| salary     | 3  # Latest salary
+  emp_id=E001,context=benefits| birth_date| 1  # Same birth_date!
+  emp_id=E001,context=review_2024| birth_date| 1  # Same birth_date!
+  emp_id=E001,context=review_2025| birth_date| 1  # Same birth_date!
+```
+
+**Example 2: Product Catalog**
+
+```
+values table:
+  value_id | field  | raw_value | created_timestamp
+  1        | weight | 2.5       | 2025-01-01 08:00
+  2        | price  | 49.99     | 2025-01-01 08:05
+  3        | price  | 44.99     | 2025-01-15 10:00  # Price change
+
+context_relationships table:
+  context_key                    | field  | value_id
+  product_id=PROD123,order=ORD001| weight | 1  # Same weight!
+  product_id=PROD123,order=ORD001| price  | 2
+  product_id=PROD123,order=ORD002| weight | 1  # Same weight!
+  product_id=PROD123,order=ORD002| price  | 2
+  product_id=PROD123,order=ORD003| weight | 1  # Same weight!
+  product_id=PROD123,order=ORD003| price  | 3  # New price
+```
+
+**Benefits:**
+- ✅ Values collected once, stored once, referenced many times
+- ✅ Birth date stored once, appears in 4+ contexts (no duplication)
+- ✅ Product weight stored once, appears in 1000+ orders (no duplication)
+- ✅ Corrections create new values (append-only)
+- ✅ Full audit trail preserved
+- ✅ Single source of truth
+- ✅ Massive storage savings
+
+---
+
+## 🧬 Core Philosophy
+
+### "Values are free ions, not tables. Everything else is a view."
+
+This philosophy means:
+
+1. **Values are atomic and independent** - Like ions in chemistry, values exist independently and can bond with different contexts
+2. **No forced structure** - Values aren't locked into rigid table structures
+3. **Context creates meaning** - The same value can exist in multiple contexts
+4. **Views are computed on-demand** - Traditional tables are materialized when needed, never stored
+5. **Append-only corrections** - Corrections create new values, preserving history
+6. **Full traceability** - Every value knows when it was created and by whom
+
+### Key Principles
+
+1. **Values are atomic** - No duplication, stored once
+2. **Append-only** - Corrections create new entries, never delete
+3. **Context-driven** - Values exist in contexts (subject, visit, site, etc.)
+4. **On-demand views** - Traditional tables are computed when needed
+5. **Full audit trail** - Every change is tracked with timestamps
+6. **Metadata is informational** - No validation, user can enter anything (frontend validates)
+7. **User metadata wins** - Enables unit harmonization (cm → inches)
+
+### Three-Sphere Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    YetAnotherSchema                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Outer Sphere: Expressions (Computed)                │  │
+│  │  - BMI, derived metrics                              │  │
+│  │  - Polars expressions                                │  │
+│  │  - Never materialized                                │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                          ▲                                  │
+│                          │                                  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Middle Sphere: Relationships (DuckDB)               │  │
+│  │  - context_relationships table                       │  │
+│  │  - Indexed for fast lookups                          │  │
+│  │  - Maps contexts → value indices                     │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                          ▲                                  │
+│                          │                                  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Inner Sphere: Values (DuckDB)                       │  │
+│  │  - values table (append-only)                        │  │
+│  │  - Columnar storage                                  │  │
+│  │  - Full audit trail                                  │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🌟 Real-World Examples
+
+### Example 1: Employee Database - No Duplication
+
+An employee's birth date is collected once at hiring, but needs to appear in payroll, benefits, and performance reviews.
+
+**Traditional Database:**
+```sql
+-- Birth date duplicated in every table
+INSERT INTO payroll VALUES ('E001', '1990-05-15', 75000);
+INSERT INTO benefits VALUES ('E001', '1990-05-15', 'Premium');
+INSERT INTO reviews VALUES ('E001', '1990-05-15', 4.5, 2024);
+INSERT INTO reviews VALUES ('E001', '1990-05-15', 4.7, 2025);
+
+-- Problem: Birth date stored 4 times! If it was wrong, update 4 places.
+```
+
+**YetAnotherSchema:**
+```python
+# Birth date stored once
+ys.write(
+    space_name='hr_system',
+    field='birth_date',
+    value={'raw_value': '1990-05-15', 'user_id': 'hr_admin'},
+    contexts={'emp_id': 'E001'}
+)
+
+# Reference birth date in payroll context
+ys.write(
+    space_name='hr_system',
+    field='salary',
+    value={'raw_value': 75000, 'user_id': 'payroll_admin'},
+    contexts={'emp_id': 'E001', 'context': 'payroll'}
+)
+
+# Reference birth date in benefits context
+ys.write(
+    space_name='hr_system',
+    field='plan',
+    value={'raw_value': 'Premium', 'user_id': 'benefits_admin'},
+    contexts={'emp_id': 'E001', 'context': 'benefits'}
+)
+
+# Reference birth date in review contexts
+ys.write(
+    space_name='hr_system',
+    field='rating',
+    value={'raw_value': 4.5, 'user_id': 'manager_001'},
+    contexts={'emp_id': 'E001', 'context': 'review', 'year': '2024'}
+)
+
+ys.write(
+    space_name='hr_system',
+    field='rating',
+    value={'raw_value': 4.7, 'user_id': 'manager_001'},
+    contexts={'emp_id': 'E001', 'context': 'review', 'year': '2025'}
+)
+
+# Query payroll view (birth_date appears automatically)
+df = ys.read(
+    space_name='hr_system',
+    fields=['emp_id', 'birth_date', 'salary'],
+    contexts={'context': 'payroll'}
+)
+# ┌────────┬────────────┬────────┐
+# │ emp_id │ birth_date │ salary │
+# ├────────┼────────────┼────────┤
+# │ E001   │ 1990-05-15 │ 75000  │
+# └────────┴────────────┴────────┘
+
+# Query reviews view (birth_date appears automatically)
+df = ys.read(
+    space_name='hr_system',
+    fields=['emp_id', 'birth_date', 'rating', 'year'],
+    contexts={'context': 'review'}
+)
+# ┌────────┬────────────┬────────┬──────┐
+# │ emp_id │ birth_date │ rating │ year │
+# ├────────┼────────────┼────────┼──────┤
+# │ E001   │ 1990-05-15 │ 4.5    │ 2024 │
+# │ E001   │ 1990-05-15 │ 4.7    │ 2025 │
+# └────────┴────────────┴────────┴──────┘
+```
+
+**Benefits:**
+- ✅ Birth date stored once, appears in 4+ contexts
+- ✅ If birth date was wrong, correct it once (not 4 times)
+- ✅ Full audit trail of correction
+- ✅ No duplication, no data integrity issues
+
+### Example 2: Product Catalog - Massive Savings
+
+A product's weight is measured once, but appears in thousands of orders.
+
+**Traditional Database:**
+```sql
+-- Product weight duplicated for every order
+INSERT INTO orders VALUES ('ORD001', 'PROD123', 2.5, 1);
+INSERT INTO orders VALUES ('ORD002', 'PROD123', 2.5, 2);
+INSERT INTO orders VALUES ('ORD003', 'PROD123', 2.5, 1);
+-- ... 1000 more orders ...
+
+-- Problem: Weight stored 1000+ times! If it was wrong, update 1000+ rows.
+```
+
+**YetAnotherSchema:**
+```python
+# Product weight stored once
+ys.write(
+    space_name='ecommerce',
+    field='weight',
+    value={'raw_value': 2.5, 'metadata': {'unit': 'kg'}, 'user_id': 'warehouse_admin'},
+    contexts={'product_id': 'PROD123'}
+)
+
+# Create orders (weight is referenced, not duplicated)
+ys.write(
+    space_name='ecommerce',
+    field='quantity',
+    value={'raw_value': 1, 'user_id': 'customer_001'},
+    contexts={'product_id': 'PROD123', 'order_id': 'ORD001'}
+)
+
+ys.write(
+    space_name='ecommerce',
+    field='quantity',
+    value={'raw_value': 2, 'user_id': 'customer_002'},
+    contexts={'product_id': 'PROD123', 'order_id': 'ORD002'}
+)
+
+ys.write(
+    space_name='ecommerce',
+    field='quantity',
+    value={'raw_value': 1, 'user_id': 'customer_003'},
+    contexts={'product_id': 'PROD123', 'order_id': 'ORD003'}
+)
+
+# Query orders (weight appears automatically for each order)
+df = ys.read(
+    space_name='ecommerce',
+    fields=['order_id', 'product_id', 'weight', 'quantity'],
+    contexts={'product_id': 'PROD123'}
+)
+# ┌──────────┬────────────┬────────┬──────────┐
+# │ order_id │ product_id │ weight │ quantity │
+# ├──────────┼────────────┼────────┼──────────┤
+# │ ORD001   │ PROD123    │ 2.5    │ 1        │
+# │ ORD002   │ PROD123    │ 2.5    │ 2        │
+# │ ORD003   │ PROD123    │ 2.5    │ 1        │
+# └──────────┴────────────┴────────┴──────────┘
+
+# If weight was measured incorrectly, correct it once
+ys.write(
+    space_name='ecommerce',
+    field='weight',
+    value={'raw_value': 2.3, 'metadata': {'unit': 'kg', 'note': 'remeasured'}, 'user_id': 'warehouse_admin'},
+    contexts={'product_id': 'PROD123'}
+)
+
+# All orders now show corrected weight automatically
+df = ys.read(
+    space_name='ecommerce',
+    fields=['order_id', 'product_id', 'weight', 'quantity'],
+    contexts={'product_id': 'PROD123'}
+)
+# ┌──────────┬────────────┬────────┬──────────┐
+# │ order_id │ product_id │ weight │ quantity │
+# ├──────────┼────────────┼────────┼──────────┤
+# │ ORD001   │ PROD123    │ 2.3    │ 1        │  # Updated!
+# │ ORD002   │ PROD123    │ 2.3    │ 2        │  # Updated!
+# │ ORD003   │ PROD123    │ 2.3    │ 1        │  # Updated!
+# └──────────┴────────────┴────────┴──────────┘
+```
+
+**Benefits:**
+- ✅ Weight stored once, appears in 1000+ orders
+- ✅ Correction updates all orders automatically
+- ✅ Full audit trail (both 2.5 and 2.3 preserved)
+- ✅ Massive storage savings (1 value vs 1000+ duplicates)
+
+### Example 3: Data Correction with Audit Trail
+
+A nurse enters a patient's weight as 500 kg (typo!). Later, they realize the mistake and correct it to 50 kg.
+
+**Traditional Database:**
+```sql
+-- Original entry
+INSERT INTO measurements VALUES ('S001', 'V1', 500);
+
+-- Correction (overwrites original)
+UPDATE measurements SET weight = 50 WHERE subject_id = 'S001' AND visit = 'V1';
+
+-- Problem: Original value (500) is lost! No audit trail.
+```
+
+**YetAnotherSchema:**
+```python
+# Original entry (typo)
+ys.write(
+    space_name='clinical_study',
+    field='weight',
+    value={'raw_value': 500, 'user_id': 'nurse_001'},
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+# created_timestamp: 2026-01-30T09:00:00
+
+# Correction (new entry)
+ys.write(
+    space_name='clinical_study',
+    field='weight',
+    value={'raw_value': 50, 'user_id': 'nurse_001'},
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+# created_timestamp: 2026-01-30T09:01:00
+
+# Read returns latest value (50)
+df = ys.read(
+    space_name='clinical_study',
+    fields=['subject_id', 'weight'],
+    contexts={'subject_id': 'S001'}
+)
+# weight = 50.0
+
+# Time-travel to see original value (for audit)
+df = ys.read(
+    space_name='clinical_study',
+    fields=['subject_id', 'weight'],
+    contexts={'subject_id': 'S001'},
+    as_of='2026-01-30T09:00:30'  # Before correction
+)
+# weight = 500.0
+```
+
+**Benefits:**
+- ✅ Both values preserved (500 and 50)
+- ✅ Full audit trail (who, when, what)
+- ✅ Latest value returned by default
+- ✅ Time-travel for audits
+- ✅ No data loss
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+pip install duckdb polars toml python-dateutil
+```
+
+### Basic Usage
+
+```python
+import yetanotherschema as ys
+
+# 1. Create a space
+ys.create(
+    space_name='clinical_study_001',
+    schema_path='schema.toml'
+)
+
+# 2. Write a value
+ys.write(
+    space_name='clinical_study_001',
+    field='height',
+    value={
+        'raw_value': 170,
+        'metadata': {'unit': 'cm'},
+        'user_id': 'nurse_001'
+    },
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+
+# 3. Read values
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'visit', 'height', 'weight']
+)
+print(df)
+```
+
+---
+
+## 📚 API Reference
+
+### 1. `create()` - Create a Space
+
+```python
+ys.create(
+    space_name='clinical_study_001',
+    schema_path='schema.toml'
+)
+```
+
+### 2. `write()` - Write a Value
+
+```python
+ys.write(
+    space_name='clinical_study_001',
+    field='height',
+    value={
+        'raw_value': 170,
+        'metadata': {'unit': 'cm', 'device': 'stadiometer'},
+        'reported_timestamp': '2026-01-30T09:00:00',
+        'user_id': 'nurse_001'
+    },
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+```
+
+### 3. `write_batch()` - Write Multiple Values
+
+```python
+ys.write_batch(
+    space_name='clinical_study_001',
+    records=[
+        {
+            'field': 'height',
+            'value': {'raw_value': 170, 'user_id': 'nurse_001'},
+            'contexts': {'subject_id': 'S001', 'visit': 'V1'}
+        },
+        {
+            'field': 'weight',
+            'value': {'raw_value': 70, 'user_id': 'nurse_001'},
+            'contexts': {'subject_id': 'S001', 'visit': 'V1'}
+        }
+    ]
+)
+```
+
+### 4. `read()` - Read Values
+
+```python
+# Basic read
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'visit', 'height', 'weight']
+)
+
+# With context filter
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'height', 'weight'],
+    contexts={'subject_id': 'S001'}
+)
+
+# With value filters
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'height'],
+    filters={'height': {'gt': 160, 'lt': 180}}
+)
+
+# Time-travel query
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'weight'],
+    as_of='2026-01-15T23:59:59'
+)
+```
+
+### 5. `schema()` - View Schema
+
+```python
+# Summary
+schema_info = ys.schema('clinical_study_001')
+
+# Statistics
+stats = ys.schema('clinical_study_001', detail='stats')
+
+# Full schema
+full_schema = ys.schema('clinical_study_001', detail='full')
+```
+
+### 6. `list_spaces()` - List All Spaces
+
+```python
+spaces = ys.list_spaces()
+for space in spaces:
+    print(f"{space['space_name']}: {space['total_values']} values")
+```
+
+---
+
+## 📝 Schema Definition
+
+Create a `schema.toml` file:
+
+```toml
+[metadata]
+name = "clinical_study_001"
+version = "0.1.0"
+
+[contexts]
+# At least one required context
+required = ["subject_id"]
+optional = ["visit", "site", "country"]
+
+[hierarchies]
+geographic = ["region", "country", "site"]
+lab = ["lab_category", "lab_subcategory", "lab_test"]
+
+[values]
+height = { unit = "cm", type = "numeric", category = "vital_sign" }
+weight = { unit = "kg", type = "numeric", category = "vital_sign" }
+hemoglobin = { unit = "g/dL", type = "numeric", category = "lab_result" }
+
+[null_values]
+not_done = "@notdone"
+missing = "@null"
+```
+
+---
+
+## 📖 Comprehensive Examples
+
+### Example 1: Basic Workflow
+
+```python
+import yetanotherschema as ys
+
+# Create a space
+ys.create(
+    space_name='clinical_study_001',
+    schema_path='schema.toml'
+)
+
+# Write a value
+ys.write(
+    space_name='clinical_study_001',
+    field='height',
+    value={
+        'raw_value': 170,
+        'metadata': {'unit': 'cm', 'device': 'stadiometer'},
+        'reported_timestamp': '2026-01-30T09:00:00',
+        'user_id': 'nurse_001'
+    },
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+
+# Read values
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'visit', 'height']
+)
+print(df)
+```
+
+### Example 2: Batch Operations
+
+```python
+# Write multiple values at once
+value_ids = ys.write_batch(
+    space_name='clinical_study_001',
+    records=[
+        {
+            'field': 'height',
+            'value': {'raw_value': 170, 'user_id': 'nurse_001'},
+            'contexts': {'subject_id': 'S001', 'visit': 'V1'}
+        },
+        {
+            'field': 'weight',
+            'value': {'raw_value': 70, 'user_id': 'nurse_001'},
+            'contexts': {'subject_id': 'S001', 'visit': 'V1'}
+        },
+        {
+            'field': 'temperature',
+            'value': {'raw_value': 37.0, 'user_id': 'nurse_001'},
+            'contexts': {'subject_id': 'S001', 'visit': 'V1'}
+        }
+    ]
+)
+print(f"Written {len(value_ids)} values")
+```
+
+### Example 3: Context Filtering
+
+```python
+# Get all visits for a specific subject
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'visit', 'height', 'weight'],
+    contexts={'subject_id': 'S001'}
+)
+
+# Get specific visit
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'visit', 'height', 'weight'],
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+
+# Get all subjects from a specific site
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'site', 'height', 'weight'],
+    contexts={'site': 'Boston'}
+)
+```
+
+### Example 4: Value Filtering
+
+```python
+# Numeric filters
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'height'],
+    filters={'height': {'gt': 160, 'lt': 180}}
+)
+
+# Multiple conditions
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'height', 'weight'],
+    filters={
+        'height': {'gte': 165, 'lte': 175},
+        'weight': {'gte': 50, 'lte': 100}
+    }
+)
+
+# Text filtering
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'adverse_event'],
+    filters={'adverse_event': {'contains': 'headache'}}
+)
+```
+
+### Example 5: Data Corrections
+
+```python
+# Original entry (typo)
+ys.write(
+    space_name='clinical_study_001',
+    field='weight',
+    value={
+        'raw_value': 500,  # Typo!
+        'metadata': {'unit': 'kg', 'note': 'data_entry_error'},
+        'reported_timestamp': '2026-01-30T09:00:00',
+        'user_id': 'nurse_001'
+    },
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+
+# Correction (new entry)
+ys.write(
+    space_name='clinical_study_001',
+    field='weight',
+    value={
+        'raw_value': 50,  # Corrected
+        'metadata': {'unit': 'kg', 'note': 'corrected_typo'},
+        'reported_timestamp': '2026-01-30T09:00:00',  # Same reported time
+        'user_id': 'nurse_001'
+    },
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+
+# Read returns latest value (50)
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'weight'],
+    contexts={'subject_id': 'S001'}
+)
+# weight = 50.0
+```
+
+### Example 6: Time-Travel Queries
+
+```python
+# View data as it existed on a specific date
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'weight'],
+    contexts={'subject_id': 'S001'},
+    as_of='2026-01-30T09:00:30'  # Before correction
+)
+# weight = 500.0 (shows typo)
+
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'weight'],
+    contexts={'subject_id': 'S001'},
+    as_of='2026-01-30T09:01:30'  # After correction
+)
+# weight = 50.0 (shows corrected value)
+```
+
+### Example 7: Metadata Inclusion
+
+```python
+# Read with metadata
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'height', 'weight'],
+    contexts={'subject_id': 'S001'},
+    include_metadata=True
+)
+
+# DataFrame includes metadata column with all metadata for each field
+print(df)
+# ┌────────────┬────────┬────────┬──────────────────────────────┐
+# │ subject_id │ height │ weight │ metadata                     │
+# │ ---        │ ---    │ ---    │ ---                          │
+# │ str        │ f64    │ f64    │ struct                       │
+# ╞════════════╪════════╪════════╪══════════════════════════════╡
+# │ S001       │ 170.0  │ 70.0   │ {height: {unit: cm, ...},    │
+# │            │        │        │  weight: {unit: kg, ...}}    │
+# └────────────┴────────┴────────┴──────────────────────────────┘
+```
+
+### Example 8: Schema Inspection
+
+```python
+# Summary view
+schema_info = ys.schema('clinical_study_001')
+print(schema_info)
+# {
+#     'space_name': 'clinical_study_001',
+#     'schema_version': '0.1.0',
+#     'contexts': {
+#         'required': ['subject_id'],
+#         'optional': ['visit', 'site']
+#     },
+#     'value_fields': ['height', 'weight', 'temperature']
+# }
+
+# Statistics
+stats = ys.schema('clinical_study_001', detail='stats')
+print(stats)
+# {
+#     'total_values': 1500,
+#     'unique_contexts': 250,
+#     'value_fields': 12
+# }
+
+# Full schema
+full_schema = ys.schema('clinical_study_001', detail='full')
+```
+
+### Example 9: Multi-Site Study
+
+```python
+# Collect data from multiple sites
+ys.write(
+    space_name='global_study',
+    field='height',
+    value={'raw_value': 170, 'user_id': 'nurse_boston_001'},
+    contexts={'subject_id': 'S001', 'visit': 'V1', 'site': 'Boston'}
+)
+
+ys.write(
+    space_name='global_study',
+    field='height',
+    value={'raw_value': 165, 'user_id': 'nurse_ny_001'},
+    contexts={'subject_id': 'S002', 'visit': 'V1', 'site': 'New York'}
+)
+
+# Query by site
+df_boston = ys.read(
+    space_name='global_study',
+    fields=['subject_id', 'site', 'height'],
+    contexts={'site': 'Boston'}
+)
+
+# Query all sites
+df_all = ys.read(
+    space_name='global_study',
+    fields=['subject_id', 'site', 'height']
+)
+```
+
+### Example 10: Unit Harmonization
+
+```python
+# User enters height in inches (overrides schema default of cm)
+ys.write(
+    space_name='clinical_study_001',
+    field='height',
+    value={
+        'raw_value': 67,  # inches
+        'metadata': {
+            'unit': 'inches',  # User overrides schema (cm)
+            'device': 'tape_measure'
+        },
+        'user_id': 'nurse_001'
+    },
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+
+# Later, use Additory or custom logic to harmonize units
+# This is why user metadata wins - enables unit conversion
+```
+
+---
+
+## 🔧 Data Corrections
+
+YetAnotherSchema uses append-only corrections:
+
+```python
+# Original entry (typo)
+ys.write(
+    space_name='clinical_study_001',
+    field='weight',
+    value={'raw_value': 500, 'user_id': 'nurse_001'},  # Typo!
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+# created_timestamp: 2026-01-30T09:00:00
+
+# Correction (new entry)
+ys.write(
+    space_name='clinical_study_001',
+    field='weight',
+    value={'raw_value': 50, 'user_id': 'nurse_001'},  # Corrected
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+# created_timestamp: 2026-01-30T09:01:00
+
+# Read returns latest value (50)
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'weight'],
+    contexts={'subject_id': 'S001'}
+)
+# weight = 50.0
+
+# Time-travel to see original value
+df = ys.read(
+    space_name='clinical_study_001',
+    fields=['subject_id', 'weight'],
+    contexts={'subject_id': 'S001'},
+    as_of='2026-01-30T09:00:30'  # Before correction
+)
+# weight = 500.0
+```
+
+---
+
+## 🎯 Use Cases
+
+### Clinical Research
+- Multi-site trials
+- Regulatory compliance
+- Data corrections with audit trail
+- Time-travel queries for audits
+
+### Financial Trading
+- Trade history
+- Price corrections
+- Regulatory reporting
+- Audit trails
+
+### IoT Monitoring
+- Sensor readings
+- Device calibrations
+- Historical analysis
+- Anomaly detection
+
+### Manufacturing
+- Quality control
+- Batch tracking
+- Equipment monitoring
+- Compliance reporting
+
+---
+
+## 🧪 Testing
+
+Run the test suite:
+
+```bash
+# Basic tests
+python test_basic.py
+
+# Advanced tests
+python test_advanced.py
+
+# Example usage
+python example_usage.py
+```
+
+---
+
+## 📊 Performance
+
+Current MVP performance (DuckDB + Polars):
+
+- **Write**: < 1ms per value
+- **Batch write**: < 100ms for 1000 values
+- **Simple query**: < 10ms
+- **Complex query**: < 50ms
+- **Storage**: Columnar compression
+
+---
+
+## 🔮 Future Vision
+
+### Sub-Spaces for Data Residency
+
+Enable distributed data storage while maintaining centralized relationships:
+
+```python
+# Main space (corporate HQ - USA)
+ys.create(
+    space_name='global_study',
+    schema_path='schema.toml'
+)
+
+# Sub-space for EU data (values only, no relationships)
+ys.create_subspace(
+    parent_space='global_study',
+    subspace_name='global_study_eu',
+    storage_path='/eu_datacenter/global_study_eu.db',
+    mode='values_only'  # Only value store, no relationships
+)
+
+# Sub-space for Asia data
+ys.create_subspace(
+    parent_space='global_study',
+    subspace_name='global_study_asia',
+    storage_path='/asia_datacenter/global_study_asia.db',
+    mode='values_only'
+)
+
+# Write to EU sub-space (data stays in EU)
+ys.write(
+    space_name='global_study_eu',
+    field='height',
+    value={...},
+    contexts={'subject_id': 'EU_S001', 'country': 'Germany'}
+)
+
+# Read from main space (combines all sub-spaces + relationships)
+df = ys.read(
+    space_name='global_study',  # Automatically queries all sub-spaces
+    fields=['subject_id', 'country', 'height', 'weight']
+)
+# Result includes data from USA, EU, Asia sub-spaces
+# Relationships and expressions applied at main space level
+```
+
+**Use Cases:**
+- GDPR compliance (EU data stays in EU)
+- Data sovereignty (country-specific regulations)
+- Performance (data closer to users)
+- Disaster recovery (distributed backups)
+
+### Authentication System
+
+Pattern-based authentication with audit trail:
+
+```python
+# Every write includes auth_key
+ys.write(
+    space_name='clinical_study',
+    field='height',
+    value={
+        'raw_value': 170,
+        'user_id': 'nurse_001',
+        'auth_key': 'ys_v1_user_nurse001_ts_20260130_counter_00042_sig_a3f9d2'
+    },
+    contexts={'subject_id': 'S001'}
+)
+
+# Auth key structure:
+# ys_v1_user_{user_id}_ts_{timestamp}_counter_{counter}_sig_{signature}
+#
+# - version: v1
+# - user_id: nurse001
+# - timestamp: 20260130 (date)
+# - counter: 00042 (increments with each write)
+# - signature: cryptographic signature
+
+# Internal counter tracking
+# Every write with this user_id increments counter
+# Enables audit: "nurse_001 made 42 writes today"
+
+# Read operations also audited
+df = ys.read(
+    space_name='clinical_study',
+    fields=['subject_id', 'height', 'weight'],
+    auth_key='ys_v1_user_analyst001_ts_20260130_counter_00015_sig_b7e4c1'
+)
+# System logs: "analyst001 read height/weight data at 2026-01-30 10:30:00"
+```
+
+**Features:**
+- Pattern-based key generation
+- Incremental counters for audit
+- Read/write audit trail
+- No open/close connection workflow
+- Cryptographic signatures
+
+### Schema Evolution
+
+Modify schema without breaking existing data:
+
+```python
+# Add new field to existing space
+ys.create(
+    space_name='clinical_study',
+    mode='modify',
+    add_fields={
+        'blood_pressure': {
+            'unit': 'mmHg',
+            'type': 'numeric',
+            'category': 'vital_sign'
+        }
+    }
+)
+
+# Remove field (flag as hidden, don't delete data)
+ys.create(
+    space_name='clinical_study',
+    mode='modify',
+    hide_fields=['old_field']
+)
+```
+
+**Use Cases:**
+- Protocol amendments in clinical trials
+- Evolving data requirements
+- Backward compatibility
+- Gradual migrations
+
+### Event-Based Time-Travel
+
+Query data as of a specific event, not just timestamp:
+
+```python
+# Time-travel using reported_timestamp (event time)
+df = ys.read(
+    space_name='clinical_study',
+    fields=['subject_id', 'weight'],
+    as_of_event='2026-01-15',  # Uses reported_timestamp
+    contexts={'subject_id': 'S001'}
+)
+
+# vs. created_timestamp (system time)
+df = ys.read(
+    space_name='clinical_study',
+    fields=['subject_id', 'weight'],
+    as_of='2026-01-15T23:59:59',  # Uses created_timestamp
+    contexts={'subject_id': 'S001'}
+)
+```
+
+**Use Cases:**
+- "What was the patient's weight on visit day?"
+- "Show me data as of the database lock date"
+- Event-driven queries vs. system-driven queries
+
+### Missing Value Strategies
+
+Handle missing data with semantic meaning:
+
+```python
+# Schema defines missing value codes
+[null_values]
+not_done = "@notdone"      # Test not performed
+missing = "@null"          # Data missing
+refused = "@refused"       # Patient refused
+not_applicable = "@na"     # Not applicable
+
+# Write with missing value code
+ys.write(
+    space_name='clinical_study',
+    field='blood_pressure',
+    value={
+        'raw_value': '@notdone',
+        'metadata': {'reason': 'equipment_malfunction'},
+        'user_id': 'nurse_001'
+    },
+    contexts={'subject_id': 'S001', 'visit': 'V1'}
+)
+
+# Query distinguishes between different types of missing
+df = ys.read(
+    space_name='clinical_study',
+    fields=['subject_id', 'blood_pressure'],
+    filters={'blood_pressure': {'eq': '@notdone'}}
+)
+```
+
+## 🛣️ Roadmap
+
+### v0.1.0 (Current - POC) ✅
+- ✅ Basic CRUD operations
+- ✅ Append-only corrections
+- ✅ Context filtering
+- ✅ Value filtering
+- ✅ Time-travel queries (created_timestamp)
+- ✅ DuckDB + Polars backend
+- ✅ Schema validation
+- ✅ Batch operations
+
+### Future
+- [ ] Expression engine (BMI, derived metrics)
+- [ ] Hierarchical queries (site → country → region)
+- [ ] Performance optimizations
+- [ ] Query caching
+- [ ] Batch operations optimization
+- [ ] More comprehensive tests
+- [ ] Authentication system (auth_key)
+- [ ] Read audit trail
+- [ ] Sub-spaces (data residency)
+- [ ] Schema evolution
+- [ ] Event-based time-travel (reported_timestamp)
+- [ ] Missing value strategies
+- [ ] Blinded/unblinded separation
+- [ ] Multi-user access control
+- [ ] Advanced filtering (OR, AND, NOT)
+- [ ] Aggregation functions
+- [ ] Export to traditional formats
+
+**Current Status:** MVP (v0.1.0) - Proof of concept complete
+
+**Not Ready For:**
+- Production use (yet)
+- Mission-critical systems
+- High-performance requirements (optimization pending)
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+**Philosophy:**
+"Values are free ions, not tables. Everything else is a view."
+
+This is not just a database - it's a different way of thinking about data.
+
+---
+
+**Philosophy:** "Values are free ions, not tables. Everything else is a view."
+
+**Status:** MVP   
+**Next:** Expression engine and hierarchical queries  
+
+
