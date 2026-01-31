@@ -1,0 +1,63 @@
+# Logging Configuration
+# =====================
+# This file contains logging configuration for the infrastructure framework
+# See docs/LOGGING_BUILDER_GUIDE.md for comprehensive documentation
+
+logging:
+  # Global display settings (affect all handlers uniformly)
+  level: info                  # Log level: trace, debug, info, warning, error, critical, false
+  location: 0                  # File location depth: 0 = disabled, 1+ = show N stack frames
+  location_color: grey-6       # Color for locations: black, red, green, yellow, blue, magenta,
+                               # cyan, white, or gray-0 (darkest) to gray-23 (lightest)
+  micros: false                # Show microsecond precision in timestamps
+
+  # Topic-based level overrides (fine-grained control by logger pattern)
+  # topics:
+  #   "/appinfra/db/*": debug       # All database loggers → debug
+  #   "/appinfra/db/queries": trace # More specific: queries → trace
+  #   "/appinfra/**": info          # All framework loggers → info
+  # Pattern syntax:
+  #   - "*" matches single segment, "**" matches any depth
+  #   - More specific patterns take precedence
+
+  # Handler configurations
+  handlers:
+    console_text:
+      type: console
+      enabled: true
+      level: trace               # Handler-specific level filter
+      format: text
+      stream: stdout
+      colors: true
+
+    console_json:
+      type: console
+      enabled: false
+      level: info
+      format: json
+      stream: stderr
+
+    file:
+      type: file
+      enabled: false
+      level: trace
+      format: text
+      file: "logs/app.log"
+      rotation: size             # none, size, timed
+      max_size: "50MB"
+      backup_count: 5
+
+    database:
+      type: database
+      enabled: false
+      level: warning
+      format: json
+      table: error_logs
+      db: main
+      batch_size: 10
+      flush_interval: 30
+      critical_flush:
+        enabled: true
+        trigger_fields: ["exception"]
+        timeout: 5.0
+        fallback_to_console: true
