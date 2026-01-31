@@ -1,0 +1,161 @@
+[project]
+name = "sovereign"
+version = "1.0.0b164.post5"
+description = "Envoy Proxy control-plane written in Python"
+authors = [{ name = "Vasili Syrakis", email = "vsyrakis@atlassian.com" }]
+requires-python = ">=3.11.0, <4.0"
+readme = "README.md"
+license = "Apache-2.0"
+keywords = [
+    "envoy",
+    "envoyproxy",
+    "control-plane",
+    "management",
+    "server",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: No Input/Output (Daemon)",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Internet :: Proxy Servers",
+]
+dependencies = [
+    "uvicorn>=0.23.2,<0.24",
+    "aiofiles>=23.2.1,<24",
+    "requests>=2.32.4,<3",
+    "PyYAML>=6.0.1,<7",
+    "Jinja2>=3.1.2,<4",
+    "structlog>=23.1.0,<24",
+    "cachelib>=0.10.2,<0.11",
+    "glom>=23.3.0,<24",
+    "cryptography>=45.0.2",
+    "fastapi>=0.128.0,<0.129",
+    "uvloop>0.19.0,<1.0",
+    "croniter>=1.4.1,<2",
+    "cachetools>=5.3.2,<6",
+    "pydantic>=2.7.2,<3",
+    "pydantic-settings<2.6.0",
+    "starlette-context>=0.3.6,<0.4",
+    "starlette>=0.49.1,<0.50",
+    "h11>=0.16.0,<0.17",
+    "supervisor>=4.2.5,<5",
+    "jmespath>=1.0.1,<2",
+    "rich>=14.2.0",
+]
+
+[project.optional-dependencies]
+sentry = ["sentry-sdk>=2.14.0,<3"]
+boto = ["boto3>=1.28.62,<2"]
+statsd = ["datadog>=0.50.1"]
+ujson = ["ujson>=5.8.0,<6"]
+orjson = ["orjson>=3.9.15,<4"]
+caching = []
+httptools = ["httptools>=0.6.0,<0.7"]
+
+[project.urls]
+Homepage = "https://pypi.org/project/sovereign/"
+Repository = "https://bitbucket.org/atlassian/sovereign/src/master/"
+Documentation = "https://developer.atlassian.com/platform/sovereign/"
+
+[project.scripts]
+sovereign = "sovereign.server:main"
+sovereign-web = "sovereign.server:web"
+sovereign-worker = "sovereign.server:worker"
+
+[project.entry-points."sovereign.sources"]
+file = "sovereign.sources.file:File"
+inline = "sovereign.sources.inline:Inline"
+
+[project.entry-points."sovereign.modifiers"]
+sovereign_3rd_party_test = "sovereign.testing.modifiers:Test"
+
+[project.entry-points."sovereign.loaders"]
+example = "sovereign.testing.loaders:Multiply"
+file = "sovereign.dynamic_config.loaders:File"
+pkgdata = "sovereign.dynamic_config.loaders:PackageData"
+http = "sovereign.dynamic_config.loaders:Web"
+https = "sovereign.dynamic_config.loaders:Web"
+env = "sovereign.dynamic_config.loaders:EnvironmentVariable"
+module = "sovereign.dynamic_config.loaders:PythonModule"
+s3 = "sovereign.dynamic_config.loaders:S3Bucket"
+python = "sovereign.dynamic_config.loaders:PythonInlineCode"
+inline = "sovereign.dynamic_config.loaders:Inline"
+
+[project.entry-points."sovereign.deserializers"]
+yaml = "sovereign.dynamic_config.deser:YamlDeserializer"
+json = "sovereign.dynamic_config.deser:JsonDeserializer"
+jinja = "sovereign.dynamic_config.deser:JinjaDeserializer"
+jinja2 = "sovereign.dynamic_config.deser:JinjaDeserializer"
+string = "sovereign.dynamic_config.deser:StringDeserializer"
+raw = "sovereign.dynamic_config.deser:PassthroughDeserializer"
+none = "sovereign.dynamic_config.deser:PassthroughDeserializer"
+passthrough = "sovereign.dynamic_config.deser:PassthroughDeserializer"
+ujson = "sovereign.dynamic_config.deser:UjsonDeserializer"
+orjson = "sovereign.dynamic_config.deser:OrjsonDeserializer"
+
+[project.entry-points."sovereign.cache.backends"]
+s3 = "sovereign.cache.backends.s3:S3Backend"
+
+[project.entry-points."sovereign.data_stores"]
+memory = "sovereign.v2.data.data_store:InMemoryDataStore"
+sqlite = "sovereign.v2.data.data_store:SqliteDataStore"
+
+[project.entry-points."sovereign.queues"]
+memory = "sovereign.v2.data.worker_queue:InMemoryQueue"
+sqlite = "sovereign.v2.data.worker_queue:SqliteQueue"
+
+[dependency-groups]
+dev = [
+    "freezegun",
+    "httpx",
+    "moto>=5.0.0",
+    "pytest-asyncio",
+    "pytest-mock",
+    "ruff",
+    "tavern",
+    "toml",
+    "ty",
+    "ty==0.0.1a26",
+    "types-PyYAML",
+    "types-cachetools",
+    "types-croniter",
+    "types-mock>=5.2.0.20250306,<6",
+    "types-requests",
+    "types-setuptools",
+    "types-ujson",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/sovereign",
+    "src/sovereign_files",
+    "src/sovereign_files/**/*",
+]
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "src/sovereign",
+    "src/sovereign_files",
+    "src/sovereign_files/**/*",
+]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/sovereign" = "sovereign"
+"src/sovereign_files" = "sovereign_files"
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

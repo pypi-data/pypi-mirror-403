@@ -1,0 +1,137 @@
+import configparser
+import multiprocessing
+import tempfile
+import warnings
+from pathlib import Path
+
+import uvicorn
+
+from sovereign import application_logger as log
+from sovereign.configuration import SovereignAsgiConfig, SupervisordConfig, config
+from sovereign.v2.worker import Worker
+
+# noinspection PyArgumentList
+asgi_config = SovereignAsgiConfig()
+# noinspection PyArgumentList
+supervisord_config = SupervisordConfig()
+
+
+def web(supervisor_enabled=True) -> None:
+    from sovereign.app import app
+
+    log.debug("Starting web server")
+
+    if not supervisor_enabled:
+        uvicorn.run(
+            app,
+            log_level=asgi_config.log_level,
+            access_log=False,
+            timeout_keep_alive=asgi_config.keepalive,
+            host=asgi_config.host,
+            port=asgi_config.port,
+            workers=1,  # per managed supervisor proc
+        )
+    else:
+        uvicorn.run(
+            app,
+            fd=0,
+            log_level=asgi_config.log_level,
+            access_log=False,
+            timeout_keep_alive=asgi_config.keepalive,
+            host=asgi_config.host,
+            port=asgi_config.port,
+            workers=1,  # per managed supervisor proc
+        )
+
+
+def worker():
+    if config.worker_v2_enabled:
+        log.debug("Starting worker v2")
+        Worker().start()
+    else:
+        from sovereign.worker import worker as worker_app
+
+        log.debug("Starting worker")
+        uvicorn.run(
+            worker_app,
+            log_level=asgi_config.log_level,
+            access_log=False,
+            timeout_keep_alive=asgi_config.keepalive,
+            host="127.0.0.1",
+            port=9080,
+            workers=1,  # per managed supervisor proc
+        )
+
+
+def write_supervisor_conf() -> Path:
+    proc_env = {
+        "LANG": "en_US.UTF-8",
+        "LC_ALL": "en_US.UTF-8",
+    }
+    base = {
+        "autostart": "true",
+        "autorestart": "true",
+        "stdout_logfile": "/dev/stdout",
+        "stdout_logfile_maxbytes": "0",
+        "stderr_logfile": "/dev/stderr",
+        "stderr_logfile_maxbytes": "0",
+        "stopsignal": "QUIT",
+        "environment": ",".join(["=".join((k, v)) for k, v in proc_env.items()]),
+    }
+
+    conf = configparser.RawConfigParser()
+    conf["supervisord"] = supervisord = {
+        "nodaemon": str(supervisord_config.nodaemon).lower(),
+        "loglevel": supervisord_config.loglevel,
+        "pidfile": supervisord_config.pidfile,
+        "logfile": supervisord_config.logfile,
+        "directory": supervisord_config.directory,
+    }
+
+    conf["fcgi-program:web"] = web = {
+        **base,
+        "socket": f"tcp://{asgi_config.host}:{asgi_config.port}",
+        "numprocs": str(asgi_config.workers),
+        "process_name": "%(program_name)s-%(process_num)02d",
+        "command": "sovereign-web",  # default niceness, higher CPU priority
+    }
+
+    if config.worker_v2_enabled:
+        conf["program:data"] = worker = {
+            **base,
+            "numprocs": str(max(1, multiprocessing.cpu_count() - 1)),
+            "command": "sovereign-worker",  # run worker with reduced CPU priority (higher niceness value)
+            "process_name": "sovereign-worker-%(process_num)s",
+        }
+    else:
+        conf["program:data"] = worker = {
+            **base,
+            "numprocs": "1",
+            "command": "sovereign-worker",  # run worker with reduced CPU priority (higher niceness value)
+            "process_name": "sovereign-worker-%(process_num)s",
+        }
+
+    if user := asgi_config.user:
+        supervisord["user"] = user
+        web["user"] = user
+        worker["user"] = user
+
+    log.debug("Writing supervisor config")
+    with tempfile.NamedTemporaryFile("w", delete=False) as f:
+        conf.write(f)
+        log.debug("Supervisor config written out")
+        return Path(f.name)
+
+
+def main():
+    path = write_supervisor_conf()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        from supervisor import supervisord
+
+        log.debug("Starting processes")
+        supervisord.main(["-c", path])
+
+
+if __name__ == "__main__":
+    main()
