@@ -1,0 +1,161 @@
+# evmdeploy
+
+A lightweight, configuration-driven Python library for compiling and deploying Solidity smart contracts to EVM-compatible blockchains.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Setup](#setup)
+- [Quick Start](#quick-start)
+- [Core Components](#core-components)
+  - [SolidityCompiler](#soliditycompiler)
+  - [Contract](#contract)
+  - [ArtifactStorage](#artifactstorage)
+  - [Network Support](#network-support)
+- [Examples](#examples)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
+## Features
+
+- **Configuration-Driven Compilation**: Define compiler versions, path remappings, and optimizer settings once using the `SolidityCompiler` object.
+- **Unified Contract API**: The `Contract` class encapsulates ABI, bytecode, and deployment behavior in a single interface.
+- **Automated Deployment Flow**: Built-in support for nonce management, EIP-1559 gas estimation, and transaction confirmations.
+- **Artifact Persistence**: Save and load compiled contracts via JSON to eliminate redundant compilation steps.
+- **OpenZeppelin Support**: Easily handle library imports with customizable path remappings.
+- **Multi-Chain Support**: Pre-configured network settings for Ethereum Mainnet, Sepolia, Polygon, and Amoy.
+
+## Installation
+
+You can install evmdeploy directly from PyPI:
+
+```bash
+pip install evmdeploy
+```
+
+### Manual Installation
+
+If you are working with the source code or want to install from the repository:
+
+1. Clone the repository:
+```bash
+git clone https://github.com/rakibhossain72/evmdeploy.git
+cd evmdeploy
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Install the package in editable mode:
+```bash
+pip install -e .
+```
+
+## Setup
+
+The library integrates with `python-dotenv` for managing sensitive credentials. Create a `.env` file in your project root:
+
+```env
+PRIVATE_KEY=0xyour_private_key_here
+RPC_URL=https://sepolia.infura.io/v3/your_project_id
+```
+
+## Quick Start
+
+The following example demonstrates a complete workflow from compilation to deployment.
+
+```python
+import os
+from web3 import Web3
+from dotenv import load_dotenv
+from evmdeploy import SolidityCompiler, Contract
+
+# Load credentials
+load_dotenv()
+
+# 1. Configure and Compile
+compiler = SolidityCompiler(solc_version="0.8.23", optimizer=True, runs=500)
+artifacts = compiler.compile("contracts/Vault.sol")
+vault = Contract(artifacts["Vault"])
+
+# 2. Setup Web3 connection
+w3 = Web3(Web3.HTTPProvider(os.getenv("RPC_URL")))
+
+# 3. Deploy Contract
+# The deploy() method handles gas estimation, nonces, and waiting for confirmation.
+result = vault.deploy(
+    w3=w3,
+    private_key=os.getenv("PRIVATE_KEY"),
+    constructor_args=["0x70997970C51812dc3A010C7d01b50e0d17dc79C8"]
+)
+
+print(f"Contract Address: {result.contract_address}")
+print(f"Transaction Hash: {result.tx_hash}")
+
+# 4. Save Artifact for future use
+vault.save(base_path="artifacts")
+```
+
+---
+
+## Core Components
+
+### SolidityCompiler
+The `SolidityCompiler` class allows you to pre-define your build environment.
+- `solc_version`: The Solidity compiler version (e.g., "0.8.23").
+- `remappings`: Dictionary for import path mapping (e.g., `{"@openzeppelin/": "contracts/lib/openzeppelin-contracts/"}`).
+- `optimizer`: Boolean to enable Solidity optimizer (default: `True`).
+- `runs`: Optimizer runs setting (default: `200`).
+
+### Contract
+The primary interface for interacting with your contract's artifacts and lifecycle.
+- `deploy(...)`: Performs the full deployment transaction and returns a `DeploymentResult`.
+- `save(base_path)`: Persists the ABI and bytecode to a JSON file.
+- `from_storage(name, base_path)`: Class method to load a contract from saved artifacts without recompiling.
+- `encode_constructor_args(*args, **kwargs)`: Returns the ABI-encoded data for contract initialization.
+
+### ArtifactStorage
+Handles reading and writing contract data to the local filesystem.
+- `save_artifacts(artifacts_dict)`: Saves multiple artifacts at once.
+- `load_artifact(name)`: Retrieves a specific artifact by its contract name.
+
+### Network Support
+Use `get_network(name)` to access pre-defined configurations for common EVM chains:
+- `mainnet`
+- `sepolia`
+- `polygon`
+- `amoy` (Polygon Testnet)
+
+```python
+from evmdeploy import get_network
+network = get_network("sepolia")
+print(f"Network: {network.name}, ChainID: {network.chain_id}")
+```
+
+---
+
+## Examples
+
+- **Standard Deployment**: See `examples/improved_deploy.py` for a standard contract deployment flow.
+- **OpenZeppelin ERC20**: See `examples/oz_erc20_deploy.py` for an example using external library remappings and constructor arguments.
+
+## Troubleshooting
+
+### Private Key Not Found
+If you receive a message saying `Please set the PRIVATE_KEY environment variable`, ensure:
+1. A `.env` file exists in the directory where you are executing the script.
+2. `load_dotenv()` is called at the start of your script.
+3. Your `.env` file contains `PRIVATE_KEY=0x...` without spaces around the `=`.
+
+### Compilation Failures
+- Verify that the `solc_version` in your `SolidityCompiler` config is installed and matches your contract's pragma.
+- Check that `remappings` paths are correct relative to your execution directory.
+
+## License
+
+This project is licensed under the MIT License.
