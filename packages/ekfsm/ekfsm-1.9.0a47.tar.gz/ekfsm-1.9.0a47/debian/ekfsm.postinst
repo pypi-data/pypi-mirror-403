@@ -1,0 +1,80 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # Use the actual Python version from the bundled venv (always 3.10)
+        # Find the actual Python version directory in the venv
+        if [ -d "/opt/ekfsm/venv/lib/python3.10" ]; then
+            PYTHON_VERSION="3.10"
+        else
+            # Fallback: detect from existing directory using glob
+            for dir in /opt/ekfsm/venv/lib/python*; do
+                if [ -d "$dir" ]; then
+                    PYTHON_VERSION=$(basename "$dir" | sed 's/python//')
+                    break
+                fi
+            done
+        fi
+
+        SITE_PACKAGES="/opt/ekfsm/venv/lib/python${PYTHON_VERSION}/site-packages"
+        PTH_FILE="/usr/lib/python3/dist-packages/ekfsm-bundled.pth"
+
+        # Update the .pth file with correct Python version path
+        cat > "$PTH_FILE" << EOF
+# ekfsm bundled dependencies path
+# This file allows system Python to find the bundled ekfsm dependencies
+$SITE_PACKAGES
+EOF
+
+        # Update Python path cache
+        if command -v python3 >/dev/null 2>&1; then
+            python3 -c "
+import sys
+import importlib
+try:
+    # Clear import cache
+    sys.path_importer_cache.clear()
+    # Clear module cache for any existing ekfsm imports
+    for module in list(sys.modules.keys()):
+        if module.startswith('ekfsm'):
+            del sys.modules[module]
+    # Try to import to verify installation
+    import ekfsm
+    print('✓ ekfsm installation verified')
+except Exception as e:
+    print(f'⚠ Warning: Could not verify installation: {e}')
+" 2>/dev/null || true
+        fi
+
+        # Create symlink for easy access
+        if [ ! -L /usr/local/bin/ekfsm ]; then
+            ln -sf /usr/bin/ekfsm-cli /usr/local/bin/ekfsm
+        fi
+
+        # Set proper permissions
+        chmod 644 "$PTH_FILE"
+        chmod +x /usr/bin/ekfsm-cli
+
+        echo "✓ ekfsm ${DPKG_MAINTSCRIPT_PACKAGE_VERSION:-latest} installed successfully!"
+        echo ""
+        echo "Available commands:"
+        echo "  ekfsm-cli --help    (primary command)"
+        echo "  ekfsm --help        (convenience symlink)"
+        echo ""
+        echo "Dependencies are bundled in: $SITE_PACKAGES"
+        echo "Python path configuration: $PTH_FILE"
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

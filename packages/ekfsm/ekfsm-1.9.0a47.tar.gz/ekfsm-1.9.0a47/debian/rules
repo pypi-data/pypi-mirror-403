@@ -1,0 +1,34 @@
+#!/usr/bin/make -f
+
+export DH_OPTIONS = --exclude=.devenv --exclude=.direnv
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_configure:
+	# Nothing needed here - our script handles everything
+
+override_dh_auto_build:
+	# Nothing needed here - bundling happens in install phase
+
+override_dh_auto_install:
+	# Run our custom bundling script after dh_prep has prepared debian/tmp
+	chmod +x scripts/bundle-dependencies.sh
+	./scripts/bundle-dependencies.sh
+	# Just ensure proper permissions
+	find debian/tmp -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+	find debian/tmp/usr/bin -type f -exec chmod +x {} \; 2>/dev/null || true
+
+override_dh_auto_test:
+	# Skip tests during package build
+	@echo "Skipping tests for deployment package"
+
+override_dh_compress:
+	# Don't compress our already optimized .py.gz files
+	dh_compress -X.py -X.py.gz -X.pth
+
+override_dh_auto_clean:
+	rm -f requirements.lock || true
+
+override_dh_clean:
+	dh_clean -X.devenv -X.direnv
