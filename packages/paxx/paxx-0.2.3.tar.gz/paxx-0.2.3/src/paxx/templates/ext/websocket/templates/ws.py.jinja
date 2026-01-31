@@ -1,0 +1,375 @@
+"""
+WebSocket connection manager with room support.
+
+Supports single-instance (in-memory) and multi-instance (Redis pub/sub) deployments.
+
+Usage:
+    from services.ws import manager
+
+    # In your WebSocket route:
+    @app.websocket("/ws/{client_id}")
+    async def websocket_endpoint(websocket: WebSocket, client_id: str):
+        await manager.connect(websocket, client_id)
+        try:
+            while True:
+                data = await websocket.receive_text()
+                await manager.broadcast(f"Client {client_id}: {data}")
+        except WebSocketDisconnect:
+            manager.disconnect(client_id)
+
+    # Join/leave rooms:
+    await manager.join_room(client_id, "chat-room-1")
+    await manager.broadcast_to_room("chat-room-1", {"type": "message", "text": "Hello!"})
+    await manager.leave_room(client_id, "chat-room-1")
+
+    # Send to specific client:
+    await manager.send_personal(client_id, {"type": "notification", "text": "Welcome!"})
+"""
+
+import asyncio
+import json
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+from settings import settings
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Connection:
+    """Represents a WebSocket connection."""
+
+    websocket: WebSocket
+    client_id: str
+    rooms: set[str] = field(default_factory=set)
+
+
+class ConnectionManager:
+    """
+    Manages WebSocket connections with room support.
+
+    For single-instance deployments, uses in-memory connection tracking.
+    For multi-instance deployments, uses Redis pub/sub for cross-instance messaging.
+    """
+
+    def __init__(self) -> None:
+        self._connections: dict[str, Connection] = {}
+        self._rooms: dict[str, set[str]] = {}  # room_name -> set of client_ids
+        self._redis_pubsub: Any = None
+        self._pubsub_task: asyncio.Task[None] | None = None
+
+    async def connect(
+        self,
+        websocket: WebSocket,
+        client_id: str,
+        accept: bool = True,
+    ) -> None:
+        """
+        Accept and register a WebSocket connection.
+
+        Args:
+            websocket: FastAPI WebSocket instance
+            client_id: Unique identifier for this client
+            accept: Whether to accept the connection (set False if already accepted)
+        """
+        if accept:
+            await websocket.accept()
+
+        self._connections[client_id] = Connection(
+            websocket=websocket,
+            client_id=client_id,
+        )
+        logger.debug(f"WebSocket connected: {client_id}")
+
+    def disconnect(self, client_id: str) -> None:
+        """
+        Remove a client from all rooms and unregister the connection.
+
+        Args:
+            client_id: The client to disconnect
+        """
+        if client_id not in self._connections:
+            return
+
+        connection = self._connections[client_id]
+
+        # Remove from all rooms
+        for room in list(connection.rooms):
+            self._leave_room_internal(client_id, room)
+
+        del self._connections[client_id]
+        logger.debug(f"WebSocket disconnected: {client_id}")
+
+    async def send_personal(self, client_id: str, message: dict[str, Any] | str) -> bool:
+        """
+        Send a message to a specific client.
+
+        Args:
+            client_id: Target client ID
+            message: Message to send (dict will be JSON encoded)
+
+        Returns:
+            True if sent successfully, False if client not found
+        """
+        connection = self._connections.get(client_id)
+        if not connection:
+            return False
+
+        try:
+            if isinstance(message, dict):
+                await connection.websocket.send_json(message)
+            else:
+                await connection.websocket.send_text(message)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to send to {client_id}: {e}")
+            self.disconnect(client_id)
+            return False
+
+    async def broadcast(
+        self,
+        message: dict[str, Any] | str,
+        exclude: set[str] | None = None,
+    ) -> int:
+        """
+        Send a message to all connected clients.
+
+        Args:
+            message: Message to send
+            exclude: Set of client_ids to exclude from broadcast
+
+        Returns:
+            Number of clients the message was sent to
+        """
+        exclude = exclude or set()
+        sent_count = 0
+
+        # Local broadcast
+        for client_id in list(self._connections.keys()):
+            if client_id not in exclude:
+                if await self.send_personal(client_id, message):
+                    sent_count += 1
+
+        # Cross-instance broadcast via Redis
+        if settings.ws_redis_url:
+            await self._publish("__broadcast__", message, exclude)
+
+        return sent_count
+
+    async def join_room(self, client_id: str, room: str) -> bool:
+        """
+        Add a client to a room.
+
+        Args:
+            client_id: Client to add
+            room: Room name to join
+
+        Returns:
+            True if joined successfully
+        """
+        connection = self._connections.get(client_id)
+        if not connection:
+            return False
+
+        if room not in self._rooms:
+            self._rooms[room] = set()
+
+        self._rooms[room].add(client_id)
+        connection.rooms.add(room)
+
+        logger.debug(f"Client {client_id} joined room: {room}")
+        return True
+
+    async def leave_room(self, client_id: str, room: str) -> bool:
+        """
+        Remove a client from a room.
+
+        Args:
+            client_id: Client to remove
+            room: Room name to leave
+
+        Returns:
+            True if left successfully
+        """
+        return self._leave_room_internal(client_id, room)
+
+    def _leave_room_internal(self, client_id: str, room: str) -> bool:
+        """Internal method to leave a room without async."""
+        connection = self._connections.get(client_id)
+        if not connection:
+            return False
+
+        if room in self._rooms:
+            self._rooms[room].discard(client_id)
+            if not self._rooms[room]:
+                del self._rooms[room]
+
+        connection.rooms.discard(room)
+        logger.debug(f"Client {client_id} left room: {room}")
+        return True
+
+    async def broadcast_to_room(
+        self,
+        room: str,
+        message: dict[str, Any] | str,
+        exclude: set[str] | None = None,
+    ) -> int:
+        """
+        Send a message to all clients in a room.
+
+        Args:
+            room: Target room name
+            message: Message to send
+            exclude: Set of client_ids to exclude
+
+        Returns:
+            Number of clients the message was sent to
+        """
+        exclude = exclude or set()
+        sent_count = 0
+
+        client_ids = self._rooms.get(room, set())
+        for client_id in list(client_ids):
+            if client_id not in exclude:
+                if await self.send_personal(client_id, message):
+                    sent_count += 1
+
+        # Cross-instance broadcast via Redis
+        if settings.ws_redis_url:
+            await self._publish(f"room:{room}", message, exclude)
+
+        return sent_count
+
+    def get_room_members(self, room: str) -> set[str]:
+        """Get all client IDs in a room."""
+        return self._rooms.get(room, set()).copy()
+
+    def get_client_rooms(self, client_id: str) -> set[str]:
+        """Get all rooms a client is in."""
+        connection = self._connections.get(client_id)
+        if not connection:
+            return set()
+        return connection.rooms.copy()
+
+    @property
+    def connection_count(self) -> int:
+        """Get total number of active connections."""
+        return len(self._connections)
+
+    def is_connected(self, client_id: str) -> bool:
+        """Check if a client is connected."""
+        return client_id in self._connections
+
+    # =========================================================================
+    # Redis Pub/Sub for Multi-Instance Support
+    # =========================================================================
+
+    async def start_pubsub(self) -> None:
+        """
+        Start Redis pub/sub listener for cross-instance messaging.
+
+        Call this in your app's lifespan startup if using multi-instance deployment.
+        """
+        if not settings.ws_redis_url:
+            logger.debug("WS_REDIS_URL not set, skipping pub/sub setup")
+            return
+
+        try:
+            import redis.asyncio as redis
+
+            self._redis = redis.from_url(settings.ws_redis_url)
+            self._redis_pubsub = self._redis.pubsub()
+
+            # Subscribe to broadcast channel
+            await self._redis_pubsub.subscribe("ws:broadcast")
+
+            # Start listener task
+            self._pubsub_task = asyncio.create_task(self._pubsub_listener())
+            logger.info("WebSocket Redis pub/sub started")
+
+        except ImportError:
+            logger.warning("redis package not installed, pub/sub disabled")
+        except Exception as e:
+            logger.error(f"Failed to start Redis pub/sub: {e}")
+
+    async def stop_pubsub(self) -> None:
+        """Stop Redis pub/sub listener."""
+        if self._pubsub_task:
+            self._pubsub_task.cancel()
+            try:
+                await self._pubsub_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._redis_pubsub:
+            await self._redis_pubsub.unsubscribe()
+            await self._redis_pubsub.close()
+
+        if hasattr(self, "_redis") and self._redis:
+            await self._redis.close()
+
+        logger.info("WebSocket Redis pub/sub stopped")
+
+    async def _pubsub_listener(self) -> None:
+        """Listen for messages from Redis pub/sub."""
+        try:
+            async for message in self._redis_pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    data = json.loads(message["data"])
+                    channel = data.get("channel", "__broadcast__")
+                    payload = data.get("message")
+                    exclude = set(data.get("exclude", []))
+
+                    if channel == "__broadcast__":
+                        # Broadcast to all local connections
+                        for client_id in list(self._connections.keys()):
+                            if client_id not in exclude:
+                                await self.send_personal(client_id, payload)
+
+                    elif channel.startswith("room:"):
+                        room = channel[5:]  # Remove "room:" prefix
+                        client_ids = self._rooms.get(room, set())
+                        for client_id in list(client_ids):
+                            if client_id not in exclude:
+                                await self.send_personal(client_id, payload)
+
+                except json.JSONDecodeError:
+                    logger.warning("Invalid JSON in pub/sub message")
+                except Exception as e:
+                    logger.error(f"Error processing pub/sub message: {e}")
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Pub/sub listener error: {e}")
+
+    async def _publish(
+        self,
+        channel: str,
+        message: dict[str, Any] | str,
+        exclude: set[str] | None = None,
+    ) -> None:
+        """Publish a message to Redis for cross-instance delivery."""
+        if not hasattr(self, "_redis") or not self._redis:
+            return
+
+        try:
+            data = json.dumps({
+                "channel": channel,
+                "message": message,
+                "exclude": list(exclude or []),
+            })
+            await self._redis.publish("ws:broadcast", data)
+        except Exception as e:
+            logger.error(f"Failed to publish to Redis: {e}")
+
+
+# Global connection manager instance
+manager = ConnectionManager()
