@@ -1,0 +1,332 @@
+"""Utility functions for handling different input types."""
+
+import base64
+import io
+import re
+import warnings
+from pathlib import Path
+from typing import Any
+
+import dspy
+from pdf2image import convert_from_path
+from PIL import Image
+
+
+def pdf_to_base64_images(
+    pdf_path: str | Path, dpi: int = 300
+) -> list[str]:
+    """Convert a PDF file to base64-encoded images at specified DPI.
+
+    Args:
+        pdf_path: Path to the PDF file.
+        dpi: DPI for the converted images (default: 300).
+
+    Returns:
+        List of base64-encoded image strings.
+
+    Raises:
+        FileNotFoundError: If the PDF file doesn't exist.
+    """
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    # Convert PDF to images
+    images = convert_from_path(str(pdf_path), dpi=dpi)
+
+    # Convert each image to base64
+    base64_images = []
+    for image in images:
+        # Convert PIL Image to base64
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        image_bytes = buffer.getvalue()
+        base64_str = base64.b64encode(image_bytes).decode("utf-8")
+        base64_images.append(base64_str)
+
+    return base64_images
+
+
+def image_to_base64(image_path: str | Path) -> str:
+    """Convert an image file to base64-encoded string.
+
+    Args:
+        image_path: Path to the image file.
+
+    Returns:
+        Base64-encoded image string.
+
+    Raises:
+        FileNotFoundError: If the image file doesn't exist.
+    """
+    image_path = Path(image_path)
+    if not image_path.exists():
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    # Open and convert image to base64
+    with Image.open(image_path) as img:
+        buffer = io.BytesIO()
+        # Convert to RGB if necessary (for PNG with transparency, etc.)
+        if img.mode in ("RGBA", "LA", "P"):
+            rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+            img = rgb_img
+        img.save(buffer, format="PNG")
+        image_bytes = buffer.getvalue()
+        base64_str = base64.b64encode(image_bytes).decode("utf-8")
+
+    return base64_str
+
+
+def format_demo_input(inp: dict[str, Any] | Any) -> str:
+    """Format input_data for display in few-shot Examples (text and/or image count)."""
+    if not isinstance(inp, dict):
+        return str(inp)
+    parts = []
+    if inp.get("text"):
+        parts.append(str(inp["text"]))
+    if inp.get("images"):
+        n = len(inp["images"])
+        parts.append(f"{n} image(s)" if n != 1 else "1 image")
+    return " ".join(parts) if parts else "(no text)"
+
+
+def prepare_input_data(
+    text: str | None = None,
+    image_path: str | Path | None = None,
+    image_base64: str | None = None,
+    pdf_path: str | Path | None = None,
+    pdf_dpi: int = 300,
+) -> dict[str, Any]:
+    """Prepare input data dictionary for different input types.
+
+    This function creates a standardized input_data dictionary that can be used
+    with the PydanticOptimizer. It supports:
+    - Plain text
+    - Images (from file path or base64 string)
+    - PDFs (converted to images at specified DPI)
+
+    Args:
+        text: Plain text input.
+        image_path: Path to an image file to convert to base64.
+        image_base64: Base64-encoded image string.
+        pdf_path: Path to a PDF file to convert to images.
+        pdf_dpi: DPI for PDF conversion (default: 300).
+
+    Returns:
+        Dictionary with 'text' and/or 'images' keys:
+        - 'text': Plain text string (if provided)
+        - 'images': List of base64-encoded image strings (if images/PDF provided)
+
+    Examples:
+        ```python
+        # Plain text
+        input_data = prepare_input_data(text="John Doe, 30 years old")
+
+        # Image from file
+        input_data = prepare_input_data(image_path="document.png")
+
+        # Image from base64
+        input_data = prepare_input_data(image_base64="iVBORw0KG...")
+
+        # PDF
+        input_data = prepare_input_data(pdf_path="document.pdf", pdf_dpi=300)
+
+        # Combined text and image
+        input_data = prepare_input_data(
+            text="Extract information from this document",
+            image_path="document.png"
+        )
+        ```
+
+    Raises:
+        ValueError: If no input is provided or conflicting inputs are provided.
+    """
+    result: dict[str, Any] = {}
+
+    # Handle text
+    if text is not None:
+        result["text"] = text
+
+    # Handle images
+    images: list[str] = []
+
+    if image_path is not None:
+        images.append(image_to_base64(image_path))
+
+    if image_base64 is not None:
+        images.append(image_base64)
+
+    if pdf_path is not None:
+        pdf_images = pdf_to_base64_images(pdf_path, dpi=pdf_dpi)
+        images.extend(pdf_images)
+
+    if images:
+        result["images"] = images
+
+    if not result:
+        raise ValueError(
+            "At least one input must be provided: text, image_path, image_base64, or pdf_path"
+        )
+
+    return result
+
+
+def base64_to_dspy_image(base64_str: str) -> Any:
+    """Convert a base64-encoded image string to a dspy.Image object.
+
+    Args:
+        base64_str: Base64-encoded image string.
+
+    Returns:
+        dspy.Image object.
+    """
+    # Create a data URL from base64 string
+    # DSPy's Image.from_url can handle data URLs
+    data_url = f"data:image/png;base64,{base64_str}"
+
+    # Use DSPy's Image.from_url to create the Image object
+    return dspy.Image.from_url(data_url)
+
+
+def convert_images_to_dspy_images(images: list[str] | None) -> list[Any] | None:
+    """Convert a list of base64-encoded image strings to dspy.Image objects.
+
+    Args:
+        images: List of base64-encoded image strings, or None.
+
+    Returns:
+        List of dspy.Image objects, or None if input is None.
+    """
+    if images is None:
+        return None
+
+    return [base64_to_dspy_image(img) for img in images]
+
+
+def build_image_signature_and_kwargs(
+    dspy_images: list[Any] | None,
+) -> tuple[str, dict[str, Any]]:
+    """Build a DSPy signature and keyword arguments for image extraction.
+
+    Creates proper multi-image signatures using list[dspy.Image] when multiple
+    images are present, following DSPy's inline signature pattern as documented at:
+    https://dspy.ai/learn/programming/signatures/#inline-dspy-signatures
+
+    Args:
+        dspy_images: List of dspy.Image objects, or None.
+
+    Returns:
+        Tuple of (signature_string, kwargs_dict) where:
+        - signature_string: The DSPy signature string
+          (e.g., "prompt, images: list[dspy.Image] -> json_output")
+        - kwargs_dict: Dictionary of keyword arguments to pass to the extractor
+
+    Examples:
+        Single image:
+        >>> signature, kwargs = build_image_signature_and_kwargs([img1])
+        >>> # signature: "prompt, image -> json_output"
+        >>> # kwargs: {"prompt": None, "image": img1}
+
+        Multiple images:
+        >>> signature, kwargs = build_image_signature_and_kwargs([img1, img2, img3])
+        >>> # signature: "prompt, images: list[dspy.Image] -> json_output"
+        >>> # kwargs: {"prompt": None, "images": [img1, img2, img3]}
+    """
+    if not dspy_images or len(dspy_images) == 0:
+        return "prompt -> json_output", {}
+
+    if len(dspy_images) == 1:
+        # Single image: use simple signature
+        signature = "prompt, image -> json_output"
+        kwargs = {"prompt": None, "image": dspy_images[0]}  # prompt will be set later
+        return signature, kwargs
+
+    # Multiple images: use list[dspy.Image] type annotation
+    # This follows DSPy's pattern for list types in inline signatures
+    signature = "prompt, images: list[dspy.Image] -> json_output"
+    kwargs = {"prompt": None, "images": dspy_images}  # prompt will be set later
+
+    return signature, kwargs
+
+
+def format_instruction_prompt_template(
+    instruction_prompt: str | None, text_dict: dict[str, str] | None = None
+) -> str | None:
+    """Format an instruction prompt template with values from text_dict.
+
+    This function formats instruction prompts that contain placeholders like "{key}"
+    by replacing them with values from the text_dict dictionary. If no template is
+    provided or not all keys match, unmatched values are appended to the prompt.
+
+    Args:
+        instruction_prompt: Instruction prompt template string with placeholders
+            (e.g., "{key} template {key_2} template {key_3}").
+        text_dict: Dictionary mapping placeholder keys to values. If None or empty,
+            returns the instruction_prompt as-is.
+
+    Returns:
+        Formatted instruction prompt string, or None if instruction_prompt is None.
+
+    Examples:
+        ```python
+        template = "Extract {field} from {source}"
+        values = {"field": "name", "source": "document"}
+        formatted = format_instruction_prompt_template(template, values)
+        # Returns: "Extract name from document"
+        ```
+
+    Note:
+        - If text_dict is provided but instruction_prompt has no placeholders,
+          the dict values are appended to the prompt with a warning.
+        - If some keys in text_dict don't match placeholders, unmatched values
+          are appended to the prompt with a warning.
+    """
+    if instruction_prompt is None:
+        return None
+
+    if not text_dict:
+        return instruction_prompt
+
+    # Find all placeholders in the instruction prompt
+    placeholder_pattern = r"\{([^}]+)\}"
+    placeholders = set(re.findall(placeholder_pattern, instruction_prompt))
+    text_dict_keys = set(text_dict.keys())
+
+    # If no placeholders exist but text_dict is provided, append values
+    if not placeholders:
+        values_str = ", ".join(f"{k}: {v}" for k, v in text_dict.items())
+        warnings.warn(
+            f"No template placeholders found in instruction prompt, but text_dict "
+            f"was provided. Appending values: {values_str}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return f"{instruction_prompt}\n\nAdditional context: {values_str}"
+
+    # Find unmatched keys (keys in text_dict that aren't placeholders)
+    unmatched_keys = text_dict_keys - placeholders
+
+    # Format the template with all keys from text_dict
+    # Use SafeDict to handle placeholders that aren't in text_dict
+    class SafeDict(dict[str, str]):
+        def __missing__(self, key: str) -> str:
+            return f"{{{key}}}"
+
+    formatted = instruction_prompt.format_map(SafeDict(text_dict))
+
+    # Append unmatched keys if any (keys in text_dict that aren't placeholders)
+    if unmatched_keys:
+        unmatched_values = {k: text_dict[k] for k in unmatched_keys}
+        values_str = ", ".join(f"{k}: {v}" for k, v in unmatched_values.items())
+        warnings.warn(
+            f"Some keys in text_dict don't match template placeholders: {unmatched_keys}. "
+            f"Appending unmatched values: {values_str}",
+            UserWarning,
+            stacklevel=2,
+        )
+        formatted = f"{formatted}\n\nAdditional context: {values_str}"
+
+    return formatted
