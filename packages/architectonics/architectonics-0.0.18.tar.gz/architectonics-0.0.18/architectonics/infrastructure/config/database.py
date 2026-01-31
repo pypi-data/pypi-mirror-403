@@ -1,0 +1,16 @@
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+
+from architectonics.infrastructure.config.database_settings import database_settings
+
+engine = create_async_engine(
+    database_settings.DATABASE_CONNECTION_STRING,
+    future=True,
+    echo=False,
+)
+
+session = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
