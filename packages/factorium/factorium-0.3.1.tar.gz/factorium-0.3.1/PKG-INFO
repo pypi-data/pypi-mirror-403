@@ -1,0 +1,104 @@
+Metadata-Version: 2.4
+Name: factorium
+Version: 0.3.1
+Summary: A quantitative factor analysis library for financial research
+Author: Samuel Chang
+License: MIT
+License-File: LICENSE
+Keywords: factor,finance,quantitative,research,trading
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Office/Business :: Financial :: Investment
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Requires-Python: >=3.11
+Requires-Dist: aiofiles>=23.0.0
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: duckdb>=1.0.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: numba>=0.57.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: polars>=1.0.0
+Requires-Dist: pyarrow>=14.0.0
+Requires-Dist: pyparsing>=3.0.0
+Requires-Dist: scipy>=1.10.0
+Provides-Extra: dev
+Requires-Dist: mypy>=1.0.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Provides-Extra: jupyter
+Requires-Dist: nest-asyncio>=1.5.0; extra == 'jupyter'
+Description-Content-Type: text/markdown
+
+# Factorium
+
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI](https://img.shields.io/pypi/v/factorium.svg)](https://pypi.org/project/factorium/)
+
+Factorium is a **Polars-first factor research & backtesting toolkit**.
+
+- Data pipeline: `BinanceDataLoader` + `AggBar` → multi-symbol OHLCV panel in one line.
+- Factor engine: `Factor` with rich TS/CS/math ops and expression parsing.
+- Analysis: `FactorAnalyzer` + `FactorAnalysisResult` for IC, quantile returns, and plots.
+- Backtest: `VectorizedBacktester` (exposed as `factorium.backtest.Backtester`) with Polars-vectorized PnL.
+- Research workflow: `ResearchSession` + `FactorReport` to tie everything into a notebook-friendly API.
+
+For a Chinese introduction, see `README_zh.md`.
+
+---
+
+## Installation
+
+```bash
+# Recommended
+uv add factorium
+
+# Or with pip
+pip install factorium
+```
+
+Development setup:
+
+```bash
+git clone https://github.com/novis10813/factorium.git
+cd factorium
+uv sync --dev
+```
+
+---
+
+## Quick example
+
+```python
+from factorium import ResearchSession
+
+session = ResearchSession.from_parquet("data/btc_1h.parquet")
+
+close = session.factor("close")
+momentum = (close.ts_delta(20) / close.ts_shift(20)).cs_rank()
+
+print(session.quick_report(momentum, periods=1))
+```
+
+More complete guides live under `docs/`:
+
+- `docs/getting-started/quickstart.md`
+- `docs/user-guide/bar.md`
+- `docs/user-guide/factor.md`
+- `docs/user-guide/analyzer.md`
+- `docs/user-guide/backtest.md`
+
+---
+
+## License
+
+MIT – see `LICENSE`.
+
