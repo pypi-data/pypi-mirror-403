@@ -1,0 +1,182 @@
+# 📦 Helper Package for Coding and Automation Changelog
+
+## v0.2.x (Experiment & Core Updates)
+
+### **v0.2.29**
+
+- ✨ **New Feature:**: add `common.common.log_func` as decorator to log function entry, exit, with execution time and arguments.
+
+- 🚀 **Improvement:**: enhance `utils.dict.DictUtils` with `deep_remove` and `prune` function
+
+### **v0.2.28**
+
+- ✨ **New Feature:** Implement `utils.slack.SlackUtils` class for managing Slack channel message deletion
+
+- ✨ **New Feature:** Added `utils.dict.DictUtils` for advanced dictionary manipulations (merging, filtering, transforming).
+
+- ✨ **New Feature:** Added `common.common.pprint_stack_trace` to print stack traces with optional custom messages and force stop capability.
+
+- 🚀 **Improvement:** `exp.perf.profiler` - allow to export _report dict_ as csv files for further analysis
+
+### **v0.2.19**
+
+- ✨ **New Feature:** Added `exp.core.param_gen` to facilitate fast generation of parameter combination sweeps (grid search) using YAML configurations.
+
+### **v0.2.17**
+
+- 🚀 **Improvement:** Updated `exp.perf.profiler` with an `enabled` flag for dynamic toggling.
+- 🚀 **Improvement:** Added a `measure` context manager to simplify performance measuring of code blocks.
+
+### **v0.2.13**
+
+- ♻️ **Refactor:** Major reorganization of packages. Renamed `research` package to `exp` (Experiment Management).
+- 🚀 **Improvement:** Updated `exp/perfcalc.py` to allow saving computed performance metrics to CSV without explicitly calling `calc_perfs`.
+
+### **v0.2.1**
+
+- ✨ **New Feature:** Added `eval_exp` method to `exp/base_exp` for running evaluations (e.g., model testing) after experiments conclude.
+
+---
+
+## v0.1.9x (Visualization & Generators)
+
+### **v0.1.99**
+
+- ✨ **New Feature:** Added `gen_ipynb_name` to `filetype/ipynb`. Generates filenames based on the current notebook name with optional timestamps.
+
+### **v0.1.96**
+
+- ✨ **New Feature:** Added `PlotHelper` class in `research/plot` for plotting training history and image grids (dataset samples or model outputs).
+
+### **v0.1.91**
+
+- ✨ **New Feature:** Added `ParamGen` class to `research/param_gen` for parsing YAML files into parameter lists for hyperparameter searches.
+
+### **v0.1.90**
+
+- ✨ **New Feature:** Added `zProfiler` class to `research/profiler` for measuring context/step execution time, supporting dynamic color scales in plots.
+
+---
+
+## v0.1.5x - v0.1.7x (Infrastructure & Utilities)
+
+### **v0.1.77**
+
+- ✨ **New Feature:** Added `BaseExp` class in `research/base_exp` to handle common experiment tasks (performance calculation, result saving).
+
+### **v0.1.67**
+
+- 🔧 **Maintenance:** Switched to **uv** for virtual environment management.
+- 🚀 **Improvement:** Updated `research/perfcalc` to support both `torchmetrics` and custom metrics.
+
+### **v0.1.61**
+
+- ✨ **New Feature:** Added `VideoUtils` (`util/video`) for common video handling tasks.
+- ✨ **New Feature:** Added `GPUMonitor` (`util/gpu_mon`) for tracking GPU usage and performance.
+
+### **v0.1.59**
+
+- 🔨 **Architecture:** Added `util/perfcalc` abstract base class. This requires implementation of specific performance calculation logic.
+
+### **v0.1.55**
+
+- ✨ **New Feature:** Added `util/dataclass_util` for dynamic creation of `dataclass` objects from dictionaries or YAML (supports nested structures).
+
+### **v0.1.52**
+
+- ✨ **New Feature:** Added `research/perftb` module for managing experiment performance tables (filtering by dataset, metric, etc.).
+
+### **v0.1.50**
+
+- ✨ **New Feature:** Added `pprint_local_path` to print clickable file URIs for local paths.
+- ✨ **New Feature:** Added `research` package containing `benchquery` for dataframe benchmarking.
+- ✨ **New Feature:** Added `wandb` module for offline syncing and batch clearing of Weights & Biases runs.
+
+---
+
+## v0.1.4x (Display & formatting)
+
+### **v0.1.47**
+
+- ✨ **New Feature:** Added `pprint_box` to print objects or strings inside a decorative box frame.
+
+### **v0.1.46**
+
+- 🐛 **Fix:** Filtered `UserWarning: Unable to import Axes3D`.
+- 🚀 **Improvement:** Added `auto_wrap_text` to `fn_display_df` to prevent long text overflow in tables.
+
+### **v0.1.42**
+
+- ✨ **New Feature:** Added `rich_color.py` wrapper for basic color lists.
+
+### **v0.1.41**
+
+- ✨ **New Feature:** Added `rich_color.py` to support rich color information (palettes, strings) using the `rich` library.
+
+### **v0.1.40**
+
+- 🚀 **Improvement:** Updated `csvfile.py` to use `itables` and `pygwalker` for interactive dataframe display in Jupyter notebooks.
+
+---
+
+## v0.1.3x (Data & Loading)
+
+### **v0.1.38**
+
+- ✨ **New Feature:** Added `torchloader.py` to search for optimal `DataLoader` configurations (num_workers, batch_size, pin_memory).
+
+### **v0.1.37**
+
+- ✨ **New Feature:** Added `dataset.py` for splitting classification datasets into train/val/test sets.
+
+### **v0.1.33**
+
+- ✨ **New Feature:** Added `plot.py` for plotting Deep Learning training history (accuracy/loss) using `seaborn` and `matplotlib`.
+
+---
+
+## v0.1.0 - v0.1.2x (Early Utilities)
+
+### **v0.1.29**
+
+- 🐛 **Fix:** Pinned `kaleido==0.1.*` for `tele_noti` as version `0.2.*` caused image generation hangs.
+
+### **v0.1.24**
+
+- ♻️ **Refactor:** Renamed `sys` module to `system` to avoid conflicts with Python's built-in `sys`.
+- ✨ **New Feature:** Added `tele_noti` module for Telegram notifications regarding training progress.
+
+### **v0.1.22**
+
+- ✨ **New Feature:** Added `cuda.py` to check CUDA availability for both PyTorch and TensorFlow.
+
+### **v0.1.21**
+
+- ✨ **New Feature:** Added YAML inheritance and overriding support using `networkx` and `omegaconf`.
+
+### **v0.1.15**
+
+- ✨ **New Feature:** Added common logging library and `@console_log` decorator for function tracing.
+
+### **v0.1.10**
+
+- 🐛 **Fix:** Fixed typo `is_exit` -> `is_exist` in `filesys`.
+- 🚀 **Improvement:** Updated `gdrive` to support uploading to specific folders and returning direct shareable links.
+
+### **v0.1.9**
+
+- 🔧 **Maintenance:** Added `requirements.txt`.
+
+### **v0.1.6 - v0.1.8**
+
+- 🚀 **Performance:** Optimized table insertion by using an in-memory `row_pool_dict` before committing to the DataFrame.
+- ✨ **New Feature:** Added `DFCreator` for manipulating DataFrames (create, insert, display, save).
+
+### **v0.1.4 - v0.1.5**
+
+- ✨ **New Feature:** Added `cmd` module.
+- ✨ **New Feature:** Support for creating Bitbucket Projects from templates.
+
+### **v0.1.2**
+
+- ✨ **New Feature:** Added support for uploading local files to Google Drive.
