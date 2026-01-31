@@ -1,0 +1,95 @@
+"""Auto-label action for {{ name }}."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import Field
+
+from synapse_sdk.plugins.actions.auto_label import (
+    AutoLabelParams,
+    BaseAutoLabelAction,
+)
+
+
+class AutoLabelActionParams(AutoLabelParams):
+    """Parameters for {{ name }} auto-label action.
+
+    Extends AutoLabelParams with plugin-specific fields.
+
+    Attributes:
+        confidence_threshold: Minimum confidence for predictions.
+    """
+
+    confidence_threshold: float = Field(
+        default=0.5,
+        description='Minimum confidence threshold for predictions',
+        ge=0.0,
+        le=1.0,
+    )
+
+
+class AutoLabelAction(BaseAutoLabelAction[AutoLabelActionParams]):
+    """Auto-label action for {{ name }}.
+
+    Transforms smart tool input/output for model inference.
+    The SDK handles inference invocation automatically.
+
+    Example usage:
+        1. Configure handle_input() to transform smart tool input to model format
+        2. Configure handle_output() to transform model output to annotations
+        3. Set plugin/version in config.yaml or params
+    """
+
+    action_name = 'auto_label'
+
+    def handle_input(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        """Transform smart tool input to model input format.
+
+        Args:
+            input_data: Input data from smart tool, includes:
+                - file_url: URL to the input file
+                - plugin: Neural net plugin code
+                - version: Plugin version
+                - model_id: Model ID (optional)
+                - Additional custom fields
+
+        Returns:
+            Transformed data ready for model inference.
+
+        TODO: Customize input transformation for your model.
+        """
+        # Example: Extract relevant fields for model
+        return {
+            'image': input_data.get('file_url'),
+            'model_id': input_data.get('model_id'),
+            'confidence_threshold': input_data.get('confidence_threshold', 0.5),
+        }
+
+    def handle_output(self, output_data: dict[str, Any]) -> dict[str, Any]:
+        """Transform model output to smart tool annotation format.
+
+        Args:
+            output_data: Output from model inference, typically includes:
+                - predictions: List of model predictions
+                - metadata: Optional inference metadata
+
+        Returns:
+            Annotations in smart tool format.
+
+        TODO: Customize output transformation for your annotation type.
+        """
+        # Example: Convert predictions to annotations
+        annotations = []
+        for pred in output_data.get('predictions', []):
+            annotations.append({
+                'type': 'bbox',  # or 'polygon', 'point', etc.
+                'coordinates': pred.get('box', pred.get('coordinates')),
+                'label': pred.get('class', pred.get('label')),
+                'confidence': pred.get('score', pred.get('confidence')),
+            })
+
+        return {
+            'annotations': annotations,
+            'metadata': output_data.get('metadata', {}),
+        }

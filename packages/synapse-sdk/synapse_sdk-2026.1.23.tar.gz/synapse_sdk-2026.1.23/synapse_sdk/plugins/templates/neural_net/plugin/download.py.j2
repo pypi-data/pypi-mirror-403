@@ -1,0 +1,99 @@
+"""Dataset download action for {{ name }}."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from synapse_sdk.plugins.action import BaseAction
+from synapse_sdk.plugins.enums import PluginCategory
+from synapse_sdk.plugins.types import DMv2Dataset
+
+
+class DownloadParams(BaseModel):
+    """Parameters for dataset download.
+
+    Attributes:
+        dataset: Data collection ID to download from Synapse.
+        splits: Optional split definitions for categorized download
+            (e.g., {"train": {...filters}, "valid": {...}}).
+        output_dir: Optional output directory path.
+    """
+
+    dataset: int = Field(description='Data collection ID')
+    splits: dict[str, dict[str, Any]] | None = Field(
+        default=None,
+        description='Split definitions',
+    )
+    output_dir: Path | str | None = Field(default=None, description='Output directory')
+
+
+class DownloadResult(BaseModel):
+    """Result from dataset download.
+
+    Attributes:
+        path: Path to downloaded dataset directory.
+        format: Dataset format (always 'dm_v2').
+        is_categorized: Whether dataset has train/valid/test splits.
+        count: Number of data units downloaded.
+    """
+
+    path: Path
+    format: str = 'dm_v2'
+    is_categorized: bool = False
+    count: int | None = None
+
+    model_config = {'arbitrary_types_allowed': True}
+
+
+class DownloadAction(BaseAction[DownloadParams]):
+    """Download dataset from Synapse backend.
+
+    Downloads data units from a data collection and saves them
+    locally in Datamaker v2 format (json/ + original_files/).
+
+    This action uses the SDK's DatasetAction internally.
+
+    Example:
+        >>> action = DownloadAction(DownloadParams(dataset=123), ctx)
+        >>> result = action.execute()
+        >>> print(result.path)
+    """
+
+    action_name = 'download'
+    category = PluginCategory.NEURAL_NET
+
+    input_type = None
+    output_type = DMv2Dataset
+    result_model = DownloadResult
+
+    def execute(self) -> DownloadResult:
+        """Download dataset from backend.
+
+        Returns:
+            DownloadResult with path to downloaded data.
+        """
+        from synapse_sdk.plugins.actions.dataset import (
+            DatasetAction,
+            DatasetOperation,
+            DatasetParams as DSParams,
+        )
+
+        params = DSParams(
+            operation=DatasetOperation.DOWNLOAD,
+            dataset=self.params.dataset,
+            splits=self.params.splits,
+            output_dir=self.params.output_dir,
+        )
+
+        action = DatasetAction(params, self.ctx)
+        result = action.execute()
+
+        return DownloadResult(
+            path=result.path,
+            format=result.format,
+            is_categorized=result.is_categorized,
+            count=result.count,
+        )

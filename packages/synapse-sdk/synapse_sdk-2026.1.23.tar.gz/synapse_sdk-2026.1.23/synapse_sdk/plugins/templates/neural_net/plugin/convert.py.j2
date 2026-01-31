@@ -1,0 +1,114 @@
+"""Dataset conversion action for {{ name }}."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+from synapse_sdk.plugins.action import BaseAction
+from synapse_sdk.plugins.enums import PluginCategory
+from synapse_sdk.plugins.types import DMv2Dataset, Dataset
+
+
+class ConvertParams(BaseModel):
+    """Parameters for dataset conversion.
+
+    Attributes:
+        path: Source dataset path (Datamaker format).
+        source_format: Source format (default: 'dm_v2').
+        target_format: Target format for your model framework
+            (e.g., 'yolo', 'coco').
+        is_categorized: Whether dataset has train/valid/test splits.
+        output_dir: Optional output directory path.
+    """
+
+    path: Path | str = Field(description='Source dataset path')
+    source_format: str = Field(default='dm_v2', description='Source format')
+    target_format: str = Field(description='Target format (e.g., yolo, coco)')
+    is_categorized: bool = Field(default=False, description='Has splits')
+    output_dir: Path | str | None = Field(default=None, description='Output directory')
+
+
+class ConvertResult(BaseModel):
+    """Result from dataset conversion.
+
+    Attributes:
+        data_path: Path to converted dataset directory.
+        format: Target format (e.g., 'yolo').
+        config_path: Path to config file (e.g., dataset.yaml).
+        is_categorized: Whether dataset has splits.
+        source_path: Original source path.
+    """
+
+    data_path: Path
+    format: str
+    config_path: Path = Field(description='Path to dataset config file')
+    is_categorized: bool = False
+    source_path: Path | None = None
+
+    model_config = {'arbitrary_types_allowed': True}
+
+
+class ConvertAction(BaseAction[ConvertParams]):
+    """Convert dataset from Datamaker format to a model-specific format.
+
+    Converts the dataset at params.path to the specified target_format,
+    generating any necessary config files (e.g., dataset.yaml for YOLO).
+
+    This action uses the SDK's DatasetAction internally.
+
+    Example:
+        >>> action = ConvertAction(
+        ...     ConvertParams(path='/data/dm_dataset', target_format='yolo'),
+        ...     ctx,
+        ... )
+        >>> result = action.execute()
+        >>> print(result.config_path)
+    """
+
+    action_name = 'convert'
+    category = PluginCategory.NEURAL_NET
+
+    input_type = DMv2Dataset
+    output_type = Dataset
+
+    result_model = ConvertResult
+
+    def execute(self) -> ConvertResult:
+        """Convert dataset to target format.
+
+        Returns:
+            ConvertResult with path to converted data and config file.
+        """
+        from synapse_sdk.plugins.actions.dataset import (
+            DatasetAction,
+            DatasetOperation,
+            DatasetParams as DSParams,
+        )
+
+        params = DSParams(
+            operation=DatasetOperation.CONVERT,
+            path=self.params.path,
+            source_format=self.params.source_format,
+            target_format=self.params.target_format,
+            is_categorized=self.params.is_categorized,
+            output_dir=self.params.output_dir,
+        )
+
+        action = DatasetAction(params, self.ctx)
+        result = action.execute()
+
+        if result.config_path is None:
+            raise RuntimeError(
+                f'Conversion failed: no config file generated at {result.path}. '
+                'Check that source dataset contains valid annotations.'
+            )
+
+        return ConvertResult(
+            data_path=result.path,
+            format=result.format,
+            config_path=result.config_path,
+            is_categorized=result.is_categorized,
+            source_path=result.source_path,
+        )

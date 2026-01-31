@@ -1,0 +1,154 @@
+# Documentation Sync Rules Configuration
+# Defines severity levels and detection rules for documentation issues
+
+severity_levels:
+  error:
+    badge: "![ERROR](https://img.shields.io/badge/ERROR-red)"
+    label: "Error"
+    description: "Breaking changes, removed API references, missing required docs"
+    auto_block: true
+
+  warning:
+    badge: "![WARNING](https://img.shields.io/badge/WARNING-yellow)"
+    label: "Warning"
+    description: "Signature mismatches, stale examples, outdated comments"
+    auto_block: false
+
+  info:
+    badge: "![INFO](https://img.shields.io/badge/INFO-blue)"
+    label: "Info"
+    description: "Documentation improvements, missing optional sections"
+    auto_block: false
+
+rules:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # [ERROR] RULES - Must be fixed before merging
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  removed_api_reference:
+    severity: error
+    description: "Removed API is still referenced in documentation"
+    description_ko: "삭제된 API가 문서에서 여전히 참조되고 있습니다"
+    detect:
+      change_type: "removed"
+      element_types: ["class", "function", "method"]
+      is_public: true
+      doc_contains_reference: true
+    action: "Remove reference from documentation or add deprecation notice"
+    action_ko: "문서에서 참조를 제거하거나 deprecation 안내를 추가하세요"
+
+  breaking_signature_change:
+    severity: error
+    description: "Breaking signature change not reflected in documentation"
+    description_ko: "Breaking change가 문서에 반영되지 않았습니다"
+    detect:
+      change_type: "modified"
+      breaking: true
+      conditions:
+        - "required_param_added"
+        - "param_removed"
+        - "return_type_changed"
+    action: "Update signature and usage examples in documentation"
+    action_ko: "문서의 시그니처 및 사용 예제를 업데이트하세요"
+
+  missing_docstring:
+    severity: error
+    description: "Public API has no docstring"
+    description_ko: "Public API에 docstring이 없습니다"
+    detect:
+      change_type: ["added", "modified"]
+      element_types: ["class", "function", "method"]
+      is_public: true
+      has_docstring: false
+    action: "Add Google-style docstring with Args, Returns, Raises sections"
+    action_ko: "Args, Returns, Raises 섹션이 포함된 Google 스타일 docstring을 추가하세요"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # [WARNING] RULES - Should be fixed
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  stale_signature:
+    severity: warning
+    description: "Function/class signature differs from documentation"
+    description_ko: "함수/클래스 시그니처가 문서와 일치하지 않습니다"
+    detect:
+      change_type: "modified"
+      signature_changed: true
+      is_public: true
+    action: "Update documentation to match new signature"
+    action_ko: "문서의 시그니처를 업데이트하세요"
+
+  stale_code_example:
+    severity: warning
+    description: "Code example in documentation uses outdated API"
+    description_ko: "문서의 코드 예제가 현재 API와 일치하지 않습니다"
+    detect:
+      doc_contains_code_example: true
+      example_uses_changed_api: true
+    action: "Update code examples to use current API"
+    action_ko: "코드 예제를 현재 API에 맞게 수정하세요"
+
+  outdated_comment:
+    severity: warning
+    description: "Inline comment does not match code logic"
+    description_ko: "인라인 주석이 코드 로직과 일치하지 않습니다"
+    detect:
+      has_inline_comment: true
+      logic_changed: true
+      comment_not_updated: true
+    action: "Update comment to reflect current logic"
+    action_ko: "주석을 현재 로직에 맞게 수정하세요"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # [INFO] RULES - Improvement suggestions
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  missing_parameter_doc:
+    severity: info
+    description: "Docstring is missing parameter documentation"
+    description_ko: "docstring에 파라미터 설명이 누락되었습니다"
+    detect:
+      has_docstring: true
+      all_params_documented: false
+    action: "Add missing parameter descriptions to Args section"
+    action_ko: "누락된 파라미터에 대한 설명을 Args 섹션에 추가하세요"
+
+  missing_return_doc:
+    severity: info
+    description: "Docstring is missing return value documentation"
+    description_ko: "docstring에 반환값 설명이 누락되었습니다"
+    detect:
+      has_docstring: true
+      returns_value: true
+      return_documented: false
+    action: "Add Returns section to docstring"
+    action_ko: "docstring에 Returns 섹션을 추가하세요"
+
+  missing_raises_doc:
+    severity: info
+    description: "Docstring is missing exception documentation"
+    description_ko: "docstring에 예외 설명이 누락되었습니다"
+    detect:
+      has_docstring: true
+      raises_exception: true
+      raises_documented: false
+    action: "Add Raises section to docstring"
+    action_ko: "docstring에 Raises 섹션을 추가하세요"
+
+  missing_example:
+    severity: info
+    description: "Docstring could benefit from usage examples"
+    description_ko: "docstring에 사용 예제를 추가하면 좋겠습니다"
+    detect:
+      has_docstring: true
+      is_complex_api: true
+      has_example: false
+    action: "Add Example section with usage demonstration"
+    action_ko: "Example 섹션에 사용 예제를 추가하세요"
+
+# Language policy
+language:
+  review_comments: "ko"  # Review comments in Korean
+  code_comments: "en"    # Code comments in English
+  english_docs: "en"     # English docs get English suggestions
+  korean_docs: "ko"      # Korean docs get Korean suggestions
