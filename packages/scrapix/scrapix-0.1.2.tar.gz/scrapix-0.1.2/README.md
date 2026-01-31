@@ -1,0 +1,306 @@
+# Scrapix Python SDK
+
+<p align="center">
+  <strong>🕷️ A powerful Python SDK for web scraping, crawling, and data extraction</strong>
+</p>
+
+<p align="center">
+  <a href="#installation">Installation</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#api-reference">API Reference</a> •
+  <a href="#examples">Examples</a> •
+  <a href="#documentation">Documentation</a>
+</p>
+
+---
+
+## Overview
+
+**Scrapix** is a Python SDK that provides a simple, powerful interface for web scraping and data extraction. Built on top of the Scrapix API, it offers:
+
+- 🌐 **Web Scraping** - Extract content from any webpage in multiple formats
+- 🔗 **URL Collection** - Discover and collect URLs from websites and sitemaps
+- 🕸️ **Web Crawling** - Crawl websites to extract URLs with advanced filtering
+- 🧠 **AI-Powered Extraction** - Extract structured data using AI with custom schemas
+- ⚡ **Built-in Resilience** - Automatic retries, timeouts, and error handling
+- 🔒 **Premium Features** - Captcha solving, premium proxies, and JavaScript rendering
+
+## Requirements
+
+- Python 3.9+
+
+## Installation
+
+Install the package via pip:
+
+```bash
+pip install scrapix
+```
+
+Or with Poetry:
+
+```bash
+poetry add scrapix
+```
+
+## Quick Start
+
+### 1. Configure the Client
+
+```python
+import os
+import scrapix
+
+# Configure the SDK with your API key
+configuration = scrapix.Configuration(
+    host="https://api-scrapix.promptcloud.com",  # Your Scrapix API host
+    api_key={"APIKeyHeader": os.environ.get("SCRAPIX_API_KEY")}
+)
+```
+
+### 2. Scrape a Webpage
+
+```python
+with scrapix.ApiClient(configuration) as api_client:
+    api = scrapix.APIServicesApi(api_client)
+    
+    # Scrape a webpage
+    result = api.scrape(scrapix.ScrapeInput(
+        url="https://example.com",
+        output_format=scrapix.OutputFormat.MARKDOWN
+    ))
+    
+    print(result.data)
+```
+
+## API Reference
+
+The SDK provides access to the following API endpoints:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `scrape()` | `POST /v1/scrape` | Scrape content from a single URL |
+| `crawl()` | `POST /v1/crawl` | Crawl a website and collect URLs |
+| `collect()` | `POST /v1/collect` | Collect URLs from a page |
+| `extract()` | `POST /v1/extract` | Extract structured data using AI |
+| `echo()` | `POST /v1/echo` | Test API connectivity |
+
+### Authentication
+
+All API requests require an API key. Set it using the `APIKeyHeader`:
+
+```python
+configuration = scrapix.Configuration(
+    host="https://scrapix.promptcloud.com",
+    api_key={"APIKeyHeader": "your-api-key-here"}
+)
+```
+
+## Examples
+
+### Scraping Content
+
+Scrape a webpage and get the content in different formats:
+
+```python
+import scrapix
+
+configuration = scrapix.Configuration(
+    host="https://scrapix.promptcloud.com",
+    api_key={"APIKeyHeader": "your-api-key"}
+)
+
+with scrapix.ApiClient(configuration) as api_client:
+    api = scrapix.APIServicesApi(api_client)
+    
+    # Scrape with JavaScript rendering enabled
+    result = api.scrape(scrapix.ScrapeInput(
+        url="https://example.com",
+        render=True,  # Enable JavaScript rendering
+        output_format=scrapix.OutputFormat.MARKDOWN,
+        timeout=60,
+        max_retries=3
+    ))
+    
+    print(f"Content: {result.data}")
+```
+
+### Crawling a Website
+
+Discover URLs on a website:
+
+```python
+import scrapix
+
+with scrapix.ApiClient(configuration) as api_client:
+    api = scrapix.APIServicesApi(api_client)
+    
+    # Crawl a website for URLs
+    result = api.crawl(scrapix.CrawlInput(
+        url="https://example.com",
+        urls_limit=50,  # Maximum URLs to collect
+        include_sitemap_urls=True,  # Include URLs from sitemap
+        include_paths="/blog/*",  # Only include blog pages
+        exclude_paths="/admin/*"  # Exclude admin pages
+    ))
+    
+    for url in result.urls:
+        print(url)
+```
+
+### Collecting URLs
+
+Collect all URLs from a specific page:
+
+```python
+import scrapix
+
+with scrapix.ApiClient(configuration) as api_client:
+    api = scrapix.APIServicesApi(api_client)
+    
+    # Collect URLs from a page
+    result = api.collect(scrapix.CollectInput(
+        url="https://example.com/sitemap",
+        urls_limit=1000,
+        include_sitemap_urls=True
+    ))
+    
+    print(f"Found {len(result.urls)} URLs")
+```
+
+### AI-Powered Data Extraction
+
+Extract structured data using AI:
+
+```python
+import scrapix
+
+with scrapix.ApiClient(configuration) as api_client:
+    api = scrapix.APIServicesApi(api_client)
+    
+    # Extract structured data with a query
+    result = api.extract(scrapix.ExtractInput(
+        url="https://example.com/products",
+        query="Extract all product names, prices, and descriptions",
+        output_format=scrapix.StructuredOutputFormat.JSON
+    ))
+    
+    print(result.data)
+```
+
+### Using Premium Features
+
+Enable advanced features like proxies and captcha solving:
+
+```python
+import scrapix
+
+with scrapix.ApiClient(configuration) as api_client:
+    api = scrapix.APIServicesApi(api_client)
+    
+    result = api.scrape(scrapix.ScrapeInput(
+        url="https://protected-site.com",
+        render=True,  # JavaScript rendering
+        premium_proxies=True,  # Use premium residential proxies
+        use_captcha_solver=True,  # Automatically solve CAPTCHAs
+        use_cache=False  # Always fetch fresh content
+    ))
+```
+
+### Error Handling
+
+Handle API errors gracefully:
+
+```python
+import scrapix
+from scrapix.rest import ApiException
+
+with scrapix.ApiClient(configuration) as api_client:
+    api = scrapix.APIServicesApi(api_client)
+    
+    try:
+        result = api.scrape(scrapix.ScrapeInput(url="https://example.com"))
+        print(result.data)
+    except ApiException as e:
+        print(f"API Error: {e.status} - {e.reason}")
+        print(f"Response body: {e.body}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+```
+
+## Models
+
+### Input Models
+
+| Model | Description |
+|-------|-------------|
+| [`ScrapeInput`](docs/ScrapeInput.md) | Input for scraping a single URL |
+| [`CrawlInput`](docs/CrawlInput.md) | Input for crawling a website |
+| [`CollectInput`](docs/CollectInput.md) | Input for collecting URLs |
+| [`ExtractInput`](docs/ExtractInput.md) | Input for AI-powered extraction |
+
+### Result Models
+
+| Model | Description |
+|-------|-------------|
+| [`ScrapeResult`](docs/ScrapeResult.md) | Result from scrape operation |
+| [`CrawlResult`](docs/CrawlResult.md) | Result from crawl operation |
+| [`CollectResult`](docs/CollectResult.md) | Result from collect operation |
+| [`ExtractResult`](docs/ExtractResult.md) | Result from extract operation |
+
+### Other Models
+
+| Model | Description |
+|-------|-------------|
+| [`OutputFormat`](docs/OutputFormat.md) | Output format options (MARKDOWN, HTML, etc.) |
+| [`StructuredOutputFormat`](docs/StructuredOutputFormat.md) | Structured output formats |
+| [`StructuredOutputSchema`](docs/StructuredOutputSchema.md) | Schema for structured outputs |
+| [`SummarizeSchema`](docs/SummarizeSchema.md) | Schema for summarization |
+
+## Common Parameters
+
+All input models share these common parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | `str` | *required* | The URL to scrape/crawl |
+| `timeout` | `int` | 40 | Request timeout in seconds |
+| `max_retries` | `int` | 5 | Maximum retry attempts |
+| `render` | `bool` | False | Enable JavaScript rendering |
+| `premium_proxies` | `bool` | False | Use premium residential proxies |
+| `use_captcha_solver` | `bool` | False | Enable automatic CAPTCHA solving |
+| `use_cache` | `bool` | True | Use cached responses when available |
+
+## Documentation
+
+For detailed API documentation, see the [docs](docs/) directory:
+
+- [APIServicesApi](docs/APIServicesApi.md) - Main API endpoints
+- [DefaultApi](docs/DefaultApi.md) - Default API endpoints
+
+## Development
+
+### Running Tests
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+```
+
+### Type Checking
+
+```bash
+mypy scrapix
+```
+
+## Support
+
+- 📧 Email: [sales@promptcloud.com](mailto:sales@promptcloud.com)
+- 🌐 Website: [https://scrapix.promptcloud.com](https://scrapix.promptcloud.com)
+
+## License
+
+This SDK is provided by [PromptCloud](https://www.promptcloud.com). See the LICENSE file for details.
