@@ -1,0 +1,152 @@
+Metadata-Version: 2.4
+Name: obi-one
+Version: 2026.1.7
+Summary: Standardized library of functions and workflows for biophysically-detailed brain modeling
+Author-email: James Isbister <james.isbister@openbraininstitute.org>, Christoph Pokorny <christoph.pokorny@openbraininstitute.org>, Daniela Egas Santander <daniela.egassantander@openbraininstitute.org>, Gianluca Ficarelli <gianluca.ficarelli@openbraininstitute.org>, Michael Reimann <michael.reimann@openbraininstitute.org>, Darshan Mandge <darshan.mandge@openbraininstitute.org>, Ilkan Kilic <ilkan.kilic@openbraininstitute.org>, Aurélien Jaquier <aurelien.jaquier@openbraininstitute.org>, Dries Verachtert <dries.verachtert@openbraininstitute.org>, Jean-Denis Courcol <jean-denis.courcol@openbraininstitute.org>, Armando Romani <armando.romani@openbraininstitute.org>, Mike Geveart <michael.gevaert@openbraininstitute.org>, Nicolas Frank <nicolas.frank@openbraininstitute.org>
+License-Expression: Apache-2.0
+Project-URL: Homepage, https://github.com/openbraininstitute/obi-one
+Project-URL: Issues, https://github.com/openbraininstitute/obi-one/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: <3.13,>=3.12.2
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pydantic>=2.10.6
+Requires-Dist: pydantic-settings>=2.8.1
+Requires-Dist: pydantic-core
+Requires-Dist: brainbuilder>=0.20.2
+Requires-Dist: bluepysnap>=3.0.2
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: starlette
+Requires-Dist: python-multipart
+Requires-Dist: jupyter
+Requires-Dist: notebook
+Requires-Dist: jupyterlab>=4.4.8
+Requires-Dist: ipykernel
+Requires-Dist: sqlalchemy
+Requires-Dist: blueetl
+Requires-Dist: aiofiles
+Requires-Dist: neurom
+Requires-Dist: morph-tool
+Requires-Dist: pyvista
+Requires-Dist: entitysdk
+Requires-Dist: obi-auth>=1.0.0
+Requires-Dist: networkx>=3.4.2
+Requires-Dist: pyjwt>=2.10.1
+Requires-Dist: cachetools>=5.5.2
+Requires-Dist: httpx>=0.28.1
+Requires-Dist: bluepyefe>=2.3.51
+Requires-Dist: connectome-utilities>=0.4.11
+Requires-Dist: connectome-manipulator>=1.0.4
+Requires-Dist: bluecellulab>=2.6.71
+Requires-Dist: obi_notebook
+Requires-Dist: morph_spines
+Requires-Dist: caveclient>=7.11.0
+Requires-Dist: obp-accounting-sdk>=0.4.2
+Provides-Extra: connectivity
+Requires-Dist: connectome-analysis>=1.0.1; extra == "connectivity"
+Dynamic: license-file
+
+# OBI-ONE
+
+OBI-ONE is a standardized library of workflows for biophysically-detailed brain modeling, with the following features:
+- Integration with a standardized cloud database for neuroscience and computational neuroscience through [**entitysdk**](github.com/openbraininstitute/entitysdk).
+- Standardized provenence of workflows.
+- Standardized parameter scans across different modeling workflows.
+- Corresponding OpenAPI schema and service generated from Pydantic
+
+<br>
+
+# Installation
+
+
+Pre-installation
+```
+brew install uv open-mpi boost cmake
+```
+
+Virtual environment (registered as a Jupyter kernel)
+```
+make install
+```
+
+<br>
+
+
+# Examples
+Notebooks are available in [**examples/**](examples/)
+
+<br>
+
+
+# Technical Overview / Glossary
+
+The package is split into [**core/**](core/) and [**scientific/**](scientific/) code.
+
+[**core/**](core/) defines the follow key classes:
+
+- [**ScanConfig**](obi_one/core/scan_config.py): defines configurations for specific modeling use cases such as a [CircuitSimulationScanConfig](obi_one/scientific/simulation/simulations.py).  A Form is composed of one or multiple Blocks (see next), which define the parameterization of a use case. Currently Forms can have both single Blocks and dictionaries of Blocks. Each Form, for example, has its own Initialize Block for specifying the base parameters of the use case. Dictionaries of Blocks of a particular type are used where the Form can accept an unspecified number of this Block type, such as Stimulus Blocks.
+- [**Block**](obi_one/core/block.py): defines a component of a ScanConfig. Blocks are the components which support the specification of parameters which should be scanned over in the multi-dimensional parameter scan. When using the Form (in a Jupter Notebook for example). Any parameter which is specified as a list is used as a dimension of a multi-dimensional parameter scan when passed to a Scan object (see below).
+- [**SingleConfig**](obi_one/core/single.py):
+- [**Task**](obi_one/core/task.py):
+- [**ScanGenerationTask**](obi_one/core/scan_generation_task.py): is an example task which takes a single ScanConfig as input, an output path and a string for specifying how output files should be stored. Then the function scan.execute() function can then be called which generates the multiple dimensional scan
+
+
+<br>
+
+
+# FAST API Service
+
+Launch the FAST API Serive, with docs viewable at: http://127.0.0.1:8100/docs
+```
+make run-local
+```
+
+<br>
+
+# Documentation
+
+OBI-ONE uses [MkDocs](https://www.mkdocs.org/) with the [Material theme](https://squidfunk.github.io/mkdocs-material/) for documentation.
+
+## Installing Documentation Dependencies
+
+To install the documentation dependencies (MkDocs and MkDocs Material) without affecting your existing dependencies:
+
+```bash
+make install-docs
+```
+
+This command uses `uv sync --group docs` to add only the documentation dependencies to your environment, ensuring that other installed packages remain unchanged.
+
+## Serving Documentation Locally
+
+To build and serve the documentation locally for preview:
+
+```bash
+make serve-docs
+```
+
+This will start a local development server (typically at `http://127.0.0.1:8000`) where you can preview the documentation. The server will automatically reload when you make changes to the documentation files.
+
+## Tags
+
+Tags are metadata used to link documentation `.md` files to products. Each documentation file should include appropriate tags in its frontmatter to categorize and organize content.
+
+## Continuous Integration
+
+The documentation is automatically checked in CI on pull requests. The `.github/workflows/check-docs.yml` workflow:
+
+1. Checks if any files in the `docs/` directory have been modified in the pull request
+2. If no documentation changes are detected, the check fails with an error message
+3. You can skip this check by adding the `skip docs` label to your pull request
+
+This ensures that documentation is updated alongside code changes. The check only runs on pull requests targeting `main` and can be bypassed with the `skip docs` label when documentation updates are not needed.
+
+<br>
+
+# Contributions
+Please see [**CONTRIBUTIONS.md**](CONTRIBUTIONS.md) for guidelines on how to contribute.
+ 
+# Acknowledgements
+Copyright © 2025 Open Brain Institute
