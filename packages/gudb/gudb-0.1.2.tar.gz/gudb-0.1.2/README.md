@@ -1,0 +1,225 @@
+# gudb: The Database Seatbelt 🛡️
+
+**"You never notice a seatbelt until it saves your life. We do the same for your production database."**
+
+gudb—also shipped as the AI-DB Sentinel—is an AI-native safety layer that wraps your existing database connections. Every SQL statement is inspected in flight: unconstrained `DELETE`, `DROP`, and `TRUNCATE` calls are blocked deterministically, slow or suspicious queries are flagged in under a millisecond, and a LangGraph + Gemini workflow spins up to recommend indexes, query rewrites, and workload fixes. The result is a production seatbelt that pairs hard guardrails with a senior database reliability engineer who never sleeps.
+
+What you get out of the box:
+- A drop-in wrapper (`monitor(conn)`) that enforces non-negotiable safety policies.
+- Realtime latency tracking with configurable thresholds for `slow` and `critical` events.
+- Gemini-generated remediation guides captured in a Command Center UI for humans to review.
+- SDK hooks and middlewares for FastAPI and Flask so the same guardrails live everywhere your SQL runs.
+
+
+
+## Features
+- ⚡ **Zero-Latency Seatbelt**: Hardcoded safety rules block disasters in <1ms.
+- 🤖 **AI Advisor**: Asynchronous query analysis suggests indexes and refactors.
+- 🔔 **Command Center**: A beautiful dashboard for real-time observability.
+- 🔧 **One-Line Integration**: `conn = monitor(raw_psycopg2_conn)`
+
+## Architecture
+
+```
+User Request → Middleware (Detects Slow Query) → Creates Alert → Triggers AI Analysis
+                                                        ↓
+                                                 Notification Badge
+                                                        ↓
+                                            User Clicks → Shows Details
+                                                        ↓
+                                            AI Recommendations + Fix
+```
+
+## Installation
+
+### As a Library (SDK)
+```bash
+pip install gudb
+```
+
+### From Source
+1. Clone the repository:
+```bash
+git clone https://github.com/lu00009/AI-DB-Sentinel
+cd AI-DB-Sentinel
+```
+
+2. Create virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Configure environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your database URL and Gemini API key
+```
+
+## Configuration
+
+Edit `.env` file:
+
+```env
+# Database Connection
+DB_URL=postgresql://user:password@localhost:5432/your_database
+
+# Gemini API
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Thresholds (milliseconds)
+SLOW_QUERY_THRESHOLD_MS=500
+CRITICAL_THRESHOLD_MS=2000
+```
+
+## Usage
+
+### Start the Server
+
+```bash
+uvicorn main:app --reload
+```
+
+### Access the Dashboard
+
+Open your browser and navigate to:
+- **Production Dashboard**: [https://ai-db-sentinel.onrender.com/dashboard](https://ai-db-sentinel.onrender.com/dashboard)
+- **Local Dashboard**: http://localhost:8000/dashboard
+
+### Test Slow Query Detection
+
+Trigger a test slow query:
+```bash
+curl http://localhost:8000/test/slow
+```
+
+Watch the notification badge update and click to see AI analysis!
+
+## API Endpoints
+
+### Notifications
+- `GET /api/notifications/` - Get all alerts
+- `GET /api/notifications/?severity=critical` - Filter by severity
+- `GET /api/notifications/count` - Get notification count
+- `GET /api/notifications/{alert_id}` - Get specific alert
+
+### Analysis
+- `GET /api/analysis/{alert_id}` - Get detailed AI analysis for an alert
+
+### Health
+- `GET /health` - Health check
+- `GET /` - Service info
+
+## Quick Start (SDK)
+
+1. **Install**: `pip install gudb`
+2. **Configure**: Set `GUDB_API_KEY` in your environment.
+3. **Wrap Connection**:
+```python
+import psycopg2
+from gudb import monitor
+
+# Connect to your database
+raw_conn = psycopg2.connect("dbname=test user=postgres")
+
+# Wrap it with the gudb seatbelt
+conn = monitor(raw_conn)
+
+# Use as normal - disasters are blocked!
+cur = conn.cursor()
+cur.execute("DELETE FROM users")  # 🛑 Blocked: Missing WHERE clause!
+```
+
+## How It Works
+
+1. **Detection**: Middleware measures query execution time
+2. **Alert Creation**: If time exceeds threshold, creates an alert with severity level
+3. **Background Analysis**: Triggers AI analysis using LangGraph workflow:
+   - **Detective Node**: Runs EXPLAIN ANALYZE and gathers schema info
+   - **Architect Node**: Uses Gemini to identify bottlenecks and suggest fixes
+   - **Validator Node**: Stores analysis results
+4. **User Interaction**: User sees notification badge, clicks to view detailed analysis
+5. **Action**: User can copy the suggested SQL fix and apply it
+
+## LangGraph Workflow
+
+```
+Detective → Architect → Validator
+   ↓           ↓           ↓
+EXPLAIN    Gemini AI    Store
+ANALYZE    Analysis     Results
+```
+
+## Project Structure
+
+```
+gudb/
+├── main.py                 # FastAPI app with middleware
+├── services/
+├── src/
+│   └── gudb/               # The SDK Package
+│       ├── core/
+│       ├── providers/
+│       └── middlewares/
+├── static/                 # Dashboard UI
+└── requirements.txt
+```
+
+## Use as SDK/Middleware
+
+To integrate into your own FastAPI app:
+
+```python
+from fastapi import FastAPI
+from gudb.middlewares.fastapi import SafeDBMiddleware
+
+app = FastAPI()
+app.add_middleware(SafeDBMiddleware)
+
+# Your routes here...
+```
+
+## Customization
+
+### Adjust Thresholds
+Edit `.env`:
+```env
+SLOW_QUERY_THRESHOLD_MS=300  # More sensitive
+CRITICAL_THRESHOLD_MS=1000   # Lower critical threshold
+```
+
+### Disable Auto-Analysis
+```env
+ENABLE_AUTO_ANALYSIS=false
+```
+
+## 🌐 Vercel Deployment
+
+To deploy the gudb Command Center on Vercel as a static site:
+
+1.  **Project Root**: Ensure you are in the repository root.
+2.  **Configuration**: The included `vercel.json` automatically handles routing to the `static/` directory.
+3.  **Deployment**:
+    ```bash
+    vercel --prod
+    ```
+
+> [!TIP]
+> This deployment mode is for the **frontend only**. To protect your production database, ensure the gudb SDK is deployed within your application cluster.
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+---
+
+Built with ❤️ using FastAPI, LangGraph, and Google Gemini
