@@ -1,0 +1,413 @@
+import asyncio
+import inspect
+
+from .core.intents import Intents
+from .core.http import HTTPClient
+from .core.gateway import GatewayClient
+from .core.error import DiscordError
+
+from .events.gateway_events import GatewayEvent
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+class Client:
+    """Main entry point for Discord bots.
+        Ties together the moving parts: gateway, HTTP and event dispatching.
+    """
+
+    token: str
+    """Bot's token."""
+
+    intents: int
+    """Bot intents for listening to events."""
+
+    _http: HTTPClient
+    """HTTP session for requests."""
+
+    http: HTTPClient
+    """Public HTTP session (ref to `_http`) for requests."""
+
+    shards: list[GatewayClient]
+    """Shards as a list of gateways."""
+
+    events: dict[str: list[callable]]
+    """Events for the client to listen to."""
+
+    startup_hooks: list[callable]
+    """Handlers to call once before the bot starts."""
+
+    shutdown_hooks: list[callable]
+    """Handlers to call once after the bot shuts down."""
+
+    def __init__(self,
+        token: str,
+        intents: int = Intents.DEFAULT,
+        shard_count: int = 0
+    ):
+        """
+        Args:
+            token (str): the bot's token
+            intents (int, optional): gateway intents. Defaults to `Intents.DEFAULT`.
+            shard_count (int, optional): number of shards to spawn. Defaults to `0` or recommended shard count.
+        """
+        if not isinstance(intents, int):
+            raise ValueError("Intents must be an integer.")
+        
+        self.token = token
+        self.intents = intents
+        self.shard_count = shard_count
+        
+        self._http = HTTPClient()
+        self.http = self._http
+
+        self.shards: list[GatewayClient] = []
+
+        self.events = {}
+        self.startup_hooks = []
+        self.shutdown_hooks = []
+
+    def add_event_listener(self, event: str, handler):
+        """Helper function to register listener functions.
+
+        Args:
+            event (str): name of the event to listen
+            handler (callable): listener function
+        """
+        params_len = len(inspect.signature(handler).parameters)
+
+        if params_len != 1:
+            raise TypeError(
+                f"Event listener '{handler.__name__}' must accept exactly one parameter (event)."
+            )
+    
+        self.events.setdefault(event, []).append(handler)
+
+    def add_startup_hook(self, handler):
+        """Helper function to register startup functions.
+            Runs once on startup BEFORE READY event.
+
+        Args:
+            handler (callable): startup function
+        """
+        params_len = len(inspect.signature(handler).parameters)
+
+        if params_len != 0:
+            raise TypeError(
+                f"Startup hook '{handler.__name__}' must accept no parameters."
+            )
+        
+        self.startup_hooks.append(handler)
+
+    def add_shutdown_hook(self, handler):
+        """Helper function to register shutdown functions.
+            Runs once on shutdown.
+
+        Args:
+            handler (callable): shutdown function
+        """
+        params_len = len(inspect.signature(handler).parameters)
+
+        if params_len != 0:
+            raise TypeError(
+                f"Shutdown hook '{handler.__name__}' must accept no parameters."
+            )
+
+        self.shutdown_hooks.append(handler)
+
+    def application(self, application_id: int):
+        """Creates an interactable application resource.
+
+        Args:
+            application_id (int): ID of target application
+
+        Returns:
+            (Application): the Application resource
+        """
+        from .resources.application import Application
+
+        return Application(self._http, id=application_id, context=None)
+    
+    def bot_emoji(self, application_id: int):
+        """Creates an interactable bot emoji resource.
+
+        Args:
+            application_id (int): ID of target application
+
+        Returns:
+            (BotEmojis): the BotEmoji resource
+        """
+        from .resources.bot_emoji import BotEmoji
+
+        return BotEmoji(self._http, None, application_id)
+    
+    def guild_emoji(self, guild_id: int):
+        """Creates an interactable emoji resource.
+
+        Args:
+            guild_id (int): guild ID of target emojis
+
+        Returns:
+            (GuildEmoji): the GuildEmoji resource
+        """
+        from .resources.guild_emoji import GuildEmoji
+
+        return GuildEmoji(self._http, None, guild_id)
+
+    def guild(self, guild_id: int, *, context = None):
+        """Creates an interactable guild resource.
+
+        Args:
+            guild_id (int): ID of target guild
+            context (Any, optional): associated data 
+
+        Returns:
+            (Guild): the Guild resource
+        """
+        from .resources.guild import Guild
+
+        return Guild(self._http, context, guild_id)
+
+    def channel(self, channel_id: int, *, context = None):
+        """Creates an interactable guild channel resource.
+
+        Args:
+            channel_id (int): ID of target channel
+            context (Any, optional): associated data
+
+        Returns:
+            (GuildChannel): the GuildChannel resource
+        """
+        from .resources.channel import Channel
+
+        return Channel(self._http, context, channel_id)
+    
+    def invite(self, code: str, *, context = None):
+        """Creates an interactable invite resource.
+
+        Args:
+            code (str): unique invite code
+            context (_type_, optional): associated data
+        """
+        from .resources.invite import Invite
+
+        return Invite(self._http, context, code)
+    
+    def global_command(self, application_id: int, command_id: int = None, *, context = None):
+        """Creates an interactable command resource.
+
+        Args:
+            application_id (int): bot's user ID
+            command_id (int, optional): ID of command
+            context (Any, optional): associated data
+
+        Returns:
+            (GlobalCommand): the GlobalCommand resource
+        """
+        from .resources.command import GlobalCommand
+
+        return GlobalCommand(self._http, context, application_id, command_id)
+    
+    def guild_command(self, application_id: int, guild_id: int = None, command_id: int = None, *, context = None):
+        """Creates an interactable command resource.
+
+        Args:
+            application_id (int): bot's user ID
+            guild_id (int, optional): ID of guild if command is in guild scope
+            command_id (int, optional): ID of command
+            context (Any, optional): associated data
+
+        Returns:
+            (GuildCommand): the GuildCommand resource
+        """
+        from .resources.command import GuildCommand
+
+        return GuildCommand(self._http, context, application_id, command_id, guild_id)
+
+    def message(self, channel_id: int, message_id: int, *, context = None):
+        """Creates an interactable message resource.
+
+        Args:
+            message_id (int): ID of target message
+            channel_id (int): channel ID of target message
+            context (Any, optional): associated data
+
+        Returns:
+            (Message): the Message resource
+        """
+        from .resources.message import Message
+
+        return Message(self._http, context, message_id, channel_id)
+    
+    def interaction(self, id: int, token: str, *, context = None):
+        """Creates an interactable interaction resource.
+
+        Args:
+            id (int): ID of the interaction
+            token (str): interaction token
+            context (Any, optional): associated data
+
+        Returns:
+            (Interaction): the Interaction resource
+        """
+        from .resources.interaction import Interaction
+
+        return Interaction(self._http, context, id, token)
+    
+    def sticker(self, *, context = None):
+        """Creates an interactable sticker resource
+
+        Args:
+            context (Any, optional): associated data
+
+        Returns:
+            (Sticker): the Sticker resource
+        """
+        from .resources.sticker import Sticker
+
+        return Sticker(self._http, context)
+    
+    def user(self, *, context = None):
+        """Creates an interactable user resource.
+
+        Args:
+            context (Any, optional): associated data
+
+        Returns:
+            (User): the User resource
+        """
+        from .resources.user import User
+
+        return User(self._http, context)
+
+    async def listen_shard(self, shard: GatewayClient):
+        """Consume a GatewayClient's event queue.
+
+        Args:
+            shard (GatewayClient): gateway to listen on
+        """
+
+        from .core.events import EVENTS
+
+        while True:
+            try:
+                dispatch_type, event_data = await shard.event_queue.get()
+
+                if dispatch_type not in self.events.keys():
+                    logger.debug(f"SHARD ID {shard.shard_id} DISPATCH -> {dispatch_type}")
+                else:
+                    logger.info(f"SHARD ID {shard.shard_id} DISPATCH -> {dispatch_type}")
+
+                event_model = EVENTS.get(dispatch_type)
+                if not event_model:
+                    logger.warning(f"Event {dispatch_type} is not implemented.")
+                    continue
+
+                obj = event_model.from_dict(event_data)
+                obj.name = dispatch_type
+                obj.raw = event_data
+
+                handlers = self.events.get(dispatch_type, [])
+                for handler in handlers:
+                    try:
+                        result = handler(obj)
+                        if inspect.isawaitable(result):
+                            await result
+                    except DiscordError as e:
+                        logger.error(e)
+                        continue
+
+            except Exception:
+                # catastrophic errors (network, shard death, unexpected OP code)
+                logger.exception(f"SHARD ID {shard.shard_id}: Dispatcher error")
+                continue
+
+    async def _start_shards(self, gateway: GatewayEvent):
+        """Starts all shards batching by max_concurrency."""
+
+        # pull important values for easier access
+        total_shards = self.shard_count or gateway.shards
+        batch_size = gateway.session_start_limit.max_concurrency
+
+        tasks = []
+        
+        for batch_start in range(0, total_shards, batch_size):
+            batch_end = min(batch_start + batch_size, total_shards)
+
+            logger.debug(f"Starting shards {batch_start}-{batch_end} of {total_shards}")
+
+            for shard_id in range(batch_start, batch_end):
+                shard = GatewayClient(gateway.url, shard_id, total_shards)
+                self.shards.append(shard)
+
+                # fire and forget
+                tasks.append(asyncio.create_task(shard.start(self.token, self.intents)))
+                tasks.append(asyncio.create_task(self.listen_shard(shard)))
+
+            # wait before next batch to respect identify rate limit
+            await asyncio.sleep(5)
+
+        return tasks
+    
+    async def start(self):
+        """Starts the HTTP/Websocket client, run startup logic, and registers commands."""
+        
+        try:
+            await self._http.start(self.token)
+
+            data = await self._http.request('GET', '/gateway/bot')
+
+            if not data:
+                return
+
+            gateway = GatewayEvent.from_dict(data)
+
+            for hook in self.startup_hooks:
+                try:
+                    result = hook()
+                    if inspect.isawaitable(result):
+                        await asyncio.wait_for(result, timeout=5)
+                except Exception:
+                    logger.exception("Error in shartup hook")
+
+            tasks = await asyncio.create_task(self._start_shards(gateway))
+
+            await asyncio.gather(*tasks)
+            
+        except asyncio.CancelledError:
+            logger.info("Connection cancelled via KeyboardInterrupt.")
+        except Exception:
+            logger.exception(f"Unhandled client start exception.")
+        finally:
+            await self._close()
+
+    async def _close(self):
+        """Gracefully close HTTP session, websocket connections, and run shutdown logic."""  
+
+        for hook in self.shutdown_hooks:
+            try:
+                result = hook()
+                if inspect.isawaitable(result):
+                    await asyncio.wait_for(result, timeout=5)
+            except Exception:
+                logger.exception("Error in shutdown hook")
+
+        # close each connection or shard BEFORE HTTP
+        await asyncio.gather(
+            *(shard.close_ws() for shard in self.shards),
+            return_exceptions=True
+        )
+
+        logger.info("Closing HTTP session...")
+        await self._http.close()
+    
+    def run(self):
+        """User-facing entry point for starting the client."""  
+
+        try:
+            asyncio.run(self.start())
+        except Exception as e:
+            logger.exception(f"{type(e).__name__} {e}")
+        finally:
+            logger.info("Bot shutting down.")
