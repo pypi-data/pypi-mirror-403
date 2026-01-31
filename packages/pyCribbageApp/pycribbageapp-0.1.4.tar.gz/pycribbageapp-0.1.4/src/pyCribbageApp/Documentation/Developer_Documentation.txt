@@ -1,0 +1,54 @@
+Cribbage Application Project Developer Documentation
+
+ *** Concept development for using logging to send output from Cribbage Simulator to tkinter-based GUI Cribbage Application ***
+
+       Concept
+        (1) Add a queue logging handler to the logger 'cribbage_logger'.
+        (2) The queue will be owned by CribbageApp (at least to start), probably by a "mediator" design pattern object.
+        (3) Objectified messages will be logged at the INFO and DEBUG levels.
+            (a) The objectified messages will be constructed such that their __str__() produces the same string as the message currently being
+                logged by CribbageGame, so that the behavior of the stream handler, which the CLI depends on should not change.
+        (4) The CribbageApp mediator will "monitor" the logging queue, remove items as they arrive, and update GUI widgets accordingly.
+            (a) A first-pass at this will be simply to place the __str__() in the show/info widget.
+            (b) Monitoring might be as simple as asking tkinter to generate idle events for the mediators event handler.
+                (Note: Tried this simple monitoring, and believe it might be a fail, because the queue will be emptied, and then the user will
+                be asked a query, and while they respond to that the result event handler will still try to access the empty queue.)
+
+        What kind of messages do we need to send from the CribbageGame to the UI?
+
+        (1) Start a new game (names of players, who will deal first, reset board score to 0-0)
+            information sent: name player1 (string), name player2 (string), first dealer name (string)
+            actions taken: update player names in UI, update dealer name in UI, set board score to 0-0 in UI
+            Note: Should we query for player names?
+        (2) Start a new deal (which player will deal, clear hands, starter, crib, play piles, go round count)
+            information sent: name of player who will deal (string)
+            actions taken: update dealer name in UI, clear hands / crib / starter / play piles / go round count in UI
+        (3) Update Hand(s)
+            information sent: Cards in hand (string, like 'KH AD 2S JC 5H 4H')
+            actions taken: Update Hand(s) in UI
+        (4) Update Starter
+            information sent: card drawn as starter (string, like '7H')
+            actions taken: Update starter card in UI
+        (5) Update Crib (not sent until time to show crib?)
+            information sent: Cards in crib (string, like '2S JC 5H 4H')
+            actions taken: Update Crib in UI
+        (6) Update Combined Play Pile (and count for go round, with option to clear the play pile and zero the count)
+            information sent: card to add to combined pile (string, like '7H'), updated go round count (int)
+            actions taken: Update combined pile in UI, update go round count in UI
+        (7) Update player play pile (may not need this)
+            information sent: card to add to player play pile (string, like '7H')
+            actions taken: Update player play pile in UI
+        (8) Update dealer play pile (may not need this)
+            information sent: card to add to dealer play pile (string, like '7H')
+            actions taken: Update dealer play pile in UI
+        (9) Update player score (including event, like comobo score during play, reaching 31, showing hand, ...)
+            information sent: name of player that scored (string), pegs scored (integer), score event info (dictionary?)
+            action taken: Update player score on board in UI, display score achieved and eveng info (something like 'Peg 2 for playing to 31')
+        (10) Update dealer score (as for player)
+            information sent: name of player that scored (string), pegs scored (integer), score event info (dictionary?)
+            action taken: Update dealer score on board in UI, display score achieved and eveng info (something like 'Peg 2 for playing to 31')
+        
+        What kind of queries do we need to make of the UI?
+
+        Essentially the same as what the UserResponseCollector handles now, which for Cribbage is all menu queries.
+        (1) Menu Query: Query Preface, Dictionary of menu choices
