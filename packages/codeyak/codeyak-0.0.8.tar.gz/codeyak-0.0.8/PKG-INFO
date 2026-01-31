@@ -1,0 +1,136 @@
+Metadata-Version: 2.4
+Name: codeyak
+Version: 0.0.8
+Summary: A code review agent optimized for following strict guidelines
+Project-URL: Homepage, https://github.com/ai-rayven/codeyak
+Project-URL: Repository, https://github.com/ai-rayven/codeyak
+Project-URL: Bug Tracker, https://github.com/ai-rayven/codeyak/issues
+Author-email: Ray Martinez <raiselmartinez@gmail.com>
+License-Expression: MIT
+License-File: LICENSE
+Keywords: ai,automation,azure-openai,code-review,gitlab,linting,llm
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Quality Assurance
+Classifier: Topic :: Software Development :: Testing
+Requires-Python: >=3.12
+Requires-Dist: click>=8.1.0
+Requires-Dist: gitpython>=3.1.0
+Requires-Dist: instructor>=1.14.1
+Requires-Dist: langfuse>=3.11.2
+Requires-Dist: openai>=2.15.0
+Requires-Dist: pydantic-settings>=2.12.0
+Requires-Dist: python-gitlab>=7.1.0
+Requires-Dist: pyyaml>=6.0.1
+Requires-Dist: rich>=14.0.0
+Requires-Dist: tomli-w>=1.0.0
+Requires-Dist: tree-sitter-c-sharp>=0.23.0
+Requires-Dist: tree-sitter-javascript>=0.23.0
+Requires-Dist: tree-sitter-python>=0.23.0
+Requires-Dist: tree-sitter-typescript>=0.23.0
+Requires-Dist: tree-sitter>=0.23.0
+Provides-Extra: test
+Requires-Dist: pytest-cov>=6.0.0; extra == 'test'
+Requires-Dist: pytest-mock>=3.14.0; extra == 'test'
+Requires-Dist: pytest>=8.0.0; extra == 'test'
+Description-Content-Type: text/markdown
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/ai-rayven/codeyak/main/images/codeyak-logo.png" alt="CodeYak" width="200">
+  <h1>CodeYak</h1>
+  <p><em>AI-powered code review with configurable guidelines.</em></p>
+  <p>
+    <a href="https://pypi.org/project/codeyak/"><img src="https://img.shields.io/pypi/v/codeyak" alt="PyPI"></a>
+    <a href="https://pypi.org/project/codeyak/"><img src="https://img.shields.io/pypi/pyversions/codeyak" alt="Python"></a>
+  </p>
+</div>
+
+---
+
+## Installation
+
+```bash
+uv tool install codeyak
+```
+
+## CLI Usage
+
+```bash
+# Review local uncommitted changes
+yak review
+
+# Review a GitLab merge request
+yak mr <MR_ID> <PROJECT_ID>
+```
+
+On first run, `yak` prompts for configuration (Azure OpenAI credentials, GitLab token).
+
+## GitLab CI
+
+```yaml
+codeyak:
+  stage: review
+  image: python:3.12-slim
+  before_script:
+    - pip install uv && uv tool install codeyak
+  script:
+    - yak mr $CI_MERGE_REQUEST_IID $CI_PROJECT_ID
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+```
+
+Required CI/CD variables: `GITLAB_TOKEN`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_DEPLOYMENT_NAME`
+
+## Guidelines
+
+CodeYak uses `.codeyak/*.yaml` files for review guidelines. Without custom files, it uses the `default` preset.
+
+### Built-in Presets
+
+- `default` - includes code-quality
+- `security` - injection prevention, auth, cryptography, secrets
+- `code-quality` - SRP, naming, organization, error handling
+
+### Custom Guidelines
+
+`.codeyak/my-rules.yaml`:
+```yaml
+guidelines:
+  - label: rate-limiting
+    description: All API endpoints must include rate limiting.
+```
+
+### Include Presets
+
+```yaml
+includes:
+  - builtin:security
+  - builtin:code-quality
+
+guidelines:
+  - label: api-timeout
+    description: All external API calls must have timeout limits.
+```
+
+## Environment Variables
+
+```bash
+# Required
+AZURE_OPENAI_API_KEY=<key>
+AZURE_OPENAI_ENDPOINT=<endpoint>
+AZURE_DEPLOYMENT_NAME=gpt-4o
+
+# For GitLab MR reviews
+GITLAB_URL=https://gitlab.com  # optional, defaults to gitlab.com
+GITLAB_TOKEN=<token>
+
+# Optional observability
+LANGFUSE_SECRET_KEY=<key>
+LANGFUSE_PUBLIC_KEY=<key>
+LANGFUSE_HOST=https://cloud.langfuse.com
+```
