@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentify Runtime</title>
+    <link rel="stylesheet" href="/ui/agent_list.css" />
+    <script src="/ui/htmx.min.js"></script>
+  </head>
+  <body>
+    <div id="agent-container">
+      <div class="header-wrapper">
+        <div>
+          <div id="agent-header">Agentify Runtime</div>
+          <p class="tagline">{{TAGLINE}}</p>
+        </div>
+        <button class="create-agent-btn" id="createAgentBtn">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Create Agent
+        </button>
+      </div>
+
+      <div id="agent-list">{{AGENT_CARDS}}</div>
+    </div>
+
+    <!-- Modal -->
+    <div id="createAgentModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Create New Agent</h2>
+          <button class="close-btn" id="closeModalBtn">&times;</button>
+        </div>
+
+        <form id="createAgentForm">
+          <div class="form-group">
+            <label for="agentName">Agent Name *</label>
+            <input
+              type="text"
+              id="agentName"
+              name="name"
+              required
+              placeholder="e.g., my-assistant"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="agentDescription">Description</label>
+            <textarea
+              id="agentDescription"
+              name="description"
+              rows="3"
+              placeholder="What does this agent do?"
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="agentRole">Role</label>
+            <input
+              type="text"
+              id="agentRole"
+              name="role"
+              placeholder="e.g., Software Engineer, Data Analyst"
+            />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="agentProvider">Provider *</label>
+              <select id="agentProvider" name="provider" required>
+                <option value="">Select Provider</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="bedrock">AWS Bedrock</option>
+                <option value="google">Google</option>
+                <option value="x">X (Grok)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="agentModel">Model ID *</label>
+              <input
+                type="text"
+                id="agentModel"
+                name="model_id"
+                required
+                placeholder="e.g., gpt-4, claude-sonnet-4"
+              />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="agentInstructions">Instructions</label>
+            <textarea
+              id="agentInstructions"
+              name="instructions"
+              rows="4"
+              placeholder="System instructions for the agent..."
+            ></textarea>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="cancelBtn">
+              Cancel
+            </button>
+            <button type="submit" class="btn-primary">Create Agent</button>
+          </div>
+        </form>
+
+        <div id="formMessage" class="form-message"></div>
+      </div>
+    </div>
+
+    <script>
+      // Wait for DOM to be fully loaded
+      document.addEventListener("DOMContentLoaded", function () {
+        const modal = document.getElementById("createAgentModal");
+        const form = document.getElementById("createAgentForm");
+        const messageDiv = document.getElementById("formMessage");
+
+        // Make sure modal is hidden on load
+        modal.style.display = "none";
+        modal.classList.remove("show");
+
+        window.openModal = function () {
+          modal.classList.add("show");
+          document.body.style.overflow = "hidden";
+        };
+
+        window.closeModal = function () {
+          modal.classList.remove("show");
+          document.body.style.overflow = "auto";
+          form.reset();
+          messageDiv.textContent = "";
+          messageDiv.className = "form-message";
+        };
+
+        // Close modal when clicking outside
+        modal.addEventListener("click", function (e) {
+          if (e.target === modal) {
+            window.closeModal();
+          }
+        });
+
+        // Handle form submission
+        form.addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const formData = new FormData(form);
+          const agentSpec = {};
+
+          // Build agent spec from form data
+          for (let [key, value] of formData.entries()) {
+            if (value.trim()) {
+              agentSpec[key] = value.trim();
+            }
+          }
+
+          try {
+            const response = await fetch("/agents/add", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ agents: [agentSpec] }),
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.loaded && result.loaded.length > 0) {
+              messageDiv.textContent = `✓ Successfully created agent: ${result.loaded.join(
+                ", "
+              )}`;
+              messageDiv.className = "form-message success";
+
+              // Reload page after 1.5 seconds to show new agent
+              setTimeout(() => {
+                window.location.reload();
+              }, 1500);
+            } else {
+              messageDiv.textContent = `✗ Failed to create agent: ${
+                result.errors ? result.errors.join(", ") : "Unknown error"
+              }`;
+              messageDiv.className = "form-message error";
+            }
+          } catch (error) {
+            messageDiv.textContent = `✗ Error: ${error.message}`;
+            messageDiv.className = "form-message error";
+          }
+        });
+
+        // Close modal with Escape key
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && modal.classList.contains("show")) {
+            window.closeModal();
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
