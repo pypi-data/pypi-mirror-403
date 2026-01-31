@@ -1,0 +1,145 @@
+
+# Backend Configuration - Choose 'postgresql', 'fuseki', or 'fuseki_postgresql'
+backend:
+  type: fuseki_postgresql
+
+# PostgreSQL Database Configuration (used when backend.type = postgresql)
+database:
+  host: postgres-prod-primary-db-1.c65akm0oyqv9.us-east-1.rds.amazonaws.com
+  port: 5432
+  database: vitalgraphdb_fuseki
+  username: postgres
+  password: NPL1fJ9qdeUozKcaXb68B1hU0WnYP0nA
+  
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
+  pool_recycle: 3600
+
+# RDF connection pool configuration (psycopg3 pool for direct SQL queries)
+rdf_pool:
+  min_size: 5          # Keep 5 connections always available
+  max_size: 15         # Allow up to 15 concurrent connections
+  timeout: 30          # 30 seconds to get connection from pool
+  max_idle: 1800       # 30 minutes idle timeout
+  max_lifetime: 7200   # 2 hours max connection lifetime
+  reconnect_failed: true
+
+# Fuseki Backend Configuration (used when backend.type = fuseki)
+fuseki:
+  server_url: https://graphdb.cardiffbank.co
+  dataset_name: vitalgraph
+  username: vitalgraph_user
+  password: vitalgraph_pass
+  
+  # Keycloak JWT Authentication (for production Fuseki with authentication)
+  enable_authentication: true  # JWT authentication enabled for production
+  keycloak:
+    url: https://keycloak.cardiffbank.co
+    realm: cardiff-internal
+    client_id: fuseki-graphdb
+    client_secret: ""  # Optional, only for confidential clients
+    username: vitalgraph-service
+    password: production-service-password
+
+# Hybrid Backend Configuration (used when backend.type = fuseki_postgresql)
+# This backend combines Fuseki for graph operations with PostgreSQL for metadata and backup
+fuseki_postgresql:
+  # PostgreSQL connection settings for this backend
+  database:
+    host: postgres-prod-primary-db-1.c65akm0oyqv9.us-east-1.rds.amazonaws.com
+    port: 5432
+    database: vitalgraphdb_fuseki
+    username: postgres
+    password: NPL1fJ9qdeUozKcaXb68B1hU0WnYP0nA
+    pool_size: 10
+    max_overflow: 20
+    pool_timeout: 30
+    pool_recycle: 3600
+    enable_quad_logging: true  # Enable detailed quad logging in space info operations
+  
+  # Fuseki connection settings for this backend
+  fuseki:
+    server_url: https://graphdb.cardiffbank.co
+    dataset_name: vitalgraph
+    username: vitalgraph_user
+    password: vitalgraph_pass
+    
+    # Keycloak JWT Authentication (for production Fuseki with authentication)
+    enable_authentication: true  # JWT authentication enabled for production
+    keycloak:
+      url: https://keycloak.cardiffbank.co
+      realm: cardiff-internal
+      client_id: fuseki-graphdb
+      client_secret: ""  # Optional, only for confidential clients
+      username: testuser
+      password: test123
+  
+  # Transaction settings for dual-write operations
+  transaction:
+    timeout: 30                    # Transaction timeout in seconds
+    retry_attempts: 3              # Number of retry attempts on failure
+    rollback_on_fuseki_failure: true  # Rollback PostgreSQL if Fuseki fails
+  
+  # Backup settings for PostgreSQL triple storage
+  backup:
+    enabled: true                  # Enable PostgreSQL backup of triples
+    batch_size: 1000              # Batch size for backup operations
+    compression: false             # Compress backup data (future feature)
+  
+  # SPARQL UPDATE settings
+  sparql:
+    max_query_size: 1048576       # Maximum SPARQL query size (1MB)
+  
+tables:
+  prefix: "vitalgraph2_"
+auth:
+  root_username: "admin"
+  root_password: "production-admin-password"
+  
+
+app:
+  log_level: INFO
+
+# File Storage Configuration (S3 for production)
+file_storage:
+  # Backend type: 's3' for production
+  backend: s3
+  
+  # MinIO Configuration (not used in production)
+  minio:
+    endpoint_url: host.docker.internal:9000
+    access_key_id: minioadmin
+    secret_access_key: minioadmin
+    bucket_name: vitalgraph-files-local
+    use_ssl: false
+    region: us-east-1
+  
+  # AWS S3 Configuration (production deployments)
+  s3:
+    endpoint_url: null  # Use default AWS endpoints
+    access_key_id: "AKIARAPBMM7GBB75N2B2"  # Cardiff production AWS access key
+    secret_access_key: "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"  # Cardiff production AWS secret key
+    bucket_name: cardiff-prod-vitalgraph-files  # Production S3 bucket name
+    use_ssl: true
+    region: us-east-1  # AWS region
+  
+  # Common settings for both backends
+  settings:
+    presigned_url_expiration: 3600  # 1 hour
+    max_file_size: 104857600  # 100MB in bytes
+    chunk_size: 8192  # 8KB chunks for streaming
+    allowed_file_types:
+      - .pdf
+      - .jpg
+      - .jpeg
+      - .png
+      - .gif
+      - .docx
+      - .txt
+      - .csv
+      - .json
+      - .xml
+      - .zip
+      - .tar
+      - .gz
