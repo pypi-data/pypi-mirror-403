@@ -1,0 +1,558 @@
+Metadata-Version: 2.4
+Name: datex-studio-cli
+Version: 0.1.13
+Summary: CLI for Datex Studio low-code platform, designed for LLM-based AI agents
+Project-URL: Homepage, https://github.com/datex/datex-studio-cli
+Project-URL: Documentation, https://github.com/datex/datex-studio-cli
+Project-URL: Repository, https://github.com/datex/datex-studio-cli
+Author: Datex
+License-Expression: MIT
+Keywords: ai,cli,datex,llm,low-code
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
+Requires-Python: >=3.10
+Requires-Dist: click>=8.1.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: markdownify>=0.13.0
+Requires-Dist: msal>=1.28.0
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pyyaml>=6.0
+Provides-Extra: dev
+Requires-Dist: mypy>=1.8.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest-httpx>=0.30.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.4.0; extra == 'dev'
+Requires-Dist: types-pyyaml>=6.0.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Datex Studio CLI (`dxs`)
+
+Command-line interface for Datex Studio low-code platform, designed for LLM-based AI agents.
+
+## Key Features
+
+- **Structured Output**: YAML (default), JSON, and CSV formats for programmatic consumption
+- **Response Envelopes**: All responses include metadata (timestamp, CLI version, counts)
+- **Concise Mode**: Default behavior strips null values to reduce token usage
+- **Multi-Identity Auth**: Support multiple organizational accounts with seamless switching
+- **Restricted Mode**: Safe operation mode that blocks destructive commands
+- **Actionable Errors**: Error responses include suggestion lists for resolution
+
+## Installation
+
+```bash
+# Using uv (recommended)
+uv pip install datex-studio-cli
+
+# Using pip
+pip install datex-studio-cli
+```
+
+## Quick Start
+
+```bash
+# Authenticate with Azure Entra
+dxs auth login
+
+# Check authentication status
+dxs auth status
+
+# List repositories in your organization
+dxs source repo list
+
+# View commit history for a repository
+dxs source log --repo 10 --limit 20
+
+# View branch details
+dxs source branch show 12345
+
+# Explore application structure
+dxs source explore info --branch 12345
+```
+
+## Output Format
+
+### Response Envelopes
+
+All commands return structured responses with metadata:
+
+```yaml
+# Single item response
+branch:
+  id: 12345
+  name: main
+  status: ACTIVE
+metadata:
+  timestamp: '2024-01-15T10:30:00Z'
+  cli_version: 0.5.0
+  success: true
+
+# List response
+branches:
+  - id: 12345
+    name: main
+  - id: 12346
+    name: feature-x
+metadata:
+  timestamp: '2024-01-15T10:30:00Z'
+  cli_version: 0.5.0
+  count: 2
+  success: true
+```
+
+### Concise vs Full Mode
+
+By default, concise mode strips null values and verbose metadata:
+
+```bash
+# Default (concise) - smaller output
+dxs source branch show 12345
+
+# Full output - includes all fields
+dxs source branch show 12345 --full
+```
+
+### Error Responses
+
+Errors include actionable suggestions:
+
+```yaml
+error:
+  code: DXS-AUTH-002
+  message: Not authenticated
+  suggestions:
+    - Run 'dxs auth login' to authenticate
+    - Check if your token has expired with 'dxs auth status'
+metadata:
+  success: false
+  timestamp: '2024-01-15T10:30:00Z'
+```
+
+## Configuration
+
+### Priority Chain
+
+Configuration values are resolved in order:
+1. CLI flags (`--repo 10`)
+2. Environment variables (`DXS_REPO=10`)
+3. Config file (`~/.datex/config.yaml`)
+4. Defaults
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DXS_ORG` | Default organization ID |
+| `DXS_ENV` | Default environment ID |
+| `DXS_BRANCH` | Default branch ID |
+| `DXS_REPO` | Default repository ID |
+| `DXS_API_BASE_URL` | API base URL |
+| `DXS_RESTRICTED_MODE` | Enable restricted mode (blocks destructive commands) |
+
+### Config File
+
+```bash
+# View current configuration
+dxs config list
+
+# Set a default
+dxs config set default_repo 10
+
+# Get a specific value
+dxs config get default_repo
+```
+
+Configuration stored in `~/.datex/config.yaml`. Credentials stored separately in `~/.datex/credentials.yaml`.
+
+### Restricted Mode
+
+Set `DXS_RESTRICTED_MODE=1` to block potentially dangerous operations:
+- File-modifying operations (`--save`)
+- Destructive actions (`delete`, `logout --all`, `publish`, `deploy`)
+- CRM attachment downloads
+
+## Commands
+
+### Authentication (`dxs auth`)
+
+| Command | Description |
+|---------|-------------|
+| `login` | Authenticate with Azure Entra (device code flow) |
+| `logout` | Clear credentials (`--all` for all identities) |
+| `status` | Show current authentication status and token expiration |
+| `list` | List all cached identities |
+| `switch <identity>` | Switch to a different cached identity |
+
+**Multi-Identity Workflow:**
+
+```bash
+# Login to primary organization
+dxs auth login
+
+# Login to additional organization (prompts for new auth)
+dxs auth login --org other-org
+
+# List all identities
+dxs auth list
+
+# Switch between organizations
+dxs auth switch other-org
+```
+
+### Configuration (`dxs config`)
+
+| Command | Description |
+|---------|-------------|
+| `get <key>` | Get a configuration value |
+| `set <key> <value>` | Set a configuration value |
+| `list` | List all configuration values with sources |
+
+### Source Control (`dxs source`)
+
+Direct commands on the `source` group:
+
+| Command | Description |
+|---------|-------------|
+| `status` | Show branch status summary |
+| `log` | Show commit history |
+| `history <ref>` | Show configuration version history |
+| `diff` | Show pending changes (draft vs committed) |
+| `changes` | Show pending changes in detail |
+| `locks` | Show current lock status |
+| `deps <ref>` | Show configuration dependencies |
+| `deps-diff` | Show dependency changes between versions |
+| `workitems` | Extract work items from commit messages |
+| `compare` | Compare two branches |
+| `graph` | Show dependency graph |
+
+**Common Source Control Examples:**
+
+```bash
+# View recent commits
+dxs source log --repo 10 --limit 20
+
+# View pending changes
+dxs source diff --branch 100
+
+# View configuration history with diffs
+dxs source history userGrid --branch 100 --diff
+
+# Check who has locks
+dxs source locks --repo 10
+
+# Compare two branches
+dxs source compare --source 100 --target 200
+```
+
+### Branch Management (`dxs source branch`)
+
+| Command | Description |
+|---------|-------------|
+| `list` | List branches (with filtering options) |
+| `show <id>` | Show branch details |
+| `create` | Create a new feature branch |
+| `delete <id>` | Delete a feature branch |
+| `publish <id>` | Publish branch to marketplace |
+| `baseline <id>` | Find baseline (previous release) |
+| `search <query>` | Search branches by name |
+| `roles <id>` | Show branch roles |
+| `shell <id>` | Show shell configuration |
+| `validate <id>` | Validate branch configuration |
+| `candelete <id>` | Check if branch can be deleted |
+| `settings <id>` | List application settings |
+| `operations <id>` | List operations and workflows |
+| `replacements <id>` | List configuration replacements |
+
+**Branch Listing Options:**
+
+```bash
+# List all branches in a repo
+dxs source branch list --repo 10
+
+# Filter by status
+dxs source branch list --repo 10 --status feature
+
+# Show branches with pending changes
+dxs source branch list --repo 10 --with-changes
+
+# Sort by modification date
+dxs source branch list --repo 10 --sort modified --desc
+```
+
+### Repository Management (`dxs source repo`)
+
+| Command | Description |
+|---------|-------------|
+| `list` | List repositories |
+| `show <id>` | Show repository details |
+| `search <query>` | Search repositories by name |
+
+```bash
+# List repos with branch info
+dxs source repo list --with-branches
+
+# Filter by type
+dxs source repo list --type web
+```
+
+### Service Pack Management (`dxs source servicepack`)
+
+Service packs enable hotfix/maintenance branches from published releases.
+
+| Command | Description |
+|---------|-------------|
+| `list` | List service pack groups |
+| `create` | Create service pack from published version |
+| `delete <id>` | Delete service pack group |
+
+```bash
+# Create service pack for hotfixes
+dxs source servicepack create --repo 10 --description "Q1 2024 Hotfixes"
+```
+
+### Exploration (`dxs source explore`)
+
+Commands for exploring application structure and dependencies.
+
+| Command | Description |
+|---------|-------------|
+| `info` | Show application overview |
+| `configs` | List all configurations |
+| `config <ref>` | View a specific configuration |
+| `summary <ref>` | Show structural summary |
+| `trace <ref>` | Trace configuration dependencies |
+| `graph` | Generate dependency graph |
+| `cache` | Manage exploration cache |
+| `manifest` | Show application manifest |
+| `extract-code` | Extract code from configurations |
+| `verify` | Verify configuration integrity |
+| `summarize` | Generate configuration summaries |
+
+**Exploration Workflow:**
+
+```bash
+# 1. Get application overview
+dxs source explore info --branch 12345
+
+# 2. List configurations (optionally filter)
+dxs source explore configs --branch 12345 --type flow
+
+# 3. View structural summary
+dxs source explore summary create_order --branch 12345
+
+# 4. Trace dependencies
+dxs source explore trace create_order --branch 12345 --depth 3
+```
+
+See [Agent Guide](docs/agent-guide.md) for detailed exploration workflows.
+
+### Documentation Generation (`dxs source document`)
+
+Commands for bulk documentation and analysis.
+
+| Command | Description |
+|---------|-------------|
+| `build` | Download configurations with context generation |
+| `resume` | Resume interrupted build |
+| `status` | Show documentation build status |
+| `graph` | Generate dependency graph from local files |
+| `analyze init` | Initialize analysis workflow |
+| `analyze next` | Get next batch of configs to analyze |
+| `analyze store` | Store analysis result |
+| `analyze status` | Show analysis progress |
+
+**Analysis Workflow:**
+
+```bash
+# Initialize (downloads configs, builds graph)
+dxs source document analyze init -o ./exploration --branch 12345
+
+# Get next batch to analyze
+dxs source document analyze next -o ./exploration --limit 5
+
+# Store analysis result
+dxs source document analyze store -o ./exploration -c local/flow/my_flow.yaml -f analysis.yaml
+
+# Check progress
+dxs source document analyze status -o ./exploration --by-type
+```
+
+See [Analysis Workflow](docs/analysis-workflow.md) for detailed instructions.
+
+### Organizations (`dxs organization`)
+
+| Command | Description |
+|---------|-------------|
+| `list` | List all organizations |
+| `show <id>` | Show organization details |
+| `mine` | Show current user's organization |
+| `search <query>` | Search organizations |
+
+### Environments (`dxs env`)
+
+| Command | Description |
+|---------|-------------|
+| `list` | List environments |
+| `components` | List environment components |
+| `deploy <component_id>` | Deploy to an environment component |
+| `list-authorized` | List components user has access to |
+
+```bash
+# List environments
+dxs env list --org 1
+
+# Deploy to component
+dxs env deploy 123 --force
+```
+
+### Users (`dxs user`)
+
+| Command | Description |
+|---------|-------------|
+| `list` | List all users |
+| `studio-access` | Grant/revoke studio access |
+
+```bash
+# Search users
+dxs user list --search "john"
+
+# Grant studio access
+dxs user studio-access --user-id 123 --grant
+```
+
+### CRM Integration (`dxs crm`)
+
+Commands for Dynamics CRM integration.
+
+**Case Commands (`dxs crm case`):**
+
+| Command | Description |
+|---------|-------------|
+| `search` | Search support cases |
+| `query` | Execute OData query against cases |
+
+```bash
+# Search cases
+dxs crm case search "payment error" --status active --limit 10
+
+# Query with OData
+dxs crm case query --filter "createdon gt 2024-01-01" --select title,ticketnumber
+```
+
+**Account Commands (`dxs crm account`):**
+
+| Command | Description |
+|---------|-------------|
+| `list` | List accounts |
+| `search <query>` | Search accounts by name |
+
+**Metadata Commands (`dxs crm metadata`):**
+
+| Command | Description |
+|---------|-------------|
+| `entities` | List all available entities |
+| `<entity_name>` | Show fields for an entity |
+
+```bash
+# List entities
+dxs crm metadata entities
+
+# Show incident fields
+dxs crm metadata incident --relationships
+```
+
+### Marketplace (`dxs marketplace`)
+
+| Command | Description |
+|---------|-------------|
+| `list` | List marketplace applications |
+| `show <id>` | Show application details |
+| `versions <id>` | List published versions |
+| `version <id>` | Show version details |
+| `search <query>` | Search applications |
+
+### Azure DevOps (`dxs devops`)
+
+| Command | Description |
+|---------|-------------|
+| `workitem <id>` | Get single work item |
+| `workitems <ids>` | Get multiple work items (batch) |
+| `search <query>` | Search work items |
+
+```bash
+# Get work item with relations
+dxs devops workitem 12345 --org my-org --expand Relations
+
+# Batch fetch with descriptions
+dxs devops workitems "123,456,789" --org my-org --description
+```
+
+### Raw API (`dxs api`)
+
+Make direct API requests with automatic authentication.
+
+```bash
+# GET request
+dxs api GET /organizations/mine
+
+# POST request
+dxs api POST /some/endpoint '{"key": "value"}'
+
+# PUT request
+dxs api PUT /some/endpoint '{"data": "value"}'
+```
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `-o, --org` | Organization ID |
+| `-e, --env` | Environment ID |
+| `-b, --branch` | Branch ID |
+| `-r, --repo` | Repository ID |
+| `-O, --output` | Output format: yaml, json, csv |
+| `-v, --verbose` | Enable verbose output |
+| `-q, --quiet` | Suppress progress messages |
+| `-f, --full` | Show full output (disable concise mode) |
+| `-s, --save` | Save output to file |
+| `--force` | Force overwrite when saving |
+
+## Further Documentation
+
+- [Agent Guide](docs/agent-guide.md) - Detailed exploration workflows for LLM agents
+- [Analysis Workflow](docs/analysis-workflow.md) - Bulk analysis workflow documentation
+
+## Development
+
+```bash
+# Clone and install
+git clone https://github.com/datex/datex-studio-cli.git
+cd datex-studio-cli
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Lint and format
+ruff check .
+ruff format .
+
+# Type check
+mypy src/dxs
+```
+
+## License
+
+MIT
